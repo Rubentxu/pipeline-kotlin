@@ -1,17 +1,29 @@
 package dev.rubentxu.pipeline.steps
 
 import dev.rubentxu.pipeline.dsl.PipelineDsl
-import dev.rubentxu.pipeline.dsl.Steps
+import dev.rubentxu.pipeline.dsl.StepBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
-import java.lang.Exception
-import java.nio.file.Path
 
-class Shell(pipeline: PipelineDsl) : Steps(pipeline) {
+/**
+ * Shell class extends StepBlock and provides functionality to execute shell commands.
+ *
+ * @property pipeline The pipeline in which this shell command block is being executed.
+ */
+class Shell(pipeline: PipelineDsl) : StepBlock(pipeline) {
 
-    suspend fun executeCommand(command: String, directory: File = File(workingDir.toString())): String {
+    /**
+     * Executes a shell command in a specific directory.
+     *
+     * @param command The command to execute.
+     * @param directory The directory in which to execute the command. Defaults to the StepBlock's working directory.
+     * @return The output of the command execution as a string.
+     * @throws Exception If the command exits with a non-zero exit code.
+     */
+    suspend fun execute(command: String, directory: File): String {
+        logger.info("Executing command: $command in directory: $directory")
         return withContext(Dispatchers.IO) {
             val process = ProcessBuilder("/bin/bash", "-c", command)
                 .directory(directory)
@@ -29,40 +41,11 @@ class Shell(pipeline: PipelineDsl) : Steps(pipeline) {
             if (exitCode != 0) {
                 throw Exception("Error executing command. Exit code: $exitCode, Error: $error for command: $command")
             }
-
             output
         }
     }
-
-    // Use execute method from StepsExecutor to run command in coroutine
-    fun executeCommandInCoroutine(command: String, directory: File = File(workingDir.toString())) {
-        execute {
-            val output = executeCommand(command, directory)
-            println(output)
-        }
-    }
-
-    private fun toFullPath(workingDir: Path): String {
-        return if (workingDir.isAbsolute) {
-            workingDir.toString()
-        } else {
-            "${this.workingDir}/${workingDir}"
-        }
-    }
 }
 
 
-
-suspend fun Steps.sh(script: String, directory: File = File("."), returnStdout: Boolean = false) {
-    val shell = Shell(pipeline)
-    val output = shell.executeCommand(script, directory)
-    if (returnStdout) {
-        println(output)
-    }
-}
-
-suspend fun Steps.echo(message: String) {
-    println(message)
-}
 
 

@@ -22,11 +22,11 @@ class StagesDslTest : StringSpec({
                         parallel(
                             "a" to Step {
                                 delay(1000)
-                                println("This is branch a")
+                                echo("This is branch a")
                             },
                             "b" to Step {
                                 delay(500)
-                                println("This is branch b")
+                                echo("This is branch b")
                             }
                         )
                         sh("pwd", returnStdout=true)

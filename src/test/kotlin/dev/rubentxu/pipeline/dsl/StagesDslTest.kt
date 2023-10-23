@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.dsl
-import dev.rubentxu.pipeline.steps.*
+import dev.rubentxu.pipeline.extensions.echo
+import dev.rubentxu.pipeline.extensions.sh
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.delay

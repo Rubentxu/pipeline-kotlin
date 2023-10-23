@@ -1,8 +1,8 @@
-package dev.rubentxu.pipeline.steps
+package dev.rubentxu.pipeline.extensions
 
 import dev.rubentxu.pipeline.dsl.PipelineDsl
 import dev.rubentxu.pipeline.dsl.StepBlock
-import java.io.File
+import dev.rubentxu.pipeline.steps.Shell
 
 /**
  * Executes a shell script in the specified directory.
@@ -35,7 +35,7 @@ suspend fun PipelineDsl.sh(script: String, returnStdout: Boolean = false): Strin
  *
  * @param message The message to print.
  */
-suspend fun StepBlock.echo(message: String): Unit {
+suspend fun PipelineDsl.echo(message: String): Unit {
     logger.info(message)
     return Unit
 }

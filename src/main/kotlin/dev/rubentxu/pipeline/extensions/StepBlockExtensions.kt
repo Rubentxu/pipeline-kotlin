@@ -17,8 +17,8 @@ import dev.rubentxu.pipeline.steps.Shell
  */
 suspend fun PipelineDsl.sh(script: String, returnStdout: Boolean = false): String {
     val shell = Shell(this)
-    val output = shell.execute(script, getPipeline().workingDir.toFile())
-    logger.info(output)
+    val output = shell.execute(script, this.workingDir.toFile())
+
     logger.info("Shell script executed successfully: $script")
     if(returnStdout) {
        return output

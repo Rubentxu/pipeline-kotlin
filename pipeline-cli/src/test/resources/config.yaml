@@ -1,0 +1,35 @@
+credentials:
+    - name: gitlab
+      id: gitlab
+      type: username_password
+      user: e_rcabre
+      pass: password.
+    - name: gitlab_token
+      id: gitlab_token
+      type: secret_text
+      text: e_rcabre-token
+
+scmConfig:
+    userRemoteConfigs:
+        - name: gradle-simple
+          url: https://github.com/jitpack/gradle-simple
+          refspec: ''
+          credentialsId: 'gitlab'
+    branches:
+        - name: master
+    extensions:
+        sparseCheckoutPaths: []
+        localBranch: ''
+        relativeTargetDirectory: ''
+        cleanCheckout: true
+
+sharedLibrary:
+    name: commons
+    version: master
+    source:
+        local: src/test/resources/scripts
+
+
+environment:
+    JOB_NAME: Ejemplo-pipeline
+    MENSAJE: Hola Mundo

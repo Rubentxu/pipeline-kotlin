@@ -8,6 +8,11 @@ plugins {
 group = "dev.rubentxu.pipeline.core"
 version = "1.0-SNAPSHOT"
 
+
+kotlin {
+    jvmToolchain(17)
+}
+
 val kotlinVersion: String by rootProject.extra
 val kotlinCoroutinesVersion: String by rootProject.extra
 
@@ -31,9 +36,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
-kotlin {
-    jvmToolchain(17)
-}
+
 
 tasks {
     shadowJar {

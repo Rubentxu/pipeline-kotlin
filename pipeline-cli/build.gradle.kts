@@ -1,11 +1,9 @@
-import org.graalvm.buildtools.gradle.tasks.BuildNativeImageTask
-//import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 plugins {
-    kotlin("jvm")
-    id("io.kotest") version "0.4.10"
-//    id("com.github.johnrengelman.shadow") version "7.1.2"
-    id("org.graalvm.buildtools.native") version "0.9.28"
-    application
+    id("org.jetbrains.kotlin.jvm") version "1.8.22"
+    id("org.jetbrains.kotlin.plugin.allopen") version "1.8.22"
+    id("com.google.devtools.ksp") version "1.8.22-1.0.11"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("io.micronaut.application") version "4.0.4"
 }
 
 val kotlinVersion: String by rootProject.extra
@@ -15,35 +13,33 @@ group = "dev.rubentxu.pipeline.cli"
 version = "1.0-SNAPSHOT"
 
 
-kotlin {
-    jvmToolchain(17)
-}
-
-
 dependencies {
     implementation(project(":core"))
 //    implementation(project(":pipeline-script"))
 
-    implementation("com.github.ajalt.clikt:clikt:4.2.1")
+    ksp("info.picocli:picocli-codegen")
+    ksp("io.micronaut.serde:micronaut-serde-processor")
+    implementation("info.picocli:picocli")
+    implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
+    implementation("io.micronaut.picocli:micronaut-picocli")
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
+
+    implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
+
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
+
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.15.3")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.3")
-    implementation("org.gradle:gradle-tooling-api:8.4")
 
 
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
-//    implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
-//    implementation("org.jetbrains.kotlin:kotlin-script-util:1.8.22")
-
-//    runtimeOnly("org.jetbrains.kotlin:kotlin-main-kts:$kotlinVersion")
+//    implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:$kotlinVersion")
-
-//    implementation("org.jetbrains.kotlin:kotlin-scripting-common:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:$kotlinVersion")
-    implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host:$kotlinVersion")
-//    implementation("org.jetbrains.kotlin:kotlin-main-kts:$kotlinVersion")
-    implementation("org.jetbrains.kotlin:kotlin-script-runtime:$kotlinCoroutinesVersion")
-
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+//    implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host:$kotlinVersion")
+//    implementation("org.jetbrains.kotlin:kotlin-script-runtime:$kotlinCoroutinesVersion")
+//    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
 
     testImplementation(kotlin("test"))
 
@@ -54,72 +50,32 @@ dependencies {
 
 }
 
-tasks.test {
-    useJUnitPlatform()
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-
 application {
-    mainClass.set("dev.rubentxu.pipeline.cli.PipelineCliKt")
+    mainClass.set("dev.rubentxu.pipeline.cli.PipelineCliCommand")
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion("17")
 }
 
 tasks {
-    val fatJar = register<Jar>("fatJarCustom") {
-        dependsOn.addAll(listOf("compileJava", "compileKotlin", "processResources")) // We need this for Gradle optimization to work
-        archiveClassifier.set("standalone") // Naming the jar
-        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-        manifest { attributes(mapOf("Main-Class" to application.mainClass)) }
-        exclude("META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.DSA")// Provided we set it up in the application plugin configuration
-        val sourcesMain = sourceSets.main.get()
-        val contents = configurations.runtimeClasspath.get()
-            .map { if (it.isDirectory) it else zipTree(it) } +
-                sourcesMain.output
-        from(contents)
+    compileKotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
-    build {
-        dependsOn(fatJar) // Trigger fat jar creation during build
+    compileTestKotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }
-//
-//tasks {
-//    val shadowJarVal by creating(ShadowJar::class) {
-//        archiveClassifier.set("")
-//        manifest {
-//            attributes["Main-Class"] = application.mainClass.get()
-//        }
-//        exclude("META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.DSA")
-//        from(sourceSets.main.get().output)
-//        from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
-//    }
-//
-//    named<BuildNativeImageTask>("nativeCompile") {
-//        classpathJar.set(shadowJarVal.outputs.files.singleFile)
-//    }
-//
-//    build {
-//        dependsOn("nativeCompile")
-//    }
-//}
 
-
-
-graalvmNative {
-    toolchainDetection.set(true)
-    binaries {
-        named("main") {
-            javaLauncher.set(javaToolchains.launcherFor {
-                languageVersion.set(JavaLanguageVersion.of(17))
-                vendor.set(JvmVendorSpec.matching("Oracle Corporation"))
-            })
-            useFatJar.set(true)
-        }
-
-    }
-    binaries.all {
-        buildArgs.add("--verbose")
+micronaut {
+    testRuntime("kotest5")
+    processing {
+        incremental(true)
+        annotations("dev.rubentxu.pipeline.cli.*")
     }
 }
 

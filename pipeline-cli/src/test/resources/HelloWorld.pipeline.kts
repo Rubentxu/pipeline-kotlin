@@ -1,7 +1,6 @@
 #!/usr/bin/env kotlin
 import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.extensions.*
-import dev.rubentxu.pipeline.pipeline
 import kotlinx.coroutines.delay
 
 println("HOLA MUNDO..................................................")

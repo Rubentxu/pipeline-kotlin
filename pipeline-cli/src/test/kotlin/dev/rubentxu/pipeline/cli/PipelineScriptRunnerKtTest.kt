@@ -16,31 +16,24 @@ import kotlin.script.experimental.jvm.util.isError
 class PipelineScriptRunnerKtTest : StringSpec({
 
 
-//    "eval script hello world" {
-//        val scriptFile = File("testData/hello.pipeline.kts").toPath().toAbsolutePath().toFile()
-//        println("scriptFile: $scriptFile")
-//        val result = evalFile(scriptFile)
-//        result.reports.forEach {
-//            println(" : ${it.message}" + if (it.exception == null) "" else ": ${it.exception}")
-//        }
-//        println(result)
+    "eval script hello world" {
+        val scriptFile = File("testData/hello.pipeline.kts").toPath().toAbsolutePath().toFile()
+        println("scriptFile: $scriptFile")
+        val result = evalWithScriptEngineManager(scriptFile)
+        println("result: $result")
+
+    }
 //
-//        result.reports.size shouldBe 5
-//        result.isError() shouldBe false
-//
-//    }
-////
-//    "eval script pipeline dsl" {
-//        val scriptFile = File("testData/HelloWorld.pipeline.kts")
-//        val result = evalFile(scriptFile)
-//        result.reports.forEach {
-//            println(" : ${it.message}" + if (it.exception == null) "" else ": ${it.exception}")
-//        }
-//        println(result)
-//
-//        result.reports.size shouldBe 5
-//
-//    }
+    "eval script pipeline dsl" {
+        val scriptFile = File("testData/HelloWorld.pipeline.kts")
+        val result = evalWithScriptEngineManager(scriptFile) as PipelineResult
+
+        println("result: $result")
+
+        result is PipelineResult
+        result.status shouldBe Status.Success
+
+    }
 
     "eval with script manager pipeline dsl" {
         val scriptFile = File("testData/HelloWorld.pipeline.kts")

@@ -9,9 +9,6 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.io.File
 import java.nio.file.Path
-import java.util.jar.Attributes
-import java.util.jar.JarFile
-import kotlin.script.experimental.api.ScriptDiagnostic
 
 @Command(name = "pipeline-cli", description = ["..."], mixinStandardHelpOptions = true)
 class PipelineCliCommand : Runnable {
@@ -38,7 +35,6 @@ class PipelineCliCommand : Runnable {
 
         val configuration = readConfigFile(normalizeAndAbsolutePath(configPath))
 
-//         executeScript(configuration, normalizeAndAbsolutePath(scriptPath))
         evalWithScriptEngineManager(File(normalizeAndAbsolutePath(scriptPath)))
     }
 
@@ -53,26 +49,6 @@ class PipelineCliCommand : Runnable {
         }
         return mapper.readValue(configFile)
     }
-
-//    fun executeScript(config: Config, scriptPath: String) {
-//        if (verbose) {
-//            print("> ")
-//        }
-//        val scriptFile = File(scriptPath)
-//        val result = evalFile(scriptFile)
-//        if (verbose) {
-//            print("> ")
-//        }
-//
-//        result.reports.forEach {
-//            if (it.severity > ScriptDiagnostic.Severity.DEBUG) {
-//                println(" : ${it.message}" + if (it.exception == null) "" else ": ${it.exception}")
-//            }
-//        }
-//        if (verbose) {
-//            println(result)
-//        }
-//    }
 
     fun normalizeAndAbsolutePath(path: String): String {
         return Path.of(path).toAbsolutePath().normalize().toString()

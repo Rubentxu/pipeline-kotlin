@@ -1,8 +1,9 @@
 plugins {
-    kotlin("jvm") version "1.9.10"
+    kotlin("jvm") version "1.8.22"
+    id("org.jetbrains.kotlin.plugin.scripting") version "1.8.22"
 }
 
-val kotlinVersion: String by extra("1.9.10")
+val kotlinVersion: String by extra("1.8.22")
 val kotlinCoroutinesVersion: String by extra("1.7.3")
 
 

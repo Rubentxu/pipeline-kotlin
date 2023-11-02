@@ -1,7 +1,6 @@
 plugins {
     kotlin("jvm")
     id("io.kotest") version "0.4.10"
-    id("com.github.johnrengelman.shadow") version "7.1.2"
 
 }
 
@@ -9,9 +8,6 @@ group = "dev.rubentxu.pipeline.core"
 version = "1.0-SNAPSHOT"
 
 
-kotlin {
-    jvmToolchain(17)
-}
 
 val kotlinVersion: String by rootProject.extra
 val kotlinCoroutinesVersion: String by rootProject.extra
@@ -32,15 +28,21 @@ dependencies {
 
 }
 
-tasks.test {
-    useJUnitPlatform()
+
+
+java {
+    sourceCompatibility = JavaVersion.toVersion("17")
 }
 
-
-
 tasks {
-    shadowJar {
-        archiveClassifier.set("")
-        archiveBaseName.set("core")
+    compileKotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+    compileTestKotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }

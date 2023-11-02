@@ -42,7 +42,5 @@ tasks {
     shadowJar {
         archiveClassifier.set("")
         archiveBaseName.set("core")
-
     }
-
 }

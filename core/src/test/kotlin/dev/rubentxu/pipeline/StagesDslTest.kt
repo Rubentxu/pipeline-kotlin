@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline
-import dev.rubentxu.pipeline.dsl.Status
 import dev.rubentxu.pipeline.dsl.Step
-import dev.rubentxu.pipeline.dsl.pipeline
+import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.extensions.echo
 import dev.rubentxu.pipeline.extensions.sh
 import io.kotest.core.spec.style.StringSpec

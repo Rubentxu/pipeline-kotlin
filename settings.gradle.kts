@@ -1,3 +1,9 @@
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
 
 rootProject.name = "pipeline-kotlin"
 

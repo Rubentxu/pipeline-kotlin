@@ -25,7 +25,8 @@ class PipelineCli : CliktCommand() {
         println("Script path: ${normalizeAndAbsolutePath(scriptPath)}")
 
         val configuration = readConfigFile(normalizeAndAbsolutePath(configPath))
-        executeScript(configuration, normalizeAndAbsolutePath(scriptPath))
+//        executeScript(configuration, normalizeAndAbsolutePath(scriptPath))
+        evalWithScriptEngineManager(File(normalizeAndAbsolutePath(scriptPath)))
     }
 
     fun readConfigFile(configFilePath: String): Config {

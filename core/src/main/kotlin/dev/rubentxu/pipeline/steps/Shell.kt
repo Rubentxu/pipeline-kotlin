@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.steps
 
-import dev.rubentxu.pipeline.dsl.PipelineDsl
+import dev.rubentxu.pipeline.dsl.Pipeline
 import dev.rubentxu.pipeline.dsl.StepBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +12,7 @@ import java.io.InputStream
  *
  * @property pipeline The pipeline in which this shell command block is being executed.
  */
-class Shell(pipeline: PipelineDsl) : StepBlock(pipeline) {
+class Shell(pipeline: Pipeline) : StepBlock(pipeline) {
 
     /**
      * Executes a shell command in a specific directory.

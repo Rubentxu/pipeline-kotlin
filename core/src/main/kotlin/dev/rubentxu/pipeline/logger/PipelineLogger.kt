@@ -1,12 +1,31 @@
 package dev.rubentxu.pipeline.logger
 
+import ch.qos.logback.classic.LoggerContext
+
+import org.slf4j.LoggerFactory
+
 /**
  * Provides logging capabilities for a pipeline, with support for different log levels and color-coded output.
  *
  * @property logLevel The current log level for this logger. Only messages with this level or higher will be logged.
  * @constructor Creates a new logger with the specified log level.
  */
-class PipelineLogger(private var logLevel: String) : IPipelineLogger {
+class PipelineLogger(
+    private var logLevel: LogLevel,
+    private val logConfigurationStrategy: LogConfigurationStrategy = ConsoleLogConfigurationStrategy()
+) : IPipelineLogger {
+
+    private val logger = LoggerFactory.getLogger(PipelineLogger::class.java)
+
+    init {
+        configureLogger()
+    }
+
+    private fun configureLogger() {
+        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+        logConfigurationStrategy.configure(loggerContext, logLevel)
+    }
+
     /**
      * Stores the logged messages.
      */
@@ -21,14 +40,6 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
     private val BOLD = "\u001B[1m"
     private val ITALIC = "\u001B[3m"
 
-    private val LEVEL_NUMBERS = mapOf(
-        "FATAL" to 100,
-        "ERROR" to 200,
-        "WARN" to 300,
-        "INFO" to 400,
-        "DEBUG" to 500,
-        "SYSTEM" to 600
-    )
 
     init {
         setLogLevel(logLevel)
@@ -39,7 +50,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      *
      * @param level The new log level.
      */
-    private fun setLogLevel(level: String) {
+    private fun setLogLevel(level: LogLevel) {
         logLevel = level
     }
 
@@ -49,50 +60,63 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param level   The level for this log message.
      * @param message The message to log.
      */
-    private fun log(level: String, message: String) {
-        val formatOpts = mutableMapOf(
-            "color" to "",
-            "level" to level,
-            "text" to message,
-            "style" to "",
-            "reset" to RESET
-        )
+    private fun log(level: LogLevel, message: String) {
+        val format = LogFormat.Builder(text = message)
+            .level(level)
+            .text(message)
 
-        if (!LEVEL_NUMBERS.containsKey(level)) return
-        if (LEVEL_NUMBERS[level]!! <= LEVEL_NUMBERS[logLevel]!!) {
+
+
+        if (level.value <= logLevel.value) {
             when (level) {
-                "FATAL", "ERROR" -> {
-                    formatOpts["color"] = RED
-                    formatOpts["style"] = BOLD
+                LogLevel.ERROR -> {
+                    format.color(RED)
+                    format.style(BOLD)
+
                 }
-                "WARN" -> {
-                    formatOpts["color"] = YELLOW
-                    formatOpts["style"] = BOLD
+
+                LogLevel.WARN -> {
+                    format.color(YELLOW)
+                    format.style(BOLD)
                 }
-                "INFO" -> {
-                    formatOpts["color"] = GREEN
+
+                LogLevel.INFO -> {
+                    format.color(GREEN)
                 }
-                "DEBUG" -> {
-                    formatOpts["color"] = MAGENTA
-                    formatOpts["style"] = ITALIC
+
+                LogLevel.DEBUG -> {
+                    format.color(MAGENTA)
+                    format.style(ITALIC)
                 }
-                "SYSTEM" -> {
-                    formatOpts["color"] = CYAN
-                    formatOpts["style"] = ITALIC
+
+                LogLevel.TRACE -> {
+                    format.color(CYAN)
+                    format.style(ITALIC)
                 }
+
+                LogLevel.QUIET -> TODO()
             }
-            write(formatOpts)
+            write(format.build())
+        } else {
+            println("Log level ${level.value} is greater than current log level ${logLevel.value}")
         }
     }
 
-    private fun write(formatOpts: Map<String, String>) {
+    private fun write(formatOpts: LogFormat) {
         val msg = formatMessage(formatOpts)
         logs.add(msg)
-        println(msg)
+        when (formatOpts.level) {
+            LogLevel.ERROR -> logger.error(msg)
+            LogLevel.WARN -> logger.warn(msg)
+            LogLevel.INFO -> logger.info(msg)
+            LogLevel.DEBUG -> logger.debug(msg)
+            LogLevel.TRACE -> logger.trace(msg)
+            LogLevel.QUIET -> {}
+        }
     }
 
-    private fun formatMessage(options: Map<String, String>): String {
-        return "${options["color"]}${options["style"]}[${options["level"]}] ${options["text"]}${options["reset"]}"
+    private fun formatMessage(options: LogFormat): String {
+        return "${options.color}${options.style} ${options.text}${options.reset}"
     }
 
     /**
@@ -101,7 +125,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param message The message to log.
      */
     override fun info(message: String) {
-        log("INFO", message)
+        log(LogLevel.INFO, message)
     }
 
     /**
@@ -110,7 +134,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param message The message to log.
      */
     override fun warn(message: String) {
-        log("WARN", message)
+        log(LogLevel.WARN, message)
     }
 
     /**
@@ -119,7 +143,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param message The message to log.
      */
     override fun debug(message: String) {
-        log("DEBUG", message)
+        log(LogLevel.DEBUG, message)
     }
 
     /**
@@ -128,16 +152,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param message The message to log.
      */
     override fun error(message: String) {
-        log("ERROR", message)
-    }
-
-    /**
-     * Logs a fatal error message.
-     *
-     * @param message The message to log.
-     */
-    override fun fatal(message: String) {
-        log("FATAL", message)
+        log(LogLevel.ERROR, message)
     }
 
     /**
@@ -146,7 +161,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param message The message to log.
      */
     override fun system(message: String) {
-        log("SYSTEM", message)
+        log(LogLevel.TRACE, message)
     }
 
     /**
@@ -155,7 +170,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param body The block to execute.
      */
     fun whenDebug(body: () -> Unit) {
-        if (logLevel == "DEBUG") {
+        if (logLevel == LogLevel.DEBUG) {
             body()
         }
     }
@@ -166,7 +181,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param levelLog The level for this log message.
      * @param obj      The object to log.
      */
-    fun <T> prettyPrint(levelLog: String, obj: T) {
+    fun <T> prettyPrint(levelLog: LogLevel, obj: T) {
         log(levelLog, prettyPrintExtend(obj))
     }
 
@@ -187,6 +202,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
                 }
                 indent(level).append("}")
             }
+
             is List<*> -> {
                 sb.append("[\n")
                 obj.forEachIndexed { index, value ->
@@ -199,6 +215,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
                 }
                 indent(level).append("]")
             }
+
             is String -> sb.append('"').append(obj).append('"')
             else -> sb.append(obj)
         }
@@ -211,7 +228,7 @@ class PipelineLogger(private var logLevel: String) : IPipelineLogger {
      * @param level    The level for this log message.
      * @param messages The messages to include in the banner.
      */
-    fun echoBanner(level: String, messages: List<String>) {
+    fun echoBanner(level: LogLevel, messages: List<String>) {
         log(level, createBanner(messages))
     }
 

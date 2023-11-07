@@ -17,7 +17,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
     implementation("org.gradle:gradle-tooling-api:8.4")
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
-
+    implementation("ch.qos.logback:logback-classic:1.4.11")
 
     testImplementation(kotlin("test"))
 

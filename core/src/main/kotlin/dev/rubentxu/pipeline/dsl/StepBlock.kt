@@ -9,22 +9,25 @@ import kotlinx.coroutines.*
  *
  * @property pipeline The pipeline in which this block of steps is being executed.
  */
-open class StepBlock(val pipeline: PipelineDsl) :  CoroutineScope by CoroutineScope(Dispatchers.Default) {
+@PipelineDsl
+open class StepBlock(val pipeline: Pipeline) :  CoroutineScope by CoroutineScope(Dispatchers.Default) {
     val logger: IPipelineLogger = pipeline.logger
+    val env = pipeline.env
 
     val steps = mutableListOf<Step>()
 
-    fun step(block: suspend () -> Unit) {
+    fun step(block: suspend () -> AnyAgent) {
         steps += Step(block)
     }
 
     fun parallel(vararg steps: Pair<String, Step>) = runBlocking {
         steps.map { (name, step) ->
             async {
-                println("Starting $name")
+                logger.info("Starting $name")
                 step.block()
-                println("Finished $name")
+                logger.info("Finished $name")
             }
         }.awaitAll()
     }
+
 }

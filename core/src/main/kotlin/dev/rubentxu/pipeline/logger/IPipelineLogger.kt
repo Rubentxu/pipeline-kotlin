@@ -34,13 +34,6 @@ interface IPipelineLogger {
     fun error(message: String)
 
     /**
-     * Logs a fatal error message.
-     *
-     * @param message The message to log.
-     */
-    fun fatal(message: String)
-
-    /**
      * Logs a system message.
      *
      * @param message The message to log.

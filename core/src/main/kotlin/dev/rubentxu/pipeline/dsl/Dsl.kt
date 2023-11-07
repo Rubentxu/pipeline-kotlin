@@ -1,8 +1,12 @@
 package dev.rubentxu.pipeline.dsl
 
+import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.steps.EnvVars
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+
+
+@DslMarker
+annotation class PipelineDsl
 
 /**
  * Enum representing the status of a pipeline or stage.
@@ -24,7 +28,9 @@ enum class Status {
  */
 data class StageResult(
     val name: String,
-    val status: Status
+    val status: Status,
+    val output: String = "",
+    val error: String = ""
 
 )
 
@@ -50,24 +56,80 @@ data class PipelineResult(
  *  * @param block A block of code to run in the pipeline.
  *  * @return A PipelineResult instance containing the results of the pipeline execution.
  *  */
-fun pipeline(block: suspend PipelineDsl.() -> Unit): PipelineResult {
-    val pipeline = PipelineDsl()
-
-    var status: Status
-
-    try {
-        runBlocking(Dispatchers.Default) {
-            pipeline.block()
-        }
-
-
-        status = if (pipeline.stageResults.any { it.status == Status.Failure }) Status.Failure else Status.Success
-    } catch (e: Exception) {
-        status = Status.Failure
-        pipeline.stageResults.addAll(listOf(StageResult("Unknown", status)))
-        throw e
-    }
-
-    return PipelineResult(status, pipeline.stageResults, pipeline.env, pipeline.logger.logs)
+fun pipeline(block: suspend Pipeline.() -> Unit): PipelineDefinition {
+    return PipelineDefinition(block)
 }
 
+class PipelineDefinition(val block: suspend Pipeline.() -> Unit)
+
+
+interface PipelineListener {
+    suspend fun onPreExecute(pipeline: Pipeline)
+    suspend fun onPostExecute(pipeline: Pipeline, result: PipelineResult)
+}
+
+class PipelineExecutor(val logger: PipelineLogger) {
+
+    val listeners = mutableListOf<PipelineListener>()
+
+    /**
+     * Adds a listener to the pipeline executor.
+     *
+     * @param listener The listener to add.
+     */
+    fun addListener(listener: PipelineListener) {
+        listeners.add(listener)
+    }
+
+    /**
+     * Executes a PipelineDefinition and returns the result.
+     *
+     * @param pipelineDef The PipelineDefinition to execute.
+     * @return A PipelineResult instance containing the results of the pipeline execution.
+     */
+    fun execute(pipelineDef: PipelineDefinition): PipelineResult = runBlocking {
+        executePipeline(pipelineDef.block)
+    }
+
+    private suspend fun executePipeline(block: suspend Pipeline.() -> Unit): PipelineResult = supervisorScope {
+        val pipeline = Pipeline(logger)
+        var status: Status
+
+        logger.system("Create handler for pipeline exceptions...")
+        val pipelineExceptionHandler = CoroutineExceptionHandler { _, exception ->
+            logger.error("Pipeline execution failed: ${exception.message}")
+            status = Status.Failure
+            pipeline.stageResults.addAll(listOf(StageResult(pipeline.currentStage, status)))
+        }
+
+        logger.system("Registering pipeline listeners...")
+        val preExecuteJobs = listeners.map { listener ->
+            async(Dispatchers.Default) { listener.onPreExecute(pipeline) }
+        }
+
+        withContext(Dispatchers.Default + pipelineExceptionHandler) {
+            logger.system("Executing pipeline...")
+            pipeline.block()
+            pipeline.executeStages()
+            logger.system("Pipeline execution finished")
+        }
+
+        status = if (pipeline.stageResults.any { it.status == Status.Failure }) Status.Failure else Status.Success
+
+        val result = PipelineResult(status, pipeline.stageResults, pipeline.env, pipeline.logger.logs)
+
+        // Wait for all preExecute jobs to complete
+        preExecuteJobs.forEach { it.await() }
+
+        val postExecuteJobs = listeners.map { listener ->
+            async(Dispatchers.Default) { listener.onPostExecute(pipeline, result) }
+        }
+
+        // Wait for all postExecute jobs to complete
+        postExecuteJobs.forEach { it.await() }
+
+        return@supervisorScope result
+    }
+
+
+}

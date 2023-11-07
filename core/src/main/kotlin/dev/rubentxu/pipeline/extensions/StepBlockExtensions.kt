@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.extensions
 
-import dev.rubentxu.pipeline.dsl.PipelineDsl
+import dev.rubentxu.pipeline.dsl.Pipeline
+import dev.rubentxu.pipeline.dsl.StepBlock
 import dev.rubentxu.pipeline.steps.Shell
 
 /**
@@ -14,9 +15,9 @@ import dev.rubentxu.pipeline.steps.Shell
  * @param returnStdout Whether to print the output of the script to the standard output. Defaults to false.
  * @throws ShellCommandExecutionException If the shell command fails to execute.
  */
-suspend fun PipelineDsl.sh(script: String, returnStdout: Boolean = false): String {
-    val shell = Shell(this)
-    val output = shell.execute(script, this.workingDir.toFile())
+suspend fun StepBlock.sh(script: String, returnStdout: Boolean = false): String {
+    val shell = Shell(pipeline)
+    val output = shell.execute(script, pipeline.workingDir.toFile())
 
     logger.info("Shell script executed successfully: $script")
     if(returnStdout) {
@@ -34,7 +35,7 @@ suspend fun PipelineDsl.sh(script: String, returnStdout: Boolean = false): Strin
  *
  * @param message The message to print.
  */
-suspend fun PipelineDsl.echo(message: String): Unit {
+suspend fun StepBlock.echo(message: String): Unit {
     logger.info(message)
     return Unit
 }

@@ -28,6 +28,9 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
 
+    implementation("io.pebbletemplates:pebble:3.2.1")
+
+
     runtimeOnly("ch.qos.logback:logback-classic")
     runtimeOnly("com.fasterxml.jackson.module:jackson-module-kotlin")
 
@@ -36,6 +39,10 @@ dependencies {
 
     implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:$kotlinVersion")
+
+    implementation("com.github.docker-java:docker-java-core:3.3.4")
+    implementation("com.github.docker-java:docker-java-transport-zerodep:3.3.4")
+
 
     testImplementation(kotlin("test"))
     testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")

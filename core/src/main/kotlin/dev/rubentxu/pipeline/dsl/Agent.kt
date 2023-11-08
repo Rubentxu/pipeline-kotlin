@@ -15,6 +15,7 @@ data class DockerAgent(
     var label: String = "docker",
     var image: String = "",
     var tag: String = "",
+    var host: String = "",
 ): Agent()
 @PipelineDsl
 data class KubernetesAgent(

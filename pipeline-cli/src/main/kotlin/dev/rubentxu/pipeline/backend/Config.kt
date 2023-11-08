@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.cli
+package dev.rubentxu.pipeline.backend
 
 
 // credentials:
@@ -38,10 +38,10 @@ package dev.rubentxu.pipeline.cli
 //  MENSAJE: Hola Mundo
 
 data class Config(
-        val credentials: List<Credential> = emptyList(),
-        val scmConfig: ScmConfig = ScmConfig(),
-        val sharedLibrary: SharedLibrary,
-        val environment: Map<String, String>,
+    val credentials: List<Credential> = emptyList(),
+    val scmConfig: ScmConfig = ScmConfig(),
+    val sharedLibrary: SharedLibrary,
+    val environment: Map<String, String>,
 )
 
 data class Credential(

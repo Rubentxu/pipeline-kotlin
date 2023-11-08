@@ -2,16 +2,15 @@ package dev.rubentxu.pipeline.cli
 
 
 import ch.qos.logback.classic.Logger
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.readValue
+import ch.qos.logback.classic.LoggerContext
+import dev.rubentxu.pipeline.backend.evalWithScriptEngineManager
+import dev.rubentxu.pipeline.backend.normalizeAndAbsolutePath
 import io.micronaut.configuration.picocli.PicocliRunner
 import org.slf4j.LoggerFactory
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.io.File
 import java.nio.file.Path
-import ch.qos.logback.classic.LoggerContext
 
 @Command(name = "pipeline-cli", description = ["..."], mixinStandardHelpOptions = true)
 class PipelineCliCommand : Runnable {
@@ -36,9 +35,15 @@ class PipelineCliCommand : Runnable {
             println("Script path: ${normalizeAndAbsolutePath(scriptPath)}")
         }
 
-        val configuration = readConfigFile(normalizeAndAbsolutePath(configPath))
+        val jarLocation = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
+        println("JAR location: ${jarLocation.parentFile.absolutePath}")
 
-        evalWithScriptEngineManager(File(normalizeAndAbsolutePath(scriptPath)))
+
+        evalWithScriptEngineManager(
+            normalizeAndAbsolutePath(scriptPath),
+            normalizeAndAbsolutePath(configPath),
+            Path.of(jarLocation.parentFile.absolutePath)
+        )
 
 
         detachAndStopAllAppenders()
@@ -51,21 +56,6 @@ class PipelineCliCommand : Runnable {
         rootLogger.detachAndStopAllAppenders()
     }
 
-    fun readConfigFile(configFilePath: String): Config {
-        val mapper = ObjectMapper(YAMLFactory())
-        mapper.findAndRegisterModules()
-
-        val configFile = File(configFilePath)
-        if (!configFile.exists()) throw Exception("Config file not found")
-        if (verbose) {
-            println("Config file: ${configFile.absolutePath}")
-        }
-        return mapper.readValue(configFile)
-    }
-
-    fun normalizeAndAbsolutePath(path: String): String {
-        return Path.of(path).toAbsolutePath().normalize().toString()
-    }
 
     companion object {
         @JvmStatic

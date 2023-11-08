@@ -7,7 +7,7 @@ import ch.qos.logback.classic.encoder.PatternLayoutEncoder
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.ConsoleAppender
 
-class ConsoleLogConfigurationStrategy : LogConfigurationStrategy {
+open class ConsoleLogConfigurationStrategy : LogConfigurationStrategy {
     override fun configure(loggerContext: LoggerContext, logLevel: LogLevel) {
         // Clear any existing appenders on the root logger
         val rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME)

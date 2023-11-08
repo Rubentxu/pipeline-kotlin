@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.cli
 
+import dev.rubentxu.pipeline.backend.evalWithScriptEngineManager
 import dev.rubentxu.pipeline.dsl.PipelineResult
 import dev.rubentxu.pipeline.dsl.Status
 import io.kotest.core.spec.style.StringSpec

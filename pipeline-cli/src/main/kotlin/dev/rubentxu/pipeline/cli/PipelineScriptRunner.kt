@@ -1,10 +1,12 @@
 package dev.rubentxu.pipeline.cli
 
-import dev.rubentxu.pipeline.dsl.PipelineDefinition
-import dev.rubentxu.pipeline.dsl.PipelineExecutor
+import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
+import kotlinx.coroutines.*
 import java.io.File
+
+
 
 fun evalWithScriptEngineManager(scriptFile: File): Any? {
     val logger = PipelineLogger(LogLevel.TRACE)
@@ -13,7 +15,11 @@ fun evalWithScriptEngineManager(scriptFile: File): Any? {
 
         val pipelineDef = engine.eval(scriptFile.reader())
         if (pipelineDef is PipelineDefinition) {
-            return PipelineExecutor(logger).execute(pipelineDef)
+            val pipeline = runBlocking {
+                return@runBlocking pipelineDef.build(logger)
+            }
+            initializeAgent(pipeline, logger)
+            return PipelineExecutor().execute(pipeline)
         }
 
         return pipelineDef
@@ -31,4 +37,17 @@ fun evalWithScriptEngineManager(scriptFile: File): Any? {
     }
 
 
+}
+
+fun initializeAgent(pipeline: Pipeline, logger: PipelineLogger) {
+    val agent = pipeline.agent
+
+    if(agent is DockerAgent) {
+        logger.info("Docker image: ${agent.image}")
+        logger.info("Docker tag: ${agent.tag}")
+
+    } else if (agent is KubernetesAgent) {
+        logger.info("Kubernetes yalm: ${agent.yaml}")
+        logger.info("Kubernetes label: ${agent.label}")
+    }
 }

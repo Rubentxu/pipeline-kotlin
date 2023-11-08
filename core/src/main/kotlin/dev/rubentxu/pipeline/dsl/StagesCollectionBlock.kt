@@ -4,8 +4,8 @@ package dev.rubentxu.pipeline.dsl
  * This class defines the DSL for creating a list of stages.
  */
 @PipelineDsl
-class StagesDsl {
-    val stages = mutableListOf<Stage>()
+class StagesCollectionBlock {
+    val stageExecutors = mutableListOf<StageExecutor>()
 
     /**
      * This function adds a stage to the list of stages.
@@ -13,7 +13,7 @@ class StagesDsl {
      * @param name The name of the stage.
      * @param block A block of code to run in the stage.
      */
-    fun stage(name: String, block: suspend StageDsl.() -> Any) {
-        stages.add(Stage(name, block))
+    fun stage(name: String, block: suspend StageBlock.() -> Any) {
+        stageExecutors.add(StageExecutor(name, block))
     }
 }

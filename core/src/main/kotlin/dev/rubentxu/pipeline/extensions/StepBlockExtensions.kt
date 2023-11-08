@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.extensions
 
-import dev.rubentxu.pipeline.dsl.Pipeline
-import dev.rubentxu.pipeline.dsl.StepBlock
+import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.steps.Shell
 
 /**
@@ -15,7 +14,7 @@ import dev.rubentxu.pipeline.steps.Shell
  * @param returnStdout Whether to print the output of the script to the standard output. Defaults to false.
  * @throws ShellCommandExecutionException If the shell command fails to execute.
  */
-suspend fun StepBlock.sh(script: String, returnStdout: Boolean = false): String {
+suspend fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String {
     val shell = Shell(pipeline)
     val output = shell.execute(script, pipeline.workingDir.toFile())
 
@@ -35,7 +34,7 @@ suspend fun StepBlock.sh(script: String, returnStdout: Boolean = false): String 
  *
  * @param message The message to print.
  */
-suspend fun StepBlock.echo(message: String): Unit {
+suspend fun StepsBlock.echo(message: String): Unit {
     logger.info(message)
     return Unit
 }

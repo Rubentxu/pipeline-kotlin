@@ -12,31 +12,14 @@ data class AnyAgent(
 }
 @PipelineDsl
 data class DockerAgent(
-    var label: String = "docker"
+    var label: String = "docker",
+    var image: String = "",
+    var tag: String = "",
 ): Agent()
 @PipelineDsl
 data class KubernetesAgent(
-    var label: String = "kubernetes"
+    var label: String = "kubernetes",
+    var yaml: String = "",
 ): Agent()
 
 
-@PipelineDsl
-class AgentBlock() {
-
-    fun any(block: AnyAgent.() -> Any): Agent {
-        val agent = AnyAgent()
-        agent.block()
-        return agent
-    }
-
-    fun docker(block: DockerAgent.() -> DockerAgent): DockerAgent {
-        val agent = DockerAgent()
-        return agent.block()
-    }
-
-    fun kubernetes(block: KubernetesAgent.() -> KubernetesAgent): KubernetesAgent {
-        val agent = KubernetesAgent()
-        return agent.block()
-    }
-
-}

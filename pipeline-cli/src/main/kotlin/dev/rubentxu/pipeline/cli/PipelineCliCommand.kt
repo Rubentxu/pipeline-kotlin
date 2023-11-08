@@ -1,14 +1,17 @@
 package dev.rubentxu.pipeline.cli
 
 
+import ch.qos.logback.classic.Logger
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.micronaut.configuration.picocli.PicocliRunner
+import org.slf4j.LoggerFactory
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.io.File
 import java.nio.file.Path
+import ch.qos.logback.classic.LoggerContext
 
 @Command(name = "pipeline-cli", description = ["..."], mixinStandardHelpOptions = true)
 class PipelineCliCommand : Runnable {
@@ -36,6 +39,16 @@ class PipelineCliCommand : Runnable {
         val configuration = readConfigFile(normalizeAndAbsolutePath(configPath))
 
         evalWithScriptEngineManager(File(normalizeAndAbsolutePath(scriptPath)))
+
+
+        detachAndStopAllAppenders()
+    }
+
+    private fun detachAndStopAllAppenders() {
+        // Stop all appenders from showing micronaut related traces
+        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+        val rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME)
+        rootLogger.detachAndStopAllAppenders()
     }
 
     fun readConfigFile(configFilePath: String): Config {

@@ -6,7 +6,7 @@ import kotlinx.coroutines.delay
 println("HOLA MUNDO..................................................")
 
 pipeline {
-    agent(any)
+
     environment {
         "DISABLE_AUTH" += "true"
         "DB_ENGINE"    += "sqlite"
@@ -27,6 +27,15 @@ pipeline {
                 sh("pwd", returnStdout=true)
                 echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
             }
+            post {
+                always {
+                    echo("This is the post section always in stage Test")
+                }
+
+                failure {
+                    echo("This is the post section failure in stage Test")
+                }
+            }
         }
         stage("Test") {
             steps {
@@ -34,6 +43,20 @@ pipeline {
                 echo("Tests complete")
                 sh("ls -la /home", returnStdout=true)
             }
+
+        }
+    }
+    post {
+        always {
+            echo("This is the post section always")
+        }
+
+        success {
+            echo("This is the post section success")
+        }
+
+        failure {
+            echo("This is the post section failure")
         }
     }
 }

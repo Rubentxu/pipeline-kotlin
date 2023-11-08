@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
  */
 class PipelineLogger(
     private var logLevel: LogLevel,
-    private val logConfigurationStrategy: LogConfigurationStrategy = ConsoleLogConfigurationStrategy()
+    val logConfigurationStrategy: LogConfigurationStrategy = ConsoleLogConfigurationStrategy()
 ) : IPipelineLogger {
 
     private val logger = LoggerFactory.getLogger(PipelineLogger::class.java)
@@ -242,10 +242,17 @@ class PipelineLogger(
     }
 
     private fun createBanner(msgs: List<String>): String {
+        val messageLines = msgFlatten(mutableListOf(), msgs.filter { it.isNotEmpty() })
+        // Obtener la longitud de la línea más larga
+        val maxLength = messageLines.maxOf { it.length }
+        // Crear la línea de '=' multiplicada
+        val separator = "=".repeat(maxLength+7)
         return """
-        |===========================================
-        |${msgFlatten(mutableListOf(), msgs.filter { it.isNotEmpty() }).joinToString("\n")}
-        |===========================================
+        |
+        |   $separator
+        |       ${messageLines.joinToString("\n       ")} 
+        |   $separator
+        |   
         """.trimMargin()
     }
 

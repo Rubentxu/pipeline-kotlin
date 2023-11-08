@@ -32,7 +32,7 @@ Este comando ejecuta el archivo JAR generado utilizando el comando `java -jar`. 
 ---
 
 ```bash
-$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliKt -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
 ```
 Este comando es similar al anterior, pero en lugar de usar `-jar`, usa `-cp` (classpath) para especificar el archivo JAR y luego proporciona la clase principal que se debe ejecutar. Los argumentos `-c` y `-s` funcionan de la misma manera que en el comando anterior.
 

@@ -6,7 +6,13 @@ import kotlinx.coroutines.delay
 println("HOLA MUNDO..................................................")
 
 pipeline {
-
+    agent {
+        docker {
+            label = "docker"
+            image = "alpine"
+            tag = "latest"
+        }
+    }
     environment {
         "DISABLE_AUTH" += "true"
         "DB_ENGINE"    += "sqlite"

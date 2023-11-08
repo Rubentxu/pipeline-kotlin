@@ -7,7 +7,7 @@ package dev.rubentxu.pipeline.dsl
  * @property block A block of code to run in the stage.
  */
 @PipelineDsl
-class Stage(val name: String, val block: suspend StageDsl.() -> Any) {
+class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
 
     /**
      * This function runs the stage.
@@ -16,18 +16,18 @@ class Stage(val name: String, val block: suspend StageDsl.() -> Any) {
      */
     suspend fun run(pipeline: Pipeline) : Any {
 
-        val dsl = StageDsl(name, pipeline)
-        val steps = StepBlock(pipeline)
+        val dsl = StageBlock(name, pipeline)
+        val steps = StepsBlock(pipeline)
         var result: Any = ""
         try {
             result =  dsl.block()
         } catch (e: Exception) {
             pipeline.logger.error("Error running stage $name, ${e.message}")
-            dsl.stagePost.failureFunc.invoke(steps)
+            dsl.stagePostExecutionBlock.failureFunc.invoke(steps)
             throw e
         }
-        dsl.stagePost.successFunc.invoke(steps)
-        dsl.stagePost.alwaysFunc.invoke(steps)
+        dsl.stagePostExecutionBlock.successFunc.invoke(steps)
+        dsl.stagePostExecutionBlock.alwaysFunc.invoke(steps)
         return result
     }
 }

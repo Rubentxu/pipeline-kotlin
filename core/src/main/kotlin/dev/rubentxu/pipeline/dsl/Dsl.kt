@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.dsl
 
+import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.steps.EnvVars
 import kotlinx.coroutines.*
@@ -60,7 +61,21 @@ fun pipeline(block: suspend Pipeline.() -> Unit): PipelineDefinition {
     return PipelineDefinition(block)
 }
 
-class PipelineDefinition(val block: suspend Pipeline.() -> Unit)
+class PipelineDefinition(val block: suspend Pipeline.() -> Unit) {
+    suspend fun build(logger: PipelineLogger): Pipeline {
+        val pipeline = Pipeline(logger)
+        pipeline.block()
+        return pipeline
+    }
+
+    suspend fun build(logLevel: LogLevel = LogLevel.DEBUG): Pipeline {
+        val logger = PipelineLogger(logLevel)
+        val pipeline = Pipeline(logger)
+        pipeline.block()
+        return pipeline
+    }
+
+}
 
 
 interface PipelineListener {
@@ -68,7 +83,7 @@ interface PipelineListener {
     suspend fun onPostExecute(pipeline: Pipeline, result: PipelineResult)
 }
 
-class PipelineExecutor(val logger: PipelineLogger) {
+class PipelineExecutor {
 
     val listeners = mutableListOf<PipelineListener>()
 
@@ -84,16 +99,16 @@ class PipelineExecutor(val logger: PipelineLogger) {
     /**
      * Executes a PipelineDefinition and returns the result.
      *
-     * @param pipelineDef The PipelineDefinition to execute.
+     * @param pipeline The Pipeline to execute.
      * @return A PipelineResult instance containing the results of the pipeline execution.
      */
-    fun execute(pipelineDef: PipelineDefinition): PipelineResult = runBlocking {
-        executePipeline(pipelineDef.block)
+    fun execute(pipeline: Pipeline): PipelineResult = runBlocking {
+        executePipeline(pipeline)
     }
 
-    private suspend fun executePipeline(block: suspend Pipeline.() -> Unit): PipelineResult = supervisorScope {
-        val pipeline = Pipeline(logger)
+    private suspend fun executePipeline(pipeline: Pipeline): PipelineResult = supervisorScope {
         var status: Status
+        val logger = pipeline.logger
 
         logger.system("Create handler for pipeline exceptions...")
         val pipelineExceptionHandler = CoroutineExceptionHandler { _, exception ->
@@ -109,7 +124,6 @@ class PipelineExecutor(val logger: PipelineLogger) {
 
         withContext(Dispatchers.Default + pipelineExceptionHandler) {
             logger.system("Executing pipeline...")
-            pipeline.block()
             pipeline.executeStages()
             logger.system("Pipeline execution finished")
         }

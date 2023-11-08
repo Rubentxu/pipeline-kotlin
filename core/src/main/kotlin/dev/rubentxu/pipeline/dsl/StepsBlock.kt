@@ -10,7 +10,7 @@ import kotlinx.coroutines.*
  * @property pipeline The pipeline in which this block of steps is being executed.
  */
 @PipelineDsl
-open class StepBlock(val pipeline: Pipeline) :  CoroutineScope by CoroutineScope(Dispatchers.Default) {
+open class StepsBlock(val pipeline: Pipeline) :  CoroutineScope by CoroutineScope(Dispatchers.Default) {
     val logger: IPipelineLogger = pipeline.logger
     val env = pipeline.env
 

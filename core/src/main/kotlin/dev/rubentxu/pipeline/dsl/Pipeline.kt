@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.events.StartEvent
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.steps.Configurable
 import dev.rubentxu.pipeline.steps.EnvVars
-import kotlinx.coroutines.coroutineScope
 import java.nio.file.Path
 import kotlin.system.measureTimeMillis
 
@@ -24,7 +23,7 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
     /**
      * A list of stages to be executed by this pipeline.
      */
-    private var stagesList = mutableListOf<Stage>()
+    private var stagesList = mutableListOf<StageExecutor>()
 
     /**
      * The name of the current stage being executed.
@@ -53,11 +52,11 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
     /**
      * A block of code to execute after all stages have been executed.
      */
-    var post: Post
+    var postExecutionBlock: PostExecutionBlock
 
     init {
         logger.system("Pipeline initialized")
-        post = Post(getPipeline())
+        postExecutionBlock = PostExecutionBlock(getPipeline())
     }
 
 
@@ -87,11 +86,11 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
      *
      * @param agentParam Placeholder for the any available agent.
      */
-    suspend fun agent(block: AgentBlock.() -> Agent) {
+    suspend fun agent(block: AgentBlock.() -> Unit) {
         logger.system("Running pipeline using any available agent... ")
-        val agentBlock = AgentBlock()
-        agent = agentBlock.block()
-
+        val agentBlock = AgentBlock(getPipeline())
+        agentBlock.block()
+        agent = agentBlock.agent
     }
 
     /**
@@ -109,12 +108,12 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
      * @param block A block of code to define the stages.
      * @return A List<StageResult> representing the results of each stage.
      */
-    suspend fun stages(block: StagesDsl.() -> Unit) {
+    suspend fun stages(block: StagesCollectionBlock.() -> Unit) {
 
 
-        val dsl = StagesDsl()
+        val dsl = StagesCollectionBlock()
         dsl.block()
-        stagesList = dsl.stages
+        stagesList = dsl.stageExecutors
     }
 
     /**
@@ -142,15 +141,15 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
 
             StageResult(stage.name, status).also { stageResults.add(it) }
         }
-        val steps = StepBlock(this@Pipeline)
+        val steps = StepsBlock(this@Pipeline)
         logger.system("Pipeline finished with status: ${results.map { it.status }}")
         if (results.any { it.status == Status.Failure }) {
-            post.failureFunc.invoke(steps)
+            postExecutionBlock.failureFunc.invoke(steps)
         } else {
-            post.successFunc.invoke(steps)
+            postExecutionBlock.successFunc.invoke(steps)
         }
 
-        post.alwaysFunc.invoke(steps)
+        postExecutionBlock.alwaysFunc.invoke(steps)
 
 
         return results
@@ -186,8 +185,8 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
      *
      * @param block The block of code to execute.
      */
-    suspend fun post(block: Post.() -> Unit) {
-        post = Post(getPipeline()).apply(block)
+    suspend fun post(block: PostExecutionBlock.() -> Unit) {
+        postExecutionBlock = PostExecutionBlock(getPipeline()).apply(block)
 
     }
 

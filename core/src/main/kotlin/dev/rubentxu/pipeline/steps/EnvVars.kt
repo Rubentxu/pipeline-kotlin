@@ -20,6 +20,9 @@ class EnvVars {
     operator fun String.plusAssign(value: String) {
         variables[this] = value
     }
+    fun String.assign(value: String) {
+        variables[this] = value
+    }
 
     /**
      * Retrieves all environment variables.

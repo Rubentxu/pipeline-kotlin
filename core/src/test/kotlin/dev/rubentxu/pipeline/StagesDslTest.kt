@@ -15,11 +15,19 @@ class StagesDslTest : StringSpec({
 
     "Pipeline with stages and steps and parallel steps should run" {
         val pipelineDef = pipeline {
+            agent {
+                docker {
+                    label = "docker"
+                    image = "alpine"
+                    tag = "latest"
+                }
+            }
 
             environment {
                 "DISABLE_AUTH" += "true"
                 "DB_ENGINE"    += "sqlite"
             }
+
             stages {
                 stage("Build") {
                     steps {
@@ -69,9 +77,9 @@ class StagesDslTest : StringSpec({
                 }
             }
         }
-
-        val executor = PipelineExecutor(PipelineLogger(LogLevel.TRACE))
-        val result = executor.execute(pipelineDef)
+        val pipeline = pipelineDef.build(PipelineLogger(LogLevel.TRACE))
+        val executor = PipelineExecutor()
+        val result = executor.execute(pipeline)
 
         result.status shouldBe Status.Success
         result.stageResults.size shouldBe 2
@@ -123,8 +131,9 @@ class StagesDslTest : StringSpec({
             }
         }
 
-        val executor = PipelineExecutor(PipelineLogger(LogLevel.DEBUG))
-        val result = executor.execute(pipelineDef)
+        val pipeline = pipelineDef.build(LogLevel.TRACE)
+        val executor = PipelineExecutor()
+        val result = executor.execute(pipeline)
 
         result.status shouldBe Status.Success
         result.stageResults.size shouldBe 2
@@ -164,8 +173,9 @@ class StagesDslTest : StringSpec({
 
         }
 
-        val executor = PipelineExecutor(PipelineLogger(LogLevel.DEBUG))
-        val result = executor.execute(pipelineDef)
+        val pipeline = pipelineDef.build(LogLevel.TRACE)
+        val executor = PipelineExecutor()
+        val result = executor.execute(pipeline)
 //        result.status shouldBe Status.Failure
 //        val failingStage = result.stageResults.find { it.name == "Failing Stage" }
 //        failingStage shouldNotBe null

@@ -1,36 +1,37 @@
 #!/usr/bin/env kotlin
 import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.extensions.*
-import kotlinx.coroutines.delay
 
 println("HOLA MUNDO..................................................")
 
 pipeline {
-    agent {
-        docker {
-            label = "docker"
-            image = "alpine"
-            tag = "latest"
-        }
-    }
+//    agent {
+//        docker {
+//            label = "docker"
+//            image = "alpine"
+//            tag = "latest"
+//        }
+//    }
     environment {
         "DISABLE_AUTH" += "true"
-        "DB_ENGINE"    += "sqlite"
+        "DB_ENGINE" += "sqlite"
     }
     stages {
         stage("Build") {
             steps {
+                delay(1000) {
+                    echo("Delay antes de ejecutar los pasos paralelos")
+                }
+
                 parallel(
                     "a" to Step {
-                        delay(1000)
                         echo("This is branch a")
                     },
                     "b" to Step {
-                        delay(500)
                         echo("This is branch b")
                     }
                 )
-                sh("pwd", returnStdout=true)
+                sh("pwd", returnStdout = true)
                 echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
             }
             post {
@@ -45,9 +46,16 @@ pipeline {
         }
         stage("Test") {
             steps {
-                sh("ls -la", returnStdout=true)
-                echo("Tests complete")
-                sh("ls -la /home", returnStdout=true)
+                sh("ls -la", returnStdout = true)
+                retry(3) {
+                    delay(3000) {
+                        echo("Tests retry ....")
+                        sh("ls -la /inventado", returnStdout = true)
+                    }
+
+                }
+
+                sh("ls -la /home", returnStdout = true)
             }
 
         }

@@ -15,7 +15,7 @@ class StageBlock(val name: String, val pipeline: Pipeline) {
      *
      * @param block A block of code to define the steps.
      */
-    suspend fun steps(block: suspend StepsBlock.() -> Any) {
+    fun steps(block: StepsBlock.() -> Any) {
         val steps = StepsBlock(pipeline)
         steps.block()
     }

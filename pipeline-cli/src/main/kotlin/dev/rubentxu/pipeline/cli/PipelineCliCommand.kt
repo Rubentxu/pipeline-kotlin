@@ -40,9 +40,9 @@ class PipelineCliCommand : Runnable {
 
 
         evalWithScriptEngineManager(
-            normalizeAndAbsolutePath(scriptPath),
-            normalizeAndAbsolutePath(configPath),
-            Path.of(jarLocation.parentFile.absolutePath)
+            scriptPath,
+            configPath,
+            jarLocation.parentFile.absolutePath
         )
 
 

@@ -13,7 +13,7 @@ class StagesCollectionBlock {
      * @param name The name of the stage.
      * @param block A block of code to run in the stage.
      */
-    fun stage(name: String, block: suspend StageBlock.() -> Any) {
+    fun stage(name: String, block: StageBlock.() -> Any) {
         stageExecutors.add(StageExecutor(name, block))
     }
 }

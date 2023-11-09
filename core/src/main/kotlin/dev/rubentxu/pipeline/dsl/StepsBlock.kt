@@ -16,7 +16,7 @@ open class StepsBlock(val pipeline: Pipeline) :  CoroutineScope by CoroutineScop
 
     val steps = mutableListOf<Step>()
 
-    fun step(block: suspend () -> AnyAgent) {
+    fun step(block: suspend () -> Any) {
         steps += Step(block)
     }
 

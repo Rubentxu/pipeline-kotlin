@@ -28,7 +28,8 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
 
-    implementation("io.pebbletemplates:pebble:3.2.1")
+    implementation("org.freemarker:freemarker:2.3.32")
+
 
 
     runtimeOnly("ch.qos.logback:logback-classic")

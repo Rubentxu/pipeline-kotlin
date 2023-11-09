@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.extensions
 
 import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.steps.Shell
+import kotlinx.coroutines.runBlocking
 
 /**
  * Executes a shell script in the specified directory.
@@ -14,16 +15,16 @@ import dev.rubentxu.pipeline.steps.Shell
  * @param returnStdout Whether to print the output of the script to the standard output. Defaults to false.
  * @throws ShellCommandExecutionException If the shell command fails to execute.
  */
-suspend fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String {
+fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String = runBlocking {
     val shell = Shell(pipeline)
     val output = shell.execute(script, pipeline.workingDir.toFile())
 
     logger.info("Shell script executed successfully: $script")
     if(returnStdout) {
-       return output
+        return@runBlocking output
     }
     logger.info(output)
-    return ""
+    return@runBlocking ""
 }
 
 /**
@@ -34,7 +35,37 @@ suspend fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String
  *
  * @param message The message to print.
  */
-suspend fun StepsBlock.echo(message: String): Unit {
+/**
+ * Prints a message to the standard output.
+ *
+ * This function is a wrapper around `println` and is used to print a message to the standard output during the execution
+ * of a pipeline step.
+ *
+ * @param message The message to print.
+ */
+fun StepsBlock.echo(message: String) {
     logger.info(message)
-    return Unit
+}
+
+fun StepsBlock.retry(maxRetries: Int, block: () -> Any): Any {
+    var currentRetry = 0
+    var lastError: Throwable? = null
+    while (currentRetry < maxRetries) {
+        try {
+            return block()
+        } catch (e: Throwable) {
+            lastError = e
+            currentRetry++
+            if (currentRetry >= maxRetries) {
+                break
+            }
+            println("Intento $currentRetry/$maxRetries fallido, reintento...")
+        }
+    }
+    throw Exception("La operación ha fallado después de $maxRetries intentos.", lastError)
+}
+
+fun StepsBlock.delay(timeMillis: Long, block: () -> Unit) = runBlocking {
+    kotlinx.coroutines.delay(timeMillis)
+    block()
 }

@@ -21,9 +21,16 @@ open class ConsoleLogConfigurationStrategy : LogConfigurationStrategy {
         val consoleAppender = ConsoleAppender<ILoggingEvent>()
         consoleAppender.context = loggerContext
         consoleAppender.encoder = encoder
+        consoleAppender.isImmediateFlush = true
         consoleAppender.start()
 
         rootLogger.level = Level.toLevel(logLevel.name)
         rootLogger.addAppender(consoleAppender)
+
+        // Configuración específica para silenciar la librería Docker Java API
+        val dockerJavaLogger = loggerContext.getLogger("com.github.dockerjava")
+        dockerJavaLogger.level = Level.WARN // Establece el nivel de trazas deseado para Docker Java API
+        dockerJavaLogger.addAppender(consoleAppender) // Si quieres que también muestre los WARN y ERROR en consola
+        dockerJavaLogger.setAdditive(false) // Para evitar que los logs se propaguen al logger principal
     }
 }

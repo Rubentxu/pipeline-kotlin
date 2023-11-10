@@ -1,5 +1,6 @@
 FROM ${baseImage}
 
+ENV IS_AGENT=true
 
 # Intenta ejecutar java -version para comprobar si Java está instalado y accesible
 RUN if ! java -version > /dev/null 2>&1; then \

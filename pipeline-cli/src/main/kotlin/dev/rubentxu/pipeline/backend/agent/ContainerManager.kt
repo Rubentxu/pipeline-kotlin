@@ -192,6 +192,7 @@ class ContainerManager(val agent: DockerAgent, val config: Config, val logger: P
         val binding = mapOf("baseImage" to baseImage)
 
         val buildDir = Path.of(System.getProperty("user.dir")).resolve("build").resolve("dockerContext")
+        logger.system("Create Build dir: $buildDir")
         if (Files.exists(buildDir)) {
             Files.walk(buildDir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
         }
@@ -202,8 +203,10 @@ class ContainerManager(val agent: DockerAgent, val config: Config, val logger: P
 // Obtén el directorio de ejecución de la aplicación y añade el subdirectorio 'build'
         // add Dockerfile to paths
         val pathsWithDockerfile = paths + listOf(dockerfile.toPath())
+        logger.system("Create paths with Dockerfile: $pathsWithDockerfile")
 
         val tarFile = createTarFile(pathsWithDockerfile, buildDir)
+        logger.system("Create tar file: $tarFile")
 
         val imageTag = IMAGE_NAME
 
@@ -223,6 +226,7 @@ class ContainerManager(val agent: DockerAgent, val config: Config, val logger: P
 
             return callback.awaitImageId()
         } else {
+            logger.system("Image already exists: $imageTag")
             val mostRecentImage = existingImages.maxByOrNull { it.created } // Usar maxWithOrNull si usas una versión anterior de Kotlin
             return mostRecentImage?.id ?: throw IllegalStateException("No images found after filtering")
         }
@@ -294,7 +298,7 @@ class ContainerManager(val agent: DockerAgent, val config: Config, val logger: P
     fun renderDockerfile(binding: Map<String, Any>, buildDir: Path): File {
         // Configuración del motor de plantillas Freemarker
         val cfg = Configuration(Configuration.VERSION_2_3_31).apply {
-            setDirectoryForTemplateLoading(File("src/main/resources/templates")) // Asegúrate de que esta ruta sea correcta
+            setClassForTemplateLoading(javaClass, "/templates")
             defaultEncoding = StandardCharsets.UTF_8.name()
             templateExceptionHandler = TemplateExceptionHandler.RETHROW_HANDLER
             logTemplateExceptions = false

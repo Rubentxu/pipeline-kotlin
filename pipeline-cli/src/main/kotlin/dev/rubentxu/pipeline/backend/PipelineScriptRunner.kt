@@ -53,8 +53,13 @@ fun executePipeline(
     val listOfPaths = listOf(scriptPath, configPath, executablePath).map { normalizeAndAbsolutePath(it) }
     val configuration = readConfigFile(normalizeAndAbsolutePath(configPath).toString())
 
-    val isExecuteInAgent = executeWithAgent(pipeline, configuration, listOfPaths)
-    if(isExecuteInAgent) return PipelineResult(Status.Success, emptyList(), EnvVars(), mutableListOf())
+    val isAgentEnv = System.getenv("IS_AGENT")
+    logger.system("Env isAgent: $isAgentEnv")
+    // si pipeline.agent no es AnyAgent se ejecuta en un agente
+    if(!(pipeline.agent is AnyAgent) && isAgentEnv == null) {
+        return executeWithAgent(pipeline, configuration, listOfPaths)
+    }
+
     return PipelineExecutor().execute(pipeline)
 }
 
@@ -64,7 +69,7 @@ fun buildPipeline(pipelineDef: PipelineDefinition, logger: PipelineLogger): Pipe
 }
 
 // Maneja las excepciones ocurridas durante la ejecución del script.
-fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger) {
+fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger, showStackTrace: Boolean = true) {
     val regex = """ERROR (.*) \(ScriptingHost:(\d+):(\d+)\)""".toRegex()
     val match = regex.find(exception.message ?: "")
 
@@ -75,31 +80,37 @@ fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger)
         logger.error("Error in Pipeline definition: ${exception.message}")
     }
 
+    // Imprime el stacktrace completo si el flag está activado.
+    if (showStackTrace) {
+        exception.printStackTrace()
+    }
 }
 
-fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) : Boolean {
+fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) :PipelineResult {
     val agent = pipeline.agent
     val logger = pipeline.logger
 
     if(agent is DockerAgent) {
         logger.info("Docker image: ${agent.image}")
         logger.info("Docker tag: ${agent.tag}")
-        executeInDockerAgent(agent, config, paths)
-        return true
+       return executeInDockerAgent(agent, config, paths)
+
 
     } else if (agent is KubernetesAgent) {
         logger.info("Kubernetes yalm: ${agent.yaml}")
         logger.info("Kubernetes label: ${agent.label}")
-        return true
+//        return executeInKubernetesAgent(agent, config, paths)
+
     }
-    return false
+    return PipelineResult(Status.Success, emptyList(), EnvVars(), mutableListOf())
 }
 
-fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>) {
+fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>): PipelineResult {
     val containerManager = ContainerManager(agent, config, PipelineLogger(LogLevel.TRACE))
 
     containerManager.buildCustomImage("openjdk:17", paths)
-    containerManager.createAndStartContainer(mapOf("MENSAJE" to "Hola Mundo"))
+    containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
+    return PipelineResult(Status.Success, emptyList(), EnvVars(), mutableListOf())
 }
 
 fun readConfigFile(configFilePath: String): Config {

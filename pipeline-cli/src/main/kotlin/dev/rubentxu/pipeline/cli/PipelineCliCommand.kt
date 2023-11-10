@@ -13,7 +13,8 @@ import java.io.File
 import java.nio.file.Path
 
 @Command(name = "pipeline-cli", description = ["..."], mixinStandardHelpOptions = true)
-class PipelineCliCommand : Runnable {
+class PipelineCliCommand() : Runnable {
+
 
     @Option(names = ["-c", "--config"], description = ["Path to the YAML configuration file"])
     private var configPath: String =
@@ -26,6 +27,7 @@ class PipelineCliCommand : Runnable {
     @Option(names = ["-v", "--verbose"], description = ["Verbose mode"])
     private var verbose: Boolean = false
 
+
     override fun run() {
         assert(configPath.isNotEmpty()) { "Config path is empty" }
         assert(scriptPath.isNotEmpty()) { "Script path is empty" }
@@ -36,13 +38,13 @@ class PipelineCliCommand : Runnable {
         }
 
         val jarLocation = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
-        println("JAR location: ${jarLocation.parentFile.absolutePath}")
+        println("JAR location: ${jarLocation.absolutePath}")
 
 
         evalWithScriptEngineManager(
             scriptPath,
             configPath,
-            jarLocation.parentFile.absolutePath
+            jarLocation.absolutePath
         )
 
 

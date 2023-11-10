@@ -5,13 +5,13 @@ import dev.rubentxu.pipeline.extensions.*
 println("HOLA MUNDO..................................................")
 
 pipeline {
-//    agent {
-//        docker {
-//            label = "docker"
-//            image = "alpine"
-//            tag = "latest"
-//        }
-//    }
+    agent {
+        docker {
+            label = "docker"
+            image = "alpine"
+            tag = "latest"
+        }
+    }
     environment {
         "DISABLE_AUTH" += "true"
         "DB_ENGINE" += "sqlite"

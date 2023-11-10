@@ -11,9 +11,20 @@ Después, `:pipeline-cli:shadowJar` es una tarea de Gradle que compila el códig
 
 ---
 #### Compilación nativa
+Es importante tener en cuenta que native-image es muy sensible a la reflexión y a la carga dinámica de clases. 
+Si tu aplicación utiliza estas características, es posible que necesites proporcionar configuraciones adicionales para 
+que native-image pueda analizar y compilar adecuadamente tu aplicación. 
+Esto se hace a menudo a través de archivos de configuración JSON que especifican qué clases y métodos deben ser considerados para la reflexión. Puedes generar estos archivos automáticamente durante la ejecución de tu aplicación en una JVM normal utilizando el agente de native-image:
 
 ```bash
-$  native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
+java  -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar
+```
+
+```bash
+$  native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
+  -H:IncludeResources='.*\.properties|templates/.*\.tpl|META-INF/services/.*' \
+  --initialize-at-build-time=javax.script.ScriptEngineFactory \
+  -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
 ```
 Este comando utiliza la herramienta native-image de GraalVM para compilar el código en una imagen nativa. Aunque la imagen nativa normalmente puede ejecutarse directamente sin necesidad de una JVM (Java Virtual Machine), en este caso, se está generando una imagen de "fallback".
 
@@ -21,14 +32,37 @@ La advertencia que se mostrara en la compilación, "Warning: Image 'pipeline-kts
 
 El argumento `--class-path` especifica la ruta al archivo JAR que se va a compilar. `-H:Name=pipeline-kts` establece el nombre de la imagen nativa resultante. Finalmente, `dev.rubentxu.pipeline.cli.PipelineCliCommand` es la clase principal que se ejecutará cuando se inicie la imagen nativa.
 
+```bash
+native-image \
+  --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
+  -H:Name=pipeline-kts \
+  -H:IncludeResources='.*\.properties|templates/.*\.tpl|META-INF/services/.*' \
+  --initialize-at-build-time=javax.script.ScriptEngineFactory \
+  -H:ReflectionConfigurationFiles=pipeline-cli/build/libs/reflect-config.json \
+  -H:DynamicProxyConfigurationFiles=pipeline-cli/build/libs/proxy-config.json \
+  -H:ResourceConfigurationFiles=pipeline-cli/build/libs/resource-config.json \
+  dev.rubentxu.pipeline.cli.PipelineCliCommand
+```
+Este es un ejemplo de un comando `native-image` que utiliza archivos de configuración JSON para especificar qué clases y
+métodos deben ser considerados para la reflexión, la carga dinámica de clases y la configuración de recursos. 
+Los archivos de configuración JSON se pueden generar automáticamente durante la ejecución de la aplicación en una JVM normal
+utilizando el agente de native-image.
+
+
 ---
 #### Ejecutar
 
 ```bash
-$ java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
 ```
-Este comando ejecuta el archivo JAR generado utilizando el comando `java -jar`. Los argumentos `-c` y `-s` son probablemente opciones específicas de la aplicación, que especifican la ubicación de un archivo de configuración y un script, respectivamente.
+Este comando ejecuta el archivo JAR generado utilizando el comando `java -jar`. Los argumentos `-c` y `-s` 
+son probablemente opciones específicas de la aplicación, que especifican la ubicación de un archivo de configuración y 
+un script, respectivamente.
+GraalVM también proporciona la herramienta native-image-agent, que puedes usar para ejecutar tu aplicación en la JVM y 
+generar automáticamente estos archivos de configuración. 
+Esto se puede hacer agregando el argumento `-agentlib:native-image-agent=config-output-dir=<output-dir>` al comando `java`:
 
+```bash
 ---
 
 ```bash

@@ -50,6 +50,7 @@ fun StepsBlock.echo(message: String) {
 fun StepsBlock.retry(maxRetries: Int, block: () -> Any): Any {
     var currentRetry = 0
     var lastError: Throwable? = null
+
     while (currentRetry < maxRetries) {
         try {
             return block()
@@ -59,7 +60,7 @@ fun StepsBlock.retry(maxRetries: Int, block: () -> Any): Any {
             if (currentRetry >= maxRetries) {
                 break
             }
-            println("Intento $currentRetry/$maxRetries fallido, reintento...")
+            logger.info("Intento $currentRetry/$maxRetries fallido, reintento...")
         }
     }
     throw Exception("La operación ha fallado después de $maxRetries intentos.", lastError)

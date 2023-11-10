@@ -17,7 +17,7 @@ que native-image pueda analizar y compilar adecuadamente tu aplicación.
 Esto se hace a menudo a través de archivos de configuración JSON que especifican qué clases y métodos deben ser considerados para la reflexión. Puedes generar estos archivos automáticamente durante la ejecución de tu aplicación en una JVM normal utilizando el agente de native-image:
 
 ```bash
-java  -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar
+java  -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
 ```
 
 ```bash

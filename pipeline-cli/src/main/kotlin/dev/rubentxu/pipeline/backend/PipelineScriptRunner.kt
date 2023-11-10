@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
 import dev.rubentxu.pipeline.backend.agent.ContainerManager
+import dev.rubentxu.pipeline.cli.PipelineCliCommand
 import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
@@ -16,13 +17,22 @@ import javax.script.ScriptEngine
 import javax.script.ScriptEngineManager
 
 
-fun evalWithScriptEngineManager(scriptPath: String, configPath: String, executablePath: String): PipelineResult {
+fun evalWithScriptEngineManager(scriptPath: String, configPath: String): PipelineResult {
     val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
+
+    val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
+    logger.info("Pipeline executable: ${pipelineExecutable.absolutePath}")
+    logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
+
+    val jarLocation = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
+    logger.info("JAR location: ${jarLocation.absolutePath}")
+    val resolveExecutablePath = if(pipelineExecutable.exists()) pipelineExecutable.absolutePath  else jarLocation.absolutePath
+    logger.info("Resolve executable path: $resolveExecutablePath")
 
     return try {
         val pipelineDef = evaluateScriptFile(scriptPath)
         val pipeline = buildPipeline(pipelineDef, logger)
-        executePipeline(pipeline, scriptPath, configPath, executablePath, logger)
+        executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
     } catch (e: Exception) {
         handleScriptExecutionException(e, logger)
         PipelineResult(Status.Failure, emptyList(), EnvVars(), mutableListOf())

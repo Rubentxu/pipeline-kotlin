@@ -37,14 +37,10 @@ class PipelineCliCommand() : Runnable {
             println("Script path: ${normalizeAndAbsolutePath(scriptPath)}")
         }
 
-        val jarLocation = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
-        println("JAR location: ${jarLocation.absolutePath}")
-
-
         evalWithScriptEngineManager(
             scriptPath,
             configPath,
-            jarLocation.absolutePath
+
         )
 
 

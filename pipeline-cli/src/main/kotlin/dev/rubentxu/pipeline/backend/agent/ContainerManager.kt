@@ -24,7 +24,10 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.io.IOUtils
 import org.apache.commons.lang3.SystemUtils
-import java.io.*
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.StringWriter
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -32,7 +35,6 @@ import java.nio.file.Path
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.CountDownLatch
-import kotlin.Comparator
 
 
 private const val IMAGE_NAME = "pipeline-kts"
@@ -188,10 +190,21 @@ class ContainerManager(val agent: DockerAgent, val config: Config, val logger: P
 
     fun buildCustomImage(baseImage: String, paths: List<Path>): String {
 
+        // si paths contains a file si contiene el binario pipeline-kts usa esto
+        val executable = determineExecutable(paths)
         // Transformar la lista en un mapa
-        val binding = mapOf("baseImage" to baseImage)
+        val binding = mapOf(
+            "baseImage" to baseImage,
+            "executable" to executable
+        )
 
         val buildDir = Path.of(System.getProperty("user.dir")).resolve("build").resolve("dockerContext")
+
+        val classPath = System.getProperty("java.class.path")
+        val isNativeImage = classPath == null || classPath.trim { it <= ' ' }.isEmpty()
+        logger.system("Is native image: $isNativeImage")
+
+
         logger.system("Create Build dir: $buildDir")
         if (Files.exists(buildDir)) {
             Files.walk(buildDir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
@@ -229,6 +242,17 @@ class ContainerManager(val agent: DockerAgent, val config: Config, val logger: P
             logger.system("Image already exists: $imageTag")
             val mostRecentImage = existingImages.maxByOrNull { it.created } // Usar maxWithOrNull si usas una versión anterior de Kotlin
             return mostRecentImage?.id ?: throw IllegalStateException("No images found after filtering")
+        }
+    }
+    fun determineExecutable(paths: List<Path>): String {
+        // Verifica si 'paths' contiene un archivo llamado "pipeline-kts"
+        val containsBinary = paths.any { it.fileName.toString() == "pipeline-kts" }
+
+        // Establece 'executable' basado en si se encuentra el archivo binario
+        return if (containsBinary) {
+            "pipeline-kts"
+        } else {
+            "pipeline-cli.jar"
         }
     }
 

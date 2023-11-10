@@ -19,10 +19,9 @@ class PipelineScriptRunnerKtTest : StringSpec({
     "eval script hello world" {
         val scriptFile = File("testData/hello.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
-        val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar").path
 
         println("scriptFile: $scriptFile")
-        val result = evalWithScriptEngineManager(scriptFile, configFile, jarFile)
+        val result = evalWithScriptEngineManager(scriptFile, configFile)
         println("result: $result")
 
     }
@@ -30,9 +29,8 @@ class PipelineScriptRunnerKtTest : StringSpec({
     "eval script pipeline dsl" {
         val scriptFile = File("src/test/resources/HelloWorld.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
-        val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar").path
 
-        val result = evalWithScriptEngineManager(scriptFile, configFile, jarFile)
+        val result = evalWithScriptEngineManager(scriptFile, configFile)
 
         println("result: $result")
 
@@ -68,7 +66,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val configFile = File("testData/config.yaml").path
         val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar").path
 
-        val result: PipelineResult =  evalWithScriptEngineManager(scriptFile, configFile, jarFile)
+        val result: PipelineResult =  evalWithScriptEngineManager(scriptFile, configFile)
         println("result with scriptManager: $result")
         println(result)
         result.status shouldBe Status.Success

@@ -27,7 +27,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
     }
 //
     "eval script pipeline dsl" {
-        val scriptFile = File("src/test/resources/HelloWorld.pipeline.kts").path
+        val scriptFile = File("testData/error.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
 
         val result = evalWithScriptEngineManager(scriptFile, configFile)
@@ -35,7 +35,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         println("result: $result")
 
         result is PipelineResult
-        result.status shouldBe Status.Success
+        result.status shouldBe Status.Failure
 
     }
 
@@ -61,12 +61,11 @@ class PipelineScriptRunnerKtTest : StringSpec({
     }
 
     "eval with script manager pipeline dsl" {
-        val scriptFile = File("testData/HelloWorld.pipeline.kts").path
-
+        val scriptFile = File("testData/success.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
-        val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar").path
+        val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar")
 
-        val result: PipelineResult =  evalWithScriptEngineManager(scriptFile, configFile)
+        val result: PipelineResult =  evalWithScriptEngineManager(scriptFile, configFile, jarFile)
         println("result with scriptManager: $result")
         println(result)
         result.status shouldBe Status.Success
@@ -77,7 +76,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val baos = ByteArrayOutputStream()
         System.setOut(PrintStream(baos))
 
-        val args = arrayOf("-c", "testData/config.yaml", "-s", "testData/HelloWorld.pipeline.kts")
+        val args = arrayOf("-c", "testData/config.yaml", "-s", "testData/success.pipeline.kts")
         PicocliRunner.run(PipelineCliCommand::class.java, ctx, *args)
         baos.toString() shouldContain "HOLA MUNDO..."
     }

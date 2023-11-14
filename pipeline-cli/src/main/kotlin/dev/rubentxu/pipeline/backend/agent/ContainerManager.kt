@@ -16,7 +16,7 @@ import com.github.dockerjava.core.command.LogContainerResultCallback
 import com.github.dockerjava.transport.DockerHttpClient
 import com.github.dockerjava.zerodep.ZerodepDockerHttpClient
 import dev.rubentxu.pipeline.backend.Config
-import dev.rubentxu.pipeline.dsl.DockerAgent
+import dev.rubentxu.pipeline.model.pipeline.DockerAgent
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import freemarker.template.Configuration
 import freemarker.template.TemplateExceptionHandler

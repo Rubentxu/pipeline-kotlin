@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.logger
 
 import ch.qos.logback.classic.LoggerContext
+import org.slf4j.Logger
 
 import org.slf4j.LoggerFactory
 
@@ -12,7 +13,7 @@ import org.slf4j.LoggerFactory
  */
 class PipelineLogger(
     private var logLevel: LogLevel,
-    val logConfigurationStrategy: LogConfigurationStrategy = ConsoleLogConfigurationStrategy()
+    var logConfigurationStrategy: LogConfigurationStrategy = ConsoleLogConfigurationStrategy()
 ) : IPipelineLogger {
 
     private val logger = LoggerFactory.getLogger(PipelineLogger::class.java)
@@ -26,10 +27,20 @@ class PipelineLogger(
         logConfigurationStrategy.configure(loggerContext, logLevel)
     }
 
+    override fun changeLogLevel(logLevel: LogLevel) {
+        this.logLevel = logLevel
+        configureLogger()
+    }
+
+    override fun changeConfigurationStrategy(logConfigurationStrategy: LogConfigurationStrategy) {
+        this.logConfigurationStrategy = logConfigurationStrategy
+        configureLogger()
+    }
+
     /**
      * Stores the logged messages.
      */
-    val logs = mutableListOf<String>()
+    private val logs = mutableListOf<String>()
 
     private val RESET = "\u001B[0m"
     private val RED = "\u001B[31m"
@@ -50,7 +61,7 @@ class PipelineLogger(
      *
      * @param level The new log level.
      */
-    private fun setLogLevel(level: LogLevel) {
+    fun setLogLevel(level: LogLevel) {
         logLevel = level
     }
 
@@ -164,6 +175,11 @@ class PipelineLogger(
         log(LogLevel.TRACE, message)
     }
 
+    override fun logs(): List<String> {
+
+        return logs
+    }
+
     /**
      * Executes the specified block only if the current log level is DEBUG.
      *
@@ -262,5 +278,18 @@ class PipelineLogger(
             is List<*> -> msgs.forEach { msg -> msgFlatten(list, msg ?: "") }
         }
         return list
+    }
+
+
+    // create static getLogger singleton method property static
+    companion object {
+        private var logger: IPipelineLogger? = null
+
+        fun getLogger(): IPipelineLogger {
+            if (logger == null) {
+                logger = PipelineLogger(LogLevel.INFO)
+            }
+            return logger!!
+        }
     }
 }

@@ -1,4 +1,9 @@
-package dev.rubentxu.pipeline.dsl
+package dev.rubentxu.pipeline.model.pipeline
+
+import dev.rubentxu.pipeline.dsl.PipelineDsl
+import dev.rubentxu.pipeline.dsl.StageBlock
+import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.logger.PipelineLogger
 
 /**
  * This class represents a stage in a pipeline.
@@ -9,6 +14,7 @@ package dev.rubentxu.pipeline.dsl
 @PipelineDsl
 class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
 
+    val logger = PipelineLogger.getLogger()
     /**
      * This function runs the stage.
      *
@@ -22,7 +28,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
         try {
             result =  dsl.block()
         } catch (e: Exception) {
-            pipeline.logger.error("Error running stage $name, ${e.message}")
+            logger.error("Error running stage $name, ${e.message}")
             dsl.stagePostExecutionBlock.failureFunc.invoke(steps)
             throw e
         }

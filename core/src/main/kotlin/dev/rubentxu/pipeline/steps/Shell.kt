@@ -1,7 +1,8 @@
 package dev.rubentxu.pipeline.steps
 
-import dev.rubentxu.pipeline.dsl.Pipeline
+
 import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File

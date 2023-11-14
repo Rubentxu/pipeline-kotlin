@@ -39,4 +39,10 @@ interface IPipelineLogger {
      * @param message The message to log.
      */
     fun system(message: String)
+
+    fun logs(): List<String>
+
+    fun changeLogLevel(logLevel: LogLevel)
+
+    fun changeConfigurationStrategy(logConfigurationStrategy: LogConfigurationStrategy)
 }

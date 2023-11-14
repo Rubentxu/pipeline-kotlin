@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.dsl
 
 import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import kotlinx.coroutines.*
 
 /**
@@ -11,7 +13,7 @@ import kotlinx.coroutines.*
  */
 @PipelineDsl
 open class StepsBlock(val pipeline: Pipeline) :  CoroutineScope by CoroutineScope(Dispatchers.Default) {
-    val logger: IPipelineLogger = pipeline.logger
+    val logger: IPipelineLogger =  PipelineLogger.getLogger()
     val env = pipeline.env
 
     val steps = mutableListOf<Step>()

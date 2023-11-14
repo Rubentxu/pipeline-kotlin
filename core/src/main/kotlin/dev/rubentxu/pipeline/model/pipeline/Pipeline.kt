@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.dsl
+package dev.rubentxu.pipeline.model.pipeline
 
 import dev.rubentxu.pipeline.events.EndEvent
 import dev.rubentxu.pipeline.events.Event
@@ -17,29 +17,20 @@ import kotlin.system.measureTimeMillis
  *
  * @property logger The logger used for outputting pipeline logs.
  */
-@PipelineDsl
-class Pipeline(val logger: PipelineLogger) : Configurable {
 
-    /**
-     * A list of stages to be executed by this pipeline.
-     */
-    private var stagesList = mutableListOf<StageExecutor>()
+class Pipeline(
+    val agent: Agent,
+    val stages: MutableList<StageExecutor>,
+    val env: EnvVars,
+    val postExecution: PostExecution
+    ) : Configurable {
+
+    private val logger = PipelineLogger.getLogger()
 
     /**
      * The name of the current stage being executed.
      */
     var currentStage: String = "initial pipeline"
-
-
-    /**
-     * Represents any available agent in the pipeline.
-     */
-    var agent: Agent = AnyAgent()
-
-    /**
-     * The environment variables for the pipeline.
-     */
-    val env = EnvVars()
 
     /**
      * The working directory for this pipeline, defaulting to the user's current directory.
@@ -49,15 +40,6 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
     var stageResults = mutableListOf<StageResult>()
 
 
-    /**
-     * A block of code to execute after all stages have been executed.
-     */
-    var postExecutionBlock: PostExecutionBlock
-
-    init {
-        logger.system("Pipeline initialized")
-        postExecutionBlock = PostExecutionBlock(getPipeline())
-    }
 
 
     /**
@@ -71,50 +53,7 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
 
     }
 
-    /**
-     * Returns the instance of the current pipeline.
-     *
-     * @return The current `PipelineDsl` instance.
-     */
-    fun getPipeline(): Pipeline {
-        return this
-    }
 
-
-    /**
-     * This function sets the agent for the pipeline to any available agent.
-     *
-     * @param agentParam Placeholder for the any available agent.
-     */
-    suspend fun agent(block: AgentBlock.() -> Unit) {
-        logger.system("Running pipeline using any available agent... ")
-        val agentBlock = AgentBlock(getPipeline())
-        agentBlock.block()
-        agent = agentBlock.agent
-    }
-
-    /**
-     * This function sets the environment variables for the pipeline.
-     *
-     * @param block A block of code to define the environment variables.
-     */
-    suspend fun environment(block: EnvVars.() -> Unit) {
-        env.apply(block)
-    }
-
-    /**
-     * This function defines the stages for the pipeline.
-     *
-     * @param block A block of code to define the stages.
-     * @return A List<StageResult> representing the results of each stage.
-     */
-    suspend fun stages(block: StagesCollectionBlock.() -> Unit) {
-
-
-        val dsl = StagesCollectionBlock()
-        dsl.block()
-        stagesList = dsl.stageExecutors
-    }
 
     /**
      * Executes all the stages defined in the pipeline and returns the results.
@@ -122,14 +61,14 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
      * @return A list of results of each stage.
      */
     suspend fun executeStages(): List<StageResult>  {
-        val results = stagesList.map { stage ->
+        val results = stages.map { stage ->
             var status = Status.Success
 
             currentStage = stage.name
             registerEvent(StartEvent(currentStage!!, System.currentTimeMillis()))
             val time = measureTimeMillis {
                 try {
-                    stage.run(getPipeline())
+                    stage.run(this)
                 } catch (e: Exception) {
                     status = Status.Failure
                     logger.error("Error running stage $currentStage, ${e.message}")
@@ -141,17 +80,7 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
 
             StageResult(stage.name, status).also { stageResults.add(it) }
         }
-        val steps = StepsBlock(this@Pipeline)
-        logger.system("Pipeline finished with status: ${results.map { it.status }}")
-        if (results.any { it.status == Status.Failure }) {
-            postExecutionBlock.failureFunc.invoke(steps)
-        } else {
-            postExecutionBlock.successFunc.invoke(steps)
-        }
-
-        postExecutionBlock.alwaysFunc.invoke(steps)
-
-
+        postExecution.run(this, stageResults)
         return results
     }
 
@@ -179,16 +108,6 @@ class Pipeline(val logger: PipelineLogger) : Configurable {
         }
     }
 
-
-    /**
-     * Defines a block of code to execute after all stages have been executed.
-     *
-     * @param block The block of code to execute.
-     */
-    suspend fun post(block: PostExecutionBlock.() -> Unit) {
-        postExecutionBlock = PostExecutionBlock(getPipeline()).apply(block)
-
-    }
 
 
 }

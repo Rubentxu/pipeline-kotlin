@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.events
 
-import dev.rubentxu.pipeline.dsl.Status
+import dev.rubentxu.pipeline.model.pipeline.Status
 
 interface Event {
     val stageName: String

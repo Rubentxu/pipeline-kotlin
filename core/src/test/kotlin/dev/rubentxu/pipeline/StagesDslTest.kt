@@ -5,6 +5,8 @@ import dev.rubentxu.pipeline.extensions.echo
 import dev.rubentxu.pipeline.extensions.sh
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.job.JobExecutor
+import dev.rubentxu.pipeline.model.pipeline.Status
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -14,7 +16,7 @@ import kotlinx.coroutines.delay
 class StagesDslTest : StringSpec({
 
     "Pipeline with stages and steps and parallel steps should run" {
-        val pipelineDef = pipeline {
+        val pipelineDefResult = pipeline {
             agent {
                 docker {
                     label = "docker"
@@ -77,8 +79,13 @@ class StagesDslTest : StringSpec({
                 }
             }
         }
-        val pipeline = pipelineDef.build(PipelineLogger(LogLevel.TRACE))
-        val executor = PipelineExecutor()
+
+        pipelineDefResult.isSuccess shouldBe false
+
+        PipelineLogger.getLogger().changeLogLevel(LogLevel.DEBUG)
+
+        val pipeline = pipelineDefResult.getOrNull()!!.build()
+        val executor = JobExecutor()
         val result = executor.execute(pipeline)
 
         result.status shouldBe Status.Success
@@ -98,7 +105,7 @@ class StagesDslTest : StringSpec({
     }
 
     "Pipeline example with stages and steps should run" {
-        val pipelineDef = pipeline {
+        val pipelineDefResult = pipeline {
 
             environment {
                 "DISABLE_AUTH" += "true"
@@ -131,8 +138,10 @@ class StagesDslTest : StringSpec({
             }
         }
 
-        val pipeline = pipelineDef.build(LogLevel.TRACE)
-        val executor = PipelineExecutor()
+        pipelineDefResult.isSuccess shouldBe true
+
+        val pipeline = pipelineDefResult.getOrNull()!!.build()
+        val executor = JobExecutor()
         val result = executor.execute(pipeline)
 
         result.status shouldBe Status.Success
@@ -152,7 +161,7 @@ class StagesDslTest : StringSpec({
     }
 
     "Pipeline should fail if a stage fails" {
-        val pipelineDef = pipeline {
+        val pipelineDefResult = pipeline {
             environment {
                 "DISABLE_AUTH" += "true"
                 "DB_ENGINE"    += "sqlite"
@@ -173,8 +182,10 @@ class StagesDslTest : StringSpec({
 
         }
 
-        val pipeline = pipelineDef.build(LogLevel.TRACE)
-        val executor = PipelineExecutor()
+
+        pipelineDefResult.isSuccess shouldBe true
+        val pipeline = pipelineDefResult.getOrNull()!!.build()
+        val executor = JobExecutor()
         val result = executor.execute(pipeline)
 //        result.status shouldBe Status.Failure
 //        val failingStage = result.stageResults.find { it.name == "Failing Stage" }

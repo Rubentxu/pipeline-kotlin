@@ -9,6 +9,8 @@ import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
+import dev.rubentxu.pipeline.model.job.JobExecutor
+import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
 import kotlinx.coroutines.*
 import java.io.File
@@ -32,11 +34,11 @@ fun evalWithScriptEngineManager(scriptPath: String,
 
     return try {
         val pipelineDef = evaluateScriptFile(scriptPath)
-        val pipeline = buildPipeline(pipelineDef, logger)
+        val pipeline = buildPipeline(pipelineDef)
         executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
     } catch (e: Exception) {
         handleScriptExecutionException(e, logger)
-        PipelineResult(Status.Failure, emptyList(), EnvVars(), mutableListOf())
+        PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
     }
 }
 
@@ -67,16 +69,16 @@ fun executePipeline(
     val isAgentEnv = System.getenv("IS_AGENT")
     logger.system("Env isAgent: $isAgentEnv")
     // si pipeline.agent no es AnyAgent se ejecuta en un agente
-    if(!(pipeline.agent is AnyAgent) && isAgentEnv == null) {
+    if(!(pipeline.agent is Agent) && isAgentEnv == null) {
         return executeWithAgent(pipeline, configuration, listOfPaths)
     }
 
-    return PipelineExecutor().execute(pipeline)
+    return JobExecutor().execute(pipeline)
 }
 
 // Construye el pipeline usando coroutines.
-fun buildPipeline(pipelineDef: PipelineDefinition, logger: PipelineLogger): Pipeline = runBlocking {
-    pipelineDef.build(logger)
+fun buildPipeline(pipelineDef: PipelineDefinition): Pipeline = runBlocking {
+    pipelineDef.build()
 }
 
 // Maneja las excepciones ocurridas durante la ejecución del script.
@@ -99,7 +101,7 @@ fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger,
 
 fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) :PipelineResult {
     val agent = pipeline.agent
-    val logger = pipeline.logger
+    val logger = PipelineLogger.getLogger()
 
     if(agent is DockerAgent) {
         logger.info("Docker image: ${agent.image}")
@@ -113,7 +115,7 @@ fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) :Pip
 //        return executeInKubernetesAgent(agent, config, paths)
 
     }
-    return PipelineResult(Status.Success, emptyList(), EnvVars(), mutableListOf())
+    return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>): PipelineResult {
@@ -121,7 +123,7 @@ fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>):
 
     containerManager.buildCustomImage("openjdk:17", paths)
     containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
-    return PipelineResult(Status.Success, emptyList(), EnvVars(), mutableListOf())
+    return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 fun readConfigFile(configFilePath: String): Config {

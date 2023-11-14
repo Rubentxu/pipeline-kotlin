@@ -17,14 +17,15 @@ import javax.script.ScriptEngine
 import javax.script.ScriptEngineManager
 
 
-fun evalWithScriptEngineManager(scriptPath: String, configPath: String): PipelineResult {
+fun evalWithScriptEngineManager(scriptPath: String,
+                                configPath: String,
+                                jarLocation: File = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())): PipelineResult {
     val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
 
     val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
     logger.info("Pipeline executable: ${pipelineExecutable.absolutePath}")
     logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
 
-    val jarLocation = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
     logger.info("JAR location: ${jarLocation.absolutePath}")
     val resolveExecutablePath = if(pipelineExecutable.exists()) pipelineExecutable.absolutePath  else jarLocation.absolutePath
     logger.info("Resolve executable path: $resolveExecutablePath")

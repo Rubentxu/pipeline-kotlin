@@ -72,7 +72,12 @@ tasks {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
     }
+
+    test {
+        useJUnitPlatform()
+    }
 }
+
 
 micronaut {
     testRuntime("kotest5")

@@ -50,7 +50,7 @@ pipeline {
                 retry(3) {
                     delay(3000) {
                         echo("Tests retry ....")
-                        sh("ls -la /inventado", returnStdout = true)
+                        sh("ls -la .", returnStdout = true)
                     }
 
                 }

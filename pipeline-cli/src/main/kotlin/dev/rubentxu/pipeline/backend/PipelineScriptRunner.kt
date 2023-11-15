@@ -7,23 +7,24 @@ import dev.rubentxu.pipeline.backend.agent.docker.ContainerLifecycleManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
 import dev.rubentxu.pipeline.cli.PipelineCliCommand
-import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
 import dev.rubentxu.pipeline.model.job.JobExecutor
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
-import kotlinx.coroutines.*
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Path
 import javax.script.ScriptEngine
 import javax.script.ScriptEngineManager
 
 
-fun evalWithScriptEngineManager(scriptPath: String,
-                                configPath: String,
-                                jarLocation: File = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())): PipelineResult {
+fun evalWithScriptEngineManager(
+    scriptPath: String,
+    configPath: String,
+    jarLocation: File = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
+): PipelineResult {
     val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
 
     val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
@@ -31,7 +32,8 @@ fun evalWithScriptEngineManager(scriptPath: String,
     logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
 
     logger.info("JAR location: ${jarLocation.absolutePath}")
-    val resolveExecutablePath = if(pipelineExecutable.exists()) pipelineExecutable.absolutePath  else jarLocation.absolutePath
+    val resolveExecutablePath =
+        if (pipelineExecutable.exists()) pipelineExecutable.absolutePath else jarLocation.absolutePath
     logger.info("Resolve executable path: $resolveExecutablePath")
 
     return try {
@@ -74,7 +76,7 @@ fun executePipeline(
     val isAgentEnv = System.getenv("IS_AGENT")
     logger.system("Env isAgent: $isAgentEnv")
     // si pipeline.agent no es AnyAgent se ejecuta en un agente
-    if(!(pipeline.agent is AnyAgent) && isAgentEnv == null) {
+    if (!(pipeline.agent is AnyAgent) && isAgentEnv == null) {
         return executeWithAgent(pipeline, configuration, listOfPaths)
     }
 
@@ -88,7 +90,7 @@ fun buildPipeline(pipelineDef: PipelineDefinition): Pipeline = runBlocking {
 
 // Maneja las excepciones ocurridas durante la ejecución del script.
 fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger, showStackTrace: Boolean = true) {
-    val regex = """ERROR (.*) \(ScriptingHost:(\d+):(\d+)\)""".toRegex()
+    val regex = """ERROR (.*) \(.*:(\d+):(\d+)\)""".toRegex()
     val match = regex.find(exception.message ?: "")
 
     if (match != null) {
@@ -104,14 +106,14 @@ fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger,
     }
 }
 
-fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) :PipelineResult {
+fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>): PipelineResult {
     val agent = pipeline.agent
     val logger = PipelineLogger.getLogger()
 
-    if(agent is DockerAgent) {
+    if (agent is DockerAgent) {
         logger.info("Docker image: ${agent.image}")
         logger.info("Docker tag: ${agent.tag}")
-       return executeInDockerAgent(agent, config, paths)
+        return executeInDockerAgent(agent, config, paths)
 
 
     } else if (agent is KubernetesAgent) {

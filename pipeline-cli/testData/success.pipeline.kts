@@ -38,6 +38,8 @@ pipeline {
                     }
                 )
                 sh("pwd", returnStdout = true)
+                var text = readFile("build.gradle2.kts")
+                echo(text)
                 echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
             }
             post {

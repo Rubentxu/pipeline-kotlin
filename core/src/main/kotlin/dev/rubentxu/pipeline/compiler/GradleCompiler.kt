@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.compiler
 
 import dev.rubentxu.pipeline.library.JarFileNotFoundException
 import dev.rubentxu.pipeline.library.LibraryConfiguration
-import dev.rubentxu.pipeline.library.LibraryNotFoundException
 import dev.rubentxu.pipeline.library.SourceNotFoundException
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
@@ -12,8 +11,8 @@ import java.nio.file.Path
 
 class GradleCompiler {
     fun compileAndJar(sourcePath: String, libraryConfiguration: LibraryConfiguration): File {
-        val file =  File(resolveAndNormalizeAbsolutePath(sourcePath))
-        if(!file.exists()) {
+        val file = File(resolveAndNormalizeAbsolutePath(sourcePath))
+        if (!file.exists()) {
             throw SourceNotFoundException("File ${file.path} not found")
         }
 

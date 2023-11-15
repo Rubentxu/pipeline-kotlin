@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.validation
 import kotlin.reflect.KClass
 
 
- open class Validator<K, T>(protected val sut: T?, protected val tag: String = "") {
-     val validationResults: MutableList<ValidationResult> = mutableListOf()
+open class Validator<K, T>(protected val sut: T?, protected val tag: String = "") {
+    val validationResults: MutableList<ValidationResult> = mutableListOf()
 
     private val tagMsg: String
         get() = if (tag.isNotEmpty()) "$tag with value " else ""
@@ -28,7 +28,7 @@ import kotlin.reflect.KClass
 
     open val isValid: Boolean
         get() {
-            if(validationResults.isEmpty()) {
+            if (validationResults.isEmpty()) {
                 validationResults.add(ValidationResult(false, "There are no validations for the object."))
             }
             return validationResults.all { it.isValid }
@@ -45,7 +45,7 @@ import kotlin.reflect.KClass
         return sut ?: throw IllegalStateException("Subject under test is null")
     }
 
-    fun defaultValueIfInvalid(defaultValue: Any): Any  {
+    fun defaultValueIfInvalid(defaultValue: Any): Any {
         if (!isValid) {
             return defaultValue
         }
@@ -56,14 +56,18 @@ import kotlin.reflect.KClass
         return sut
     }
 
-    fun isString(): StringValidator = StringValidator.from(sut as String?, tag).test("${tagMsg}Must be a string") { it is String } as StringValidator
+    fun isString(): StringValidator =
+        StringValidator.from(sut as String?, tag).test("${tagMsg}Must be a string") { it is String } as StringValidator
 
-    fun isNumber(): NumberValidator = NumberValidator.from(sut as Number?, tag).test("${tagMsg}Must be a number") { it is Number } as NumberValidator
+    fun isNumber(): NumberValidator =
+        NumberValidator.from(sut as Number?, tag).test("${tagMsg}Must be a number") { it is Number } as NumberValidator
 
 
-    fun isList(): CollectionValidator = CollectionValidator.from(sut as List<*>?, tag).test("${tagMsg}Must be a list") { it is List<*> } as CollectionValidator
+    fun isList(): CollectionValidator = CollectionValidator.from(sut as List<*>?, tag)
+        .test("${tagMsg}Must be a list") { it is List<*> } as CollectionValidator
 
-    fun isMap(): MapValidator = MapValidator.from(sut as Map<*, *>?, tag).test("${tagMsg}Must be a map") { it is Map<*, *> } as MapValidator
+    fun isMap(): MapValidator =
+        MapValidator.from(sut as Map<*, *>?, tag).test("${tagMsg}Must be a map") { it is Map<*, *> } as MapValidator
 
     open fun notNull(): K = test("${tagMsg}Must not be null") { it != null } as K
 
@@ -86,41 +90,49 @@ import kotlin.reflect.KClass
         fun <T> from(sut: T, tag: String): Validator<Validator<*, T>, T> = Validator(sut, tag)
     }
 
- }
+}
 
 
-class StringValidator private constructor(sut: String?, tag: String = "") : Validator<StringValidator, String>(sut, tag) {
+class StringValidator private constructor(sut: String?, tag: String = "") :
+    Validator<StringValidator, String>(sut, tag) {
     companion object {
         private val EMAIL_REGEX = "^[A-Za-z](.*)([@]{1})(.{1,})(\\.)(.{1,})".toRegex()
-        private val HTTP_PROTOCOL_REGEX = "^(?:http[s]?:\\/\\/.)?(?:www\\.)?[-a-zA-Z0-9@%._\\+~#=]{2,256}\\.[a-z]{2,6}\\b(?:[-a-zA-Z0-9@:%_\\+.~#?&\\/\\/=]*)".toRegex()
+        private val HTTP_PROTOCOL_REGEX =
+            "^(?:http[s]?:\\/\\/.)?(?:www\\.)?[-a-zA-Z0-9@%._\\+~#=]{2,256}\\.[a-z]{2,6}\\b(?:[-a-zA-Z0-9@:%_\\+.~#?&\\/\\/=]*)".toRegex()
 
         fun from(text: String?, tag: String = ""): StringValidator = StringValidator(text, tag)
     }
 
-    fun moreThan(size: Int): StringValidator = test("Length of '$sut' must be more than $size") { it.length > size } as StringValidator
+    fun moreThan(size: Int): StringValidator =
+        test("Length of '$sut' must be more than $size") { it.length > size } as StringValidator
 
-    fun lessThan(size: Int): StringValidator = test("Length of '$sut' must be less than $size") { it.length < size } as StringValidator
+    fun lessThan(size: Int): StringValidator =
+        test("Length of '$sut' must be less than $size") { it.length < size } as StringValidator
 
     fun between(minSize: Int, maxSize: Int): StringValidator {
         moreThan(minSize)
         return lessThan(maxSize)
     }
 
-    fun contains(subString: String): StringValidator = test("'$sut' must contain '$subString'") { it.contains(subString) } as StringValidator
+    fun contains(subString: String): StringValidator =
+        test("'$sut' must contain '$subString'") { it.contains(subString) } as StringValidator
 
     fun isEmail(): StringValidator = test("'$sut' must be a valid email") { it.matches(EMAIL_REGEX) } as StringValidator
 
-    fun matchRegex(regex: Regex): StringValidator = test("'$sut' must match the regex") { it.matches(regex) } as StringValidator
+    fun matchRegex(regex: Regex): StringValidator =
+        test("'$sut' must match the regex") { it.matches(regex) } as StringValidator
 
-    fun isHttpProtocol(): StringValidator = test("'$sut' must be a valid HTTP protocol URL") { it.matches(HTTP_PROTOCOL_REGEX) } as StringValidator
+    fun isHttpProtocol(): StringValidator =
+        test("'$sut' must be a valid HTTP protocol URL") { it.matches(HTTP_PROTOCOL_REGEX) } as StringValidator
 
-    fun containsIn(array: List<String>): StringValidator = test("'$sut' must be one of ${array.joinToString()}") { array.contains(it) } as StringValidator
+    fun containsIn(array: List<String>): StringValidator =
+        test("'$sut' must be one of ${array.joinToString()}") { array.contains(it) } as StringValidator
 
     fun notEmpty(): StringValidator = test("'$sut' must not be empty") { !it.isNullOrEmpty() } as StringValidator
 }
 
 
-class MapValidator private constructor(sut: Map<*,*>?, tag: String) : Validator<MapValidator,Map<*,*>>(sut, tag) {
+class MapValidator private constructor(sut: Map<*, *>?, tag: String) : Validator<MapValidator, Map<*, *>>(sut, tag) {
     companion object {
         fun from(map: Map<*, *>?, tag: String = ""): MapValidator = MapValidator(map, tag)
     }
@@ -137,14 +149,17 @@ class MapValidator private constructor(sut: Map<*,*>?, tag: String) : Validator<
 
 }
 
-class NumberValidator private constructor(sut: Number?, tag: String = "") : Validator<NumberValidator, Number>(sut, tag) {
+class NumberValidator private constructor(sut: Number?, tag: String = "") :
+    Validator<NumberValidator, Number>(sut, tag) {
     companion object {
         fun from(number: Number?, tag: String = ""): NumberValidator = NumberValidator(number, tag)
     }
 
-    fun moreThan(n: Number): NumberValidator = test("$sut must be more than $n") { it.toDouble() > n.toDouble() } as NumberValidator
+    fun moreThan(n: Number): NumberValidator =
+        test("$sut must be more than $n") { it.toDouble() > n.toDouble() } as NumberValidator
 
-    fun lessThan(n: Number): NumberValidator = test("$sut must be less than $n") { it.toDouble() < n.toDouble() } as NumberValidator
+    fun lessThan(n: Number): NumberValidator =
+        test("$sut must be less than $n") { it.toDouble() < n.toDouble() } as NumberValidator
 
     fun between(min: Number, max: Number): NumberValidator {
         moreThan(min)
@@ -162,29 +177,37 @@ class NumberValidator private constructor(sut: Number?, tag: String = "") : Vali
     fun isZero(): NumberValidator = test("$sut must be zero") { it.toDouble() == 0.0 } as NumberValidator
 }
 
-class CollectionValidator private constructor(sut: List<*>?, tag: String = "") : Validator<CollectionValidator, List<*>>(sut, tag) {
+class CollectionValidator private constructor(sut: List<*>?, tag: String = "") :
+    Validator<CollectionValidator, List<*>>(sut, tag) {
     companion object {
         fun from(list: List<*>?, tag: String = ""): CollectionValidator = CollectionValidator(list, tag)
     }
 
-    fun notEmpty(): CollectionValidator = test("'$sut' must not be empty") { !it.isNullOrEmpty() } as CollectionValidator
+    fun notEmpty(): CollectionValidator =
+        test("'$sut' must not be empty") { !it.isNullOrEmpty() } as CollectionValidator
 
-    fun size(size: Int): CollectionValidator = test("'$sut' must have size $size") { it.size == size } as CollectionValidator
+    fun size(size: Int): CollectionValidator =
+        test("'$sut' must have size $size") { it.size == size } as CollectionValidator
 
-    fun sizeMoreThan(size: Int): CollectionValidator = test("'$sut' must have size more than $size") { it.size > size } as CollectionValidator
+    fun sizeMoreThan(size: Int): CollectionValidator =
+        test("'$sut' must have size more than $size") { it.size > size } as CollectionValidator
 
-    fun sizeLessThan(size: Int): CollectionValidator = test("'$sut' must have size less than $size") { it.size < size } as CollectionValidator
+    fun sizeLessThan(size: Int): CollectionValidator =
+        test("'$sut' must have size less than $size") { it.size < size } as CollectionValidator
 
     fun sizeBetween(minSize: Int, maxSize: Int): CollectionValidator {
         sizeMoreThan(minSize)
         return sizeLessThan(maxSize)
     }
 
-    fun contains(element: Any): CollectionValidator = test("'$sut' must contain '$element'") { it.contains(element) } as CollectionValidator
+    fun contains(element: Any): CollectionValidator =
+        test("'$sut' must contain '$element'") { it.contains(element) } as CollectionValidator
 
-    fun containsAll(elements: List<Any>): CollectionValidator = test("'$sut' must contain all of ${elements.joinToString()}") { it.containsAll(elements) }  as CollectionValidator
+    fun containsAll(elements: List<Any>): CollectionValidator =
+        test("'$sut' must contain all of ${elements.joinToString()}") { it.containsAll(elements) } as CollectionValidator
 
-    fun containsAny(elements: List<Any>): CollectionValidator = test("'$sut' must contain any of ${elements.joinToString()}") { it.any { element -> elements.contains(element) } }  as CollectionValidator
+    fun containsAny(elements: List<Any>): CollectionValidator =
+        test("'$sut' must contain any of ${elements.joinToString()}") { it.any { element -> elements.contains(element) } } as CollectionValidator
 }
 
 

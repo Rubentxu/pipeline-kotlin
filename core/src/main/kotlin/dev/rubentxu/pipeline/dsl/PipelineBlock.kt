@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.dsl
 
-import dev.rubentxu.pipeline.logger.PipelineLogger
+
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
 
@@ -41,7 +41,7 @@ class PipelineBlock() {
      * @param block A block of code to run in the stage.
      */
     fun stages(block: StagesCollectionBlock.() -> Unit) {
-        stages =  StagesCollectionBlock().apply(block).build()
+        stages = StagesCollectionBlock().apply(block).build()
     }
 
     /**
@@ -51,7 +51,6 @@ class PipelineBlock() {
      */
     fun post(block: PostExecutionBlock.() -> Unit) {
         postExecution = PostExecutionBlock().apply(block).build()
-
     }
 
     /**

@@ -23,7 +23,7 @@ class Pipeline(
     val stages: List<StageExecutor>,
     val env: EnvVars,
     val postExecution: PostExecution
-    ) : Configurable {
+) : Configurable {
 
     private val logger = PipelineLogger.getLogger()
 
@@ -40,8 +40,6 @@ class Pipeline(
     var stageResults = mutableListOf<StageResult>()
 
 
-
-
     /**
      * This function registers an event with the event manager.
      *
@@ -54,14 +52,13 @@ class Pipeline(
     }
 
 
-
     /**
      * Executes all the stages defined in the pipeline and returns the results.
      *
      * @return A list of results of each stage.
      */
-    suspend fun executeStages(): List<StageResult>  {
-        val results = stages.map { stage ->
+    suspend fun executeStages() {
+        for (stage in stages) {
             var status = Status.Success
 
             currentStage = stage.name
@@ -71,17 +68,27 @@ class Pipeline(
                     stage.run(this)
                 } catch (e: Exception) {
                     status = Status.Failure
-                    logger.error("Error running stage $currentStage, ${e.message}")
-                    throw e
+                    logger.error("Abort pipeline stages in stage $currentStage, ${e.message}")
                 }
             }
 
-            registerEvent(EndEvent(currentStage!!, System.currentTimeMillis(), time, status))
-
-            StageResult(stage.name, status).also { stageResults.add(it) }
+            stageRegister(time, status, stage)
+            if (status == Status.Failure) {
+                break
+            }
         }
         postExecution.run(this, stageResults)
-        return results
+
+    }
+
+    private suspend fun stageRegister(
+        time: Long,
+        status: Status,
+        stage: StageExecutor
+    ): StageResult {
+        registerEvent(EndEvent(currentStage!!, System.currentTimeMillis(), time, status))
+
+        return StageResult(stage.name, status).also { stageResults.add(it) }
     }
 
     /**
@@ -107,7 +114,6 @@ class Pipeline(
             "${this.workingDir}/${workingDir}"
         }
     }
-
 
 
 }

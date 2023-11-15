@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.extensions
 import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.steps.Shell
 import kotlinx.coroutines.runBlocking
+import java.io.File
 
 /**
  * Executes a shell script in the specified directory.
@@ -20,7 +21,7 @@ fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String = runBl
     val output = shell.execute(script, pipeline.workingDir.toFile())
 
     logger.info("Shell script executed successfully: $script")
-    if(returnStdout) {
+    if (returnStdout) {
         return@runBlocking output
     }
     logger.info(output)
@@ -69,4 +70,18 @@ fun StepsBlock.retry(maxRetries: Int, block: () -> Any): Any {
 fun StepsBlock.delay(timeMillis: Long, block: () -> Unit) = runBlocking {
     kotlinx.coroutines.delay(timeMillis)
     block()
+}
+
+fun StepsBlock.readFile(file: String): String {
+    return File(file).readText()
+}
+
+fun StepsBlock.fileExists(file: String): Boolean {
+    return File(file).exists() && File(file).isFile
+}
+
+fun StepsBlock.writeFile(file: String, text: String) {
+    File(file).printWriter().use { out ->
+        out.print(text)
+    }
 }

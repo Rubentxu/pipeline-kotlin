@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.model.pipeline.StageExecutor
  */
 @PipelineDsl
 class StagesCollectionBlock : ArrayList<StageExecutor>() {
-    val stageExecutors = mutableListOf<StageExecutor>()
 
     /**
      * This function adds a stage to the list of stages.

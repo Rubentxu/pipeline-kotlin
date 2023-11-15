@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.model.pipeline
 
 open class Agent(open val label: String)
 
-class AnyAgent(label: String) :  Agent(label) {
+class AnyAgent(label: String) : Agent(label) {
 }
 
 data class DockerAgent(
@@ -10,12 +10,12 @@ data class DockerAgent(
     val image: String = "",
     val tag: String = "",
     val host: String = "",
-): Agent(label)
+) : Agent(label)
 
 data class KubernetesAgent(
     override val label: String = "kubernetes",
     val yaml: String = "",
-): Agent(label)
+) : Agent(label)
 
 data class PipelineAgent(
     val agent: Agent,

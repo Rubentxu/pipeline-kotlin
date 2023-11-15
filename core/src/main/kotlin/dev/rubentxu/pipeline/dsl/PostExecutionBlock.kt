@@ -3,9 +3,10 @@ package dev.rubentxu.pipeline.dsl
 import dev.rubentxu.pipeline.model.pipeline.PostExecution
 
 class PostExecutionBlock {
-    var alwaysFunc: suspend StepsBlock.() -> Any = { }
-    var successFunc: suspend StepsBlock.() -> Any = { }
-    var failureFunc: suspend StepsBlock.() -> Any = { }
+    var alwaysFunc: (suspend StepsBlock.() -> Any)? = null
+    var successFunc: (suspend StepsBlock.() -> Any)? = null
+    var failureFunc: (suspend StepsBlock.() -> Any)? = null
+
     fun always(block: suspend StepsBlock.() -> Any) {
         this.alwaysFunc = { block() }
     }

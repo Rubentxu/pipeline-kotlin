@@ -6,8 +6,7 @@ import java.util.concurrent.ConcurrentHashMap
  * `EnvVars` is a thread-safe class for storing and managing environment variables.
  * It provides various operators for convenient access and modification of the variables.
  */
-class EnvVars(val map: Map<String, String>): MutableMap<String, String> by ConcurrentHashMap(map) {
-
+class EnvVars(val map: Map<String, String>) : MutableMap<String, String> by ConcurrentHashMap(map) {
 
 
     /**

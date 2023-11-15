@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.dsl
 
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
+import dev.rubentxu.pipeline.model.pipeline.PostExecution
 
 /**
  * This class defines the DSL for creating a stage.
@@ -9,17 +10,16 @@ import dev.rubentxu.pipeline.model.pipeline.Pipeline
  */
 @PipelineDsl
 class StageBlock(val name: String, val pipeline: Pipeline) {
-
-    var stagePostExecutionBlock: PostExecutionBlock = PostExecutionBlock()
+    var postExecution: PostExecution = PostExecution()
+    var stepsBlock: (StepsBlock.() -> Unit)? = null
 
     /**
      * This function defines the steps for the stage.
      *
      * @param block A block of code to define the steps.
      */
-    fun steps(block: StepsBlock.() -> Any) {
-        val steps = StepsBlock(pipeline)
-        steps.block()
+    fun steps(block: StepsBlock.() -> Unit) {
+        stepsBlock = block
     }
 
     /**
@@ -28,6 +28,8 @@ class StageBlock(val name: String, val pipeline: Pipeline) {
      * @param block The block of code to execute.
      */
     fun post(block: PostExecutionBlock.() -> Unit) {
-        stagePostExecutionBlock = PostExecutionBlock().apply(block)
+        postExecution = PostExecutionBlock().apply(block).build()
     }
+
+
 }

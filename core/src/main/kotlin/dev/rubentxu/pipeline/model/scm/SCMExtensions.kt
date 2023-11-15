@@ -2,7 +2,10 @@ package dev.rubentxu.pipeline.model.scm
 
 interface ScmExtensions {
     fun toMap(): Map<String, Any>
-    companion object fun fromMap(map: Map<String, Any>): ScmExtensions
+
+    companion object
+
+    fun fromMap(map: Map<String, Any>): ScmExtensions
 }
 
 class SparseCheckoutPath(private var sparseCheckoutPath: String) : ScmExtensions {
@@ -33,8 +36,8 @@ class CloneOption(
         "timeout" to timeout
     )
 
-   override fun fromMap(map: Map<String, Any>): ScmExtensions {
-        if(map.containsValue("\$class") && map["\$class"] != "CloneOption") {
+    override fun fromMap(map: Map<String, Any>): ScmExtensions {
+        if (map.containsValue("\$class") && map["\$class"] != "CloneOption") {
             throw IllegalArgumentException("Class missing from scm extensions")
         }
         val depth = map.getOrDefault("depth", 0) as Int
@@ -53,7 +56,7 @@ class RelativeTargetDirectory(private var relativeTargetDirectory: String) : Scm
     )
 
     override fun fromMap(map: Map<String, Any>): ScmExtensions {
-        val dir = map.getOrDefault("relativeTargetDirectory","") as String
+        val dir = map.getOrDefault("relativeTargetDirectory", "") as String
         return RelativeTargetDirectory(dir)
     }
 

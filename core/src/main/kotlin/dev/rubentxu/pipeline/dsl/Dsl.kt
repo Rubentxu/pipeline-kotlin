@@ -7,8 +7,6 @@ import dev.rubentxu.pipeline.model.pipeline.PipelineDefinition
 annotation class PipelineDsl
 
 
-
-
 /**
  * Executes a block of DSL code within a new Jenkins pipeline and returns the result.
  *

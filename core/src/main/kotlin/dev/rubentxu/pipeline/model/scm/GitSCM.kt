@@ -19,7 +19,9 @@ class GitSCM() {
         branch(branches?.first()?.get("name") as? String ?: error("GitSCM branches not found"))
         doGenerateSubmoduleConfigurations = scm["doGenerateSubmoduleConfigurations"] as? Boolean ?: false
         url(userRemoteConfigs?.first()?.get("url") as? String ?: error("GitSCM userRemoteConfigs url not found"))
-        credentialsId(userRemoteConfigs.first()["credentialsId"] as? String ?: error("GitSCM credentialsId url not found"))
+        credentialsId(
+            userRemoteConfigs.first()["credentialsId"] as? String ?: error("GitSCM credentialsId url not found")
+        )
         resolveExtensions(scm["extensions"] as? List<Map<String, Any>> ?: emptyList())
     }
 
@@ -32,8 +34,11 @@ class GitSCM() {
                     it["noTags"] as Boolean,
                     it["shallow"] as Boolean
                 )
+
                 "RelativeTargetDirectory" -> relativeTargetDirectory(it["relativeTargetDir"] as String)
-                "SparseCheckoutPaths" -> sparseCheckoutPath((it["sparseCheckoutPaths"] as List<Map<String, Any>>)?.first()?.get("path") as String)
+                "SparseCheckoutPaths" -> sparseCheckoutPath(
+                    (it["sparseCheckoutPaths"] as List<Map<String, Any>>)?.first()?.get("path") as String
+                )
                 // Agregar más casos según sea necesario
             }
         }

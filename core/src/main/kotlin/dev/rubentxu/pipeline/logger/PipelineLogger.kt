@@ -1,8 +1,6 @@
 package dev.rubentxu.pipeline.logger
 
 import ch.qos.logback.classic.LoggerContext
-import org.slf4j.Logger
-
 import org.slf4j.LoggerFactory
 
 /**
@@ -260,7 +258,7 @@ class PipelineLogger(
         // Obtener la longitud de la línea más larga
         val maxLength = messageLines.maxOf { it.length }
         // Crear la línea de '=' multiplicada
-        val separator = "=".repeat(maxLength+7)
+        val separator = "=".repeat(maxLength + 7)
         return """
         |
         |   $separator

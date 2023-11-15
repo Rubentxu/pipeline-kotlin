@@ -5,7 +5,10 @@ import dev.rubentxu.pipeline.dsl.interfaces.IWorkspace
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import java.io.File
 
-class Workspace (
+
+
+
+class Workspace(
     var watchFiles: WatchFiles = WatchFiles(inclusions = mutableListOf(), exclusions = mutableListOf()),
     private val logger: PipelineLogger,
     val gitTool: GitTool
@@ -15,12 +18,6 @@ class Workspace (
         return File(directory).exists() && File(directory).isDirectory
     }
 
-
-    override fun StepsBlock.fileExists(file: String): Boolean {
-        return File(file).exists() && File(file).isFile
-    }
-
-
     override fun createDirectoriesIfNotExist(dirs: List<String>) {
         dirs.forEach { dir ->
             val directory = File(dir)
@@ -29,18 +26,6 @@ class Workspace (
             }
         }
     }
-
-
-    override fun StepsBlock.writeFile(file: String, text: String) {
-        File(file).printWriter().use { out ->
-            out.print(text)
-        }
-    }
-
-    override fun StepsBlock.readFile(file: String): String {
-        return File(file).readText()
-    }
-
 
     override fun globMatch(pattern: String, str: String, caseSensitive: Boolean): Boolean {
         val regexPattern = globToRegex(pattern, caseSensitive)
@@ -73,7 +58,11 @@ class Workspace (
         return checkWatchedFiles(abortPipeline, watchFilesInclusionsList, watchFilesExclusionsList)
     }
 
-    override fun checkWatchedFiles(abortPipeline: Boolean, inclusions: List<String>, exclusions: List<String>): Boolean {
+    override fun checkWatchedFiles(
+        abortPipeline: Boolean,
+        inclusions: List<String>,
+        exclusions: List<String>
+    ): Boolean {
 //        if (inclusions.isEmpty()) {
 //            logger.warn("No watchFiles configured")
 //            return true
@@ -118,10 +107,7 @@ class Workspace (
         }
     }
 
-
 }
-
-
 
 
 data class WatchFiles(

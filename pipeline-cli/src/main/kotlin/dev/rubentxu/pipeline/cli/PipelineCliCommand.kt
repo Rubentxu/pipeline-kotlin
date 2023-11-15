@@ -9,8 +9,6 @@ import io.micronaut.configuration.picocli.PicocliRunner
 import org.slf4j.LoggerFactory
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import java.io.File
-import java.nio.file.Path
 
 @Command(name = "pipeline-cli", description = ["..."], mixinStandardHelpOptions = true)
 class PipelineCliCommand() : Runnable {
@@ -41,7 +39,7 @@ class PipelineCliCommand() : Runnable {
             scriptPath,
             configPath,
 
-        )
+            )
 
 
         detachAndStopAllAppenders()

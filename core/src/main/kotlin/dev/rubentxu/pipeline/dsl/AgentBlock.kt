@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.dsl
 
-import dev.rubentxu.pipeline.model.pipeline.*
+import dev.rubentxu.pipeline.model.pipeline.Agent
+import dev.rubentxu.pipeline.model.pipeline.AnyAgent
+import dev.rubentxu.pipeline.model.pipeline.DockerAgent
+import dev.rubentxu.pipeline.model.pipeline.KubernetesAgent
 
 @PipelineDsl
 class AgentBlock() {
@@ -31,8 +34,6 @@ class AnyAgentBlock {
 }
 
 
-
-
 @PipelineDsl
 class DockerAgentBlock {
     var label: String = "docker"
@@ -44,6 +45,7 @@ class DockerAgentBlock {
         return DockerAgent(label = label, image = image, tag = tag, host = host)
     }
 }
+
 @PipelineDsl
 class KubernetesAgentBlock {
     var label: String = "kubernetes"

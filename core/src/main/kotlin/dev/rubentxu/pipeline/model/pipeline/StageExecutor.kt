@@ -15,25 +15,40 @@ import dev.rubentxu.pipeline.logger.PipelineLogger
 class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
 
     val logger = PipelineLogger.getLogger()
+    var postExecution: PostExecution? = null
+
     /**
      * This function runs the stage.
      *
      * @param pipeline The pipeline to run the stage in.
      */
-    suspend fun run(pipeline: Pipeline) : Any {
-
+    suspend fun run(pipeline: Pipeline): Any {
+        var status: Status = Status.Success
+        var errorMessage = ""
         val dsl = StageBlock(name, pipeline)
-        val steps = StepsBlock(pipeline)
+//        val steps = StepsBlock(pipeline)
         var result: Any = ""
         try {
-            result =  dsl.block()
+            dsl.block()
+            postExecution = dsl.postExecution
+            val stepsBlock: (StepsBlock.() -> Unit)? = dsl.stepsBlock
+            if(stepsBlock != null) {
+                result = executeSteps(stepsBlock, pipeline)
+            }
+
         } catch (e: Exception) {
+            status = Status.Failure
+            errorMessage = e.message ?: ""
             logger.error("Error running stage $name, ${e.message}")
-            dsl.stagePostExecutionBlock.failureFunc.invoke(steps)
             throw e
+        } finally {
+            postExecution?.run(pipeline, listOf(StageResult(name, status,"", errorMessage)))
         }
-        dsl.stagePostExecutionBlock.successFunc.invoke(steps)
-        dsl.stagePostExecutionBlock.alwaysFunc.invoke(steps)
         return result
+    }
+
+    fun executeSteps(block: StepsBlock.() -> Unit, pipeline: Pipeline) {
+        val steps = StepsBlock(pipeline)
+        steps.block()
     }
 }

@@ -1,8 +1,9 @@
 package dev.rubentxu.pipeline.events
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.filter
+
+import dev.rubentxu.pipeline.events.EventManager.subscribeToEvents
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.filter
 import kotlin.reflect.KClass
 
 /**
@@ -40,7 +41,10 @@ object EventManager {
      * @param eventClasses The classes of the events to subscribe to. You can provide multiple classes.
      * @param block The block of code to execute for each event. The event will be passed as a parameter to this block.
      */
-    suspend inline fun <reified T : Event> subscribeToEvents(vararg eventClasses: KClass<T>, noinline block: suspend (Event) -> Unit) {
+    suspend inline fun <reified T : Event> subscribeToEvents(
+        vararg eventClasses: KClass<T>,
+        noinline block: suspend (Event) -> Unit
+    ) {
         events
             .filter { event -> eventClasses.any { it.isInstance(event) } }
             .collect(block)

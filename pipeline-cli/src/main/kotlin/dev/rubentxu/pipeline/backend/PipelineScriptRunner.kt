@@ -120,7 +120,7 @@ fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) :Pip
 //        return executeInKubernetesAgent(agent, config, paths)
 
     }
-    return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
+    return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>): PipelineResult {

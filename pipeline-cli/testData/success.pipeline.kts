@@ -6,13 +6,13 @@ println("HOLA MUNDO..................................................")
 println("Is agent -> ${System.getenv("IS_AGENT")} .........")
 
 pipeline {
-    agent {
-        docker {
-            label = "docker"
-            image = "openjdk"
-            tag = "17"
-        }
-    }
+//    agent {
+//        docker {
+//            label = "docker"
+//            image = "openjdk"
+//            tag = "17"
+//        }
+//    }
     environment {
         "DISABLE_AUTH" += "true"
         "DB_ENGINE" += "sqlite"
@@ -26,10 +26,15 @@ pipeline {
 
                 parallel(
                     "a" to Step {
-                        echo("This is branch a")
+                        delay(1000) {
+                            echo("Delay This is branch a")
+                        }
+
                     },
                     "b" to Step {
-                        echo("This is branch b")
+                        delay(300) {
+                            echo("Delay This is branch b")
+                        }
                     }
                 )
                 sh("pwd", returnStdout = true)

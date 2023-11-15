@@ -17,7 +17,7 @@ que native-image pueda analizar y compilar adecuadamente tu aplicación.
 Esto se hace a menudo a través de archivos de configuración JSON que especifican qué clases y métodos deben ser considerados para la reflexión. Puedes generar estos archivos automáticamente durante la ejecución de tu aplicación en una JVM normal utilizando el agente de native-image:
 
 ```bash
-java  -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+java  -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
 ```bash
@@ -53,7 +53,7 @@ utilizando el agente de native-image.
 #### Ejecutar
 
 ```bash
-$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 Este comando ejecuta el archivo JAR generado utilizando el comando `java -jar`. Los argumentos `-c` y `-s` 
 son probablemente opciones específicas de la aplicación, que especifican la ubicación de un archivo de configuración y 
@@ -66,21 +66,21 @@ Esto se puede hacer agregando el argumento `-agentlib:native-image-agent=config-
 ---
 
 ```bash
-$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 Este comando es similar al anterior, pero en lugar de usar `-jar`, usa `-cp` (classpath) para especificar el archivo JAR y luego proporciona la clase principal que se debe ejecutar. Los argumentos `-c` y `-s` funcionan de la misma manera que en el comando anterior.
 
 ---
 
 ```bash
-$ ./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ ./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 Este comando ejecuta la imagen nativa generada por el comando `native-image`. Nuevamente, los argumentos `-c` y `-s` especifican la ubicación de un archivo de configuración y un script, respectivamente.
 
 ---
 
 ```bash
-$ kotlinc -script pipeline-cli/testData/HelloWorld.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  
+$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  
 ```
 Este comando utiliza el compilador de Kotlin `kotlinc` para ejecutar un script de Kotlin. El argumento `-script` especifica la ubicación del script que se va a ejecutar, y `-classpath` especifica la ruta al archivo JAR que contiene las clases y recursos necesarios para ejecutar el script.
 
@@ -116,30 +116,30 @@ The `--class-path` argument specifies the path to the JAR file to be compiled. `
 #### Run
 
 ```bash
-$ java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 This command runs the generated JAR file using the `java -jar` command. The `-c` and `-s` arguments are likely application-specific options, specifying the location of a configuration file and a script, respectively.
 
 ---
 
 ```bash
-$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 This command is similar to the previous one, but instead of using `-jar`, it uses `-cp` (classpath) to specify the JAR file and then provides the main class to be run. The `-c` and `-s` arguments work in the same way as in the previous command.
 
 ---
 
 ```bash
-$ ./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/HelloWorld.pipeline.kts
+$ ./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 ```bash
-$ ./pipeline-kts -c pipeline-cli/src/test/resources/config.yaml -s pipeline-cli/src/test/resources/HelloWorld.pipeline.kts
+$ ./pipeline-kts -c pipeline-cli/src/test/resources/config.yaml -s pipeline-cli/src/test/resources/success.pipeline.kts
 ```
 This command runs the native image generated by the `native-image` command. Again, the `-c` and `-s` arguments specify the location of a configuration file and a script, respectively.
 
 ---
 
 ```bash
-$ kotlinc -script pipeline-cli/testData/HelloWorld.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  
+$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  
 ```
 This command uses the Kotlin compiler `kotlinc` to run a Kotlin script. The `-script` argument specifies the location of the script to be run, and `-classpath` specifies the path to the JAR file containing the classes and resources necessary to run the script.

@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.steps.EnvVars
 
 class PipelineBlock() {
     var stages: List<StageExecutor> = mutableListOf()
-    var agent: Agent = Agent("any")
+    var agent: Agent = AnyAgent("any")
     var env: EnvVars = EnvVars(mutableMapOf())
     var postExecution: PostExecution = PostExecution()
 

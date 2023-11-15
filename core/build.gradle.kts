@@ -19,6 +19,13 @@ dependencies {
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
     implementation("ch.qos.logback:logback-classic:1.4.11")
 
+    // Casc
+    implementation("org.apache.commons:commons-lang3:3.13.0")
+    implementation("org.apache.commons:commons-text:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
+
+
     testImplementation(kotlin("test"))
 
     testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")

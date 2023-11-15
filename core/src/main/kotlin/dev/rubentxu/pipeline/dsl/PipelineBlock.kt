@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
 
 class PipelineBlock() {
-    var stages: MutableList<StageExecutor> = mutableListOf()
+    var stages: List<StageExecutor> = mutableListOf()
     var agent: Agent = Agent("any")
     var env: EnvVars = EnvVars(mutableMapOf())
     var postExecution: PostExecution = PostExecution()
@@ -41,9 +41,7 @@ class PipelineBlock() {
      * @param block A block of code to run in the stage.
      */
     fun stages(block: StagesCollectionBlock.() -> Unit) {
-        val dsl = StagesCollectionBlock()
-        dsl.block()
-        stages = dsl.stageExecutors
+        stages =  StagesCollectionBlock().apply(block).build()
     }
 
     /**

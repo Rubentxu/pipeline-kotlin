@@ -3,13 +3,14 @@ import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.extensions.*
 
 println("HOLA MUNDO..................................................")
+println("Is agent -> ${System.getenv("IS_AGENT")} .........")
 
 pipeline {
     agent {
         docker {
             label = "docker"
-            image = "alpine"
-            tag = "latest"
+            image = "openjdk"
+            tag = "17"
         }
     }
     environment {

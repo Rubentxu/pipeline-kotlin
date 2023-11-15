@@ -26,9 +26,12 @@ class AgentBlock() {
 class AnyAgentBlock {
     var label: String = "any"
     fun build(): Agent {
-        return Agent(label = label)
+        return AnyAgent(label = label)
     }
 }
+
+
+
 
 @PipelineDsl
 class DockerAgentBlock {

@@ -3,7 +3,9 @@ package dev.rubentxu.pipeline.backend
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
-import dev.rubentxu.pipeline.backend.agent.ContainerManager
+import dev.rubentxu.pipeline.backend.agent.docker.ContainerLifecycleManager
+import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
+import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
 import dev.rubentxu.pipeline.cli.PipelineCliCommand
 import dev.rubentxu.pipeline.dsl.*
 import dev.rubentxu.pipeline.logger.LogLevel
@@ -34,8 +36,11 @@ fun evalWithScriptEngineManager(scriptPath: String,
 
     return try {
         val pipelineDef = evaluateScriptFile(scriptPath)
+        logger.system("Pipeline definition: $pipelineDef")
         val pipeline = buildPipeline(pipelineDef)
+        logger.system("Build Pipeline: $pipeline")
         executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
+
     } catch (e: Exception) {
         handleScriptExecutionException(e, logger)
         PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
@@ -69,7 +74,7 @@ fun executePipeline(
     val isAgentEnv = System.getenv("IS_AGENT")
     logger.system("Env isAgent: $isAgentEnv")
     // si pipeline.agent no es AnyAgent se ejecuta en un agente
-    if(!(pipeline.agent is Agent) && isAgentEnv == null) {
+    if(!(pipeline.agent is AnyAgent) && isAgentEnv == null) {
         return executeWithAgent(pipeline, configuration, listOfPaths)
     }
 
@@ -119,9 +124,11 @@ fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>) :Pip
 }
 
 fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>): PipelineResult {
-    val containerManager = ContainerManager(agent, config, PipelineLogger(LogLevel.TRACE))
+    val dockerClientProvider = DockerConfigManager(agent)
+    val imageBuilder = DockerImageBuilder(dockerClientProvider)
+    val containerManager = ContainerLifecycleManager(dockerClientProvider)
 
-    containerManager.buildCustomImage("openjdk:17", paths)
+    val imageId = imageBuilder.buildCustomImage("${agent.image}:${agent.tag}", paths)
     containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
     return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
 }

@@ -8,8 +8,8 @@ pipeline {
     agent {
         docker {
             label = "docker"
-            image = "alpine"
-            tag = "latest"
+            image = "openjdk"
+            tag = "17"
         }
     }
     environment {

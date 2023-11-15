@@ -18,4 +18,8 @@ class StagesCollectionBlock : ArrayList<StageExecutor>() {
     fun stage(name: String, block: StageBlock.() -> Any) {
         add(StageExecutor(name, block))
     }
+
+    fun build(): List<StageExecutor> {
+        return this
+    }
 }

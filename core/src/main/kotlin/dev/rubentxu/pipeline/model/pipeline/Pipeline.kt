@@ -20,7 +20,7 @@ import kotlin.system.measureTimeMillis
 
 class Pipeline(
     val agent: Agent,
-    val stages: MutableList<StageExecutor>,
+    val stages: List<StageExecutor>,
     val env: EnvVars,
     val postExecution: PostExecution
     ) : Configurable {

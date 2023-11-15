@@ -105,11 +105,9 @@ class PipelineLogger(
                     format.style(ITALIC)
                 }
 
-                LogLevel.QUIET -> TODO()
+                LogLevel.QUIET -> format.color(GREEN)
             }
             write(format.build())
-        } else {
-            println("Log level ${level.value} is greater than current log level ${logLevel.value}")
         }
     }
 

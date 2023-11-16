@@ -18,7 +18,7 @@ import java.io.File
  */
 fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String = runBlocking {
     val shell = Shell(pipeline)
-    val output = shell.execute(script, pipeline.workingDir.toFile())
+    val output = shell.execute(script, returnStdout)
 
     logger.info("Shell script executed successfully: $script")
     if (returnStdout) {

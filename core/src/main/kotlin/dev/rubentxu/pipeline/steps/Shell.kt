@@ -2,9 +2,10 @@ package dev.rubentxu.pipeline.steps
 
 
 import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import java.io.BufferedReader
 import java.io.File
 import java.io.InputStream
 
@@ -13,8 +14,8 @@ import java.io.InputStream
  *
  * @property pipeline The pipeline in which this shell command block is being executed.
  */
-class Shell(pipeline: Pipeline) : StepsBlock(pipeline) {
-
+class Shell(val pipeline: Pipeline, var timeout: Long = 15000)  {
+    val logger = PipelineLogger.getLogger()
     /**
      * Executes a shell command in a specific directory.
      *
@@ -23,28 +24,60 @@ class Shell(pipeline: Pipeline) : StepsBlock(pipeline) {
      * @return The output of the command execution as a string.
      * @throws Exception If the command exits with a non-zero exit code.
      */
-    suspend fun execute(command: String, directory: File): String {
-        logger.info("Executing command: $command in directory: $directory")
+    suspend fun execute(command: String, returnStdout: Boolean = false): String {
         return withContext(Dispatchers.IO) {
-            val process = ProcessBuilder("/bin/bash", "-c", command)
-                .directory(directory)
-                .start()
+            val process: Process = run(command)
 
             val stdout: InputStream = process.inputStream
             val stderr: InputStream = process.errorStream
 
             // Read the output and error (if any)
-            val output = stdout.bufferedReader().readText()
-            val error = stderr.bufferedReader().readText()
+            val output: String = stdout.bufferedReader().readText()
+            val error: String = stderr.bufferedReader().readText()
 
-            val exitCode = process.waitFor()
+            val exitCode: Int = process.waitFor()
 
             if (exitCode != 0) {
                 throw Exception("Error executing command. Exit code: $exitCode, Error: $error for command: $command")
             }
-            output
+            logger.info(output)
+            if (process.exitValue() == 0) {
+                if (returnStdout) {
+                    return@withContext output
+                }
+            } else {
+                return@withContext error
+            }
+            return@withContext ""
+
         }
     }
+
+    fun run(command: String): Process {
+        pipeline.env["JAVA_HOME"]?.let {
+            pipeline.env["PATH"] = "${it}/bin:${pipeline.env["PATH"]}"
+        }
+
+        pipeline.env["M2_HOME"]?.let {
+            pipeline.env["PATH"] = "${it}/bin:${pipeline.env["PATH"]}"
+        }
+
+        val directory = File(pipeline.toFullPath(pipeline.workingDir))
+        logger.info("+ sh in working directory $directory")
+        logger.info("+ sh $command")
+        return ProcessBuilder("sh", "-c", command)
+            .directory(directory)
+            .apply {
+                environment().putAll(pipeline.env)
+            }
+            .start()
+    }
+
+
+
+
+
+
 }
 
 

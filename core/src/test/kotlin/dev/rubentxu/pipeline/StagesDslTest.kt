@@ -171,6 +171,8 @@ class StagesDslTest : StringSpec({
                     steps {
                         echo("This is a failing stage")
                         sh("pwd", returnStdout=true)
+                        var result = sh("echo \$DB_ENGINE", returnStdout=true)
+                        echo(result)
                     }
                 }
             }

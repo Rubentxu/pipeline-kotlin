@@ -82,21 +82,11 @@ class SecretSourceResolver() {
         return buf.toString()
     }
 
-
-
     companion object {
         private const val enclosedBy = "\${"
         private const val enclosedIn = "}"
         private const val escapedWith = '^'
         private const val escapeEnclosedBy = escapedWith.toString() + enclosedBy
-        private val logger = PipelineLogger.getLogger()
-
-
-
-//        @Deprecated("use {@link #resolve(String)}} instead.")
-//        fun resolve(context: ConfigurationContext, toInterpolate: String?): String {
-//            return context.getSecretSourceResolver().resolve(toInterpolate)
-//        }
     }
 }
 
@@ -111,8 +101,6 @@ internal class UnresolvedLookup private constructor() : StringLookup {
         val INSTANCE = UnresolvedLookup()
     }
 }
-
-
 
 internal class SystemPropertyLookup : StringLookup {
     private val logger = PipelineLogger.getLogger()

@@ -22,7 +22,8 @@ dependencies {
     // Casc
     implementation("org.apache.commons:commons-lang3:3.13.0")
     implementation("org.apache.commons:commons-text:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
+//    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
 
 
@@ -55,5 +56,10 @@ tasks {
 
     test {
         useJUnitPlatform()
+//        jvmArgs()
     }
+}
+
+tasks.withType<Test> {
+    jvmArgs("--add-opens", "java.base/java.util=ALL-UNNAMED")
 }

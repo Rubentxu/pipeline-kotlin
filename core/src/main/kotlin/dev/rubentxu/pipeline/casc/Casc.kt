@@ -1,30 +1,20 @@
 package dev.rubentxu.pipeline.casc
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonDeserializer
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+
 import dev.rubentxu.pipeline.casc.resolver.SecretSourceResolver
-import dev.rubentxu.pipeline.validation.validate
+//import kotlinx.serialization.yaml.Yaml
 import dev.rubentxu.pipeline.validation.validateAndGet
 import java.nio.file.Path
 
-class CascYamlDeserializer(private val substitutor: SecretSourceResolver) : JsonDeserializer<String>() {
-    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): String {
-        val rawValue = p.valueAsString
-        return substitutor.resolve(rawValue)
-    }
-}
+
 class CascManager(val secretSourceResolver: SecretSourceResolver) {
-    val module = SimpleModule().addDeserializer(String::class.java, CascYamlDeserializer(secretSourceResolver))
-    val mapper = ObjectMapper(YAMLFactory()).registerModule(module).registerKotlinModule()
+
 
     fun resolveConfig(path: Path): Map<*,*> {
         val rawYaml = path.toFile().readText()
-        return mapper.readValue(rawYaml, Map::class.java)
+        val resolvedYaml = secretSourceResolver.resolve(rawYaml)
+//        return Yaml.decodeFromString<Map<*,*>>(resolvedYaml)
+        return emptyMap<String, String>()
     }
 
 }
@@ -41,7 +31,7 @@ class PipelineConfig(
             val domainCredentials =  map.validateAndGet("credentials.system.domainCredentials")
                                                             .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
-            if(domainCredentials.isEmpty()) throw IllegalArgumentException("No credentials found"
+            if(domainCredentials.isEmpty()) throw IllegalArgumentException("No credentials found")
             val credentials = domainCredentials[0].validateAndGet("credentials")
                                                     .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 

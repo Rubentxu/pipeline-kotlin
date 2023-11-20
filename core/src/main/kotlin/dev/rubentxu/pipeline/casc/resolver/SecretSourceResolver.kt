@@ -54,24 +54,11 @@ class SecretSourceResolver() {
             .setVariableSuffix(enclosedIn)
     }
 
-    /**
-     * Encodes String so that it can be safely represented in the YAML after export.
-     * @param toEncode String to encode
-     * @return Encoded string
-     * @since 1.25
-     */
     fun encode(toEncode: String?): String? {
         return toEncode?.replace(enclosedBy, escapeEnclosedBy)
     }
 
-    /**
-     * Resolve string with potential secrets
-     *
-     * @param toInterpolate potential variables that need to revealed
-     * @return original string with any secrets that could be resolved if secrets could not be
-     * resolved they will be defaulted to default value defined by ':-', otherwise default to empty
-     * String. Secrets are defined as anything enclosed by '${}'
-     */
+
     fun resolve(toInterpolate: String): String {
         if (StringUtils.isBlank(toInterpolate) || !toInterpolate.contains(enclosedBy)) {
             return toInterpolate
@@ -216,19 +203,14 @@ internal class JsonLookup private constructor() : StringLookup {
 
 internal class FixedInterpolatorStringLookup(
     stringLookupMap: Map<String, StringLookup>,
-    /** The default string lookup.  */
+
     private var defaultStringLookup: StringLookup?
 ) :
     StringLookup {
-    /** The map of String lookups keyed by prefix.  */
+
     private val stringLookupMap: MutableMap<String, StringLookup>
 
-    /**
-     * Creates a fully customized instance.
-     *
-     * @param stringLookupMap the map of string lookups.
-     * @param defaultStringLookup the default string lookup.
-     */
+
     init {
         this.stringLookupMap = HashMap(stringLookupMap.size)
         for ((key, value) in stringLookupMap) {
@@ -237,15 +219,7 @@ internal class FixedInterpolatorStringLookup(
         defaultStringLookup = stringLookupMap["env"]
     }
 
-    /**
-     * Resolves the specified variable. This implementation will try to extract a variable prefix from the given
-     * variable name (the first colon (':') is used as prefix separator). It then passes the name of the variable with
-     * the prefix stripped to the lookup object registered for this prefix. If no prefix can be found or if the
-     * associated lookup object cannot resolve this variable, the default lookup object will be used.
-     *
-     * @param var the name of the variable whose value is to be looked up
-     * @return The value of this variable or **null** if it cannot be resolved
-     */
+
     override fun lookup(`var`: String): String? {
         if (`var` == null) {
             return null

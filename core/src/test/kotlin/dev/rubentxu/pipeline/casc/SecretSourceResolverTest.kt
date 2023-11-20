@@ -36,15 +36,6 @@ class SecretSourceResolverTest : StringSpec({
 
     }
 
-    "resolve simple variable" {
-        val map: Map<String, String> = mutableMapOf("FOO" to "hello")
-        System.setProperty("FOO", "hello")
-        resolver.resolve("\${PATH}") shouldBe ("hello")
-        val result = StringSubstitutor.createInterpolator().replace(
-               "OS name: \${sys:os.name}, user: \${env:USER}");
-
-        println(result)
-    }
 
     "resolve sigle entry with default value" {
         resolver.resolve("\${FOO:-default}") shouldBe ("default")

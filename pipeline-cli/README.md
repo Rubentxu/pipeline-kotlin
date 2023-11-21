@@ -1,11 +1,9 @@
 ### Comandos
 
-
 ```bash
 # Construir e instalar dependencias
 $ gradle clean shadowJar
 ```
-
 
 ```bash
 # Ejecutar

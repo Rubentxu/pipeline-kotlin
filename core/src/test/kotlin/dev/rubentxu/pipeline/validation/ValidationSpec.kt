@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.validation
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import java.util.Locale
+import java.util.*
 
 class ValidationSpec : FunSpec({
     beforeTest {
@@ -51,7 +51,7 @@ class ValidationSpec : FunSpec({
     test("test throwIfInvalid() with valid validation") {
         val sut = "hello"
 
-        shouldThrow<IllegalArgumentException>{
+        shouldThrow<IllegalArgumentException> {
             sut.validate()
                 .notNull()
                 .contains("lolailo")

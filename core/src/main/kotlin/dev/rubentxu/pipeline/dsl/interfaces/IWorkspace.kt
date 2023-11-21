@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.dsl.interfaces
 
-import dev.rubentxu.pipeline.dsl.StepsBlock
-
 interface IWorkspace {
 
     fun checkWatchedFiles(abortPipeline: Boolean = true): Boolean

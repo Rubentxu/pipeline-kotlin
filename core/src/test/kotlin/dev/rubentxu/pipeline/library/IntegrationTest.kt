@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.library
 import dev.rubentxu.pipeline.compiler.GradleCompiler
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import java.nio.file.Paths
 import java.net.URLClassLoader
+import java.nio.file.Paths
 
 class IntegrationTest : StringSpec({
     val gradleCompiler = GradleCompiler()

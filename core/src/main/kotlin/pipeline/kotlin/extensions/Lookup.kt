@@ -1,7 +1,12 @@
 @file:OptIn(ExperimentalEncodingApi::class)
 
-package dev.rubentxu.pipeline.extensions
+package pipeline.kotlin.extensions
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.yaml.snakeyaml.LoaderOptions
+import org.yaml.snakeyaml.Yaml
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -9,7 +14,7 @@ import kotlin.Result.Companion.failure
 import kotlin.Result.Companion.success
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.serialization.json.*
+
 
 class LookupException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -114,6 +119,40 @@ fun String.deserializeJsonField(): Result<String> {
     }
 }
 
+
+fun Path.deserializeYamlFileToMap(): Result<Map<String, Any>> {
+    return try {
+        val content = String(Files.readAllBytes(this), StandardCharsets.UTF_8)
+        val yaml = Yaml().load(content) as Map<String, Any>
+//        val yaml = Yaml(Constructor(HashMap.class, LoaderOptions())).load(content) as Map<String, Any>
+        success(yaml)
+    } catch (e: Exception) {
+        failure(LookupException("Error in YAML lookup ${e.javaClass.simpleName} ${e.message}", e))
+    }
+}
+
+
+
+fun String.deserializeYamlField(): Result<String> {
+    return try {
+        val components = this.split(":", limit = 2)
+        if (components.size < 2) {
+            throw IllegalArgumentException("Input string is not in the expected format 'key:yaml'")
+        }
+
+        val yamlFieldName = components[0]
+        val yamlFile = components[1]
+        val yaml = yamlFile.readFileLookup().getOrThrow()
+        val yamlObject = Yaml().load(yaml) as Map<String, Any>
+
+        yamlObject[yamlFieldName]?.toString()?.let {
+            success(it)
+        } ?: throw LookupException("YAML does not contain the specified key '$yamlFieldName'")
+    } catch (e: Exception) {
+        failure(LookupException("Error in YAML field lookup ${e.javaClass.simpleName} ${e.message}", e))
+    }
+}
+
 fun String.lookup(): Result<String> {
     val enclosedBy = "\${"
     val enclosedIn = "}"
@@ -154,8 +193,18 @@ fun String.isJsonValid(): Boolean {
     }
 }
 
+fun Map<String, Any?>.lookup(): Result<Map<String, Any>> {
+    return success(this.mapValues { (_, value) ->
+        when (value) {
+            is String -> value.lookup()
+            is Map<*, *> -> (value as Map<String, Any>).lookup()
+            else -> success(value)
+        } as Any
+    })
+}
+
 private fun processLookup(value: String): Result<String> {
-    val result =  when {
+    val result = when {
         value.startsWith("sysProp:") -> value.removePrefix("sysProp:").systemPropertyLookup()
         value.startsWith("env:") -> value.removePrefix("env:").environmentVariableLookup()
         value.startsWith("file:") -> value.removePrefix("file:").fileLookup()
@@ -165,12 +214,14 @@ private fun processLookup(value: String): Result<String> {
         value.startsWith("readFileBase64:") -> value.removePrefix("readFileBase64:").fileBase64Lookup()
         value.startsWith("decodeBase64:") -> value.removePrefix("decodeBase64:").decodeBase64Lookup()
         value.startsWith("json:") -> value.removePrefix("json:").deserializeJsonField()
+        value.startsWith("yaml:") -> value.removePrefix("yaml:").deserializeYamlField()
         else -> failure(LookupException("Unknown lookup type for key: $value"))
     }
 
-    if(result.isFailure && value.contains(":-")) {
+    if (result.isFailure && value.contains(":-")) {
         val defaultValue = value.substringAfter(":-")
         return success(defaultValue)
     }
     return result
 }
+

@@ -84,6 +84,13 @@ open class Validator<K, T>(protected val sut: T?, protected val tag: String = ""
         return this as Validator<K, R>
     }
 
+    fun isBoolean(): Validator<K, Boolean> {
+        notNull()
+        test("${tagMsg}Must be a boolean") { it is Boolean }
+        @Suppress("UNCHECKED_CAST")
+        return this as Validator<K, Boolean>
+    }
+
     companion object {
         fun <T> from(sut: T): Validator<Validator<*, T>, T> = Validator(sut)
 

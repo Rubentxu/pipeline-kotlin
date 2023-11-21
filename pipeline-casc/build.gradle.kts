@@ -1,6 +1,5 @@
 plugins {
     kotlin("jvm")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.0-Beta1"
     id("io.kotest") version "0.4.10"
 
 }
@@ -14,16 +13,9 @@ val kotlinVersion: String by rootProject.extra
 val kotlinCoroutinesVersion: String by rootProject.extra
 
 dependencies {
-    implementation("org.yaml:snakeyaml:2.2")
-
-    implementation("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
+    implementation(project(":core"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.1")
 
-
-    implementation("org.gradle:gradle-tooling-api:8.4")
-    implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
-    implementation("ch.qos.logback:logback-classic:1.4.11")
 
     testImplementation(kotlin("test"))
 

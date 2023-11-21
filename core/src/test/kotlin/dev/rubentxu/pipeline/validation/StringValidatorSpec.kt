@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.validation
 
-import java.util.Locale
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 

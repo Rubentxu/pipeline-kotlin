@@ -1,7 +1,5 @@
-package dev.rubentxu.pipeline.casc
+package pipeline.kotlin.extensions
 
-import dev.rubentxu.pipeline.extensions.LookupException
-import dev.rubentxu.pipeline.extensions.lookup
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -189,6 +187,19 @@ class LookupTest : FunSpec({
         val expected = "hello\nworld"
         val result = key.lookup().getOrThrow()
         result shouldBe expected
+    }
+
+    test("should return success with yaml file lookup correctly") {
+        val key = "\${yaml:leader:src/test/resources/lookup/lookup-example.yaml}"
+        val yaml = """
+        leader: Amy
+        members:
+          - Bob
+          - Cindy
+          - Dan
+        """.trimIndent()
+        val result = key.lookup().getOrThrow()
+        result shouldBe "Amy"
     }
 
 })

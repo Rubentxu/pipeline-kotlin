@@ -1,11 +1,8 @@
 package dev.rubentxu.pipeline.model
 
-import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.dsl.interfaces.IWorkspace
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import java.io.File
-
-
 
 
 class Workspace(

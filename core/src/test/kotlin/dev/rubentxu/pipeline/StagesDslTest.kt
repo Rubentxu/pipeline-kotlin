@@ -1,8 +1,9 @@
 package dev.rubentxu.pipeline
+
 import dev.rubentxu.pipeline.dsl.Step
-import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.extensions.echo
-import dev.rubentxu.pipeline.extensions.sh
+import dev.rubentxu.pipeline.dsl.pipeline
+import pipeline.kotlin.extensions.echo
+import pipeline.kotlin.extensions.sh
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.job.JobExecutor
@@ -27,7 +28,7 @@ class StagesDslTest : StringSpec({
 
             environment {
                 "DISABLE_AUTH" += "true"
-                "DB_ENGINE"    += "sqlite"
+                "DB_ENGINE" += "sqlite"
             }
 
             stages {
@@ -43,7 +44,7 @@ class StagesDslTest : StringSpec({
                                 echo("This is branch b")
                             }
                         )
-                        sh("pwd", returnStdout=true)
+                        sh("pwd", returnStdout = true)
                         echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
                     }
                     post {
@@ -58,9 +59,9 @@ class StagesDslTest : StringSpec({
                 }
                 stage("Test") {
                     steps {
-                        sh("ls -la", returnStdout=true)
+                        sh("ls -la", returnStdout = true)
                         echo("Tests complete")
-                        sh("ls -la /home", returnStdout=true)
+                        sh("ls -la /home", returnStdout = true)
                     }
 
                 }
@@ -109,7 +110,7 @@ class StagesDslTest : StringSpec({
 
             environment {
                 "DISABLE_AUTH" += "true"
-                "DB_ENGINE"    += "sqlite"
+                "DB_ENGINE" += "sqlite"
             }
             stages {
                 stage("Build") {
@@ -124,15 +125,15 @@ class StagesDslTest : StringSpec({
                                 echo("This is branch b")
                             }
                         )
-                        sh("pwd", returnStdout=true)
+                        sh("pwd", returnStdout = true)
                         echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
                     }
                 }
                 stage("Test") {
                     steps {
-                        sh("ls -la", returnStdout=true)
+                        sh("ls -la", returnStdout = true)
                         echo("Tests complete")
-                        sh("ls -la /home", returnStdout=true)
+                        sh("ls -la /home", returnStdout = true)
                     }
                 }
             }
@@ -164,14 +165,14 @@ class StagesDslTest : StringSpec({
         val pipelineDefResult = pipeline {
             environment {
                 "DISABLE_AUTH" += "true"
-                "DB_ENGINE"    += "sqlite"
+                "DB_ENGINE" += "sqlite"
             }
             stages {
                 stage("Failing Stage") {
                     steps {
                         echo("This is a failing stage")
-                        sh("pwd", returnStdout=true)
-                        var result = sh("echo \$DB_ENGINE", returnStdout=true)
+                        sh("pwd", returnStdout = true)
+                        var result = sh("echo \$DB_ENGINE", returnStdout = true)
                         echo(result)
                     }
                 }

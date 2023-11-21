@@ -1,17 +1,12 @@
 package dev.rubentxu.pipeline.casc
 
-import dev.rubentxu.pipeline.casc.resolver.SecretSourceResolver
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.nio.file.Path
 
 class CascManagerTest : StringSpec({
-    "resolveConfig should correctly deserialize YAML to PipelineConfig" {
-        // Crear una instancia de SecretSourceResolver
-        val secretSourceResolver = SecretSourceResolver()
-
-        // Crear una instancia de CascManager
-        val cascManager = CascManager(secretSourceResolver)
+    "resolveConfig should correctly deserialize YAML to PipelineConfig" {          // Crear una instancia de CascManager
+        val cascManager = CascManager()
 
         // Ruta al archivo YAML de prueba
         val resourcePath = this::class.java.classLoader.getResource("casc/credentials.yaml").path
@@ -21,7 +16,8 @@ class CascManagerTest : StringSpec({
         val result = cascManager.resolveConfig(testYamlPath)
 
         // Comprobar que el resultado sea el esperado
-        result shouldBe null
+        result.isSuccess shouldBe true
+        result.getOrThrow().credentials?.credentials?.size shouldBe 8
     }
 
 })

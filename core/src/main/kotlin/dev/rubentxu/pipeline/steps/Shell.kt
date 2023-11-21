@@ -1,11 +1,9 @@
 package dev.rubentxu.pipeline.steps
 
 
-import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import kotlinx.coroutines.*
-import java.io.BufferedReader
 import java.io.File
 import java.io.InputStream
 
@@ -14,8 +12,9 @@ import java.io.InputStream
  *
  * @property pipeline The pipeline in which this shell command block is being executed.
  */
-class Shell(val pipeline: Pipeline, var timeout: Long = 15000)  {
+class Shell(val pipeline: Pipeline, var timeout: Long = 15000) {
     val logger = PipelineLogger.getLogger()
+
     /**
      * Executes a shell command in a specific directory.
      *
@@ -72,10 +71,6 @@ class Shell(val pipeline: Pipeline, var timeout: Long = 15000)  {
             }
             .start()
     }
-
-
-
-
 
 
 }

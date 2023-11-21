@@ -32,7 +32,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
             dsl.block()
             postExecution = dsl.postExecution
             val stepsBlock: (StepsBlock.() -> Unit)? = dsl.stepsBlock
-            if(stepsBlock != null) {
+            if (stepsBlock != null) {
                 result = executeSteps(stepsBlock, pipeline)
             }
 
@@ -42,7 +42,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
             logger.error("Error running stage $name, ${e.message}")
             throw e
         } finally {
-            postExecution?.run(pipeline, listOf(StageResult(name, status,"", errorMessage)))
+            postExecution?.run(pipeline, listOf(StageResult(name, status, "", errorMessage)))
         }
         return result
     }

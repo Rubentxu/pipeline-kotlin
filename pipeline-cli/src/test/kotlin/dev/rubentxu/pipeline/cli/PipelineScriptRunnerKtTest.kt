@@ -65,7 +65,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val configFile = File("testData/config.yaml").path
         val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar")
 
-        val result: PipelineResult =  evalWithScriptEngineManager(scriptFile, configFile, jarFile)
+        val result: PipelineResult = evalWithScriptEngineManager(scriptFile, configFile, jarFile)
         println("result with scriptManager: $result")
         println(result)
         result.status shouldBe Status.Success

@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.extensions
+package pipeline.kotlin.extensions
 
 import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.steps.Shell

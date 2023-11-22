@@ -5,11 +5,11 @@ package pipeline.kotlin.extensions
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.Yaml
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.*
 import kotlin.Result.Companion.failure
 import kotlin.Result.Companion.success
 import kotlin.io.encoding.Base64
@@ -29,7 +29,22 @@ fun String.systemPropertyLookup(): Result<String> {
 
 fun String.environmentVariableLookup(): Result<String> {
     return try {
-        success(System.getenv(this) ?: throw LookupException("Environment variable not found for key: $this"))
+        val matchResult = regexEnvironmentVariable.matchEntire(this)
+        val (envVar, _,defaultValue) = matchResult!!.destructured
+        val envVarValue = System.getenv(envVar)
+        if (envVarValue != null) {
+            return success(envVarValue)
+        } else {
+            if (defaultValue.isNotEmpty()) {
+                return success(defaultValue)
+            } else {
+                return failure(
+                    LookupException("Error in environment variable lookup", Exception("Environment variable not found for key: $this")
+                    )
+                )
+            }
+        }
+
     } catch (e: Exception) {
         failure(LookupException("Error in environment variable lookup ${e.javaClass.simpleName} ${e.message}", e))
     }
@@ -132,7 +147,6 @@ fun Path.deserializeYamlFileToMap(): Result<Map<String, Any>> {
 }
 
 
-
 fun String.deserializeYamlField(): Result<String> {
     return try {
         val components = this.split(":", limit = 2)
@@ -193,16 +207,29 @@ fun String.isJsonValid(): Boolean {
     }
 }
 
-fun Map<String, Any?>.lookup(): Result<Map<String, Any>> {
-    return success(this.mapValues { (_, value) ->
-        when (value) {
-            is String -> value.lookup()
-            is Map<*, *> -> (value as Map<String, Any>).lookup()
-            else -> success(value)
-        } as Any
-    })
+fun Map<*, *>.resolveValueExpressions(): Map<*, *> {
+    return this.entries.associate { (key, value) ->
+        key to when (value) {
+            is Map<*, *> -> value.resolveValueExpressions()
+            is List<*> -> value.resolveValueExpressions()
+            is String -> if (value.startsWith("\${")) value.lookup().getOrThrow() else value
+            else -> value
+        }
+    }
 }
 
+fun List<*>.resolveValueExpressions(): List<*> {
+    return this.map { item ->
+        when (item) {
+            is Map<*, *> -> item.resolveValueExpressions()
+            is List<*> -> item.resolveValueExpressions()
+            is String -> if (item.startsWith("\${")) item.lookup().getOrThrow() else item
+            else -> item
+        }
+    }
+}
+
+internal val regexEnvironmentVariable = "([A-Z0-9_]+)([-:]{2})?(.*)".toRegex()
 private fun processLookup(value: String): Result<String> {
     val result = when {
         value.startsWith("sysProp:") -> value.removePrefix("sysProp:").systemPropertyLookup()
@@ -215,7 +242,12 @@ private fun processLookup(value: String): Result<String> {
         value.startsWith("decodeBase64:") -> value.removePrefix("decodeBase64:").decodeBase64Lookup()
         value.startsWith("json:") -> value.removePrefix("json:").deserializeJsonField()
         value.startsWith("yaml:") -> value.removePrefix("yaml:").deserializeYamlField()
-        else -> failure(LookupException("Unknown lookup type for key: $value"))
+        value.startsWith("yaml:") -> value.removePrefix("yaml:").deserializeYamlField()
+        else -> if (regexEnvironmentVariable.matches(value)) {
+            value.environmentVariableLookup()
+        } else {
+            failure(LookupException("Unknown lookup type for key: $value"))
+        }
     }
 
     if (result.isFailure && value.contains(":-")) {

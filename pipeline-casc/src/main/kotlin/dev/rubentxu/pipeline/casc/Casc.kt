@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.casc
 
 import pipeline.kotlin.extensions.deserializeYamlFileToMap
-import pipeline.kotlin.extensions.lookup
 import dev.rubentxu.pipeline.validation.validateAndGet
+import pipeline.kotlin.extensions.resolveValueExpressions
 import java.nio.file.Path
 import kotlin.Result.Companion.failure
 import kotlin.Result.Companion.success
@@ -10,13 +10,16 @@ import kotlin.Result.Companion.success
 
 class CascManager {
     fun resolveConfig(path: Path): Result<PipelineConfig> {
-        val yamlResult:Result<Map<String,Any>> = path.deserializeYamlFileToMap()
-        if (yamlResult.isFailure) return failure(yamlResult.exceptionOrNull()!!)
-        val rawYaml = yamlResult.getOrThrow()
-        val resolvedYaml  = rawYaml.lookup().getOrThrow()
-
-        val config = PipelineConfig.fromMap(resolvedYaml)
-        return success(config)
+        try {
+            val yamlResult:Result<Map<String,Any>> = path.deserializeYamlFileToMap()
+            if (yamlResult.isFailure) return failure(yamlResult.exceptionOrNull()!!)
+            val rawYaml = yamlResult.getOrThrow()
+            val resolvedYaml  = rawYaml.resolveValueExpressions()
+            val config = PipelineConfig.fromMap(resolvedYaml)
+            return success(config)
+        } catch (e: Exception) {
+            return failure(e)
+        }
     }
 }
 

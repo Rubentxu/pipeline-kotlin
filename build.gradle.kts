@@ -5,6 +5,7 @@ plugins {
 
 val kotlinVersion: String by extra("1.9.20")
 val kotlinCoroutinesVersion: String by extra("1.7.3")
+val kotestVersion: String by extra("5.8.0")
 
 
 allprojects {

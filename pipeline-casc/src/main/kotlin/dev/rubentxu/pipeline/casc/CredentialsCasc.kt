@@ -4,6 +4,8 @@ import dev.rubentxu.pipeline.validation.validateAndGet
 
 
 sealed class Credential {
+    abstract val id: String
+    abstract val description: String
 
     companion object {
         fun fromMap(credentialMap: Map<String, Any>): Credential {
@@ -23,11 +25,11 @@ sealed class Credential {
 }
 
 data class BasicSSHUserPrivateKey(
+    override val id: String,
+    override val description: String,
     val scope: String,
-    val id: String,
     val username: String,
     val passphrase: String,
-    val description: String,
     val privateKey: String,
 ) : Credential() {
     companion object {
@@ -46,10 +48,10 @@ data class BasicSSHUserPrivateKey(
 
 data class UsernamePassword(
     val scope: String,
-    val id: String,
+    override val id: String,
+    override val description: String,
     val username: String,
     val password: String,
-    val description: String
 ) : Credential() {
     companion object {
         fun fromMap(map: Map<String, Any>): Credential {
@@ -66,9 +68,9 @@ data class UsernamePassword(
 
 data class StringCredential(
     val scope: String,
-    val id: String,
+    override val id: String,
+    override val description: String,
     val secret: String,
-    val description: String
 ) : Credential() {
     companion object {
         fun fromMap(map: Map<String, Any>): Credential {
@@ -84,10 +86,10 @@ data class StringCredential(
 
 data class AwsCredential(
     val scope: String,
-    val id: String,
+    override val id: String,
+    override val description: String,
     val accessKey: String,
     val secretKey: String,
-    val description: String
 ) : Credential() {
     companion object {
         fun fromMap(map: Map<String, Any>): Credential {
@@ -104,7 +106,8 @@ data class AwsCredential(
 
 data class FileCredential(
     val scope: String,
-    val id: String,
+    override val id: String,
+    override val description: String,
     val fileName: String,
     val secretBytes: String
 ) : Credential() {
@@ -114,7 +117,8 @@ data class FileCredential(
                 scope = map.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = map.validateAndGet("id").isString().throwIfInvalid("id is required in FileCredential"),
                 fileName = map.validateAndGet("fileName").isString().throwIfInvalid("fileName is required in FileCredential"),
-                secretBytes = map.validateAndGet("secretBytes").isString().throwIfInvalid("secretBytes is required in FileCredential")
+                secretBytes = map.validateAndGet("secretBytes").isString().throwIfInvalid("secretBytes is required in FileCredential"),
+                description = map.validateAndGet("description").isString().defaultValueIfInvalid("") as String
             )
         }
     }
@@ -122,9 +126,9 @@ data class FileCredential(
 
 data class CertificateCredential(
     val scope: String,
-    val id: String,
+    override val id: String,
+    override val description: String,
     val password: String,
-    val description: String,
     val keyStore: String
 ) : Credential() {
     companion object {

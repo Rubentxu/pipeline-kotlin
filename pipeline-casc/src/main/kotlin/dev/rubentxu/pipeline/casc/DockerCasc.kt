@@ -10,14 +10,14 @@ data class DockerCloudConfig(
     companion object {
 
         fun fromMap(map: Map<String, Any>): DockerCloudConfig {
-           val templatesMap = map.validateAndGet("templates").isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+           val templatesMap = map.validateAndGet("docker.templates").isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
            val templates: List<DockerTemplate> = templatesMap.map {
                return@map DockerTemplate.fromMap(it)
            }
 
            return DockerCloudConfig(
-               name = map.validateAndGet("name").isString().throwIfInvalid("name is required in DockerCloudConfig"),
-               dockerHost = map.validateAndGet("dockerHost").isString().throwIfInvalid("dockerHost is required in DockerCloudConfig"),
+               name = map.validateAndGet("docker.name").isString().throwIfInvalid("name is required in DockerCloudConfig"),
+               dockerHost = map.validateAndGet("docker.dockerApi.dockerHost.uri").isString().throwIfInvalid("dockerHost is required in DockerCloudConfig"),
                templates = templates,
            )
         }
@@ -80,7 +80,7 @@ data class RetentionStrategy(
     companion object {
         fun fromMap(it: Map<String, Any>): RetentionStrategy {
             return RetentionStrategy(
-                idleMinutes = it.validateAndGet("idleMinutes").isNumber().throwIfInvalid("retentionStrategy.idleMinutes is required in DockerTemplate") as Int
+                idleMinutes = it.validateAndGet("retentionStrategy.idleMinutes").isNumber().throwIfInvalid() as Int
             )
         }
     }

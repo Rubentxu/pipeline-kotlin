@@ -2,14 +2,6 @@ package dev.rubentxu.pipeline.casc
 
 import dev.rubentxu.pipeline.validation.validateAndGet
 
-data class JenkinsConfig(
-    val jenkins: Jenkins
-)
-
-data class Jenkins(
-    val clouds: List<Cloud>
-)
-
 
 data class KubernetesConfig(
     val name: String,
@@ -18,8 +10,8 @@ data class KubernetesConfig(
     val skipTlsVerify: Boolean,
     val credentialsId: String,
     val namespace: String,
-    val jenkinsUrl: String,
-    val jenkinsTunnel: String,
+    val pipelineUrl: String,
+    val pipelineTunnel: String,
     val containerCapStr: Int,
     val maxRequestsPerHostStr: Int,
     val retentionTimeout: Int,
@@ -29,25 +21,25 @@ data class KubernetesConfig(
 ) {
     companion object {
         fun fromMap(map: Map<*, *>): KubernetesConfig {
-            val templatesMap: List<Map<String, Any>> = map.validateAndGet("templates").isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val templatesMap: List<Map<String, Any>> = map.validateAndGet("kubernetes.templates").isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
             val templates: List<Template> = templatesMap.map {
                 return@map Template.fromMap(it)
             }
             return KubernetesConfig(
-                name = map.validateAndGet("name").isString().throwIfInvalid("name is required in KubernetesConfig"),
-                serverUrl = map.validateAndGet("serverUrl").isString().throwIfInvalid("serverUrl is required in KubernetesConfig"),
-                serverCertificate = map.validateAndGet("serverCertificate").isString().throwIfInvalid("serverCertificate is required in KubernetesConfig"),
-                skipTlsVerify = map.validateAndGet("skipTlsVerify").isBoolean().defaultValueIfInvalid(false) as Boolean,
-                credentialsId = map.validateAndGet("credentialsId").isString().throwIfInvalid("credentialsId is required in KubernetesConfig"),
-                namespace = map.validateAndGet("namespace").isString().throwIfInvalid("namespace is required in KubernetesConfig"),
-                jenkinsUrl = map.validateAndGet("jenkinsUrl").isString().throwIfInvalid("jenkinsUrl is required in KubernetesConfig"),
-                jenkinsTunnel = map.validateAndGet("jenkinsTunnel").isString().throwIfInvalid("jenkinsTunnel is required in KubernetesConfig"),
-                containerCapStr = map.validateAndGet("containerCapStr").isNumber().defaultValueIfInvalid(10) as Int,
-                maxRequestsPerHostStr = map.validateAndGet("maxRequestsPerHostStr").isNumber().defaultValueIfInvalid(32) as Int,
-                retentionTimeout = map.validateAndGet("retentionTimeout").isNumber().defaultValueIfInvalid(5) as Int,
-                connectTimeout = map.validateAndGet("connectTimeout").isNumber().defaultValueIfInvalid(5) as Int,
-                readTimeout = map.validateAndGet("readTimeout").isNumber().defaultValueIfInvalid(15) as Int,
+                name = map.validateAndGet("kubernetes.name").isString().throwIfInvalid("name is required in KubernetesConfig"),
+                serverUrl = map.validateAndGet("kubernetes.serverUrl").isString().throwIfInvalid("serverUrl is required in KubernetesConfig"),
+                serverCertificate = map.validateAndGet("kubernetes.serverCertificate").isString().throwIfInvalid("serverCertificate is required in KubernetesConfig"),
+                skipTlsVerify = map.validateAndGet("kubernetes.skipTlsVerify").isBoolean().defaultValueIfInvalid(false) as Boolean,
+                credentialsId = map.validateAndGet("kubernetes.credentialsId").isString().throwIfInvalid("credentialsId is required in KubernetesConfig"),
+                namespace = map.validateAndGet("kubernetes.namespace").isString().throwIfInvalid("namespace is required in KubernetesConfig"),
+                pipelineUrl = map.validateAndGet("kubernetes.pipelineUrl").isString().throwIfInvalid("pipelineUrl is required in KubernetesConfig"),
+                pipelineTunnel = map.validateAndGet("kubernetes.pipelineTunnel").isString().throwIfInvalid("pipelineTunnel is required in KubernetesConfig"),
+                containerCapStr = map.validateAndGet("kubernetes.containerCapStr").isNumber().defaultValueIfInvalid(10) as Int,
+                maxRequestsPerHostStr = map.validateAndGet("kubernetes.maxRequestsPerHostStr").isNumber().defaultValueIfInvalid(32) as Int,
+                retentionTimeout = map.validateAndGet("kubernetes.retentionTimeout").isNumber().defaultValueIfInvalid(5) as Int,
+                connectTimeout = map.validateAndGet("kubernetes.connectTimeout").isNumber().defaultValueIfInvalid(5) as Int,
+                readTimeout = map.validateAndGet("kubernetes.readTimeout").isNumber().defaultValueIfInvalid(15) as Int,
                 templates = templates
             )
 

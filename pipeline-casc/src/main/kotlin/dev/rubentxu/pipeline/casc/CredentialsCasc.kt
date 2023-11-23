@@ -17,7 +17,7 @@ sealed class Credential {
                 "file" -> FileCredential.fromMap(credentialMap.get(credentialMap?.keys?.first()) as Map<String, Any>)
                 "certificate" -> CertificateCredential.fromMap(credentialMap.get(credentialMap?.keys?.first()) as Map<String, Any>)
                 else -> {
-                    throw IllegalArgumentException("Invalid credential type")
+                    throw IllegalArgumentException("Invalid credential type for '${credentialMap?.keys?.first()}'")
                 }
             }
         }

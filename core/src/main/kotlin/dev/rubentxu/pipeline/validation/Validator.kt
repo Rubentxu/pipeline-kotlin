@@ -3,13 +3,16 @@ package dev.rubentxu.pipeline.validation
 import kotlin.reflect.KClass
 
 
-open class Validator<K, T>(protected val sut: T?, protected val tag: String = "") {
-    val validationResults: MutableList<ValidationResult> = mutableListOf()
+open class Validator<K, T>(
+    val sut: T?,
+    val tag: String = "",
+    val validationResults: MutableList<ValidationResult> = mutableListOf()) {
+
 
     private val tagMsg: String
         get() = if (tag.isNotEmpty()) "$tag with value " else ""
 
-    fun test(errorMessage: String, predicate: (T) -> Boolean): Validator<*, T> {
+    open fun test(errorMessage: String,  instance: Validator<*,T> = this, predicate: (T) -> Boolean): Validator<*, T> {
         try {
             if (sut == null) {
                 validationResults.add(ValidationResult(false, errorMessage))
@@ -23,7 +26,7 @@ open class Validator<K, T>(protected val sut: T?, protected val tag: String = ""
 
         }
         @Suppress("UNCHECKED_CAST")
-        return this
+        return instance as Validator<*, T>
     }
 
     open val isValid: Boolean
@@ -59,8 +62,10 @@ open class Validator<K, T>(protected val sut: T?, protected val tag: String = ""
     fun isString(): StringValidator =
         StringValidator.from(sut as String?, tag).test("${tagMsg}Must be a string") { it is String } as StringValidator
 
-    fun isNumber(): NumberValidator =
-        NumberValidator.from(sut as Number?, tag).test("${tagMsg}Must be a number") { it is Number } as NumberValidator
+    fun isNumber(): NumberValidator {
+        val value: Number? = if (sut != null)  parseAnyToNumber(sut) else null
+        return test(errorMessage = "${tagMsg}Must be a number", instance = NumberValidator.from(validator = this) as Validator<*, T>) { value is Number } as NumberValidator
+    }
 
 
     fun isList(): CollectionValidator = CollectionValidator.from(sut as List<*>?, tag)
@@ -156,10 +161,19 @@ class MapValidator private constructor(sut: Map<*, *>?, tag: String) : Validator
 
 }
 
-class NumberValidator private constructor(sut: Number?, tag: String = "") :
-    Validator<NumberValidator, Number>(sut, tag) {
+class NumberValidator private constructor(sut: Number?=null, tag: String = "", validationResults: MutableList<ValidationResult> = mutableListOf()) :
+    Validator<NumberValidator, Number>(sut, tag, validationResults) {
+
+        constructor(validator: Validator<*, Number>) : this(validator.sut, validator.tag, validator.validationResults)
+
+
     companion object {
-        fun from(number: Number?, tag: String = ""): NumberValidator = NumberValidator(number, tag)
+        fun from(number: Number?, tag: String = ""): NumberValidator =  NumberValidator(number, tag)
+
+        fun from(validator: Validator<*, *>): NumberValidator  {
+            val number: Number? = if (validator.sut != null)  parseAnyToNumber(validator.sut) else null
+            return NumberValidator(number, validator.tag, validator.validationResults)
+        }
     }
 
     fun moreThan(n: Number): NumberValidator =
@@ -250,3 +264,14 @@ fun <T> T.validate(): Validator<Validator<*, T>, T> = Validator.from(this)
 fun <T> T.validate(tag: String): Validator<Validator<*, T>, T> = Validator.from(this, tag)
 
 
+fun parseAnyToNumber(value: Any): Number? {
+    return when (value) {
+        is Number -> value
+        is String -> when {
+            value.contains(".") -> value.toDoubleOrNull()
+            value.toLongOrNull() != null && value.toLongOrNull()!! < Int.MAX_VALUE -> value.toIntOrNull()
+            else -> value.toLongOrNull()
+        }
+        else -> null
+    }
+}

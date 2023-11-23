@@ -9,18 +9,18 @@ pipeline:
           - labelString: "docker-agent"
             dockerTemplateBase:
               # TODO: pin sha256 or versions when using in production
-              image: "jenkins/agent"
+              image: ${DOCKER_AGENT_IMAGE:-default-docker-agent-image}
               mounts:
                 - "type=tmpfs,destination=/run"
                 - "type=bind,source=/var/run/docker.sock,destination=/var/run/docker.sock"
                 - "type=volume,src=hello,dst=/world"
               environmentsString: |
-                hello=world
-                foo=bar
-            remoteFs: "/home/jenkins/agent"
+                hello=${HELLO_VAR-:HelloWorld}
+                foo=${FOO_VAR}
+            remoteFs: "/home/pipeline/agent"
             connector:
               attach:
-                user: "jenkins"
+                user: "pipeline"
             instanceCapStr: "10"
             retentionStrategy:
               idleMinutes: 1

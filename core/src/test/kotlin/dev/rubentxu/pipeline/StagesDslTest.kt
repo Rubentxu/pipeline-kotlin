@@ -2,8 +2,6 @@ package dev.rubentxu.pipeline
 
 import dev.rubentxu.pipeline.dsl.Step
 import dev.rubentxu.pipeline.dsl.pipeline
-import pipeline.kotlin.extensions.echo
-import pipeline.kotlin.extensions.sh
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.job.JobExecutor
@@ -11,40 +9,40 @@ import dev.rubentxu.pipeline.model.pipeline.Status
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import kotlinx.coroutines.delay
+import pipeline.kotlin.extensions.*
 
 
 class StagesDslTest : StringSpec({
 
     "Pipeline with stages and steps and parallel steps should run" {
         val pipelineDefResult = pipeline {
-            agent {
-                docker {
-                    label = "docker"
-                    image = "alpine"
-                    tag = "latest"
-                }
-            }
-
             environment {
                 "DISABLE_AUTH" += "true"
                 "DB_ENGINE" += "sqlite"
             }
-
             stages {
                 stage("Build") {
                     steps {
+                        delay(1000) {
+                            echo("Delay antes de ejecutar los pasos paralelos")
+                        }
+
                         parallel(
                             "a" to Step {
-                                delay(1000)
-                                echo("This is branch a")
+                                delay(1000) {
+                                    echo("Delay This is branch a")
+                                }
+
                             },
                             "b" to Step {
-                                delay(500)
-                                echo("This is branch b")
+                                delay(300) {
+                                    echo("Delay This is branch b")
+                                }
                             }
                         )
                         sh("pwd", returnStdout = true)
+                        var text = readFile("build.gradle2.kts")
+                        echo(text)
                         echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
                     }
                     post {
@@ -60,7 +58,14 @@ class StagesDslTest : StringSpec({
                 stage("Test") {
                     steps {
                         sh("ls -la", returnStdout = true)
-                        echo("Tests complete")
+                        retry(3) {
+                            delay(3000) {
+                                echo("Tests retry ....")
+                                sh("ls -la .", returnStdout = true)
+                            }
+
+                        }
+
                         sh("ls -la /home", returnStdout = true)
                     }
 
@@ -81,7 +86,7 @@ class StagesDslTest : StringSpec({
             }
         }
 
-        pipelineDefResult.isSuccess shouldBe false
+        pipelineDefResult.isSuccess shouldBe true
 
         PipelineLogger.getLogger().changeLogLevel(LogLevel.DEBUG)
 
@@ -117,12 +122,14 @@ class StagesDslTest : StringSpec({
                     steps {
                         parallel(
                             "a" to Step {
-                                delay(1000)
-                                echo("This is branch a")
+                                delay(1000) {
+                                    echo("This is branch a")
+                                }
                             },
                             "b" to Step {
-                                delay(500)
-                                echo("This is branch b")
+                                delay(500) {
+                                    echo("This is branch b")
+                                }
                             }
                         )
                         sh("pwd", returnStdout = true)

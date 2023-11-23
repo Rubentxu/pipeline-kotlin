@@ -26,26 +26,51 @@ class Shell(val pipeline: Pipeline, var timeout: Long = 15000) {
     suspend fun execute(command: String, returnStdout: Boolean = false): String {
         return withContext(Dispatchers.IO) {
             val process: Process = run(command)
+            val output = StringBuilder()
+            val error = StringBuilder()
 
-            val stdout: InputStream = process.inputStream
-            val stderr: InputStream = process.errorStream
+            // Corutina para manejar la salida estándar
+            val stdOutJob = launch {
+                val stdInput = process.inputStream.bufferedReader()
+                var line: String?
+                while (stdInput.readLine().also { line = it } != null) {
+                    if (returnStdout) {
+                        output.append(line).append("\n")
+                    }
+                    println("STDOUT: $line")
 
-            // Read the output and error (if any)
-            val output: String = stdout.bufferedReader().readText()
-            val error: String = stderr.bufferedReader().readText()
+                }
+            }
+
+            // Corutina para manejar el error stream
+
+            val stdErrJob = launch {
+                val stdError = process.errorStream.bufferedReader()
+                var line: String?
+                while (stdError.readLine().also { line = it } != null) {
+                    if (returnStdout) {
+                        output.append(line).append("\n")
+                    }
+                    logger.error("STDERR: $line")
+
+                }
+            }
+
+            stdOutJob.join()
+            stdErrJob.join()
 
             val exitCode: Int = process.waitFor()
 
             if (exitCode != 0) {
                 throw Exception("Error executing command. Exit code: $exitCode, Error: $error for command: $command")
             }
-            logger.info(output)
+//            logger.info(output)
             if (process.exitValue() == 0) {
                 if (returnStdout) {
-                    return@withContext output
+                    return@withContext output.toString()
                 }
             } else {
-                return@withContext error
+                return@withContext error.toString()
             }
             return@withContext ""
 
@@ -62,8 +87,6 @@ class Shell(val pipeline: Pipeline, var timeout: Long = 15000) {
         }
 
         val directory = File(pipeline.toFullPath(pipeline.workingDir))
-        logger.info("+ sh in working directory $directory")
-        logger.info("+ sh $command")
         return ProcessBuilder("sh", "-c", command)
             .directory(directory)
             .apply {

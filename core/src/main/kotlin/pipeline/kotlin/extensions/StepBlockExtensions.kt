@@ -11,16 +11,16 @@ import java.io.File
  * This function creates a new Shell instance and uses it to execute the provided script. The output of the script
  * is captured and, if the `returnStdout` parameter is set to true, is printed to the standard output.
  *
- * @param script The shell script to execute.
+ * @param command The shell script to execute.
  * @param directory The directory in which to execute the script. Defaults to the current directory.
  * @param returnStdout Whether to print the output of the script to the standard output. Defaults to false.
  * @throws ShellCommandExecutionException If the shell command fails to execute.
  */
-fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String = runBlocking {
+fun StepsBlock.sh(command: String, returnStdout: Boolean = false): String = runBlocking {
     val shell = Shell(pipeline)
-    val output = shell.execute(script, returnStdout)
+    logger.info("+ sh $command")
+    val output = shell.execute(command, returnStdout)
 
-    logger.info("Shell script executed successfully: $script")
     if (returnStdout) {
         return@runBlocking output
     }
@@ -36,15 +36,8 @@ fun StepsBlock.sh(script: String, returnStdout: Boolean = false): String = runBl
  *
  * @param message The message to print.
  */
-/**
- * Prints a message to the standard output.
- *
- * This function is a wrapper around `println` and is used to print a message to the standard output during the execution
- * of a pipeline step.
- *
- * @param message The message to print.
- */
 fun StepsBlock.echo(message: String) {
+    logger.info("+ echo")
     logger.info(message)
 }
 

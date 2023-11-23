@@ -1,6 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
-    id("com.google.devtools.ksp") version "1.8.22-1.0.11"
+    id("com.google.devtools.ksp") version "1.9.20-1.0.14"
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("io.micronaut.application") version "4.0.4"
 }
@@ -14,6 +14,8 @@ version = "1.0-SNAPSHOT"
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":pipeline-casc"))
+
 
     ksp("info.picocli:picocli-codegen")
     ksp("io.micronaut.serde:micronaut-serde-processor")

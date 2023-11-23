@@ -1,6 +1,6 @@
 #!/usr/bin/env kotlin
 import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.extensions.*
+import pipeline.kotlin.extensions.*
 
 println("HOLA MUNDO..................................................")
 println("Is agent -> ${System.getenv("IS_AGENT")} .........")
@@ -37,8 +37,9 @@ pipeline {
                         }
                     }
                 )
-                sh("pwd", returnStdout = true)
-                var text = readFile("build.gradle2.kts")
+                var stdOut = sh("pwd", returnStdout = true)
+                echo(stdOut)
+                var text = readFile("build.gradle.kts")
                 echo(text)
                 echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
             }

@@ -1,14 +1,14 @@
-jenkins:
+pipeline:
   clouds:
     - kubernetes:
         name: "advanced-k8s-config"
-        serverUrl: "https://advanced-k8s-config:443"
+        serverUrl: ${SERVER_URL}
         serverCertificate: "serverCertificate"
         skipTlsVerify: true
         credentialsId: "advanced-k8s-credentials"
         namespace: "default"
-        jenkinsUrl: "http://jenkins/"
-        jenkinsTunnel: "jenkinsTunnel"
+        pipelineUrl: "http://pipeline/"
+        pipelineTunnel: "pipelineTunnel"
         containerCapStr: 42
         maxRequestsPerHostStr: 64
         retentionTimeout: 5
@@ -56,9 +56,9 @@ jenkins:
             nodeUsageMode: EXCLUSIVE
             containers:
               - name: "jnlp"
-                image: "jenkins/inbound-agent:latest"
+                image: "pipeline/inbound-agent:latest"
                 alwaysPullImage: true
-                workingDir: "/home/jenkins"
+                workingDir: "/home/pipeline"
                 ttyEnabled: true
                 resourceRequestCpu: "500m"
                 resourceLimitCpu: "1000m"
@@ -71,7 +71,7 @@ jenkins:
               # Mount the content of the ConfigMap `configmap-name` with the data `config`.
               - configMapVolume:
                   configMapName: configmap-name
-                  mountPath: /home/jenkins/.aws/config
+                  mountPath: /home/pipeline/.aws/config
                   subPath: config
             idleMinutes: "1"
             activeDeadlineSeconds: "120"

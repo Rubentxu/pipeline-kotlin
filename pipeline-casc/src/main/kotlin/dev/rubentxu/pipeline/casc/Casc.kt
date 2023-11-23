@@ -31,12 +31,7 @@ class PipelineConfig(
     ) {
     companion object {
         fun fromMap(map: Map<*, *>): PipelineConfig {
-            val domainCredentials = map.validateAndGet("credentials.system.domainCredentials")
-                .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
-
-            if (domainCredentials.isEmpty()) throw IllegalArgumentException("No credentials found")
-            val credentialsMap = domainCredentials[0].validateAndGet("credentials")
-                .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val credentialsMap = resolveCredentialsMap(map)
 
             val cloudsMap: List<Map<String, Any>> = map.validateAndGet("pipeline.clouds")
                 .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
@@ -50,6 +45,20 @@ class PipelineConfig(
                 credentials = Credentials.fromMap(credentialsMap),
                 clouds = cloudList
             )
+        }
+
+        private fun resolveCredentialsMap(map: Map<*, *>): List<Map<String, Any>> {
+            val domainCredentials = map.validateAndGet("credentials.system.domainCredentials")
+                .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+
+            val credentialsMap = if(domainCredentials.isEmpty()) {
+                emptyList<Map<String, Any>>()
+            } else {
+                domainCredentials?.get(0)?.validateAndGet("credentials")
+                    ?.isList()?.defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            }
+
+            return credentialsMap
         }
     }
 }
@@ -72,14 +81,15 @@ data class DomainCredential(
 )
 
 data class Cloud(
-    val docker: DockerCloudConfig,
-    val kubernetes: KubernetesConfig
+    val docker: DockerCloudConfig?,
+    val kubernetes: KubernetesConfig?
 ) {
     companion object {
         fun fromMap(map: Map<String, Any>): Cloud {
+
             return Cloud(
-                docker = DockerCloudConfig.fromMap(map),
-                kubernetes = KubernetesConfig.fromMap(map)
+                docker = if (map.containsKey("docker")) DockerCloudConfig.fromMap(map) else null,
+                kubernetes = if (map.containsKey("kubernetes")) KubernetesConfig.fromMap(map) else null
             )
         }
     }

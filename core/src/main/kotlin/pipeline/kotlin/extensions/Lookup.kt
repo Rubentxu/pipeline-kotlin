@@ -32,6 +32,7 @@ fun String.environmentVariableLookup(): Result<String> {
         val matchResult = regexEnvironmentVariable.matchEntire(this)
         val (envVar, _,defaultValue) = matchResult!!.destructured
         val envVarValue = System.getenv(envVar)
+
         if (envVarValue != null) {
             return success(envVarValue)
         } else {
@@ -39,7 +40,7 @@ fun String.environmentVariableLookup(): Result<String> {
                 return success(defaultValue)
             } else {
                 return failure(
-                    LookupException("Error in environment variable lookup", Exception("Environment variable not found for key: $this")
+                    LookupException("Error in environment variable lookup. Variable not found for key: $this", Exception("Environment variable not found for key: $this")
                     )
                 )
             }

@@ -16,6 +16,7 @@ class StagesDslTest : StringSpec({
 
     "Pipeline with stages and steps and parallel steps should run" {
         val pipelineDefResult = pipeline {
+
             environment {
                 "DISABLE_AUTH" += "true"
                 "DB_ENGINE" += "sqlite"

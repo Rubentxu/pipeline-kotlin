@@ -35,7 +35,7 @@ class Pipeline(
     /**
      * The working directory for this pipeline, defaulting to the user's current directory.
      */
-    internal val workingDir: Path = Path.of(System.getProperty("user.dir"))
+    val workingDir: Path = Path.of(System.getProperty("user.dir"))
 
     var stageResults = mutableListOf<StageResult>()
 

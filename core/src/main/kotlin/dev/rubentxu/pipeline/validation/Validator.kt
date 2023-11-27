@@ -48,11 +48,11 @@ open class Validator<K, T>(
         return sut ?: throw IllegalStateException("Subject under test is null")
     }
 
-    fun defaultValueIfInvalid(defaultValue: Any): Any {
+    fun <D> defaultValueIfInvalid(defaultValue: D): D {
         if (!isValid) {
             return defaultValue
         }
-        return sut!!
+        return sut as D
     }
 
     fun getValue(): T? {
@@ -94,6 +94,14 @@ open class Validator<K, T>(
         test("${tagMsg}Must be a boolean") { it is Boolean }
         @Suppress("UNCHECKED_CAST")
         return this as Validator<K, Boolean>
+    }
+
+    fun dependsOn(context: Map<String, Any>, vararg dependsOnKeys: String): Validator<K, T> {
+        test("${tagMsg}Must have all the dependencies: ${dependsOnKeys.joinToString()}") {
+            dependsOnKeys.all { key -> context.containsKey(key) }
+        }
+        @Suppress("UNCHECKED_CAST")
+        return this as Validator<K, T>
     }
 
     companion object {
@@ -156,6 +164,11 @@ class MapValidator private constructor(sut: Map<*, *>?, tag: String) : Validator
         if (key == null) return null
         val result = sut?.findDeep(key)
         return if (result is String) result.trim() else result
+    }
+
+    fun containsKeyByPath(key: String?): Boolean {
+        if (key == null) return false
+        return sut?.findDeep(key) != null
     }
 
 

@@ -14,7 +14,7 @@ version = "1.0-SNAPSHOT"
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":pipeline-casc"))
+    implementation(project(":pipeline-config"))
 
 
     ksp("info.picocli:picocli-codegen")

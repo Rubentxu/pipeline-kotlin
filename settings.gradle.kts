@@ -11,6 +11,6 @@ pluginManagement {
 rootProject.name = "pipeline-kotlin"
 
 include(":core")
-//include("pipeline-script")
 include(":pipeline-cli")
-include(":pipeline-casc")
+include(":pipeline-config")
+include(":lib-examples")

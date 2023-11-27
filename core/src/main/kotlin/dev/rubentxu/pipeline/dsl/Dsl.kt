@@ -23,3 +23,4 @@ fun pipeline(block: PipelineBlock.() -> Unit): Result<PipelineDefinition> {
         Result.failure(e) // Retorna un Result con error
     }
 }
+

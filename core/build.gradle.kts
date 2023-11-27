@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm")
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.0-Beta1"
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.21"
     id("io.kotest") version "0.4.10"
 
 }

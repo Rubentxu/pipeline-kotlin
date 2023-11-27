@@ -1,6 +1,6 @@
 #!/usr/bin/env kotlin
 import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.extensions.*
+import pipeline.kotlin.extensions.*
 
 println("HOLA MUNDO..................................................")
 

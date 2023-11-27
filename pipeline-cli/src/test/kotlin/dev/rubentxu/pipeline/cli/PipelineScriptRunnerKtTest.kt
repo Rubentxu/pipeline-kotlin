@@ -24,6 +24,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val result = evalWithScriptEngineManager(scriptFile, configFile)
         println("result: $result")
 
+
     }
 //
     "eval script pipeline dsl" {
@@ -44,8 +45,6 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val errorMessage = """
     javax.script.ScriptException: ERROR Function invocation 'any(...)' expected (ScriptingHost474821de_Line_0.kts:9:11)
   """
-
-        // El resto del código es igual
 
         val regex = """ERROR (.*) expected \(ScriptingHost.*.kts:(\d+):(\d+)\)""".toRegex()
 

@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.casc
+package dev.rubentxu.pipeline.model
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe

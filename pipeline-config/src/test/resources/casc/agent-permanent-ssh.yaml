@@ -1,0 +1,13 @@
+pipeline:
+  agents:
+    - permanent:
+        name: "linux-node"
+        remoteFS: "/home/build/pipeline-agent"
+        numExecutors: 2
+        labelString: ${AGENT_LABEL}
+        mode: NORMAL
+        launcher:
+          SSHLauncher:
+            host: ${PIPELINE_AGENT_HOST}
+            port: 22
+            credentialsId: "ssh-credential-id"

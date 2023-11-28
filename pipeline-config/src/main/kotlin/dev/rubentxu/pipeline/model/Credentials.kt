@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.config.Configuration
+import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 

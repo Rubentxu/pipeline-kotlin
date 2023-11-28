@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.events.Event
 import dev.rubentxu.pipeline.events.EventManager
 import dev.rubentxu.pipeline.events.StartEvent
 import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.steps.Configurable
 import dev.rubentxu.pipeline.steps.EnvVars
 import java.nio.file.Path
@@ -22,7 +23,8 @@ class Pipeline(
     val agent: Agent,
     val stages: List<StageExecutor>,
     val env: EnvVars,
-    val postExecution: PostExecution
+    val postExecution: PostExecution,
+    pipelineConfig: IPipelineConfig
 ) : Configurable {
 
     private val logger = PipelineLogger.getLogger()

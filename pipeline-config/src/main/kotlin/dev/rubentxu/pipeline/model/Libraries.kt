@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.config.Configuration
+import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 
@@ -8,7 +10,7 @@ data class GlobalLibrariesConfig(
 ): Configuration {
     companion object: MapConfigurationBuilder<GlobalLibrariesConfig> {
         override fun build(data: Map<String, Any>): GlobalLibrariesConfig {
-            val librariesMap = data.validateAndGet("libraries")
+            val librariesMap = data.validateAndGet("pipeline.globalLibraries.libraries")
                 .isList()
                 .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
@@ -45,7 +47,7 @@ sealed class Retriever: Configuration{
     companion object: MapConfigurationBuilder<Retriever> {
         override fun build(data: Map<String, Any>): Retriever {
             return when (data?.keys?.first()) {
-                "scm" -> Scm.build(data.get(data?.keys?.first()) as Map<String, Any>)
+                "gitSCM" -> GitSCMRetriever.build(data.get(data?.keys?.first()) as Map<String, Any>)
                 "local" -> Local.build(data.get(data?.keys?.first()) as Map<String, Any>)
                 else -> {
                     throw IllegalArgumentException("Invalid retriever type for '${data?.keys?.first()}'")
@@ -54,22 +56,7 @@ sealed class Retriever: Configuration{
         }
     }
 }
-data class Scm(
-    val git: GitRetriever
-) : Retriever() {
-    companion object: MapConfigurationBuilder<Scm> {
-        override fun build(data: Map<String, Any>): Scm {
-            val gitMap = data.validateAndGet("git")
-                .isMap()
-                .throwIfInvalid("git is required in Scm") as Map<String, Any>
 
-            return Scm(
-                git = GitRetriever.build(gitMap)
-            )
-        }
-    }
-
-}
 
 data class Local(
     val path: String
@@ -85,15 +72,15 @@ data class Local(
 }
 
 
-data class GitRetriever(
+data class GitSCMRetriever(
     val remote: String,
     val credentialsId: String
-) : Configuration {
-    companion object: MapConfigurationBuilder<GitRetriever> {
-        override fun build(data: Map<String, Any>): GitRetriever {
-            return GitRetriever(
-                remote = data.validateAndGet("remote").isString().throwIfInvalid("remote is required in GitRetriever"),
-                credentialsId = data.validateAndGet("credentialsId").isString().throwIfInvalid("credentialsId is required in GitRetriever")
+) : Retriever() {
+    companion object: MapConfigurationBuilder<GitSCMRetriever> {
+        override fun build(data: Map<String, Any>): GitSCMRetriever {
+            return GitSCMRetriever(
+                remote = data.validateAndGet("remote").isString().throwIfInvalid("Value for remote is required in path 'pipeline.globalLibraries.libraries[n].retriever.gitSCM.remote'"),
+                credentialsId = data.validateAndGet("credentialsId").isString().throwIfInvalid("Value for credentialsId is required in path 'pipeline.globalLibraries.libraries[n].retriever.gitSCM.credentialsId'")
             )
         }
     }

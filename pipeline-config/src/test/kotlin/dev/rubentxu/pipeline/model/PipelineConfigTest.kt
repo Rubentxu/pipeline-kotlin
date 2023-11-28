@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.agents.PermanentAgentConfig
+import dev.rubentxu.pipeline.model.agents.SSHLauncherConfig
+import dev.rubentxu.pipeline.model.agents.TemporaryAgentConfig
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -96,6 +99,87 @@ class PipelineConfigTest : StringSpec({
 
         }
 
+    }
+
+    "Should get Pipeline Config from the shared libraries config file" {
+        val cascManager = CascManager()
+
+        val environmentVariables = mapOf(
+            "LIBRARY_NAME" to "pipeline-kts",
+            "LIBRARY_DEFAULT_VERSION" to "master",
+            "LIBRARY_REPOSITORY" to "",
+            "LIBRARY_LOAD_GROOVY_HOOK_SCRIPTS" to "true",
+            "LIBRARY_ALLOW_DEFAULT_VERSION_TO_BE_OVERWRITTEN" to "false",
+        )
+
+        EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
+            val resourcePath = PipelineConfigTest::class.java.classLoader.getResource("casc/global-libraries.yaml").path
+            val testYamlPath = Path.of(resourcePath)
+            val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
+
+            config.globalLibraries.libraries.size shouldBe 1
+            config.globalLibraries.libraries[0].name shouldBe "internal-pipeline-library"
+            config.globalLibraries.libraries[0].retriever shouldBe GitSCMRetriever(remote="git@github.com:furry-octo-lamp-inc/pipeline-library.git", credentialsId="reimagined-parakeet-ssh")
+
+        }
+
+
+    }
+
+    "Should get Pipeline Config from the Permanent Agent config file" {
+        val cascManager = CascManager()
+
+        val environmentVariables = mapOf(
+            "PIPELINE_AGENT_HOST" to "192.168.1.100",
+            "AGENT_LABEL" to "PipelineAgentTest",
+        )
+
+         EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
+             val resourcePath =
+                 PipelineConfigTest::class.java.classLoader.getResource("casc/agent-permanent-ssh.yaml").path
+             val testYamlPath = Path.of(resourcePath)
+             val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
+
+             val agentResult: PermanentAgentConfig = config.agents[0] as PermanentAgentConfig
+
+             config.agents.size shouldBe 1
+             agentResult.name shouldBe "linux-node"
+             agentResult.remoteFS shouldBe "/home/build/pipeline-agent"
+             agentResult.numExecutors shouldBe 2
+             agentResult.labelString shouldBe "PipelineAgentTest"
+             agentResult.mode shouldBe "NORMAL"
+             agentResult.launcher shouldBe SSHLauncherConfig(
+                    host = "192.168.1.100",
+                    port = 22,
+                    credentialsId = "ssh-credential-id"
+                )
+
+         }
+
+    }
+
+    "Should get Pipeline Config from the Temporary Agent config file" {
+        val cascManager = CascManager()
+
+        val environmentVariables = mapOf(
+            "AGENT_LABEL" to "tempLabel",
+        )
+
+        EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
+            val resourcePath =
+                PipelineConfigTest::class.java.classLoader.getResource("casc/agent-temporary.yaml").path
+            val testYamlPath = Path.of(resourcePath)
+            val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
+
+            val agentResult = config.agents[0] as TemporaryAgentConfig
+
+            config.agents.size shouldBe 1
+            agentResult.name shouldBe "temp-node"
+            agentResult.remoteFS shouldBe "/home/build/pipeline-agent-temp"
+            agentResult.numExecutors shouldBe 1
+            agentResult.labelString shouldBe "tempLabel"
+            agentResult.mode shouldBe "NORMAL"
+        }
     }
 
 

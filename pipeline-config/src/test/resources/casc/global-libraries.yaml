@@ -1,0 +1,8 @@
+pipeline:
+  globalLibraries:
+    libraries:
+      - name: "internal-pipeline-library"
+        retriever:
+          gitSCM:
+            remote: "git@github.com:furry-octo-lamp-inc/pipeline-library.git"
+            credentialsId: "reimagined-parakeet-ssh"

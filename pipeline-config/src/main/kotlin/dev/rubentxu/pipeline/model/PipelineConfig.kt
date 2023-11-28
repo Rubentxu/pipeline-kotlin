@@ -1,5 +1,12 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.agents.AgentConfig
+import dev.rubentxu.pipeline.model.agents.DockerCloudConfig
+import dev.rubentxu.pipeline.model.agents.KubernetesConfig
+import dev.rubentxu.pipeline.model.config.Configuration
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
+import dev.rubentxu.pipeline.model.config.ListMapConfigurationBuilder
+import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
 import dev.rubentxu.pipeline.steps.EnvVars
 import pipeline.kotlin.extensions.deserializeYamlFileToMap
 import dev.rubentxu.pipeline.validation.validateAndGet
@@ -7,23 +14,6 @@ import pipeline.kotlin.extensions.resolveValueExpressions
 import java.nio.file.Path
 import kotlin.Result.Companion.failure
 import kotlin.Result.Companion.success
-
-
-interface Configuration {
-
-}
-
-interface ConfigurationBuider
-
-interface MapConfigurationBuilder<T: Configuration> : ConfigurationBuider {
-    fun build(data: Map<String, Any>): T?
-}
-
-interface ListMapConfigurationBuilder <T: Configuration> : ConfigurationBuider {
-    fun build(data: List<Map<String, Any>>): T?
-}
-
-
 
 class CascManager {
     fun resolveConfig(path: Path): Result<PipelineConfig> {
@@ -45,9 +35,10 @@ data class PipelineConfig(
     val clouds: List<Cloud>?,
     val scm: ScmConfig,
     val globalLibraries: GlobalLibrariesConfig,
-    val environmentVars: EnvVars
+    val environmentVars: EnvVars,
+    val agents: List<AgentConfig>,
 
-): Configuration {
+    ): IPipelineConfig {
     companion object: MapConfigurationBuilder<PipelineConfig> {
         private fun resolveCredentialsMap(map: Map<*, *>): List<Map<String, Any>> {
             val domainCredentials = map.validateAndGet("credentials.system.domainCredentials")
@@ -75,12 +66,21 @@ data class PipelineConfig(
                 return@map Cloud.build(it)
             }
 
+
+            val agentsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.agents")
+                .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+
+            val agentsList: List<AgentConfig> =  agentsMap.map {
+                return@map AgentConfig.build(it)
+            }
+
             return PipelineConfig(
                 credentials = Credentials.build(credentialsMap),
                 clouds = cloudList,
                 scm = ScmConfig.fromMap(data),
                 globalLibraries = GlobalLibrariesConfig.build(data),
-                environmentVars = EnvVars(data.mapValues { it.value.toString() } )
+                environmentVars = EnvVars(data.mapValues { it.value.toString() } ),
+                agents = agentsList
             )
         }
     }

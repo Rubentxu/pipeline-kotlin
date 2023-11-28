@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.dsl
 
 
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
 
@@ -58,12 +59,13 @@ class PipelineBlock() {
      *
      * @return A Pipeline instance representing the pipeline.
      */
-    fun build(): Pipeline {
+    fun build(configuration: IPipelineConfig): Pipeline {
         return Pipeline(
             stages = stages,
             agent = agent,
             env = env,
             postExecution = postExecution,
+            pipelineConfig = configuration
         )
     }
 

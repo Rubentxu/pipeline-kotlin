@@ -1,15 +1,13 @@
 package dev.rubentxu.pipeline.backend
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.readValue
 import dev.rubentxu.pipeline.backend.agent.docker.ContainerLifecycleManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
-import dev.rubentxu.pipeline.cli.PipelineCliCommand
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
+import dev.rubentxu.pipeline.model.CascManager
+import dev.rubentxu.pipeline.model.PipelineConfig
 import dev.rubentxu.pipeline.model.job.JobExecutor
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
@@ -20,34 +18,42 @@ import javax.script.ScriptEngine
 import javax.script.ScriptEngineManager
 
 
-fun evalWithScriptEngineManager(
-    scriptPath: String,
-    configPath: String,
-    jarLocation: File = File(PipelineCliCommand::class.java.protectionDomain.codeSource.location.toURI())
-): PipelineResult {
-    val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
 
-    val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
-    logger.info("Pipeline executable: ${pipelineExecutable.absolutePath}")
-    logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
+class PipelineScriptRunner {
 
-    logger.info("JAR location: ${jarLocation.absolutePath}")
-    val resolveExecutablePath =
-        if (pipelineExecutable.exists()) pipelineExecutable.absolutePath else jarLocation.absolutePath
-    logger.info("Resolve executable path: $resolveExecutablePath")
+    companion object {
+        @JvmStatic
+        fun evalWithScriptEngineManager(
+            scriptPath: String,
+            configPath: String,
+            jarLocation: File = File(PipelineScriptRunner::class.java.protectionDomain.codeSource.location.toURI()),
+            logger: PipelineLogger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
+        ): PipelineResult {
 
-    return try {
-        val pipelineDef = evaluateScriptFile(scriptPath)
-        logger.system("Pipeline definition: $pipelineDef")
-        val pipeline = buildPipeline(pipelineDef)
-        logger.system("Build Pipeline: $pipeline")
-        executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
+            val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
+            logger.info("Pipeline executable: ${pipelineExecutable.absolutePath}")
+            logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
 
-    } catch (e: Exception) {
-        handleScriptExecutionException(e, logger)
-        PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+            logger.info("JAR location: ${jarLocation.absolutePath}")
+            val resolveExecutablePath =
+                if (pipelineExecutable.exists()) pipelineExecutable.absolutePath else jarLocation.absolutePath
+            logger.info("Resolve executable path: $resolveExecutablePath")
+
+            return try {
+                val pipelineDef = evaluateScriptFile(scriptPath)
+                logger.system("Pipeline definition: $pipelineDef")
+                val pipeline = buildPipeline(pipelineDef)
+                logger.system("Build Pipeline: $pipeline")
+                executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
+
+            } catch (e: Exception) {
+                handleScriptExecutionException(e, logger)
+                PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+            }
+        }
     }
 }
+
 
 fun getScriptEngine(): ScriptEngine =
     ScriptEngineManager().getEngineByExtension("kts")
@@ -71,7 +77,14 @@ fun executePipeline(
 ): PipelineResult {
 
     val listOfPaths = listOf(scriptPath, configPath, executablePath).map { normalizeAndAbsolutePath(it) }
-    val configuration = readConfigFile(normalizeAndAbsolutePath(configPath).toString())
+//    val configuration = readConfigFile(normalizeAndAbsolutePath(configPath).toString())
+    val configurationResult = CascManager().resolveConfig(normalizeAndAbsolutePath(configPath))
+
+    if (configurationResult.isFailure) {
+        logger.error("Error reading config file: ${configurationResult.exceptionOrNull()?.message}")
+        return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+    }
+    val configuration = configurationResult.getOrThrow()
 
     val isAgentEnv = System.getenv("IS_AGENT")
     logger.system("Env isAgent: $isAgentEnv")
@@ -106,7 +119,7 @@ fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger,
     }
 }
 
-fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>): PipelineResult {
+fun executeWithAgent(pipeline: Pipeline, config: PipelineConfig, paths: List<Path>): PipelineResult {
     val agent = pipeline.agent
     val logger = PipelineLogger.getLogger()
 
@@ -125,7 +138,7 @@ fun executeWithAgent(pipeline: Pipeline, config: Config, paths: List<Path>): Pip
     return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
-fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>): PipelineResult {
+fun executeInDockerAgent(agent: DockerAgent, config: PipelineConfig, paths: List<Path>): PipelineResult {
     val dockerClientProvider = DockerConfigManager(agent)
     val imageBuilder = DockerImageBuilder(dockerClientProvider)
     val containerManager = ContainerLifecycleManager(dockerClientProvider)
@@ -135,15 +148,6 @@ fun executeInDockerAgent(agent: DockerAgent, config: Config, paths: List<Path>):
     return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
-fun readConfigFile(configFilePath: String): Config {
-    val mapper = ObjectMapper(YAMLFactory())
-    mapper.findAndRegisterModules()
-
-    val configFile = File(configFilePath)
-    if (!configFile.exists()) throw Exception("Config file not found")
-
-    return mapper.readValue(configFile)
-}
 
 fun normalizeAndAbsolutePath(file: String): Path {
     return Path.of(file).toAbsolutePath().normalize()

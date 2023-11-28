@@ -1,10 +1,14 @@
 package dev.rubentxu.pipeline.cli
 
-
-import ch.qos.logback.classic.Logger
+//
+//import ch.qos.logback.classic.Logger
+//import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.LoggerContext
-import dev.rubentxu.pipeline.backend.evalWithScriptEngineManager
+import dev.rubentxu.pipeline.backend.PipelineScriptRunner
 import dev.rubentxu.pipeline.backend.normalizeAndAbsolutePath
+import dev.rubentxu.pipeline.logger.LogLevel
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
 import io.micronaut.configuration.picocli.PicocliRunner
 import org.slf4j.LoggerFactory
 import picocli.CommandLine.Command
@@ -34,23 +38,27 @@ class PipelineCliCommand() : Runnable {
             println("Config path: ${normalizeAndAbsolutePath(configPath)}")
             println("Script path: ${normalizeAndAbsolutePath(scriptPath)}")
         }
-
-        evalWithScriptEngineManager(
+//        val logConfiguration = SocketLogConfigurationStrategy()
+//        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+//        logConfiguration.configure(loggerContext, LogLevel.TRACE)
+//        val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = logConfiguration)
+//        logger.info("Pipeline CLI started...")
+        PipelineScriptRunner.evalWithScriptEngineManager(
             scriptPath,
             configPath,
-
+//            logger = logger
             )
 
 
-        detachAndStopAllAppenders()
+//        detachAndStopAllAppenders()
     }
 
-    private fun detachAndStopAllAppenders() {
-        // Stop all appenders from showing micronaut related traces
-        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
-        val rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME)
-        rootLogger.detachAndStopAllAppenders()
-    }
+//    private fun detachAndStopAllAppenders() {
+//        // Stop all appenders from showing micronaut related traces
+//        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+//        val rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME)
+//        rootLogger.detachAndStopAllAppenders()
+//    }
 
 
     companion object {

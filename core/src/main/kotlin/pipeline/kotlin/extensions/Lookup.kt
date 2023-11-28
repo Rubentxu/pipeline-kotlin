@@ -140,7 +140,6 @@ fun Path.deserializeYamlFileToMap(): Result<Map<String, Any>> {
     return try {
         val content = String(Files.readAllBytes(this), StandardCharsets.UTF_8)
         val yaml = Yaml().load(content) as Map<String, Any>
-//        val yaml = Yaml(Constructor(HashMap.class, LoaderOptions())).load(content) as Map<String, Any>
         success(yaml)
     } catch (e: Exception) {
         failure(LookupException("Error in YAML lookup ${e.javaClass.simpleName} ${e.message}", e))

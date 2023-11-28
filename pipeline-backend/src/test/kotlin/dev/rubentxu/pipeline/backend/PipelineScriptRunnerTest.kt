@@ -1,19 +1,13 @@
-package dev.rubentxu.pipeline.cli
+package dev.rubentxu.pipeline.backend
 
-import dev.rubentxu.pipeline.backend.evalWithScriptEngineManager
 import dev.rubentxu.pipeline.model.pipeline.PipelineResult
 import dev.rubentxu.pipeline.model.pipeline.Status
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
-import io.micronaut.configuration.picocli.PicocliRunner
-import io.micronaut.context.ApplicationContext
-import io.micronaut.context.env.Environment
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.PrintStream
 
-class PipelineScriptRunnerKtTest : StringSpec({
+
+class PipelineScriptRunnerTest : StringSpec({
 
 
     "eval script hello world" {
@@ -21,7 +15,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val configFile = File("testData/config.yaml").path
 
         println("scriptFile: $scriptFile")
-        val result = evalWithScriptEngineManager(scriptFile, configFile)
+        val result = PipelineScriptRunner.evalWithScriptEngineManager(scriptFile, configFile)
         println("result: $result")
 
 
@@ -31,7 +25,7 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val scriptFile = File("testData/error.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
 
-        val result = evalWithScriptEngineManager(scriptFile, configFile)
+        val result = PipelineScriptRunner.evalWithScriptEngineManager(scriptFile, configFile)
 
         println("result: $result")
 
@@ -64,20 +58,11 @@ class PipelineScriptRunnerKtTest : StringSpec({
         val configFile = File("testData/config.yaml").path
         val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar")
 
-        val result: PipelineResult = evalWithScriptEngineManager(scriptFile, configFile, jarFile)
+        val result: PipelineResult = PipelineScriptRunner.evalWithScriptEngineManager(scriptFile, configFile, jarFile)
         println("result with scriptManager: $result")
         println(result)
         result.status shouldBe Status.Success
     }
 
-    "execute pipeline main function" {
-        val ctx = ApplicationContext.run(Environment.CLI, Environment.TEST)
-        val baos = ByteArrayOutputStream()
-        System.setOut(PrintStream(baos))
-
-        val args = arrayOf("-c", "testData/config.yaml", "-s", "testData/success.pipeline.kts")
-        PicocliRunner.run(PipelineCliCommand::class.java, ctx, *args)
-        baos.toString() shouldContain "HOLA MUNDO..."
-    }
 
 })

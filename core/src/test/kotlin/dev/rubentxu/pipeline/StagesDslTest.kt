@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.dsl.Step
 import dev.rubentxu.pipeline.dsl.pipeline
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.job.JobExecutor
 import dev.rubentxu.pipeline.model.pipeline.Status
 import io.kotest.core.spec.style.StringSpec
@@ -32,17 +33,27 @@ class StagesDslTest : StringSpec({
                             "a" to Step {
                                 delay(1000) {
                                     echo("Delay This is branch a")
+                                    echo("Coroutine A ${Thread.currentThread().name}")
                                 }
+                                echo("Coroutine A2 ${Thread.currentThread().name}")
 
                             },
                             "b" to Step {
                                 delay(300) {
                                     echo("Delay This is branch b")
                                 }
+                                delay(300) {
+                                    echo("Coroutine B ${Thread.currentThread().name}")
+                                }
+                                delay(500) {
+                                    echo("Coroutine B ${Thread.currentThread().name}")
+                                }
+                                Thread.sleep(3000L)
+                                echo("Coroutine B2 ${Thread.currentThread().name}")
                             }
                         )
                         sh("pwd", returnStdout = true)
-                        var text = readFile("build.gradle2.kts")
+                        var text = readFile("build.gradle.kts")
                         echo(text)
                         echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
                     }
@@ -91,7 +102,9 @@ class StagesDslTest : StringSpec({
 
         PipelineLogger.getLogger().changeLogLevel(LogLevel.DEBUG)
 
-        val pipeline = pipelineDefResult.getOrNull()!!.build()
+        val config: IPipelineConfig = PipelineConfigTest()
+
+        val pipeline = pipelineDefResult.getOrNull()!!.build(config)
         val executor = JobExecutor()
         val result = executor.execute(pipeline)
 
@@ -149,7 +162,9 @@ class StagesDslTest : StringSpec({
 
         pipelineDefResult.isSuccess shouldBe true
 
-        val pipeline = pipelineDefResult.getOrNull()!!.build()
+        val config: IPipelineConfig = PipelineConfigTest()
+
+        val pipeline = pipelineDefResult.getOrNull()!!.build(config)
         val executor = JobExecutor()
         val result = executor.execute(pipeline)
 
@@ -195,7 +210,9 @@ class StagesDslTest : StringSpec({
 
 
         pipelineDefResult.isSuccess shouldBe true
-        val pipeline = pipelineDefResult.getOrNull()!!.build()
+        val config: IPipelineConfig = PipelineConfigTest()
+
+        val pipeline = pipelineDefResult.getOrNull()!!.build(config)
         val executor = JobExecutor()
         val result = executor.execute(pipeline)
 //        result.status shouldBe Status.Failure

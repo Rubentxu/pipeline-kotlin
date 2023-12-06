@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.dsl.interfaces
 
-interface IWorkspace {
+import java.nio.file.Path
 
+interface IWorkspace {
+    val workspace: Path
     fun checkWatchedFiles(abortPipeline: Boolean = true): Boolean
     fun checkWatchedFiles(abortPipeline: Boolean, inclusions: List<String>, exclusions: List<String>): Boolean
 

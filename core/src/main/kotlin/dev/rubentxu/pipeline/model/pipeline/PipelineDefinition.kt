@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.model.config.IPipelineConfig
 
 
 class PipelineDefinition(val block: PipelineBlock.() -> Unit) {
-    fun build(configuration: IPipelineConfig): Pipeline {
-        return PipelineBlock().apply(block).build(configuration)
+    fun build(): Pipeline {
+        return PipelineBlock().apply(block).build()
     }
 }

@@ -31,7 +31,7 @@ class CascManager {
 }
 
 data class PipelineConfig(
-    val credentials: Credentials?,
+    val credentialsConfig: CredentialsConfig?,
     val clouds: List<Cloud>?,
     val scm: ScmConfig,
     val globalLibraries: GlobalLibrariesConfig,
@@ -75,7 +75,7 @@ data class PipelineConfig(
             }
 
             return PipelineConfig(
-                credentials = Credentials.build(credentialsMap),
+                credentialsConfig = CredentialsConfig.build(credentialsMap),
                 clouds = cloudList,
                 scm = ScmConfig.fromMap(data),
                 globalLibraries = GlobalLibrariesConfig.build(data),
@@ -86,15 +86,15 @@ data class PipelineConfig(
     }
 }
 
-data class Credentials(val credentials: List<Credential>): Configuration {
-    companion object: ListMapConfigurationBuilder<Credentials> {
-        override fun build(data: List<Map<String, Any>>): Credentials? {
+data class CredentialsConfig(val credentialConfigs: List<CredentialConfig>): Configuration {
+    companion object: ListMapConfigurationBuilder<CredentialsConfig> {
+        override fun build(data: List<Map<String, Any>>): CredentialsConfig? {
             if (data.isEmpty()) return null
 
-            val credentialList: List<Credential> = data.map {
-                return@map Credential.build(it)
+            val credentialConfigLists: List<CredentialConfig> = data.map {
+                return@map CredentialConfig.build(it)
             }
-            return Credentials(credentialList)
+            return CredentialsConfig(credentialConfigLists)
         }
     }
 }

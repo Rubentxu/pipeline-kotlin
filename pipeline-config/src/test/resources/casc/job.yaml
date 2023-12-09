@@ -1,0 +1,54 @@
+pipeline:
+  jobs:
+    - name: "pipeline-job"
+      scm:
+        git:
+          remote:
+            url: ""
+            credentialsId: ""
+            branches:
+              - "**"
+      triggers:
+        - cron: "H/5 * * * *"
+      scriptPath: "Jenkinsfile"
+      environmentVars:
+        JOB_NAME: Ejemplo-pipeline
+        MENSAJE: Hola Mundo
+      publisher:
+        mailer:
+            recipients: "admin@localhost"
+            notifyEveryUnstableBuild: true
+            sendToIndividuals: true
+        archiveArtifacts:
+          artifacts: "target/*.jar"
+          excludes: "target/*.war"
+          fingerprint: true
+          onlyIfSuccessful: true
+          allowEmptyArchive: true
+        junit:
+          testResults: "target/surefire-reports/*.xml"
+      parameters:
+        - string:
+            name: "FOO"
+            defaultValue: "BAR"
+            description: "FOO BAR"
+        - choice:
+            name: "BAZ"
+            choices:
+              - "1"
+              - "2"
+            description: "BAZ"
+        - boolean:
+            name: "QUX"
+            defaultValue: true
+            description: "QUX"
+        - password:
+            name: "QUUX"
+            defaultValue: "QUUX"
+            description: "QUUX"
+        - text:
+            name: "CORGE"
+            defaultValue: "CORGE"
+            description: "CORGE"
+
+

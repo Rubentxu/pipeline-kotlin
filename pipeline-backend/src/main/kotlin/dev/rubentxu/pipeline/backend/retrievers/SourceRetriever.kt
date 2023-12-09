@@ -1,18 +1,11 @@
 package dev.rubentxu.pipeline.backend.retrievers
 
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
+import dev.rubentxu.pipeline.model.retrievers.LibrarySourceRetriever
+import dev.rubentxu.pipeline.model.retrievers.PipelineSourceRetriever
+import dev.rubentxu.pipeline.model.retrievers.ProjectSourceRetriever
 import java.io.File
 
-interface SourceRetriever {
-
-    fun retrieve(config: IPipelineConfig): File
-}
-
-interface ProjectSourceRetriever: SourceRetriever
-
-interface LibrarySourceRetriever: SourceRetriever
-
-interface PipelineSourceRetriever: SourceRetriever
 
 class ProjectLocalSourceRetriever: ProjectSourceRetriever {
     override fun retrieve(config: IPipelineConfig): File {

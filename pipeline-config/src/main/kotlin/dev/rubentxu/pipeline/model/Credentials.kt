@@ -2,22 +2,25 @@ package dev.rubentxu.pipeline.model
 
 import dev.rubentxu.pipeline.model.config.Configuration
 import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
+import dev.rubentxu.pipeline.model.credentials.Credentials
+import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 
-sealed class Credential: Configuration {
+
+sealed class CredentialConfig: Configuration {
     abstract val id: String
     abstract val description: String
 
-    companion object: MapConfigurationBuilder<Credential> {
-        override fun build(data: Map<String, Any>): Credential {
+    companion object: MapConfigurationBuilder<CredentialConfig> {
+        override fun build(data: Map<String, Any>): CredentialConfig {
             return when (data?.keys?.first()) {
                 "basicSSHUserPrivateKey" -> BasicSSHUserPrivateKey.build(data.get(data?.keys?.first()) as Map<String, Any>)
                 "usernamePassword" -> UsernamePassword.build(data.get(data?.keys?.first()) as Map<String, Any>)
-                "string" -> StringCredential.build(data.get(data?.keys?.first()) as Map<String, Any>)
-                "aws" -> AwsCredential.build(data.get(data?.keys?.first()) as Map<String, Any>)
-                "file" -> FileCredential.build(data.get(data?.keys?.first()) as Map<String, Any>)
-                "certificate" -> CertificateCredential.build(data.get(data?.keys?.first()) as Map<String, Any>)
+                "string" -> StringCredentialConfig.build(data.get(data?.keys?.first()) as Map<String, Any>)
+                "aws" -> AwsCredentialConfig.build(data.get(data?.keys?.first()) as Map<String, Any>)
+                "file" -> FileCredentialConfig.build(data.get(data?.keys?.first()) as Map<String, Any>)
+                "certificate" -> CertificateCredentialConfig.build(data.get(data?.keys?.first()) as Map<String, Any>)
                 else -> {
                     throw IllegalArgumentException("Invalid credential type for '${data?.keys?.first()}'")
                 }
@@ -33,7 +36,7 @@ data class BasicSSHUserPrivateKey(
     val username: String,
     val passphrase: String,
     val privateKey: String,
-) : Credential() {
+) : CredentialConfig() {
     companion object: MapConfigurationBuilder<BasicSSHUserPrivateKey>  {
         override fun build(data: Map<String, Any>): BasicSSHUserPrivateKey {
             return BasicSSHUserPrivateKey(
@@ -54,7 +57,7 @@ data class UsernamePassword(
     override val description: String,
     val username: String,
     val password: String,
-) : Credential() {
+) : CredentialConfig() {
     companion object: MapConfigurationBuilder<UsernamePassword> {
         override fun build(data: Map<String, Any>): UsernamePassword {
             return UsernamePassword(
@@ -69,15 +72,15 @@ data class UsernamePassword(
 
 }
 
-data class StringCredential(
+data class StringCredentialConfig(
     val scope: String,
     override val id: String,
     override val description: String,
     val secret: String,
-) : Credential() {
-    companion object: MapConfigurationBuilder<StringCredential> {
-        override fun build(data: Map<String, Any>): StringCredential {
-            return StringCredential(
+) : CredentialConfig() {
+    companion object: MapConfigurationBuilder<StringCredentialConfig> {
+        override fun build(data: Map<String, Any>): StringCredentialConfig {
+            return StringCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in StringCredential"),
                 secret = data.validateAndGet("secret").isString().throwIfInvalid("secret is required in StringCredential"),
@@ -88,16 +91,16 @@ data class StringCredential(
     }
 }
 
-data class AwsCredential(
+data class AwsCredentialConfig(
     val scope: String,
     override val id: String,
     override val description: String,
     val accessKey: String,
     val secretKey: String,
-) : Credential() {
-    companion object: MapConfigurationBuilder<AwsCredential> {
-        override fun build(data: Map<String, Any>): AwsCredential {
-            return AwsCredential(
+) : CredentialConfig() {
+    companion object: MapConfigurationBuilder<AwsCredentialConfig> {
+        override fun build(data: Map<String, Any>): AwsCredentialConfig {
+            return AwsCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL"),
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in AwsCredential"),
                 accessKey = data.validateAndGet("accessKey").isString().throwIfInvalid("accessKey is required in AwsCredential"),
@@ -108,16 +111,16 @@ data class AwsCredential(
     }
 }
 
-data class FileCredential(
+data class FileCredentialConfig(
     val scope: String,
     override val id: String,
     override val description: String,
     val fileName: String,
     val secretBytes: String
-) : Credential() {
-    companion object: MapConfigurationBuilder<FileCredential> {
-        override fun build(data: Map<String, Any>): FileCredential {
-            return FileCredential(
+) : CredentialConfig() {
+    companion object: MapConfigurationBuilder<FileCredentialConfig> {
+        override fun build(data: Map<String, Any>): FileCredentialConfig {
+            return FileCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in FileCredential"),
                 fileName = data.validateAndGet("fileName").isString().throwIfInvalid("fileName is required in FileCredential"),
@@ -128,16 +131,16 @@ data class FileCredential(
     }
 }
 
-data class CertificateCredential(
+data class CertificateCredentialConfig(
     val scope: String,
     override val id: String,
     override val description: String,
     val password: String,
     val keyStore: String
-) : Credential() {
-    companion object: MapConfigurationBuilder<CertificateCredential> {
-        override fun build(data: Map<String, Any>): CertificateCredential {
-            return CertificateCredential(
+) : CredentialConfig() {
+    companion object: MapConfigurationBuilder<CertificateCredentialConfig> {
+        override fun build(data: Map<String, Any>): CertificateCredentialConfig {
+            return CertificateCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in CertificateCredential"),
                 password = data.validateAndGet("password").isString().throwIfInvalid("password is required in CertificateCredential"),

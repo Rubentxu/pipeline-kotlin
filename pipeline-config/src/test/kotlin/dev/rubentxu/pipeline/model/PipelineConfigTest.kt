@@ -40,7 +40,7 @@ class PipelineConfigTest : StringSpec({
             val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
 
 
-            config.credentials?.credentials?.size shouldBe 8
+            config.credentialsConfig?.credentialConfigs?.size shouldBe 8
         }
         // Ruta al archivo YAML de prueba
 

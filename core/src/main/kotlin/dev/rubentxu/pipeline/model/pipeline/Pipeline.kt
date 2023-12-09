@@ -23,8 +23,7 @@ class Pipeline(
     val agent: Agent,
     val stages: List<StageExecutor>,
     val env: EnvVars,
-    val postExecution: PostExecution,
-    pipelineConfig: IPipelineConfig
+    val postExecution: PostExecution
 ) : Configurable {
 
     private val logger = PipelineLogger.getLogger()

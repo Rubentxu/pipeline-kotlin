@@ -37,6 +37,7 @@ data class PipelineConfig(
     val globalLibraries: GlobalLibrariesConfig,
     val environmentVars: EnvVars,
     val agents: List<AgentConfig>,
+    val jobs: List<JobConfig>
 
     ): IPipelineConfig {
     companion object: MapConfigurationBuilder<PipelineConfig> {
@@ -74,13 +75,21 @@ data class PipelineConfig(
                 return@map AgentConfig.build(it)
             }
 
+            val jobsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.jobs")
+                .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+
+            val jobsList: List<JobConfig> =  jobsMap.map {
+                return@map JobConfig.build(it)
+            }
+
             return PipelineConfig(
                 credentialsConfig = CredentialsConfig.build(credentialsMap),
                 clouds = cloudList,
                 scm = ScmConfig.fromMap(data),
                 globalLibraries = GlobalLibrariesConfig.build(data),
                 environmentVars = EnvVars(data.mapValues { it.value.toString() } ),
-                agents = agentsList
+                agents = agentsList,
+                jobs = jobsList
             )
         }
     }

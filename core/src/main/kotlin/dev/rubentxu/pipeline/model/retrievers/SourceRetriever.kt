@@ -4,13 +4,13 @@ import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import java.io.File
 
 
-interface SourceRetriever {
+interface SourceRetriever<T> where T: IPipelineConfig {
 
-    fun retrieve(config: IPipelineConfig): File
+    fun retrieve(config: T): File
 }
 
-interface ProjectSourceRetriever: SourceRetriever
+interface ProjectSourceRetriever<T>: SourceRetriever<T> where T: IPipelineConfig
 
-interface LibrarySourceRetriever: SourceRetriever
+interface LibrarySourceRetriever<T>: SourceRetriever<T> where T: IPipelineConfig
 
-interface PipelineSourceRetriever: SourceRetriever
+interface PipelineSourceRetriever<T>: SourceRetriever<T> where T: IPipelineConfig

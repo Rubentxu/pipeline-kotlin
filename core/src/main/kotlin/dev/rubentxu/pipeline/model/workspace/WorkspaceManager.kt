@@ -9,6 +9,8 @@ import java.util.*
 
 
 interface IWorkspaceManager {
+
+    fun createWorkspace(nameJob: String)
     fun startWatching(): Job
     fun stopWatching()
     fun getChangeLog(): List<FileSystemEvent>
@@ -20,17 +22,27 @@ interface IWorkspaceManager {
 }
 
 class WorkspaceManager(
-    val workspacePath: Path,
+    val workspaceBasePath: Path,
     private val eventBus: EventBus,
     private val changeLogManager: ChangeLogManager,
     private val watchService: WatchService = FileSystems.getDefault().newWatchService()
 ) : IWorkspaceManager {
 
     private lateinit var job: Job
+    lateinit var workspacePath: Path
+    lateinit var workspacePipelinePath: Path
 
+    override fun createWorkspace(nameJob: String) {
+        if (!Files.exists(workspaceBasePath)) {
+            Files.createDirectories(workspaceBasePath)
+        }
+        workspacePath = Files.createDirectories(workspaceBasePath.resolve(nameJob))
+        workspacePipelinePath = Files.createDirectories(workspaceBasePath.resolve(".pipeline/${nameJob}"))
+
+    }
 
     override fun startWatching() = CoroutineScope(Dispatchers.IO).launch {
-        workspacePath.register(
+        workspaceBasePath.register(
             watchService,
             StandardWatchEventKinds.ENTRY_CREATE,
             StandardWatchEventKinds.ENTRY_DELETE,
@@ -44,7 +56,7 @@ class WorkspaceManager(
                 key.pollEvents().forEach { event ->
 
                     val fileName = event.context() as Path
-                    val filePath = workspacePath.resolve(fileName)
+                    val filePath = workspaceBasePath.resolve(fileName)
 
                     val attrs = getFileAttributes(filePath)
                     // Buscar en changeLog para encontrar el último evento para el archivo
@@ -101,7 +113,7 @@ class WorkspaceManager(
     ): Boolean {
         val changedFilesFiltered = changeLogManager.getChangeLog().map { event: FileSystemEvent -> event.filePath }
             .filter { file: Path ->
-                val relativePath = workspacePath.relativize(file).toString()
+                val relativePath = workspaceBasePath.relativize(file).toString()
                 val isIncluded = inclusions.any { globMatch(it, relativePath) }
                 val isExcluded = exclusions.any { globMatch(it, relativePath) }
                 isIncluded && !isExcluded

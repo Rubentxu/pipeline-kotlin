@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.validation
 
+import java.net.URL
 import kotlin.reflect.KClass
 
 
@@ -109,7 +110,7 @@ open class Validator<K, T>(
             dependsOnKeys.any { key -> context.containsKey(key) }
         }
         @Suppress("UNCHECKED_CAST")
-        return this as Validator<K, T>
+        return this
     }
 
     companion object {
@@ -152,6 +153,15 @@ class StringValidator private constructor(sut: String?, tag: String = "") :
 
     fun isHttpProtocol(): StringValidator =
         test("'$sut' must be a valid HTTP protocol URL") { it.matches(HTTP_PROTOCOL_REGEX) } as StringValidator
+
+    fun isURL(): StringValidator = test("'$sut' must be a valid URL") {
+        try {
+            URL(it)
+            true
+        } catch (ex: Exception) {
+            false
+        }
+    } as StringValidator
 
     fun containsIn(array: List<String>): StringValidator =
         test("'$sut' must be one of ${array.joinToString()}") { array.contains(it) } as StringValidator

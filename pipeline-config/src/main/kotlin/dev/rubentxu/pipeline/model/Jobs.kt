@@ -1,18 +1,22 @@
 package dev.rubentxu.pipeline.model
 
 import dev.rubentxu.pipeline.model.config.Configuration
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
+import dev.rubentxu.pipeline.model.retrievers.IDConfig
 import dev.rubentxu.pipeline.steps.EnvVars
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 data class JobConfig(
     val name: String,
     val triggers: List<Trigger>,
-    val scriptPath: String,
     val environmentVars: EnvVars,
     val publisher: Publisher,
     val parameters: List<Parameter>,
-) : Configuration {
+    val projectSource: ProjectSource,
+    val librarySources: List<LibrarySource>,
+    val pipelineFileSource: PipelineFileSource
+) : IPipelineConfig {
 
     companion object : MapConfigurationBuilder<JobConfig> {
         override fun build(data: Map<String, Any>): JobConfig {
@@ -21,18 +25,25 @@ data class JobConfig(
             val envVars = EnvVars(envMap)
             return JobConfig(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Job"),
-
                 triggers = (data.validateAndGet("triggers").isList()
                     .throwIfInvalid("triggers is required in Job") as List<Map<String, Any>>).map { Trigger.build(it) },
-                scriptPath = data.validateAndGet("scriptPath").isString()
-                    .throwIfInvalid("scriptPath is required in Job"),
                 environmentVars = envVars,
                 publisher = Publisher.build(
                     data.validateAndGet("publisher").isMap()
                         .throwIfInvalid("publisher is required in Job") as Map<String, Any>
                 ),
                 parameters = (data.validateAndGet("parameters").isList()
-                    .throwIfInvalid("parameters is required in Job") as List<Map<String, Any>>).map { Parameter.build(it) }
+                    .throwIfInvalid("parameters is required in Job") as List<Map<String, Any>>).map { Parameter.build(it) },
+                projectSource = ProjectSource.build(
+                    data.validateAndGet("projectSource").isMap()
+                        .throwIfInvalid("projectSource is required in Job") as Map<String, Any>
+                ),
+                librarySources = (data.validateAndGet("librarySources").isList()
+                    .throwIfInvalid("librarySources is required in Job") as List<Map<String, Any>>).map { LibrarySource.build(it) },
+                pipelineFileSource = PipelineFileSource.build(
+                    data.validateAndGet("pipelineFileSource").isMap()
+                        .throwIfInvalid("pipelineFileSource is required in Job") as Map<String, Any>
+                )
             )
         }
     }
@@ -244,6 +255,62 @@ data class TextParameter(
                     .throwIfInvalid("defaultValue is required in TextParameter"),
                 description = data.validateAndGet("description").isString()
                     .throwIfInvalid("description is required in TextParameter")
+            )
+        }
+    }
+}
+
+data class ProjectSource(
+    val name: String,
+    val scmReferenceId: IDConfig
+) : Configuration {
+    companion object : MapConfigurationBuilder<ProjectSource> {
+        override fun build(data: Map<String, Any>): ProjectSource {
+            return ProjectSource(
+                name = data.validateAndGet("name")
+                    .isString()
+                    .throwIfInvalid("name is required in ProjectSource"),
+                scmReferenceId = IDConfig.create(data.validateAndGet("scmReferenceId")
+                    .isString()
+                    .throwIfInvalid("scmReferenceId is required in ProjectSource")
+                )
+            )
+        }
+    }
+}
+
+data class LibrarySource(
+    val name: String,
+    val scmReferenceId: IDConfig
+) : Configuration {
+    companion object : MapConfigurationBuilder<LibrarySource> {
+        override fun build(data: Map<String, Any>): LibrarySource {
+            return LibrarySource(
+                name = data.validateAndGet("name")
+                    .isString()
+                    .throwIfInvalid("name is required in LibrarySource"),
+                scmReferenceId = IDConfig.create(data.validateAndGet("scmReferenceId")
+                    .isString()
+                    .throwIfInvalid("scmReferenceId is required in LibrarySource")
+                )
+            )
+        }
+    }
+}
+
+data class PipelineFileSource(
+    val name: String,
+    val scmReferenceId: String,
+    val scriptPath: String
+) : Configuration {
+    companion object : MapConfigurationBuilder<PipelineFileSource> {
+        override fun build(data: Map<String, Any>): PipelineFileSource {
+            return PipelineFileSource(
+                name = data.validateAndGet("name").isString().throwIfInvalid("name is required in PipelineFileSource"),
+                scmReferenceId = data.validateAndGet("scmReferenceId").isString()
+                    .throwIfInvalid("scmReferenceId is required in PipelineFileSource"),
+                scriptPath = data.validateAndGet("scriptPath").isString()
+                    .throwIfInvalid("scriptPath is required in PipelineFileSource")
             )
         }
     }

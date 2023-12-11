@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.retrievers.IDConfig
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import java.net.URL
 import java.nio.file.Path
 
 class ScmConfigTest : StringSpec({
@@ -17,7 +19,8 @@ class ScmConfigTest : StringSpec({
         val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
 
         config.scm.definitions.size shouldBe 4
-        config.scm.definitions[0].sourceRepository shouldBe RemoteRepository(url="https://github.com/ejemplo/repo-remoto.git", credentialsId="credenciales-remotas")
+        config.scm.definitions[0].id shouldBe IDConfig.create(id="git-id")
+        config.scm.definitions[0].sourceRepository shouldBe RemoteRepository(url= URL("https://github.com/ejemplo/repo-remoto.git"), credentialsId="credenciales-remotas")
         config.scm.definitions[0].branches shouldBe listOf("main")
         (config.scm.definitions[0] as GitScmConfig).extensions shouldBe listOf(
             SimpleSCMExtension(name="shallowClone", value=true),
@@ -32,9 +35,11 @@ class ScmConfigTest : StringSpec({
         (config.scm.definitions[0] as GitScmConfig).globalConfigEmail shouldBe "root@localhost"
 
 
-        config.scm.definitions[1].sourceRepository shouldBe LocalRepository(path="/ruta/local/repo-local.git", isBareRepo=true)
-        config.scm.definitions[2].sourceRepository shouldBe RemoteRepository(url="http://svn.ejemplo.com/repo-remoto", credentialsId="credenciales-svn")
-        config.scm.definitions[3].sourceRepository shouldBe RemoteRepository(url="http://hg.ejemplo.com/repo-remoto", credentialsId="")
+        config.scm.definitions[1].id shouldBe IDConfig.create(id="local-git-id")
+        config.scm.definitions[1].sourceRepository shouldBe LocalRepository(path= Path.of("/ruta/local/repo-local.git"), isBareRepo=true)
+
+        config.scm.definitions[2].sourceRepository shouldBe RemoteRepository(url=URL("http://svn.ejemplo.com/repo-remoto"), credentialsId="credenciales-svn")
+        config.scm.definitions[3].sourceRepository shouldBe RemoteRepository(url=URL("http://hg.ejemplo.com/repo-remoto"), credentialsId="")
 
 
     }

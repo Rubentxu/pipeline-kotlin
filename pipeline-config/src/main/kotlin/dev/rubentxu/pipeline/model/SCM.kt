@@ -2,9 +2,16 @@ package dev.rubentxu.pipeline.model
 
 import dev.rubentxu.pipeline.model.config.Configuration
 import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
+import dev.rubentxu.pipeline.model.retrievers.IDConfig
+import dev.rubentxu.pipeline.model.retrievers.ScmConfig
+import dev.rubentxu.pipeline.model.retrievers.ScmDefinition
+import dev.rubentxu.pipeline.model.retrievers.SourceRepository
 import dev.rubentxu.pipeline.validation.validateAndGet
+import java.net.URL
+import java.nio.file.Path
+import java.util.*
 
-data class ScmConfig(
+data class ScmConfigBuilder(
     val definitions: List<ScmDefinition>,
 ) : Configuration {
     companion object : MapConfigurationBuilder<ScmConfig> {
@@ -12,17 +19,14 @@ data class ScmConfig(
             val scmListMap = data.validateAndGet("scm")
                 .isList()
                 .defaultValueIfInvalid(emptyList<Map<String, Any>>())
-            val scmList = scmListMap.map { ScmDefinition.build(it) }
+            val scmList = scmListMap.map { ScmDefinitionBuilder.build(it) }
             return ScmConfig(scmList)
         }
     }
 }
 
 
-interface ScmDefinition : Configuration {
-    val sourceRepository: SourceRepository
-    val branches: List<String>
-
+interface ScmDefinitionBuilder : Configuration {
     companion object : MapConfigurationBuilder<ScmDefinition> {
         override fun build(data: Map<String, Any>): ScmDefinition {
             return when (data.keys.first()) {
@@ -51,6 +55,7 @@ interface ScmDefinition : Configuration {
 }
 
 data class GitScmConfig(
+    override val id: IDConfig,
     override val sourceRepository: SourceRepository,
     override val branches: List<String>,
     val globalConfigName: String,
@@ -60,7 +65,8 @@ data class GitScmConfig(
     companion object : MapConfigurationBuilder<GitScmConfig> {
         override fun build(data: Map<String, Any>): GitScmConfig {
 
-            val sourceRepository = SourceRepository.build(data)
+            val sourceRepository = SourceRepositoryBuilder.build(data)
+            val id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in GitScmConfig"))
 
             val branches = data.validateAndGet("branches")
                 .dependsAnyOn(data, "remote", "local")
@@ -81,7 +87,7 @@ data class GitScmConfig(
 
             val extensions =  scmExtension(extensionsMap)
 
-            return GitScmConfig(sourceRepository, branches, globalConfigName, globalConfigEmail, extensions)
+            return GitScmConfig(id, sourceRepository, branches, globalConfigName, globalConfigEmail, extensions)
         }
 
         private fun scmExtension(extensionsMap: Map<String, Any>): List<SCMExtension> {
@@ -153,42 +159,42 @@ data class SimpleSCMExtension<T>(
 
 
 data class Svn(
+    override val id: IDConfig,
     override val sourceRepository: SourceRepository,
     override val branches: List<String>,
 ) : ScmDefinition {
     companion object : MapConfigurationBuilder<Svn> {
         override fun build(data: Map<String, Any>): Svn {
-            val repository = SourceRepository.build(data)
+            val repository = SourceRepositoryBuilder.build(data)
+            val id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in Svn"))
 
             val branches = data.validateAndGet("branches")
                 .isList()
                 .defaultValueIfInvalid(emptyList<String>())
-            return Svn(repository, branches)
+            return Svn(id, repository, branches)
         }
     }
 }
 
 data class Mercurial(
+    override val id: IDConfig,
     override val sourceRepository: SourceRepository,
     override val branches: List<String>,
     val extensions: List<SCMExtension>,
 ) : ScmDefinition {
     companion object : MapConfigurationBuilder<Mercurial> {
         override fun build(data: Map<String, Any>): Mercurial {
-            val sourceRepository = SourceRepository.build(data)
+            val sourceRepository = SourceRepositoryBuilder.build(data)
+            val id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in Mercurial"))
 
             val branches = data.validateAndGet("branches")
                 .isList()
                 .defaultValueIfInvalid(emptyList<String>()) as List<String>
 
 
-            return Mercurial(sourceRepository, branches, emptyList())
+            return Mercurial(id, sourceRepository, branches, emptyList())
         }
-
-
     }
-
-
 }
 
 class CleanRepository(val clean: Boolean) : SCMExtension {
@@ -203,7 +209,7 @@ class CleanRepository(val clean: Boolean) : SCMExtension {
     }
 }
 
-interface SourceRepository : Configuration {
+interface SourceRepositoryBuilder : Configuration {
     companion object : MapConfigurationBuilder<SourceRepository> {
         override fun build(data: Map<String, Any>): SourceRepository {
             return if (data.containsKey("remote")) {
@@ -213,21 +219,20 @@ interface SourceRepository : Configuration {
             } else {
                 throw IllegalArgumentException("Invalid SCM type for '${data.keys.first()}'")
             }
-
         }
     }
 }
 
 data class LocalRepository(
-    val path: String,
+    val path: Path,
     val isBareRepo: Boolean,
 ) : SourceRepository {
     companion object : MapConfigurationBuilder<LocalRepository> {
         override fun build(data: Map<String, Any>): LocalRepository {
             return LocalRepository(
-                data.validateAndGet("path")
+                Path.of(data.validateAndGet("path")
                     .isString()
-                    .throwIfInvalid("path is required in LocalRepository"),
+                    .throwIfInvalid("path is required in LocalRepository")),
                 data.validateAndGet("isBareRepo")
                     .isBoolean()
                     .defaultValueIfInvalid(false)
@@ -237,16 +242,18 @@ data class LocalRepository(
 }
 
 data class RemoteRepository(
-    val url: String,
+    val url: URL,
     val credentialsId: String,
 ) : SourceRepository {
     companion object : MapConfigurationBuilder<RemoteRepository> {
         override fun build(data: Map<String, Any>): RemoteRepository {
+            val url = URL(data.validateAndGet("url")
+                .isString()
+                .notEmpty()
+                .isURL()
+                .throwIfInvalid("url is required in RemoteRepository"))
             return RemoteRepository(
-                data.validateAndGet("url")
-                    .isString()
-                    .notEmpty()
-                    .throwIfInvalid("url is required in RemoteRepository"),
+                url,
                 data.validateAndGet("credentialsId")
                     .isString()
                     .defaultValueIfInvalid("")

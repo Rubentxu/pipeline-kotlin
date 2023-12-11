@@ -1,5 +1,6 @@
 scm:
   - git:
+      id: "git-id"
       globalConfigName: "root"
       globalConfigEmail: "root@localhost"
       remote:
@@ -20,6 +21,7 @@ scm:
         relativeTargetDirectory: "carpeta" # sirve para que se descarguen los archivos en una carpeta especifica
 
   - git:
+      id: "local-git-id"
       local:
         path: "/ruta/local/repo-local.git"
         isBareRepo: true
@@ -30,6 +32,7 @@ scm:
 
 
   - svn:
+      id: "svn-id"
       remote:
         url: "http://svn.ejemplo.com/repo-remoto"
         credentialsId: "credenciales-svn"
@@ -37,6 +40,7 @@ scm:
         - "trunk"
 
   - mercurial:
+      id: "hg-id"
       remote:
         url: "http://hg.ejemplo.com/repo-remoto"
       branches:

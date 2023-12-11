@@ -5,8 +5,10 @@ import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 
+
+
 sealed class CredentialConfig : Configuration {
-    abstract val id: String
+    abstract val id: IDConfig
     abstract val description: String
 
     companion object : MapConfigurationBuilder<CredentialConfig> {
@@ -27,7 +29,7 @@ sealed class CredentialConfig : Configuration {
 }
 
 data class BasicSSHUserPrivateKey(
-    override val id: String,
+    override val id: IDConfig,
     override val description: String,
     val scope: String,
     val username: String,
@@ -38,7 +40,7 @@ data class BasicSSHUserPrivateKey(
         override fun build(data: Map<String, Any>): BasicSSHUserPrivateKey {
             return BasicSSHUserPrivateKey(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
-                id = data.validateAndGet("id").isString().throwIfInvalid("id is required in BasicSSHUserPrivateKey"),
+                id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in BasicSSHUserPrivateKey")),
                 username = data.validateAndGet("username").isString()
                     .throwIfInvalid("username is required in BasicSSHUserPrivateKey"),
                 passphrase = data.validateAndGet("passphrase").isString().defaultValueIfInvalid("") as String,
@@ -52,7 +54,7 @@ data class BasicSSHUserPrivateKey(
 
 data class UsernamePassword(
     val scope: String,
-    override val id: String,
+    override val id: IDConfig,
     override val description: String,
     val username: String,
     val password: String,
@@ -61,7 +63,7 @@ data class UsernamePassword(
         override fun build(data: Map<String, Any>): UsernamePassword {
             return UsernamePassword(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
-                id = data.validateAndGet("id").isString().throwIfInvalid("id is required in UsernamePassword"),
+                id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in UsernamePassword")),
                 username = data.validateAndGet("username").isString()
                     .throwIfInvalid("username is required in UsernamePassword"),
                 password = data.validateAndGet("password").isString()
@@ -75,7 +77,7 @@ data class UsernamePassword(
 
 data class StringCredentialConfig(
     val scope: String,
-    override val id: String,
+    override val id: IDConfig,
     override val description: String,
     val secret: String,
 ) : CredentialConfig() {
@@ -83,7 +85,7 @@ data class StringCredentialConfig(
         override fun build(data: Map<String, Any>): StringCredentialConfig {
             return StringCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
-                id = data.validateAndGet("id").isString().throwIfInvalid("id is required in StringCredential"),
+                id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in StringCredential")),
                 secret = data.validateAndGet("secret").isString()
                     .throwIfInvalid("secret is required in StringCredential"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String
@@ -95,7 +97,7 @@ data class StringCredentialConfig(
 
 data class AwsCredentialConfig(
     val scope: String,
-    override val id: String,
+    override val id: IDConfig,
     override val description: String,
     val accessKey: String,
     val secretKey: String,
@@ -104,7 +106,7 @@ data class AwsCredentialConfig(
         override fun build(data: Map<String, Any>): AwsCredentialConfig {
             return AwsCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL"),
-                id = data.validateAndGet("id").isString().throwIfInvalid("id is required in AwsCredential"),
+                id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in AwsCredential")),
                 accessKey = data.validateAndGet("accessKey").isString()
                     .throwIfInvalid("accessKey is required in AwsCredential"),
                 secretKey = data.validateAndGet("secretKey").isString()
@@ -117,7 +119,7 @@ data class AwsCredentialConfig(
 
 data class FileCredentialConfig(
     val scope: String,
-    override val id: String,
+    override val id: IDConfig,
     override val description: String,
     val fileName: String,
     val secretBytes: String,
@@ -126,7 +128,7 @@ data class FileCredentialConfig(
         override fun build(data: Map<String, Any>): FileCredentialConfig {
             return FileCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
-                id = data.validateAndGet("id").isString().throwIfInvalid("id is required in FileCredential"),
+                id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in FileCredential")),
                 fileName = data.validateAndGet("fileName").isString()
                     .throwIfInvalid("fileName is required in FileCredential"),
                 secretBytes = data.validateAndGet("secretBytes").isString()
@@ -139,7 +141,7 @@ data class FileCredentialConfig(
 
 data class CertificateCredentialConfig(
     val scope: String,
-    override val id: String,
+    override val id: IDConfig,
     override val description: String,
     val password: String,
     val keyStore: String,
@@ -148,7 +150,7 @@ data class CertificateCredentialConfig(
         override fun build(data: Map<String, Any>): CertificateCredentialConfig {
             return CertificateCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
-                id = data.validateAndGet("id").isString().throwIfInvalid("id is required in CertificateCredential"),
+                id = IDConfig.create(data.validateAndGet("id").isString().throwIfInvalid("id is required in CertificateCredential")),
                 password = data.validateAndGet("password").isString()
                     .throwIfInvalid("password is required in CertificateCredential"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String,

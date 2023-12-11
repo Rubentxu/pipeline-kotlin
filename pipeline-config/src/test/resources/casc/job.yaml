@@ -2,16 +2,18 @@ pipeline:
   jobs:
     - name: "pipeline-job"
       description: "Pipeline Job"
-      scm:
-        git:
-          remote:
-            url: ""
-            credentialsId: ""
-            branches:
-              - "**"
+      projectSource:
+        name: "pipeline-config"
+        scmReferenceId: "pipeline-config-id"
+      librarySources:
+        - name: "internal-pipeline-library"
+          scmReferenceId: "internal-pipeline-library-id"
+      pipelineFileSource:
+        name: "pipeline-config"
+        scmReferenceId: "pipeline-config-id"
+        scriptPath: "Jenkinsfile"
       triggers:
         - cron: "H/5 * * * *"
-      scriptPath: "Jenkinsfile"
       environmentVars:
         JOB_NAME: Ejemplo-pipeline
         MENSAJE: Hola Mundo

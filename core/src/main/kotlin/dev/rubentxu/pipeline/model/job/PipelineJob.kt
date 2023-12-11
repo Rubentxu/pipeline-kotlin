@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.model.job
 
+import dev.rubentxu.pipeline.model.config.Configuration
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
 import dev.rubentxu.pipeline.model.retrievers.LibrarySourceRetriever
@@ -20,3 +21,5 @@ interface IPipelineJob<T> where T: IPipelineConfig {
 
     fun execute(): Result<Unit>
 }
+
+interface IJobConfig: Configuration

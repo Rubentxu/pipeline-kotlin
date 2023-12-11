@@ -85,7 +85,7 @@ data class PipelineConfig(
             return PipelineConfig(
                 credentialsConfig = CredentialsConfig.build(credentialsMap),
                 clouds = cloudList,
-                scm = ScmConfig.build(data),
+                scm = ScmConfigBuilder.build(data),
                 globalLibraries = GlobalLibrariesConfig.build(data),
                 environmentVars = EnvVars(data.mapValues { it.value.toString() }),
                 agents = agentsList,

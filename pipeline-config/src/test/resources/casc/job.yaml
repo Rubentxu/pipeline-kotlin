@@ -1,6 +1,7 @@
 pipeline:
   jobs:
     - name: "pipeline-job"
+      description: "Pipeline Job"
       scm:
         git:
           remote:

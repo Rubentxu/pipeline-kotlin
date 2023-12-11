@@ -8,8 +8,8 @@ import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.config.ListMapConfigurationBuilder
 import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
 import dev.rubentxu.pipeline.steps.EnvVars
-import pipeline.kotlin.extensions.deserializeYamlFileToMap
 import dev.rubentxu.pipeline.validation.validateAndGet
+import pipeline.kotlin.extensions.deserializeYamlFileToMap
 import pipeline.kotlin.extensions.resolveValueExpressions
 import java.nio.file.Path
 import kotlin.Result.Companion.failure
@@ -18,10 +18,10 @@ import kotlin.Result.Companion.success
 class CascManager {
     fun resolveConfig(path: Path): Result<PipelineConfig> {
         try {
-            val yamlResult:Result<Map<String,Any>> = path.deserializeYamlFileToMap()
+            val yamlResult: Result<Map<String, Any>> = path.deserializeYamlFileToMap()
             if (yamlResult.isFailure) return failure(yamlResult.exceptionOrNull()!!)
             val rawYaml = yamlResult.getOrThrow()
-            val resolvedYaml : Map<String, Any>  = rawYaml.resolveValueExpressions() as Map<String, Any>
+            val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
             val config = PipelineConfig.build(resolvedYaml)
             return success(config)
         } catch (e: Exception) {
@@ -37,15 +37,15 @@ data class PipelineConfig(
     val globalLibraries: GlobalLibrariesConfig,
     val environmentVars: EnvVars,
     val agents: List<AgentConfig>,
-    val jobs: List<JobConfig>
+    val jobs: List<JobConfig>,
 
-    ): IPipelineConfig {
-    companion object: MapConfigurationBuilder<PipelineConfig> {
+    ) : IPipelineConfig {
+    companion object : MapConfigurationBuilder<PipelineConfig> {
         private fun resolveCredentialsMap(map: Map<*, *>): List<Map<String, Any>> {
             val domainCredentials = map.validateAndGet("credentials.system.domainCredentials")
                 .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
-            val credentialsMap = if(domainCredentials.isEmpty()) {
+            val credentialsMap = if (domainCredentials.isEmpty()) {
                 emptyList<Map<String, Any>>()
             } else {
                 domainCredentials?.get(0)?.validateAndGet("credentials")
@@ -56,7 +56,7 @@ data class PipelineConfig(
         }
 
 
-        override fun  build(data: Map<String, Any>): PipelineConfig {
+        override fun build(data: Map<String, Any>): PipelineConfig {
             val credentialsMap = resolveCredentialsMap(data)
 
             val cloudsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.clouds")
@@ -71,23 +71,23 @@ data class PipelineConfig(
             val agentsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.agents")
                 .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
-            val agentsList: List<AgentConfig> =  agentsMap.map {
+            val agentsList: List<AgentConfig> = agentsMap.map {
                 return@map AgentConfig.build(it)
             }
 
             val jobsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.jobs")
                 .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
-            val jobsList: List<JobConfig> =  jobsMap.map {
+            val jobsList: List<JobConfig> = jobsMap.map {
                 return@map JobConfig.build(it)
             }
 
             return PipelineConfig(
                 credentialsConfig = CredentialsConfig.build(credentialsMap),
                 clouds = cloudList,
-                scm = ScmConfig.fromMap(data),
+                scm = ScmConfig.build(data),
                 globalLibraries = GlobalLibrariesConfig.build(data),
-                environmentVars = EnvVars(data.mapValues { it.value.toString() } ),
+                environmentVars = EnvVars(data.mapValues { it.value.toString() }),
                 agents = agentsList,
                 jobs = jobsList
             )
@@ -95,8 +95,8 @@ data class PipelineConfig(
     }
 }
 
-data class CredentialsConfig(val credentialConfigs: List<CredentialConfig>): Configuration {
-    companion object: ListMapConfigurationBuilder<CredentialsConfig> {
+data class CredentialsConfig(val credentialConfigs: List<CredentialConfig>) : Configuration {
+    companion object : ListMapConfigurationBuilder<CredentialsConfig> {
         override fun build(data: List<Map<String, Any>>): CredentialsConfig? {
             if (data.isEmpty()) return null
 
@@ -109,12 +109,11 @@ data class CredentialsConfig(val credentialConfigs: List<CredentialConfig>): Con
 }
 
 
-
 data class Cloud(
     val docker: DockerCloudConfig?,
-    val kubernetes: KubernetesConfig?
-): Configuration {
-    companion object: MapConfigurationBuilder<Cloud> {
+    val kubernetes: KubernetesConfig?,
+) : Configuration {
+    companion object : MapConfigurationBuilder<Cloud> {
         override fun build(data: Map<String, Any>): Cloud {
             return Cloud(
                 docker = if (data.containsKey("docker")) DockerCloudConfig.build(data) else null,

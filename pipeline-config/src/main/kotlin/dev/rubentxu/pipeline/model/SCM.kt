@@ -2,156 +2,256 @@ package dev.rubentxu.pipeline.model
 
 import dev.rubentxu.pipeline.model.config.Configuration
 import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
-import dev.rubentxu.pipeline.validation.validate
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 data class ScmConfig(
-    val gitscm: GitScmConfig
-) {
-    companion object {
-        fun fromMap(map: Map<*, *>): ScmConfig {
-            val gitscmMap = map.validateAndGet("gitscm")
-                .isMap()
-                .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
+    val definitions: List<ScmDefinition>,
+) : Configuration {
+    companion object : MapConfigurationBuilder<ScmConfig> {
+        override fun build(data: Map<String, Any>): ScmConfig {
+            val scmListMap = data.validateAndGet("scm")
+                .isList()
+                .defaultValueIfInvalid(emptyList<Map<String, Any>>())
+            val scmList = scmListMap.map { ScmDefinition.build(it) }
+            return ScmConfig(scmList)
+        }
+    }
+}
 
-            val gitscm = GitScmConfig.fromMap(gitscmMap)
 
-            return ScmConfig(
-                gitscm = gitscm
-            )
+interface ScmDefinition : Configuration {
+    val sourceRepository: SourceRepository
+    val branches: List<String>
+
+    companion object : MapConfigurationBuilder<ScmDefinition> {
+        override fun build(data: Map<String, Any>): ScmDefinition {
+            return when (data.keys.first()) {
+                "git" -> GitScmConfig.build(
+                    data.validateAndGet("git")
+                        .isMap()
+                        .defaultValueIfInvalid(emptyMap<String, Any>())
+                )
+
+                "svn" -> Svn.build(
+                    data.validateAndGet("svn")
+                        .isMap()
+                        .defaultValueIfInvalid(emptyMap<String, Any>())
+                )
+
+                "mercurial" -> Mercurial.build(
+                    data.validateAndGet("mercurial")
+                        .isMap()
+                        .defaultValueIfInvalid(emptyMap<String, Any>())
+                )
+
+                else -> throw IllegalArgumentException("Invalid SCM type for '${data.keys.first()}'")
+            }
         }
     }
 }
 
 data class GitScmConfig(
+    override val sourceRepository: SourceRepository,
+    override val branches: List<String>,
     val globalConfigName: String,
     val globalConfigEmail: String,
-    val userRemoteConfigs: List<UserRemoteConfig>,
-    val branches: List<BranchSpec>,
-    val extensions: List<SCMExtension>
-) {
-    companion object {
-        fun fromMap(gitscmMap: Map<String, Any>): GitScmConfig {
-            val userRemoteConfigsMap = gitscmMap.validateAndGet("userRemoteConfigs")
+    val extensions: List<SCMExtension>,
+) : ScmDefinition {
+    companion object : MapConfigurationBuilder<GitScmConfig> {
+        override fun build(data: Map<String, Any>): GitScmConfig {
+
+            val sourceRepository = SourceRepository.build(data)
+
+            val branches = data.validateAndGet("branches")
+                .dependsAnyOn(data, "remote", "local")
                 .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+                .defaultValueIfInvalid(emptyList<String>())
 
-            val userRemoteConfigs = userRemoteConfigsMap.map {
-                return@map UserRemoteConfig(
-                    name = it.validateAndGet("name").isString().dependsOn(it,"url","credentialsId").defaultValueIfInvalid(""),
-                    url = it.validateAndGet("url").dependsOn(it,"name","credentialsId").isString().defaultValueIfInvalid(""),
-                    refspec = it.validateAndGet("refspec").isString().defaultValueIfInvalid(""),
-                    credentialsId = it.validateAndGet("credentialsId").dependsOn(it,"name","url").isString().defaultValueIfInvalid("")
-                )
-            }
+            val globalConfigName = data.validateAndGet("globalConfigName")
+                .isString()
+                .defaultValueIfInvalid("")
 
-            val branchesMap = gitscmMap.validateAndGet("branches")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val globalConfigEmail = data.validateAndGet("globalConfigEmail")
+                .isString()
+                .defaultValueIfInvalid("")
 
-            val branches = branchesMap.map {
-                return@map BranchSpec(
-                    name = it.validateAndGet("name").isString().defaultValueIfInvalid("")
-                )
-            }
+            val extensionsMap = data.validateAndGet("extensions")
+                .isMap()
+                .defaultValueIfInvalid(emptyMap<String, Any>())
 
-            val extensionsMap = gitscmMap.validateAndGet("extensions")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val extensions =  scmExtension(extensionsMap)
 
-            val extensions : List<SCMExtension> = extensionsMap.map {
-                return@map when (it?.keys?.first()) {
-                    "sparseCheckoutPaths" -> SparseCheckoutPath.build(it.get(it?.keys?.first()) as Map<String, Any>)
-                    "cloneOption" -> CloneOption.build(it.get(it?.keys?.first()) as Map<String, Any>)
-                    "relativeTargetDirectory" -> RelativeTargetDirectory.build(it.get(it?.keys?.first()) as Map<String, Any>)
-                    else -> {
-                        throw IllegalArgumentException("Invalid extension type for '${it?.keys?.first()}'")
-                    }
+            return GitScmConfig(sourceRepository, branches, globalConfigName, globalConfigEmail, extensions)
+        }
+
+        private fun scmExtension(extensionsMap: Map<String, Any>): List<SCMExtension> {
+            return extensionsMap.map {
+                when (it.key) {
+                    "sparseCheckoutPaths" -> SimpleSCMExtension(
+                        "sparseCheckoutPaths",
+                        extensionsMap.validateAndGet("sparseCheckoutPaths")
+                            .isList()
+                            .defaultValueIfInvalid(emptyList<String>())
+                    )
+
+                    "cloneOptions" -> SimpleSCMExtension(
+                        "cloneOptions",
+                        extensionsMap.validateAndGet("cloneOptions")
+                            .isString()
+                            .defaultValueIfInvalid("")
+                    )
+
+                    "relativeTargetDirectory" -> SimpleSCMExtension(
+                        "relativeTargetDirectory",
+                        extensionsMap.validateAndGet("relativeTargetDirectory")
+                            .isString()
+                            .defaultValueIfInvalid("")
+                    )
+
+                    "shallowClone" -> SimpleSCMExtension(
+                        "shallowClone",
+                        extensionsMap.validateAndGet("shallowClone")
+                            .isBoolean()
+                            .defaultValueIfInvalid(false)
+                    )
+
+                    "timeout" -> SimpleSCMExtension(
+                        "timeout",
+                        extensionsMap.validateAndGet("timeout")
+                            .isNumber()
+                            .defaultValueIfInvalid(10)
+                    )
+
+                    "lfs" -> SimpleSCMExtension(
+                        "lfs",
+                        extensionsMap.validateAndGet("lfs")
+                            .isBoolean()
+                            .defaultValueIfInvalid(false)
+                    )
+
+                    "submodules" -> SimpleSCMExtension(
+                        "submodules",
+                        extensionsMap.validateAndGet("submodules")
+                            .isBoolean()
+                            .defaultValueIfInvalid(false)
+                    )
+
+                    else -> throw IllegalArgumentException("Invalid SCM extension type for '${extensionsMap.keys.first()}'")
                 }
-            }
 
-            return GitScmConfig(
-                globalConfigName = gitscmMap.validateAndGet("globalConfigName").isString().defaultValueIfInvalid("pipelineUser"),
-                globalConfigEmail = gitscmMap.validateAndGet("globalConfigEmail").isString().defaultValueIfInvalid(""),
-                userRemoteConfigs = userRemoteConfigs,
-                branches = branches,
-                extensions = extensions
+            }
+        }
+
+    }
+}
+
+interface SCMExtension : Configuration
+data class SimpleSCMExtension<T>(
+    val name: String,
+    val value: T,
+) : SCMExtension
+
+
+data class Svn(
+    override val sourceRepository: SourceRepository,
+    override val branches: List<String>,
+) : ScmDefinition {
+    companion object : MapConfigurationBuilder<Svn> {
+        override fun build(data: Map<String, Any>): Svn {
+            val repository = SourceRepository.build(data)
+
+            val branches = data.validateAndGet("branches")
+                .isList()
+                .defaultValueIfInvalid(emptyList<String>())
+            return Svn(repository, branches)
+        }
+    }
+}
+
+data class Mercurial(
+    override val sourceRepository: SourceRepository,
+    override val branches: List<String>,
+    val extensions: List<SCMExtension>,
+) : ScmDefinition {
+    companion object : MapConfigurationBuilder<Mercurial> {
+        override fun build(data: Map<String, Any>): Mercurial {
+            val sourceRepository = SourceRepository.build(data)
+
+            val branches = data.validateAndGet("branches")
+                .isList()
+                .defaultValueIfInvalid(emptyList<String>()) as List<String>
+
+
+            return Mercurial(sourceRepository, branches, emptyList())
+        }
+
+
+    }
+
+
+}
+
+class CleanRepository(val clean: Boolean) : SCMExtension {
+    companion object : MapConfigurationBuilder<CleanRepository> {
+        override fun build(data: Map<String, Any>): CleanRepository {
+            return CleanRepository(
+                data.validateAndGet("cleanRepository")
+                    .isBoolean()
+                    .defaultValueIfInvalid(false)
             )
         }
     }
 }
 
-data class UserRemoteConfig(
-    val name: String,
-    val url: String,
-    val refspec: String,
-    val credentialsId: String
-)
-
-data class BranchSpec(
-    val name: String
-)
-
-interface SCMExtension: Configuration
-
-
-
-data class SparseCheckoutPath(val sparseCheckoutPath: String) : SCMExtension {
-
-    companion object : MapConfigurationBuilder<SparseCheckoutPath> {
-        override fun build(map: Map<String, Any>): SparseCheckoutPath {
-            val sparseCheckoutPath = map.validate("sparseCheckoutPath")
-                .isString()
-                .defaultValueIfInvalid("") as String
-            return SparseCheckoutPath(sparseCheckoutPath)
-        }
-    }
-
-}
-
-
-data class CloneOption(
-    val depth: Int,
-    val timeout: Int,
-    val noTags: Boolean,
-    val shallow: Boolean
-) : SCMExtension {
-
-    companion object : MapConfigurationBuilder<CloneOption> {
-        override fun build(map: Map<String, Any>): CloneOption {
-            val depth = map.validateAndGet("depth")
-                .isNumber()
-                .defaultValueIfInvalid(0) as Int
-
-            val timeout = map.validateAndGet("timeout")
-                .isNumber()
-                .defaultValueIfInvalid(120) as Int
-
-            val noTags = map.validateAndGet("noTags")
-                .isBoolean()
-                .defaultValueIfInvalid(false) as Boolean
-
-            val shallow = map.validate("shallow")
-                .isBoolean()
-                .defaultValueIfInvalid(false) as Boolean
-
-            return CloneOption(depth, timeout, noTags, shallow)
-        }
-    }
-
-
-
-}
-
-data class RelativeTargetDirectory(val relativeTargetDirectory: String) : SCMExtension {
-
-        companion object : MapConfigurationBuilder<RelativeTargetDirectory> {
-            override fun build(map: Map<String, Any>): RelativeTargetDirectory {
-                val relativeTargetDirectory = map.validate("relativeTargetDirectory")
-                    .isString()
-                    .defaultValueIfInvalid("") as String
-                return RelativeTargetDirectory(relativeTargetDirectory)
+interface SourceRepository : Configuration {
+    companion object : MapConfigurationBuilder<SourceRepository> {
+        override fun build(data: Map<String, Any>): SourceRepository {
+            return if (data.containsKey("remote")) {
+               RemoteRepository.build(data.get("remote") as Map<String, Any>)
+            } else if (data.containsKey("local")) {
+               LocalRepository.build(data.get("local") as Map<String, Any>)
+            } else {
+                throw IllegalArgumentException("Invalid SCM type for '${data.keys.first()}'")
             }
-        }
 
+        }
+    }
 }
+
+data class LocalRepository(
+    val path: String,
+    val isBareRepo: Boolean,
+) : SourceRepository {
+    companion object : MapConfigurationBuilder<LocalRepository> {
+        override fun build(data: Map<String, Any>): LocalRepository {
+            return LocalRepository(
+                data.validateAndGet("path")
+                    .isString()
+                    .throwIfInvalid("path is required in LocalRepository"),
+                data.validateAndGet("isBareRepo")
+                    .isBoolean()
+                    .defaultValueIfInvalid(false)
+            )
+        }
+    }
+}
+
+data class RemoteRepository(
+    val url: String,
+    val credentialsId: String,
+) : SourceRepository {
+    companion object : MapConfigurationBuilder<RemoteRepository> {
+        override fun build(data: Map<String, Any>): RemoteRepository {
+            return RemoteRepository(
+                data.validateAndGet("url")
+                    .isString()
+                    .notEmpty()
+                    .throwIfInvalid("url is required in RemoteRepository"),
+                data.validateAndGet("credentialsId")
+                    .isString()
+                    .defaultValueIfInvalid("")
+            )
+        }
+    }
+}
+

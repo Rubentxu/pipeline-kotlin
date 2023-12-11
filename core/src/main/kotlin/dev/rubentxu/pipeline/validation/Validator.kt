@@ -104,6 +104,14 @@ open class Validator<K, T>(
         return this as Validator<K, T>
     }
 
+    fun dependsAnyOn(context: Map<String, Any>, vararg dependsOnKeys: String): Validator<K, T> {
+        test("${tagMsg}Must have any of the dependencies: ${dependsOnKeys.joinToString()}") {
+            dependsOnKeys.any { key -> context.containsKey(key) }
+        }
+        @Suppress("UNCHECKED_CAST")
+        return this as Validator<K, T>
+    }
+
     companion object {
         fun <T> from(sut: T): Validator<Validator<*, T>, T> = Validator(sut)
 

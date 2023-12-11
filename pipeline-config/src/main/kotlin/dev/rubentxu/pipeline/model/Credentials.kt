@@ -2,17 +2,14 @@ package dev.rubentxu.pipeline.model
 
 import dev.rubentxu.pipeline.model.config.Configuration
 import dev.rubentxu.pipeline.model.config.MapConfigurationBuilder
-import dev.rubentxu.pipeline.model.credentials.Credentials
-import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
 import dev.rubentxu.pipeline.validation.validateAndGet
 
 
-
-sealed class CredentialConfig: Configuration {
+sealed class CredentialConfig : Configuration {
     abstract val id: String
     abstract val description: String
 
-    companion object: MapConfigurationBuilder<CredentialConfig> {
+    companion object : MapConfigurationBuilder<CredentialConfig> {
         override fun build(data: Map<String, Any>): CredentialConfig {
             return when (data?.keys?.first()) {
                 "basicSSHUserPrivateKey" -> BasicSSHUserPrivateKey.build(data.get(data?.keys?.first()) as Map<String, Any>)
@@ -37,15 +34,17 @@ data class BasicSSHUserPrivateKey(
     val passphrase: String,
     val privateKey: String,
 ) : CredentialConfig() {
-    companion object: MapConfigurationBuilder<BasicSSHUserPrivateKey>  {
+    companion object : MapConfigurationBuilder<BasicSSHUserPrivateKey> {
         override fun build(data: Map<String, Any>): BasicSSHUserPrivateKey {
             return BasicSSHUserPrivateKey(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in BasicSSHUserPrivateKey"),
-                username = data.validateAndGet("username").isString().throwIfInvalid("username is required in BasicSSHUserPrivateKey"),
+                username = data.validateAndGet("username").isString()
+                    .throwIfInvalid("username is required in BasicSSHUserPrivateKey"),
                 passphrase = data.validateAndGet("passphrase").isString().defaultValueIfInvalid("") as String,
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String,
-                privateKey = data.validateAndGet("privateKeySource.directEntry.privateKey").isString().throwIfInvalid("privateKey is required in BasicSSHUserPrivateKey")
+                privateKey = data.validateAndGet("privateKeySource.directEntry.privateKey").isString()
+                    .throwIfInvalid("privateKey is required in BasicSSHUserPrivateKey")
             )
         }
     }
@@ -58,13 +57,15 @@ data class UsernamePassword(
     val username: String,
     val password: String,
 ) : CredentialConfig() {
-    companion object: MapConfigurationBuilder<UsernamePassword> {
+    companion object : MapConfigurationBuilder<UsernamePassword> {
         override fun build(data: Map<String, Any>): UsernamePassword {
             return UsernamePassword(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in UsernamePassword"),
-                username = data.validateAndGet("username").isString().throwIfInvalid("username is required in UsernamePassword"),
-                password = data.validateAndGet("password").isString().throwIfInvalid("password is required in UsernamePassword"),
+                username = data.validateAndGet("username").isString()
+                    .throwIfInvalid("username is required in UsernamePassword"),
+                password = data.validateAndGet("password").isString()
+                    .throwIfInvalid("password is required in UsernamePassword"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String
             )
         }
@@ -78,12 +79,13 @@ data class StringCredentialConfig(
     override val description: String,
     val secret: String,
 ) : CredentialConfig() {
-    companion object: MapConfigurationBuilder<StringCredentialConfig> {
+    companion object : MapConfigurationBuilder<StringCredentialConfig> {
         override fun build(data: Map<String, Any>): StringCredentialConfig {
             return StringCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in StringCredential"),
-                secret = data.validateAndGet("secret").isString().throwIfInvalid("secret is required in StringCredential"),
+                secret = data.validateAndGet("secret").isString()
+                    .throwIfInvalid("secret is required in StringCredential"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String
             )
         }
@@ -98,13 +100,15 @@ data class AwsCredentialConfig(
     val accessKey: String,
     val secretKey: String,
 ) : CredentialConfig() {
-    companion object: MapConfigurationBuilder<AwsCredentialConfig> {
+    companion object : MapConfigurationBuilder<AwsCredentialConfig> {
         override fun build(data: Map<String, Any>): AwsCredentialConfig {
             return AwsCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL"),
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in AwsCredential"),
-                accessKey = data.validateAndGet("accessKey").isString().throwIfInvalid("accessKey is required in AwsCredential"),
-                secretKey = data.validateAndGet("secretKey").isString().throwIfInvalid("secretKey is required in AwsCredential"),
+                accessKey = data.validateAndGet("accessKey").isString()
+                    .throwIfInvalid("accessKey is required in AwsCredential"),
+                secretKey = data.validateAndGet("secretKey").isString()
+                    .throwIfInvalid("secretKey is required in AwsCredential"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("")
             )
         }
@@ -116,15 +120,17 @@ data class FileCredentialConfig(
     override val id: String,
     override val description: String,
     val fileName: String,
-    val secretBytes: String
+    val secretBytes: String,
 ) : CredentialConfig() {
-    companion object: MapConfigurationBuilder<FileCredentialConfig> {
+    companion object : MapConfigurationBuilder<FileCredentialConfig> {
         override fun build(data: Map<String, Any>): FileCredentialConfig {
             return FileCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in FileCredential"),
-                fileName = data.validateAndGet("fileName").isString().throwIfInvalid("fileName is required in FileCredential"),
-                secretBytes = data.validateAndGet("secretBytes").isString().throwIfInvalid("secretBytes is required in FileCredential"),
+                fileName = data.validateAndGet("fileName").isString()
+                    .throwIfInvalid("fileName is required in FileCredential"),
+                secretBytes = data.validateAndGet("secretBytes").isString()
+                    .throwIfInvalid("secretBytes is required in FileCredential"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String
             )
         }
@@ -136,16 +142,18 @@ data class CertificateCredentialConfig(
     override val id: String,
     override val description: String,
     val password: String,
-    val keyStore: String
+    val keyStore: String,
 ) : CredentialConfig() {
-    companion object: MapConfigurationBuilder<CertificateCredentialConfig> {
+    companion object : MapConfigurationBuilder<CertificateCredentialConfig> {
         override fun build(data: Map<String, Any>): CertificateCredentialConfig {
             return CertificateCredentialConfig(
                 scope = data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") as String,
                 id = data.validateAndGet("id").isString().throwIfInvalid("id is required in CertificateCredential"),
-                password = data.validateAndGet("password").isString().throwIfInvalid("password is required in CertificateCredential"),
+                password = data.validateAndGet("password").isString()
+                    .throwIfInvalid("password is required in CertificateCredential"),
                 description = data.validateAndGet("description").isString().defaultValueIfInvalid("") as String,
-                keyStore = data.validateAndGet("keyStoreSource.uploaded.uploadedKeystore").isString().throwIfInvalid("keyStore is required in CertificateCredential")
+                keyStore = data.validateAndGet("keyStoreSource.uploaded.uploadedKeystore").isString()
+                    .throwIfInvalid("keyStore is required in CertificateCredential")
             )
         }
     }

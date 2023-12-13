@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.backend.PipelineScriptRunner
 import dev.rubentxu.pipeline.backend.normalizeAndAbsolutePath
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
-import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
+import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
 import io.micronaut.configuration.picocli.PicocliRunner
 import org.slf4j.LoggerFactory
 import picocli.CommandLine.Command

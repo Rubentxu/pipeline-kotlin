@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.backend
 
-import dev.rubentxu.pipeline.model.pipeline.PipelineResult
+import dev.rubentxu.pipeline.model.pipeline.JobResult
 import dev.rubentxu.pipeline.model.pipeline.Status
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -29,7 +29,7 @@ class PipelineScriptRunnerTest : StringSpec({
 
         println("result: $result")
 
-        result is PipelineResult
+        result is JobResult
         result.status shouldBe Status.Failure
 
     }
@@ -58,7 +58,7 @@ class PipelineScriptRunnerTest : StringSpec({
         val configFile = File("testData/config.yaml").path
         val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar")
 
-        val result: PipelineResult = PipelineScriptRunner.evalWithScriptEngineManager(scriptFile, configFile, jarFile)
+        val result: JobResult = PipelineScriptRunner.evalWithScriptEngineManager(scriptFile, configFile, jarFile)
         println("result with scriptManager: $result")
         println(result)
         result.status shouldBe Status.Success

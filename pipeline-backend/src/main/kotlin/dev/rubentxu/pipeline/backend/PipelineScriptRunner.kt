@@ -3,12 +3,12 @@ package dev.rubentxu.pipeline.backend
 import dev.rubentxu.pipeline.backend.agent.docker.ContainerLifecycleManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
-import dev.rubentxu.pipeline.logger.LogLevel
-import dev.rubentxu.pipeline.logger.PipelineLogger
-import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
+import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
+import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
 import dev.rubentxu.pipeline.model.CascManager
-import dev.rubentxu.pipeline.model.PipelineConfig
-import dev.rubentxu.pipeline.model.job.JobExecutor
+import dev.rubentxu.pipeline.model.PipelineContext
+import dev.rubentxu.pipeline.model.logger.LogLevel
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
 import kotlinx.coroutines.runBlocking
@@ -28,7 +28,7 @@ class PipelineScriptRunner {
             configPath: String,
             jarLocation: File = File(PipelineScriptRunner::class.java.protectionDomain.codeSource.location.toURI()),
             logger: PipelineLogger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
-        ): PipelineResult {
+        ): JobResult {
 
             val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
             logger.info("Pipeline executable: ${pipelineExecutable.absolutePath}")
@@ -48,7 +48,7 @@ class PipelineScriptRunner {
 
             } catch (e: Exception) {
                 handleScriptExecutionException(e, logger)
-                PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+                JobResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
             }
         }
     }
@@ -74,7 +74,7 @@ fun executePipeline(
     configPath: String,
     executablePath: String,
     logger: PipelineLogger
-): PipelineResult {
+): JobResult {
 
     val listOfPaths = listOf(scriptPath, configPath, executablePath).map { normalizeAndAbsolutePath(it) }
 //    val configuration = readConfigFile(normalizeAndAbsolutePath(configPath).toString())
@@ -82,7 +82,7 @@ fun executePipeline(
 
     if (configurationResult.isFailure) {
         logger.error("Error reading config file: ${configurationResult.exceptionOrNull()?.message}")
-        return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+        return JobResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
     }
     val configuration = configurationResult.getOrThrow()
 
@@ -93,7 +93,7 @@ fun executePipeline(
         return executeWithAgent(pipeline, configuration, listOfPaths)
     }
 
-    return JobExecutor().execute(pipeline)
+    return JobLauncherImpl().execute(pipeline)
 }
 
 // Construye el pipeline usando coroutines.
@@ -119,7 +119,7 @@ fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger,
     }
 }
 
-fun executeWithAgent(pipeline: Pipeline, config: PipelineConfig, paths: List<Path>): PipelineResult {
+fun executeWithAgent(pipeline: Pipeline, config: PipelineContext, paths: List<Path>): JobResult {
     val agent = pipeline.agent
     val logger = PipelineLogger.getLogger()
 
@@ -135,17 +135,17 @@ fun executeWithAgent(pipeline: Pipeline, config: PipelineConfig, paths: List<Pat
 //        return executeInKubernetesAgent(agent, config, paths)
 
     }
-    return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+    return JobResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
-fun executeInDockerAgent(agent: DockerAgent, config: PipelineConfig, paths: List<Path>): PipelineResult {
+fun executeInDockerAgent(agent: DockerAgent, config: PipelineContext, paths: List<Path>): JobResult {
     val dockerClientProvider = DockerConfigManager(agent)
     val imageBuilder = DockerImageBuilder(dockerClientProvider)
     val containerManager = ContainerLifecycleManager(dockerClientProvider)
 
     val imageId = imageBuilder.buildCustomImage("${agent.image}:${agent.tag}", paths)
     containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
-    return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
+    return JobResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 

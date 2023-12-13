@@ -7,14 +7,15 @@ plugins {
 
 val kotlinVersion: String by rootProject.extra
 val kotlinCoroutinesVersion: String by rootProject.extra
+val appVersion: String by rootProject.extra
 
 group = "dev.rubentxu.pipeline.cli"
-version = "1.0-SNAPSHOT"
+version = appVersion
 
 
 dependencies {
-    implementation(project(":core"))
-    implementation(project(":pipeline-config"))
+    implementation(project(":pipeline-dsl"))
+    implementation(project(":pipeline-model"))
     implementation(project(":pipeline-backend"))
 
 

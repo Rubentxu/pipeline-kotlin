@@ -95,7 +95,8 @@ fun executePipeline(
         return executeWithAgent(pipeline, configuration, listOfPaths)
     }
 
-    return JobLauncherImpl().execute(pipeline)
+    val execution =  JobLauncherImpl().launch()
+    return execution.
 }
 
 // Construye el pipeline usando coroutines.

@@ -20,15 +20,18 @@ class CascManagerTest : StringSpec({
             "SSH_KEY_PASSWORD" to "miSSHKeyPassword",
             "SSH_PRIVATE_KEY" to "miSSHPrivateKey"
         )
+        val idExpected = "ssh_with_passphrase_provided"
         val cascFileName = "casc/testData/credentials-basicSSH_Private_Key.yaml"
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as BasicSSHUserPrivateKey
+        val credentialsProvider = result.getOrThrow().credentialsProvider
+
+        val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as BasicSSHUserPrivateKey
 
         result.isSuccess shouldBe true
         result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
-        credential?.id shouldBe "ssh_with_passphrase_provided"
+        credential?.id shouldBe IDComponent.create("ssh_with_passphrase_provided")
         credential?.username shouldBe "ssh_root"
         credential?.passphrase shouldBe "miSSHKeyPassword"
         credential?.privateKey shouldBe "miSSHPrivateKey"
@@ -37,7 +40,7 @@ class CascManagerTest : StringSpec({
 
     "resolveConfig should correctly deserialize YAML secrets with basic SSH Private Key with file secret to PipelineConfig" {
         val resolveResourceFile = this::class.java.classLoader.getResource("casc/testData/ssh_private_key.txt").path
-
+        val idExpected = IDComponent.create("ssh_with_passphrase_provided_via_file")
         val environmentVariables = mapOf(
             "SSH_KEY_PASSWORD" to "miSSHKeyPassword",
             "SSH_PRIVATE_FILE_PATH" to resolveResourceFile
@@ -46,11 +49,11 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as BasicSSHUserPrivateKey
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById(idExpected.toString()).getOrThrow() as BasicSSHUserPrivateKey
 
         result.isSuccess shouldBe true
         result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
-        credential?.id shouldBe "ssh_with_passphrase_provided_via_file"
+        credential?.id shouldBe idExpected
         credential?.scope shouldBe "SYSTEM"
         credential?.username shouldBe "ssh_root"
         credential?.passphrase shouldBe "miSSHKeyPassword"
@@ -60,7 +63,7 @@ class CascManagerTest : StringSpec({
 
     "resolveConfig should correctly deserialize YAML secrets Certificate to PipelineConfig" {
         val resolveResourceFile = this::class.java.classLoader.getResource("casc/testData/keystore.txt").path
-
+        val idExpected = IDComponent.create("secret-certificate")
         val environmentVariables = mapOf(
             "SECRET_PASSWORD_CERT" to "miCertificatePassword",
             "SECRET_CERT_FILE_PATH" to resolveResourceFile
@@ -69,11 +72,11 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as CertificateCredentials
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById(idExpected.toString()).getOrThrow()  as CertificateCredentials
 
         result.isSuccess shouldBe true
         result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
-        credential?.id shouldBe "secret-certificate"
+        credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
         credential?.password shouldBe "miCertificatePassword"
         credential?.keyStore shouldBe java.util.Base64.getEncoder().encodeToString("miKeyStoreInFile".toByteArray())
@@ -100,7 +103,7 @@ class CascManagerTest : StringSpec({
 
     "resolve should correctly deserialize YAML file secret to PipelineConfig" {
         val resolveResourceFile = this::class.java.classLoader.getResource("casc/testData/secret.txt").path
-
+        val idExpected = IDComponent.create("secret-file")
         val environmentVariables = mapOf(
             "SECRET_FILE_PATH" to resolveResourceFile
         )
@@ -108,11 +111,11 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as FileCredentials
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById(idExpected.toString()).getOrThrow()  as FileCredentials
 
         result.isSuccess shouldBe true
         result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
-        credential?.id shouldBe "secret-file"
+        credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
         credential?.fileName shouldBe "mysecretfile.txt"
         credential?.secretBytes shouldBe "bWlLZXlTdG9yZUluRmlsZQ=="
@@ -135,6 +138,7 @@ class CascManagerTest : StringSpec({
     }
 
     "resolve should correctly deserialize YAML file64 secret to PipelineConfig" {
+        val idExpected = IDComponent.create("secret-file_via_binary_file")
         val resolveResourceFile = this::class.java.classLoader.getResource("casc/testData/secret.txt").path
 
         val environmentVariables = mapOf(

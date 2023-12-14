@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.model.jobs
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineComponent
 import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import kotlinx.coroutines.*
@@ -49,7 +50,22 @@ interface JobParameter<T> : PipelineComponent {
     val description: String
 }
 
-class JobExecution(jobInstance: JobDefinition, val job:  Job): Job by job {}
+class JobExecution(val job:  Job): Job by job, JobExecutionListener {
+    private val logger = PipelineLogger.getLogger()
+    private var status = Status.NotStarted
+        get() = field
+    override fun onPreExecute(pipeline: IPipeline) {
+        logger.info("Job execution started")
+        status = Status.Running
+    }
+
+    override fun onPostExecute(pipeline: IPipeline, result: JobResult) {
+        logger.info("Job execution finished with status: ${result.status}")
+        status = result.status
+    }
+
+
+}
 
 interface IPipeline {
     val env: EnvVars

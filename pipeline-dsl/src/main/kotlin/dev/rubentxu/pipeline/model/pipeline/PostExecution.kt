@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.model.pipeline
 
 import dev.rubentxu.pipeline.dsl.StepsBlock
-import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.jobs.StageResult
+import dev.rubentxu.pipeline.model.jobs.Status
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 
 
 class PostExecution(

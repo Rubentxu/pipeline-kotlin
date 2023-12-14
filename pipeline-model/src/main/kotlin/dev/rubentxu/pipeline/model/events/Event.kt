@@ -1,6 +1,6 @@
-package dev.rubentxu.pipeline.events
+package dev.rubentxu.pipeline.model.events
 
-import dev.rubentxu.pipeline.model.pipeline.Status
+import dev.rubentxu.pipeline.model.jobs.Status
 
 interface Event
 

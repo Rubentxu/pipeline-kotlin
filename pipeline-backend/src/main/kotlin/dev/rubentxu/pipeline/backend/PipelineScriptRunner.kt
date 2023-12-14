@@ -7,10 +7,12 @@ import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
 import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
 import dev.rubentxu.pipeline.model.CascManager
 import dev.rubentxu.pipeline.model.PipelineContext
+import dev.rubentxu.pipeline.model.jobs.JobResult
+import dev.rubentxu.pipeline.model.jobs.Status
 import dev.rubentxu.pipeline.model.logger.LogLevel
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
-import dev.rubentxu.pipeline.steps.EnvVars
+import dev.rubentxu.pipeline.model.steps.EnvVars
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Path
@@ -47,7 +49,7 @@ class PipelineScriptRunner {
                 executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
 
             } catch (e: Exception) {
-                handleScriptExecutionException(e, logger)
+                handleScriptExecutionException(e)
                 JobResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
             }
         }
@@ -102,7 +104,8 @@ fun buildPipeline(pipelineDef: PipelineDefinition): Pipeline = runBlocking {
 }
 
 // Maneja las excepciones ocurridas durante la ejecución del script.
-fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger, showStackTrace: Boolean = true) {
+fun handleScriptExecutionException(exception: Exception, showStackTrace: Boolean = true) {
+    val logger: PipelineLogger = PipelineLogger.getLogger() as PipelineLogger
     val regex = """ERROR (.*) \(.*:(\d+):(\d+)\)""".toRegex()
     val match = regex.find(exception.message ?: "")
 

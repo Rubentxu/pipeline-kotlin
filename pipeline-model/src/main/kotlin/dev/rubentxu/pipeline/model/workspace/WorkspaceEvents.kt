@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.model.workspace
 
-import dev.rubentxu.pipeline.events.Event
+import dev.rubentxu.pipeline.model.events.Event
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 

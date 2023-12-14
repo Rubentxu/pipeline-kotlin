@@ -51,6 +51,7 @@ fun String.environmentVariableLookup(): Result<String> {
     }
 }
 
+@OptIn(ExperimentalEncodingApi::class)
 fun String.base64Lookup(): Result<String> {
     return try {
         val encoded = Base64.encode(this.toByteArray())

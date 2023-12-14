@@ -1,11 +1,14 @@
 package dev.rubentxu.pipeline.model.pipeline
 
-import dev.rubentxu.pipeline.events.EndEvent
-import dev.rubentxu.pipeline.events.Event
-import dev.rubentxu.pipeline.events.EventManager
-import dev.rubentxu.pipeline.events.StartEvent
-import dev.rubentxu.pipeline.steps.Configurable
-import dev.rubentxu.pipeline.steps.EnvVars
+import dev.rubentxu.pipeline.model.events.EndEvent
+import dev.rubentxu.pipeline.model.events.Event
+import dev.rubentxu.pipeline.model.events.EventManager
+import dev.rubentxu.pipeline.model.events.StartEvent
+import dev.rubentxu.pipeline.model.jobs.IPipeline
+import dev.rubentxu.pipeline.model.jobs.StageResult
+import dev.rubentxu.pipeline.model.jobs.Status
+import dev.rubentxu.pipeline.model.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.steps.EnvVars
 import java.nio.file.Path
 import kotlin.system.measureTimeMillis
 
@@ -18,11 +21,12 @@ import kotlin.system.measureTimeMillis
  */
 
 class Pipeline(
+    override val env: EnvVars,
     val agent: Agent,
     val stages: List<StageExecutor>,
-    val env: EnvVars,
-    val postExecution: PostExecution
-) : Configurable {
+    val postExecution: PostExecution,
+    val logger: IPipelineLogger
+) : IPipeline {
 
 
     /**
@@ -85,30 +89,6 @@ class Pipeline(
         registerEvent(EndEvent(currentStage!!, System.currentTimeMillis(), time, status))
 
         return StageResult(stage.name, status).also { stageResults.add(it) }
-    }
-
-    /**
-     * Configures this Pipeline based on the provided configuration map.
-     *
-     * @param configuration The configuration map.
-     */
-    override fun configure(configuration: Map<String, kotlin.Any>) {
-        TODO("Not yet implemented")
-    }
-
-    /**
-     * Converts a relative path to a full path with respect to the StepBlock's working directory.
-     * If the provided path is already absolute, it is returned as is.
-     *
-     * @param workingDir The path to convert to a full path.
-     * @return The full path as a string.
-     */
-    fun toFullPath(workingDir: Path): String {
-        return if (workingDir.isAbsolute) {
-            workingDir.toString()
-        } else {
-            "${this.workingDir}/${workingDir}"
-        }
     }
 
 

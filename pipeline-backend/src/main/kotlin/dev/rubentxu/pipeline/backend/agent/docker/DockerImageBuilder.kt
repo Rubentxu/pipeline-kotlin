@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.backend.agent.docker
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.BuildImageResultCallback
 import com.github.dockerjava.api.model.Image
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import freemarker.template.Configuration
 import freemarker.template.TemplateExceptionHandler
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry

@@ -1,10 +1,9 @@
 package dev.rubentxu.pipeline.model.workspace
 
-import dev.rubentxu.pipeline.events.EventBus
+import dev.rubentxu.pipeline.model.events.EventBus
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.kotest.matchers.types.shouldBeSameInstanceAs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach

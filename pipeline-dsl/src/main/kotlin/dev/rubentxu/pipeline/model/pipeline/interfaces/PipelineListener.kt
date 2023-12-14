@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.model.pipeline.interfaces
 
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
-import dev.rubentxu.pipeline.model.pipeline.JobResult
+import dev.rubentxu.pipeline.model.jobs.JobResult
 
 interface PipelineListener {
     suspend fun onPreExecute(pipeline: Pipeline)

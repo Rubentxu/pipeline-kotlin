@@ -2,7 +2,8 @@ package dev.rubentxu.pipeline.model.repository
 
 import dev.rubentxu.pipeline.model.PipelineComponent
 import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
-import dev.rubentxu.pipeline.validation.validateAndGet
+import dev.rubentxu.pipeline.model.validations.validateAndGet
+
 
 class SourceCodeRepositoryManagerBuilder: PipelineComponent {
     companion object : PipelineComponentFromMapFactory<SourceCodeRepositoryManager> {

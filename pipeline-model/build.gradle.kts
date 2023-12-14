@@ -17,9 +17,12 @@ version = appVersion
 
 
 dependencies {
-    implementation(project(":pipeline-dsl"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation("org.yaml:snakeyaml:2.2")
 
+    implementation("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.1")
+    implementation("ch.qos.logback:logback-classic:1.4.11")
 
     testImplementation(kotlin("test"))
     testImplementation("io.kotest:kotest-runner-junit5-jvm:$kotestVersion")

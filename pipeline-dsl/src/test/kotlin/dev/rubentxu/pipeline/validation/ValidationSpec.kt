@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.validation
 
+import dev.rubentxu.pipeline.model.validations.validate
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe

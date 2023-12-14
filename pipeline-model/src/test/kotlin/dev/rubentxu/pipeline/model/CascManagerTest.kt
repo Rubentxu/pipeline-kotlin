@@ -24,10 +24,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as BasicSSHUserPrivateKey
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as BasicSSHUserPrivateKey
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "ssh_with_passphrase_provided"
         credential?.username shouldBe "ssh_root"
         credential?.passphrase shouldBe "miSSHKeyPassword"
@@ -46,10 +46,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as BasicSSHUserPrivateKey
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as BasicSSHUserPrivateKey
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "ssh_with_passphrase_provided_via_file"
         credential?.scope shouldBe "SYSTEM"
         credential?.username shouldBe "ssh_root"
@@ -69,10 +69,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as CertificateCredentials
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as CertificateCredentials
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "secret-certificate"
         credential?.scope shouldBe "GLOBAL"
         credential?.password shouldBe "miCertificatePassword"
@@ -108,10 +108,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as FileCredentials
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as FileCredentials
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "secret-file"
         credential?.scope shouldBe "GLOBAL"
         credential?.fileName shouldBe "mysecretfile.txt"
@@ -144,10 +144,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as FileCredentials
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as FileCredentials
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "secret-file_via_binary_file"
         credential?.scope shouldBe "GLOBAL"
         credential?.fileName shouldBe "mysecretfile.txt"
@@ -166,10 +166,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as AwsCredentials
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as AwsCredentials
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "AWS"
         credential?.scope shouldBe "GLOBAL"
         credential?.accessKey shouldBe "awsAccessKeyTest"
@@ -186,10 +186,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as StringCredentialsBuilder
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as StringCredentialsBuilder
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "secret-text"
         credential?.scope shouldBe "GLOBAL"
         credential?.secret shouldBe "secretTest"
@@ -204,10 +204,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as StringCredentialsBuilder
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as StringCredentialsBuilder
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "secret-text"
         credential?.scope shouldBe "GLOBAL"
         credential?.secret shouldBe "defaultSecretText"
@@ -223,10 +223,10 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider?.credentialsBuilders?.get(0) as UsernamePassword
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as UsernamePassword
 
         result.isSuccess shouldBe true
-        result.getOrThrow().credentialsProvider?.credentialsBuilders?.size shouldBe 1
+        result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe "username"
         credential?.scope shouldBe "GLOBAL"
         credential?.username shouldBe "some-user"

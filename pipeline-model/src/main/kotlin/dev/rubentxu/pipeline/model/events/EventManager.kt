@@ -1,6 +1,6 @@
-package dev.rubentxu.pipeline.events
+package dev.rubentxu.pipeline.model.events
 
-import dev.rubentxu.pipeline.events.EventManager.subscribeToEvents
+import dev.rubentxu.pipeline.model.events.EventManager.subscribeToEvents
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filter

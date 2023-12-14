@@ -13,16 +13,11 @@ group = "dev.rubentxu.pipeline.dsl"
 version = appVersion
 
 dependencies {
-    implementation("org.yaml:snakeyaml:2.2")
-
-    implementation("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
+    implementation(project(":pipeline-model"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.1")
-
 
     implementation("org.gradle:gradle-tooling-api:8.4")
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
-    implementation("ch.qos.logback:logback-classic:1.4.11")
 
     testImplementation(kotlin("test"))
 

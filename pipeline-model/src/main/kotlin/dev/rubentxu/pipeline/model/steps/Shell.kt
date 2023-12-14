@@ -1,18 +1,20 @@
-package dev.rubentxu.pipeline.steps
+package dev.rubentxu.pipeline.model.steps
 
-
-import dev.rubentxu.pipeline.logger.PipelineLogger
-import dev.rubentxu.pipeline.model.pipeline.Pipeline
+import dev.rubentxu.pipeline.model.jobs.IPipeline
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.workspace.WorkspaceManager
 import kotlinx.coroutines.*
 import java.io.File
-import java.io.InputStream
 
 /**
  * Shell class extends StepBlock and provides functionality to execute shell commands.
  *
  * @property pipeline The pipeline in which this shell command block is being executed.
  */
-class Shell(val pipeline: Pipeline, var timeout: Long = 15000) {
+class Shell(
+    val pipeline: IPipeline,
+    val workspaceManager: WorkspaceManager,
+    var timeout: Long = 15000) {
     val logger = PipelineLogger.getLogger()
 
     /**
@@ -86,7 +88,7 @@ class Shell(val pipeline: Pipeline, var timeout: Long = 15000) {
             pipeline.env["PATH"] = "${it}/bin:${pipeline.env["PATH"]}"
         }
 
-        val directory = File(pipeline.toFullPath(pipeline.workingDir))
+        val directory = workspaceManager.workspacePath.toFile()
         return ProcessBuilder("sh", "-c", command)
             .directory(directory)
             .apply {

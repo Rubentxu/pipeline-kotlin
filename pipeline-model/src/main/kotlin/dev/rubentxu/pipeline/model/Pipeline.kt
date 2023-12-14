@@ -4,10 +4,11 @@ import dev.rubentxu.pipeline.model.agents.AgentConfig
 import dev.rubentxu.pipeline.model.agents.DockerCloudConfig
 import dev.rubentxu.pipeline.model.agents.KubernetesConfig
 import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
-import dev.rubentxu.pipeline.model.jobs.JobInstance
+import dev.rubentxu.pipeline.model.credentials.LocalCredentialsProvider
+import dev.rubentxu.pipeline.model.jobs.JobDefinition
 import dev.rubentxu.pipeline.model.repository.SourceCodeRepositoryManager
-import dev.rubentxu.pipeline.steps.EnvVars
-import dev.rubentxu.pipeline.validation.validateAndGet
+import dev.rubentxu.pipeline.model.steps.EnvVars
+import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 
 interface PipelineComponent
@@ -46,11 +47,11 @@ data class IDComponent private constructor(
 data class PipelineContext(
     val credentialsProvider: ICredentialsProvider,
     val clouds: List<Cloud>?,
-    val scm: SourceCodeRepositoryManager,
+    val scm: SourceCodeRepositoryManager?,
     val globalLibraries: GlobalLibrariesConfig,
     val environmentVars: EnvVars,
     val agents: List<AgentConfig>,
-    val jobs: List<JobInstance>,
+    val job: JobDefinition?,
 
     ) : IPipelineConfig {
     companion object : PipelineComponentFromMapFactory<PipelineContext> {
@@ -91,18 +92,16 @@ data class PipelineContext(
             val jobsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.jobs")
                 .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
 
-            val jobsList: List<JobConfig> = jobsMap.map {
-                return@map JobConfig.create(it)
-            }
+
 
             return PipelineContext(
-                credentialsProvider = ,
+                credentialsProvider =  LocalCredentialsProvider.create(credentialsMap),
                 clouds = cloudList,
-                scm = ,
+                scm = null,
                 globalLibraries = GlobalLibrariesConfig.create(data),
                 environmentVars = EnvVars(data.mapValues { it.value.toString() }),
                 agents = agentsList,
-                jobs = jobsList
+                job = null,
             )
         }
     }

@@ -1,7 +1,8 @@
 package pipeline.kotlin.extensions
 
+
 import dev.rubentxu.pipeline.dsl.StepsBlock
-import dev.rubentxu.pipeline.steps.Shell
+import dev.rubentxu.pipeline.model.steps.Shell
 import kotlinx.coroutines.runBlocking
 import java.io.File
 

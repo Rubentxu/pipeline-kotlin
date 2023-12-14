@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.events
+package dev.rubentxu.pipeline.model.events
 
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow

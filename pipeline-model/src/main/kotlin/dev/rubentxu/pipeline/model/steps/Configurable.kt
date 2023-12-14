@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.steps
+package dev.rubentxu.pipeline.model.steps
 
 /**
  * The `Configurable` interface defines a contract for classes that can be configured with a map of configuration values.

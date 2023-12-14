@@ -1,12 +1,12 @@
 package dev.rubentxu.pipeline.model.workspace
 
 
-import dev.rubentxu.pipeline.events.EventBus
+
+import dev.rubentxu.pipeline.model.events.EventBus
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import java.io.File
 import java.nio.file.Path
 
 class ChangeLogManager(

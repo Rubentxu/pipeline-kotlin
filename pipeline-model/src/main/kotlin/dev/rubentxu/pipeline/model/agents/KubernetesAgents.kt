@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.model.agents
 
-import dev.rubentxu.pipeline.model.config.PipelineComponent
+import dev.rubentxu.pipeline.model.PipelineComponent
 import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
-import dev.rubentxu.pipeline.steps.EnvVars
-import dev.rubentxu.pipeline.validation.validateAndGet
+import dev.rubentxu.pipeline.model.steps.EnvVars
+import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 data class KubernetesConfig(
     val name: String,

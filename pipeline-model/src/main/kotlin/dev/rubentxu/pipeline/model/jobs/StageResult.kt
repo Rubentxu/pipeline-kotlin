@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.model.pipeline
+package dev.rubentxu.pipeline.model.jobs
 
 
 /**

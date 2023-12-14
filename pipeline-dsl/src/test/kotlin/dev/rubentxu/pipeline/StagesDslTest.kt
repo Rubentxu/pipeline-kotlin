@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.job.JobExecutor
-import dev.rubentxu.pipeline.model.pipeline.Status
+import dev.rubentxu.pipeline.model.jobs.Status
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe

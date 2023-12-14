@@ -45,4 +45,6 @@ interface IPipelineLogger {
     fun changeLogLevel(logLevel: LogLevel)
 
     fun changeConfigurationStrategy(logConfigurationStrategy: LogConfigurationStrategy)
+
+    fun errorBanner(msgs: List<String>)
 }

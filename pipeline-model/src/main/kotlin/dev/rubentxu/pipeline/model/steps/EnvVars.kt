@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.steps
+package dev.rubentxu.pipeline.model.steps
 
 import java.util.concurrent.ConcurrentHashMap
 

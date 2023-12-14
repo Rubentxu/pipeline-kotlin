@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.model
 
-import dev.rubentxu.pipeline.validation.validateAndGet
+import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 
 data class GlobalLibrariesConfig(

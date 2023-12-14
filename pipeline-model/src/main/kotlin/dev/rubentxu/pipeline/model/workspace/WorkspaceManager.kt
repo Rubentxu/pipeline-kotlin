@@ -1,11 +1,11 @@
 package dev.rubentxu.pipeline.model.workspace
 
-import dev.rubentxu.pipeline.events.EventBus
 import kotlinx.coroutines.*
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.util.*
+import dev.rubentxu.pipeline.model.events.EventBus
 
 
 interface IWorkspaceManager {

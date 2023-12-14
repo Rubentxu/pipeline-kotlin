@@ -249,7 +249,7 @@ class PipelineLogger(
      *
      * @param msgs The messages to include in the banner.
      */
-    fun errorBanner(msgs: List<String>) {
+    override fun errorBanner(msgs: List<String>) {
         error(createBanner(msgs))
     }
 

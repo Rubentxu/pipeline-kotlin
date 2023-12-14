@@ -1,19 +1,16 @@
 package dev.rubentxu.pipeline.backend.jobs
 
 
+import dev.rubentxu.pipeline.backend.handleScriptExecutionException
 import dev.rubentxu.pipeline.model.jobs.*
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 
 
 class JobLauncherImpl(
     override val listeners: MutableList<JobExecutionListener> = mutableListOf(),
-    override val agent: Agent
-) : JobLauncher {
+) : JobLauncher, CoroutineScope by CoroutineScope(Dispatchers.Default) {
 
     private val logger = PipelineLogger.getLogger()
 
@@ -33,52 +30,40 @@ class JobLauncherImpl(
      * @param pipeline The Pipeline to execute.
      * @return A PipelineResult instance containing the results of the pipeline execution.
      */
-    override fun execute(pipeline: Pipeline): JobResult {
-        var status: Status
-
-        logger.system("Create handler for pipeline exceptions...")
-        val pipelineExceptionHandler = CoroutineExceptionHandler { _, exception ->
-            logger.error("Pipeline execution failed: ${exception.message}")
-            status = Status.Failure
-            pipeline.stageResults.addAll(listOf(StageResult(pipeline.currentStage, status)))
-        }
-
-        logger.system("Registering pipeline listeners...")
 
 
-        return runBlocking(Dispatchers.Default + pipelineExceptionHandler) {
-            val preExecuteJobs = listeners.map { listener ->
-                async(Dispatchers.Default) { listener.onPreExecute(pipeline) }
+
+    override fun launch(instance: JobDefinition): JobExecution {
+        val job = launch(Dispatchers.Default) {
+            try {
+                val pipeline = instance.resolvePipeline()
+                logger.system("Build Pipeline: $pipeline")
+
+                val preExecuteJobs = listeners.map { listener ->
+                    async { listener.onPreExecute(pipeline) }
+                }
+
+                val result = instance.execute(pipeline)
+
+                // Wait for all preExecute jobs to complete
+                preExecuteJobs.forEach { it.await() }
+
+                val postExecuteJobs = listeners.map { listener ->
+                    async { listener.onPostExecute(pipeline, result) }
+                }
+
+                // Wait for all postExecute jobs to complete
+                postExecuteJobs.forEach { it.await() }
+
+            } catch (e: Exception) {
+                handleScriptExecutionException(e)
             }
-
-            logger.system("Executing pipeline...")
-            pipeline.executeStages()
-            logger.system("Pipeline execution finished")
-
-            // Wait for all preExecute jobs to complete
-            preExecuteJobs.forEach { it.await() }
-
-            status = if (pipeline.stageResults.any { it.status == Status.Failure }) Status.Failure else Status.Success
-
-            val result = JobResult(status, pipeline.stageResults, pipeline.env, logger.logs())
-
-
-            val postExecuteJobs = listeners.map { listener ->
-                async(Dispatchers.Default) { listener.onPostExecute(pipeline, result) }
-            }
-
-            // Wait for all postExecute jobs to complete
-            postExecuteJobs.forEach { it.await() }
-            return@runBlocking result
         }
-
+        val jobExecution =  JobExecution(instance, job)
+        jobExecution
+        return jobExecution
     }
 
-    override fun launch(instance: JobInstance): JobExecution {
-        val pipeline = instance.abstractPipelineLoader.loadPipeline()
-        val result = execute(pipeline)
-        return JobExecution(instance, result)
-    }
 
 
 }

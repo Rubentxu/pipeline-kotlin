@@ -35,6 +35,8 @@ scm:
 
   - svn:
       id: "svn-id"
+      name: "svn-name"
+      description: "svn-description"
       remote:
         url: "http://svn.ejemplo.com/repo-remoto"
         credentialsId: "credenciales-svn"
@@ -43,6 +45,8 @@ scm:
 
   - mercurial:
       id: "hg-id"
+      name: "hg-name"
+      description: "hg-description"
       remote:
         url: "http://hg.ejemplo.com/repo-remoto"
       branches:

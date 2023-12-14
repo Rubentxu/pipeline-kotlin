@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.validation
+package dev.rubentxu.pipeline.model.validations
 
 import java.net.URL
 import kotlin.reflect.KClass
@@ -13,7 +13,7 @@ open class Validator<K, T>(
     private val tagMsg: String
         get() = if (tag.isNotEmpty()) "$tag with value " else ""
 
-    open fun test(errorMessage: String,  instance: Validator<*,T> = this, predicate: (T) -> Boolean): Validator<*, T> {
+    open fun test(errorMessage: String, instance: Validator<*, T> = this, predicate: (T) -> Boolean): Validator<*, T> {
         try {
             if (sut == null) {
                 validationResults.add(ValidationResult(false, errorMessage))
@@ -189,6 +189,8 @@ class MapValidator private constructor(sut: Map<*, *>?, tag: String) : Validator
         return sut?.findDeep(key) != null
     }
 
+    fun notEmpty(): MapValidator =
+        test("'$sut' must not be empty") { !it.isNullOrEmpty() } as MapValidator
 
 }
 
@@ -201,7 +203,7 @@ class NumberValidator private constructor(sut: Number?=null, tag: String = "", v
     companion object {
         fun from(number: Number?, tag: String = ""): NumberValidator =  NumberValidator(number, tag)
 
-        fun from(validator: Validator<*, *>): NumberValidator  {
+        fun from(validator: Validator<*, *>): NumberValidator {
             val number: Number? = if (validator.sut != null)  parseAnyToNumber(validator.sut) else null
             return NumberValidator(number, validator.tag, validator.validationResults)
         }

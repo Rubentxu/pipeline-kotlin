@@ -10,8 +10,7 @@ import dev.rubentxu.pipeline.model.retrievers.LibrarySourceRetriever
 import dev.rubentxu.pipeline.model.retrievers.PipelineSourceRetriever
 import dev.rubentxu.pipeline.model.retrievers.ProjectSourceRetriever
 import dev.rubentxu.pipeline.model.workspace.IWorkspaceManager
-import dev.rubentxu.pipeline.model.workspace.WorkspaceManager
-import dev.rubentxu.pipeline.steps.EnvVars
+import dev.rubentxu.pipeline.model.steps.EnvVars
 
 
 

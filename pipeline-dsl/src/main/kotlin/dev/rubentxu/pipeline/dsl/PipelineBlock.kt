@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.dsl
 
 
 import dev.rubentxu.pipeline.model.pipeline.*
-import dev.rubentxu.pipeline.steps.EnvVars
+import dev.rubentxu.pipeline.model.steps.EnvVars
 
 class PipelineBlock() {
     var stages: List<StageExecutor> = mutableListOf()

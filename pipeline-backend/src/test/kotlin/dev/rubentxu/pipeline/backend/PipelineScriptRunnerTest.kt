@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.backend
 
-import dev.rubentxu.pipeline.model.pipeline.JobResult
-import dev.rubentxu.pipeline.model.pipeline.Status
+import dev.rubentxu.pipeline.model.jobs.JobResult
+import dev.rubentxu.pipeline.model.jobs.Status
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import java.io.File

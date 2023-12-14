@@ -1,61 +1,63 @@
 package dev.rubentxu.pipeline.model.jobs
 
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.IPipelineConfig
 import dev.rubentxu.pipeline.model.PipelineComponent
 import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
-import dev.rubentxu.pipeline.model.logger.PipelineLogger
-import dev.rubentxu.pipeline.model.pipeline.Agent
-import dev.rubentxu.pipeline.model.pipeline.JobResult
-import dev.rubentxu.pipeline.model.pipeline.Pipeline
-import dev.rubentxu.pipeline.model.pipeline.PipelineDefinition
-import dev.rubentxu.pipeline.model.repository.SourceCodeRepositoryManager
-import dev.rubentxu.pipeline.steps.EnvVars
-import dev.rubentxu.pipeline.validation.validateAndGet
-import java.net.URL
+import dev.rubentxu.pipeline.model.steps.EnvVars
+import dev.rubentxu.pipeline.model.validations.validateAndGet
+import kotlinx.coroutines.*
 import java.nio.file.Path
 
 interface JobLauncher {
     val listeners: List<JobExecutionListener>
-    val agent: Agent
 
-    fun launch(instance: JobInstance): JobExecution
+    fun launch(instance: JobDefinition): JobExecution
 
-    fun execute(pipeline: Pipeline): JobResult
 }
 
-interface Job: IPipelineConfig  {
-    val name: String
-    val environmentVars: EnvVars
-    val publisher: Publisher
-    val projectSource: ProjectSource
-    val librarySources: List<LibrarySource>
-    val pipelineLoader: AbstractPipelineLoader
-    val trigger: Trigger?
+
+@OptIn(InternalCoroutinesApi::class)
+abstract class JobDefinition(
+    val name: String,
+    val environmentVars: EnvVars,
+    val publisher: Publisher,
+    val projectSource: ProjectSource,
+    val librarySources: List<LibrarySource>,
+    val pipelineFileSource: PipelineFileSource,
+    val trigger: Trigger?,
+    initParentJob: Boolean,
+    active: Boolean,
+) : AbstractCoroutine<Unit>(Job(), initParentJob, active) {
+
+    abstract fun resolvePipeline(): IPipeline
+
+    abstract suspend fun execute(pipeline: IPipeline): JobResult
+
+    override fun onStart() {
+        super.onStart()
+
+    }
+
+
 }
 
-class JobInstance(
-    override val name: String,
-    override val environmentVars: EnvVars,
-    override val publisher: Publisher,
-    override val projectSource: ProjectSource,
-    override val librarySources: List<LibrarySource>,
-    override val pipelineLoader: AbstractPipelineLoader,
-    override val trigger: Trigger?,
-    val parameters: List<JobParameter<*>>,
-): Job {}
 
-interface JobParameter<T>: PipelineComponent {
+
+interface JobParameter<T> : PipelineComponent {
     val name: String
     val defaultValue: T
     val description: String
 }
 
-class JobExecution(val jobInstance: JobInstance) : PipelineComponent {}
+class JobExecution(jobInstance: JobDefinition, val job:  Job): Job by job {}
+
+interface IPipeline {
+    val env: EnvVars
+}
 
 interface JobExecutionListener : PipelineComponent {
-    fun onPreExecute(pipeline: Pipeline)
-    fun onPostExecute(pipeline: Pipeline, result: JobResult)
+    fun onPreExecute(pipeline: IPipeline)
+    fun onPostExecute(pipeline: IPipeline, result: JobResult)
 }
 
 class JobExecutionException(message: String) : Exception(message) {}
@@ -103,22 +105,7 @@ data class Publisher(
     }
 }
 
-class JobParameterFactory {
-    companion object : PipelineComponentFromMapFactory<JobParameter<*>> {
-        override fun create(data: Map<String, Any>): JobParameter<*> {
-            return when (data?.keys?.first()) {
-                "string" -> StringJobParameter.create(data.get(data?.keys?.first()) as Map<String, Any>)
-                "choice" -> ChoiceJobParameter.create(data.get(data?.keys?.first()) as Map<String, Any>)
-                "boolean" -> BooleanJobParameter.create(data.get(data?.keys?.first()) as Map<String, Any>)
-                "password" -> PasswordJobParameter.create(data.get(data?.keys?.first()) as Map<String, Any>)
-                "text" -> TextJobParameter.create(data.get(data?.keys?.first()) as Map<String, Any>)
-                else -> {
-                    throw IllegalArgumentException("Invalid parameter type for '${data?.keys?.first()}'")
-                }
-            }
-        }
-    }
-}
+
 
 data class Mailer(
     val recipients: String,
@@ -274,7 +261,7 @@ data class TextJobParameter(
 
 data class ProjectSource(
     val name: String,
-    val scmReferenceId: IDComponent
+    val scmReferenceId: IDComponent,
 ) : PipelineComponent {
     companion object : PipelineComponentFromMapFactory<ProjectSource> {
         override fun create(data: Map<String, Any>): ProjectSource {
@@ -282,9 +269,10 @@ data class ProjectSource(
                 name = data.validateAndGet("name")
                     .isString()
                     .throwIfInvalid("name is required in ProjectSource"),
-                scmReferenceId = IDComponent.create(data.validateAndGet("scmReferenceId")
-                    .isString()
-                    .throwIfInvalid("scmReferenceId is required in ProjectSource")
+                scmReferenceId = IDComponent.create(
+                    data.validateAndGet("scmReferenceId")
+                        .isString()
+                        .throwIfInvalid("scmReferenceId is required in ProjectSource")
                 )
             )
         }
@@ -293,7 +281,7 @@ data class ProjectSource(
 
 data class LibrarySource(
     val name: String,
-    val scmReferenceId: IDComponent
+    val scmReferenceId: IDComponent,
 ) : PipelineComponent {
     companion object : PipelineComponentFromMapFactory<LibrarySource> {
         override fun create(data: Map<String, Any>): LibrarySource {
@@ -301,53 +289,47 @@ data class LibrarySource(
                 name = data.validateAndGet("name")
                     .isString()
                     .throwIfInvalid("name is required in LibrarySource"),
-                scmReferenceId = IDComponent.create(data.validateAndGet("scmReferenceId")
-                    .isString()
-                    .throwIfInvalid("scmReferenceId is required in LibrarySource")
+                scmReferenceId = IDComponent.create(
+                    data.validateAndGet("scmReferenceId")
+                        .isString()
+                        .throwIfInvalid("scmReferenceId is required in LibrarySource")
                 )
             )
         }
     }
 }
 
-abstract class AbstractPipelineLoader(
+class PipelineFileSource(
     val name: String,
-    val scriptPath: Path
+    val relativeScriptPath: Path,
+    val scmReferenceId: IDComponent,
 ) : PipelineComponent {
 
-    val logger = PipelineLogger.getLogger()
-    fun loadPipeline(): Pipeline {
-        val pipelineDef = evaluateScriptFile(scriptPath)
-        logger.system("Pipeline definition: $pipelineDef")
-        val pipeline = buildPipeline(pipelineDef)
-        return pipeline
-    }
 
-    abstract fun evaluateScriptFile(scriptPath: Path): PipelineDefinition
-
-    abstract fun buildPipeline(pipelineDef: PipelineDefinition): Pipeline
 }
 
-class PipelineFileSourceFactory(val sourceCodeRepositoryManager: SourceCodeRepositoryManager): PipelineComponentFromMapFactory<AbstractPipelineLoader> {
-        override fun create(data: Map<String, Any>): AbstractPipelineLoader {
-            val name = data.validateAndGet("name").isString().throwIfInvalid("name is required in PipelineFileSource")
-            val scmReferenceId = IDComponent.create(data.validateAndGet("scmReferenceId").isString()
-                .throwIfInvalid("scmReferenceId is required in PipelineFileSource") as String)
-            val relativeScriptPath = data.validateAndGet("scriptPath").isString()
+class PipelineFileSourceCodeFactory : PipelineComponent {
+
+    companion object : PipelineComponentFromMapFactory<PipelineFileSource> {
+        override fun create(data: Map<String, Any>): PipelineFileSource {
+            val name = data.validateAndGet("pipelineFileSource.name").isString()
+                .throwIfInvalid("name is required in PipelineFileSource")
+            val scmReferenceId = IDComponent.create(
+                data.validateAndGet("pipelineFileSource.scmReferenceId")
+                    .isString()
+                    .throwIfInvalid("scmReferenceId is required in PipelineFileSource")
+            )
+
+            val relativeScriptPath = data.validateAndGet("pipelineFileSource.relativeScriptPath")
+                .isString()
                 .throwIfInvalid("scriptPath is required in PipelineFileSource")
 
-            val repository = sourceCodeRepositoryManager.findSourceRepository(scmReferenceId)
-            val sourceCode = repository.retrieve()
-            // url to path
-            val scriptPath: Path = resolveScriptPath(sourceCode.url, Path.of(relativeScriptPath))
-
-
+            return PipelineFileSource(
+                name = name,
+                relativeScriptPath = Path.of(relativeScriptPath),
+                scmReferenceId = scmReferenceId,
+            )
         }
-
-        fun resolveScriptPath(url: URL, relativePath: Path): Path {
-            val pathUrl: Path = Path.of(url.path)
-            val scriptPath: Path = pathUrl.resolve(relativePath)
-            return scriptPath
-        }
+    }
 
 }

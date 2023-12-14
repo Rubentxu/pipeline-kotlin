@@ -1,6 +1,6 @@
-package dev.rubentxu.pipeline.model.pipeline
+package dev.rubentxu.pipeline.model.jobs
 
-import dev.rubentxu.pipeline.steps.EnvVars
+import dev.rubentxu.pipeline.model.steps.EnvVars
 
 /**
  * Data class representing the result of a Jenkins pipeline execution.

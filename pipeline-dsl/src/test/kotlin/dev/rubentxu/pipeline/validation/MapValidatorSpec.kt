@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.validation
 
+import dev.rubentxu.pipeline.model.validations.MapValidator
+import dev.rubentxu.pipeline.model.validations.validate
+import dev.rubentxu.pipeline.model.validations.validateAndGet
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 

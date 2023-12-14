@@ -34,10 +34,12 @@ class JobLauncherImpl(
 
 
     override fun launch(instance: JobDefinition): JobExecution {
+        val startSignal = CompletableDeferred<Unit>()
         val job = launch(Dispatchers.Default) {
             try {
                 val pipeline = instance.resolvePipeline()
                 logger.system("Build Pipeline: $pipeline")
+                startSignal.await()
 
                 val preExecuteJobs = listeners.map { listener ->
                     async { listener.onPreExecute(pipeline) }
@@ -59,8 +61,9 @@ class JobLauncherImpl(
                 handleScriptExecutionException(e)
             }
         }
-        val jobExecution =  JobExecution(instance, job)
-        jobExecution
+        val jobExecution =  JobExecution(job)
+        listeners.add(jobExecution)
+        startSignal.complete(Unit)
         return jobExecution
     }
 

@@ -89,8 +89,9 @@ data class PipelineContext(
                 return@map AgentConfig.create(it)
             }
 
-            val jobsMap: List<Map<String, Any>> = data.validateAndGet("pipeline.jobs")
-                .isList().defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val jobMap = data.validateAndGet("pipeline.job")
+                .isMap()
+                .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
 
 
 

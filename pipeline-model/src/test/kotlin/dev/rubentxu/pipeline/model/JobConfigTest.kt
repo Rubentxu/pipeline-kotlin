@@ -60,10 +60,10 @@ class JobConfigTest : StringSpec({
         config.job?.projectSource?.shouldBeInstanceOf<ProjectSource>()
         config.job?.projectSource?.name shouldBe "pipeline-config"
         config.job?.projectSource?.scmReferenceId shouldBe "pipeline-config-id"
-        config.job?.librarySources?.size shouldBe 1
-        config.job?.librarySources?.get(0)?.shouldBeInstanceOf<LibrarySource>()
-        config.job?.librarySources?.get(0)?.name shouldBe "internal-pipeline-library"
-        config.job?.librarySources?.get(0)?.scmReferenceId shouldBe "internal-pipeline-library-id"
+        config.job?.pluginsDefinitionSource?.size shouldBe 1
+        config.job?.pluginsDefinitionSource?.get(0)?.shouldBeInstanceOf<PluginsDefinitionSource>()
+        config.job?.pluginsDefinitionSource?.get(0)?.name shouldBe "internal-pipeline-library"
+        config.job?.pluginsDefinitionSource?.get(0)?.scmReferenceId shouldBe "internal-pipeline-library-id"
         config.job?.pipelineFileSource?.shouldBeInstanceOf<PipelineFileSource>()
         config.job?.pipelineFileSource?.name shouldBe "pipeline-config"
         config.job?.pipelineFileSource?.scmReferenceId shouldBe "pipeline-config-id"
@@ -88,7 +88,7 @@ class JobConfigTest : StringSpec({
             job.environmentVars.shouldNotBeEmpty()
             job.publisher.shouldNotBeNull()
             job.projectSource.shouldNotBeNull()
-            job.librarySources.shouldNotBeEmpty()
+            job.pluginsDefinitionSource.shouldNotBeEmpty()
             job.pipelineFileSource.shouldNotBeNull()
 
     }
@@ -109,7 +109,7 @@ class JobConfigTest : StringSpec({
             job.publisher.shouldBeTypeOf<Publisher>()
 
             job.projectSource.shouldBeTypeOf<ProjectSource>()
-            job.librarySources.forEach { it.shouldBeInstanceOf<LibrarySource>() }
+            job.pluginsDefinitionSource.forEach { it.shouldBeInstanceOf<PluginsDefinitionSource>() }
             job.pipelineFileSource.shouldBeTypeOf<PipelineFileSource>()
 
     }

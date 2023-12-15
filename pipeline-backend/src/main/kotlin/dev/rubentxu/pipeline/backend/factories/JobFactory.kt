@@ -39,8 +39,8 @@ class JobBuilder {
                     data.validateAndGet("projectSource").isMap()
                         .throwIfInvalid("projectSource is required in Job") as Map<String, Any>
                 ),
-                librarySources = (data.validateAndGet("librarySources").isList()
-                    .throwIfInvalid("librarySources is required in Job") as List<Map<String, Any>>).map { LibrarySource.create(it) },
+                pluginsDefinitionSources = (data.validateAndGet("librarySources").isList()
+                    .throwIfInvalid("librarySources is required in Job") as List<Map<String, Any>>).map { PluginsDefinitionSource.create(it) },
                 trigger = cron,
                 pipelineFileSource = PipelineFileSourceCodeFactory.create(data),
                 parameters = parameters,

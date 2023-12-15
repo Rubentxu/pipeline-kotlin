@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.model.jobs.*
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.model.repository.ISourceCodeManager
+import dev.rubentxu.pipeline.model.repository.SourceCode
 import kotlinx.coroutines.*
 import java.net.URL
 import java.nio.file.Path
@@ -109,6 +110,20 @@ class JobLauncherImpl(
         val pipelineDef = evaluateScriptFile(scriptPath.toString())
         logger.system("Pipeline definition: $pipelineDef")
         return buildPipeline(pipelineDef)
+    }
+
+    fun resolveProjectSourceCode(job: JobDefinition): SourceCode {
+        val smcReferenceId = job.projectSource.scmReferenceId
+
+        val repository = sourceCodeRepositoryManager.findSourceRepository(smcReferenceId)
+        return repository.retrieve()
+    }
+
+    fun resolvePluginsDefinitionSource(job: JobDefinition): SourceCode {
+        val smcReferenceId = job.pluginsDefinitionSource.scmReferenceId
+
+        val repository = sourceCodeRepositoryManager.findSourceRepository(smcReferenceId)
+        return repository.retrieve()
     }
 
 

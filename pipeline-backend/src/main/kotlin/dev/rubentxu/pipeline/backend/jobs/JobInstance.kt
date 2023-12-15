@@ -23,11 +23,8 @@ class JobInstance(
     librarySources: List<LibrarySource>,
     pipelineFileSource: PipelineFileSource,
     trigger: Trigger?,
-    parameters: List<JobParameter<*>>,
-    initParentJob: Boolean,
-    active: Boolean,
-    val logger: IPipelineLogger = PipelineLogger.getLogger(),
-    val sourceCodeRepositoryManager: ISourceCodeManager,
+    parameters: List<JobParameter<*>>
+
 ): JobDefinition(
     name,
     environmentVars,
@@ -35,52 +32,9 @@ class JobInstance(
     projectSource,
     librarySources,
     pipelineFileSource,
-    trigger,
-    initParentJob,
-    active
+    trigger
+
 ) {
-    override fun resolvePipeline(): Pipeline {
-        val smcReferenceId = pipelineFileSource.scmReferenceId
-        val relativeScriptPath = pipelineFileSource.relativeScriptPath
-
-        val repository = sourceCodeRepositoryManager.findSourceRepository(smcReferenceId)
-        val sourceCode = repository.retrieve()
-        // url to path
-        val scriptPath: Path = resolveScriptPath(sourceCode.url, relativeScriptPath)
 
 
-        val pipelineDef = evaluateScriptFile(scriptPath.toString())
-        logger.system("Pipeline definition: $pipelineDef")
-        return buildPipeline(pipelineDef)
-    }
-
-    private fun resolveScriptPath(url: URL, relativeScriptPath: Path): Path {
-        val rootPath = Path.of(url.path)
-        return rootPath.resolve(relativeScriptPath)
-    }
-
-
-
-    override suspend fun execute(pipeline: Pipeline): JobResult = coroutineScope {
-        var status: Status
-
-        logger.system("Registering pipeline listeners...")
-        logger.system("Executing pipeline...")
-
-        try {
-            pipeline.executeStages()
-        } catch (e: Exception) {
-            logger.error("Pipeline execution failed: ${e.message}")
-            status = Status.Failure
-            pipeline.stageResults.addAll(listOf(StageResult(pipeline.currentStage, status)))
-        }
-
-        logger.system("Pipeline execution finished")
-
-        status = if (pipeline.stageResults.any { it.status == Status.Failure }) Status.Failure else Status.Success
-
-        val result = JobResult(status, pipeline.stageResults, pipeline.env, logger.logs())
-
-        return@coroutineScope result
-    }
 }

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.backend
 import dev.rubentxu.pipeline.backend.agent.docker.ContainerLifecycleManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
+import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
 import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
 import dev.rubentxu.pipeline.model.CascManager
@@ -13,6 +14,7 @@ import dev.rubentxu.pipeline.model.logger.LogLevel
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.model.steps.EnvVars
+import kotlinx.coroutines.CompletionHandler
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Path
@@ -70,7 +72,7 @@ fun evaluateScriptFile(scriptPath: String): PipelineDefinition {
 }
 
 // Procesa la definición del pipeline después de la evaluación.
-fun executePipeline(
+suspend fun executePipeline(
     pipeline: Pipeline,
     scriptPath: String,
     configPath: String,
@@ -95,8 +97,11 @@ fun executePipeline(
         return executeWithAgent(pipeline, configuration, listOfPaths)
     }
 
+    val jobInstance = JobInstance(pipeline, configuration)
+
     val execution =  JobLauncherImpl().launch()
-    return execution.
+    execution.job.join()
+    return execution.result
 }
 
 // Construye el pipeline usando coroutines.

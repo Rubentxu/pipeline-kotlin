@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.model.jobs.IPipeline
 import dev.rubentxu.pipeline.model.jobs.StageResult
 import dev.rubentxu.pipeline.model.jobs.Status
 import dev.rubentxu.pipeline.model.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import java.nio.file.Path
 import kotlin.system.measureTimeMillis
@@ -22,26 +23,13 @@ import kotlin.system.measureTimeMillis
 
 class Pipeline(
     override val env: EnvVars,
-    val agent: Agent,
+    override var currentStage: String = "initial pipeline",
+    override var stageResults: MutableList<StageResult> = mutableListOf(),
     val stages: List<StageExecutor>,
     val postExecution: PostExecution,
-    val logger: IPipelineLogger
 ) : IPipeline {
 
-
-    /**
-     * The name of the current stage being executed.
-     */
-    var currentStage: String = "initial pipeline"
-
-    /**
-     * The working directory for this pipeline, defaulting to the user's current directory.
-     */
-    val workingDir: Path = Path.of(System.getProperty("user.dir"))
-
-    var stageResults = mutableListOf<StageResult>()
-
-
+    val logger: IPipelineLogger = PipelineLogger.getLogger()
     /**
      * This function registers an event with the event manager.
      *
@@ -57,7 +45,7 @@ class Pipeline(
      *
      * @return A list of results of each stage.
      */
-    suspend fun executeStages() {
+    override suspend fun executeStages() {
         for (stage in stages) {
             var status = Status.Success
 

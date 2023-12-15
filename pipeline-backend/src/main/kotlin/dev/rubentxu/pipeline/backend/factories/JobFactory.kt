@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.backend.factories
 
+import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
 import dev.rubentxu.pipeline.model.jobs.*
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.validations.validateAndGet
+import kotlinx.coroutines.Job
 
 class JobBuilder {
     companion object : PipelineComponentFromMapFactory<Job> {

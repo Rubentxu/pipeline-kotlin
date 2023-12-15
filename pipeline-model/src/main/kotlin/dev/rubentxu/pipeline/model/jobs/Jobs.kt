@@ -17,7 +17,6 @@ interface JobLauncher {
 }
 
 
-@OptIn(InternalCoroutinesApi::class)
 abstract class JobDefinition(
     val name: String,
     val environmentVars: EnvVars,
@@ -25,22 +24,8 @@ abstract class JobDefinition(
     val projectSource: ProjectSource,
     val librarySources: List<LibrarySource>,
     val pipelineFileSource: PipelineFileSource,
-    val trigger: Trigger?,
-    initParentJob: Boolean,
-    active: Boolean,
-) : AbstractCoroutine<Unit>(Job(), initParentJob, active) {
-
-    abstract fun resolvePipeline(): IPipeline
-
-    abstract suspend fun execute(pipeline: IPipeline): JobResult
-
-    override fun onStart() {
-        super.onStart()
-
-    }
-
-
-}
+    val trigger: Trigger?
+)
 
 
 
@@ -52,22 +37,33 @@ interface JobParameter<T> : PipelineComponent {
 
 class JobExecution(val job:  Job): Job by job, JobExecutionListener {
     private val logger = PipelineLogger.getLogger()
-    private var status = Status.NotStarted
-        get() = field
+    private var _status = Status.NotStarted
+    private var _result: JobResult? = null
+    val status: Status
+        get() = _status
+
+    val result: JobResult
+        get() = _result ?: throw UnexpectedJobExecutionException("Job execution result is not available")
     override fun onPreExecute(pipeline: IPipeline) {
         logger.info("Job execution started")
-        status = Status.Running
+        _status = Status.Running
     }
 
     override fun onPostExecute(pipeline: IPipeline, result: JobResult) {
         logger.info("Job execution finished with status: ${result.status}")
-        status = result.status
+        _status = result.status
+
     }
 
 
 }
 
 interface IPipeline {
+    var stageResults :MutableList<StageResult>
+    var currentStage: String
+    suspend fun executeStages()
+
+
     val env: EnvVars
 }
 

@@ -58,13 +58,16 @@ class PipelineBlock() {
      *
      * @return A Pipeline instance representing the pipeline.
      */
-    fun build(): Pipeline {
+    fun createPipeline(): Pipeline {
         return Pipeline(
             stages = stages,
-            agent = agent,
             env = env,
             postExecution = postExecution
         )
+    }
+
+    fun createAgent(): Agent {
+        return agent
     }
 
 }

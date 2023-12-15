@@ -27,7 +27,6 @@ interface SourceCodeRepository: IPipelineConfig {
     val id: IDComponent
     val name: String
     val description: String?
-    val extensions: List<SCMExtension>
     fun retrieve(): SourceCode
 }
 
@@ -50,7 +49,7 @@ data class GitSourceCodeRepository(
     override val id: IDComponent,
     override val name: String,
     override val description: String?,
-    override val extensions: List<SCMExtension>,
+    val extensions: List<SCMExtension>,
     val branches: List<String>,
     val globalConfigName: String,
     val globalConfigEmail: String,
@@ -67,7 +66,7 @@ data class SvnSourceCodeRepository(
     override val id: IDComponent,
     override val name: String,
     override val description: String?,
-    override val extensions: List<SCMExtension>,
+    val extensions: List<SCMExtension>,
     val branches: List<String>,
     val url: URL,
     val credentialsId: String,
@@ -84,7 +83,7 @@ data class Mercurial(
     override val id: IDComponent,
     override val name: String,
     override val description: String?,
-    override val extensions: List<SCMExtension>,
+    val extensions: List<SCMExtension>,
     val branches: List<String>,
     val url: URL,
     val credentialsId: String,
@@ -111,13 +110,13 @@ data class LocalSourceCodeRepository(
     override val id: IDComponent,
     override val name: String,
     override val description: String?,
-    override val extensions: List<SCMExtension>,
     val branches: List<String>,
     val path: Path,
     val isBareRepo: Boolean,
+    val sourceType: SourceCodeType,
 ) : SourceCodeRepository {
 
     override fun retrieve(): SourceCode {
-        TODO("Not yet implemented")
+        return SourceCode(id, name, path.toUri().toURL(), sourceType)
     }
 }

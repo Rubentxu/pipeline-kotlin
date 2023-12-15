@@ -22,7 +22,7 @@ abstract class JobDefinition(
     val environmentVars: EnvVars,
     val publisher: Publisher,
     val projectSource: ProjectSource,
-    val librarySources: List<LibrarySource>,
+    val pluginsDefinitionSource: PluginsDefinitionSource,
     val pipelineFileSource: PipelineFileSource,
     val trigger: Trigger?
 )
@@ -291,13 +291,13 @@ data class ProjectSource(
     }
 }
 
-data class LibrarySource(
+data class PluginsDefinitionSource(
     val name: String,
     val scmReferenceId: IDComponent,
 ) : PipelineComponent {
-    companion object : PipelineComponentFromMapFactory<LibrarySource> {
-        override fun create(data: Map<String, Any>): LibrarySource {
-            return LibrarySource(
+    companion object : PipelineComponentFromMapFactory<PluginsDefinitionSource> {
+        override fun create(data: Map<String, Any>): PluginsDefinitionSource {
+            return PluginsDefinitionSource(
                 name = data.validateAndGet("name")
                     .isString()
                     .throwIfInvalid("name is required in LibrarySource"),

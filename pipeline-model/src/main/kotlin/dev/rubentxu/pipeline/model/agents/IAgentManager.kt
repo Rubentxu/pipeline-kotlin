@@ -6,5 +6,4 @@ import dev.rubentxu.pipeline.model.jobs.JobResult
 
 interface IAgentManager {
 
-    fun resolvePipeline(job: JobDefinition): IPipeline
 }

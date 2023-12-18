@@ -1,17 +1,23 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
+    kotlin("jvm") version "1.9.21"
     id("com.google.devtools.ksp") version "1.9.20-1.0.14"
     id("com.github.johnrengelman.shadow") version "8.1.1"
-    id("io.micronaut.application") version "4.0.4"
+    application
 }
 
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
-val appVersion: String by rootProject.extra
+val ktorVersion: String by project
+val kotlinVersion: String by project
+val logbackVersion: String by project
+val kotlinCoroutinesVersion:  String by project
+val kotestVersion:  String by project
+val appVersion:  String by project
 
 group = "dev.rubentxu.pipeline.cli"
 version = appVersion
 
+application {
+    mainClass.set("dev.rubentxu.pipeline.cli.PipelineCliCommand")
+}
 
 dependencies {
     implementation(project(":pipeline-dsl"))
@@ -19,12 +25,8 @@ dependencies {
     implementation(project(":pipeline-backend"))
 
 
-    ksp("info.picocli:picocli-codegen")
-    ksp("io.micronaut.serde:micronaut-serde-processor")
-    implementation("info.picocli:picocli")
-    implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
-    implementation("io.micronaut.picocli:micronaut-picocli")
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
+    implementation("info.picocli:picocli-codegen:4.6.3")
+    implementation("info.picocli:picocli:4.6.3")
     implementation("ch.qos.logback:logback-core:1.4.11")
     implementation("ch.qos.logback:logback-classic:1.4.11")
 
@@ -43,9 +45,7 @@ dependencies {
 
 }
 
-application {
-    mainClass.set("dev.rubentxu.pipeline.cli.PipelineCliCommand")
-}
+
 
 java {
     sourceCompatibility = JavaVersion.toVersion("17")
@@ -65,15 +65,6 @@ tasks {
 
     test {
         useJUnitPlatform()
-    }
-}
-
-
-micronaut {
-    testRuntime("kotest5")
-    processing {
-        incremental(true)
-        annotations("dev.rubentxu.pipeline.cli.*")
     }
 }
 

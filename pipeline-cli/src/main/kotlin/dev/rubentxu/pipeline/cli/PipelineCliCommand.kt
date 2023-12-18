@@ -1,16 +1,7 @@
 package dev.rubentxu.pipeline.cli
 
-//
-//import ch.qos.logback.classic.Logger
-//import ch.qos.logback.classic.LoggerContext
-import ch.qos.logback.classic.LoggerContext
-import dev.rubentxu.pipeline.backend.PipelineScriptRunner
-import dev.rubentxu.pipeline.backend.normalizeAndAbsolutePath
-import dev.rubentxu.pipeline.logger.LogLevel
-import dev.rubentxu.pipeline.logger.PipelineLogger
-import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
-import io.micronaut.configuration.picocli.PicocliRunner
-import org.slf4j.LoggerFactory
+
+
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
@@ -34,20 +25,16 @@ class PipelineCliCommand() : Runnable {
         assert(configPath.isNotEmpty()) { "Config path is empty" }
         assert(scriptPath.isNotEmpty()) { "Script path is empty" }
 
-        if (verbose) {
-            println("Config path: ${normalizeAndAbsolutePath(configPath)}")
-            println("Script path: ${normalizeAndAbsolutePath(scriptPath)}")
-        }
 //        val logConfiguration = SocketLogConfigurationStrategy()
 //        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
 //        logConfiguration.configure(loggerContext, LogLevel.TRACE)
 //        val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = logConfiguration)
 //        logger.info("Pipeline CLI started...")
-        PipelineScriptRunner.evalWithScriptEngineManager(
-            scriptPath,
-            configPath,
-//            logger = logger
-            )
+//        PipelineScriptRunner.evalWithScriptEngineManager(
+//            scriptPath,
+//            configPath,
+////            logger = logger
+//            )
 
 
 //        detachAndStopAllAppenders()
@@ -64,7 +51,7 @@ class PipelineCliCommand() : Runnable {
     companion object {
         @JvmStatic
         fun main(args: Array<String>) {
-            PicocliRunner.run(PipelineCliCommand::class.java, *args)
+//            PicocliRunner.run(PipelineCliCommand::class.java, *args)
         }
     }
 }

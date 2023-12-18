@@ -190,7 +190,7 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as StringCredentialsBuilder
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow()  as StringCredentials
 
         result.isSuccess shouldBe true
         result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1
@@ -208,7 +208,7 @@ class CascManagerTest : StringSpec({
         var result: Result<PipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as StringCredentialsBuilder
+        val credential = result.getOrThrow().credentialsProvider.getCredentialsById("").getOrThrow() as StringCredentials
 
         result.isSuccess shouldBe true
         result.getOrThrow().credentialsProvider.listCredentials().size shouldBe 1

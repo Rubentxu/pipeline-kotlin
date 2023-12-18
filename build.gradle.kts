@@ -1,12 +1,10 @@
-plugins {
-    kotlin("jvm") version "1.9.21"
-    id("org.jetbrains.kotlin.plugin.scripting") version "1.9.21"
-}
 
-val kotlinVersion: String by extra("1.9.21")
-val kotlinCoroutinesVersion: String by extra("1.7.3")
-val kotestVersion: String by extra("5.8.0")
-val appVersion: String by extra("0.1")
+val ktorVersion: String by project
+val kotlinVersion: String by project
+val logbackVersion: String by project
+val kotlinCoroutinesVersion:  String by project
+val kotestVersion:  String by project
+val appVersion:  String by project
 
 
 allprojects {

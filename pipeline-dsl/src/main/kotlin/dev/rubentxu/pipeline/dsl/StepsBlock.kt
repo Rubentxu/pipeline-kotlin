@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.dsl
 
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import kotlinx.coroutines.*
 
@@ -12,9 +12,8 @@ import kotlinx.coroutines.*
  * @property pipeline The pipeline in which this block of steps is being executed.
  */
 @PipelineDsl
-open class StepsBlock(val pipeline: Pipeline) {
+open class StepsBlock() {
     val logger: IPipelineLogger = PipelineLogger.getLogger()
-    val env = pipeline.env
 
     val steps = mutableListOf<Step>()
 

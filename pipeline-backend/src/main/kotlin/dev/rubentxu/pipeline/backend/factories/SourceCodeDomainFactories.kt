@@ -1,14 +1,66 @@
-package dev.rubentxu.pipeline.model.repository
+package dev.rubentxu.pipeline.backend.factories
 
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
+import dev.rubentxu.pipeline.model.PipelineDomain
+import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.jobs.PipelineFileSource
+import dev.rubentxu.pipeline.model.jobs.PluginsDefinitionSource
+import dev.rubentxu.pipeline.model.repository.*
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import java.net.URL
 import java.nio.file.Path
 
+
+
+class PluginsDefinitionSourceFactory : PipelineDomain {
+
+    companion object : PipelineDomainFactory<PluginsDefinitionSource> {
+        override fun create(data: Map<String, Any>): PluginsDefinitionSource {
+            return PluginsDefinitionSource(
+                name = data.validateAndGet("name")
+                    .isString()
+                    .throwIfInvalid("name is required in LibrarySource"),
+                scmReferenceId = IDComponent.create(
+                    data.validateAndGet("scmReferenceId")
+                        .isString()
+                        .throwIfInvalid("scmReferenceId is required in LibrarySource")
+                )
+            )
+        }
+    }
+
+}
+
+
+class PipelineFileSourceCodeFactory : PipelineDomain {
+
+    companion object : PipelineDomainFactory<PipelineFileSource> {
+        override fun create(data: Map<String, Any>): PipelineFileSource {
+            val name = data.validateAndGet("pipelineFileSource.name").isString()
+                .throwIfInvalid("name is required in PipelineFileSource")
+            val scmReferenceId = IDComponent.create(
+                data.validateAndGet("pipelineFileSource.scmReferenceId")
+                    .isString()
+                    .throwIfInvalid("scmReferenceId is required in PipelineFileSource")
+            )
+
+            val relativeScriptPath = data.validateAndGet("pipelineFileSource.relativeScriptPath")
+                .isString()
+                .throwIfInvalid("scriptPath is required in PipelineFileSource")
+
+            return PipelineFileSource(
+                name = name,
+                relativeScriptPath = Path.of(relativeScriptPath),
+                scmReferenceId = scmReferenceId,
+            )
+        }
+    }
+
+}
+
 class SvnSourceCodeRepositoryFactory {
 
-    companion object : PipelineComponentFromMapFactory<SvnSourceCodeRepository> {
+    companion object : PipelineDomainFactory<SvnSourceCodeRepository> {
         override fun create(data: Map<String, Any>): SvnSourceCodeRepository {
 
             val id = IDComponent.create(
@@ -55,7 +107,7 @@ class SvnSourceCodeRepositoryFactory {
 
 class MercurialSourceCodeRepositoryFactory {
 
-    companion object : PipelineComponentFromMapFactory<Mercurial> {
+    companion object : PipelineDomainFactory<Mercurial> {
         override fun create(data: Map<String, Any>): Mercurial {
 
             val id =
@@ -102,7 +154,7 @@ class MercurialSourceCodeRepositoryFactory {
 
 class LocalGitSourceCodeRepositoryFactory {
 
-    companion object : PipelineComponentFromMapFactory<LocalSourceCodeRepository> {
+    companion object : PipelineDomainFactory<LocalSourceCodeRepository> {
         override fun create(data: Map<String, Any>): LocalSourceCodeRepository {
             val id = IDComponent.create(
                 data.validateAndGet("git.id")
@@ -121,7 +173,6 @@ class LocalGitSourceCodeRepositoryFactory {
                 description = data.validateAndGet("git.description")
                     .isString()
                     .defaultValueIfInvalid(""),
-                extensions = emptyList<SCMExtension>(),
                 branches = data.validateAndGet("git.branches")
                     .isList()
                     .defaultValueIfInvalid(emptyList<String>()),
@@ -133,15 +184,19 @@ class LocalGitSourceCodeRepositoryFactory {
                 isBareRepo = data.validateAndGet("git.local.isBareRepo")
                     .isBoolean()
                     .defaultValueIfInvalid(false),
+                sourceType = data.validateAndGet("git.sourceType")
+                    .isString()
+                    .defaultValueIfInvalid("PIPELINE_DEFINITION")
+                    .let { SourceCodeType.valueOf(it) }
 
-                )
+            )
         }
     }
 }
 
 
 class GitSourceCodeRepositoryFactory  {
-    companion object : PipelineComponentFromMapFactory<GitSourceCodeRepository> {
+    companion object : PipelineDomainFactory<GitSourceCodeRepository> {
         override fun create(data: Map<String, Any>): GitSourceCodeRepository {
 
             val id = IDComponent.create(
@@ -253,6 +308,18 @@ class GitSourceCodeRepositoryFactory  {
                 }
 
             }
+        }
+    }
+}
+
+class CleanRepositoryFactory {
+    companion object : PipelineDomainFactory<CleanRepository> {
+        override fun create(data: Map<String, Any>): CleanRepository {
+            return CleanRepository(
+                data.validateAndGet("cleanRepository")
+                    .isBoolean()
+                    .defaultValueIfInvalid(false)
+            )
         }
     }
 }

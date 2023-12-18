@@ -1,10 +1,11 @@
-package dev.rubentxu.pipeline.model.repository
+package dev.rubentxu.pipeline.backend.factories
 
 import dev.rubentxu.pipeline.model.*
+import dev.rubentxu.pipeline.model.repository.SourceCodeRepository
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
-class SourceCodeRepositoryBuilder : PipelineComponent {
-    companion object : PipelineComponentFromMapFactory<SourceCodeRepository> {
+class SourceCodeRepositoryFactory : PipelineDomain {
+    companion object : PipelineDomainFactory<SourceCodeRepository> {
         override fun create(data: Map<String, Any>): SourceCodeRepository {
             val type = data.keys.first()
             val isLocalGit = data.validateAndGet("git.local")

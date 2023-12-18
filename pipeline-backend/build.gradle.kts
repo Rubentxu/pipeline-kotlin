@@ -1,11 +1,16 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-
+    kotlin("jvm") version "1.9.21"
+    id("io.ktor.plugin") version "2.3.7"
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.21"
 }
 
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
-val appVersion: String by rootProject.extra
+
+val ktorVersion: String by project
+val kotlinVersion: String by project
+val logbackVersion: String by project
+val kotlinCoroutinesVersion:  String by project
+val kotestVersion:  String by project
+val appVersion:  String by project
 
 group = "dev.rubentxu.pipeline.backend"
 version = appVersion
@@ -28,6 +33,19 @@ dependencies {
 
     implementation("com.github.docker-java:docker-java-core:3.3.4")
     implementation("com.github.docker-java:docker-java-transport-zerodep:3.3.4")
+
+    // Ktor dependencies
+    implementation("io.insert-koin:koin-ktor:3.5.1")
+    implementation("io.rsocket.kotlin:rsocket-core:0.15.4")
+    // TCP ktor client/server transport
+    implementation("io.rsocket.kotlin:rsocket-transport-ktor-tcp:0.15.4")
+
+    // WS ktor  transport
+//    implementation("io.rsocket.kotlin:rsocket-transport-ktor-websocket-client:0.15.4")
+//    implementation("io.rsocket.kotlin:rsocket-transport-ktor-websocket-server:0.15.4")
+
+    // TCP nodeJS client/server transport
+//    implementation("io.rsocket.kotlin:rsocket-transport-nodejs-tcp:0.15.4")
 
 
     testImplementation(kotlin("test"))

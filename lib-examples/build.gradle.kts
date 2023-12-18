@@ -1,11 +1,19 @@
+val ktorVersion: String by project
+val kotlinVersion: String by project
+val logbackVersion: String by project
+val kotlinCoroutinesVersion:  String by project
+val kotestVersion:  String by project
+val appVersion:  String by project
+
+
 plugins {
-    kotlin("jvm")
+    kotlin("jvm") version "1.9.21"
     id("io.kotest") version "0.4.10"
 
 }
 
 group = "dev.rubentxu.pipeline.examples"
-version = "unspecified"
+version = appVersion
 
 repositories {
     mavenCentral()

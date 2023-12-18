@@ -12,12 +12,12 @@ enum class SourceCodeType {
     PLUGIN,
 }
 
-interface ISourceCodeManager: PipelineComponent {
+interface ISourceCodeManager: PipelineDomain {
     val definitions: Map<IDComponent, SourceCodeRepository>
     fun findSourceRepository(id: IDComponent): SourceCodeRepository
 }
 
-interface SCMExtension : PipelineComponent
+interface SCMExtension : PipelineDomain
 data class SimpleSCMExtension<T>(
     val name: String,
     val value: T,
@@ -94,17 +94,9 @@ data class Mercurial(
     }
 }
 
-class CleanRepository(val clean: Boolean) : SCMExtension {
-    companion object : PipelineComponentFromMapFactory<CleanRepository> {
-        override fun create(data: Map<String, Any>): CleanRepository {
-            return CleanRepository(
-                data.validateAndGet("cleanRepository")
-                    .isBoolean()
-                    .defaultValueIfInvalid(false)
-            )
-        }
-    }
-}
+class CleanRepository(
+    val clean: Boolean
+) : SCMExtension
 
 data class LocalSourceCodeRepository(
     override val id: IDComponent,

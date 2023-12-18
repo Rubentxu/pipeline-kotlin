@@ -1,13 +1,15 @@
+val kotlinCoroutinesVersion:  String by project
+val kotestVersion:  String by project
+val appVersion:  String by project
+
 plugins {
-    kotlin("jvm")
+    kotlin("jvm") version "1.9.21"
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.21"
     id("io.kotest") version "0.4.10"
 
 }
 
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
-val appVersion: String by rootProject.extra
+
 
 group = "dev.rubentxu.pipeline.dsl"
 version = appVersion
@@ -16,8 +18,8 @@ dependencies {
     implementation(project(":pipeline-model"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
 
-    implementation("org.gradle:gradle-tooling-api:8.4")
-    implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
+//    implementation("org.gradle:gradle-tooling-api:8.4")
+//    implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
 
     testImplementation(kotlin("test"))
 

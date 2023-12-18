@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.model.steps
 
 import dev.rubentxu.pipeline.model.jobs.IPipeline
+import dev.rubentxu.pipeline.model.logger.IPipelineLogger
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.workspace.WorkspaceManager
 import kotlinx.coroutines.*
@@ -14,8 +15,10 @@ import java.io.File
 class Shell(
     val pipeline: IPipeline,
     val workspaceManager: WorkspaceManager,
-    var timeout: Long = 15000) {
-    val logger = PipelineLogger.getLogger()
+    var timeout: Long = 15000,
+    val logger: IPipelineLogger = PipelineLogger.getLogger()
+) {
+
 
     /**
      * Executes a shell command in a specific directory.

@@ -11,10 +11,10 @@ class PipelineBlock() {
     var postExecution: PostExecution = PostExecution()
 
     /**
-    //     * This function sets the agent for the pipeline to any available agent.
-    //     *
-    //     * @param agentParam Placeholder for the any available agent.
-    //     */
+     * // * This function sets the agent for the pipeline to any available
+     * agent. // * // * @param agentParam Placeholder for the any available
+     * agent. //
+     */
     fun agent(block: AgentBlock.() -> Unit) {
 //        logger.system("Running pipeline using any available agent... ")
         val agentBlock = AgentBlock()
@@ -37,8 +37,8 @@ class PipelineBlock() {
     /**
      * This function adds a stage to the pipeline.
      *
-     * @param name The name of the stage.
      * @param block A block of code to run in the stage.
+     * @param name The name of the stage.
      */
     fun stages(block: StagesCollectionBlock.() -> Unit) {
         stages = StagesCollectionBlock().apply(block).build()
@@ -70,4 +70,12 @@ class PipelineBlock() {
         return agent
     }
 
+    fun build(): Pipeline {
+
+        return Pipeline(
+            stages = stages,
+            env = env,
+            postExecution = postExecution
+        )
+    }
 }

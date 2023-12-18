@@ -1,19 +1,15 @@
+val kotlinVersion: String by project
+val kotlinCoroutinesVersion:  String by project
+val kotestVersion:  String by project
+val appVersion:  String by project
+
 plugins {
-    kotlin("jvm")
+    kotlin("jvm") version "1.9.21"
     id("io.kotest") version "0.4.10"
-
 }
-
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
-val kotestVersion: String by rootProject.extra
-val appVersion: String by rootProject.extra
 
 group = "dev.rubentxu.pipeline.dsl"
 version = appVersion
-
-
-
 
 
 dependencies {

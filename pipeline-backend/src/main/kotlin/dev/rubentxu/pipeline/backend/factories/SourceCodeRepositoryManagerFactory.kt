@@ -1,18 +1,19 @@
-package dev.rubentxu.pipeline.model.repository
+package dev.rubentxu.pipeline.backend.factories
 
-import dev.rubentxu.pipeline.model.PipelineComponent
-import dev.rubentxu.pipeline.model.PipelineComponentFromMapFactory
+import dev.rubentxu.pipeline.model.PipelineDomain
+import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.repository.SourceCodeRepositoryManager
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 
-class SourceCodeRepositoryManagerBuilder: PipelineComponent {
-    companion object : PipelineComponentFromMapFactory<SourceCodeRepositoryManager> {
+class SourceCodeRepositoryManagerFactory: PipelineDomain {
+    companion object : PipelineDomainFactory<SourceCodeRepositoryManager> {
         override fun create(data: Map<String, Any>): SourceCodeRepositoryManager {
             val scmListMap = data.validateAndGet("scm")
                 .isList()
                 .defaultValueIfInvalid(emptyList<Map<String, Any>>())
             val scmMap = scmListMap.map {
-                val scm = SourceCodeRepositoryBuilder.create(it)
+                val scm = SourceCodeRepositoryFactory.create(it)
                 scm.id to scm
             }.toMap()
             return SourceCodeRepositoryManager(scmMap)

@@ -50,7 +50,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
     }
 
     fun executeSteps(block: StepsBlock.() -> Unit, pipeline: Pipeline) {
-        val steps = StepsBlock(pipeline)
+        val steps = StepsBlock()
         steps.block()
     }
 }

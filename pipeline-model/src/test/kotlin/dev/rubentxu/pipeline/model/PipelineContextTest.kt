@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.model
 
-import dev.rubentxu.pipeline.model.agents.PermanentAgentConfig
+import dev.rubentxu.pipeline.model.agents.PermanentAgent
 import dev.rubentxu.pipeline.model.agents.SSHLauncherConfig
-import dev.rubentxu.pipeline.model.agents.TemporaryAgentConfig
+import dev.rubentxu.pipeline.model.agents.TemporaryAgent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -140,7 +140,7 @@ class PipelineContextTest : StringSpec({
              val testYamlPath = Path.of(resourcePath)
              val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
 
-             val agentResult: PermanentAgentConfig = config.agents[0] as PermanentAgentConfig
+             val agentResult: PermanentAgent = config.agents[0] as PermanentAgent
 
              config.agents.size shouldBe 1
              agentResult.name shouldBe "linux-node"
@@ -171,7 +171,7 @@ class PipelineContextTest : StringSpec({
             val testYamlPath = Path.of(resourcePath)
             val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
 
-            val agentResult = config.agents[0] as TemporaryAgentConfig
+            val agentResult = config.agents[0] as TemporaryAgent
 
             config.agents.size shouldBe 1
             agentResult.name shouldBe "temp-node"

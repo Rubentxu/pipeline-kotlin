@@ -2,7 +2,9 @@ package pipeline.kotlin.extensions
 
 
 import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.steps.Shell
+import dev.rubentxu.pipeline.model.workspace.WorkspaceManager
 import kotlinx.coroutines.runBlocking
 import java.io.File
 
@@ -18,7 +20,10 @@ import java.io.File
  * @throws ShellCommandExecutionException If the shell command fails to execute.
  */
 fun StepsBlock.sh(command: String, returnStdout: Boolean = false): String = runBlocking {
-    val shell = Shell(pipeline)
+    val workspaceManager = context.getService(WorkspaceManager::class).getOrThrow()
+    val environment = context.getResource(EnvVars::class).getOrThrow()
+
+    val shell = Shell(env= environment, workspaceManager = workspaceManager)
     logger.info("+ sh $command")
     val output = shell.execute(command, returnStdout)
 

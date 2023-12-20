@@ -1,19 +1,12 @@
 package dev.rubentxu.pipeline.dsl
 
+import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.logger.IPipelineLogger
-import dev.rubentxu.pipeline.model.logger.PipelineLogger
-import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import kotlinx.coroutines.*
 
-/**
- * StepBlock represents a block of steps in a pipeline.
- * It implements Configurable and CoroutineScope interfaces.
- *
- * @property pipeline The pipeline in which this block of steps is being executed.
- */
 @PipelineDsl
-open class StepsBlock() {
-    val logger: IPipelineLogger = PipelineLogger.getLogger()
+open class StepsBlock(val context: IPipelineContext) {
+    lateinit var logger: IPipelineLogger
 
     val steps = mutableListOf<Step>()
 
@@ -31,4 +24,7 @@ open class StepsBlock() {
         }.awaitAll()
     }
 
+    suspend fun init() {
+        logger = context.getService(IPipelineLogger::class) as IPipelineLogger
+    }
 }

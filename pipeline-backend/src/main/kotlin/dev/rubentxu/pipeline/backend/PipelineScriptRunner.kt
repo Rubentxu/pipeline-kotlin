@@ -5,8 +5,7 @@ import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
-import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
-import dev.rubentxu.pipeline.model.CascManager
+
 import dev.rubentxu.pipeline.model.PipelineContext
 import dev.rubentxu.pipeline.model.jobs.JobResult
 import dev.rubentxu.pipeline.model.jobs.Status

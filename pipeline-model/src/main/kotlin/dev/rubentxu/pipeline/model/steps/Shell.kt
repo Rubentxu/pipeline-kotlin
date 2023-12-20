@@ -13,7 +13,7 @@ import java.io.File
  * @property pipeline The pipeline in which this shell command block is being executed.
  */
 class Shell(
-    val pipeline: IPipeline,
+    val env: EnvVars,
     val workspaceManager: WorkspaceManager,
     var timeout: Long = 15000,
     val logger: IPipelineLogger = PipelineLogger.getLogger()
@@ -83,19 +83,19 @@ class Shell(
     }
 
     fun run(command: String): Process {
-        pipeline.env["JAVA_HOME"]?.let {
-            pipeline.env["PATH"] = "${it}/bin:${pipeline.env["PATH"]}"
+        env["JAVA_HOME"]?.let {
+            env["PATH"] = "${it}/bin:${env["PATH"]}"
         }
 
-        pipeline.env["M2_HOME"]?.let {
-            pipeline.env["PATH"] = "${it}/bin:${pipeline.env["PATH"]}"
+        env["M2_HOME"]?.let {
+            env["PATH"] = "${it}/bin:${env["PATH"]}"
         }
 
-        val directory = workspaceManager.workspacePath.toFile()
+        val directory = workspaceManager.currentWorkspacePath.toFile()
         return ProcessBuilder("sh", "-c", command)
             .directory(directory)
             .apply {
-                environment().putAll(pipeline.env)
+                environment().putAll(env)
             }
             .start()
     }

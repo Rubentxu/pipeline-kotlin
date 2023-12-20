@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.model.logger
 
+import dev.rubentxu.pipeline.model.PipelineDomain
+
 /**
  * An interface for logging messages from a pipeline, supporting different log levels.
  */
-interface IPipelineLogger {
+interface IPipelineLogger: PipelineDomain {
 
     /**
      * Logs an informational message.

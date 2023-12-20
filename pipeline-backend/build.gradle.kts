@@ -11,6 +11,7 @@ val logbackVersion: String by project
 val kotlinCoroutinesVersion:  String by project
 val kotestVersion:  String by project
 val appVersion:  String by project
+val koinVersion=  "3.5.2"
 
 group = "dev.rubentxu.pipeline.backend"
 version = appVersion
@@ -36,6 +37,8 @@ dependencies {
 
     // Ktor dependencies
     implementation("io.insert-koin:koin-ktor:3.5.1")
+    implementation("io.insert-koin:koin-core:$koinVersion")
+
     implementation("io.rsocket.kotlin:rsocket-core:0.15.4")
     // TCP ktor client/server transport
     implementation("io.rsocket.kotlin:rsocket-transport-ktor-tcp:0.15.4")
@@ -53,6 +56,10 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core-jvm:5.7.2")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("io.kotest:kotest-property-jvm:5.7.2")
+    testImplementation("io.insert-koin:koin-test:$koinVersion")
+    testImplementation("io.insert-koin:koin-test-junit4:$koinVersion")
+
+    testImplementation("io.insert-koin:koin-test-junit5:$koinVersion")
 
 }
 

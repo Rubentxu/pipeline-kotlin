@@ -1,15 +1,15 @@
 package dev.rubentxu.pipeline.dsl
 
-import dev.rubentxu.pipeline.model.pipeline.Pipeline
+import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.pipeline.PostExecution
 
 /**
  * This class defines the DSL for creating a stage.
  *
- * @property pipeline The pipeline to create the stage in.
+ * @property context The pipeline to create the stage in.
  */
 @PipelineDsl
-class StageBlock(val name: String, val pipeline: Pipeline) {
+class StageBlock(val name: String, val context: IPipelineContext) {
     var postExecution: PostExecution = PostExecution()
     var stepsBlock: (StepsBlock.() -> Unit)? = null
 

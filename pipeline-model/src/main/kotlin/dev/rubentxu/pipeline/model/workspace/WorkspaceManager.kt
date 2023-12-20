@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.model.workspace
 
+import dev.rubentxu.pipeline.model.PipelineDomain
 import kotlinx.coroutines.*
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
@@ -8,7 +9,7 @@ import java.util.*
 import dev.rubentxu.pipeline.model.events.EventBus
 
 
-interface IWorkspaceManager {
+interface IWorkspaceManager: PipelineDomain {
 
     fun createWorkspace(nameJob: String)
     fun startWatching(): Job
@@ -29,14 +30,14 @@ class WorkspaceManager(
 ) : IWorkspaceManager {
 
     private lateinit var job: Job
-    lateinit var workspacePath: Path
+    lateinit var currentWorkspacePath: Path
     lateinit var workspacePipelinePath: Path
 
     override fun createWorkspace(nameJob: String) {
         if (!Files.exists(workspaceBasePath)) {
             Files.createDirectories(workspaceBasePath)
         }
-        workspacePath = Files.createDirectories(workspaceBasePath.resolve(nameJob))
+        currentWorkspacePath = Files.createDirectories(workspaceBasePath.resolve(nameJob))
         workspacePipelinePath = Files.createDirectories(workspaceBasePath.resolve(".pipeline/${nameJob}"))
 
     }

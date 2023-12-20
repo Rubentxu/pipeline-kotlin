@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.model.pipeline
 
+import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.events.EndEvent
 import dev.rubentxu.pipeline.model.events.Event
 import dev.rubentxu.pipeline.model.events.EventManager
@@ -22,7 +23,6 @@ import kotlin.system.measureTimeMillis
  */
 
 class Pipeline(
-    override val env: EnvVars,
     override var currentStage: String = "initial pipeline",
     override var stageResults: MutableList<StageResult> = mutableListOf(),
     val stages: List<StageExecutor>,
@@ -45,7 +45,7 @@ class Pipeline(
      *
      * @return A list of results of each stage.
      */
-    override suspend fun executeStages() {
+    override suspend fun executeStages(context: IPipelineContext) {
         for (stage in stages) {
             var status = Status.Success
 
@@ -53,7 +53,7 @@ class Pipeline(
             registerEvent(StartEvent(currentStage!!, System.currentTimeMillis()))
             val time = measureTimeMillis {
                 try {
-                    stage.run(this)
+                    stage.run(context)
                 } catch (e: Exception) {
                     status = Status.Failure
                     logger.error("Abort pipeline stages in stage $currentStage, ${e.message}")
@@ -65,7 +65,7 @@ class Pipeline(
                 break
             }
         }
-        postExecution.run(this, stageResults)
+        postExecution.run(context, stageResults)
 
     }
 

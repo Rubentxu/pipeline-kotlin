@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.model.jobs
 
 import dev.rubentxu.pipeline.model.IDComponent
+import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
@@ -13,9 +14,9 @@ import java.nio.file.Path
 interface JobLauncher {
     val listeners: List<JobExecutionListener>
 
-    fun launch(instance: JobDefinition): JobExecution
+    fun launch(instance: JobDefinition, context: IPipelineContext): JobExecution
 
-    suspend fun execute(pipeline: IPipeline): JobResult
+    suspend fun execute(pipeline: IPipeline, context: IPipelineContext): JobResult
 }
 
 
@@ -67,10 +68,8 @@ class JobExecution(val job:  Job): Job by job, JobExecutionListener {
 interface IPipeline {
     var stageResults :MutableList<StageResult>
     var currentStage: String
-    suspend fun executeStages()
+    suspend fun executeStages(context: IPipelineContext)
 
-
-    val env: EnvVars
 }
 
 interface JobExecutionListener : PipelineDomain {

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.model.pipeline
 import dev.rubentxu.pipeline.dsl.PipelineDsl
 import dev.rubentxu.pipeline.dsl.StageBlock
 import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.jobs.StageResult
 import dev.rubentxu.pipeline.model.jobs.Status
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
@@ -22,12 +23,12 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
     /**
      * This function runs the stage.
      *
-     * @param pipeline The pipeline to run the stage in.
+     * @param context The pipeline to run the stage in.
      */
-    suspend fun run(pipeline: Pipeline): Any {
+    suspend fun run(context: IPipelineContext): Any {
         var status: Status = Status.Success
         var errorMessage = ""
-        val dsl = StageBlock(name, pipeline)
+        val dsl = StageBlock(name, context)
 //        val steps = StepsBlock(pipeline)
         var result: Any = ""
         try {
@@ -35,7 +36,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
             postExecution = dsl.postExecution
             val stepsBlock: (StepsBlock.() -> Unit)? = dsl.stepsBlock
             if (stepsBlock != null) {
-                result = executeSteps(stepsBlock, pipeline)
+                result = executeSteps(stepsBlock, context)
             }
 
         } catch (e: Exception) {
@@ -44,13 +45,13 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
             logger.error("Error running stage $name, ${e.message}")
             throw e
         } finally {
-            postExecution?.run(pipeline, listOf(StageResult(name, status, "", errorMessage)))
+            postExecution?.run(context, listOf(StageResult(name, status, "", errorMessage)))
         }
         return result
     }
 
-    fun executeSteps(block: StepsBlock.() -> Unit, pipeline: Pipeline) {
-        val steps = StepsBlock()
+    fun executeSteps(block: StepsBlock.() -> Unit, context: IPipelineContext) {
+        val steps = StepsBlock(context)
         steps.block()
     }
 }

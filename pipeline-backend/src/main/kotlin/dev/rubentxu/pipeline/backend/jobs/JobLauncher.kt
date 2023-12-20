@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.backend.jobs
 
+import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.jobs.*
 import dev.rubentxu.pipeline.model.logger.IPipelineLogger
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
+import dev.rubentxu.pipeline.model.steps.EnvVars
 import kotlinx.coroutines.*
 import java.nio.file.Path
 
@@ -33,7 +35,7 @@ class JobLauncherImpl(
      */
 
 
-    override fun launch(instance: JobDefinition): JobExecution {
+    override fun launch(instance: JobDefinition, context: IPipelineContext): JobExecution {
         val startSignal = CompletableDeferred<Unit>()
         val job = launch(Dispatchers.Default) {
             try {
@@ -45,7 +47,7 @@ class JobLauncherImpl(
                     async { listener.onPreExecute(pipeline) }
                 }
 
-                val result = execute(pipeline)
+                val result = execute(pipeline, context)
 
                 // Wait for all preExecute jobs to complete
                 preExecuteJobs.forEach { it.await() }
@@ -67,14 +69,14 @@ class JobLauncherImpl(
         return jobExecution
     }
 
-    override suspend fun execute(pipeline: IPipeline): JobResult = coroutineScope {
+    override suspend fun execute(pipeline: IPipeline, context: IPipelineContext): JobResult = coroutineScope {
         var status: Status
 
         logger.system("Registering pipeline listeners...")
         logger.system("Executing pipeline...")
 
         try {
-            pipeline.executeStages()
+            pipeline.executeStages(context)
         } catch (e: Exception) {
             logger.error("Pipeline execution failed: ${e.message}")
             status = Status.Failure
@@ -85,7 +87,8 @@ class JobLauncherImpl(
 
         status = if (pipeline.stageResults.any { it.status == Status.Failure }) Status.Failure else Status.Success
 
-        val result = JobResult(status, pipeline.stageResults, pipeline.env, logger.logs())
+        val env = context.getResource(EnvVars::class).getOrThrow()
+        val result = JobResult(status, pipeline.stageResults, env, logger.logs())
 
         return@coroutineScope result
     }

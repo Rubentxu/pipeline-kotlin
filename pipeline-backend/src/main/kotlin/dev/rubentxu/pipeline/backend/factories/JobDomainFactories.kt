@@ -5,31 +5,33 @@ import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.jobs.*
-import dev.rubentxu.pipeline.model.logger.IPipelineLogger
-import dev.rubentxu.pipeline.model.repository.ISourceCodeManager
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
+
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class JobInstanceFactory(
-    val sourceCodeRepositoryManager: ISourceCodeManager,
-    val logger: IPipelineLogger,
-): PipelineDomainFactory<JobInstance> {
+): PipelineDomain {
+    companion object : PipelineDomainFactory<JobInstance> {
         override fun create(data: Map<String, Any>): JobInstance {
             val envMap = data.validateAndGet("job.environmentVars").isMap()
                 .throwIfInvalid("environmentVars is required in Job") as Map<String, String>
             val envVars = EnvVars(envMap)
 
-            val trigger = data.validateAndGet("job.trigger").isMap().defaultValueIfInvalid(emptyMap<String,Any>())
+            val trigger = data.validateAndGet("job.trigger").isMap().defaultValueIfInvalid(emptyMap<String, Any>())
             var cron: CronTrigger? = null
-            if(trigger.containsKey("cron")) {
+            if (trigger.containsKey("cron")) {
                 cron = CromTriggerBuilder.create(data)
             }
 
             val parameters =
                 data.validateAndGet("job.parameters")
                     .isList()
-                    .defaultValueIfInvalid(emptyList<Map<String,Any>>())
+                    .defaultValueIfInvalid(emptyList<Map<String, Any>>())
                     .map { JobParameterFactory.create(it) }
+            val sourceCodeRepositoryManager = SourceCodeRepositoryManagerFactory.create(data)
+
+
 
 
             return JobInstance(
@@ -48,13 +50,15 @@ class JobInstanceFactory(
                     .defaultValueIfInvalid(emptyList<Map<String, Any>>())
                     .map { PluginsDefinitionSourceFactory.create(it) },
 
+
                 trigger = cron,
                 pipelineFileSource = PipelineFileSourceCodeFactory.create(data),
                 sourceCodeRepositoryManager = sourceCodeRepositoryManager,
-                logger = logger,
+                logger = PipelineLogger.getLogger(),
                 parameters = parameters,
             )
         }
+    }
 }
 
 class JobParameterFactory {

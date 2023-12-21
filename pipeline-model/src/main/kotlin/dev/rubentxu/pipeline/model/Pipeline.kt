@@ -17,6 +17,10 @@ interface PipelineDomainDslFactory<T: PipelineDomain> {
     suspend fun create(block: T.() -> Unit): PipelineDomain
 }
 
+data class ListPipelineDomain<T: PipelineDomain>(
+    val list: List<T>
+): PipelineDomain
+
 data class IDComponent private constructor(
     val id: String,
 )  {

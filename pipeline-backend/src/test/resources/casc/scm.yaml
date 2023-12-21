@@ -1,4 +1,4 @@
-scm:
+repositories:
   - git:
       id: "git-id"
       name: "git-name"

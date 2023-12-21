@@ -3,13 +3,16 @@ package dev.rubentxu.pipeline.model.jobs
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.PipelineDomain
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.repository.ISourceCodeManager
+import dev.rubentxu.pipeline.model.repository.PluginSourceCodeConfig
 import dev.rubentxu.pipeline.model.repository.SourceCode
-import dev.rubentxu.pipeline.model.steps.EnvVars
-import dev.rubentxu.pipeline.model.validations.validateAndGet
+import dev.rubentxu.pipeline.model.repository.SourceCodeConfig
 import kotlinx.coroutines.*
+import java.net.URL
 import java.nio.file.Path
+import javax.script.ScriptEngine
+import javax.script.ScriptEngineManager
 
 interface JobLauncher {
     val listeners: List<JobExecutionListener>
@@ -22,16 +25,16 @@ interface JobLauncher {
 
 interface JobDefinition: PipelineDomain{
     val name: String
-    val environmentVars: EnvVars
     val publisher: Publisher?
-    val projectSource: ProjectSource
-    val pluginsDefinitionSource: List<PluginsDefinitionSource>
-    val pipelineFileSource: PipelineFileSource
+    val projectSourceCode: SourceCodeConfig
+    val pluginsSources: List<PluginSourceCodeConfig>
+    val pipelineSourceCode: SourceCodeConfig
     val trigger: Trigger?
+    val parameters: List<JobParameter<*>>
 
-    fun resolvePipeline(): IPipeline
-    fun resolveProjectSourceCode(): SourceCode
-    fun resolvePluginsDefinitionSource(): List<SourceCode>
+    suspend fun resolvePipeline(context: IPipelineContext): IPipeline
+    suspend fun resolveProjectPath(context: IPipelineContext): Path
+    suspend fun loadPlugins(context: IPipelineContext): Boolean
 }
 
 
@@ -81,11 +84,17 @@ class JobExecutionException(message: String) : Exception(message) {}
 
 class UnexpectedJobExecutionException(message: String) : Exception(message) {}
 
-interface Trigger : PipelineDomain {}
+interface Trigger : PipelineDomain {
+    abstract fun nextExecutionTime(): Any
+}
 
 data class CronTrigger(
     val cron: String,
-) : Trigger {}
+) : Trigger {
+    override fun nextExecutionTime(): Any {
+        TODO("Not yet implemented")
+    }
+}
 
 
 
@@ -141,21 +150,29 @@ data class TextJobParameter(
     override val description: String,
 ) : JobParameter<String>
 
-data class ProjectSource(
-    val name: String,
-    val scmReferenceId: IDComponent,
-) : PipelineDomain
+data class ProjectSourceCode(
+    override val id: IDComponent,
+    override val name: String,
+    override val description: String?,
+    override val path: Path,
+    ) : SourceCode
 
 data class PluginsDefinitionSource(
-    val name: String,
-    val scmReferenceId: IDComponent,
-) : PipelineDomain
+    override val id: IDComponent,
+    override val name: String,
+    override val description: String?,
+    override val path: Path,
+) : SourceCode
 
-class PipelineFileSource(
-    val name: String,
-    val relativeScriptPath: Path,
-    val scmReferenceId: IDComponent,
-) : PipelineDomain {
+interface PipelineSource: SourceCode {
+    suspend fun getPipeline(context: IPipelineContext): IPipeline
 
+    fun getScriptEngine(): ScriptEngine =
+        ScriptEngineManager().getEngineByExtension("kts")
+            ?: throw IllegalStateException("Script engine for .kts files not found")
 
 }
+
+
+
+

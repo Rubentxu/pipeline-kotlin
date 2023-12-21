@@ -1,14 +1,14 @@
 package dev.rubentxu.pipeline.model.repository
 
 import dev.rubentxu.pipeline.model.*
-import dev.rubentxu.pipeline.model.validations.validateAndGet
+import dev.rubentxu.pipeline.model.jobs.PipelineSource
+import dev.rubentxu.pipeline.model.jobs.ProjectSourceCode
 import java.net.URL
 import java.nio.file.Path
 
 enum class SourceCodeType {
     PROJECT,
     PIPELINE_DEFINITION,
-    LIBRARY,
     PLUGIN,
 }
 
@@ -23,92 +23,45 @@ data class SimpleSCMExtension<T>(
     val value: T,
 ) : SCMExtension
 
-interface SourceCodeRepository: IPipelineConfig {
+interface SourceCodeRepository: IPipelineConfig  {
     val id: IDComponent
     val name: String
     val description: String?
-    fun retrieve(): SourceCode
+
+    suspend fun retrieve(config: SourceCodeConfig, context: IPipelineContext): SourceCode
 }
 
-data class SourceCode(
-    val id: IDComponent,
+interface SourceCode: PipelineDomain {
+    val id: IDComponent
+    val name: String
+    val description: String?
+    val path: Path
+
+}
+
+open class SourceCodeConfig(
+    val repositoryId: IDComponent,
     val name: String,
-    val url: URL,
-    val type: SourceCodeType,
-)
+    val description: String?,
+    val relativePath: Path?,
+    val sourceCodeType: SourceCodeType,
+
+) : PipelineDomain
+
+class PluginSourceCodeConfig(
+    repositoryId: IDComponent,
+    name: String,
+    description: String?,
+    relativePath: Path?,
+    sourceCodeType: SourceCodeType,
+    val loadClass: String,
+
+    ) : SourceCodeConfig(repositoryId, name, description, relativePath, sourceCodeType)
 
 class SourceCodeRepositoryManager(
     override val definitions: Map<IDComponent, SourceCodeRepository>
 ): ISourceCodeManager {
     override fun findSourceRepository(id: IDComponent): SourceCodeRepository {
         return definitions[id] ?: throw IllegalArgumentException("Source code repository with id '$id' not found")
-    }
-}
-
-data class GitSourceCodeRepository(
-    override val id: IDComponent,
-    override val name: String,
-    override val description: String?,
-    val extensions: List<SCMExtension>,
-    val branches: List<String>,
-    val globalConfigName: String,
-    val globalConfigEmail: String,
-    val url: URL,
-    val credentialsId: String,
-) : SourceCodeRepository {
-
-    override fun retrieve(): SourceCode {
-        TODO("Not yet implemented")
-    }
-}
-
-data class SvnSourceCodeRepository(
-    override val id: IDComponent,
-    override val name: String,
-    override val description: String?,
-    val extensions: List<SCMExtension>,
-    val branches: List<String>,
-    val url: URL,
-    val credentialsId: String,
-) : SourceCodeRepository {
-
-
-    override fun retrieve(): SourceCode {
-        TODO("Not yet implemented")
-    }
-}
-
-
-data class Mercurial(
-    override val id: IDComponent,
-    override val name: String,
-    override val description: String?,
-    val extensions: List<SCMExtension>,
-    val branches: List<String>,
-    val url: URL,
-    val credentialsId: String,
-    ) : SourceCodeRepository {
-
-    override fun retrieve(): SourceCode {
-        TODO("Not yet implemented")
-    }
-}
-
-class CleanRepository(
-    val clean: Boolean
-) : SCMExtension
-
-data class LocalSourceCodeRepository(
-    override val id: IDComponent,
-    override val name: String,
-    override val description: String?,
-    val branches: List<String>,
-    val path: Path,
-    val isBareRepo: Boolean,
-    val sourceType: SourceCodeType,
-) : SourceCodeRepository {
-
-    override fun retrieve(): SourceCode {
-        return SourceCode(id, name, path.toUri().toURL(), sourceType)
     }
 }

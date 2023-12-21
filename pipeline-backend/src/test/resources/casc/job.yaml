@@ -2,16 +2,18 @@ pipeline:
   job:
     name: "pipeline-job"
     description: "Pipeline Job"
-    projectSource:
+    workspacePath: "workspace"
+    projectSourceCode:
       name: "pipeline-config"
-      scmReferenceId: "pipeline-config-id"
-    librarySources:
+      repositoryId: "pipeline-config-id"
+    pluginsSources:
       - name: "internal-pipeline-library"
-        scmReferenceId: "internal-pipeline-library-id"
-    pipelineFileSource:
+        repositoryId: "internal-pipeline-library-id"
+    pipelineSourceCode:
       name: "pipeline-config"
-      scmReferenceId: "pipeline-config-id"
-      relativeScriptPath: "Jenkinsfile"
+      repositoryId: "pipeline-config-id"
+      decription: "Pipeline Config"
+      relativePath: "Jenkinsfile"
     trigger:
       cron: "H/5 * * * *"
     environmentVars:

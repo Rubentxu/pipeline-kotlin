@@ -57,7 +57,7 @@ class JobConfigTest : StringSpec({
 //        config.job?.jobParameters?.get(4)?.name shouldBe "CORGE"
 //        config.job?.jobParameters?.get(4)?.defaultValue shouldBe "CORGE"
 //        config.job?.jobParameters?.get(4)?.description shouldBe "CORGE"
-        config.job?.projectSource?.shouldBeInstanceOf<ProjectSource>()
+        config.job?.projectSource?.shouldBeInstanceOf<ProjectSourceCode>()
         config.job?.projectSource?.name shouldBe "pipeline-config"
         config.job?.projectSource?.scmReferenceId shouldBe "pipeline-config-id"
         config.job?.pluginsDefinitionSource?.size shouldBe 1
@@ -108,7 +108,7 @@ class JobConfigTest : StringSpec({
             job.environmentVars.shouldBeTypeOf<EnvVars>()
             job.publisher.shouldBeTypeOf<Publisher>()
 
-            job.projectSource.shouldBeTypeOf<ProjectSource>()
+            job.projectSource.shouldBeTypeOf<ProjectSourceCode>()
             job.pluginsDefinitionSource.forEach { it.shouldBeInstanceOf<PluginsDefinitionSource>() }
             job.pipelineFileSource.shouldBeTypeOf<PipelineFileSource>()
 

@@ -7,14 +7,11 @@ import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import kotlinx.coroutines.*
-import java.nio.file.Path
 
 class JobLauncherImpl(
     override val listeners: MutableList<JobExecutionListener> = mutableListOf(),
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: IPipelineLogger = PipelineLogger.getLogger(),
 ) : JobLauncher, CoroutineScope by CoroutineScope(Dispatchers.Default) {
-
-
 
 
     /**
@@ -39,7 +36,7 @@ class JobLauncherImpl(
         val startSignal = CompletableDeferred<Unit>()
         val job = launch(Dispatchers.Default) {
             try {
-                val pipeline = instance.resolvePipeline()
+                val pipeline = instance.resolvePipeline(context)
                 logger.system("Build Pipeline: $pipeline")
                 startSignal.await()
 
@@ -114,3 +111,44 @@ class JobLauncherImpl(
 
 
 }
+//
+//interface JobScheduler {
+//    fun scheduleJob(job: JobDefinition, trigger: Trigger): JobExecution
+//    fun cancelScheduledJob(jobExecution: JobExecution)
+//    fun getScheduledJobStatus(jobExecution: JobExecution): JobStatus
+//}
+//
+//class CoroutineJobScheduler : JobScheduler {
+//    private val scheduledJobs = mutableMapOf<JobExecution, Job>()
+//
+//    override fun scheduleJob(job: JobDefinition, trigger: Trigger): JobExecution {
+//        val jobExecution = JobExecution(job)
+//        val coroutineJob = GlobalScope.launch {
+//            while (isActive) {
+//                delay(trigger.nextExecutionTime())
+//                jobExecution.execute()
+//            }
+//        }
+//        scheduledJobs[jobExecution] = coroutineJob
+//        return jobExecution
+//    }
+//
+//    override fun cancelScheduledJob(jobExecution: JobExecution) {
+//        scheduledJobs[jobExecution]?.cancel()
+//        scheduledJobs.remove(jobExecution)
+//    }
+//
+//    override fun getScheduledJobStatus(jobExecution: JobExecution): JobStatus {
+//        return if (scheduledJobs[jobExecution]?.isActive == true) {
+//            JobStatus.SCHEDULED
+//        } else {
+//            JobStatus.NOT_SCHEDULED
+//        }
+//    }
+//}
+//
+//enum class JobStatus {
+//    SCHEDULED,
+//    NOT_SCHEDULED
+//
+//}

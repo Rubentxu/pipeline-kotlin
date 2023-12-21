@@ -2,8 +2,9 @@ package dev.rubentxu.pipeline.backend.agent.docker
 
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.WaitContainerResultCallback
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
+
 import java.util.*
 
 class ContainerLifecycleManager(

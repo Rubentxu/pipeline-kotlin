@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.model.validations.validateAndGet
 class CredentialsProviderFactory {
 
     companion object : PipelineDomainFactory<ICredentialsProvider> {
-        override fun create(data: Map<String, Any>): ICredentialsProvider {
+        override suspend fun create(data: Map<String, Any>): ICredentialsProvider {
             val credentialsList: MutableMap<IDComponent, Credentials> = data.validateAndGet("credentials")
                 .isList()
                 .throwIfInvalid("credentials is required in CredentialsProvider")

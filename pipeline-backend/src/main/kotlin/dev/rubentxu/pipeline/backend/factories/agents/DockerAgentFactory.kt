@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.model.validations.validateAndGet
 class DockerAgentFactory {
     companion object : PipelineDomainFactory<DockerAgent> {
 
-        override fun create(data: Map<String, Any>): DockerAgent {
+        override suspend fun create(data: Map<String, Any>): DockerAgent {
             val id: IDComponent = IDComponent.create(data.validateAndGet("id")
                 .isString()
                 .throwIfInvalid("id is required in DockerCloudConfig"))
@@ -43,7 +43,7 @@ class DockerAgentFactory {
 
 class DockerTemplateFactory {
     companion object : PipelineDomainFactory<DockerTemplate> {
-        override fun create(data: Map<String, Any>): DockerTemplate {
+        override suspend fun create(data: Map<String, Any>): DockerTemplate {
             val templateBaseMap: Map<String, Any> = data.validateAndGet("dockerTemplateBase")
                 .isMap()
                 .throwIfInvalid("dockerTemplateBase is required in DockerTemplate") as Map<String, Any>
@@ -66,7 +66,7 @@ class DockerTemplateFactory {
 
 class DockerTemplateBaseFactory {
     companion object : PipelineDomainFactory<DockerTemplateBase> {
-        override fun create(data: Map<String, Any>): DockerTemplateBase {
+        override suspend fun create(data: Map<String, Any>): DockerTemplateBase {
             return DockerTemplateBase(
                 image = data.validateAndGet("image").isString()
                     .throwIfInvalid("image is required in DockerTemplateBase"),
@@ -81,7 +81,7 @@ class DockerTemplateBaseFactory {
 
 class RetentionStrategyFactory {
     companion object : PipelineDomainFactory<RetentionStrategy> {
-        override fun create(data: Map<String, Any>): RetentionStrategy {
+        override suspend fun create(data: Map<String, Any>): RetentionStrategy {
             return RetentionStrategy(
                 idleMinutes = data.validateAndGet("retentionStrategy.idleMinutes").isNumber().throwIfInvalid() as Int
             )

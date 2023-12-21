@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class CredentialsFactory  {
     companion object : PipelineDomainFactory<Credentials> {
-        override fun create(data: Map<String, Any>): Credentials {
+        override suspend fun create(data: Map<String, Any>): Credentials {
             val credentialConfig = data.get(data?.keys?.first()) as Map<String, Any>
 
             return when (data?.keys?.first()) {
@@ -27,7 +27,7 @@ class CredentialsFactory  {
 
 class BasicSSHUserPrivateKeyFactory  {
     companion object : PipelineDomainFactory<BasicSSHUserPrivateKey> {
-        override fun create(data: Map<String, Any>): BasicSSHUserPrivateKey {
+        override suspend fun create(data: Map<String, Any>): BasicSSHUserPrivateKey {
             return BasicSSHUserPrivateKey(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -54,7 +54,7 @@ class BasicSSHUserPrivateKeyFactory  {
 
 class UsernamePasswordFactory {
     companion object : PipelineDomainFactory<UsernamePassword> {
-        override fun create(data: Map<String, Any>): UsernamePassword {
+        override suspend fun create(data: Map<String, Any>): UsernamePassword {
             return UsernamePassword(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -78,7 +78,7 @@ class UsernamePasswordFactory {
 
 class StringCredentialsFatory {
     companion object : PipelineDomainFactory<StringCredentials> {
-        override fun create(data: Map<String, Any>): StringCredentials {
+        override suspend fun create(data: Map<String, Any>): StringCredentials {
             return StringCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -100,7 +100,7 @@ class StringCredentialsFatory {
 
 class AwsCredentialsFactory {
     companion object : PipelineDomainFactory<AwsCredentials> {
-        override fun create(data: Map<String, Any>): AwsCredentials {
+        override suspend fun create(data: Map<String, Any>): AwsCredentials {
             return AwsCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -124,7 +124,7 @@ class AwsCredentialsFactory {
 
 class FileCredentialsFactory {
     companion object : PipelineDomainFactory<FileCredentials> {
-        override fun create(data: Map<String, Any>): FileCredentials {
+        override suspend fun create(data: Map<String, Any>): FileCredentials {
             return FileCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -149,7 +149,7 @@ class FileCredentialsFactory {
 
 class CertificateCredentialsFactory {
     companion object : PipelineDomainFactory<CertificateCredentials> {
-        override fun create(data: Map<String, Any>): CertificateCredentials {
+        override suspend fun create(data: Map<String, Any>): CertificateCredentials {
             return CertificateCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()

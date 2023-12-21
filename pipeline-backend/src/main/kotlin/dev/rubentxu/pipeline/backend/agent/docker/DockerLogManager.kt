@@ -4,8 +4,8 @@ import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.LogContainerCmd
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.core.command.LogContainerResultCallback
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import java.util.concurrent.CountDownLatch
 
 class DockerLogManager(

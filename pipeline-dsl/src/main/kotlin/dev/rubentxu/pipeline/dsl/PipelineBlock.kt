@@ -61,7 +61,6 @@ class PipelineBlock() {
     fun createPipeline(): Pipeline {
         return Pipeline(
             stages = stages,
-            env = env,
             postExecution = postExecution
         )
     }
@@ -74,7 +73,6 @@ class PipelineBlock() {
 
         return Pipeline(
             stages = stages,
-            env = env,
             postExecution = postExecution
         )
     }

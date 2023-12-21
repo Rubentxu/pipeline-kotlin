@@ -52,13 +52,15 @@ dependencies {
 
 
     testImplementation(kotlin("test"))
-    testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")
-    testImplementation("io.kotest:kotest-assertions-core-jvm:5.7.2")
+    testImplementation("io.kotest:kotest-runner-junit5-jvm:$kotestVersion")
+    testImplementation("io.kotest:kotest-assertions-core-jvm:$kotestVersion")
+    testImplementation("io.kotest:kotest-property-jvm:$kotestVersion")
+    testImplementation("io.kotest:kotest-extensions-junit5:$kotestVersion")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testImplementation("io.kotest:kotest-property-jvm:5.7.2")
+    testImplementation("uk.org.webcompere:system-stubs-jupiter:2.1.5")
+    testImplementation("io.kotest:kotest-framework-datatest-jvm:5.8.0")
     testImplementation("io.insert-koin:koin-test:$koinVersion")
     testImplementation("io.insert-koin:koin-test-junit4:$koinVersion")
-
     testImplementation("io.insert-koin:koin-test-junit5:$koinVersion")
 
 }

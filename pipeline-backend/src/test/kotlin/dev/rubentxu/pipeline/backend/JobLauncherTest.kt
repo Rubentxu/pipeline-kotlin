@@ -3,19 +3,14 @@ package dev.rubentxu.pipeline.backend
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.jobs.JobResult
-import dev.rubentxu.pipeline.model.jobs.PipelineFileSource
-import dev.rubentxu.pipeline.model.jobs.ProjectSource
-import dev.rubentxu.pipeline.model.jobs.Status
+import dev.rubentxu.pipeline.model.PipelineContext
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.repository.SourceCodeConfig
 import dev.rubentxu.pipeline.model.repository.SourceCodeRepositoryManager
-import dev.rubentxu.pipeline.model.steps.EnvVars
+import dev.rubentxu.pipeline.model.repository.SourceCodeType
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.shouldBe
-import org.mockito.Mock
 import org.mockito.Mockito.mock
 import java.io.File
-import java.nio.file.Path
 
 
 class JobLauncherTest : StringSpec({
@@ -25,24 +20,27 @@ class JobLauncherTest : StringSpec({
         val scriptFile = File("testData/hello.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
 
-        val sourceCodeRepositoryManager = mock<SourceCodeRepositoryManager>()
 
+        val sourceCodeConfig = SourceCodeConfig(
+            repositoryId = IDComponent.create("scm-test-id"),
+            name = "test",
+            description = null,
+            relativePath = null,
+            sourceCodeType = SourceCodeType.PROJECT,
+        )
         println("scriptFile: $scriptFile")
         val job = JobInstance(
             name = "test",
-            environmentVars = EnvVars(mapOf()),
             publisher = null,
-            projectSource = ProjectSource("test", IDComponent.create("scm-test-id")),
-            emptyList(),
-            pipelineFileSource = PipelineFileSource("test", Path.of("testData/hello.pipeline.kts"), IDComponent.create("scm-test-id")),
+            projectSourceCode= sourceCodeConfig,
+            pipelineSourceCode =  sourceCodeConfig,
             trigger = null,
-            sourceCodeRepositoryManager = sourceCodeRepositoryManager,
             parameters = emptyList(),
-            logger = PipelineLogger.getLogger()
+            pluginsSources = emptyList(),
         )
 
 
-        val execution = JobLauncherImpl().launch(job)
+        val execution = JobLauncherImpl().launch(job, mock(PipelineContext::class.java))
         val result = execution.result
         println("result: $result")
 

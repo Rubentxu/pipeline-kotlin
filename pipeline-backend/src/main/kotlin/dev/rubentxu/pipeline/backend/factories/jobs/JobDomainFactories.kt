@@ -1,69 +1,63 @@
-package dev.rubentxu.pipeline.backend.factories
+package dev.rubentxu.pipeline.backend.factories.jobs
 
-import dev.rubentxu.pipeline.backend.jobs.JobInstance
-import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.jobs.*
-import dev.rubentxu.pipeline.model.logger.PipelineLogger
 
-import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
-class JobInstanceFactory(
-): PipelineDomain {
-    companion object : PipelineDomainFactory<JobInstance> {
-        override fun create(data: Map<String, Any>): JobInstance {
-            val envMap = data.validateAndGet("job.environmentVars").isMap()
-                .throwIfInvalid("environmentVars is required in Job") as Map<String, String>
-            val envVars = EnvVars(envMap)
-
-            val trigger = data.validateAndGet("job.trigger").isMap().defaultValueIfInvalid(emptyMap<String, Any>())
-            var cron: CronTrigger? = null
-            if (trigger.containsKey("cron")) {
-                cron = CromTriggerBuilder.create(data)
-            }
-
-            val parameters =
-                data.validateAndGet("job.parameters")
-                    .isList()
-                    .defaultValueIfInvalid(emptyList<Map<String, Any>>())
-                    .map { JobParameterFactory.create(it) }
-            val sourceCodeRepositoryManager = SourceCodeRepositoryManagerFactory.create(data)
-
-
-
-
-            return JobInstance(
-                name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Job"),
-                environmentVars = envVars,
-                publisher = PublisherFactory.create(
-                    data.validateAndGet("publisher").isMap()
-                        .throwIfInvalid("publisher is required in Job") as Map<String, Any>
-                ),
-                projectSource = ProjectSourceFactory.create(
-                    data.validateAndGet("projectSource").isMap()
-                        .throwIfInvalid("projectSource is required in Job") as Map<String, Any>
-                ),
-                pluginsDefinitionSource = data.validateAndGet("pluginsDefinitionSource")
-                    .isList()
-                    .defaultValueIfInvalid(emptyList<Map<String, Any>>())
-                    .map { PluginsDefinitionSourceFactory.create(it) },
-
-
-                trigger = cron,
-                pipelineFileSource = PipelineFileSourceCodeFactory.create(data),
-                sourceCodeRepositoryManager = sourceCodeRepositoryManager,
-                logger = PipelineLogger.getLogger(),
-                parameters = parameters,
-            )
-        }
-    }
-}
+//class JobInstanceFactory(
+//): PipelineDomain {
+//    companion object : PipelineDomainFactory<JobInstance> {
+//        override suspend fun create(data: Map<String, Any>): JobInstance {
+//            val envMap = data.validateAndGet("job.environmentVars").isMap()
+//                .throwIfInvalid("environmentVars is required in Job") as Map<String, String>
+//            val envVars = EnvVars(envMap)
+//
+//            val trigger = data.validateAndGet("job.trigger").isMap().defaultValueIfInvalid(emptyMap<String, Any>())
+//            var cron: CronTrigger? = null
+//            if (trigger.containsKey("cron")) {
+//                cron = CromTriggerBuilder.create(data)
+//            }
+//
+//            val parameters =
+//                data.validateAndGet("job.parameters")
+//                    .isList()
+//                    .defaultValueIfInvalid(emptyList<Map<String, Any>>())
+//                    .map { JobParameterFactory.create(it) }
+//            val sourceCodeRepositoryManager = SourceCodeRepositoryManagerFactory.create(data)
+//
+//
+//
+//
+//            return JobInstance(
+//                name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Job"),
+//                publisher = PublisherFactory.create(
+//                    data.validateAndGet("publisher").isMap()
+//                        .throwIfInvalid("publisher is required in Job") as Map<String, Any>
+//                ),
+//                projectSourceCode = ProjectSourceFactory.create(
+//                    data.validateAndGet("projectSource").isMap()
+//                        .throwIfInvalid("projectSource is required in Job") as Map<String, Any>
+//                ),
+//                pluginsDefinitionSource = data.validateAndGet("pluginsDefinitionSource")
+//                    .isList()
+//                    .defaultValueIfInvalid(emptyList<Map<String, Any>>())
+//                    .map { PluginsDefinitionSourceFactory.create(it) },
+//
+//
+//                trigger = cron,
+//                pipelineSource = PipelineFileSourceCodeFactory.create(data),
+//                sourceCodeRepositoryManager = sourceCodeRepositoryManager,
+//                logger = PipelineLogger.getLogger(),
+//                parameters = parameters,
+//            )
+//        }
+//    }
+//}
 
 class JobParameterFactory {
     companion object : PipelineDomainFactory<JobParameter<*>> {
-        override fun create(data: Map<String, Any>): JobParameter<*> {
+        override suspend fun create(data: Map<String, Any>): JobParameter<*> {
             return when (data?.keys?.first()) {
                 "string" -> StringJobParameterFactory.create(data.get(data?.keys?.first()) as Map<String, Any>)
                 "choice" -> ChoiceJobParameterFactory.create(data.get(data?.keys?.first()) as Map<String, Any>)
@@ -80,7 +74,7 @@ class JobParameterFactory {
 
 class PublisherFactory {
     companion object : PipelineDomainFactory<Publisher> {
-        override fun create(data: Map<String, Any>): Publisher {
+        override suspend fun create(data: Map<String, Any>): Publisher {
             return Publisher(
                 mailer = MailerFactory.create(
                     data.validateAndGet("mailer").isMap()
@@ -101,7 +95,7 @@ class PublisherFactory {
 
 class MailerFactory {
     companion object : PipelineDomainFactory<Mailer> {
-        override fun create(data: Map<String, Any>): Mailer {
+        override suspend fun create(data: Map<String, Any>): Mailer {
             return Mailer(
                 recipients = data.validateAndGet("recipients").isString()
                     .throwIfInvalid("recipients is required in Mailer"),
@@ -116,7 +110,7 @@ class MailerFactory {
 
 class ArchiveArtifactsFactory {
     companion object : PipelineDomainFactory<ArchiveArtifacts> {
-        override fun create(data: Map<String, Any>): ArchiveArtifacts {
+        override suspend fun create(data: Map<String, Any>): ArchiveArtifacts {
             return ArchiveArtifacts(
                 artifacts = data.validateAndGet("artifacts").isString()
                     .throwIfInvalid("artifacts is required in ArchiveArtifacts"),
@@ -137,7 +131,7 @@ class ArchiveArtifactsFactory {
 
 class StringJobParameterFactory {
     companion object : PipelineDomainFactory<StringJobParameter> {
-        override fun create(data: Map<String, Any>): StringJobParameter {
+        override suspend fun create(data: Map<String, Any>): StringJobParameter {
             return StringJobParameter(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in StringParameter"),
                 defaultValue = data.validateAndGet("defaultValue").isString()
@@ -151,7 +145,7 @@ class StringJobParameterFactory {
 
 class ChoiceJobParameterFactory {
     companion object : PipelineDomainFactory<ChoiceJobParameter> {
-        override fun create(data: Map<String, Any>): ChoiceJobParameter {
+        override suspend fun create(data: Map<String, Any>): ChoiceJobParameter {
             val choices = data.validateAndGet("choices").isList()
                 .throwIfInvalid("choices is required in ChoiceParameter") as List<String>
             val firstChoice = choices.first()
@@ -169,7 +163,7 @@ class ChoiceJobParameterFactory {
 
 class BooleanJobParameterFactory {
     companion object : PipelineDomainFactory<BooleanJobParameter> {
-        override fun create(data: Map<String, Any>): BooleanJobParameter {
+        override suspend fun create(data: Map<String, Any>): BooleanJobParameter {
             return BooleanJobParameter(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in BooleanParameter"),
                 defaultValue = data.validateAndGet("defaultValue").isBoolean()
@@ -183,7 +177,7 @@ class BooleanJobParameterFactory {
 
 class PasswordJobParameterFactory {
     companion object : PipelineDomainFactory<PasswordJobParameter> {
-        override fun create(data: Map<String, Any>): PasswordJobParameter {
+        override suspend fun create(data: Map<String, Any>): PasswordJobParameter {
             return PasswordJobParameter(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in PasswordParameter"),
                 defaultValue = data.validateAndGet("defaultValue").isString()
@@ -197,7 +191,7 @@ class PasswordJobParameterFactory {
 
 class TextJobParameterFactory {
     companion object : PipelineDomainFactory<TextJobParameter> {
-        override fun create(data: Map<String, Any>): TextJobParameter {
+        override suspend fun create(data: Map<String, Any>): TextJobParameter {
             return TextJobParameter(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in TextParameter"),
                 defaultValue = data.validateAndGet("defaultValue").isString()
@@ -209,26 +203,11 @@ class TextJobParameterFactory {
     }
 }
 
-class ProjectSourceFactory {
-    companion object : PipelineDomainFactory<ProjectSource> {
-        override fun create(data: Map<String, Any>): ProjectSource {
-            return ProjectSource(
-                name = data.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid("name is required in ProjectSource"),
-                scmReferenceId = IDComponent.create(
-                    data.validateAndGet("scmReferenceId")
-                        .isString()
-                        .throwIfInvalid("scmReferenceId is required in ProjectSource")
-                )
-            )
-        }
-    }
-}
+
 
 class CromTriggerBuilder {
     companion object : PipelineDomainFactory<CronTrigger> {
-        override fun create(data: Map<String, Any>): CronTrigger {
+        override suspend fun create(data: Map<String, Any>): CronTrigger {
             return CronTrigger(
                 cron = data.validateAndGet("cron").isString().throwIfInvalid("cron is required in Trigger")
             )

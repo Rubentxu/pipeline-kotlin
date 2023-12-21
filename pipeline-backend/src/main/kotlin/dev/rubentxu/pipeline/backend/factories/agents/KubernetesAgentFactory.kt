@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class KubernetesAgentFactory {
     companion object : PipelineDomainFactory<KubernetesAgent> {
-        override fun create(data: Map<String, Any>): KubernetesAgent {
+        override suspend fun create(data: Map<String, Any>): KubernetesAgent {
             val id: IDComponent = IDComponent.create(data.validateAndGet("id")
                 .isString()
                 .throwIfInvalid("id is required in KubernetesConfig"))
@@ -62,7 +62,7 @@ class KubernetesAgentFactory {
 
 class KubernetesTemplateFactory {
     companion object : PipelineDomainFactory<Template> {
-        override fun create(data: Map<String, Any>): K8sTemplate {
+        override suspend fun create(data: Map<String, Any>): K8sTemplate {
             val volumesMap: List<Map<String, Any>> = data.validateAndGet("volumes")
                 .isList()
                 .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
@@ -117,7 +117,7 @@ class KubernetesTemplateFactory {
 
 class VolumeFactory {
     companion object : PipelineDomainFactory<Volume> {
-        override fun create(data: Map<String, Any>): Volume {
+        override suspend fun create(data: Map<String, Any>): Volume {
             val hostPathVolumeMap: Map<String, Any> = data.validateAndGet("hostPathVolume")
                 .isMap()
                 .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
@@ -141,7 +141,7 @@ class VolumeFactory {
 
 class HostPathVolumeFactory {
     companion object : PipelineDomainFactory<HostPathVolume> {
-        override fun create(data: Map<String, Any>): HostPathVolume? {
+        override suspend fun create(data: Map<String, Any>): HostPathVolume? {
             if (data.isEmpty()) return null
             return HostPathVolume(
                 mountPath = data.validateAndGet("mountPath").isString()
@@ -155,7 +155,7 @@ class HostPathVolumeFactory {
 
 class EmptyDirVolumeFactory {
     companion object : PipelineDomainFactory<EmptyDirVolume> {
-        override fun create(data: Map<String, Any>): EmptyDirVolume? {
+        override suspend fun create(data: Map<String, Any>): EmptyDirVolume? {
             if (data.isEmpty()) return null
             return EmptyDirVolume(
                 memory = data.validateAndGet("memory").isBoolean().defaultValueIfInvalid(false) as Boolean,
@@ -168,7 +168,7 @@ class EmptyDirVolumeFactory {
 
 class ConfigMapVolumeFactory {
     companion object : PipelineDomainFactory<ConfigMapVolume> {
-        override fun create(data: Map<String, Any>): ConfigMapVolume? {
+        override suspend fun create(data: Map<String, Any>): ConfigMapVolume? {
             if (data.isEmpty()) return null
             return ConfigMapVolume(
                 configMapName = data.validateAndGet("configMapName").isString()
@@ -184,7 +184,7 @@ class ConfigMapVolumeFactory {
 
 class ContainerFactory {
     companion object : PipelineDomainFactory<Container> {
-        override fun create(data: Map<String, Any>): Container {
+        override suspend fun create(data: Map<String, Any>): Container {
             return Container(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Container"),
                 image = data.validateAndGet("image").isString().throwIfInvalid("image is required in Container"),
@@ -210,7 +210,7 @@ class ContainerFactory {
 
 class ImagePullSecretFactory {
     companion object : PipelineDomainFactory<ImagePullSecret> {
-        override fun create(data: Map<String, Any>): ImagePullSecret {
+        override suspend fun create(data: Map<String, Any>): ImagePullSecret {
             return ImagePullSecret(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in ImagePullSecret")
             )

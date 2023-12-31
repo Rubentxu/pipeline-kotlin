@@ -10,6 +10,8 @@ import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class DockerAgentFactory {
     companion object : PipelineDomainFactory<DockerAgent> {
+        override val rootPath: String = "pipeline.agents"
+        override val instanceName: String = "DockerAgent"
 
         override suspend fun create(data: Map<String, Any>): DockerAgent {
             val id: IDComponent = IDComponent.create(data.validateAndGet("id")
@@ -43,6 +45,9 @@ class DockerAgentFactory {
 
 class DockerTemplateFactory {
     companion object : PipelineDomainFactory<DockerTemplate> {
+        override val rootPath: String = "docker.templates"
+        override val instanceName: String = "DockerTemplate"
+
         override suspend fun create(data: Map<String, Any>): DockerTemplate {
             val templateBaseMap: Map<String, Any> = data.validateAndGet("dockerTemplateBase")
                 .isMap()
@@ -66,6 +71,9 @@ class DockerTemplateFactory {
 
 class DockerTemplateBaseFactory {
     companion object : PipelineDomainFactory<DockerTemplateBase> {
+        override val rootPath: String = "dockerTemplateBase"
+        override val instanceName: String = "DockerTemplateBase"
+
         override suspend fun create(data: Map<String, Any>): DockerTemplateBase {
             return DockerTemplateBase(
                 image = data.validateAndGet("image").isString()
@@ -81,6 +89,9 @@ class DockerTemplateBaseFactory {
 
 class RetentionStrategyFactory {
     companion object : PipelineDomainFactory<RetentionStrategy> {
+        override val rootPath: String = "retentionStrategy"
+        override val instanceName: String = "RetentionStrategy"
+
         override suspend fun create(data: Map<String, Any>): RetentionStrategy {
             return RetentionStrategy(
                 idleMinutes = data.validateAndGet("retentionStrategy.idleMinutes").isNumber().throwIfInvalid() as Int

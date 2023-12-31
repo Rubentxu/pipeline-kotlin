@@ -5,6 +5,8 @@ import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
 import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
+import dev.rubentxu.pipeline.backend.ktor.configureRouting
+import dev.rubentxu.pipeline.backend.ktor.configureSerialization
 
 import dev.rubentxu.pipeline.model.PipelineContext
 import dev.rubentxu.pipeline.model.jobs.JobResult
@@ -13,6 +15,10 @@ import dev.rubentxu.pipeline.model.logger.LogLevel
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.model.steps.EnvVars
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.cio.*
+import io.ktor.server.engine.*
 import kotlinx.coroutines.CompletionHandler
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -148,4 +154,13 @@ import javax.script.ScriptEngineManager
 //
 //
 
+fun main() {
+    embeddedServer(CIO, port = 8080, host = "0.0.0.0", module = Application::module)
+        .start(wait = true)
+}
+
+fun Application.module() {
+    configureSerialization()
+    configureRouting()
+}
 

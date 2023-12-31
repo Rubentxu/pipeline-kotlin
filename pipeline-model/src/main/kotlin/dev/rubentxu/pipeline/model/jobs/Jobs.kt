@@ -25,11 +25,9 @@ interface JobLauncher {
 
 interface JobDefinition: PipelineDomain{
     val name: String
-    val publisher: Publisher?
     val projectSourceCode: SourceCodeConfig
     val pluginsSources: List<PluginSourceCodeConfig>
     val pipelineSourceCode: SourceCodeConfig
-    val trigger: Trigger?
     val parameters: List<JobParameter<*>>
 
     suspend fun resolvePipeline(context: IPipelineContext): IPipeline

@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.model
+package dev.rubentxu.pipeline.backend
 
 import dev.rubentxu.pipeline.model.credentials.*
 import io.kotest.core.spec.style.scopes.StringSpecScope

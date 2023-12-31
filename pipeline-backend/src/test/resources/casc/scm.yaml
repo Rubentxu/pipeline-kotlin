@@ -21,16 +21,10 @@ repositories:
           - "carpeta3"
         relativeTargetDirectory: "carpeta" # sirve para que se descarguen los archivos en una carpeta especifica
 
-  - git:
+  - local:
       id: "local-git-id"
       name: "local-git-name"
-      local:
-        path: "/ruta/local/repo-local.git"
-        isBareRepo: true
-      branches:
-        - "main"
-      extensions:
-        timeout: 10 # sirve para que se cancele la descarga si se excede el tiempo
+      path: "/ruta/local/repo-local.git"
 
 
   - svn:

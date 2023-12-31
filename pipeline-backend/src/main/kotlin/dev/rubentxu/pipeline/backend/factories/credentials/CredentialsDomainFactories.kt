@@ -1,16 +1,28 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
 import dev.rubentxu.pipeline.model.IDComponent
+import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.credentials.*
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class CredentialsFactory  {
-    companion object : PipelineDomainFactory<Credentials> {
-        override suspend fun create(data: Map<String, Any>): Credentials {
-            val credentialConfig = data.get(data?.keys?.first()) as Map<String, Any>
+    companion object : PipelineDomainFactory<PipelineCollection<Credentials>> {
+        override val rootPath: String = "pipeline.credentials"
+        override val instanceName: String = "Credentials"
 
-            return when (data?.keys?.first()) {
+        override suspend fun create(data: Map<String, Any>): PipelineCollection<Credentials> {
+            val credentialConfig = getRootListObject(data)
+
+            credentialConfig.map {
+                createCredential(it, it.keys.first())
+            }.let {
+                return PipelineCollection(it)
+            }
+        }
+
+        private suspend fun createCredential(credentialConfig: Map<String, Any>, name: String): Credentials {
+            return when (name) {
                 "basicSSHUserPrivateKey" -> BasicSSHUserPrivateKeyFactory.create(credentialConfig)
                 "usernamePassword" -> UsernamePasswordFactory.create(credentialConfig)
                 "string" -> StringCredentialsFatory.create(credentialConfig)
@@ -18,7 +30,7 @@ class CredentialsFactory  {
                 "file" -> FileCredentialsFactory.create(credentialConfig)
                 "certificate" -> CertificateCredentialsFactory.create(credentialConfig)
                 else -> {
-                    throw IllegalArgumentException("Invalid credential type for '${data?.keys?.first()}'")
+                    throw IllegalArgumentException("Invalid credential type for '${name}'")
                 }
             }
         }
@@ -27,6 +39,9 @@ class CredentialsFactory  {
 
 class BasicSSHUserPrivateKeyFactory  {
     companion object : PipelineDomainFactory<BasicSSHUserPrivateKey> {
+        override val rootPath: String = "pipeline.credentials.basicSSHUserPrivateKey"
+        override val instanceName: String = "BasicSSHUserPrivateKey"
+
         override suspend fun create(data: Map<String, Any>): BasicSSHUserPrivateKey {
             return BasicSSHUserPrivateKey(
                 scope = data.validateAndGet("scope")
@@ -54,6 +69,9 @@ class BasicSSHUserPrivateKeyFactory  {
 
 class UsernamePasswordFactory {
     companion object : PipelineDomainFactory<UsernamePassword> {
+        override val rootPath: String = "pipeline.credentials.usernamePassword"
+        override val instanceName: String = "UsernamePassword"
+
         override suspend fun create(data: Map<String, Any>): UsernamePassword {
             return UsernamePassword(
                 scope = data.validateAndGet("scope")
@@ -78,6 +96,9 @@ class UsernamePasswordFactory {
 
 class StringCredentialsFatory {
     companion object : PipelineDomainFactory<StringCredentials> {
+        override val rootPath: String = "pipeline.credentials.string"
+        override val instanceName: String = "StringCredentials"
+
         override suspend fun create(data: Map<String, Any>): StringCredentials {
             return StringCredentials(
                 scope = data.validateAndGet("scope")
@@ -100,6 +121,9 @@ class StringCredentialsFatory {
 
 class AwsCredentialsFactory {
     companion object : PipelineDomainFactory<AwsCredentials> {
+        override val rootPath: String = "pipeline.credentials.aws"
+        override val instanceName: String = "AwsCredentials"
+
         override suspend fun create(data: Map<String, Any>): AwsCredentials {
             return AwsCredentials(
                 scope = data.validateAndGet("scope")
@@ -124,6 +148,9 @@ class AwsCredentialsFactory {
 
 class FileCredentialsFactory {
     companion object : PipelineDomainFactory<FileCredentials> {
+        override val rootPath: String = "pipeline.credentials.file"
+        override val instanceName: String = "FileCredentials"
+
         override suspend fun create(data: Map<String, Any>): FileCredentials {
             return FileCredentials(
                 scope = data.validateAndGet("scope")
@@ -149,6 +176,9 @@ class FileCredentialsFactory {
 
 class CertificateCredentialsFactory {
     companion object : PipelineDomainFactory<CertificateCredentials> {
+        override val rootPath: String = "pipeline.credentials.certificate"
+        override val instanceName: String = "CertificateCredentials"
+
         override suspend fun create(data: Map<String, Any>): CertificateCredentials {
             return CertificateCredentials(
                 scope = data.validateAndGet("scope")

@@ -1,4 +1,4 @@
-pipeline:
+agents:
   clouds:
     - kubernetes:
         name: "advanced-k8s-config"

@@ -66,9 +66,7 @@ data class LocalSourceCodeRepository(
     override val id: IDComponent,
     override val name: String,
     override val description: String?,
-    val branches: List<String>,
     val path: Path,
-    val isBareRepo: Boolean,
 
     ) : SourceCodeRepository {
 

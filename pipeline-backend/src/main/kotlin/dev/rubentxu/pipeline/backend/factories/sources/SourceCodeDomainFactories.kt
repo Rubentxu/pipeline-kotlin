@@ -1,8 +1,11 @@
 package dev.rubentxu.pipeline.backend.factories.sources
 
-import dev.rubentxu.pipeline.backend.sources.*
+import dev.rubentxu.pipeline.backend.sources.CleanRepository
+import dev.rubentxu.pipeline.backend.sources.GitSourceCodeRepository
+import dev.rubentxu.pipeline.backend.sources.LocalSourceCodeRepository
+import dev.rubentxu.pipeline.backend.sources.Mercurial
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.ListPipelineDomain
+import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.repository.*
@@ -13,41 +16,47 @@ import java.nio.file.Path
 
 class PluginsDefinitionSourceFactory : PipelineDomain {
 
-    companion object : PipelineDomainFactory<ListPipelineDomain<SourceCodeConfig>> {
-        override suspend fun create(data: Map<String, Any>): ListPipelineDomain<SourceCodeConfig> {
+    companion object : PipelineDomainFactory<PipelineCollection<PluginSourceCodeConfig>> {
+        override val rootPath: String = "pipeline.plugins"
+        override val instanceName: String = "PluginSourceCodeConfig"
 
-            return data.validateAndGet("pluginsSources")
-                .isList()
-                .throwIfInvalid("pluginsDefinitionSource must be a list")
-                .map {
-                    it as Map<String, Any>
+        override suspend fun create(data: Map<String, Any>): PipelineCollection<PluginSourceCodeConfig> {
 
-                    val scmReferenceId = IDComponent.create(
-                        it.validateAndGet("repositoryId")
-                            .isString()
-                            .throwIfInvalid("repositoryId is required in pluginsDefinitionSource")
+            val plugins = getRootListObject(data)
+
+            return plugins.mapIndexed { index, plugin ->
+                val name = plugin.validateAndGet("name")
+                    .isString()
+                    .throwIfInvalid(getErrorMessage("[$index].name"))
+
+                val description = plugin.validateAndGet("description")
+                    .isString()
+                    .defaultValueIfInvalid("")
+
+                val fromFile = plugin.validateAndGet("fromFile")
+                    .isString()
+                    .defaultValueIfInvalid("")
+
+                val fromLocalDirectory = plugin.validateAndGet("fromLocalDirectory")
+                    .isString()
+                    .defaultValueIfInvalid("")
+
+                val fromFilePath = if (fromFile.isNotEmpty()) Path.of(fromFile) else null
+                val fromLocalDirectoryPath = if (fromLocalDirectory.isNotEmpty()) Path.of(fromLocalDirectory) else null
+
+                val module = plugin.validateAndGet("module")
+                    .isString()
+                    .throwIfInvalid(getErrorMessage("[$index].module"))
+
+                PluginSourceCodeConfig(
+                    name = name,
+                    description = description,
+                    module = module,
+                    fromFile = fromFilePath,
+                    fromLocalDirectory = fromLocalDirectoryPath,
+
                     )
-
-                    val name = it.validateAndGet("name")
-                        .isString()
-                        .throwIfInvalid("name is required in pluginsDefinitionSource")
-
-                    val description = it.validateAndGet("description")
-                        .isString()
-                        .defaultValueIfInvalid("")
-
-                    val relativeScriptPath = it.validateAndGet("relativePath")
-                        .isString()
-                        .throwIfInvalid("relativePath is required in pluginsDefinitionSource")
-
-                    SourceCodeConfig(
-                        repositoryId = scmReferenceId,
-                        name = name,
-                        description = description,
-                        relativePath = Path.of(relativeScriptPath),
-                        sourceCodeType = SourceCodeType.PLUGIN
-                    )
-                }.let { ListPipelineDomain(it) }
+            }.let { PipelineCollection(it) }
 
         }
     }
@@ -58,28 +67,24 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
 class PipelineFileSourceCodeFactory : PipelineDomain {
 
     companion object : PipelineDomainFactory<SourceCodeConfig> {
+        override val rootPath: String = "pipeline.pipelineSourceCode"
+        override val instanceName: String = "PipelineFileSource"
+
         override suspend fun create(data: Map<String, Any>): SourceCodeConfig {
+            val pipelineSourceCode = getRootMapObject(data)
+
             val scmReferenceId = IDComponent.create(
-                data.validateAndGet("pipelineSourceCode.repositoryId")
+                pipelineSourceCode.validateAndGet("repository.referenceId")
                     .isString()
-                    .throwIfInvalid("repositoryId is required in PipelineFileSource")
+                    .throwIfInvalid(getErrorMessage("repository.referenceId"))
             )
 
-            val name = data.validateAndGet("pipelineSourceCode.name").isString()
-                .throwIfInvalid("name is required in PipelineFileSource")
-
-            val description = data.validateAndGet("pipelineFileSource.description")
+            val relativeScriptPath = pipelineSourceCode.validateAndGet("scriptPath")
                 .isString()
                 .defaultValueIfInvalid("")
 
-            val relativeScriptPath = data.validateAndGet("pipelineSourceCode.relativePath")
-                .isString()
-                .throwIfInvalid("relativePath is required in PipelineFileSource")
-
             return SourceCodeConfig(
                 repositoryId = scmReferenceId,
-                name = name,
-                description = description,
                 relativePath = Path.of(relativeScriptPath),
                 sourceCodeType = SourceCodeType.PIPELINE_DEFINITION
             )
@@ -91,113 +96,64 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
 class ProjectSourceCodeFactory : PipelineDomain {
 
     companion object : PipelineDomainFactory<SourceCodeConfig> {
+        override val rootPath: String = "pipeline.projectSourceCode"
+        override val instanceName: String = "ProjectSourceCode"
+
         override suspend fun create(data: Map<String, Any>): SourceCodeConfig {
+
+            val projectSourceCode = getRootMapObject(data)
+
             val scmReferenceId = IDComponent.create(
-                data.validateAndGet("projectSourceCode.repositoryId")
+                projectSourceCode.validateAndGet("repository.referenceId")
                     .isString()
-                    .throwIfInvalid("repositoryId is required in projectSourceCode")
+                    .throwIfInvalid(getErrorMessage("repository.referenceId"))
             )
-
-            val name = data.validateAndGet("projectSourceCode.name")
-                .isString()
-                .throwIfInvalid("name is required in projectSourceCode")
-
-            val description = data.validateAndGet("projectSourceCode.description")
-                .isString()
-                .defaultValueIfInvalid("")
-
-            val relativeScriptPath = data.validateAndGet("projectSourceCode.relativePath")
-                .isString()
-                .defaultValueIfInvalid("")
 
             return SourceCodeConfig(
                 repositoryId = scmReferenceId,
-                name = name,
-                description = description,
-                relativePath = Path.of(relativeScriptPath),
+                relativePath = null,
                 sourceCodeType = SourceCodeType.PROJECT
-
             )
         }
     }
 
-}
-
-class SvnSourceCodeRepositoryFactory {
-
-    companion object : PipelineDomainFactory<SvnSourceCodeRepository> {
-        override suspend fun create(data: Map<String, Any>): SvnSourceCodeRepository {
-
-            val id = IDComponent.create(
-                data.validateAndGet("svn.id")
-                    .isString()
-                    .throwIfInvalid("id is required in Svn Repository")
-            )
-
-            val name = data.validateAndGet("svn.name")
-                .isString()
-                .defaultValueIfInvalid(id.toString())
-
-            val description = data.validateAndGet("svn.description")
-                .isString()
-                .defaultValueIfInvalid("")
-
-            val branches = data.validateAndGet("svn.branches")
-                .isList()
-                .defaultValueIfInvalid(emptyList<String>())
-
-            val url = data.validateAndGet("svn.remote.url")
-                .isString()
-                .throwIfInvalid("url is required in Svn Repository")
-                .let { URL(it) }
-
-            val credentialsId = data.validateAndGet("svn.remote.credentialsId")
-                .isString()
-                .throwIfInvalid("credentialsId is required in Svn Repository")
-
-            return SvnSourceCodeRepository(
-                id = id,
-                name = name,
-                description = description,
-                extensions = emptyList(),
-                branches = branches,
-                url = url,
-                credentialsId = credentialsId,
-            )
-
-        }
-    }
 }
 
 
 class MercurialSourceCodeRepositoryFactory {
 
     companion object : PipelineDomainFactory<Mercurial> {
+        override val rootPath: String = "repositories.mercurial"
+        override val instanceName: String = "Mercurial"
+
         override suspend fun create(data: Map<String, Any>): Mercurial {
+            val repositoryMercurial = getRootMapObject(data)
 
             val id =
                 IDComponent.create(
-                    data.validateAndGet("mercurial.id").isString().throwIfInvalid("id is required in Mercurial")
+                    repositoryMercurial.validateAndGet("id")
+                        .isString()
+                        .throwIfInvalid(getErrorMessage("id"))
                 )
 
-            val name = data.validateAndGet("mercurial.name")
+            val name = repositoryMercurial.validateAndGet("name")
                 .isString()
                 .defaultValueIfInvalid(id.toString())
 
-            val description = data.validateAndGet("mercurial.description")
+            val description = repositoryMercurial.validateAndGet("description")
                 .isString()
                 .defaultValueIfInvalid("")
 
-            val branches = data.validateAndGet("mercurial.branches")
+            val branches = repositoryMercurial.validateAndGet("branches")
                 .isList()
                 .defaultValueIfInvalid(emptyList<String>())
 
-            val url = data.validateAndGet("mercurial.remote.url")
+            val url = repositoryMercurial.validateAndGet("remote.url")
                 .isString()
-                .throwIfInvalid("url is required in Svn Repository")
+                .throwIfInvalid(getErrorMessage("remote.url"))
                 .let { URL(it) }
 
-            val credentialsId = data.validateAndGet("mercurial.remote.credentialsId")
+            val credentialsId = repositoryMercurial.validateAndGet("remote.credentialsId")
                 .isString()
                 .defaultValueIfInvalid("")
 
@@ -220,37 +176,43 @@ class MercurialSourceCodeRepositoryFactory {
 class LocalGitSourceCodeRepositoryFactory {
 
     companion object : PipelineDomainFactory<LocalSourceCodeRepository> {
+        override val rootPath: String = "repositories.local"
+        override val instanceName: String = "LocalSourceCodeRepository"
         override suspend fun create(data: Map<String, Any>): LocalSourceCodeRepository {
+            val localRepository = getRootMapObject(data)
+
             val id = IDComponent.create(
-                data.validateAndGet("git.id")
+                localRepository.validateAndGet("id")
                     .isString()
-                    .throwIfInvalid("id is required in LocalRepository")
+                    .throwIfInvalid(getErrorMessage("id"))
             )
 
-            val name = data.validateAndGet("git.name")
+            val name = localRepository.validateAndGet("name")
                 .isString()
                 .defaultValueIfInvalid(id.toString())
+
+            val description = localRepository.validateAndGet("description")
+                .isString()
+                .defaultValueIfInvalid("")
+
+            val path = Path.of(
+                localRepository.validateAndGet("path")
+                    .isString()
+                    .throwIfInvalid(getErrorMessage("path"))
+            )
 
 
             return LocalSourceCodeRepository(
                 id = id,
                 name = name,
-                description = data.validateAndGet("git.description")
-                    .isString()
-                    .defaultValueIfInvalid(""),
-                branches = data.validateAndGet("git.branches")
-                    .isList()
-                    .defaultValueIfInvalid(emptyList<String>()),
+                description = description,
                 path = Path.of(
                     data.validateAndGet("git.local.path")
                         .isString()
                         .throwIfInvalid("path is required in LocalRepository")
                 ),
-                isBareRepo = data.validateAndGet("git.local.isBareRepo")
-                    .isBoolean()
-                    .defaultValueIfInvalid(false)
 
-            )
+                )
         }
     }
 }
@@ -258,47 +220,49 @@ class LocalGitSourceCodeRepositoryFactory {
 
 class GitSourceCodeRepositoryFactory {
     companion object : PipelineDomainFactory<GitSourceCodeRepository> {
+        override val rootPath: String = "repositories.git"
+        override val instanceName: String = "GitSourceCodeRepository"
+
         override suspend fun create(data: Map<String, Any>): GitSourceCodeRepository {
+            val gitRepository = getRootMapObject(data)
 
             val id = IDComponent.create(
-                data.validateAndGet("git.id").isString().throwIfInvalid("id is required in GitScmConfig")
+                gitRepository.validateAndGet("id")
+                    .isString()
+                    .throwIfInvalid(getErrorMessage("id"))
             )
 
-            val name = data.validateAndGet("git.name")
+            val name = gitRepository.validateAndGet("name")
                 .isString()
-                .defaultValueIfInvalid(id.toString())
+                .throwIfInvalid(getErrorMessage("name"))
 
-            val description = data.validateAndGet("git.description")
+            val description = gitRepository.validateAndGet("description")
                 .isString()
                 .defaultValueIfInvalid("")
 
-            val branches = data.validateAndGet("git.branches")
-                .dependsAnyOn(data, "git.remote", "git.local")
+            val branches = gitRepository.validateAndGet("branches")
+                .dependsAnyOn(data, "repositories.git.remote", "repositories.git.local")
                 .isList()
                 .defaultValueIfInvalid(emptyList<String>())
 
-            val globalConfigName = data.validateAndGet("git.globalConfigName")
+            val globalConfigName = gitRepository.validateAndGet("globalConfigName")
                 .isString()
                 .defaultValueIfInvalid("")
 
-            val globalConfigEmail = data.validateAndGet("git.globalConfigEmail")
+            val globalConfigEmail = gitRepository.validateAndGet("globalConfigEmail")
                 .isString()
                 .defaultValueIfInvalid("")
 
-            val extensionsMap = data.validateAndGet("git.extensions")
-                .isMap()
-                .defaultValueIfInvalid(emptyMap<String, Any>())
+            val extensions = scmExtension(gitRepository)
 
-            val extensions = scmExtension(extensionsMap)
-
-            val url = data.validateAndGet("git.remote.url")
+            val url = gitRepository.validateAndGet("remote.url")
                 .isString()
-                .throwIfInvalid("url is required in GitScmConfig")
+                .throwIfInvalid(getErrorMessage("remote.url"))
                 .let { URL(it) }
 
-            val credentialsId = data.validateAndGet("git.remote.credentialsId")
+            val credentialsId = gitRepository.validateAndGet("remote.credentialsId")
                 .isString()
-                .throwIfInvalid("credentialsId is required in GitScmConfig")
+                .throwIfInvalid(getErrorMessage("remote.credentialsId"))
 
             return GitSourceCodeRepository(
                 id = id,
@@ -313,7 +277,11 @@ class GitSourceCodeRepositoryFactory {
             )
         }
 
-        private fun scmExtension(extensionsMap: Map<String, Any>): List<SCMExtension> {
+        private fun scmExtension(gitRepository: Map<String, Any>): List<SCMExtension> {
+            val extensionsMap = gitRepository.validateAndGet("extensions")
+                .isMap()
+                .defaultValueIfInvalid(emptyMap<String, Any>())
+
             return extensionsMap.map {
                 when (it.key) {
                     "sparseCheckoutPaths" -> SimpleSCMExtension(
@@ -375,9 +343,11 @@ class GitSourceCodeRepositoryFactory {
 
 class CleanRepositoryFactory {
     companion object : PipelineDomainFactory<CleanRepository> {
+        override val rootPath: String = "repositories.git.extensions.cleanRepository"
+        override val instanceName: String = "CleanRepository"
         override suspend fun create(data: Map<String, Any>): CleanRepository {
             return CleanRepository(
-                data.validateAndGet("cleanRepository")
+                getRootMapObject(data).validateAndGet("clean")
                     .isBoolean()
                     .defaultValueIfInvalid(false)
             )

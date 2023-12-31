@@ -1,4 +1,4 @@
-pipeline:
+agents:
   clouds:
     - docker:
         name: "docker"

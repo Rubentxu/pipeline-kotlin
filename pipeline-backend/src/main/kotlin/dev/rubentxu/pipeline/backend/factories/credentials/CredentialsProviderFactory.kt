@@ -11,6 +11,9 @@ import dev.rubentxu.pipeline.model.validations.validateAndGet
 class CredentialsProviderFactory {
 
     companion object : PipelineDomainFactory<ICredentialsProvider> {
+        override val rootPath: String = "pipeline.credentialsProvider"
+        override val instanceName: String = "CredentialsProvider"
+        
         override suspend fun create(data: Map<String, Any>): ICredentialsProvider {
             val credentialsList: MutableMap<IDComponent, Credentials> = data.validateAndGet("credentials")
                 .isList()

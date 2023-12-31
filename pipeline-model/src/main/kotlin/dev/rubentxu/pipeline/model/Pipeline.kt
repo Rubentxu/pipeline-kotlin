@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.validations.validateAndGet
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -9,15 +10,40 @@ interface PipelineDomain
 
 interface IPipelineConfig: PipelineDomain
 
-interface PipelineDomainFactory<T: PipelineDomain>  {
-    suspend fun create(data: Map<String, Any>): T?
+
+
+interface PipelineDomainFactory<T: PipelineDomain?>  {
+    val rootPath: String
+    val instanceName: String
+
+     fun getRootMapObject(data: Map<String, Any>): Map<String, Any> {
+        return data.validateAndGet(rootPath)
+            .isMap()
+            .throwIfInvalid("$rootPath root configuration is required in ${instanceName}") as Map<String, Any>
+    }
+
+    fun getRootListObject(data: Map<String, Any>): List<Map<String, Any>> {
+        return data.validateAndGet(rootPath)
+            .isList()
+            .throwIfInvalid("$rootPath root configuration is required in ${instanceName}") as List<Map<String, Any>>
+    }
+
+    fun getErrorMessage(key: String): String {
+        return "${rootPath}.${key} configuration is required in ${instanceName}"
+    }
+
+    suspend fun create(data: Map<String, Any>): T
 }
+
+
+
+
 
 interface PipelineDomainDslFactory<T: PipelineDomain> {
     suspend fun create(block: T.() -> Unit): PipelineDomain
 }
 
-data class ListPipelineDomain<T: PipelineDomain>(
+data class PipelineCollection<T: PipelineDomain>(
     val list: List<T>
 ): PipelineDomain
 

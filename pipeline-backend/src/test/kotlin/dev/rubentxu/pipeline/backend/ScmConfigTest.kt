@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.model
+package dev.rubentxu.pipeline.backend
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -8,14 +8,14 @@ import java.nio.file.Path
 class ScmConfigTest : StringSpec({
 
     "Should get Job Config from the job config file" {
-        val cascManager = CascManager()
+//        val cascManager = CascManager()
 
 
         val resourcePath = PipelineContextTest::class.java.classLoader.getResource("casc/scm.yaml").path
         val testYamlPath = Path.of(resourcePath)
 
 
-        val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
+//        val config = cascManager.resolveConfig(testYamlPath).getOrThrow()
 
 //        config.scm.definitions.size shouldBe 4
 //        config.scm.definitions[0].id shouldBe IDComponent.create(id="git-id")

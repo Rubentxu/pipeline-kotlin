@@ -171,6 +171,7 @@ class StringValidator private constructor(sut: String?, tag: String = "") :
 
 
 class MapValidator private constructor(sut: Map<*, *>?, tag: String) : Validator<MapValidator, Map<*, *>>(sut, tag) {
+
     companion object {
         fun from(map: Map<*, *>?, tag: String = ""): MapValidator = MapValidator(map, tag)
     }
@@ -282,16 +283,6 @@ fun Map<*, *>.validateAndGet(path: String, tag: String = ""): Validator<*, *> {
     return value.validate(tag)
 }
 
-
-fun Map<*, *>.findDeep(path: String): Any? {
-    if (path.isEmpty()) return null
-
-    return path.split(".").fold(this as Any?) { current, key ->
-        if (current is Map<*, *>) current[key] else null
-    }
-}
-
-
 fun <T> T.validate(): Validator<Validator<*, T>, T> = Validator.from(this)
 
 fun <T> T.validate(tag: String): Validator<Validator<*, T>, T> = Validator.from(this, tag)
@@ -308,3 +299,60 @@ fun parseAnyToNumber(value: Any): Number? {
         else -> null
     }
 }
+
+fun Map<*, *>.findDeep(path: String): Any? {
+    if (path.isEmpty()) return null
+
+    var current: Any? = this
+    val keys = path.split(".")
+    for (key in keys) {
+        current = when {
+            key.contains("[") && key.contains("]") -> {
+                val keyName = key.substringBefore("[")
+                val index = key.substringAfter("[").substringBefore("]").toInt()
+                val list = (current as? Map<*, *>)?.get(keyName) as? List<*>
+                list?.getOrNull(index)
+            }
+            current is Map<*, *> -> {
+                current.getOrDefault(key, null)
+            }
+            else -> {
+                return null
+            }
+        }
+    }
+    return current
+}
+
+fun Map<*, *>.findDeep(path: String, cache: MutableMap<String, Any?>): Any? {
+    if (path.isEmpty()) return null
+
+    var current: Any? = this
+    var currentPath = ""
+    val keys = path.split(".")
+    for (key in keys) {
+        currentPath = if (currentPath.isEmpty()) key else "$currentPath.$key"
+
+        // Comprueba si el resultado ya está en la caché
+        cache[currentPath]?.let { current = it } ?: run {
+            current = when {
+                key.contains("[") && key.contains("]") -> {
+                    val keyName = key.substringBefore("[")
+                    val index = key.substringAfter("[").substringBefore("]").toInt()
+                    val list = (current as? Map<*, *>)?.get(keyName) as? List<*>
+                    list?.getOrNull(index)
+                }
+                current is Map<*, *> -> {
+                    (current as Map<*, *>).getOrDefault(key, null)
+                }
+                else -> {
+                    return null
+                }
+            }
+
+        }
+    }
+    cache[currentPath] = current
+    return current
+}
+

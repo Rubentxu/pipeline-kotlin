@@ -41,22 +41,18 @@ interface SourceCode: PipelineDomain {
 
 open class SourceCodeConfig(
     val repositoryId: IDComponent,
-    val name: String,
-    val description: String?,
     val relativePath: Path?,
     val sourceCodeType: SourceCodeType,
 
 ) : PipelineDomain
 
 class PluginSourceCodeConfig(
-    repositoryId: IDComponent,
     name: String,
     description: String?,
-    relativePath: Path?,
-    sourceCodeType: SourceCodeType,
-    val loadClass: String,
-
-    ) : SourceCodeConfig(repositoryId, name, description, relativePath, sourceCodeType)
+    module: String?,
+    fromFile: Path?,
+    fromLocalDirectory: Path?
+    ) : PipelineDomain
 
 class SourceCodeRepositoryManager(
     override val definitions: Map<IDComponent, SourceCodeRepository>

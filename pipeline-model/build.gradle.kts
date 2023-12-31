@@ -6,6 +6,7 @@ val appVersion:  String by project
 plugins {
     kotlin("jvm") version "1.9.21"
     id("io.kotest") version "0.4.10"
+//    id("com.google.devtools.ksp") version "1.8.21-1.0.11"
 }
 
 group = "dev.rubentxu.pipeline.dsl"
@@ -19,6 +20,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.1")
     implementation("ch.qos.logback:logback-classic:1.4.11")
+
+    implementation("io.arrow-kt:arrow-core:1.2.1")
+//    implementation("io.arrow-kt:arrow-syntax:1.2.1")
+    implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
+    implementation("io.arrow-kt:arrow-optics:1.2.0")
+//    ksp("io.arrow-kt:arrow-optics-ksp-plugin:1.2.0")
+
 
     testImplementation(kotlin("test"))
     testImplementation("io.kotest:kotest-runner-junit5-jvm:$kotestVersion")

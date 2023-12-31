@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.backend.config
 
 import dev.rubentxu.pipeline.backend.cdi.CascManager
+import dev.rubentxu.pipeline.backend.factories.credentials.CredentialsFactory
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.credentials.*
@@ -8,6 +9,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.scopes.StringSpecScope
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.extension.ExtendWith
 import pipeline.kotlin.extensions.LookupException
 import uk.org.webcompere.systemstubs.environment.EnvironmentVariables
@@ -23,7 +25,7 @@ class CredentialsManagerTest : StringSpec({
         )
         val idExpected = IDComponent.create("ssh_with_passphrase_provided")
         val cascFileName = "casc/testData/credentials-basicSSH_Private_Key.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
         val credentialsProvider = result.getOrThrow().getService(ICredentialsProvider::class).getOrThrow()
@@ -47,7 +49,7 @@ class CredentialsManagerTest : StringSpec({
             "SSH_PRIVATE_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-basicSSH_Private_Key_with_file.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
 
@@ -73,7 +75,7 @@ class CredentialsManagerTest : StringSpec({
             "SECRET_CERT_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-certificate.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
         val credentialsProvider = result.getOrThrow().getService(ICredentialsProvider::class).getOrThrow()
@@ -97,7 +99,7 @@ class CredentialsManagerTest : StringSpec({
             "SECRET_CERT_FILE_PATH" to "casc/testData/keystore-not-exist.txt"
         )
         val cascFileName = "casc/testData/credentials-certificate.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
 
         val exception = shouldThrow<LookupException> {
@@ -114,7 +116,7 @@ class CredentialsManagerTest : StringSpec({
             "SECRET_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-file.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
         val credentialsProvider = result.getOrThrow().getService(ICredentialsProvider::class).getOrThrow()
@@ -138,7 +140,7 @@ class CredentialsManagerTest : StringSpec({
             "SECRET_FILE_PATH" to "casc/testData/secret-not-exist.txt"
         )
         val cascFileName = "casc/testData/credentials-file.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         val exception = shouldThrow<LookupException> {
             testConfig(environmentVariables, cascFileName, result).getOrThrow()
@@ -154,7 +156,7 @@ class CredentialsManagerTest : StringSpec({
             "SECRET_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-file-with-readFileBase64.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         val credentialsProvider = result.getOrThrow().getService(ICredentialsProvider::class).getOrThrow()
 
@@ -178,7 +180,7 @@ class CredentialsManagerTest : StringSpec({
             "AWS_SECRET_ACCESS_KEY" to "awsSecretAccessKeyTest"
         )
         val cascFileName = "casc/testData/credentials-aws.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
 
@@ -200,7 +202,7 @@ class CredentialsManagerTest : StringSpec({
             "SECRET_TEXT" to "secretTest",
         )
         val cascFileName = "casc/testData/credentials-string.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
 
@@ -221,7 +223,7 @@ class CredentialsManagerTest : StringSpec({
         val environmentVariables = mapOf("GREETING" to "Hello")
 
         val cascFileName = "casc/testData/credentials-string-with-default-value.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
         val credentialsProvider = result.getOrThrow().getService(ICredentialsProvider::class).getOrThrow()
@@ -242,10 +244,10 @@ class CredentialsManagerTest : StringSpec({
             "SOME_USER_PASSWORD" to "userPasswordTest",
         )
         val cascFileName = "casc/testData/credentials-usernamePassword.yaml"
-        var result: Result<IPipelineContext> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Result<List<Credentials>> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         result = testConfig(environmentVariables, cascFileName, result)
-        val credentialsProvider = result.getOrThrow().getService(ICredentialsProvider::class).getOrThrow()
+        val credentialsProvider = result.getOrThrow()
         val credential = credentialsProvider.getCredentialsById(IDComponent.create("")).getOrThrow() as UsernamePassword
 
         result.isSuccess shouldBe true
@@ -263,8 +265,8 @@ class CredentialsManagerTest : StringSpec({
 private fun StringSpecScope.testConfig(
     environmentVariables: Map<String, String>,
     cascFileName: String,
-    result: Result<IPipelineContext>,
-): Result<IPipelineContext> {
+    result: Result<List<Credentials>>,
+): Result<List<Credentials>> {
     var result1 = result
     EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
         val cascManager = CascManager()
@@ -272,8 +274,13 @@ private fun StringSpecScope.testConfig(
         val resourcePath = this::class.java.classLoader.getResource(cascFileName).path
         val testYamlPath = Path.of(resourcePath)
 
+        val data = CascManager().getRawConfig(testYamlPath).getOrThrow()
+
         // Ejecutar resolveConfig
-        result1 = cascManager.resolveConfig(testYamlPath)
+        runTest() {
+            result1 = Result.success(CredentialsFactory.create(data).list)
+
+        }
     }
     return result1
 }

@@ -1,8 +1,7 @@
-pipeline:
-  agents:
-    - temporary:
-        name: "temp-node"
-        remoteFS: "/home/build/pipeline-agent-temp"
-        numExecutors: 1
-        labelString: ${AGENT_LABEL}
-        mode: NORMAL
+agents:
+  - temporary:
+      name: "temp-node"
+      remoteFS: "/home/build/pipeline-agent-temp"
+      numExecutors: 1
+      labelString: ${AGENT_LABEL}
+      mode: NORMAL

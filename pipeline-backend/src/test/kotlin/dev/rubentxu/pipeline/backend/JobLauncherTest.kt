@@ -23,18 +23,14 @@ class JobLauncherTest : StringSpec({
 
         val sourceCodeConfig = SourceCodeConfig(
             repositoryId = IDComponent.create("scm-test-id"),
-            name = "test",
-            description = null,
             relativePath = null,
             sourceCodeType = SourceCodeType.PROJECT,
         )
         println("scriptFile: $scriptFile")
         val job = JobInstance(
             name = "test",
-            publisher = null,
             projectSourceCode= sourceCodeConfig,
             pipelineSourceCode =  sourceCodeConfig,
-            trigger = null,
             parameters = emptyList(),
             pluginsSources = emptyList(),
         )

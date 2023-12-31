@@ -5,6 +5,8 @@ import dev.rubentxu.pipeline.model.agents.Agent
 
 class AgentsFactory {
     companion object : PipelineDomainFactory<Agent> {
+        override val rootPath: String = "pipeline.agents"
+        override val instanceName: String = "Agent"
 
         override suspend fun create(data: Map<String, Any>): Agent {
            if (data.containsKey("docker")) {

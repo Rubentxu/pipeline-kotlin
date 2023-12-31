@@ -1,0 +1,50 @@
+pipeline:
+  name: "pipeline-job"
+  description: "Pipeline Job"
+  workspacePath: "workspace"
+  projectSourceCode:
+    repository:
+      referenceId: "git-id"
+  pipelineSourceCode:
+    repository:
+      referenceId: "git-id"
+    scriptPath: "Jenkinsfile"
+  plugins:
+    - name: "internal-pipeline-library"
+      module: "dev.rubentxu.pipeline-library@2.0.0"
+      resolve:
+        fromFile: "/path/to/settings.xml"
+    - name: "others-pipeline-library"
+      resolve:
+        localRepositories:
+          repoName:
+            layout: "flat"
+            path: "/path/to/repository/directory"
+  environmentVars:
+    JOB_NAME: Ejemplo-pipeline
+    MENSAJE: Hola Mundo
+  parameters:
+    - string:
+        name: "FOO"
+        defaultValue: "BAR"
+        description: "FOO BAR"
+    - choice:
+        name: "BAZ"
+        choices:
+          - "1"
+          - "2"
+        description: "BAZ"
+    - boolean:
+        name: "QUX"
+        defaultValue: true
+        description: "QUX"
+    - password:
+        name: "QUUX"
+        defaultValue: "QUUX"
+        description: "QUUX"
+    - text:
+        name: "CORGE"
+        defaultValue: "CORGE"
+        description: "CORGE"
+
+

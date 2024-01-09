@@ -29,6 +29,7 @@ dependencies {
     implementation(project(":pipeline-dsl"))
     implementation(project(":pipeline-model"))
 
+    implementation("com.charleskorn.kaml:kaml:0.56.0")
     implementation("io.ktor:ktor-server-content-negotiation-jvm")
     implementation("io.ktor:ktor-server-core-jvm")
     implementation("io.ktor:ktor-serialization-gson-jvm")
@@ -44,6 +45,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
     implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
+
+    implementation("io.arrow-kt:arrow-core:1.2.1")
+    implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
 
     implementation("org.freemarker:freemarker:2.3.32")
 

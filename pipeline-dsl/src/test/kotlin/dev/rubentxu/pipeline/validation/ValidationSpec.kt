@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.validation
 
-import dev.rubentxu.pipeline.model.validations.validate
+import dev.rubentxu.pipeline.model.validations.evaluate
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -13,7 +13,7 @@ class ValidationSpec : FunSpec({
 
     test("test notNull() with non-null value") {
         val sut = "hello"
-        val validator = sut.validate()
+        val validator = sut.evaluate()
 
         validator.notNull()
 
@@ -22,7 +22,7 @@ class ValidationSpec : FunSpec({
 
     test("test notNull() with null value") {
         val sut = null
-        val validator = sut.validate()
+        val validator = sut.evaluate()
 
         validator.notNull()
 
@@ -32,7 +32,7 @@ class ValidationSpec : FunSpec({
 
     test("test test() with valid predicate") {
         val sut = 5
-        val validator = sut.validate()
+        val validator = sut.evaluate()
 
         validator.notNull().moreThan(3)
         validator.isValid shouldBe true
@@ -40,7 +40,7 @@ class ValidationSpec : FunSpec({
 
     test("test test() with invalid predicate") {
         val sut = 2
-        val validator = sut.validate()
+        val validator = sut.evaluate()
 
         validator.notNull().moreThan(3)
 
@@ -53,7 +53,7 @@ class ValidationSpec : FunSpec({
         val sut = "hello"
 
         shouldThrow<IllegalArgumentException> {
-            sut.validate()
+            sut.evaluate()
                 .notNull()
                 .contains("lolailo")
                 .throwIfInvalid("Custom error message")
@@ -62,7 +62,7 @@ class ValidationSpec : FunSpec({
 
     test("test with invalid validation") {
         val sut = null
-        val validator = sut.validate()
+        val validator = sut.evaluate()
 
         validator.notNull()
 
@@ -71,7 +71,7 @@ class ValidationSpec : FunSpec({
 
     test("test defaultValueIfInvalid() with valid validation") {
         val sut = "hello"
-        val result = sut.validate()
+        val result = sut.evaluate()
             .notNull()
             .contains("lolailo")
             .defaultValueIfInvalid("default")
@@ -83,7 +83,7 @@ class ValidationSpec : FunSpec({
 
     test("test defaultValueIfInvalid() with invalid validation") {
         val sut = null
-        val validator = sut.validate()
+        val validator = sut.evaluate()
 
         val result = validator.defaultValueIfInvalid("default")
 

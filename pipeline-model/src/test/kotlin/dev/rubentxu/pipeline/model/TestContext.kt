@@ -1,7 +1,8 @@
 package dev.rubentxu.pipeline.model
 
-import arrow.core.Option
-import arrow.core.some
+import arrow.core.*
+import arrow.core.raise.*
+import arrow.core.raise.mapOrAccumulate
 
 
 data class Box<A>(val value: A)
@@ -26,4 +27,46 @@ fun functorExample() {
 fun foldableExample() {
     val sum = listOf(1, 2, 3, 4).fold(0) { acc, n -> acc + n }
     println(sum) // Output: 10
+}
+
+
+
+sealed interface BookValidationError
+object EmptyTitle: BookValidationError
+object NoAuthors: BookValidationError
+data class EmptyAuthor(val index: Int): BookValidationError
+
+object EmptyAuthorName
+
+data class Author private constructor(val name: String) {
+    companion object {
+        operator fun invoke(name: String): Either<EmptyAuthorName, Author> = either {
+            ensure(name.isNotEmpty()) { EmptyAuthorName }
+            Author(name)
+        }
+    }
+}
+
+data class Book private constructor(
+    val title: String, val authors: NonEmptyList<Author>
+) {
+    companion object {
+        operator fun invoke(
+            title: String, authors: Iterable<String>
+        ): Either<NonEmptyList<BookValidationError>, Book> = either {
+            zipOrAccumulate(
+                { ensure(title.isNotEmpty()) { EmptyTitle } },
+                {
+                    val validatedAuthors = mapOrAccumulate(authors.withIndex()) { nameAndIx ->
+                        Author(nameAndIx.value)
+                            .mapLeft { EmptyAuthor(nameAndIx.index) }
+                            .bind()
+                    }
+                    ensureNotNull(validatedAuthors.toNonEmptyListOrNull()) { NoAuthors }
+                }
+            ) { _, authorsNel ->
+                Book(title, authorsNel)
+            }
+        }
+    }
 }

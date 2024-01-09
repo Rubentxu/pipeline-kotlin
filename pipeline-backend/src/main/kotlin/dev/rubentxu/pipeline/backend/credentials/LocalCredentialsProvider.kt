@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
 
 
 class LocalCredentialsProvider(
-    val credentials: MutableMap<IDComponent, Credentials>
+    private val credentials: MutableMap<IDComponent, Credentials>
 ): ICredentialsProvider {
 
     override fun getCredentialsById(id: IDComponent): Result<Credentials> {
@@ -15,8 +15,10 @@ class LocalCredentialsProvider(
         } ?: return Result.failure(IllegalArgumentException("Credentials with id '$id' not found"))
     }
 
-    override fun registerCredentials(credentialsConfig: Credentials) {
-        credentials[credentialsConfig.id] = credentialsConfig
+    override fun registerCredentials(vararg credentialsConfig: Credentials) {
+        credentialsConfig.forEach {
+            credentials[it.id] = it
+        }
     }
 
     override fun unregisterCredentials(id: IDComponent) {

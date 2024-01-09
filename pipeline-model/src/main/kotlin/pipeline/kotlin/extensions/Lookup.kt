@@ -2,9 +2,8 @@
 
 package pipeline.kotlin.extensions
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+
+import kotlinx.serialization.json.*
 import org.yaml.snakeyaml.Yaml
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -108,14 +107,14 @@ fun String.readFileBase64Lookup(): Result<String> {
     }
 }
 
-inline fun <reified T> String.deserializeJson(): Result<T> {
-    return try {
-        val dataObject = Json.decodeFromString<T>(this)
-        success(dataObject)
-    } catch (e: Exception) {
-        failure(LookupException("Error in JSON lookup ${e.javaClass.simpleName} ${e.message}", e))
-    }
-}
+//inline fun <reified T> String.deserializeJson(): Result<T> {
+//    return try {
+//        val dataObject = Json.decodeFromString<T>(this)
+//        success(dataObject)
+//    } catch (e: Exception) {
+//        failure(LookupException("Error in JSON lookup ${e.javaClass.simpleName} ${e.message}", e))
+//    }
+//}
 
 fun String.deserializeJsonField(): Result<String> {
     return try {

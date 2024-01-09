@@ -1,16 +1,14 @@
 package dev.rubentxu.pipeline.model.validations
 
-import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.shouldBe
 
 class ValidatorTest : FunSpec({
  context("Validator tests") {
 
   test("notNull should validate if object is not null") {
-   val validator = "test".validate()
+   val validator = "test".evaluate()
    validator.notNull().isValid shouldBe true
    validator.sut shouldBe "test"
   }
@@ -22,38 +20,38 @@ class ValidatorTest : FunSpec({
 //  }
 
   test("notEqual should validate if object is not equal to specified value") {
-   val validator = "test".validate()
+   val validator = "test".evaluate()
    validator.notEqual("other").isValid shouldBe true
    validator.notEqual("test").isValid shouldBe false
   }
 
   test("equal should validate if object is equal to specified value") {
-   val validator = "test".validate()
+   val validator = "test".evaluate()
    validator.equal("test").isValid shouldBe true
    validator.equal("other").isValid shouldBe false
   }
 
   test("isClass should validate if object is instance of specified class") {
-   val validator = "test".validate()
+   val validator = "test".evaluate()
    validator.isClass(String::class).isValid shouldBe true
    validator.isClass(Int::class).isValid shouldBe false
   }
 
   test("isBoolean should validate if object is a boolean") {
-   val validator = true.validate()
+   val validator = true.evaluate()
    validator.isBoolean().isValid shouldBe true
    validator.sut shouldBe true
   }
 
   test("dependsOn should validate if context contains all specified keys") {
-   val validator = "test".validate()
+   val validator = "test".evaluate()
    val context = mapOf("key1" to "value1", "key2" to "value2")
    validator.dependsOn(context, "key1", "key2").isValid shouldBe true
    validator.dependsOn(context, "key1", "key3").isValid shouldBe false
   }
 
   test("dependsAnyOn should validate if context contains any of the specified keys") {
-   val validator = "test".validate()
+   val validator = "test".evaluate()
    val context = mapOf("key1" to "value1", "key2" to "value2")
    validator.dependsAnyOn(context, "key1", "key3").isValid shouldBe true
    validator.dependsAnyOn(context, "key3", "key4").isValid shouldBe false

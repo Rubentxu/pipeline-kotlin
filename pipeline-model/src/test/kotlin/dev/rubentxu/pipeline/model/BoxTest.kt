@@ -1,5 +1,12 @@
 package dev.rubentxu.pipeline.model
 
+import arrow.core.Either
+import arrow.core.Either.Companion.zipOrAccumulate
+import arrow.core.NonEmptyList
+import arrow.core.raise.either
+import arrow.core.raise.ensure
+import arrow.core.raise.ensureNotNull
+import arrow.core.raise.mapOrAccumulate
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.async

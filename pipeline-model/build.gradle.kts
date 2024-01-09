@@ -22,9 +22,9 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.4.11")
 
     implementation("io.arrow-kt:arrow-core:1.2.1")
-//    implementation("io.arrow-kt:arrow-syntax:1.2.1")
     implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
-    implementation("io.arrow-kt:arrow-optics:1.2.0")
+
+//    implementation("io.arrow-kt:arrow-optics:1.2.0")
 //    ksp("io.arrow-kt:arrow-optics-ksp-plugin:1.2.0")
 
 

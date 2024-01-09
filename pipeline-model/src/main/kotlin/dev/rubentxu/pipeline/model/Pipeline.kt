@@ -47,6 +47,7 @@ data class PipelineCollection<T: PipelineDomain>(
     val list: List<T>
 ): PipelineDomain
 
+
 data class IDComponent private constructor(
     val id: String,
 )  {

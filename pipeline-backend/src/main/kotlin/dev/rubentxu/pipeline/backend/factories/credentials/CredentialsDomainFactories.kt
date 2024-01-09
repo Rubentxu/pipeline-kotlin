@@ -1,27 +1,30 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
+import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.credentials.*
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
-class CredentialsFactory  {
+class LocalCredentialsFactory  {
     companion object : PipelineDomainFactory<PipelineCollection<Credentials>> {
-        override val rootPath: String = "pipeline.credentials"
+        override val rootPath: String = "credentials.system.localCredentials.credentials"
         override val instanceName: String = "Credentials"
 
         override suspend fun create(data: Map<String, Any>): PipelineCollection<Credentials> {
             val credentialConfig = getRootListObject(data)
 
             credentialConfig.map {
-                createCredential(it, it.keys.first())
+                val key = it.keys.first()
+                val values = it.values.first() as Map<String, Any>
+                createCredential(key, values)
             }.let {
                 return PipelineCollection(it)
             }
         }
 
-        private suspend fun createCredential(credentialConfig: Map<String, Any>, name: String): Credentials {
+        private suspend fun createCredential(name: String, credentialConfig: Map<String, Any>): Credentials {
             return when (name) {
                 "basicSSHUserPrivateKey" -> BasicSSHUserPrivateKeyFactory.create(credentialConfig)
                 "usernamePassword" -> UsernamePasswordFactory.create(credentialConfig)
@@ -43,26 +46,24 @@ class BasicSSHUserPrivateKeyFactory  {
         override val instanceName: String = "BasicSSHUserPrivateKey"
 
         override suspend fun create(data: Map<String, Any>): BasicSSHUserPrivateKey {
-            return BasicSSHUserPrivateKey(
-                scope = data.validateAndGet("scope")
-                    .isString()
-                    .defaultValueIfInvalid("GLOBAL"),
-                id = IDComponent.create(data.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid("id is required in BasicSSHUserPrivateKey")),
-                username = data.validateAndGet("username")
-                    .isString()
-                    .throwIfInvalid("username is required in BasicSSHUserPrivateKey"),
-                passphrase = data.validateAndGet("passphrase")
-                    .isString()
-                    .defaultValueIfInvalid("") as String,
-                description = data.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("") as String,
-                privateKey = data.validateAndGet("privateKeySource.directEntry.privateKey")
-                    .isString()
-                    .throwIfInvalid("privateKey is required in BasicSSHUserPrivateKey")
-            )
+            return parZip(
+                { data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") },
+                { data.validateAndGet("id").isString().throwIfInvalid("id is required in BasicSSHUserPrivateKey") },
+                { data.validateAndGet("username").isString().throwIfInvalid("username is required in BasicSSHUserPrivateKey") },
+                { data.validateAndGet("passphrase").isString().defaultValueIfInvalid("") },
+                { data.validateAndGet("description").isString().defaultValueIfInvalid("") },
+                { data.validateAndGet("privateKeySource.directEntry.privateKey").isString().throwIfInvalid("privateKey is required in BasicSSHUserPrivateKey") }
+            ) { scope, id, username, passphrase, description, privateKey ->
+                BasicSSHUserPrivateKey(
+                    scope = scope,
+                    id = IDComponent.create(id),
+                    username = username,
+                    passphrase = passphrase,
+                    description = description,
+                    privateKey = privateKey
+                )
+            }
+
         }
     }
 }

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.backend.factories
 
 
-import dev.rubentxu.pipeline.backend.factories.credentials.CredentialsFactory
+import dev.rubentxu.pipeline.backend.factories.credentials.LocalCredentialsFactory
 import dev.rubentxu.pipeline.backend.factories.jobs.JobInstanceFactory
 import dev.rubentxu.pipeline.backend.factories.sources.SourceCodeRepositoryFactory
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
@@ -9,7 +9,6 @@ import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.PipelineContext
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
-import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class PipelineContextFactory : PipelineDomain {
         companion object : PipelineDomainFactory<IPipelineContext> {
@@ -21,7 +20,7 @@ class PipelineContextFactory : PipelineDomain {
 
                 val job = JobInstanceFactory.create(data)
                 val repositories = SourceCodeRepositoryFactory.create(data)
-                val credentials = CredentialsFactory.create(data)
+                val credentials = LocalCredentialsFactory.create(data)
 
                 context.registerService(JobInstance::class, job)
 

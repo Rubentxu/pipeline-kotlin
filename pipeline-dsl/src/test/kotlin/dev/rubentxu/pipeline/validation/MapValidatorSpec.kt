@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.validation
 
 import dev.rubentxu.pipeline.model.validations.MapValidator
-import dev.rubentxu.pipeline.model.validations.validate
+import dev.rubentxu.pipeline.model.validations.evaluate
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -11,10 +11,10 @@ class MapValidatorSpec : FunSpec({
         val sampleMap = mapOf("key1" to "value1", "key2" to mapOf("nestedKey" to "nestedValue"))
 
         test("notNull should validate if the map is not null") {
-            val validator = sampleMap.validate()
+            val validator = sampleMap.evaluate()
             validator.notNull().isValid shouldBe true
             val sut = null
-            sut.validate().notNull().isValid shouldBe false
+            sut.evaluate().notNull().isValid shouldBe false
         }
 
         test("getKey should validate if the key exists") {
@@ -29,7 +29,7 @@ class MapValidatorSpec : FunSpec({
         }
 
         test("getValue should return the value of the key") {
-            val validator = sampleMap.validate("nameVar1")
+            val validator = sampleMap.evaluate("nameVar1")
             validator.getValueByPath("key1") shouldBe "value1"
         }
 
@@ -45,7 +45,7 @@ class MapValidatorSpec : FunSpec({
 
         test("notNull should throw an exception when the map is null") {
             val sut: Map<String, String>? = null
-            val validation = sut.validate()
+            val validation = sut.evaluate()
 
             validation.notNull().isValid shouldBe false
         }
@@ -61,14 +61,14 @@ class MapValidatorSpec : FunSpec({
 
         test("getValueByPath should return the resolved value of the map") {
             val sut = mapOf("key" to "value")
-            val validation = sut.validate()
+            val validation = sut.evaluate()
 
             validation.getValueByPath("key") shouldBe "value"
         }
 
         test("getValue should return null when the map is null") {
             val sut: Map<String, String>? = null
-            val validation = sut.validate()
+            val validation = sut.evaluate()
 
             validation.getValue() shouldBe null
         }

@@ -6,25 +6,27 @@ import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.credentials.Credentials
 import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
-import dev.rubentxu.pipeline.model.validations.validateAndGet
+import pipeline.kotlin.extensions.resolveValueExpressions
 
 class CredentialsProviderFactory {
 
     companion object : PipelineDomainFactory<ICredentialsProvider> {
         override val rootPath: String = "pipeline.credentialsProvider"
         override val instanceName: String = "CredentialsProvider"
-        
-        override suspend fun create(data: Map<String, Any>): ICredentialsProvider {
-            val credentialsList: MutableMap<IDComponent, Credentials> = data.validateAndGet("credentials")
-                .isList()
-                .throwIfInvalid("credentials is required in CredentialsProvider")
-                .map {
-                    return@map CredentialsFactory.create(it as Map<String, Any>)
-                }.associateBy { it.id }.toMutableMap()
+
+        override suspend fun create(rawYaml: Map<String, Any>): ICredentialsProvider {
+            val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
+
+            val credentialsMap: MutableMap<IDComponent, Credentials> = LocalCredentialsFactory.create(resolvedYaml)
+                .list
+                .associateBy { it.id } as MutableMap<IDComponent, Credentials>
 
             return LocalCredentialsProvider(
-                credentials = credentialsList
+                credentials = credentialsMap
             )
         }
+
     }
+
+
 }

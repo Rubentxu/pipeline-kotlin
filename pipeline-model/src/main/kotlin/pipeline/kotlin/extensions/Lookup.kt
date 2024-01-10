@@ -70,6 +70,7 @@ fun String.fileBase64Lookup(): Result<String> {
     }
 }
 
+@OptIn(ExperimentalEncodingApi::class)
 fun String.decodeBase64Lookup(): Result<String> {
     return try {
         val decoded = Base64.decode(this)

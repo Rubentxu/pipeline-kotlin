@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.model.mapper
 
 import arrow.core.*
+import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.raise.ensure
 
@@ -31,9 +32,16 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
 
     fun getKey(): String = path.substringBefore("[")
 
-    fun getIndex(): Any? = indexRegex.find(path)?.groupValues?.get(1).toInt() ?: null
+    fun getIndex(): Int? {
+        try {
+            return indexRegex.find(path)?.groupValues?.get(1)?.toInt()
+        } catch (e: NumberFormatException) {
+            return null
+        }
+    }
 
     fun indexIsNumber(): Boolean = getIndex()?.let { it is Int } ?: false
+
 }
 
 data class NestedPath private constructor(val path: String) : PropertyPath {
@@ -52,8 +60,6 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
             it.propertyPath().fold({ raise(it) }, { it as PathSegment })
         }.bind()
     }
-
-
 }
 
 inline fun <reified T> PropertySet.required(path: PropertyPath): Either<ValidationError, T> = either {
@@ -65,18 +71,27 @@ inline fun <reified T> PropertySet.required(path: PropertyPath): Either<Validati
 
 inline fun <reified T> PropertySet.required(segment: PathSegment): Either<ValidationError, T> = either {
     ensure(containsKey(segment.getKey())) { ValidationError("PathSegment '${segment.getKey()}' not found in PropertySet") }
-    val value: Any? = get(segment.getKey())
+    val value: Any? = getValue<T>(segment, this)
     ensure(value != null) { ValidationError("PathSegment '${segment.getKey()}' is null in PropertySet") }
     ensure(value is T) { ValidationError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
-    if(segment.containsIndex()) {
-        ensure(segment.indexIsNumber()) { ValidationError("PathSegment '${segment.path}' does not contain a number index") }
-        val index: Int? = segment.getIndex() as? Int
-        ensure(value is List<*>) { ValidationError("Value for PathSegment '${segment.path}' is not a list") }
-        ensure(index != null) { ValidationError("PathSegment '${segment.path}' does not contain an index ${index}") }
-        ensure( value.isInRangeCollection(index)) { ValidationError("PathSegment '${segment.path}' index ${index} is out of range") }
-        value[index] as T
-    }
     value
+}
+
+inline fun <reified T>  PropertySet.getValue(
+    segment: PathSegment,
+    raise: Raise<ValidationError>,
+): Any? {
+    val value: Any? = get(segment.getKey())
+
+    if (segment.containsIndex()) {
+        raise.ensure(segment.indexIsNumber()) { ValidationError("PathSegment '${segment.path}' does not contain a number index") }
+        val index: Int? = segment.getIndex()
+        raise.ensure(index != null) { ValidationError("PathSegment '${segment.path}' does not contain an index ${index}") }
+        raise.ensure(value is List<*>) { ValidationError("Value for PathSegment '${segment.path}' is not a list") }
+        raise.ensure(value.isInRangeCollection(index)) { ValidationError("PathSegment '${segment.path}' index ${index} is out of range") }
+        return value[index] as T
+    }
+    return value
 }
 
 fun List<*>.isInRangeCollection(index: Int): Boolean {

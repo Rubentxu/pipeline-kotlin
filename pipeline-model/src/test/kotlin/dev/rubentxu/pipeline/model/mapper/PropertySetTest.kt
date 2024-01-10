@@ -37,9 +37,9 @@ class PropertySetTest : StringSpec({
 
     "required should return value if value is a list and index is present" {
         val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
-        val pathSegment = "key[1]".propertyPath().getOrElse { throw Exception(it.message) }
-        val result = propertySet.required<List<String>>(pathSegment)
-        result shouldBe listOf("value1", "value2").right()
+        val pathSegment = "key[0]".propertyPath().getOrElse { throw Exception(it.message) }
+        val result = propertySet.required<String>(pathSegment)
+        result shouldBe "value1".right()
     }
 
     "required should fail if value is a list and index is not present" {
@@ -53,7 +53,7 @@ class PropertySetTest : StringSpec({
         val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
         val pathSegment = "key[2]".propertyPath().getOrElse { throw Exception(it.message) }
         val result = propertySet.required<String>(pathSegment)
-        result shouldBe ValidationError("Value for PathSegment 'key' is not of type class kotlin.String").left()
+        result shouldBe ValidationError("PathSegment 'key[2]' index 2 is out of range").left()
     }
 
     "required should fail if value is a list and index is not a number" {
@@ -67,9 +67,35 @@ class PropertySetTest : StringSpec({
         val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
         val pathSegment = "key[-1]".propertyPath().getOrElse { throw Exception(it.message) }
         val result = propertySet.required<List<String>>(pathSegment)
-        result shouldBe ValidationError("PathSegment 'key[-1]' does not range index").left()
+        result shouldBe ValidationError("PathSegment 'key[-1]' index -1 is out of range").left()
+    }
+
+    "required should fail if value is a list and index is not present and value is a list" {
+        val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
+        val pathSegment = "key".propertyPath().getOrElse { throw Exception(it.message) }
+        val result = propertySet.required<String>(pathSegment)
+        result shouldBe ValidationError("Value for PathSegment 'key' is not of type class kotlin.String").left()
+    }
+
+    "required should fail if value is a list and index is out of range and value is a list" {
+        val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
+        val pathSegment = "key[2]".propertyPath().getOrElse { throw Exception(it.message) }
+        val result = propertySet.required<List<String>>(pathSegment)
+        result shouldBe ValidationError("PathSegment 'key[2]' index 2 is out of range").left()
+    }
+
+    "required should fail if value is a list and index is not a number and value is a list" {
+        val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
+        val pathSegment = "key[a]".propertyPath().getOrElse { throw Exception(it.message) }
+        val result = propertySet.required<List<String>>(pathSegment)
+        result shouldBe ValidationError("PathSegment 'key[a]' does not contain a number index").left()
+    }
+
+    "required should fail if value is a list and index is not range and value is a list" {
+        val propertySet: PropertySet = mutableMapOf("key" to listOf("value1", "value2"))
+        val pathSegment = "key[-1]".propertyPath().getOrElse { throw Exception(it.message) }
+        val result = propertySet.required<List<String>>(pathSegment)
+        result shouldBe ValidationError("PathSegment 'key[-1]' index -1 is out of range").left()
     }
 
 })
-
-

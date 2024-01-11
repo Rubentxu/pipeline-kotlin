@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.model.mapper
 
-import arrow.core.*
-import arrow.core.raise.Raise
+import arrow.core.left
 import arrow.core.raise.effect
+import arrow.core.right
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.backend.factories.sources
 
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.repository.SourceCodeRepository
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
@@ -9,7 +10,7 @@ class SourceCodeRepositoryFactory : PipelineDomain {
     companion object : PipelineDomainFactory<SourceCodeRepository> {
         override val rootPath: String = "repositories"
         override val instanceName: String = "SourceCodeRepository"
-        override suspend fun create(data: Map<String, Any>): SourceCodeRepository {
+        override suspend fun create(data: PropertySet): SourceCodeRepository {
             val type = data.keys.first()
 
 

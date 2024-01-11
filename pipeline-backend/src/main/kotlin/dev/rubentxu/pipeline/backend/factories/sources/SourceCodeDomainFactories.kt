@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.repository.*
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import java.net.URL
@@ -20,7 +21,7 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
         override val rootPath: String = "pipeline.plugins"
         override val instanceName: String = "PluginSourceCodeConfig"
 
-        override suspend fun create(data: Map<String, Any>): PipelineCollection<PluginSourceCodeConfig> {
+        override suspend fun create(data: PropertySet): PipelineCollection<PluginSourceCodeConfig> {
 
             val plugins = getRootListObject(data)
 
@@ -70,7 +71,7 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
         override val rootPath: String = "pipeline.pipelineSourceCode"
         override val instanceName: String = "PipelineFileSource"
 
-        override suspend fun create(data: Map<String, Any>): SourceCodeConfig {
+        override suspend fun create(data: PropertySet): SourceCodeConfig {
             val pipelineSourceCode = getRootMapObject(data)
 
             val scmReferenceId = IDComponent.create(
@@ -99,7 +100,7 @@ class ProjectSourceCodeFactory : PipelineDomain {
         override val rootPath: String = "pipeline.projectSourceCode"
         override val instanceName: String = "ProjectSourceCode"
 
-        override suspend fun create(data: Map<String, Any>): SourceCodeConfig {
+        override suspend fun create(data: PropertySet): SourceCodeConfig {
 
             val projectSourceCode = getRootMapObject(data)
 
@@ -126,7 +127,7 @@ class MercurialSourceCodeRepositoryFactory {
         override val rootPath: String = "repositories.mercurial"
         override val instanceName: String = "Mercurial"
 
-        override suspend fun create(data: Map<String, Any>): Mercurial {
+        override suspend fun create(data: PropertySet): Mercurial {
             val repositoryMercurial = getRootMapObject(data)
 
             val id =
@@ -178,7 +179,7 @@ class LocalGitSourceCodeRepositoryFactory {
     companion object : PipelineDomainFactory<LocalSourceCodeRepository> {
         override val rootPath: String = "repositories.local"
         override val instanceName: String = "LocalSourceCodeRepository"
-        override suspend fun create(data: Map<String, Any>): LocalSourceCodeRepository {
+        override suspend fun create(data: PropertySet): LocalSourceCodeRepository {
             val localRepository = getRootMapObject(data)
 
             val id = IDComponent.create(
@@ -223,7 +224,7 @@ class GitSourceCodeRepositoryFactory {
         override val rootPath: String = "repositories.git"
         override val instanceName: String = "GitSourceCodeRepository"
 
-        override suspend fun create(data: Map<String, Any>): GitSourceCodeRepository {
+        override suspend fun create(data: PropertySet): GitSourceCodeRepository {
             val gitRepository = getRootMapObject(data)
 
             val id = IDComponent.create(
@@ -345,7 +346,7 @@ class CleanRepositoryFactory {
     companion object : PipelineDomainFactory<CleanRepository> {
         override val rootPath: String = "repositories.git.extensions.cleanRepository"
         override val instanceName: String = "CleanRepository"
-        override suspend fun create(data: Map<String, Any>): CleanRepository {
+        override suspend fun create(data: PropertySet): CleanRepository {
             return CleanRepository(
                 getRootMapObject(data).validateAndGet("clean")
                     .isBoolean()

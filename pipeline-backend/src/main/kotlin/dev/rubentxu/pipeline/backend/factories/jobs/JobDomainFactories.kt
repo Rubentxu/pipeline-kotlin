@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.backend.factories.jobs
 import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.jobs.*
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 
@@ -11,7 +12,7 @@ class JobParameterFactory {
         override val rootPath: String = "pipeline.parameters"
         override val instanceName: String = "JobParameters"
 
-        override suspend fun create(data: Map<String, Any>): PipelineCollection<JobParameter<*>> {
+        override suspend fun create(data: PropertySet): PipelineCollection<JobParameter<*>> {
             val parameters = getRootListObject(data)
                 .map {
                     createJobParameter(it, it.keys.first())
@@ -41,7 +42,7 @@ class StringJobParameterFactory {
         override var rootPath: String = "pipeline.parameters[index].string"
         override val instanceName: String = "StringJobParameter"
 
-        override suspend fun create(data: Map<String, Any>): StringJobParameter {
+        override suspend fun create(data: PropertySet): StringJobParameter {
 
             return StringJobParameter(
                 name = data.validateAndGet("name")
@@ -63,7 +64,7 @@ class ChoiceJobParameterFactory {
         override var rootPath: String = "pipeline.parameters[index].choice"
         override val instanceName: String = "ChoiceJobParameter"
 
-        override suspend fun create(data: Map<String, Any>): ChoiceJobParameter {
+        override suspend fun create(data: PropertySet): ChoiceJobParameter {
             val choices = data.validateAndGet("choices")
                 .isList()
                 .throwIfInvalid(getErrorMessage("choices")) as List<String>
@@ -92,7 +93,7 @@ class BooleanJobParameterFactory {
         override var rootPath: String = "pipeline.parameters[index].boolean"
         override val instanceName: String = "BooleanJobParameter"
 
-        override suspend fun create(data: Map<String, Any>): BooleanJobParameter {
+        override suspend fun create(data: PropertySet): BooleanJobParameter {
             return BooleanJobParameter(
                 name = data.validateAndGet("name")
                     .isString()
@@ -112,7 +113,7 @@ class PasswordJobParameterFactory {
     companion object : PipelineDomainFactory<PasswordJobParameter> {
         override var rootPath: String = "pipeline.parameters[index].password"
         override val instanceName: String = "PasswordJobParameter"
-        override suspend fun create(data: Map<String, Any>): PasswordJobParameter {
+        override suspend fun create(data: PropertySet): PasswordJobParameter {
             return PasswordJobParameter(
                 name = data.validateAndGet("name")
                     .isString()
@@ -132,7 +133,7 @@ class TextJobParameterFactory {
     companion object : PipelineDomainFactory<TextJobParameter> {
         override var rootPath: String = "pipeline.parameters[index].text"
         override val instanceName: String = "TextJobParameter"
-        override suspend fun create(data: Map<String, Any>): TextJobParameter {
+        override suspend fun create(data: PropertySet): TextJobParameter {
             return TextJobParameter(
                 name = data.validateAndGet("name")
                     .isString()

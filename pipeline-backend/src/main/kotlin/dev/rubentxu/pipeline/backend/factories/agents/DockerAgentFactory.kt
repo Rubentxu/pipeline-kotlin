@@ -1,11 +1,17 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
+import arrow.core.Either
+import arrow.core.NonEmptyList
+import arrow.core.raise.either
+import arrow.core.raise.zipOrAccumulate
+import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.agents.DockerAgent
 import dev.rubentxu.pipeline.model.agents.DockerTemplate
 import dev.rubentxu.pipeline.model.agents.DockerTemplateBase
 import dev.rubentxu.pipeline.model.agents.RetentionStrategy
+import dev.rubentxu.pipeline.model.mapper.*
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class DockerAgentFactory {
@@ -13,32 +19,27 @@ class DockerAgentFactory {
         override val rootPath: String = "pipeline.agents"
         override val instanceName: String = "DockerAgent"
 
-        override suspend fun create(data: Map<String, Any>): DockerAgent {
-            val id: IDComponent = IDComponent.create(data.validateAndGet("id")
-                .isString()
-                .throwIfInvalid("id is required in DockerCloudConfig"))
+        suspend fun create(data: PropertySet): Either<NonEmptyList<ValidationError>, DockerAgent> = either {
+           zipOrAccumulate(
+                { data.required<String>("id".propertyPath()).map { IDComponent.create(it)} },
+                { data.required<String>("docker.name".propertyPath()) },
+                { data.required<String>("docker.dockerApi.dockerHost.uri".propertyPath()) },
+                { data.required<List<PropertySet>>("docker.templates".propertyPath()) },
+                { data.required<List<String>>("docker.labels".propertyPath()) }
+            ) { id, name, dockerHost, templatesMap, labels ->
 
-            val templatesMap = data.validateAndGet("docker.templates")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+                val templates: List<DockerTemplate> = templatesMap.unwrap().map { properties: PropertySet ->
+                    DockerTemplateFactory.create(properties)
+                }.toList()
 
-            val templates: List<DockerTemplate> = templatesMap.map {
-                return@map DockerTemplateFactory.create(it)
+                DockerAgent(
+                    id = id.unwrap(),
+                    name = name.unwrap(),
+                    dockerHost = dockerHost.unwrap(),
+                    templates = templates,
+                    labels = labels.unwrap()
+                )
             }
-
-            val labels: List<String> = data.validateAndGet("docker.labels")
-                .isList()
-                .defaultValueIfInvalid(emptyList<String>()) as List<String>
-
-            return DockerAgent(
-                id = id,
-                name = data.validateAndGet("docker.name").isString()
-                    .throwIfInvalid("name is required in DockerCloudConfig"),
-                dockerHost = data.validateAndGet("docker.dockerApi.dockerHost.uri").isString()
-                    .throwIfInvalid("dockerHost is required in DockerCloudConfig"),
-                templates = templates,
-                labels = labels
-            )
         }
     }
 }
@@ -48,21 +49,15 @@ class DockerTemplateFactory {
         override val rootPath: String = "docker.templates"
         override val instanceName: String = "DockerTemplate"
 
-        override suspend fun create(data: Map<String, Any>): DockerTemplate {
-            val templateBaseMap: Map<String, Any> = data.validateAndGet("dockerTemplateBase")
-                .isMap()
-                .throwIfInvalid("dockerTemplateBase is required in DockerTemplate") as Map<String, Any>
+        override suspend fun create(data: PropertySet): Either<NonEmptyList<ValidationError>,DockerTemplate> = {
+            val templateBaseMap: Map<String, Any> = data.required<Map<String, Any>>("dockerTemplateBase".propertyPath()).unwrap()
 
             return DockerTemplate(
-                labelString = data.validateAndGet("labelString").isString()
-                    .throwIfInvalid("labelString is required in DockerTemplate"),
+                labelString = data.required<String>("labelString".propertyPath()).unwrap(),
                 dockerTemplateBase = DockerTemplateBaseFactory.create(templateBaseMap),
-                remoteFs = data.validateAndGet("remoteFs").isString()
-                    .throwIfInvalid("remoteFs is required in DockerTemplate"),
-                user = data.validateAndGet("connector.attach.user").isString()
-                    .throwIfInvalid("connector.attach.user is required in DockerTemplate"),
-                instanceCapStr = data.validateAndGet("instanceCapStr").isString()
-                    .throwIfInvalid("instanceCapStr is required in DockerTemplate"),
+                remoteFs = data.required<String>("remoteFs".propertyPath()).unwrap(),
+                user = data.required<String>("connector.attach.user".propertyPath()).unwrap(),
+                instanceCapStr = data.required<String>("instanceCapStr".propertyPath()).unwrap(),
                 retentionStrategy = RetentionStrategyFactory.create(data)
             )
         }
@@ -74,14 +69,11 @@ class DockerTemplateBaseFactory {
         override val rootPath: String = "dockerTemplateBase"
         override val instanceName: String = "DockerTemplateBase"
 
-        override suspend fun create(data: Map<String, Any>): DockerTemplateBase {
+        override suspend fun create(data: PropertySet): DockerTemplateBase {
             return DockerTemplateBase(
-                image = data.validateAndGet("image").isString()
-                    .throwIfInvalid("image is required in DockerTemplateBase"),
-                mounts = data.validateAndGet("mounts").isList()
-                    .defaultValueIfInvalid(emptyList<String>()) as List<String>,
-                environmentsString = data.validateAndGet("environmentsString").isString()
-                    .throwIfInvalid("environmentsString is required in DockerTemplateBase")
+                image = data.required<String>("image".propertyPath()).unwrap(),
+                mounts = data.required<List<String>>("mounts".propertyPath()).unwrap(),
+                environmentsString = data.required<String>("environmentsString".propertyPath()).unwrap()
             )
         }
     }
@@ -92,9 +84,9 @@ class RetentionStrategyFactory {
         override val rootPath: String = "retentionStrategy"
         override val instanceName: String = "RetentionStrategy"
 
-        override suspend fun create(data: Map<String, Any>): RetentionStrategy {
+        override suspend fun create(data: PropertySet): RetentionStrategy {
             return RetentionStrategy(
-                idleMinutes = data.validateAndGet("retentionStrategy.idleMinutes").isNumber().throwIfInvalid() as Int
+                idleMinutes = data.required<Int>("retentionStrategy.idleMinutes".propertyPath()).unwrap()
             )
         }
     }

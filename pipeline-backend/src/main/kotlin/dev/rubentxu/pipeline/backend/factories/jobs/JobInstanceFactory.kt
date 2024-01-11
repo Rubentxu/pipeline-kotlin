@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.backend.factories.sources.PluginsDefinitionSourceFa
 import dev.rubentxu.pipeline.backend.factories.sources.ProjectSourceCodeFactory
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -14,7 +15,7 @@ class JobInstanceFactory {
         override val rootPath: String = "pipeline"
         override val instanceName: String = "JobInstance"
 
-        override suspend fun create(data: Map<String, Any>): JobInstance {
+        override suspend fun create(data: PropertySet): JobInstance {
             val pipelineMap = getRootMapObject(data)
 
             return coroutineScope {

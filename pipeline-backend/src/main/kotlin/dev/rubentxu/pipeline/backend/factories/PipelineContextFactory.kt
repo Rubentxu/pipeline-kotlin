@@ -9,13 +9,14 @@ import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.PipelineContext
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 
 class PipelineContextFactory : PipelineDomain {
         companion object : PipelineDomainFactory<IPipelineContext> {
             override val rootPath: String = "pipeline"
             override val instanceName: String = "PipelineContext"
 
-            override suspend fun create(data: Map<String, Any>): IPipelineContext {
+            override suspend fun create(data: PropertySet): IPipelineContext {
                 val context = PipelineContext()
 
                 val job = JobInstanceFactory.create(data)

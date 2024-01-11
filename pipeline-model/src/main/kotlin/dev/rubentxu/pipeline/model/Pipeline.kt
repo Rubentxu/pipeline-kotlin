@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.model
 
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,7 +33,7 @@ interface PipelineDomainFactory<T: PipelineDomain?>  {
         return "${rootPath}.${key} configuration is required in ${instanceName}"
     }
 
-    suspend fun create(data: Map<String, Any>): T
+    suspend fun create(data: PropertySet): T
 }
 
 

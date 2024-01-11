@@ -1,7 +1,9 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 val kotlinVersion: String by project
-val kotlinCoroutinesVersion:  String by project
-val kotestVersion:  String by project
-val appVersion:  String by project
+val kotlinCoroutinesVersion: String by project
+val kotestVersion: String by project
+val appVersion: String by project
 
 plugins {
     kotlin("jvm") version "1.9.21"
@@ -50,11 +52,13 @@ tasks {
     compileKotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            freeCompilerArgs = listOf("-Xopt-in=kotlin.RequiresOptIn", "-Xcontext-receivers")
         }
     }
     compileTestKotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            freeCompilerArgs = listOf("-Xopt-in=kotlin.RequiresOptIn", "-Xcontext-receivers")
         }
     }
 
@@ -66,6 +70,12 @@ tasks {
 
 tasks.withType<Test> {
     jvmArgs("--add-opens", "java.base/java.util=ALL-UNNAMED")
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn" + "-Xcontext-receivers"
+    }
 }
 
 tasks

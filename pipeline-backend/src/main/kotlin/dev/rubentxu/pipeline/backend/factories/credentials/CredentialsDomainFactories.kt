@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.credentials.*
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class LocalCredentialsFactory  {
@@ -12,7 +13,7 @@ class LocalCredentialsFactory  {
         override val rootPath: String = "credentials.system.localCredentials.credentials"
         override val instanceName: String = "Credentials"
 
-        override suspend fun create(data: Map<String, Any>): PipelineCollection<Credentials> {
+        override suspend fun create(data: PropertySet): PipelineCollection<Credentials> {
             val credentialConfig = getRootListObject(data)
 
             credentialConfig.map {
@@ -45,7 +46,7 @@ class BasicSSHUserPrivateKeyFactory  {
         override val rootPath: String = "pipeline.credentials.basicSSHUserPrivateKey"
         override val instanceName: String = "BasicSSHUserPrivateKey"
 
-        override suspend fun create(data: Map<String, Any>): BasicSSHUserPrivateKey {
+        override suspend fun create(data: PropertySet): BasicSSHUserPrivateKey {
             return parZip(
                 { data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") },
                 { data.validateAndGet("id").isString().throwIfInvalid("id is required in BasicSSHUserPrivateKey") },
@@ -73,7 +74,7 @@ class UsernamePasswordFactory {
         override val rootPath: String = "pipeline.credentials.usernamePassword"
         override val instanceName: String = "UsernamePassword"
 
-        override suspend fun create(data: Map<String, Any>): UsernamePassword {
+        override suspend fun create(data: PropertySet): UsernamePassword {
             return UsernamePassword(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -100,7 +101,7 @@ class StringCredentialsFatory {
         override val rootPath: String = "pipeline.credentials.string"
         override val instanceName: String = "StringCredentials"
 
-        override suspend fun create(data: Map<String, Any>): StringCredentials {
+        override suspend fun create(data: PropertySet): StringCredentials {
             return StringCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -125,7 +126,7 @@ class AwsCredentialsFactory {
         override val rootPath: String = "pipeline.credentials.aws"
         override val instanceName: String = "AwsCredentials"
 
-        override suspend fun create(data: Map<String, Any>): AwsCredentials {
+        override suspend fun create(data: PropertySet): AwsCredentials {
             return AwsCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -152,7 +153,7 @@ class FileCredentialsFactory {
         override val rootPath: String = "pipeline.credentials.file"
         override val instanceName: String = "FileCredentials"
 
-        override suspend fun create(data: Map<String, Any>): FileCredentials {
+        override suspend fun create(data: PropertySet): FileCredentials {
             return FileCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()
@@ -180,7 +181,7 @@ class CertificateCredentialsFactory {
         override val rootPath: String = "pipeline.credentials.certificate"
         override val instanceName: String = "CertificateCredentials"
 
-        override suspend fun create(data: Map<String, Any>): CertificateCredentials {
+        override suspend fun create(data: PropertySet): CertificateCredentials {
             return CertificateCredentials(
                 scope = data.validateAndGet("scope")
                     .isString()

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.backend.factories.agents
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.agents.*
+import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 
@@ -12,7 +13,7 @@ class KubernetesAgentFactory {
         override val rootPath: String = "pipeline.agents"
         override val instanceName: String = "KubernetesAgent"
 
-        override suspend fun create(data: Map<String, Any>): KubernetesAgent {
+        override suspend fun create(data: PropertySet): KubernetesAgent {
             val id: IDComponent = IDComponent.create(data.validateAndGet("id")
                 .isString()
                 .throwIfInvalid("id is required in KubernetesConfig"))
@@ -68,7 +69,7 @@ class KubernetesTemplateFactory {
         override val rootPath: String = "kubernetes.templates"
         override val instanceName: String = "Template"
 
-        override suspend fun create(data: Map<String, Any>): K8sTemplate {
+        override suspend fun create(data: PropertySet): K8sTemplate {
             val volumesMap: List<Map<String, Any>> = data.validateAndGet("volumes")
                 .isList()
                 .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
@@ -126,7 +127,7 @@ class VolumeFactory {
         override val rootPath: String = "volumes"
         override val instanceName: String = "Volume"
 
-        override suspend fun create(data: Map<String, Any>): Volume {
+        override suspend fun create(data: PropertySet): Volume {
             val hostPathVolumeMap: Map<String, Any> = data.validateAndGet("hostPathVolume")
                 .isMap()
                 .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
@@ -153,7 +154,7 @@ class HostPathVolumeFactory {
         override val rootPath: String = "hostPathVolume"
         override val instanceName: String = "HostPathVolume"
 
-        override suspend fun create(data: Map<String, Any>): HostPathVolume {
+        override suspend fun create(data: PropertySet): HostPathVolume {
             return HostPathVolume(
                 mountPath = data.validateAndGet("mountPath").isString()
                     .throwIfInvalid("mountPath is required in HostPathVolume"),
@@ -169,7 +170,7 @@ class EmptyDirVolumeFactory {
         override val rootPath: String = "emptyDirVolume"
         override val instanceName: String = "EmptyDirVolume"
 
-        override suspend fun create(data: Map<String, Any>): EmptyDirVolume? {
+        override suspend fun create(data: PropertySet): EmptyDirVolume? {
             if (data.isEmpty()) return null
             return EmptyDirVolume(
                 memory = data.validateAndGet("memory").isBoolean().defaultValueIfInvalid(false) as Boolean,
@@ -185,7 +186,7 @@ class ConfigMapVolumeFactory {
         override val rootPath: String = "configMapVolume"
         override val instanceName: String = "ConfigMapVolume"
 
-        override suspend fun create(data: Map<String, Any>): ConfigMapVolume? {
+        override suspend fun create(data: PropertySet): ConfigMapVolume? {
             if (data.isEmpty()) return null
             return ConfigMapVolume(
                 configMapName = data.validateAndGet("configMapName").isString()
@@ -204,7 +205,7 @@ class ContainerFactory {
         override val rootPath: String = "containers"
         override val instanceName: String = "Container"
 
-        override suspend fun create(data: Map<String, Any>): Container {
+        override suspend fun create(data: PropertySet): Container {
             return Container(
                 name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Container"),
                 image = data.validateAndGet("image").isString().throwIfInvalid("image is required in Container"),
@@ -233,7 +234,7 @@ class ImagePullSecretFactory {
         override val rootPath: String = "imagePullSecrets"
         override val instanceName: String = "ImagePullSecret"
 
-        override suspend fun create(data: Map<String, Any>): ImagePullSecret {
+        override suspend fun create(data: PropertySet): ImagePullSecret {
             return ImagePullSecret(
                 name = data.validateAndGet("name")
                     .isString()

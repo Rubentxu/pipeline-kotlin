@@ -23,7 +23,7 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
 
         override suspend fun create(data: PropertySet): PipelineCollection<PluginSourceCodeConfig> {
 
-            val plugins = getRootListObject(data)
+            val plugins = getRootListPropertySet(data)
 
             return plugins.mapIndexed { index, plugin ->
                 val name = plugin.validateAndGet("name")
@@ -72,7 +72,7 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
         override val instanceName: String = "PipelineFileSource"
 
         override suspend fun create(data: PropertySet): SourceCodeConfig {
-            val pipelineSourceCode = getRootMapObject(data)
+            val pipelineSourceCode = getRootPropertySet(data)
 
             val scmReferenceId = IDComponent.create(
                 pipelineSourceCode.validateAndGet("repository.referenceId")
@@ -102,7 +102,7 @@ class ProjectSourceCodeFactory : PipelineDomain {
 
         override suspend fun create(data: PropertySet): SourceCodeConfig {
 
-            val projectSourceCode = getRootMapObject(data)
+            val projectSourceCode = getRootPropertySet(data)
 
             val scmReferenceId = IDComponent.create(
                 projectSourceCode.validateAndGet("repository.referenceId")
@@ -128,7 +128,7 @@ class MercurialSourceCodeRepositoryFactory {
         override val instanceName: String = "Mercurial"
 
         override suspend fun create(data: PropertySet): Mercurial {
-            val repositoryMercurial = getRootMapObject(data)
+            val repositoryMercurial = getRootPropertySet(data)
 
             val id =
                 IDComponent.create(
@@ -180,7 +180,7 @@ class LocalGitSourceCodeRepositoryFactory {
         override val rootPath: String = "repositories.local"
         override val instanceName: String = "LocalSourceCodeRepository"
         override suspend fun create(data: PropertySet): LocalSourceCodeRepository {
-            val localRepository = getRootMapObject(data)
+            val localRepository = getRootPropertySet(data)
 
             val id = IDComponent.create(
                 localRepository.validateAndGet("id")
@@ -225,7 +225,7 @@ class GitSourceCodeRepositoryFactory {
         override val instanceName: String = "GitSourceCodeRepository"
 
         override suspend fun create(data: PropertySet): GitSourceCodeRepository {
-            val gitRepository = getRootMapObject(data)
+            val gitRepository = getRootPropertySet(data)
 
             val id = IDComponent.create(
                 gitRepository.validateAndGet("id")
@@ -348,7 +348,7 @@ class CleanRepositoryFactory {
         override val instanceName: String = "CleanRepository"
         override suspend fun create(data: PropertySet): CleanRepository {
             return CleanRepository(
-                getRootMapObject(data).validateAndGet("clean")
+                getRootPropertySet(data).validateAndGet("clean")
                     .isBoolean()
                     .defaultValueIfInvalid(false)
             )

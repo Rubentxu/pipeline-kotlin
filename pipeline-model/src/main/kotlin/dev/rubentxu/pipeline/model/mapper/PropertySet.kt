@@ -12,11 +12,14 @@ import arrow.core.raise.ensure
  */
 typealias PropertySet = Map<String, Any?>
 
-
+/**
+ * Extension function for Map class to convert a map to a PropertySet.
+ *
+ * @return PropertySet instance.
+ */
 fun Map<String, Any?>.toPropertySet(): PropertySet {
     return this
 }
-
 
 /**
  * Data class for validation errors.
@@ -357,6 +360,45 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
 
     return finalPath.optional<T>(keys.last() as PathSegment)
 }
+
+
+/**
+ * Checks if a specific path segment is present in any of the PropertySet instances in the list.
+ *
+ * @param segment The path segment to check.
+ * @return Boolean indicating whether the path segment is present in any of the PropertySet instances in the list.
+ *         Returns true if the path segment is present, otherwise, returns false.
+ */
+context(Raise<ValidationError>)
+inline fun <reified T> List<PropertySet>.contains(segment: PathSegment): Boolean {
+    return this.any { property: PropertySet -> property.optional<T>(segment) != null }
+}
+
+
+/**
+ * Searches for the first PropertySet instance in the list that contains the specified path segment and returns it.
+ * If no such PropertySet is found, it returns null.
+ *
+ * @param segment The path segment to check.
+ * @return The first PropertySet instance that contains the specified path segment, or null if no such PropertySet is found.
+ */
+context(Raise<ValidationError>)
+inline fun <reified T> List<PropertySet>.firstOrNull(segment: PathSegment): PropertySet? {
+    return this.firstOrNull { property: PropertySet -> property.optional<T>(segment) != null }
+}
+
+/**
+ * Filters all PropertySet instances in the list that contain the specified path segment and returns a list of them.
+ * If no such PropertySet is found, it returns an empty list.
+ *
+ * @param segment The path segment to check.
+ * @return A list of PropertySet instances that contain the specified path segment. If no such PropertySet is found, it returns an empty list.
+ */
+context(Raise<ValidationError>)
+inline fun <reified T> List<PropertySet>.allOrEmpty(segment: PathSegment): List<PropertySet> {
+    return this.filter { property: PropertySet -> property.optional<T>(segment) != null }
+}
+
 
 fun mergePropertySets(first: PropertySet, second: PropertySet, mergeLists: Boolean): PropertySet {
     val result = mutableMapOf<String, Any?>()

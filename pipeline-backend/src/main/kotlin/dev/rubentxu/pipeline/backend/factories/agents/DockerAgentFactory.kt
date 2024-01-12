@@ -1,10 +1,8 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-import arrow.core.Either
 import arrow.core.NonEmptyList
-import arrow.core.raise.either
+import arrow.core.raise.Raise
 import arrow.core.raise.zipOrAccumulate
-import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.agents.DockerAgent
@@ -12,32 +10,33 @@ import dev.rubentxu.pipeline.model.agents.DockerTemplate
 import dev.rubentxu.pipeline.model.agents.DockerTemplateBase
 import dev.rubentxu.pipeline.model.agents.RetentionStrategy
 import dev.rubentxu.pipeline.model.mapper.*
-import dev.rubentxu.pipeline.model.validations.validateAndGet
 
 class DockerAgentFactory {
-    companion object : PipelineDomainFactory<DockerAgent> {
-        override val rootPath: String = "pipeline.agents"
-        override val instanceName: String = "DockerAgent"
 
-        suspend fun create(data: PropertySet): Either<NonEmptyList<ValidationError>, DockerAgent> = either {
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<DockerAgent> {
+        override val rootPath: PropertyPath = "docker".propertyPath()
+
+        context(Raise<NonEmptyList<ValidationError>>)
+        override suspend fun create(data: PropertySet): DockerAgent {
            zipOrAccumulate(
-                { data.required<String>("id".propertyPath()).map { IDComponent.create(it)} },
+                { data.required<String>("id".propertyPath()) },
                 { data.required<String>("docker.name".propertyPath()) },
                 { data.required<String>("docker.dockerApi.dockerHost.uri".propertyPath()) },
                 { data.required<List<PropertySet>>("docker.templates".propertyPath()) },
                 { data.required<List<String>>("docker.labels".propertyPath()) }
             ) { id, name, dockerHost, templatesMap, labels ->
 
-                val templates: List<DockerTemplate> = templatesMap.unwrap().map { properties: PropertySet ->
+                val templates: List<DockerTemplate> = templatesMap.map { properties: PropertySet ->
                     DockerTemplateFactory.create(properties)
                 }.toList()
 
-                DockerAgent(
-                    id = id.unwrap(),
-                    name = name.unwrap(),
-                    dockerHost = dockerHost.unwrap(),
+                return DockerAgent(
+                    id = IDComponent.create(id) ,
+                    name = name,
+                    dockerHost = dockerHost,
                     templates = templates,
-                    labels = labels.unwrap()
+                    labels = labels
                 )
             }
         }
@@ -45,48 +44,56 @@ class DockerAgentFactory {
 }
 
 class DockerTemplateFactory {
-    companion object : PipelineDomainFactory<DockerTemplate> {
-        override val rootPath: String = "docker.templates"
-        override val instanceName: String = "DockerTemplate"
 
-        override suspend fun create(data: PropertySet): Either<NonEmptyList<ValidationError>,DockerTemplate> = {
-            val templateBaseMap: Map<String, Any> = data.required<Map<String, Any>>("dockerTemplateBase".propertyPath()).unwrap()
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<DockerTemplate> {
+        override val rootPath: PropertyPath = "templates".propertyPath()
+
+
+        context(Raise<NonEmptyList<ValidationError>>)
+        override suspend fun create(data: PropertySet): DockerTemplate {
+            val template = getRootPropertySet(data)
+            val templateBaseMap: Map<String, Any> = data.required<Map<String, Any>>("dockerTemplateBase".propertyPath())
 
             return DockerTemplate(
-                labelString = data.required<String>("labelString".propertyPath()).unwrap(),
+                labelString = template.required<String>("labelString".propertyPath()),
                 dockerTemplateBase = DockerTemplateBaseFactory.create(templateBaseMap),
-                remoteFs = data.required<String>("remoteFs".propertyPath()).unwrap(),
-                user = data.required<String>("connector.attach.user".propertyPath()).unwrap(),
-                instanceCapStr = data.required<String>("instanceCapStr".propertyPath()).unwrap(),
-                retentionStrategy = RetentionStrategyFactory.create(data)
+                remoteFs = template.required<String>("remoteFs".propertyPath()),
+                user = template.required<String>("connector.attach.user".propertyPath()),
+                instanceCapStr = template.required<String>("instanceCapStr".propertyPath()),
+                retentionStrategy = RetentionStrategyFactory.create(template)
             )
         }
     }
 }
 
 class DockerTemplateBaseFactory {
-    companion object : PipelineDomainFactory<DockerTemplateBase> {
-        override val rootPath: String = "dockerTemplateBase"
-        override val instanceName: String = "DockerTemplateBase"
 
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<DockerTemplateBase> {
+        override val rootPath: PropertyPath = "dockerTemplateBase".propertyPath()
+
+        context(Raise<NonEmptyList<ValidationError>>)
         override suspend fun create(data: PropertySet): DockerTemplateBase {
+            val templateBase = getRootPropertySet(data)
             return DockerTemplateBase(
-                image = data.required<String>("image".propertyPath()).unwrap(),
-                mounts = data.required<List<String>>("mounts".propertyPath()).unwrap(),
-                environmentsString = data.required<String>("environmentsString".propertyPath()).unwrap()
+                image = templateBase.required<String>("image".propertyPath()),
+                mounts = templateBase.required<List<String>>("mounts".propertyPath()),
+                environmentsString = templateBase.required<String>("environmentsString".propertyPath())
             )
         }
     }
 }
 
 class RetentionStrategyFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<RetentionStrategy> {
-        override val rootPath: String = "retentionStrategy"
-        override val instanceName: String = "RetentionStrategy"
+        override val rootPath: PropertyPath = "retentionStrategy".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): RetentionStrategy {
             return RetentionStrategy(
-                idleMinutes = data.required<Int>("retentionStrategy.idleMinutes".propertyPath()).unwrap()
+                idleMinutes = data.required<Int>("retentionStrategy.idleMinutes".propertyPath())
             )
         }
     }

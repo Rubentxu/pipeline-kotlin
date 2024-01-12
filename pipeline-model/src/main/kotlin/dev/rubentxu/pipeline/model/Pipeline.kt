@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.model
 
 import arrow.core.raise.Raise
 import dev.rubentxu.pipeline.model.mapper.*
-import dev.rubentxu.pipeline.model.validations.validateAndGet
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -15,15 +14,15 @@ interface IPipelineConfig: PipelineDomain
 
 
 interface PipelineDomainFactory<T: PipelineDomain?>  {
-    val rootPath: PathSegment
+    val rootPath: PropertyPath
 
     context(Raise<ValidationError>)
-     fun getRootMapObject(data: PropertySet): PropertySet {
+     fun getRootPropertySet(data: PropertySet): PropertySet {
         return data.required<PropertySet>(rootPath)
     }
 
     context(Raise<ValidationError>)
-    fun getRootListObject(data: PropertySet): List<PropertySet> {
+    fun getRootListPropertySet(data: PropertySet): List<PropertySet> {
         return data.required<List<PropertySet>>(rootPath)
     }
 

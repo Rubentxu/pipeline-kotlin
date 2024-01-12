@@ -241,7 +241,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[a]".propertyPath()
             propertySet.optional<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError(message="PathSegment 'key[a]' does not contain a number index"))
+        result.toEither() shouldBe Either.Left(ValidationError(message = "PathSegment 'key[a]' does not contain a number index"))
     }
 
     "optional should return value if nested path is present" {
@@ -372,6 +372,65 @@ class PropertySetTest : StringSpec({
         result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key3' not found in PropertySet"))
     }
 
+    "contains returns true when path segment is present" {
+        val propertySetList = listOf(mapOf("key" to "value").toPropertySet())
+
+        val result = effect {
+            val segment = "key".pathSegment()
+            propertySetList.contains<String>(segment)
+        }
+        result.toEither() shouldBe Either.Right(true)
+    }
+
+    "contains returns false when path segment is not present" {
+        val propertySetList = listOf(mapOf("key" to "value").toPropertySet())
+
+        val result = effect {
+            val segment = "nonexistent".pathSegment()
+            propertySetList.contains<String>(segment)
+        }
+        result.toEither() shouldBe Either.Right(false)
+    }
+
+    "firstOrNull returns first PropertySet when path segment is present" {
+        val propertySetList = listOf(mapOf("key" to "value").toPropertySet(), mapOf("key" to "value2").toPropertySet())
+
+        val result = effect {
+            val segment = "key".pathSegment()
+            propertySetList.firstOrNull<String>(segment)
+        }
+        result.toEither() shouldBe Either.Right(mapOf("key" to "value").toPropertySet())
+    }
+
+    "firstOrNull returns null when path segment is not present" {
+        val result = effect {
+            val propertySetList = listOf(mapOf("key" to "value").toPropertySet())
+            val segment = "nonexistent".pathSegment()
+            propertySetList.firstOrNull<String>(segment)
+        }
+        result.toEither() shouldBe Either.Right(null)
+    }
+
+    "allOrNull returns all PropertySets when path segment is present" {
+        val propertySetList = listOf(mapOf("key" to "value").toPropertySet(), mapOf("key" to "value2").toPropertySet())
+
+        val result = effect {
+            val segment = "key".pathSegment()
+            propertySetList.allOrEmpty<String>(segment)
+        }
+        result.toEither() shouldBe Either.Right(propertySetList)
+    }
+
+    "allOrNull returns empty list when path segment is not present" {
+        val propertySetList = listOf(mapOf("key" to "value").toPropertySet())
+
+        val result = effect {
+            val segment = "nonexistent".pathSegment()
+            propertySetList.allOrEmpty<String>(segment)
+        }
+        result.toEither() shouldBe Either.Right(emptyList<PropertySet>())
+    }
+
     "merge should return empty PropertySet when both PropertySets are empty" {
         val first: PropertySet = emptyMap()
         val second: PropertySet = emptyMap()
@@ -421,8 +480,7 @@ class PropertySetTest : StringSpec({
         result shouldBe mapOf("key" to listOf("value2"))
     }
 
+
+
 })
 
-private fun <K, V> Map<K, V>.toPropertySet(): PropertySet {
-    return this as PropertySet
-}

@@ -16,7 +16,7 @@ class JobInstanceFactory {
         override val instanceName: String = "JobInstance"
 
         override suspend fun create(data: PropertySet): JobInstance {
-            val pipelineMap = getRootMapObject(data)
+            val pipelineMap = getRootPropertySet(data)
 
             return coroutineScope {
                 val name = pipelineMap.validateAndGet("name")

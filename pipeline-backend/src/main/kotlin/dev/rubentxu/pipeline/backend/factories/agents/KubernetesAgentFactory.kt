@@ -1,37 +1,37 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
+import arrow.core.NonEmptyList
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.agents.*
-import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.steps.EnvVars
 import dev.rubentxu.pipeline.model.validations.validateAndGet
+import arrow.core.raise.Raise
+import dev.rubentxu.pipeline.model.mapper.*
+import dev.rubentxu.pipeline.model.mapper.ValidationError
 
 
 class KubernetesAgentFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<KubernetesAgent> {
-        override val rootPath: String = "pipeline.agents"
-        override val instanceName: String = "KubernetesAgent"
+        override val rootPath: PropertyPath = "kubernetes".propertyPath()
 
+        context(Raise<NonEmptyList<ValidationError>>)
         override suspend fun create(data: PropertySet): KubernetesAgent {
-            val id: IDComponent = IDComponent.create(data.validateAndGet("id")
-                .isString()
-                .throwIfInvalid("id is required in KubernetesConfig"))
+            val kubernetesAgent = getRootPropertySet(data)
 
-            val labels: List<String> = data.validateAndGet("kubernetes.labels")
-                .isList()
-                .defaultValueIfInvalid(emptyList<String>()) as List<String>
+            val id: IDComponent = IDComponent.create(kubernetesAgent.required<String>("id".propertyPath()))
 
-            val templatesMap: List<Map<String, Any>> = data.validateAndGet("kubernetes.templates").isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val labels: List<String> = kubernetesAgent.required<List<String>>("labels".propertyPath())
+
+            val templatesMap: List<Map<String, Any>> = kubernetesAgent.required<List<Map<String, Any>>>("templates".propertyPath())
 
             val templates: List<K8sTemplate> = templatesMap.map {
                 return@map KubernetesTemplateFactory.create(it)
             }
             return KubernetesAgent(
                 id = id,
-                name = data.validateAndGet("kubernetes.name").isString()
-                    .throwIfInvalid("name is required in KubernetesConfig"),
+                name = kubernetesAgent.required("name".propertyPath()),
                 serverUrl = data.validateAndGet("kubernetes.serverUrl").isString()
                     .throwIfInvalid("serverUrl is required in KubernetesConfig"),
                 serverCertificate = data.validateAndGet("kubernetes.serverCertificate").isString()

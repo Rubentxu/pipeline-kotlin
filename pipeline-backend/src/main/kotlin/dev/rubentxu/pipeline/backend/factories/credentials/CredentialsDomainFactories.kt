@@ -14,7 +14,7 @@ class LocalCredentialsFactory  {
         override val instanceName: String = "Credentials"
 
         override suspend fun create(data: PropertySet): PipelineCollection<Credentials> {
-            val credentialConfig = getRootListObject(data)
+            val credentialConfig = getRootListPropertySet(data)
 
             credentialConfig.map {
                 val key = it.keys.first()

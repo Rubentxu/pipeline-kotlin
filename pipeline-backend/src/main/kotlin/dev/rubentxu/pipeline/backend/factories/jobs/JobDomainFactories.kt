@@ -13,7 +13,7 @@ class JobParameterFactory {
         override val instanceName: String = "JobParameters"
 
         override suspend fun create(data: PropertySet): PipelineCollection<JobParameter<*>> {
-            val parameters = getRootListObject(data)
+            val parameters = getRootListPropertySet(data)
                 .map {
                     createJobParameter(it, it.keys.first())
                 }

@@ -10,4 +10,5 @@ interface Agent : PipelineDomain {
 
 }
 
+class EmptyAgent(override val id: IDComponent, override val name: String, override val labels: List<String>) : Agent
 interface Template : PipelineDomain

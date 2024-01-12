@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     kotlin("jvm") version "1.9.21"
     id("io.ktor.plugin") version "2.3.7"
@@ -113,5 +115,12 @@ tasks {
 tasks.register("printClasspath") {
     doLast {
         configurations["runtimeClasspath"].forEach { println(it) }
+    }
+}
+
+
+tasks.withType<KotlinCompile>().configureEach {
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn" + "-Xcontext-receivers"
     }
 }

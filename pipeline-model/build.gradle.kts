@@ -25,8 +25,8 @@ dependencies {
 
     implementation("io.arrow-kt:arrow-core:1.2.1")
     implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
+    implementation("io.arrow-kt:arrow-optics:1.2.1")
 
-//    implementation("io.arrow-kt:arrow-optics:1.2.0")
 //    ksp("io.arrow-kt:arrow-optics-ksp-plugin:1.2.0")
 
 
@@ -38,6 +38,9 @@ dependencies {
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
     testImplementation("uk.org.webcompere:system-stubs-jupiter:2.1.5")
     testImplementation("io.kotest:kotest-framework-datatest-jvm:5.8.0")
+    testImplementation("io.kotest.extensions:kotest-assertions-arrow:1.4.0")
+    testImplementation("io.kotest.extensions:kotest-assertions-arrow-fx-coroutines:1.4.0")
+    testImplementation("io.kotest:kotest-property:5.8.0")
 
 
 }

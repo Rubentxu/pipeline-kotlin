@@ -12,6 +12,12 @@ import arrow.core.raise.ensure
  */
 typealias PropertySet = Map<String, Any?>
 
+
+fun Map<String, Any?>.toPropertySet(): PropertySet {
+    return this
+}
+
+
 /**
  * Data class for validation errors.
  *
@@ -39,6 +45,27 @@ class ValidationErrorException(message: String) : Exception(message)
 context(Raise<ValidationError>)
 inline fun String.propertyPath(): PropertyPath =
     if (this.contains(".")) NestedPath(this) else PathSegment(this)
+
+
+/**
+ * Extension function for String class to convert a string to a
+ * PathSegment.
+ *
+ * @return PropertyPath instance which is a PathSegment.
+ */
+context(Raise<ValidationError>)
+inline fun String.pathSegment(): PathSegment = PathSegment(this) as PathSegment
+
+
+/**
+ * Extension function for String class to convert a string to a
+ * NestedPath.
+ *
+ * @return PropertyPath instance which is a NestedPath.
+ */
+context(Raise<ValidationError>)
+inline fun String.nestedPath(): NestedPath = NestedPath(this) as NestedPath
+
 
 /**
  * Sealed interface for PropertyPath. This is used to represent a path to a
@@ -184,13 +211,8 @@ inline fun <reified T> PropertySet.required(path: PropertyPath): T {
  *     If all checks pass, it returns the value. Otherwise, it throws a ValidationErrorException.
  */
 context(Raise<ValidationError>)
-inline fun <reified T> PropertySet.required(segment: PathSegment): T {
-    ensure(containsKey(segment.getKey())) { ValidationError("PathSegment '${segment.getKey()}' not found in PropertySet") }
-    val value: Any? = getValue<T>(segment)
-    ensure(value != null) { ValidationError("PathSegment '${segment.getKey()}' is null in PropertySet") }
-    ensure(value is T) { ValidationError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
-    return value as T
-}
+inline fun <reified T> PropertySet.required(segment: PathSegment): T = getValue<T>(segment)
+
 
 /**
  * Retrieves a value of type T from the PropertySet.
@@ -203,18 +225,45 @@ inline fun <reified T> PropertySet.required(segment: PathSegment): T {
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.getValue(
     segment: PathSegment,
-): Any? {
+): T {
+    ensure(containsKey(segment.getKey()))
+        { ValidationError("PathSegment '${segment.getKey()}' not found in PropertySet") }
     val value: Any? = get(segment.getKey())
 
     if (segment.containsIndex()) {
         ensure(segment.indexIsNumber()) { ValidationError("PathSegment '${segment.path}' does not contain a number index") }
         val index: Int? = segment.getIndex()
         ensure(index != null) { ValidationError("PathSegment '${segment.path}' does not contain an index ${index}") }
-        ensure(value is List<*>) { ValidationError("Value for PathSegment '${segment.path}' is not a list") }
+        ensure(value is List<*>) { ValidationError("Value for PathSegment '${segment.path}' is not a list : ${value}") }
         ensure(value.isInRangeCollection(index)) { ValidationError("PathSegment '${segment.path}' index ${index} is out of range") }
+        return value[index] as T
+    }
+    ensure(value != null) { ValidationError("PathSegment '${segment.getKey()}' is null in PropertySet") }
+    ensure(value is T) { ValidationError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
+    return value
+}
+
+context(Raise<ValidationError>)
+inline fun <reified T> PropertySet.getOptionalValue(
+    segment: PathSegment,
+): T? {
+    val value: Any? = get(segment.getKey())
+    if(value == null) {
+        return null
+    }
+
+    if (segment.containsIndex()) {
+        ensure(segment.indexIsNumber()) { ValidationError("PathSegment '${segment.path}' does not contain a number index") }
+        val index: Int? = segment.getIndex()
+        ensure(index != null) { ValidationError("PathSegment '${segment.path}' does not contain an index ${index}") }
+        ensure(value is List<*>) { ValidationError("Value for PathSegment '${segment.path}' is not a list") }
+        if (!value.isInRangeCollection(index)) {
+            return null
+        }
         return value[index] as T?
     }
-    return value as T?
+    ensure(value is T?) { ValidationError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
+    return value
 }
 
 /**
@@ -284,12 +333,7 @@ inline fun <reified T> PropertySet.optional(path: PropertyPath):  T? {
  *     it returns a ValidationError. If the value is of type T, it returns the value.
  */
 context(Raise<ValidationError>)
-inline fun <reified T> PropertySet.optional(segment: PathSegment): T? {
-    if (!containsKey(segment.getKey())) return null
-    val value: Any? = getValue<T>(segment)
-    ensure(value is T?) { ValidationError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
-    return value
-}
+inline fun <reified T> PropertySet.optional(segment: PathSegment): T? = getOptionalValue<T?>(segment)
 
 /**
  * Retrieves an optional value of type T from the PropertySet.
@@ -308,10 +352,37 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
     val partialPath = keys.dropLast(1)
 
     val finalPath: PropertySet = partialPath.fold(this@optional) { acc: PropertySet, key: PropertyPath ->
-        acc.optional<PropertySet>(key as PathSegment) ?: emptyMap()
+        acc.optional<PropertySet>(key as PathSegment) ?: emptyMap<String, Any?>().toPropertySet()
     }
 
     return finalPath.optional<T>(keys.last() as PathSegment)
 }
 
+fun mergePropertySets(first: PropertySet, second: PropertySet, mergeLists: Boolean): PropertySet {
+    val result = mutableMapOf<String, Any?>()
+    result.putAll(first)
+    second.forEach { (key, value) ->
+        if (mergeLists && value is List<*> && result[key] is List<*>) {
+            val firstList = (result[key] as List<*>).toSet()
+            val secondList = value.toSet()
+            result[key] = firstList.union(secondList).toList()
+        } else {
+            result[key] = value
+        }
+    }
+    return result
+}
+
+context(Raise<ValidationError>)
+fun mergePropertySetsDeep(first: PropertySet, second: PropertySet, path: String, mergeLists: Boolean): PropertySet {
+    val nestedPath = path.propertyPath() as NestedPath
+    val firstSubset = first.required<PropertySet>(nestedPath)
+    val secondSubset = second.required<PropertySet>(nestedPath)
+    val mergedSubset = mergePropertySets(firstSubset, secondSubset, mergeLists)
+
+    val result = mutableMapOf<String, Any?>()
+    result.putAll(first)
+    result[path] = mergedSubset
+    return result
+}
 

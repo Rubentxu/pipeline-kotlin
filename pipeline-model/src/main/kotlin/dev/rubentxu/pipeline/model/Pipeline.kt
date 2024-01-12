@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.model
 
-import dev.rubentxu.pipeline.model.mapper.PropertySet
+import arrow.core.raise.Raise
+import dev.rubentxu.pipeline.model.mapper.*
 import dev.rubentxu.pipeline.model.validations.validateAndGet
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -14,24 +15,18 @@ interface IPipelineConfig: PipelineDomain
 
 
 interface PipelineDomainFactory<T: PipelineDomain?>  {
-    val rootPath: String
-    val instanceName: String
+    val rootPath: PathSegment
 
-     fun getRootMapObject(data: Map<String, Any>): Map<String, Any> {
-        return data.validateAndGet(rootPath)
-            .isMap()
-            .throwIfInvalid("$rootPath root configuration is required in ${instanceName}") as Map<String, Any>
+    context(Raise<ValidationError>)
+     fun getRootMapObject(data: PropertySet): PropertySet {
+        return data.required<PropertySet>(rootPath)
     }
 
-    fun getRootListObject(data: Map<String, Any>): List<Map<String, Any>> {
-        return data.validateAndGet(rootPath)
-            .isList()
-            .throwIfInvalid("$rootPath root configuration is required in ${instanceName}") as List<Map<String, Any>>
+    context(Raise<ValidationError>)
+    fun getRootListObject(data: PropertySet): List<PropertySet> {
+        return data.required<List<PropertySet>>(rootPath)
     }
 
-    fun getErrorMessage(key: String): String {
-        return "${rootPath}.${key} configuration is required in ${instanceName}"
-    }
 
     suspend fun create(data: PropertySet): T
 }

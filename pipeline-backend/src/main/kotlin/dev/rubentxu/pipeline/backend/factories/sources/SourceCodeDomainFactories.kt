@@ -1,65 +1,57 @@
 package dev.rubentxu.pipeline.backend.factories.sources
 
+import arrow.core.raise.Raise
+import arrow.fx.coroutines.parMap
 import dev.rubentxu.pipeline.backend.sources.CleanRepository
 import dev.rubentxu.pipeline.backend.sources.GitSourceCodeRepository
 import dev.rubentxu.pipeline.backend.sources.LocalSourceCodeRepository
 import dev.rubentxu.pipeline.backend.sources.Mercurial
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomain
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
-import dev.rubentxu.pipeline.model.mapper.PropertySet
+import dev.rubentxu.pipeline.model.mapper.*
 import dev.rubentxu.pipeline.model.repository.*
-import dev.rubentxu.pipeline.model.validations.validateAndGet
 import java.net.URL
 import java.nio.file.Path
 
 
 class PluginsDefinitionSourceFactory : PipelineDomain {
 
-    companion object : PipelineDomainFactory<PipelineCollection<PluginSourceCodeConfig>> {
-        override val rootPath: String = "pipeline.plugins"
-        override val instanceName: String = "PluginSourceCodeConfig"
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<List<PluginSourceCodeConfig>> {
+        override val rootPath: PropertyPath = "plugins".propertyPath()
 
-        override suspend fun create(data: PropertySet): PipelineCollection<PluginSourceCodeConfig> {
+        context(Raise<ValidationError>)
+        override suspend fun create(data: PropertySet): List<PluginSourceCodeConfig> {
+            return getRootListPropertySet(data)
+                .parMap { plugin ->
+                    createPluginSourceCodeConfig(plugin)
+                }
+        }
 
-            val plugins = getRootListPropertySet(data)
+        context(Raise<ValidationError>)
+        private fun createPluginSourceCodeConfig(plugin: PropertySet): PluginSourceCodeConfig {
 
-            return plugins.mapIndexed { index, plugin ->
-                val name = plugin.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("[$index].name"))
+            val name = plugin.required<String>("name")
+            val description = plugin.required<String>("description")
+            val fromFile = plugin.required<String>("fromFile")
+            val fromLocalDirectory = plugin.required<String>("fromLocalDirectory")
+            val fromFilePath = if (fromFile.isNotEmpty()) Path.of(fromFile) else null
+            val fromLocalDirectoryPath = if (fromLocalDirectory.isNotEmpty()) Path.of(fromLocalDirectory) else null
 
-                val description = plugin.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("")
+            val module = plugin.required<String>("module")
 
-                val fromFile = plugin.validateAndGet("fromFile")
-                    .isString()
-                    .defaultValueIfInvalid("")
+            return PluginSourceCodeConfig(
+                name = name,
+                description = description,
+                module = module,
+                fromFile = fromFilePath,
+                fromLocalDirectory = fromLocalDirectoryPath,
 
-                val fromLocalDirectory = plugin.validateAndGet("fromLocalDirectory")
-                    .isString()
-                    .defaultValueIfInvalid("")
-
-                val fromFilePath = if (fromFile.isNotEmpty()) Path.of(fromFile) else null
-                val fromLocalDirectoryPath = if (fromLocalDirectory.isNotEmpty()) Path.of(fromLocalDirectory) else null
-
-                val module = plugin.validateAndGet("module")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("[$index].module"))
-
-                PluginSourceCodeConfig(
-                    name = name,
-                    description = description,
-                    module = module,
-                    fromFile = fromFilePath,
-                    fromLocalDirectory = fromLocalDirectoryPath,
-
-                    )
-            }.let { PipelineCollection(it) }
+                )
 
         }
+
     }
 
 }
@@ -67,22 +59,18 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
 
 class PipelineFileSourceCodeFactory : PipelineDomain {
 
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<SourceCodeConfig> {
-        override val rootPath: String = "pipeline.pipelineSourceCode"
-        override val instanceName: String = "PipelineFileSource"
+        override val rootPath: PropertyPath = "pipelineSourceCode".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): SourceCodeConfig {
             val pipelineSourceCode = getRootPropertySet(data)
 
             val scmReferenceId = IDComponent.create(
-                pipelineSourceCode.validateAndGet("repository.referenceId")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("repository.referenceId"))
+                pipelineSourceCode.required("repository.referenceId")
             )
-
-            val relativeScriptPath = pipelineSourceCode.validateAndGet("scriptPath")
-                .isString()
-                .defaultValueIfInvalid("")
+            val relativeScriptPath = pipelineSourceCode.required<String>("scriptPath")
 
             return SourceCodeConfig(
                 repositoryId = scmReferenceId,
@@ -96,18 +84,17 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
 
 class ProjectSourceCodeFactory : PipelineDomain {
 
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<SourceCodeConfig> {
-        override val rootPath: String = "pipeline.projectSourceCode"
-        override val instanceName: String = "ProjectSourceCode"
+        override val rootPath: PropertyPath = "projectSourceCode".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): SourceCodeConfig {
 
             val projectSourceCode = getRootPropertySet(data)
 
             val scmReferenceId = IDComponent.create(
-                projectSourceCode.validateAndGet("repository.referenceId")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("repository.referenceId"))
+                projectSourceCode.required("repository.referenceId")
             )
 
             return SourceCodeConfig(
@@ -123,41 +110,23 @@ class ProjectSourceCodeFactory : PipelineDomain {
 
 class MercurialSourceCodeRepositoryFactory {
 
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<Mercurial> {
-        override val rootPath: String = "repositories.mercurial"
-        override val instanceName: String = "Mercurial"
+        override val rootPath: PropertyPath = "repositories.mercurial".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): Mercurial {
             val repositoryMercurial = getRootPropertySet(data)
 
             val id =
                 IDComponent.create(
-                    repositoryMercurial.validateAndGet("id")
-                        .isString()
-                        .throwIfInvalid(getErrorMessage("id"))
+                    repositoryMercurial.required("id")
                 )
-
-            val name = repositoryMercurial.validateAndGet("name")
-                .isString()
-                .defaultValueIfInvalid(id.toString())
-
-            val description = repositoryMercurial.validateAndGet("description")
-                .isString()
-                .defaultValueIfInvalid("")
-
-            val branches = repositoryMercurial.validateAndGet("branches")
-                .isList()
-                .defaultValueIfInvalid(emptyList<String>())
-
-            val url = repositoryMercurial.validateAndGet("remote.url")
-                .isString()
-                .throwIfInvalid(getErrorMessage("remote.url"))
-                .let { URL(it) }
-
-            val credentialsId = repositoryMercurial.validateAndGet("remote.credentialsId")
-                .isString()
-                .defaultValueIfInvalid("")
-
+            val name: String = repositoryMercurial.required("name")
+            val description: String = repositoryMercurial.required("description")
+            val branches: List<String> = repositoryMercurial.required("branches")
+            val url = repositoryMercurial.required<String>("remote.url").let { URL(it) }
+            val credentialsId: String = repositoryMercurial.required("remote.credentialsId")
 
             return Mercurial(
                 id = id,
@@ -176,30 +145,22 @@ class MercurialSourceCodeRepositoryFactory {
 
 class LocalGitSourceCodeRepositoryFactory {
 
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<LocalSourceCodeRepository> {
-        override val rootPath: String = "repositories.local"
-        override val instanceName: String = "LocalSourceCodeRepository"
+        override val rootPath: PropertyPath = "repositories.local".propertyPath()
+
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): LocalSourceCodeRepository {
             val localRepository = getRootPropertySet(data)
 
             val id = IDComponent.create(
-                localRepository.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("id"))
+                localRepository.required("id")
             )
-
-            val name = localRepository.validateAndGet("name")
-                .isString()
-                .defaultValueIfInvalid(id.toString())
-
-            val description = localRepository.validateAndGet("description")
-                .isString()
-                .defaultValueIfInvalid("")
+            val name: String = localRepository.required("name")
+            val description: String = localRepository.required("description")
 
             val path = Path.of(
-                localRepository.validateAndGet("path")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("path"))
+                localRepository.required<String>("path")
             )
 
 
@@ -207,63 +168,33 @@ class LocalGitSourceCodeRepositoryFactory {
                 id = id,
                 name = name,
                 description = description,
-                path = Path.of(
-                    data.validateAndGet("git.local.path")
-                        .isString()
-                        .throwIfInvalid("path is required in LocalRepository")
-                ),
-
-                )
+                path = Path.of(data.required<String>("git.local.path")),
+            )
         }
     }
 }
 
 
 class GitSourceCodeRepositoryFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<GitSourceCodeRepository> {
-        override val rootPath: String = "repositories.git"
-        override val instanceName: String = "GitSourceCodeRepository"
+        override val rootPath: PropertyPath = "repositories.git".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): GitSourceCodeRepository {
             val gitRepository = getRootPropertySet(data)
 
-            val id = IDComponent.create(
-                gitRepository.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("id"))
-            )
-
-            val name = gitRepository.validateAndGet("name")
-                .isString()
-                .throwIfInvalid(getErrorMessage("name"))
-
-            val description = gitRepository.validateAndGet("description")
-                .isString()
-                .defaultValueIfInvalid("")
-
-            val branches = gitRepository.validateAndGet("branches")
-                .dependsAnyOn(data, "repositories.git.remote", "repositories.git.local")
-                .isList()
-                .defaultValueIfInvalid(emptyList<String>())
-
-            val globalConfigName = gitRepository.validateAndGet("globalConfigName")
-                .isString()
-                .defaultValueIfInvalid("")
-
-            val globalConfigEmail = gitRepository.validateAndGet("globalConfigEmail")
-                .isString()
-                .defaultValueIfInvalid("")
+            val id = IDComponent.create(gitRepository.required("id"))
+            val name: String = gitRepository.required("name")
+            val description: String = gitRepository.required("description")
+            val branches: List<String> = gitRepository.required("branches")
+            val globalConfigName: String = gitRepository.required("globalConfigName")
+            val globalConfigEmail: String = gitRepository.required("globalConfigEmail")
 
             val extensions = scmExtension(gitRepository)
 
-            val url = gitRepository.validateAndGet("remote.url")
-                .isString()
-                .throwIfInvalid(getErrorMessage("remote.url"))
-                .let { URL(it) }
-
-            val credentialsId = gitRepository.validateAndGet("remote.credentialsId")
-                .isString()
-                .throwIfInvalid(getErrorMessage("remote.credentialsId"))
+            val url = gitRepository.required<String>("remote.url").let { URL(it) }
+            val credentialsId: String = gitRepository.required("remote.credentialsId")
 
             return GitSourceCodeRepository(
                 id = id,
@@ -278,60 +209,44 @@ class GitSourceCodeRepositoryFactory {
             )
         }
 
-        private fun scmExtension(gitRepository: Map<String, Any>): List<SCMExtension> {
-            val extensionsMap = gitRepository.validateAndGet("extensions")
-                .isMap()
-                .defaultValueIfInvalid(emptyMap<String, Any>())
+        private fun scmExtension(gitRepository: PropertySet): List<SCMExtension> {
+            val extensionsMap = gitRepository.required<PropertySet>("extensions")
 
             return extensionsMap.map {
                 when (it.key) {
                     "sparseCheckoutPaths" -> SimpleSCMExtension(
                         "sparseCheckoutPaths",
-                        extensionsMap.validateAndGet("sparseCheckoutPaths")
-                            .isList()
-                            .defaultValueIfInvalid(emptyList<String>())
+                        extensionsMap.required<List<String>>("sparseCheckoutPaths")
                     )
 
                     "cloneOptions" -> SimpleSCMExtension(
                         "cloneOptions",
-                        extensionsMap.validateAndGet("cloneOptions")
-                            .isString()
-                            .defaultValueIfInvalid("")
+                        extensionsMap.required("cloneOptions")
                     )
 
                     "relativeTargetDirectory" -> SimpleSCMExtension(
                         "relativeTargetDirectory",
-                        extensionsMap.validateAndGet("relativeTargetDirectory")
-                            .isString()
-                            .defaultValueIfInvalid("")
+                        extensionsMap.required("relativeTargetDirectory")
                     )
 
                     "shallowClone" -> SimpleSCMExtension(
                         "shallowClone",
-                        extensionsMap.validateAndGet("shallowClone")
-                            .isBoolean()
-                            .defaultValueIfInvalid(false)
+                        extensionsMap.required("shallowClone")
                     )
 
                     "timeout" -> SimpleSCMExtension(
                         "timeout",
-                        extensionsMap.validateAndGet("timeout")
-                            .isNumber()
-                            .defaultValueIfInvalid(10)
+                        extensionsMap.required("timeout")
                     )
 
                     "lfs" -> SimpleSCMExtension(
                         "lfs",
-                        extensionsMap.validateAndGet("lfs")
-                            .isBoolean()
-                            .defaultValueIfInvalid(false)
+                        extensionsMap.required("lfs")
                     )
 
                     "submodules" -> SimpleSCMExtension(
                         "submodules",
-                        extensionsMap.validateAndGet("submodules")
-                            .isBoolean()
-                            .defaultValueIfInvalid(false)
+                        extensionsMap.required("submodules")
                     )
 
                     else -> throw IllegalArgumentException("Invalid SCM extension type for '${extensionsMap.keys.first()}'")
@@ -343,14 +258,14 @@ class GitSourceCodeRepositoryFactory {
 }
 
 class CleanRepositoryFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<CleanRepository> {
-        override val rootPath: String = "repositories.git.extensions.cleanRepository"
-        override val instanceName: String = "CleanRepository"
+        override val rootPath: PropertyPath = "repositories.git.extensions.cleanRepository".propertyPath()
+
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): CleanRepository {
             return CleanRepository(
-                getRootPropertySet(data).validateAndGet("clean")
-                    .isBoolean()
-                    .defaultValueIfInvalid(false)
+                getRootPropertySet(data).required("clean")
             )
         }
     }

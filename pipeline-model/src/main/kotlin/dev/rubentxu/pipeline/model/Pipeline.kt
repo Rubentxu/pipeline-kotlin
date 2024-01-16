@@ -13,7 +13,7 @@ interface IPipelineConfig: PipelineDomain
 
 
 
-interface PipelineDomainFactory<T: PipelineDomain?>  {
+interface PipelineDomainFactory<T>  {
     val rootPath: PropertyPath
 
     context(Raise<ValidationError>)
@@ -37,10 +37,6 @@ interface PipelineDomainFactory<T: PipelineDomain?>  {
 interface PipelineDomainDslFactory<T: PipelineDomain> {
     suspend fun create(block: T.() -> Unit): PipelineDomain
 }
-
-data class PipelineCollection<T: PipelineDomain>(
-    val list: List<T>
-): PipelineDomain
 
 
 data class IDComponent private constructor(

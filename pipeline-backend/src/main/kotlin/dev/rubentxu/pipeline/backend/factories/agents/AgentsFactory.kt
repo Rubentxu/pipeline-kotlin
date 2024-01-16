@@ -17,8 +17,8 @@ class AgentsFactory {
             val clouds = getRootListPropertySet(data)
 
 
-            val docker = clouds.firstOrNull<PropertySet>("docker".pathSegment())
-            val kubernetes = clouds.firstOrNull<PropertySet>("kubernetes".pathSegment())
+            val docker = clouds.firstOrNull<PropertySet>("docker")
+            val kubernetes = clouds.firstOrNull<PropertySet>("kubernetes")
 
             if (docker != null) {
                 return DockerAgentFactory.create(docker)

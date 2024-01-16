@@ -1,35 +1,37 @@
 package dev.rubentxu.pipeline.backend.factories.jobs
 
-import dev.rubentxu.pipeline.model.PipelineCollection
+import arrow.core.raise.Raise
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.jobs.*
-import dev.rubentxu.pipeline.model.mapper.PropertySet
-import dev.rubentxu.pipeline.model.validations.validateAndGet
+import dev.rubentxu.pipeline.model.mapper.*
 
 
 class JobParameterFactory {
-    companion object : PipelineDomainFactory<PipelineCollection<JobParameter<*>>> {
-        override val rootPath: String = "pipeline.parameters"
-        override val instanceName: String = "JobParameters"
 
-        override suspend fun create(data: PropertySet): PipelineCollection<JobParameter<*>> {
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<List<JobParameter<*>>> {
+        override val rootPath: PropertyPath = "pipeline.parameters".propertyPath()
+
+        context(Raise<ValidationError>)
+        override suspend fun create(data: PropertySet): List<JobParameter<*>> {
             val parameters = getRootListPropertySet(data)
                 .map {
-                    createJobParameter(it, it.keys.first())
+                    val name = it.keys.first().propertyPath()
+                    createJobParameter(name, it)
                 }
 
-            return PipelineCollection(parameters)
+            return parameters
         }
 
-        suspend fun createJobParameter(data: Map<String, Any>, name: String): JobParameter<*> {
-            return when (name) {
-                "string" -> StringJobParameterFactory.create(data)
-                "choice" -> ChoiceJobParameterFactory.create(data)
-                "boolean" -> BooleanJobParameterFactory.create(data)
-                "password" -> PasswordJobParameterFactory.create(data)
-                "text" -> TextJobParameterFactory.create(data)
+        suspend fun createJobParameter(path: PropertyPath, data: Map<String, Any?>): JobParameter<*> {
+            return when (path) {
+                StringJobParameterFactory.rootPath -> StringJobParameterFactory.create(data)
+                ChoiceJobParameterFactory.rootPath -> ChoiceJobParameterFactory.create(data)
+                BooleanJobParameterFactory.rootPath -> BooleanJobParameterFactory.create(data)
+                PasswordJobParameterFactory.rootPath -> PasswordJobParameterFactory.create(data)
+                TextJobParameterFactory.rootPath -> TextJobParameterFactory.create(data)
                 else -> {
-                    throw IllegalArgumentException("Invalid parameter type for '${name}'")
+                    throw IllegalArgumentException("Invalid parameter type for '${path}'")
                 }
             }
         }
@@ -38,49 +40,39 @@ class JobParameterFactory {
 
 
 class StringJobParameterFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<StringJobParameter> {
-        override var rootPath: String = "pipeline.parameters[index].string"
-        override val instanceName: String = "StringJobParameter"
+        override var rootPath: PropertyPath = "string".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): StringJobParameter {
-
+            val stringCredentials =  getRootPropertySet(data)
             return StringJobParameter(
-                name = data.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("name")),
-                defaultValue = data.validateAndGet("defaultValue")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("defaultValue")),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("description"))
+                name = stringCredentials.required("name"),
+                defaultValue = stringCredentials.required("defaultValue"),
+                description = stringCredentials.required("description")
             )
         }
     }
 }
 
 class ChoiceJobParameterFactory {
-    companion object : PipelineDomainFactory<ChoiceJobParameter> {
-        override var rootPath: String = "pipeline.parameters[index].choice"
-        override val instanceName: String = "ChoiceJobParameter"
 
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<ChoiceJobParameter> {
+        override var rootPath: PropertyPath = "choice".propertyPath()
+
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): ChoiceJobParameter {
-            val choices = data.validateAndGet("choices")
-                .isList()
-                .throwIfInvalid(getErrorMessage("choices")) as List<String>
+            val choiceCredentials =  getRootPropertySet(data)
+            val choices = choiceCredentials.required<List<String>>("choices")
 
             val firstChoice = choices.first()
 
             return ChoiceJobParameter(
-                name = data.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("name")),
-                defaultValue = data.validateAndGet("defaultValue")
-                    .isString()
-                    .defaultValueIfInvalid(firstChoice) as String,
-                description = data.validateAndGet("description")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("description")),
+                name = choiceCredentials.required("name"),
+                defaultValue = choiceCredentials.optional("defaultValue")?: firstChoice,
+                description = choiceCredentials.required("description"),
                 choices = choices
             )
         }
@@ -89,61 +81,50 @@ class ChoiceJobParameterFactory {
 
 class BooleanJobParameterFactory {
 
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<BooleanJobParameter> {
-        override var rootPath: String = "pipeline.parameters[index].boolean"
-        override val instanceName: String = "BooleanJobParameter"
+        override var rootPath: PropertyPath = "boolean".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): BooleanJobParameter {
+            val booleanCredentials =  getRootPropertySet(data)
             return BooleanJobParameter(
-                name = data.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("name")),
-                defaultValue = data.validateAndGet("defaultValue")
-                    .isBoolean()
-                    .throwIfInvalid(getErrorMessage("defaultValue")),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("description"))
+                name = booleanCredentials.required("name"),
+                defaultValue = booleanCredentials.optional("defaultValue"),
+                description = booleanCredentials.required("description")
             )
         }
     }
 }
 
 class PasswordJobParameterFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<PasswordJobParameter> {
-        override var rootPath: String = "pipeline.parameters[index].password"
-        override val instanceName: String = "PasswordJobParameter"
+        override var rootPath: PropertyPath = "password".propertyPath()
+
         override suspend fun create(data: PropertySet): PasswordJobParameter {
+            val passwordCredentials =  getRootPropertySet(data)
             return PasswordJobParameter(
-                name = data.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("name")),
-                defaultValue = data.validateAndGet("defaultValue")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("defaultValue")),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("description"))
+                name = passwordCredentials.required("name"),
+                defaultValue = passwordCredentials.required("defaultValue"),
+                description = passwordCredentials.required("description")
             )
         }
     }
 }
 
 class TextJobParameterFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<TextJobParameter> {
-        override var rootPath: String = "pipeline.parameters[index].text"
-        override val instanceName: String = "TextJobParameter"
+        override var rootPath: PropertyPath = "text".propertyPath()
+
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): TextJobParameter {
+            val textCredentials =  getRootPropertySet(data)
             return TextJobParameter(
-                name = data.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("name")),
-                defaultValue = data.validateAndGet("defaultValue")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("defaultValue")),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("description"))
+                name = textCredentials.required("name"),
+                defaultValue = textCredentials.required("defaultValue"),
+                description = textCredentials.required("description")
             )
         }
     }

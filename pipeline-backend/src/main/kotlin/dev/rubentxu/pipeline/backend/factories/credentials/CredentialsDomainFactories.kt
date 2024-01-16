@@ -1,31 +1,29 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
+import arrow.core.raise.Raise
+import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineCollection
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.credentials.*
-import dev.rubentxu.pipeline.model.mapper.PropertySet
-import dev.rubentxu.pipeline.model.validations.validateAndGet
+import dev.rubentxu.pipeline.model.mapper.*
 
-class LocalCredentialsFactory  {
-    companion object : PipelineDomainFactory<PipelineCollection<Credentials>> {
-        override val rootPath: String = "credentials.system.localCredentials.credentials"
-        override val instanceName: String = "Credentials"
+class LocalCredentialsFactory {
 
-        override suspend fun create(data: PropertySet): PipelineCollection<Credentials> {
-            val credentialConfig = getRootListPropertySet(data)
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<List<Credentials>> {
+        override val rootPath: PropertyPath = "credentials.system.localCredentials".propertyPath()
 
-            credentialConfig.map {
-                val key = it.keys.first()
-                val values = it.values.first() as Map<String, Any>
-                createCredential(key, values)
-            }.let {
-                return PipelineCollection(it)
-            }
+        context(Raise<ValidationError>)
+        override suspend fun create(data: PropertySet): List<Credentials> {
+            return getRootListPropertySet(data)
+                .parMap {
+                    val key = it.keys.first()
+                    createCredential(key, it)
+                }
         }
 
-        private suspend fun createCredential(name: String, credentialConfig: Map<String, Any>): Credentials {
+        private suspend fun createCredential(name: String, credentialConfig: PropertySet): Credentials {
             return when (name) {
                 "basicSSHUserPrivateKey" -> BasicSSHUserPrivateKeyFactory.create(credentialConfig)
                 "usernamePassword" -> UsernamePasswordFactory.create(credentialConfig)
@@ -41,19 +39,22 @@ class LocalCredentialsFactory  {
     }
 }
 
-class BasicSSHUserPrivateKeyFactory  {
-    companion object : PipelineDomainFactory<BasicSSHUserPrivateKey> {
-        override val rootPath: String = "pipeline.credentials.basicSSHUserPrivateKey"
-        override val instanceName: String = "BasicSSHUserPrivateKey"
+class BasicSSHUserPrivateKeyFactory {
 
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<BasicSSHUserPrivateKey> {
+        override val rootPath: PropertyPath = "basicSSHUserPrivateKey".propertyPath()
+
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): BasicSSHUserPrivateKey {
+            val credentialConfig = getRootPropertySet(data)
             return parZip(
-                { data.validateAndGet("scope").isString().defaultValueIfInvalid("GLOBAL") },
-                { data.validateAndGet("id").isString().throwIfInvalid("id is required in BasicSSHUserPrivateKey") },
-                { data.validateAndGet("username").isString().throwIfInvalid("username is required in BasicSSHUserPrivateKey") },
-                { data.validateAndGet("passphrase").isString().defaultValueIfInvalid("") },
-                { data.validateAndGet("description").isString().defaultValueIfInvalid("") },
-                { data.validateAndGet("privateKeySource.directEntry.privateKey").isString().throwIfInvalid("privateKey is required in BasicSSHUserPrivateKey") }
+                { credentialConfig.required<String>("scope") },
+                { credentialConfig.required<String>("id") },
+                { credentialConfig.required<String>("username") },
+                { credentialConfig.required<String>("passphrase") },
+                { credentialConfig.required<String>("description") },
+                { credentialConfig.required<String>("privateKeySource.directEntry.privateKey") }
             ) { scope, id, username, passphrase, description, privateKey ->
                 BasicSSHUserPrivateKey(
                     scope = scope,
@@ -70,51 +71,40 @@ class BasicSSHUserPrivateKeyFactory  {
 }
 
 class UsernamePasswordFactory {
-    companion object : PipelineDomainFactory<UsernamePassword> {
-        override val rootPath: String = "pipeline.credentials.usernamePassword"
-        override val instanceName: String = "UsernamePassword"
 
+    context(Raise<ValidationError>)
+    companion object : PipelineDomainFactory<UsernamePassword> {
+        override val rootPath: PropertyPath = "pipeline.credentials.usernamePassword".propertyPath()
+
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): UsernamePassword {
             return UsernamePassword(
-                scope = data.validateAndGet("scope")
-                    .isString()
-                    .defaultValueIfInvalid("GLOBAL") as String,
-                id = IDComponent.create(data.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid("id is required in UsernamePassword")),
-                username = data.validateAndGet("username")
-                    .isString()
-                    .throwIfInvalid("username is required in UsernamePassword"),
-                password = data.validateAndGet("password")
-                    .isString()
-                    .throwIfInvalid("password is required in UsernamePassword"),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("") as String
+                scope = data.required<String>("scope"),
+                id = IDComponent.create(
+                    data.required<String>("id")
+                ),
+                username = data.required<String>("username"),
+                password = data.required<String>("password"),
+                description = data.required<String>("description")
             )
         }
     }
 }
 
 class StringCredentialsFatory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<StringCredentials> {
-        override val rootPath: String = "pipeline.credentials.string"
-        override val instanceName: String = "StringCredentials"
+        override val rootPath: PropertyPath = "pipeline.credentials.string".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): StringCredentials {
             return StringCredentials(
-                scope = data.validateAndGet("scope")
-                    .isString()
-                    .defaultValueIfInvalid("GLOBAL"),
-                id = IDComponent.create(data.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid("id is required in StringCredential")),
-                secret = data.validateAndGet("secret")
-                    .isString()
-                    .throwIfInvalid("secret is required in StringCredential"),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("")
+                scope = data.required<String>("scope"),
+                id = IDComponent.create(
+                    data.required<String>("id")
+                ),
+                secret = data.required<String>("secret"),
+                description = data.required<String>("description")
             )
         }
 
@@ -122,54 +112,40 @@ class StringCredentialsFatory {
 }
 
 class AwsCredentialsFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<AwsCredentials> {
-        override val rootPath: String = "pipeline.credentials.aws"
-        override val instanceName: String = "AwsCredentials"
+        override val rootPath: PropertyPath = "pipeline.credentials.aws".propertyPath()
+
 
         override suspend fun create(data: PropertySet): AwsCredentials {
             return AwsCredentials(
-                scope = data.validateAndGet("scope")
-                    .isString()
-                    .defaultValueIfInvalid("GLOBAL"),
-                id = IDComponent.create(data.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid("id is required in AwsCredential")),
-                accessKey = data.validateAndGet("accessKey")
-                    .isString()
-                    .throwIfInvalid("accessKey is required in AwsCredential"),
-                secretKey = data.validateAndGet("secretKey")
-                    .isString()
-                    .throwIfInvalid("secretKey is required in AwsCredential"),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("")
+                scope = data.required<String>("scope"),
+                id = IDComponent.create(
+                    data.required<String>("id")
+                ),
+                accessKey = data.required<String>("accessKey"),
+                secretKey = data.required<String>("secretKey"),
+                description = data.required<String>("description")
             )
         }
     }
 }
 
 class FileCredentialsFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<FileCredentials> {
-        override val rootPath: String = "pipeline.credentials.file"
-        override val instanceName: String = "FileCredentials"
+        override val rootPath: PropertyPath = "pipeline.credentials.file".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): FileCredentials {
             return FileCredentials(
-                scope = data.validateAndGet("scope")
-                    .isString()
-                    .defaultValueIfInvalid("GLOBAL"),
-                id = IDComponent.create(data.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid("id is required in FileCredential")),
-                fileName = data.validateAndGet("fileName")
-                    .isString()
-                    .throwIfInvalid("fileName is required in FileCredential"),
-                secretBytes = data.validateAndGet("secretBytes")
-                    .isString()
-                    .throwIfInvalid("secretBytes is required in FileCredential"),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("")
+                scope = data.required<String>("scope"),
+                id = IDComponent.create(
+                    data.required<String>("id")
+                ),
+                fileName = data.required<String>("fileName"),
+                secretBytes = data.required<String>("secretBytes"),
+                description = data.required<String>("description")
             )
         }
     }
@@ -177,27 +153,20 @@ class FileCredentialsFactory {
 
 
 class CertificateCredentialsFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<CertificateCredentials> {
-        override val rootPath: String = "pipeline.credentials.certificate"
-        override val instanceName: String = "CertificateCredentials"
+        override val rootPath: PropertyPath = "pipeline.credentials.certificate".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): CertificateCredentials {
             return CertificateCredentials(
-                scope = data.validateAndGet("scope")
-                    .isString()
-                    .defaultValueIfInvalid("GLOBAL"),
-                id = IDComponent.create(data.validateAndGet("id")
-                    .isString()
-                    .throwIfInvalid("id is required in CertificateCredential")),
-                password = data.validateAndGet("password")
-                    .isString()
-                    .throwIfInvalid("password is required in CertificateCredential"),
-                description = data.validateAndGet("description")
-                    .isString()
-                    .defaultValueIfInvalid("") as String,
-                keyStore = data.validateAndGet("keyStoreSource.uploaded.uploadedKeystore")
-                    .isString()
-                    .throwIfInvalid("keyStore is required in CertificateCredential")
+                scope = data.required<String>("scope"),
+                id = IDComponent.create(
+                    data.required<String>("id")
+                ),
+                password = data.required<String>("password"),
+                description = data.required<String>("description"),
+                keyStore = data.required<String>("keyStoreSource.uploaded.uploadedKeystore")
             )
         }
     }

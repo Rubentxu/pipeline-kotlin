@@ -1,47 +1,39 @@
 package dev.rubentxu.pipeline.backend.factories.jobs
 
+import arrow.core.raise.Raise
+import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.backend.factories.sources.PipelineFileSourceCodeFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PluginsDefinitionSourceFactory
 import dev.rubentxu.pipeline.backend.factories.sources.ProjectSourceCodeFactory
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
-import dev.rubentxu.pipeline.model.mapper.PropertySet
-import dev.rubentxu.pipeline.model.validations.validateAndGet
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import dev.rubentxu.pipeline.model.mapper.*
 
 class JobInstanceFactory {
+
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<JobInstance> {
-        override val rootPath: String = "pipeline"
-        override val instanceName: String = "JobInstance"
+        override val rootPath: PropertyPath = "pipeline".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): JobInstance {
-            val pipelineMap = getRootPropertySet(data)
+            val pipeline = getRootPropertySet(data)
+            return parZip(
+                { pipeline.required<String>("name") },
+                { ProjectSourceCodeFactory.create(pipeline) },
+                { PluginsDefinitionSourceFactory.create(pipeline) },
+                { PipelineFileSourceCodeFactory.create(pipeline) },
+                { JobParameterFactory.create(pipeline) }
 
-            return coroutineScope {
-                val name = pipelineMap.validateAndGet("name")
-                    .isString()
-                    .throwIfInvalid(getErrorMessage("name"))
-
-                val deferedProjectSourceCode = async { ProjectSourceCodeFactory.create(data) }
-                val deferedPluginsSources = async { PluginsDefinitionSourceFactory.create(data) }
-                val deferedPipelineSourceCode = async { PipelineFileSourceCodeFactory.create(data) }
-                val deferedJobParameters = async { JobParameterFactory.create(data) }
-
-                val projectSourceCode = deferedProjectSourceCode.await()
-                val pluginsSources = deferedPluginsSources.await().list
-                val pipelineSourceCode = deferedPipelineSourceCode.await()
-                val jobParameters = deferedJobParameters.await().list
-
-                return@coroutineScope JobInstance(
+            ) { name, project, plugins, pipelineSourceCode, parameters ->
+                return@parZip JobInstance(
                     name = name,
-                    projectSourceCode = projectSourceCode,
-                    pluginsSources = pluginsSources,
+                    projectSourceCode = project,
+                    pluginsSources = plugins,
                     pipelineSourceCode = pipelineSourceCode,
-                    parameters = jobParameters
+                    parameters = parameters
                 )
             }
-
         }
     }
 }

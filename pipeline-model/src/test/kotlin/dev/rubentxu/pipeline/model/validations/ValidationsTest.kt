@@ -111,7 +111,7 @@ class ValidationsTest : StringSpec({
         val propertySet: PropertySet = emptyMap()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.notEmpty()
-        result shouldBe mutableListOf(ValidationError("PropertySet is empty")).left()
+        result shouldBe mutableListOf(ValidationError("PropertySet is not empty")).left()
     }
 
     "chain of validations should return value if all predicates are true" {

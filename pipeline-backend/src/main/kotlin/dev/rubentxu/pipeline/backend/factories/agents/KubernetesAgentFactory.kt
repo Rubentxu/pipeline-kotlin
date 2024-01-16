@@ -1,14 +1,11 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-import arrow.core.NonEmptyList
+import arrow.core.raise.Raise
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.agents.*
-import dev.rubentxu.pipeline.model.steps.EnvVars
-import dev.rubentxu.pipeline.model.validations.validateAndGet
-import arrow.core.raise.Raise
 import dev.rubentxu.pipeline.model.mapper.*
-import dev.rubentxu.pipeline.model.mapper.ValidationError
+import dev.rubentxu.pipeline.model.steps.EnvVars
 
 
 class KubernetesAgentFactory {
@@ -16,45 +13,31 @@ class KubernetesAgentFactory {
     companion object : PipelineDomainFactory<KubernetesAgent> {
         override val rootPath: PropertyPath = "kubernetes".propertyPath()
 
-        context(Raise<NonEmptyList<ValidationError>>)
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): KubernetesAgent {
             val kubernetesAgent = getRootPropertySet(data)
 
             val id: IDComponent = IDComponent.create(kubernetesAgent.required<String>("id".propertyPath()))
-
             val labels: List<String> = kubernetesAgent.required<List<String>>("labels".propertyPath())
 
-            val templatesMap: List<Map<String, Any>> = kubernetesAgent.required<List<Map<String, Any>>>("templates".propertyPath())
+            val templatesMap: List<PropertySet> = KubernetesTemplateFactory.create(data)
 
-            val templates: List<K8sTemplate> = templatesMap.map {
-                return@map KubernetesTemplateFactory.create(it)
-            }
+
             return KubernetesAgent(
                 id = id,
                 name = kubernetesAgent.required("name".propertyPath()),
-                serverUrl = data.validateAndGet("kubernetes.serverUrl").isString()
-                    .throwIfInvalid("serverUrl is required in KubernetesConfig"),
-                serverCertificate = data.validateAndGet("kubernetes.serverCertificate").isString()
-                    .throwIfInvalid("serverCertificate is required in KubernetesConfig"),
-                skipTlsVerify = data.validateAndGet("kubernetes.skipTlsVerify").isBoolean()
-                    .defaultValueIfInvalid(false) as Boolean,
-                credentialsId = data.validateAndGet("kubernetes.credentialsId").isString()
-                    .throwIfInvalid("credentialsId is required in KubernetesConfig"),
-                namespace = data.validateAndGet("kubernetes.namespace").isString()
-                    .throwIfInvalid("namespace is required in KubernetesConfig"),
-                pipelineUrl = data.validateAndGet("kubernetes.pipelineUrl").isString()
-                    .throwIfInvalid("pipelineUrl is required in KubernetesConfig"),
-                pipelineTunnel = data.validateAndGet("kubernetes.pipelineTunnel").isString()
-                    .throwIfInvalid("pipelineTunnel is required in KubernetesConfig"),
-                containerCapStr = data.validateAndGet("kubernetes.containerCapStr").isNumber()
-                    .defaultValueIfInvalid(10) as Int,
-                maxRequestsPerHostStr = data.validateAndGet("kubernetes.maxRequestsPerHostStr").isNumber()
-                    .defaultValueIfInvalid(32) as Int,
-                retentionTimeout = data.validateAndGet("kubernetes.retentionTimeout").isNumber()
-                    .defaultValueIfInvalid(5) as Int,
-                connectTimeout = data.validateAndGet("kubernetes.connectTimeout").isNumber()
-                    .defaultValueIfInvalid(5) as Int,
-                readTimeout = data.validateAndGet("kubernetes.readTimeout").isNumber().defaultValueIfInvalid(15) as Int,
+                serverUrl = data.required("kubernetes.serverUrl"),
+                serverCertificate = data.required("kubernetes.serverCertificate"),
+                skipTlsVerify = data.required("kubernetes.skipTlsVerify"),
+                credentialsId = data.required("kubernetes.credentialsId"),
+                namespace = data.required("kubernetes.namespace"),
+                pipelineUrl = data.required("kubernetes.pipelineUrl"),
+                pipelineTunnel = data.required("kubernetes.pipelineTunnel"),
+                containerCapStr = data.required("kubernetes.containerCapStr"),
+                maxRequestsPerHostStr = data.required("kubernetes.maxRequestsPerHostStr"),
+                retentionTimeout = data.required("kubernetes.retentionTimeout"),
+                connectTimeout = data.required("kubernetes.connectTimeout"),
+                readTimeout = data.required("kubernetes.readTimeout"),
                 templates = templates,
                 labels = labels
 
@@ -65,38 +48,34 @@ class KubernetesAgentFactory {
 }
 
 class KubernetesTemplateFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<Template> {
-        override val rootPath: String = "kubernetes.templates"
-        override val instanceName: String = "Template"
+        override val rootPath: PropertyPath = "templates".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): K8sTemplate {
-            val volumesMap: List<Map<String, Any>> = data.validateAndGet("volumes")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val volumesMap: List<PropertySet> = data.required("volumes")
 
             val volumes: List<Volume> = volumesMap.map {
                 return@map VolumeFactory.create(it)
             }
 
-            val containersMap: List<Map<String, Any>> = data.validateAndGet("containers")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val containersMap: List<PropertySet> = data.required("containers")
+
 
             val containers: List<Container> = containersMap.map {
                 return@map ContainerFactory.create(it)
             }
 
-            val imagePullSecretsMap: List<Map<String, Any>> = data.validateAndGet("imagePullSecrets")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, Any>>()) as List<Map<String, Any>>
+            val imagePullSecretsMap: List<PropertySet> = data.required("imagePullSecrets")
+
 
             val imagePullSecrets: List<ImagePullSecret> = imagePullSecretsMap.map {
                 return@map ImagePullSecretFactory.create(it)
             }
 
-            val envVarsListMap: List<Map<String, Any>> = data.validateAndGet("envVars")
-                .isList()
-                .defaultValueIfInvalid(emptyList<Map<String, String>>()) as List<Map<String, Any>>
+            val envVarsListMap: List<PropertySet> = data.required("envVars")
+
 
             val envVarsMap = envVarsListMap
                 .map { it.mapValues { it.value.toString() } }
@@ -107,12 +86,12 @@ class KubernetesTemplateFactory {
             val envVars = EnvVars(envVarsMap)
 
             return K8sTemplate(
-                name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Template"),
-                serviceAccount = data.validateAndGet("serviceAccount").isString().defaultValueIfInvalid("") as String,
-                instanceCap = data.validateAndGet("instanceCap").isNumber().defaultValueIfInvalid(10) as Int,
-                idleMinutes = data.validateAndGet("idleMinutes").isNumber().defaultValueIfInvalid(5) as Int,
-                label = data.validateAndGet("label").isString().defaultValueIfInvalid("") as String,
-                showRawYaml = data.validateAndGet("showRawYaml").isBoolean().defaultValueIfInvalid(false) as Boolean,
+                name = data.required("name"),
+                serviceAccount = data.required("serviceAccount"),
+                instanceCap = data.required("instanceCap"),
+                idleMinutes = data.required("idleMinutes"),
+                label = data.required("label"),
+                showRawYaml = data.required("showRawYaml"),
                 volumes = volumes,
                 containers = containers,
                 imagePullSecrets = imagePullSecrets,
@@ -123,22 +102,15 @@ class KubernetesTemplateFactory {
 }
 
 class VolumeFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<Volume> {
-        override val rootPath: String = "volumes"
-        override val instanceName: String = "Volume"
+        override val rootPath: PropertyPath = "volumes".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): Volume {
-            val hostPathVolumeMap: Map<String, Any> = data.validateAndGet("hostPathVolume")
-                .isMap()
-                .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
-
-            val emptyDirVolumeMap: Map<String, Any> = data.validateAndGet("emptyDirVolume")
-                .isMap()
-                .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
-
-            val configMapVolumeMap: Map<String, Any> = data.validateAndGet("configMapVolume")
-                .isMap()
-                .defaultValueIfInvalid(emptyMap<String, Any>()) as Map<String, Any>
+            val hostPathVolumeMap: PropertySet = data.required("hostPathVolume")
+            val emptyDirVolumeMap: PropertySet = data.required("emptyDirVolume")
+            val configMapVolumeMap: PropertySet = data.required("configMapVolume")
 
             return Volume(
                 hostPathVolume = HostPathVolumeFactory.create(hostPathVolumeMap),
@@ -150,93 +122,88 @@ class VolumeFactory {
 }
 
 class HostPathVolumeFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<HostPathVolume> {
-        override val rootPath: String = "hostPathVolume"
-        override val instanceName: String = "HostPathVolume"
+        override val rootPath: PropertyPath = "hostPathVolume".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): HostPathVolume {
             return HostPathVolume(
-                mountPath = data.validateAndGet("mountPath").isString()
-                    .throwIfInvalid("mountPath is required in HostPathVolume"),
-                hostPath = data.validateAndGet("hostPath").isString()
-                    .throwIfInvalid("hostPath is required in HostPathVolume")
+                mountPath = data.required("mountPath"),
+                hostPath = data.required("hostPath")
             )
         }
     }
 }
 
 class EmptyDirVolumeFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<EmptyDirVolume?> {
-        override val rootPath: String = "emptyDirVolume"
-        override val instanceName: String = "EmptyDirVolume"
+        override val rootPath: PropertyPath = "emptyDirVolume".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): EmptyDirVolume? {
             if (data.isEmpty()) return null
             return EmptyDirVolume(
-                memory = data.validateAndGet("memory").isBoolean().defaultValueIfInvalid(false) as Boolean,
-                mountPath = data.validateAndGet("mountPath").isString()
-                    .throwIfInvalid("mountPath is required in EmptyDirVolume")
+                memory = data.required("memory"),
+                mountPath = data.required("mountPath")
             )
         }
     }
 }
 
 class ConfigMapVolumeFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<ConfigMapVolume?> {
-        override val rootPath: String = "configMapVolume"
-        override val instanceName: String = "ConfigMapVolume"
+        override val rootPath: PropertyPath = "configMapVolume".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): ConfigMapVolume? {
             if (data.isEmpty()) return null
             return ConfigMapVolume(
-                configMapName = data.validateAndGet("configMapName").isString()
-                    .throwIfInvalid("configMapName is required in ConfigMapVolume"),
-                mountPath = data.validateAndGet("mountPath").isString()
-                    .throwIfInvalid("mountPath is required in ConfigMapVolume"),
-                subPath = data.validateAndGet("subPath").isString()
-                    .throwIfInvalid("subPath is required in ConfigMapVolume")
+                configMapName = data.required("configMapName"),
+                mountPath = data.required("mountPath"),
+                subPath = data.required("subPath")
             )
         }
     }
 }
 
 class ContainerFactory {
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<Container> {
-        override val rootPath: String = "containers"
-        override val instanceName: String = "Container"
+        override val rootPath: PropertyPath = "containers".propertyPath()
 
+        context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): Container {
             return Container(
-                name = data.validateAndGet("name").isString().throwIfInvalid("name is required in Container"),
-                image = data.validateAndGet("image").isString().throwIfInvalid("image is required in Container"),
-                privileged = data.validateAndGet("privileged").isBoolean().defaultValueIfInvalid(false) as Boolean,
-                alwaysPullImage = data.validateAndGet("alwaysPullImage").isBoolean()
-                    .defaultValueIfInvalid(false) as Boolean,
-                command = data.validateAndGet("command").isString().defaultValueIfInvalid("") as String,
-                args = data.validateAndGet("args").isString().defaultValueIfInvalid("") as String,
-                workingDir = data.validateAndGet("workingDir").isString().defaultValueIfInvalid("") as String,
-                ttyEnabled = data.validateAndGet("ttyEnabled").isBoolean().defaultValueIfInvalid(false) as Boolean,
-                resourceRequestCpu = data.validateAndGet("resourceRequestCpu").isString()
-                    .defaultValueIfInvalid("") as String,
-                resourceRequestMemory = data.validateAndGet("resourceRequestMemory").isString()
-                    .defaultValueIfInvalid("") as String,
-                resourceLimitCpu = data.validateAndGet("resourceLimitCpu").isString()
-                    .defaultValueIfInvalid("") as String,
-                resourceLimitMemory = data.validateAndGet("resourceLimitMemory").isString()
-                    .defaultValueIfInvalid("") as String
+                name = data.required("name"),
+                image = data.required("image"),
+                privileged = data.required("privileged"),
+                alwaysPullImage = data.required("alwaysPullImage"),
+                command = data.required("command"),
+                args = data.required("args"),
+                workingDir = data.required("workingDir"),
+                ttyEnabled = data.required("ttyEnabled"),
+                resourceRequestCpu = data.required("resourceRequestCpu"),
+                resourceRequestMemory = data.required("resourceRequestMemory"),
+                resourceLimitCpu = data.required("resourceLimitCpu"),
+                resourceLimitMemory = data.required("resourceLimitMemory")
             )
         }
     }
 }
 
 class ImagePullSecretFactory {
+
+    context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<ImagePullSecret> {
         override val rootPath: String = "imagePullSecrets"
-        override val instanceName: String = "ImagePullSecret"
+
 
         override suspend fun create(data: PropertySet): ImagePullSecret {
             return ImagePullSecret(
-                name = data.validateAndGet("name")
+                name = data.required("name")
                     .isString()
                     .throwIfInvalid(getErrorMessage("name"))
             )

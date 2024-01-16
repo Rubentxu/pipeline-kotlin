@@ -39,7 +39,7 @@ interface JobDefinition: PipelineDomain{
 
 interface JobParameter<T> : PipelineDomain {
     val name: String
-    val defaultValue: T
+    val defaultValue: T?
     val description: String
 }
 
@@ -119,32 +119,32 @@ data class ArchiveArtifacts(
 
 data class StringJobParameter(
     override val name: String,
-    override val defaultValue: String,
+    override val defaultValue: String?,
     override val description: String,
 ) : JobParameter<String>
 
 data class ChoiceJobParameter(
     override val name: String,
-    override val defaultValue: String,
+    override val defaultValue: String?,
     override val description: String,
     val choices: List<String>,
 ) : JobParameter<String>
 
 data class BooleanJobParameter(
     override val name: String,
-    override val defaultValue: Boolean,
+    override val defaultValue: Boolean?,
     override val description: String,
 ) : JobParameter<Boolean>
 
 data class PasswordJobParameter(
     override val name: String,
-    override val defaultValue: String,
+    override val defaultValue: String?,
     override val description: String,
 ) : JobParameter<String>
 
 data class TextJobParameter(
     override val name: String,
-    override val defaultValue: String,
+    override val defaultValue: String?,
     override val description: String,
 ) : JobParameter<String>
 

@@ -2,10 +2,11 @@ package dev.rubentxu.pipeline.model.mapper
 
 import arrow.core.Either
 import arrow.core.raise.effect
+import arrow.core.raise.getOrNull
 import arrow.core.raise.toEither
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-
+import io.kotest.matchers.shouldNotBe
 
 
 class PropertySetTest : StringSpec({
@@ -428,6 +429,45 @@ class PropertySetTest : StringSpec({
         result.toEither() shouldBe Either.Right(emptyList<PropertySet>())
     }
 
+    "required should return cached value if nested path is called more than once" {
+        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to propertiesOf("key3" to "value")))
+
+        val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
+
+        val result1 = effect {
+            propertySet.required<String>(nestedPath)
+        }
+        result1.getOrNull() shouldBe "value"
+
+        // Segunda llamada para obtener el resultado de la caché
+        val result2 = effect {
+            propertySet.required<String>(nestedPath)
+        }
+        result2.getOrNull() shouldBe "value"
+
+        result1.getOrNull() shouldBe result2.getOrNull()
+    }
+
+    "required should return different values if nested path is different" {
+        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to "value", "key3" to "value2"))
+
+        val nestedPath1 =  effect { "key1.key2".propertyPath() }.getOrNull()!!
+
+        val result1 = effect {
+            propertySet.required<String>(nestedPath1)
+        }
+        result1.getOrNull() shouldBe "value"
+
+        // Segunda llamada con una ruta diferente, por lo que no debería obtenerse de la caché
+        val result2 = effect {
+            val nestedPath2 = "key1.key3".propertyPath()
+            propertySet.required<String>(nestedPath2)
+        }
+        result2.getOrNull() shouldBe "value2"
+
+        // Verificar que los resultados son diferentes
+        result1 shouldNotBe result2
+    }
 
 })
 

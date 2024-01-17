@@ -19,9 +19,7 @@ class KubernetesAgentFactory {
 
             val id: IDComponent = IDComponent.create(kubernetesAgent.required<String>("id".propertyPath()))
             val labels: List<String> = kubernetesAgent.required<List<String>>("labels".propertyPath())
-
-            val templatesMap: List<PropertySet> = KubernetesTemplateFactory.create(data)
-
+            val templates: List<K8sTemplate> = KubernetesTemplateFactory.create(kubernetesAgent)
 
             return KubernetesAgent(
                 id = id,
@@ -49,16 +47,25 @@ class KubernetesAgentFactory {
 
 class KubernetesTemplateFactory {
     context(Raise<ValidationError>)
-    companion object : PipelineDomainFactory<Template> {
+    companion object : PipelineDomainFactory<List<K8sTemplate>> {
         override val rootPath: PropertyPath = "templates".propertyPath()
 
         context(Raise<ValidationError>)
-        override suspend fun create(data: PropertySet): K8sTemplate {
+        override suspend fun create(data: PropertySet): List<K8sTemplate> {
+            val templates = getRootListPropertySet(data)
+                .map {
+                    val name = it.keys.first().propertyPath()
+                    createTemplate(name, it)
+                }
+
+            return templates
+        }
+
+        context(Raise<ValidationError>)
+        private fun createTemplate(name: PropertyPath, data: PropertySet): K8sTemplate {
             val volumesMap: List<PropertySet> = data.required("volumes")
 
-            val volumes: List<Volume> = volumesMap.map {
-                return@map VolumeFactory.create(it)
-            }
+            val volumes: List<Volume> = VolumeFactory.create(data)
 
             val containersMap: List<PropertySet> = data.required("containers")
 
@@ -97,17 +104,27 @@ class KubernetesTemplateFactory {
                 imagePullSecrets = imagePullSecrets,
                 envVars = envVars
             )
+
         }
     }
 }
 
 class VolumeFactory {
     context(Raise<ValidationError>)
-    companion object : PipelineDomainFactory<Volume> {
+    companion object : PipelineDomainFactory<List<Volume>> {
         override val rootPath: PropertyPath = "volumes".propertyPath()
 
         context(Raise<ValidationError>)
-        override suspend fun create(data: PropertySet): Volume {
+        override suspend fun create(data: PropertySet): List<Volume> {
+            val volumes = getRootListPropertySet(data)
+                .map {
+                    val name = it.keys.first().propertyPath()
+                    createVolume(name, it)
+                }
+           return volumes
+        }
+
+        private fun createVolume(name: PropertyPath, data: PropertySet): Volume {
             val hostPathVolumeMap: PropertySet = data.required("hostPathVolume")
             val emptyDirVolumeMap: PropertySet = data.required("emptyDirVolume")
             val configMapVolumeMap: PropertySet = data.required("configMapVolume")

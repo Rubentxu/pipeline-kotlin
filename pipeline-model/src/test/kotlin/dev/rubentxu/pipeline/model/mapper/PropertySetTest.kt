@@ -398,7 +398,7 @@ class PropertySetTest : StringSpec({
             val segment = "key".pathSegment()
             propertySetList.firstOrNull<String>(segment)
         }
-        result.toEither() shouldBe Either.Right(mapOf("key" to "value"))
+        result.toEither() shouldBe Either.Right(mapOf("key" to "value").toPropertySet())
     }
 
     "firstOrNull returns null when path segment is not present" {
@@ -430,22 +430,45 @@ class PropertySetTest : StringSpec({
     }
 
     "required should return cached value if nested path is called more than once" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to propertiesOf("key3" to "value")))
+        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to
+                propertiesOf("key3" to "valueKey3", "key4" to "valueKey4")))
 
-        val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
 
         val result1 = effect {
+            val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
             propertySet.required<String>(nestedPath)
         }
-        result1.getOrNull() shouldBe "value"
+        result1.toEither() shouldBe Either.Right("valueKey3")
+
 
         // Segunda llamada para obtener el resultado de la caché
         val result2 = effect {
+            val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
             propertySet.required<String>(nestedPath)
         }
-        result2.getOrNull() shouldBe "value"
+        result2.getOrNull() shouldBe "valueKey3"
 
-        result1.getOrNull() shouldBe result2.getOrNull()
+
+        val result3 = effect {
+            val nestedPath = effect { "key1.key2.key4".propertyPath() }.getOrNull()!!
+            propertySet.required<String>(nestedPath)
+        }
+        result3.getOrNull() shouldBe "valueKey4"
+
+        val result4 = effect {
+            val nestedPath = effect { "key1.key2.key4".propertyPath() }.getOrNull()!!
+            propertySet.required<String>(nestedPath)
+        }
+        result4.getOrNull() shouldBe "valueKey4"
+
+
+        val result5 = effect {
+            val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
+            propertySet.required<String>(nestedPath)
+        }
+
+        result5.toEither() shouldBe Either.Right("valueKey3")
+
     }
 
     "required should return different values if nested path is different" {

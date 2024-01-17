@@ -4,22 +4,65 @@ import arrow.core.*
 import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.raise.ensure
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Type alias for a map where the key is a string and the value can be any
  * type. This is used to represent a set of properties, where each property
  * is a key-value pair.
  */
-typealias PropertySet = Map<String, Any?>
+
+class PropertySet(
+    map: Map<String, Any?>,
+    private val cache: ConcurrentHashMap<PropertyPath, PropertySet> = ConcurrentHashMap(),
+) : Map<String, Any?> by map {
+
+    context(Raise<ValidationError>)
+    fun getParentPropertySet(nestedPath: NestedPath): PropertySet {
+        val keys = nestedPath.getPathSegments().getOrElse { raise(it.first()) }
+
+        val parentPath = getFullParentPath(nestedPath)
+        val result = cache.getOrPut(parentPath, {
+            keys.dropLast(1).fold(this) { acc: PropertySet, key: PropertyPath ->
+                acc.required<PropertySet>(key as PathSegment)
+            }
+        })
+        return result
+    }
+
+    context(Raise<ValidationError>)
+    private fun getFullParentPath(nestedPath: NestedPath): PropertyPath {
+        val segments = nestedPath.getPathSegments().getOrElse { raise(it.first()) }
+        val path = segments.dropLast(1).joinToString(".")
+        return path.propertyPath()
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        return true
+    }
+
+    override fun hashCode(): Int {
+        return javaClass.hashCode()
+    }
+
+
+}
 
 
 /**
- * Creates a PropertySet from a variable number of pairs of String and Any?.
+ * Creates a PropertySet from a variable number of pairs of String and
+ * Any?.
  *
- * This function takes a variable number of pairs as input, where each pair's first element is the property path and the second element is the value.
- * It then converts each pair to a map and transforms the map into a PropertySet.
+ * This function takes a variable number of pairs as input, where each
+ * pair's first element is the property path and the second element is the
+ * value. It then converts each pair to a map and transforms the map into a
+ * PropertySet.
  *
- * @param pairs The pairs to be converted into a PropertySet. Each pair's first element is the property path and the second element is the value.
+ * @param pairs The pairs to be converted into a PropertySet. Each pair's
+ *     first element is the property path and the second element is the
+ *     value.
  * @return A PropertySet that contains the given pairs.
  */
 fun propertiesOf(vararg pairs: Pair<String, Any?>): PropertySet {
@@ -29,7 +72,9 @@ fun propertiesOf(vararg pairs: Pair<String, Any?>): PropertySet {
 /**
  * Creates a list of PropertySets from a variable number of PropertySets.
  *
- * This function takes a variable number of PropertySets as input and transforms each PropertySet in the list using the toPropertySet() function.
+ * This function takes a variable number of PropertySets as input and
+ * transforms each PropertySet in the list using the toPropertySet()
+ * function.
  *
  * @param pairs The PropertySets to be transformed.
  * @return A list of PropertySets that have been transformed.
@@ -45,7 +90,8 @@ fun listPropertiesOf(vararg pairs: PropertySet): List<PropertySet> {
  * @return PropertySet instance.
  */
 fun Map<String, Any?>.toPropertySet(): PropertySet {
-    return this
+    return PropertySet(this)
+
 }
 
 /**
@@ -66,11 +112,12 @@ class ValidationErrorException(message: String) : Exception(message)
 
 /**
  * Extension function for String class to convert a string to a
- * PropertyPath. This function checks if the string contains a ".", if so,
- * it converts the string to a NestedPath, otherwise, it converts the string
- * to a PathSegment.
+ * PropertyPath. This function checks if the string contains a ".", if
+ * so, it converts the string to a NestedPath, otherwise, it converts the
+ * string to a PathSegment.
  *
- * @return PropertyPath instance which could be either a NestedPath or a PathSegment.
+ * @return PropertyPath instance which could be either a NestedPath or a
+ *     PathSegment.
  */
 context(Raise<ValidationError>)
 inline fun String.propertyPath(): PropertyPath =
@@ -88,8 +135,7 @@ inline fun String.pathSegment(): PathSegment = PathSegment(this) as PathSegment
 
 
 /**
- * Extension function for String class to convert a string to a
- * NestedPath.
+ * Extension function for String class to convert a string to a NestedPath.
  *
  * @return PropertyPath instance which is a NestedPath.
  */
@@ -104,8 +150,8 @@ inline fun String.nestedPath(): NestedPath = NestedPath(this) as NestedPath
 sealed interface PropertyPath
 
 /**
- * Data class for PathSegment. This class is used to represent a segment of
- * a path to a property. It contains methods to check if the segment
+ * Data class for PathSegment. This class is used to represent a segment
+ * of a path to a property. It contains methods to check if the segment
  * contains an index, to get the key from the segment, to get the index
  * from the segment, and to check if the index is a number.
  *
@@ -117,8 +163,8 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
     companion object {
 
         /**
-         * Factory method to create a PathSegment instance. It validates the path string
-         * and ensures it doesn't contain any "." character.
+         * Factory method to create a PathSegment instance. It validates the path
+         * string and ensures it doesn't contain any "." character.
          *
          * @param path The path string.
          * @return PropertyPath instance which is a PathSegment.
@@ -166,21 +212,26 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
      * @return Boolean indicating if the index is a number.
      */
     fun indexIsNumber(): Boolean = getIndex()?.let { it is Int } ?: false
+
+    override fun toString(): String {
+        return path
+    }
+
+
 }
 
 /**
  * Data class for NestedPath. This class is used to represent a nested path
- * to a property. It contains methods to validate the path and to get
- * the path segments from the nested path.
+ * to a property. It contains methods to validate the path and to get the
+ * path segments from the nested path.
  *
  * @property path The nested path.
  */
 data class NestedPath private constructor(val path: String) : PropertyPath {
-    private val cache = mutableMapOf<NestedPath, PropertySet>()
 
     /**
-     * Factory method to create a NestedPath instance. It validates the path string
-     * and ensures it contains either a "." or "[]" character.
+     * Factory method to create a NestedPath instance. It validates the path
+     * string and ensures it contains either a "." or "[]" character.
      *
      * @param path The path string.
      * @return PropertyPath instance which is a NestedPath.
@@ -197,6 +248,7 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
             return NestedPath(path)
         }
 
+
         /**
          * Validates the path string.
          *
@@ -204,6 +256,7 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
          * @return Boolean indicating if the path string is valid.
          */
         fun validatePath(path: String): Boolean = nestedPathRegex.matches(path)
+
     }
 
     /**
@@ -217,20 +270,17 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
         }.bind()
     }
 
-    fun getFullParentPath(): NestedPath {
-        val segments = path.split(".")
-        return NestedPath(segments.dropLast(1).joinToString("."))
+    override fun toString(): String {
+        return path
     }
 
-    fun getOrPut(f: () -> PropertySet): PropertySet {
-        return cache.getOrPut(getFullParentPath()) { f() }
-    }
+
 }
 
 /**
- * Retrieves the required value of type T from the PropertySet. This function
- * checks if the path is a PathSegment or a NestedPath and calls the corresponding
- * required function.
+ * Retrieves the required value of type T from the PropertySet. This
+ * function checks if the path is a PathSegment or a NestedPath and calls
+ * the corresponding required function.
  *
  * @param path The PropertyPath.
  * @return The required value of type T.
@@ -247,9 +297,11 @@ inline fun <reified T> PropertySet.required(path: PropertyPath): T {
  * Retrieves a required value of type T from the PropertySet.
  *
  * @param path The path segment to check.
- * @return The required value of type T. This function is used to get a required value from the PropertySet using a PathSegment.
- * It checks if the key is present in the PropertySet, if the value is not null, and if the value is of type T.
- *     If all checks pass, it returns the value. Otherwise, it throws a ValidationErrorException.
+ * @return The required value of type T. This function is used to get a
+ *     required value from the PropertySet using a PathSegment. It checks
+ *     if the key is present in the PropertySet, if the value is not null,
+ *     and if the value is of type T. If all checks pass, it returns the
+ *     value. Otherwise, it throws a ValidationErrorException.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.required(path: String): T {
@@ -265,30 +317,34 @@ inline fun <reified T> PropertySet.required(path: String): T {
  * Retrieves a required value of type T from the PropertySet.
  *
  * @param segment The PathSegment.
- * @return The required value of type T. This function is used to get a required value from the PropertySet using a
- *     PathSegment. It checks if the key is present in the PropertySet, if the value is not null, and if the value is of type T.
- *     If all checks pass, it returns the value. Otherwise, it throws a ValidationErrorException.
+ * @return The required value of type T. This function is used to get a
+ *     required value from the PropertySet using a PathSegment. It checks
+ *     if the key is present in the PropertySet, if the value is not null,
+ *     and if the value is of type T. If all checks pass, it returns the
+ *     value. Otherwise, it throws a ValidationErrorException.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.required(segment: PathSegment): T = getValue<T>(segment)
-
-
 
 
 /**
  * Retrieves a value of type T from the PropertySet.
  *
  * @param segment The PathSegment.
- * @return The value of type T. This function is used to get a value from the PropertySet using a PathSegment. If the segment contains an index,
- *     it checks if the index is a number, if the value is a list, and if the index is in range of the list. If all checks pass, it returns
- *     the value at the index. Otherwise, it throws a ValidationErrorException. If the segment does not contain an index, it returns the value.
+ * @return The value of type T. This function is used to get a value from
+ *     the PropertySet using a PathSegment. If the segment contains an
+ *     index, it checks if the index is a number, if the value is a list,
+ *     and if the index is in range of the list. If all checks pass, it
+ *     returns the value at the index. Otherwise, it throws a
+ *     ValidationErrorException. If the segment does not contain an index,
+ *     it returns the value.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.getValue(
     segment: PathSegment,
 ): T {
     ensure(containsKey(segment.getKey()))
-        { ValidationError("PathSegment '${segment.getKey()}' not found in PropertySet") }
+    { ValidationError("PathSegment '${segment.getKey()}' not found in PropertySet") }
     val value: Any? = get(segment.getKey())
 
     if (segment.containsIndex()) {
@@ -308,20 +364,24 @@ inline fun <reified T> PropertySet.getValue(
 /**
  * Retrieves an optional value of type T from the PropertySet.
  *
- * This function takes a PathSegment as input and retrieves the value associated with the key in the segment.
- * If the value is null, it returns null. If the segment contains an index, it checks if the index is a number,
- * if the value is a list, and if the index is in range of the list. If all checks pass, it returns the value at the index.
- * If the segment does not contain an index, it checks if the value is of type T and returns the value.
+ * This function takes a PathSegment as input and retrieves the value
+ * associated with the key in the segment. If the value is null, it returns
+ * null. If the segment contains an index, it checks if the index is a
+ * number, if the value is a list, and if the index is in range of the
+ * list. If all checks pass, it returns the value at the index. If the
+ * segment does not contain an index, it checks if the value is of type T
+ * and returns the value.
  *
  * @param segment The PathSegment to retrieve the value from.
- * @return The value of type T or null if the value is not present or does not pass the checks.
+ * @return The value of type T or null if the value is not present or does
+ *     not pass the checks.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.getOptionalValue(
     segment: PathSegment,
 ): T? {
     val value: Any? = get(segment.getKey())
-    if(value == null) {
+    if (value == null) {
         return null
     }
 
@@ -343,8 +403,11 @@ inline fun <reified T> PropertySet.getOptionalValue(
  * Checks if the index is in range of the collection.
  *
  * @param index The index to check.
- * @return Boolean indicating if the index is in range of the collection. This function is used to check if an index is in range of a collection. It
- *     returns true if the index is greater than or equal to 0 and less than the size of the collection. Otherwise, it returns false.
+ * @return Boolean indicating if the index is in range of the collection.
+ *     This function is used to check if an index is in range of a
+ *     collection. It returns true if the index is greater than or equal to
+ *     0 and less than the size of the collection. Otherwise, it returns
+ *     false.
  */
 fun List<*>.isInRangeCollection(index: Int): Boolean {
     return index >= 0 && index < size
@@ -353,28 +416,29 @@ fun List<*>.isInRangeCollection(index: Int): Boolean {
 /**
  * Retrieves a required value of type T from the PropertySet.
  *
- * This function is used to get a required value from the PropertySet using a NestedPath. It gets the path segments from the nested path, then it
- * folds the segments (except the last one) to get a PropertySet for each segment. Finally, it gets the required value from the last segment.
+ * This function is used to get a required value from the PropertySet using
+ * a NestedPath. It gets the path segments from the nested path, then it
+ * folds the segments (except the last one) to get a PropertySet for each
+ * segment. Finally, it gets the required value from the last segment.
  *
- * @param nestedPath The NestedPath instance representing the path to the required value in the PropertySet.
+ * @param nestedPath The NestedPath instance representing the path to the
+ *     required value in the PropertySet.
  * @return The required value of type T.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.required(nestedPath: NestedPath): T {
     val keys = nestedPath.getPathSegments().getOrElse { raise(it.first()) }
-    val result = nestedPath.getOrPut() {
-        keys.dropLast(1).fold(this@required) { acc: PropertySet, key: PropertyPath ->
-            acc.required<PropertySet>(key as PathSegment)
-        }
-    }
-    return result.required<T>(keys.last() as PathSegment)
+    val parentProperties = this.getParentPropertySet(nestedPath)
+    return parentProperties.required<T>(keys.last() as PathSegment)
 }
 
 /**
  * Unwraps the Either instance of ValidationError or T.
  *
- * @return The value of type T. This function is used to unwrap an Either instance of ValidationError or T. If the Either instance is a ValidationError, it throws a
- *     ValidationErrorException. If the Either instance is a T, it returns the T.
+ * @return The value of type T. This function is used to unwrap an Either
+ *     instance of ValidationError or T. If the Either instance is a
+ *     ValidationError, it throws a ValidationErrorException. If the Either
+ *     instance is a T, it returns the T.
  */
 fun <T> Either<ValidationError, T>.unwrap(): T {
     return this.fold(
@@ -387,11 +451,14 @@ fun <T> Either<ValidationError, T>.unwrap(): T {
  * Retrieves an optional value of type T from the PropertySet.
  *
  * @param path The PropertyPath.
- * @return The value of type T or null if the value is not present. This function is used to get an optional value from the PropertySet.
- *     If the path is a PathSegment, it calls the optional function for PathSegment. If the path is a NestedPath, it calls the optional function for NestedPath.
+ * @return The value of type T or null if the value is not present. This
+ *     function is used to get an optional value from the PropertySet. If
+ *     the path is a PathSegment, it calls the optional function for
+ *     PathSegment. If the path is a NestedPath, it calls the optional
+ *     function for NestedPath.
  */
 context(Raise<ValidationError>)
-inline fun <reified T> PropertySet.optional(path: PropertyPath):  T? {
+inline fun <reified T> PropertySet.optional(path: PropertyPath): T? {
     return when (path) {
         is PathSegment -> optional<T>(path)
         is NestedPath -> optional<T>(path)
@@ -403,11 +470,12 @@ inline fun <reified T> PropertySet.optional(path: PropertyPath):  T? {
  *
  * @param segment The PathSegment.
  * @return The value of type T or null if the value is not present. This
- *     function is used to get an optional value from the PropertySet using a
- *     PathSegment. It checks if the key is present in the PropertySet.
+ *     function is used to get an optional value from the PropertySet using
+ *     a PathSegment. It checks if the key is present in the PropertySet.
  *     If the key is not present, it returns null. If the key is present,
- *     it gets the value and checks if the value is of type T. If the value is not of type T,
- *     it returns a ValidationError. If the value is of type T, it returns the value.
+ *     it gets the value and checks if the value is of type T. If the value
+ *     is not of type T, it returns a ValidationError. If the value is of
+ *     type T, it returns the value.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.optional(segment: PathSegment): T? = getOptionalValue<T?>(segment)
@@ -418,11 +486,12 @@ inline fun <reified T> PropertySet.optional(segment: PathSegment): T? = getOptio
  *
  * @param path The path segment to check.
  * @return The value of type T or null if the value is not present. This
- *     function is used to get an optional value from the PropertySet using a
- *     PathSegment. It checks if the key is present in the PropertySet.
+ *     function is used to get an optional value from the PropertySet using
+ *     a PathSegment. It checks if the key is present in the PropertySet.
  *     If the key is not present, it returns null. If the key is present,
- *     it gets the value and checks if the value is of type T. If the value is not of type T,
- *     it returns a ValidationError. If the value is of type T, it returns the value.
+ *     it gets the value and checks if the value is of type T. If the value
+ *     is not of type T, it returns a ValidationError. If the value is of
+ *     type T, it returns the value.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> PropertySet.optional(path: String): T? {
@@ -434,15 +503,14 @@ inline fun <reified T> PropertySet.optional(path: String): T? {
 }
 
 
-
 /**
  * Retrieves an optional value of type T from the PropertySet.
  *
  * @param path The NestedPath.
  * @return The value of type T or null if the value is not present. This
- *     function is used to get an optional value from the PropertySet using a
- *     NestedPath. It gets the path segments from the nested path, then it
- *     folds the segments (except the last one) to get a PropertySet for
+ *     function is used to get an optional value from the PropertySet using
+ *     a NestedPath. It gets the path segments from the nested path, then
+ *     it folds the segments (except the last one) to get a PropertySet for
  *     each segment. Finally, it gets the optional value from the last
  *     segment.
  */
@@ -452,7 +520,7 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
     val partialPath = keys.dropLast(1)
 
     val finalPath: PropertySet = partialPath.fold(this) { acc: PropertySet, key: PropertyPath ->
-        acc.optional<PropertySet>(key as PathSegment) ?: emptyMap()
+        acc.optional<PropertySet>(key as PathSegment) ?: emptyMap<String, Any?>().toPropertySet()
     }
 
     return finalPath.optional<T>(keys.last() as PathSegment)
@@ -460,11 +528,13 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
 
 
 /**
- * Checks if a specific path segment is present in any of the PropertySet instances in the list.
+ * Checks if a specific path segment is present in any of the PropertySet
+ * instances in the list.
  *
  * @param segment The path segment to check.
- * @return Boolean indicating whether the path segment is present in any of the PropertySet instances in the list.
- *         Returns true if the path segment is present, otherwise, returns false.
+ * @return Boolean indicating whether the path segment is present in any of
+ *     the PropertySet instances in the list. Returns true if the path
+ *     segment is present, otherwise, returns false.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> List<PropertySet>.contains(segment: PathSegment): Boolean {
@@ -473,11 +543,13 @@ inline fun <reified T> List<PropertySet>.contains(segment: PathSegment): Boolean
 
 
 /**
- * Searches for the first PropertySet instance in the list that contains the specified path segment and returns it.
- * If no such PropertySet is found, it returns null.
+ * Searches for the first PropertySet instance in the list that contains
+ * the specified path segment and returns it. If no such PropertySet is
+ * found, it returns null.
  *
  * @param segment The path segment to check.
- * @return The first PropertySet instance that contains the specified path segment, or null if no such PropertySet is found.
+ * @return The first PropertySet instance that contains the specified path
+ *     segment, or null if no such PropertySet is found.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> List<PropertySet>.firstOrNull(segment: PathSegment): PropertySet? {
@@ -485,11 +557,13 @@ inline fun <reified T> List<PropertySet>.firstOrNull(segment: PathSegment): Prop
 }
 
 /**
- * Searches for the first PropertySet instance in the list that contains the specified path segment and returns it.
- * If no such PropertySet is found, it returns null.
+ * Searches for the first PropertySet instance in the list that contains
+ * the specified path segment and returns it. If no such PropertySet is
+ * found, it returns null.
  *
  * @param segment The path segment to check.
- * @return The first PropertySet instance that contains the specified path segment, or null if no such PropertySet is found.
+ * @return The first PropertySet instance that contains the specified path
+ *     segment, or null if no such PropertySet is found.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> List<PropertySet>.firstOrNull(segment: String): PropertySet? {
@@ -498,11 +572,13 @@ inline fun <reified T> List<PropertySet>.firstOrNull(segment: String): PropertyS
 }
 
 /**
- * Filters all PropertySet instances in the list that contain the specified path segment and returns a list of them.
- * If no such PropertySet is found, it returns an empty list.
+ * Filters all PropertySet instances in the list that contain the specified
+ * path segment and returns a list of them. If no such PropertySet is
+ * found, it returns an empty list.
  *
  * @param segment The path segment to check.
- * @return A list of PropertySet instances that contain the specified path segment. If no such PropertySet is found, it returns an empty list.
+ * @return A list of PropertySet instances that contain the specified path
+ *     segment. If no such PropertySet is found, it returns an empty list.
  */
 context(Raise<ValidationError>)
 inline fun <reified T> List<PropertySet>.allOrEmpty(segment: PathSegment): List<PropertySet> {

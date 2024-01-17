@@ -5,6 +5,7 @@ import arrow.core.left
 import arrow.core.right
 import dev.rubentxu.pipeline.model.mapper.PropertySet
 import dev.rubentxu.pipeline.model.mapper.ValidationError
+import dev.rubentxu.pipeline.model.mapper.toPropertySet
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
@@ -59,56 +60,56 @@ class ValidationsTest : StringSpec({
     }
 
     "containsKey should return value if key is present" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.containsKey("key")
         result shouldBe propertySet.right()
     }
 
     "containsKey should return ValidationError if key is not present" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.containsKey("other")
         result shouldBe mutableListOf(ValidationError("Key 'other' is not present")).left()
     }
 
     "containsValue should return value if value is present" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.containsValue("value")
         result shouldBe propertySet.right()
     }
 
     "containsValue should return ValidationError if value is not present" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.containsValue("other")
         result shouldBe mutableListOf(ValidationError("Value 'other' is not present")).left()
     }
 
     "isEmpty should return value if PropertySet is empty" {
-        val propertySet: PropertySet = emptyMap()
+        val propertySet: PropertySet = emptyMap<String, Any?>().toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.verifyEmpty()
         result shouldBe propertySet.right()
     }
 
     "isEmpty should return ValidationError if PropertySet is not empty" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.notEmpty()
         result shouldBe mutableListOf(ValidationError("PropertySet is not empty")).left()
     }
 
     "isNotEmpty should return value if PropertySet is not empty" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.notEmpty()
         result shouldBe propertySet.right()
     }
 
     "isNotEmpty should return ValidationError if PropertySet is empty" {
-        val propertySet: PropertySet = emptyMap()
+        val propertySet: PropertySet = emptyMap<String, Any?>().toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations.notEmpty()
         result shouldBe mutableListOf(ValidationError("PropertySet is not empty")).left()
@@ -147,7 +148,7 @@ class ValidationsTest : StringSpec({
     }
 
     "chain of property validations should return value if all predicates are true" {
-        val propertySet: PropertySet = mapOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations
             .containsKey("key")
@@ -157,7 +158,7 @@ class ValidationsTest : StringSpec({
     }
 
     "chain of property validations should return ValidationError if any predicate is false" {
-        val propertySet: PropertySet = emptyMap()
+        val propertySet: PropertySet = emptyMap<String, Any?>().toPropertySet()
         val validations: PropertyValidations = propertySet.right()
         val result = validations
             .containsKey("key")

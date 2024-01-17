@@ -176,6 +176,7 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
  * @property path The nested path.
  */
 data class NestedPath private constructor(val path: String) : PropertyPath {
+    private val cache = mutableMapOf<NestedPath, PropertySet>()
 
     /**
      * Factory method to create a NestedPath instance. It validates the path string
@@ -214,6 +215,15 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
         path.split(".").mapOrAccumulate {
             it.propertyPath()
         }.bind()
+    }
+
+    fun getFullParentPath(): NestedPath {
+        val segments = path.split(".")
+        return NestedPath(segments.dropLast(1).joinToString("."))
+    }
+
+    fun getOrPut(f: () -> PropertySet): PropertySet {
+        return cache.getOrPut(getFullParentPath()) { f() }
     }
 }
 
@@ -343,15 +353,19 @@ fun List<*>.isInRangeCollection(index: Int): Boolean {
 /**
  * Retrieves a required value of type T from the PropertySet.
  *
- * @param path The NestedPath.
- * @return The required value of type T. This function is used to get a required value from the PropertySet using a NestedPath. It gets the path segments from the nested path, then it
- *     folds the segments (except the last one) to get a PropertySet for each segment. Finally, it gets the required value from the last segment.
+ * This function is used to get a required value from the PropertySet using a NestedPath. It gets the path segments from the nested path, then it
+ * folds the segments (except the last one) to get a PropertySet for each segment. Finally, it gets the required value from the last segment.
+ *
+ * @param nestedPath The NestedPath instance representing the path to the required value in the PropertySet.
+ * @return The required value of type T.
  */
 context(Raise<ValidationError>)
-inline fun <reified T> PropertySet.required(path: NestedPath): T {
-    val keys = path.getPathSegments().getOrElse { raise(it.first()) }
-    val result = keys.dropLast(1).fold(this@required) { acc: PropertySet, key: PropertyPath ->
-        acc.required<PropertySet>(key as PathSegment)
+inline fun <reified T> PropertySet.required(nestedPath: NestedPath): T {
+    val keys = nestedPath.getPathSegments().getOrElse { raise(it.first()) }
+    val result = nestedPath.getOrPut() {
+        keys.dropLast(1).fold(this@required) { acc: PropertySet, key: PropertyPath ->
+            acc.required<PropertySet>(key as PathSegment)
+        }
     }
     return result.required<T>(keys.last() as PathSegment)
 }

@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.model.steps.EnvVars
 class KubernetesAgentFactory {
     context(Raise<ValidationError>)
     companion object : PipelineDomainFactory<KubernetesAgent> {
-        override val rootPath: PropertyPath = "kubernetes".propertyPath()
+        override val rootPath: PropertyPath = "agents.clouds[*].kubernetes".propertyPath()
 
         context(Raise<ValidationError>)
         override suspend fun create(data: PropertySet): KubernetesAgent {

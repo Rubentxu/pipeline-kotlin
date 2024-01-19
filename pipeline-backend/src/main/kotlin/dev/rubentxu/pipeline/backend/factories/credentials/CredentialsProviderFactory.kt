@@ -10,16 +10,16 @@ import dev.rubentxu.pipeline.model.mapper.PropertyPath
 import dev.rubentxu.pipeline.model.mapper.PropertySet
 import pipeline.kotlin.extensions.resolveValueExpressions
 import arrow.core.raise.Raise
-import dev.rubentxu.pipeline.model.mapper.ValidationError
+import dev.rubentxu.pipeline.model.mapper.PropertiesError
 import dev.rubentxu.pipeline.model.mapper.propertyPath
 
 class CredentialsProviderFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<ICredentialsProvider> {
         override val rootPath: PropertyPath = "pipeline.credentialsProvider".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(rawYaml: PropertySet): ICredentialsProvider {
             val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
 

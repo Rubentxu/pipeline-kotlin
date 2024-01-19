@@ -8,11 +8,11 @@ import dev.rubentxu.pipeline.model.mapper.*
 
 class JobParameterFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<JobParameter<*>>> {
         override val rootPath: PropertyPath = "pipeline.parameters".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<JobParameter<*>> {
             val parameters = getRootListPropertySet(data)
                 .map {
@@ -40,11 +40,11 @@ class JobParameterFactory {
 
 
 class StringJobParameterFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<StringJobParameter> {
         override var rootPath: PropertyPath = "string".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): StringJobParameter {
             val stringCredentials =  getRootPropertySet(data)
             return StringJobParameter(
@@ -58,11 +58,11 @@ class StringJobParameterFactory {
 
 class ChoiceJobParameterFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<ChoiceJobParameter> {
         override var rootPath: PropertyPath = "choice".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): ChoiceJobParameter {
             val choiceCredentials =  getRootPropertySet(data)
             val choices = choiceCredentials.required<List<String>>("choices")
@@ -81,11 +81,11 @@ class ChoiceJobParameterFactory {
 
 class BooleanJobParameterFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<BooleanJobParameter> {
         override var rootPath: PropertyPath = "boolean".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): BooleanJobParameter {
             val booleanCredentials =  getRootPropertySet(data)
             return BooleanJobParameter(
@@ -98,7 +98,7 @@ class BooleanJobParameterFactory {
 }
 
 class PasswordJobParameterFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<PasswordJobParameter> {
         override var rootPath: PropertyPath = "password".propertyPath()
 
@@ -114,11 +114,11 @@ class PasswordJobParameterFactory {
 }
 
 class TextJobParameterFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<TextJobParameter> {
         override var rootPath: PropertyPath = "text".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): TextJobParameter {
             val textCredentials =  getRootPropertySet(data)
             return TextJobParameter(

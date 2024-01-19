@@ -13,11 +13,11 @@ import dev.rubentxu.pipeline.model.mapper.*
 
 class DockerAgentFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<DockerAgent> {
         override val rootPath: PropertyPath = "docker".propertyPath()
 
-        context(Raise<NonEmptyList<ValidationError>>)
+        context(Raise<NonEmptyList<PropertiesError>>)
         override suspend fun create(data: PropertySet): DockerAgent {
            zipOrAccumulate(
                 { data.required<String>("id".propertyPath()) },
@@ -45,12 +45,12 @@ class DockerAgentFactory {
 
 class DockerTemplateFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<DockerTemplate> {
         override val rootPath: PropertyPath = "templates".propertyPath()
 
 
-        context(Raise<NonEmptyList<ValidationError>>)
+        context(Raise<NonEmptyList<PropertiesError>>)
         override suspend fun create(data: PropertySet): DockerTemplate {
             val template = getRootPropertySet(data)
             val templateBaseMap: Map<String, Any> = data.required<Map<String, Any>>("dockerTemplateBase".propertyPath())
@@ -69,11 +69,11 @@ class DockerTemplateFactory {
 
 class DockerTemplateBaseFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<DockerTemplateBase> {
         override val rootPath: PropertyPath = "dockerTemplateBase".propertyPath()
 
-        context(Raise<NonEmptyList<ValidationError>>)
+        context(Raise<NonEmptyList<PropertiesError>>)
         override suspend fun create(data: PropertySet): DockerTemplateBase {
             val templateBase = getRootPropertySet(data)
             return DockerTemplateBase(
@@ -86,11 +86,11 @@ class DockerTemplateBaseFactory {
 }
 
 class RetentionStrategyFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<RetentionStrategy> {
         override val rootPath: PropertyPath = "retentionStrategy".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): RetentionStrategy {
             return RetentionStrategy(
                 idleMinutes = data.required<Int>("retentionStrategy.idleMinutes".propertyPath())

@@ -11,11 +11,11 @@ import dev.rubentxu.pipeline.model.mapper.*
 
 class JobInstanceFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<JobInstance> {
         override val rootPath: PropertyPath = "pipeline".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): JobInstance {
             val pipeline = getRootPropertySet(data)
             return parZip(

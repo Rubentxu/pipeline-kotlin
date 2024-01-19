@@ -26,7 +26,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key2".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key2' not found in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key2' not found in PropertySet"))
     }
 
     "required should fail if value is null" {
@@ -35,7 +35,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key' is null in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key' is null in PropertySet"))
     }
 
     "required should fail if value is not of type T" {
@@ -44,7 +44,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
     }
 
     "required should return value if value is a list and index is present" {
@@ -62,7 +62,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
     }
 
     "required should fail if value is a list and index is out of range" {
@@ -71,7 +71,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[2]".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[2]' index 2 is out of range"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[2]' index 2 is out of range"))
     }
 
     "required should fail if value is a list and index is not a number" {
@@ -80,7 +80,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[a]".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[a]' does not contain a valid number index"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[a]' does not contain a valid number index"))
     }
 
     "required should fail if value is a list and index is not range" {
@@ -89,7 +89,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[-1]".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[-1]' does not contain a valid number index"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[-1]' does not contain a valid number index"))
     }
 
     "required should fail if value is a list and index is not present and value is a list" {
@@ -98,7 +98,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
     }
 
     "required should fail if value is a list and index is out of range and value is a list" {
@@ -107,7 +107,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[2]".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[2]' index 2 is out of range"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[2]' index 2 is out of range"))
     }
 
     "required should fail if value is a list and index is not a number and value is a list" {
@@ -116,7 +116,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[a]".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[a]' does not contain a valid number index"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[a]' does not contain a valid number index"))
     }
 
 
@@ -126,7 +126,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[-1]".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[-1]' does not contain a valid number index"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[-1]' does not contain a valid number index"))
     }
 
     "required should return value if nested path is present" {
@@ -148,7 +148,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key3[0]".propertyPath()
             propertySet.required<String>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key1.key3[0]' | PathSegment 'key3' not found in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key1.key3[0]' | PathSegment 'key3' not found in PropertySet"))
     }
 
     "required should fail if nested path is invalid" {
@@ -157,7 +157,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1..key2[0]".propertyPath()
             propertySet.required<String>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("NestedPath is not valid for path 'key1..key2[0]'"))
+        result.toEither() shouldBe Either.Left(PropertiesError("NestedPath is not valid for path 'key1..key2[0]'"))
     }
 
     "required should fail if nested path index is out of range" {
@@ -166,7 +166,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[2]".propertyPath()
             propertySet.required<String>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key1.key2[2]' | PathSegment 'key2[2]' index 2 is out of range"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key1.key2[2]' | PathSegment 'key2[2]' index 2 is out of range"))
     }
 
     "required should fail if nested path index is not a number" {
@@ -175,7 +175,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[a]".propertyPath()
             propertySet.required<String>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("NestedPath is not valid for path 'key1.key2[a]'"))
+        result.toEither() shouldBe Either.Left(PropertiesError("NestedPath is not valid for path 'key1.key2[a]'"))
     }
 
     "optional should return value if present" {
@@ -211,7 +211,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.optional<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
     }
 
     "optional should return value if value is a list and index is present" {
@@ -247,7 +247,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[a]".propertyPath()
             propertySet.optional<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError(message = "PathSegment 'key[a]' does not contain a valid number index"))
+        result.toEither() shouldBe Either.Left(PropertiesError(message = "PathSegment 'key[a]' does not contain a valid number index"))
     }
 
     "optional should return value if value is a list and index is not present and value is a list" {
@@ -332,7 +332,7 @@ class PropertySetTest : StringSpec({
 
 
         }
-        result.toEither() shouldBe Either.Left(ValidationError(message = "NestedPath is not valid for path 'key1.key2[a]'"))
+        result.toEither() shouldBe Either.Left(PropertiesError(message = "NestedPath is not valid for path 'key1.key2[a]'"))
     }
 
     "required should fail if value is null" {
@@ -341,7 +341,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key' is null in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key' is null in PropertySet"))
     }
 
     "optional should return null if value is null" {
@@ -359,7 +359,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key..value".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("NestedPath is not valid for path 'key..value'"))
+        result.toEither() shouldBe Either.Left(PropertiesError("NestedPath is not valid for path 'key..value'"))
     }
 
     "required should fail if path points to a non-list value but a list is expected" {
@@ -368,7 +368,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Value for PathSegment 'key' is not of type class kotlin.collections.List"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.collections.List"))
     }
 
     "required should fail if path points to a list but a non-list value is expected" {
@@ -377,7 +377,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
     }
 
     "required should fail if path points to a list and index is out of range" {
@@ -386,7 +386,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[3]".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[3]' index 3 is out of range"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[3]' index 3 is out of range"))
     }
 
     "required should fail if path points to a list and index is not a number" {
@@ -395,7 +395,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key[a]".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("PathSegment 'key[a]' does not contain a valid number index"))
+        result.toEither() shouldBe Either.Left(PropertiesError("PathSegment 'key[a]' does not contain a valid number index"))
     }
 
     "required should fail if path points to a map and key is not present in the map" {
@@ -404,7 +404,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key.key3".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key.key3' | PathSegment 'key3' not found in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key.key3' | PathSegment 'key3' not found in PropertySet"))
     }
 
     "required should return value if path points to a map and key is present" {
@@ -422,7 +422,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key.key3".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key.key3' | PathSegment 'key3' not found in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key.key3' | PathSegment 'key3' not found in PropertySet"))
     }
 
     "contains returns true when path segment is present" {
@@ -596,7 +596,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[*].key3".propertyPath()
             propertySet.required<List<String>>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key1.key2[*].key3' | PathSegment 'key2[*].key3' does not contain an index key3"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key1.key2[*].key3' | PathSegment 'key2[*].key3' does not contain an index key3"))
     }
 
     "required should return list of values if path with asterisk index points to a list" {
@@ -628,7 +628,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[*].nonExistingKey".propertyPath()
             propertySet.required<List<String>>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key1.key2[*].nonExistingKey' | PathSegment 'key2[*].nonExistingKey' does not contain an index nonExistingKey"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key1.key2[*].nonExistingKey' | PathSegment 'key2[*].nonExistingKey' does not contain an index nonExistingKey"))
     }
 
     "required should throw error if path with asterisk index points to an empty list" {
@@ -637,7 +637,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[*].key3.key4".propertyPath()
             propertySet.required<String>(nestedPath)
         }
-        result.toEither() shouldBe Either.Left(ValidationError("Error in path 'key1.key2[*].key3.key4' | PathSegment 'key2[*].key3' does not contain an index key3"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key1.key2[*].key3.key4' | PathSegment 'key2[*].key3' does not contain an index key3"))
     }
 
     "required should return a list of PropertySets when the path with an asterisk index points to a list of PropertySets" {
@@ -656,6 +656,43 @@ class PropertySetTest : StringSpec({
         result.toEither() shouldBe Either.Right(listOf(propertiesOf("key4" to "value1"),  propertiesOf("key4" to "value2")))
     }
 
+    "required should return value if present with errorPathContext" {
+        val result = effect {
+            val errorPathContext = "root".propertyPath()
+            val subPropertySet = propertiesOf("key" to "value")
+            subPropertySet.required<String>("key", errorPathContext)
+        }
+        result.toEither() shouldBe Either.Right("value")
+    }
+
+    "required should fail if key is not present with errorPathContext" {
+        val result = effect {
+            val errorPathContext = "root.key2".propertyPath()
+
+            val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to "value4"))
+            propertySet.required<String>("key2.key3", errorPathContext)
+        }
+        result.toEither() shouldBe
+                Either.Left(PropertiesError("Error in path 'root.key2.key3' | PathSegment 'key3' not found in PropertySet"))
+    }
+
+    "required should fail if value is null with errorPathContext" {
+        val result = effect {
+            val errorPathContext = "root.key2".propertyPath()
+            val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to null))
+            propertySet.required<String>("key2.key4", errorPathContext)
+        }
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'root.key2.key4' | PathSegment 'key4' is null in PropertySet"))
+    }
+
+    "required should fail if value is not of type T with errorPathContext" {
+        val result = effect {
+            val errorPathContext = "root.key2".propertyPath()
+            val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to 123))
+            propertySet.required<String>("key2.key4", errorPathContext)
+        }
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'root.key2.key4' | Value for PathSegment 'key4' is not of type class kotlin.String"))
+    }
 })
 
 

@@ -16,12 +16,12 @@ interface IPipelineConfig: PipelineDomain
 interface PipelineDomainFactory<T>  {
     val rootPath: PropertyPath
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
      fun getRootPropertySet(data: PropertySet): PropertySet {
         return data.required<PropertySet>(rootPath)
     }
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     fun getRootListPropertySet(data: PropertySet): List<PropertySet> {
         return data.required<List<PropertySet>>(rootPath)
     }

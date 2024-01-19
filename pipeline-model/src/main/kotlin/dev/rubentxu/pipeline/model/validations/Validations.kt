@@ -1,11 +1,10 @@
 package dev.rubentxu.pipeline.model.validations
 
 import arrow.core.*
-import arrow.core.raise.zipOrAccumulate
 import dev.rubentxu.pipeline.model.mapper.PropertySet
-import dev.rubentxu.pipeline.model.mapper.ValidationError
+import dev.rubentxu.pipeline.model.mapper.PropertiesError
 
-typealias Validations<T> = Either<NonEmptyList<ValidationError>, T>
+typealias Validations<T> = Either<NonEmptyList<PropertiesError>, T>
 typealias NumberValidations = Validations<Number>
 typealias PropertyValidations = Validations<PropertySet>
 
@@ -14,7 +13,7 @@ inline fun <reified T> Validations<T>.evaluate(predicate: (T) -> Boolean, errorM
         if (predicate(value)) {
             value.right()
         } else {
-            val list = this.leftOrNull()?.plus(ValidationError(errorMessage))?: nonEmptyListOf(ValidationError(errorMessage))
+            val list = this.leftOrNull()?.plus(PropertiesError(errorMessage))?: nonEmptyListOf(PropertiesError(errorMessage))
             Either.Left(list)
         }
     }

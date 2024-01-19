@@ -17,11 +17,11 @@ import java.nio.file.Path
 
 class PluginsDefinitionSourceFactory : PipelineDomain {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<PluginSourceCodeConfig>> {
         override val rootPath: PropertyPath = "plugins".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<PluginSourceCodeConfig> {
             return getRootListPropertySet(data)
                 .parMap { plugin ->
@@ -29,7 +29,7 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
                 }
         }
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         private fun createPluginSourceCodeConfig(plugin: PropertySet): PluginSourceCodeConfig {
 
             val name = plugin.required<String>("name")
@@ -59,11 +59,11 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
 
 class PipelineFileSourceCodeFactory : PipelineDomain {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<SourceCodeConfig> {
         override val rootPath: PropertyPath = "pipelineSourceCode".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): SourceCodeConfig {
             val pipelineSourceCode = getRootPropertySet(data)
 
@@ -84,11 +84,11 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
 
 class ProjectSourceCodeFactory : PipelineDomain {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<SourceCodeConfig> {
         override val rootPath: PropertyPath = "projectSourceCode".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): SourceCodeConfig {
 
             val projectSourceCode = getRootPropertySet(data)
@@ -110,11 +110,11 @@ class ProjectSourceCodeFactory : PipelineDomain {
 
 class MercurialSourceCodeRepositoryFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<Mercurial> {
         override val rootPath: PropertyPath = "repositories.mercurial".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): Mercurial {
             val repositoryMercurial = getRootPropertySet(data)
 
@@ -145,11 +145,11 @@ class MercurialSourceCodeRepositoryFactory {
 
 class LocalGitSourceCodeRepositoryFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<LocalSourceCodeRepository> {
         override val rootPath: PropertyPath = "repositories.local".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): LocalSourceCodeRepository {
             val localRepository = getRootPropertySet(data)
 
@@ -176,11 +176,11 @@ class LocalGitSourceCodeRepositoryFactory {
 
 
 class GitSourceCodeRepositoryFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<GitSourceCodeRepository> {
         override val rootPath: PropertyPath = "repositories.git".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): GitSourceCodeRepository {
             val gitRepository = getRootPropertySet(data)
 
@@ -258,11 +258,11 @@ class GitSourceCodeRepositoryFactory {
 }
 
 class CleanRepositoryFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<CleanRepository> {
         override val rootPath: PropertyPath = "repositories.git.extensions.cleanRepository".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): CleanRepository {
             return CleanRepository(
                 getRootPropertySet(data).required("clean")

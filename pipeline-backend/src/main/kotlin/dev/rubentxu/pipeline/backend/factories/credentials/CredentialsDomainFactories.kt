@@ -10,11 +10,11 @@ import dev.rubentxu.pipeline.model.mapper.*
 
 class LocalCredentialsFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<Credentials>> {
         override val rootPath: PropertyPath = "credentials.system.localCredentials".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<Credentials> {
             return getRootListPropertySet(data)
                 .parMap {
@@ -41,11 +41,11 @@ class LocalCredentialsFactory {
 
 class BasicSSHUserPrivateKeyFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<BasicSSHUserPrivateKey> {
         override val rootPath: PropertyPath = "basicSSHUserPrivateKey".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): BasicSSHUserPrivateKey {
             val credentialConfig = getRootPropertySet(data)
             return parZip(
@@ -72,11 +72,11 @@ class BasicSSHUserPrivateKeyFactory {
 
 class UsernamePasswordFactory {
 
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<UsernamePassword> {
         override val rootPath: PropertyPath = "pipeline.credentials.usernamePassword".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): UsernamePassword {
             return UsernamePassword(
                 scope = data.required<String>("scope"),
@@ -92,11 +92,11 @@ class UsernamePasswordFactory {
 }
 
 class StringCredentialsFatory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<StringCredentials> {
         override val rootPath: PropertyPath = "pipeline.credentials.string".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): StringCredentials {
             return StringCredentials(
                 scope = data.required<String>("scope"),
@@ -112,7 +112,7 @@ class StringCredentialsFatory {
 }
 
 class AwsCredentialsFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<AwsCredentials> {
         override val rootPath: PropertyPath = "pipeline.credentials.aws".propertyPath()
 
@@ -132,11 +132,11 @@ class AwsCredentialsFactory {
 }
 
 class FileCredentialsFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<FileCredentials> {
         override val rootPath: PropertyPath = "pipeline.credentials.file".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): FileCredentials {
             return FileCredentials(
                 scope = data.required<String>("scope"),
@@ -153,11 +153,11 @@ class FileCredentialsFactory {
 
 
 class CertificateCredentialsFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<CertificateCredentials> {
         override val rootPath: PropertyPath = "pipeline.credentials.certificate".propertyPath()
 
-        context(Raise<ValidationError>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): CertificateCredentials {
             return CertificateCredentials(
                 scope = data.required<String>("scope"),

@@ -7,12 +7,12 @@ import dev.rubentxu.pipeline.model.agents.Agent
 import dev.rubentxu.pipeline.model.mapper.*
 
 class AgentsFactory {
-    context(Raise<ValidationError>)
+    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<Agent> {
         override val rootPath: PropertyPath = "agents.clouds".propertyPath()
 
 
-        context(Raise<ValidationError>, Raise<NonEmptyList<ValidationError>>)
+        context(Raise<PropertiesError>, Raise<NonEmptyList<PropertiesError>>)
         override suspend fun create(data: PropertySet): Agent {
             val clouds = getRootListPropertySet(data)
 

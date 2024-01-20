@@ -265,36 +265,44 @@ class PropertySetTest : StringSpec({
 
     "Optional should return a list of values when the path with an asterisk index points to a list of key-value " +
             "pairs where the key matches the filter of the asterisk index" {
-        val result = effect {
-            val propertySet: PropertySet = propertiesOf(
-                "key" to propertiesOf(
-                    "key2" to listOf("key3" to "value1", "key3" to "value2")
-                )
-            )
-            val pathSegment = "key.key2[*].key3".propertyPath()
-            propertySet.optional<List<String>>(pathSegment)
-        }
-        result.toEither() shouldBe Either.Right(listOf("value1", "value2"))
-    }
+                val result = effect {
+                    val propertySet: PropertySet = propertiesOf(
+                        "key" to propertiesOf(
+                            "key2" to listOf("key3" to "value1", "key3" to "value2")
+                        )
+                    )
+                    val pathSegment = "key.key2[*].key3".propertyPath()
+                    propertySet.optional<List<String>>(pathSegment)
+                }
+                result.toEither() shouldBe Either.Right(listOf("value1", "value2"))
+            }
 
     "optional should return list of PropertySet if path with asterisk index points to a list of PropertySet" {
         val result = effect {
             val propertySet: PropertySet = propertiesOf(
                 "key" to propertiesOf(
                     "key2" to listOf(
-                        "key3" to propertiesOf("key4" to  "valueKey4"),
-                        "key3" to propertiesOf("key5" to  "valueKey5"),
-                        "key7" to propertiesOf("key6" to  "valueKey6")
+                        "key3" to propertiesOf("key4" to "valueKey4", "key8" to "valueKey8"),
+                        "key3" to propertiesOf("key5" to "valueKey5"),
+                        "key7" to propertiesOf("key6" to "valueKey6")
                     )
                 )
             )
             val pathSegment = "key.key2[*].key3".propertyPath()
             propertySet.optional<List<PropertySet>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Right(listOf(
-            propertiesOf("key4" to  "valueKey4"),
-            propertiesOf("key5" to  "valueKey5")
-        ))
+        result.toEither() shouldBe Either.Right(
+            listOf(
+                PropertySet(
+                    data = mapOf("key4" to "valueKey4", "key8" to "valueKey8"),
+                    absolutePath = "key.key2[0].key3".propertyPath()
+                ),
+                PropertySet(
+                    data = mapOf("key5" to "valueKey5"),
+                    absolutePath = "key.key2[1].key3".propertyPath()
+                )
+            )
+        )
     }
 
     "optional should return value if nested path is present" {
@@ -443,50 +451,17 @@ class PropertySetTest : StringSpec({
         result.toEither() shouldBe Either.Right(false)
     }
 
-    "firstOrNull returns first PropertySet when path segment is present" {
-        val result = effect {
-            val propertySetList = listPropertiesOf(propertiesOf("key" to "value"), propertiesOf("key2" to "value2"))
-            val segment = "key".pathSegment()
-            propertySetList.firstOrNull<String>(segment)
-        }
-        result.toEither() shouldBe Either.Right(mapOf("key" to "value").toPropertySet())
-    }
-
-    "firstOrNull returns null when path segment is not present" {
-        val result = effect {
-            val propertySetList = listPropertiesOf(propertiesOf("key" to "value"))
-            val segment = "nonexistent".pathSegment()
-            propertySetList.firstOrNull<String>(segment)
-        }
-        result.toEither() shouldBe Either.Right(null)
-    }
-
-    "allOrNull returns all PropertySets when path segment is present" {
-        val propertySetList = listPropertiesOf(propertiesOf("key" to "value", "key" to "value2"))
-        val result = effect {
-            val segment = "key".pathSegment()
-            propertySetList.allOrEmpty<String>(segment)
-        }
-        result.toEither() shouldBe Either.Right(propertySetList)
-    }
-
-    "allOrNull returns empty list when path segment is not present" {
-        val propertySetList = listPropertiesOf(propertiesOf("key" to "value"))
-
-        val result = effect {
-            val segment = "nonexistent".pathSegment()
-            propertySetList.allOrEmpty<String>(segment)
-        }
-        result.toEither() shouldBe Either.Right(emptyList<PropertySet>())
-    }
 
     "required should return cached value if nested path is called more than once" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to
-                propertiesOf("key3" to "valueKey3", "key4" to "valueKey4")))
-
+        val propertySet: PropertySet = propertiesOf(
+            "key1" to propertiesOf(
+                "key2" to
+                        propertiesOf("key3" to "valueKey3", "key4" to "valueKey4")
+            )
+        )
 
         val result1 = effect {
-            val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
+            val nestedPath = "key1.key2.key3".propertyPath()
             propertySet.required<String>(nestedPath)
         }
         result1.toEither() shouldBe Either.Right("valueKey3")
@@ -494,27 +469,27 @@ class PropertySetTest : StringSpec({
 
         // Segunda llamada para obtener el resultado de la caché
         val result2 = effect {
-            val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
+            val nestedPath = "key1.key2.key3".propertyPath()
             propertySet.required<String>(nestedPath)
         }
         result2.getOrNull() shouldBe "valueKey3"
 
 
         val result3 = effect {
-            val nestedPath = effect { "key1.key2.key4".propertyPath() }.getOrNull()!!
+            val nestedPath = "key1.key2.key4".propertyPath()
             propertySet.required<String>(nestedPath)
         }
         result3.getOrNull() shouldBe "valueKey4"
 
         val result4 = effect {
-            val nestedPath = effect { "key1.key2.key4".propertyPath() }.getOrNull()!!
+            val nestedPath = "key1.key2.key4".propertyPath()
             propertySet.required<String>(nestedPath)
         }
         result4.getOrNull() shouldBe "valueKey4"
 
 
         val result5 = effect {
-            val nestedPath = effect { "key1.key2.key3".propertyPath() }.getOrNull()!!
+            val nestedPath = "key1.key2.key3".propertyPath()
             propertySet.required<String>(nestedPath)
         }
 
@@ -525,7 +500,7 @@ class PropertySetTest : StringSpec({
     "required should return different values if nested path is different" {
         val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to "value", "key3" to "value2"))
 
-        val nestedPath1 =  effect { "key1.key2".propertyPath() }.getOrNull()!!
+        val nestedPath1 = "key1.key2".propertyPath()
 
         val result1 = effect {
             propertySet.required<String>(nestedPath1)
@@ -653,45 +628,77 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[*].key3".propertyPath()
             propertySet.required<List<PropertySet>>(nestedPath)
         }
-        result.toEither() shouldBe Either.Right(listOf(propertiesOf("key4" to "value1"),  propertiesOf("key4" to "value2")))
+        val resultPropertySet = result.toEither().getOrNull()
+        resultPropertySet?.get(0)?.absolutePath.toString() shouldBe "key1.key2[0].key3"
+        resultPropertySet?.get(1)?.absolutePath.toString() shouldBe "key1.key2[1].key3"
+        result.toEither() shouldBe Either.Right(
+            listOf(
+                PropertySet(
+                    data = mapOf("key4" to "value1"),
+                    absolutePath = "key1.key2[0].key3".propertyPath()
+                ),
+                PropertySet(
+                    data = mapOf("key4" to "value2"),
+                    absolutePath = "key1.key2[1].key3".propertyPath()
+                )
+            )
+        )
+    }
+
+    "required should return a PropertySet when the path with an asterisk index points to a list of PropertySets" {
+        val result = effect {
+            val propertySet: PropertySet = propertiesOf(
+                "key1" to propertiesOf(
+                    "key2" to propertiesOf("key3" to propertiesOf("key4" to "value1"))
+                )
+            )
+
+            val nestedPath = "key1.key2".propertyPath()
+            propertySet.required<PropertySet>(nestedPath)
+        }
+        val resultEither = result.toEither()
+
+        resultEither shouldBe Either.Right(
+            PropertySet(
+                data = mapOf("key3" to propertiesOf("key4" to "value1")),
+                absolutePath = "key1.key2".propertyPath()
+            )
+        )
+        resultEither.getOrNull()?.absolutePath.toString() shouldBe "key1.key2"
     }
 
     "required should return value if present with errorPathContext" {
         val result = effect {
             val errorPathContext = "root".propertyPath()
             val subPropertySet = propertiesOf("key" to "value")
-            subPropertySet.required<String>("key", errorPathContext)
+            subPropertySet.required<String>("key")
         }
         result.toEither() shouldBe Either.Right("value")
     }
 
     "required should fail if key is not present with errorPathContext" {
         val result = effect {
-            val errorPathContext = "root.key2".propertyPath()
-
             val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to "value4"))
-            propertySet.required<String>("key2.key3", errorPathContext)
+            propertySet.required<String>("key2.key3")
         }
         result.toEither() shouldBe
-                Either.Left(PropertiesError("Error in path 'root.key2.key3' | PathSegment 'key3' not found in PropertySet"))
+                Either.Left(PropertiesError("Error in path 'key2.key3' | PathSegment 'key3' not found in PropertySet"))
     }
 
     "required should fail if value is null with errorPathContext" {
         val result = effect {
-            val errorPathContext = "root.key2".propertyPath()
             val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to null))
-            propertySet.required<String>("key2.key4", errorPathContext)
+            propertySet.required<String>("key2.key4")
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'root.key2.key4' | PathSegment 'key4' is null in PropertySet"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key2.key4' | PathSegment 'key4' is null in PropertySet"))
     }
 
     "required should fail if value is not of type T with errorPathContext" {
         val result = effect {
-            val errorPathContext = "root.key2".propertyPath()
             val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to 123))
-            propertySet.required<String>("key2.key4", errorPathContext)
+            propertySet.required<String>("key2.key4")
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'root.key2.key4' | Value for PathSegment 'key4' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key2.key4' | Value for PathSegment 'key4' is not of type class kotlin.String"))
     }
 })
 

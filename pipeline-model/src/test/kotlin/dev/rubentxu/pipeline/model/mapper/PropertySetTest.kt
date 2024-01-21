@@ -260,7 +260,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key.key2[*].key3".propertyPath()
             propertySet.optional<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Right(null)
+        result.toEither() shouldBe Either.Right(emptyList())
     }
 
     "Optional should return a list of values when the path with an asterisk index points to a list of key-value " +
@@ -528,7 +528,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[*].key3".propertyPath()
             propertySet.optional<List<String>>(nestedPath)
         }
-        result.toEither() shouldBe Either.Right(null)
+        result.toEither() shouldBe Either.Right(emptyList())
     }
 
     "optional should return list of values if path with asterisk index points to a list" {
@@ -561,7 +561,7 @@ class PropertySetTest : StringSpec({
             val nestedPath = "key1.key2[*].nonExistingKey".propertyPath()
             propertySet.optional<List<String>>(nestedPath)
         }
-        result.toEither() shouldBe Either.Right(null)
+        result.toEither() shouldBe Either.Right(emptyList())
     }
 
 

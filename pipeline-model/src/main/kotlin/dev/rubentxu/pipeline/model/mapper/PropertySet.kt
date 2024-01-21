@@ -411,7 +411,6 @@ inline fun <reified T> PropertySet.getValue(
     val value: Any? = updateAbsolutePathIfPropertySet(get(segment.getKey()), segment)
 
     if (segment.containsIndex()) {
-        ensure(value is List<*>) { PropertiesError("Value for PathSegment '${segment.path}' is not a list") }
         return getValueFromCollection<T>(segment, value, false) as T
     }
     ensure(value != null) { PropertiesError("PathSegment '${segment.getKey()}' is null in PropertySet") }
@@ -427,7 +426,6 @@ inline fun <reified T> PropertySet.updateAbsolutePathIfPropertySet(value: Any?, 
         return PropertySet(value.data, newPath) as T
     }
     if (value is List<*> && value.isNotEmpty() && value.first() is PropertySet) {
-
         return value.mapIndexed { index, it ->
             val newPath = absolutePath.combine(segment).replace("[*]", "[$index]").propertyPath()
             it as PropertySet
@@ -487,13 +485,10 @@ inline fun <reified T> PropertySet.getValueFromCollection(
                 }
             }
             if (result.isEmpty()) {
-                if (isOptional) {
-                    return null
-                } else {
+                if (!isOptional) {
                     return raise(PropertiesError("PathSegment '${segment.path}' does not contain an index ${filterKey}"))
                 }
             }
-            val first = result.first()
             return updateAbsolutePathIfPropertySet<T>(result, segment)
         }
 
@@ -524,15 +519,14 @@ inline fun <reified T> PropertySet.getOptionalValue(
     segment: PathSegment,
 ): T? {
     val value: Any? = updateAbsolutePathIfPropertySet(get(segment.getKey()), segment)
-    if (value == null) {
-        return null
-    }
 
-    if (segment.containsIndex()) {
-        ensure(value is List<*>) { PropertiesError("Value for PathSegment '${segment.path}' is not a list") }
+    if (segment.containsIndex() && value != null) {
         return getValueFromCollection<T>(segment, value, true) as T?
     }
     ensure(value is T?) { PropertiesError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
+    if(value is List<*> && value.isEmpty()) {
+        return emptyList<T>() as T?
+    }
     return value
 }
 
@@ -617,6 +611,7 @@ inline fun <reified T> PropertySet.optional(path: PropertyPath): T? {
     }
 }
 
+
 /**
  * Retrieves an optional value of type T from the PropertySet.
  *
@@ -677,7 +672,7 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
         acc.optional<PropertySet>(key as PathSegment) ?: emptyMap<String, Any?>().toPropertySet()
     }
 
-    return finalPath.optional<T>(keys.last() as PathSegment)
+    return finalPath.optional<T>(keys.last())
 }
 
 

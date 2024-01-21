@@ -42,12 +42,18 @@ class LocalCredentialsFactory {
 class BasicSSHUserPrivateKeyFactory {
 
     context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<BasicSSHUserPrivateKey> {
-        override val rootPath: PropertyPath = "basicSSHUserPrivateKey".propertyPath()
+    companion object : PipelineDomainFactory<List<BasicSSHUserPrivateKey>> {
+        override val rootPath: PropertyPath =
+            "credentials.system.localCredentials[*].basicSSHUserPrivateKey".propertyPath()
 
         context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): BasicSSHUserPrivateKey {
-            val credentialConfig = getRootPropertySet(data)
+        override suspend fun create(data: PropertySet): List<BasicSSHUserPrivateKey> =
+            getRootListPropertySet(data)
+                .parMap {
+                    createBasicSSHUserPrivateKey(it)
+                }
+
+        suspend fun createBasicSSHUserPrivateKey(credentialConfig: PropertySet): BasicSSHUserPrivateKey {
             return parZip(
                 { credentialConfig.required<String>("scope") },
                 { credentialConfig.required<String>("id") },
@@ -65,109 +71,107 @@ class BasicSSHUserPrivateKeyFactory {
                     privateKey = privateKey
                 )
             }
-
         }
     }
-}
 
-class UsernamePasswordFactory {
-
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<UsernamePassword> {
-        override val rootPath: PropertyPath = "pipeline.credentials.usernamePassword".propertyPath()
+    class UsernamePasswordFactory {
 
         context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): UsernamePassword {
-            return UsernamePassword(
-                scope = data.required<String>("scope"),
-                id = IDComponent.create(
-                    data.required<String>("id")
-                ),
-                username = data.required<String>("username"),
-                password = data.required<String>("password"),
-                description = data.required<String>("description")
-            )
+        companion object : PipelineDomainFactory<UsernamePassword> {
+            override val rootPath: PropertyPath = "pipeline.credentials.usernamePassword".propertyPath()
+
+            context(Raise<PropertiesError>)
+            override suspend fun create(data: PropertySet): UsernamePassword {
+                return UsernamePassword(
+                    scope = data.required<String>("scope"),
+                    id = IDComponent.create(
+                        data.required<String>("id")
+                    ),
+                    username = data.required<String>("username"),
+                    password = data.required<String>("password"),
+                    description = data.required<String>("description")
+                )
+            }
         }
     }
-}
 
-class StringCredentialsFatory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<StringCredentials> {
-        override val rootPath: PropertyPath = "pipeline.credentials.string".propertyPath()
-
+    class StringCredentialsFatory {
         context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): StringCredentials {
-            return StringCredentials(
-                scope = data.required<String>("scope"),
-                id = IDComponent.create(
-                    data.required<String>("id")
-                ),
-                secret = data.required<String>("secret"),
-                description = data.required<String>("description")
-            )
-        }
+        companion object : PipelineDomainFactory<StringCredentials> {
+            override val rootPath: PropertyPath = "pipeline.credentials.string".propertyPath()
 
-    }
-}
+            context(Raise<PropertiesError>)
+            override suspend fun create(data: PropertySet): StringCredentials {
+                return StringCredentials(
+                    scope = data.required<String>("scope"),
+                    id = IDComponent.create(
+                        data.required<String>("id")
+                    ),
+                    secret = data.required<String>("secret"),
+                    description = data.required<String>("description")
+                )
+            }
 
-class AwsCredentialsFactory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<AwsCredentials> {
-        override val rootPath: PropertyPath = "pipeline.credentials.aws".propertyPath()
-
-
-        override suspend fun create(data: PropertySet): AwsCredentials {
-            return AwsCredentials(
-                scope = data.required<String>("scope"),
-                id = IDComponent.create(
-                    data.required<String>("id")
-                ),
-                accessKey = data.required<String>("accessKey"),
-                secretKey = data.required<String>("secretKey"),
-                description = data.required<String>("description")
-            )
         }
     }
-}
 
-class FileCredentialsFactory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<FileCredentials> {
-        override val rootPath: PropertyPath = "pipeline.credentials.file".propertyPath()
-
+    class AwsCredentialsFactory {
         context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): FileCredentials {
-            return FileCredentials(
-                scope = data.required<String>("scope"),
-                id = IDComponent.create(
-                    data.required<String>("id")
-                ),
-                fileName = data.required<String>("fileName"),
-                secretBytes = data.required<String>("secretBytes"),
-                description = data.required<String>("description")
-            )
+        companion object : PipelineDomainFactory<AwsCredentials> {
+            override val rootPath: PropertyPath = "pipeline.credentials.aws".propertyPath()
+
+
+            override suspend fun create(data: PropertySet): AwsCredentials {
+                return AwsCredentials(
+                    scope = data.required<String>("scope"),
+                    id = IDComponent.create(
+                        data.required<String>("id")
+                    ),
+                    accessKey = data.required<String>("accessKey"),
+                    secretKey = data.required<String>("secretKey"),
+                    description = data.required<String>("description")
+                )
+            }
         }
     }
-}
 
-
-class CertificateCredentialsFactory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<CertificateCredentials> {
-        override val rootPath: PropertyPath = "pipeline.credentials.certificate".propertyPath()
-
+    class FileCredentialsFactory {
         context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): CertificateCredentials {
-            return CertificateCredentials(
-                scope = data.required<String>("scope"),
-                id = IDComponent.create(
-                    data.required<String>("id")
-                ),
-                password = data.required<String>("password"),
-                description = data.required<String>("description"),
-                keyStore = data.required<String>("keyStoreSource.uploaded.uploadedKeystore")
-            )
+        companion object : PipelineDomainFactory<FileCredentials> {
+            override val rootPath: PropertyPath = "pipeline.credentials.file".propertyPath()
+
+            context(Raise<PropertiesError>)
+            override suspend fun create(data: PropertySet): FileCredentials {
+                return FileCredentials(
+                    scope = data.required<String>("scope"),
+                    id = IDComponent.create(
+                        data.required<String>("id")
+                    ),
+                    fileName = data.required<String>("fileName"),
+                    secretBytes = data.required<String>("secretBytes"),
+                    description = data.required<String>("description")
+                )
+            }
         }
     }
-}
+
+
+    class CertificateCredentialsFactory {
+        context(Raise<PropertiesError>)
+        companion object : PipelineDomainFactory<CertificateCredentials> {
+            override val rootPath: PropertyPath = "pipeline.credentials.certificate".propertyPath()
+
+            context(Raise<PropertiesError>)
+            override suspend fun create(data: PropertySet): CertificateCredentials {
+                return CertificateCredentials(
+                    scope = data.required<String>("scope"),
+                    id = IDComponent.create(
+                        data.required<String>("id")
+                    ),
+                    password = data.required<String>("password"),
+                    description = data.required<String>("description"),
+                    keyStore = data.required<String>("keyStoreSource.uploaded.uploadedKeystore")
+                )
+            }
+        }
+    }

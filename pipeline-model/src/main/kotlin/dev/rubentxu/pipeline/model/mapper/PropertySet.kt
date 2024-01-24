@@ -669,7 +669,7 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
     val partialPath = keys.dropLast(1)
 
     val finalPath: PropertySet = partialPath.fold(this) { acc: PropertySet, key: PropertyPath ->
-        acc.optional<PropertySet>(key as PathSegment) ?: emptyMap<String, Any?>().toPropertySet()
+        acc.optional<PropertySet>(key as PathSegment) ?: PropertySet(emptyMap(), path)
     }
 
     return finalPath.optional<T>(keys.last())

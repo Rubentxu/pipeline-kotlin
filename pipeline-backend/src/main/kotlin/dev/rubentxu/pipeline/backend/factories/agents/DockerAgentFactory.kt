@@ -2,43 +2,38 @@ package dev.rubentxu.pipeline.backend.factories.agents
 
 import arrow.core.NonEmptyList
 import arrow.core.raise.Raise
-import arrow.core.raise.zipOrAccumulate
+import arrow.fx.coroutines.parMap
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomainFactory
 import dev.rubentxu.pipeline.model.agents.DockerAgent
 import dev.rubentxu.pipeline.model.agents.DockerTemplate
 import dev.rubentxu.pipeline.model.agents.DockerTemplateBase
-import dev.rubentxu.pipeline.model.agents.RetentionStrategy
 import dev.rubentxu.pipeline.model.mapper.*
 
 class DockerAgentFactory {
 
     context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<DockerAgent> {
-        override val rootPath: PropertyPath = "docker".propertyPath()
+    companion object : PipelineDomainFactory<List<DockerAgent>> {
+        override val rootPath: PropertyPath = "agents.clouds[*].docker".propertyPath()
 
-        context(Raise<NonEmptyList<PropertiesError>>)
-        override suspend fun create(data: PropertySet): DockerAgent {
-           zipOrAccumulate(
-                { data.required<String>("id".propertyPath()) },
-                { data.required<String>("docker.name".propertyPath()) },
-                { data.required<String>("docker.dockerApi.dockerHost.uri".propertyPath()) },
-                { data.required<List<PropertySet>>("docker.templates".propertyPath()) },
-                { data.required<List<String>>("docker.labels".propertyPath()) }
-            ) { id, name, dockerHost, templatesMap, labels ->
+        context(Raise<PropertiesError>)
+        override suspend fun create(data: PropertySet): List<DockerAgent> {
 
-                val templates: List<DockerTemplate> = templatesMap.map { properties: PropertySet ->
-                    DockerTemplateFactory.create(properties)
-                }.toList()
+            return getRootListPropertySet(data)
+                .parMap { properties: PropertySet ->
+                    val templates: List<DockerTemplate> = DockerTemplateFactory.create(properties)
 
-                return DockerAgent(
-                    id = IDComponent.create(id) ,
-                    name = name,
-                    dockerHost = dockerHost,
-                    templates = templates,
-                    labels = labels
-                )
-            }
+                    DockerAgent(
+                        id = IDComponent.create(properties.required<String>("id")),
+                        name = properties.required<String>("name"),
+                        dockerHost = properties.required<String>("dockerApi.dockerHost.uri"),
+                        templates = templates,
+                        labels = properties.required<List<String>>("labels"),
+                        type = "docker"
+                    )
+                }
+
+
         }
     }
 }
@@ -46,23 +41,25 @@ class DockerAgentFactory {
 class DockerTemplateFactory {
 
     context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<DockerTemplate> {
+    companion object : PipelineDomainFactory<List<DockerTemplate>> {
         override val rootPath: PropertyPath = "templates".propertyPath()
 
 
-        context(Raise<NonEmptyList<PropertiesError>>)
-        override suspend fun create(data: PropertySet): DockerTemplate {
-            val template = getRootPropertySet(data)
-            val templateBaseMap: Map<String, Any> = data.required<Map<String, Any>>("dockerTemplateBase".propertyPath())
-
-            return DockerTemplate(
-                labelString = template.required<String>("labelString".propertyPath()),
-                dockerTemplateBase = DockerTemplateBaseFactory.create(templateBaseMap),
-                remoteFs = template.required<String>("remoteFs".propertyPath()),
-                user = template.required<String>("connector.attach.user".propertyPath()),
-                instanceCapStr = template.required<String>("instanceCapStr".propertyPath()),
-                retentionStrategy = RetentionStrategyFactory.create(template)
-            )
+        context(Raise<PropertiesError>)
+        override suspend fun create(data: PropertySet): List<DockerTemplate> {
+            return getRootListPropertySet(data)
+                .parMap { properties: PropertySet ->
+                    val labelString: String = properties.required<String>("labelString")
+                    val templateBaseMap: PropertySet = properties.required<PropertySet>("dockerTemplateBase")
+                    DockerTemplate(
+                        labelString = labelString,
+                        dockerTemplateBase = DockerTemplateBaseFactory.create(templateBaseMap),
+                        remoteFs = properties.required<String>("remoteFs"),
+                        user = properties.required<String>("connector.attach.user"),
+                        instanceCapStr = properties.required<String>("instanceCapStr"),
+                        retentionStrategy = properties.required<Int>("retentionStrategy.idleMinutes")
+                    )
+                }
         }
     }
 }
@@ -73,27 +70,13 @@ class DockerTemplateBaseFactory {
     companion object : PipelineDomainFactory<DockerTemplateBase> {
         override val rootPath: PropertyPath = "dockerTemplateBase".propertyPath()
 
-        context(Raise<NonEmptyList<PropertiesError>>)
+        context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): DockerTemplateBase {
             val templateBase = getRootPropertySet(data)
             return DockerTemplateBase(
-                image = templateBase.required<String>("image".propertyPath()),
-                mounts = templateBase.required<List<String>>("mounts".propertyPath()),
-                environmentsString = templateBase.required<String>("environmentsString".propertyPath())
-            )
-        }
-    }
-}
-
-class RetentionStrategyFactory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<RetentionStrategy> {
-        override val rootPath: PropertyPath = "retentionStrategy".propertyPath()
-
-        context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): RetentionStrategy {
-            return RetentionStrategy(
-                idleMinutes = data.required<Int>("retentionStrategy.idleMinutes".propertyPath())
+                image = templateBase.required<String>("image"),
+                mounts = templateBase.required<List<String>>("mounts"),
+                environmentsString = templateBase.required<String>("environmentsString")
             )
         }
     }

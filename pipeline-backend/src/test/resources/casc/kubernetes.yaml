@@ -46,9 +46,8 @@ agents:
               - name: "imagePullSecrets"
 
             envVars:
-              - envVar:
-                  key: "FOO"
-                  value: "BAR"
+              - key: "FOO"
+                value: "BAR"
 
           - name: "k8s-agent"
             namespace: "default"

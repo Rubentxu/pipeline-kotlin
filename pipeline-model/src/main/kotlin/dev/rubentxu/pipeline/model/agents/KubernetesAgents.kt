@@ -21,42 +21,39 @@ data class KubernetesAgent(
     val connectTimeout: Int,
     val readTimeout: Int,
     val templates: List<K8sTemplate>,
+    override val type: String,
 ) : Agent
 
 data class K8sTemplate(
     val name: String,
-    val serviceAccount: String?,
-    val instanceCap: Int?,
-    val idleMinutes: Int?,
+    val serviceAccount: String,
+    val instanceCap: Int,
+    val idleMinutes: Int,
     val label: String?,
-    val showRawYaml: Boolean?,
-    val volumes: List<Volume>?,
+    val showRawYaml: Boolean,
+    val volumes: List<Volume>,
     val containers: List<Container>,
-    val imagePullSecrets: List<ImagePullSecret>?,
+    val imagePullSecrets: List<String>,
     val envVars: EnvVars?,
 ) : Template
 
-data class Volume(
-    val hostPathVolume: HostPathVolume?,
-    val emptyDirVolume: EmptyDirVolume?,
-    val configMapVolume: ConfigMapVolume?,
-) : PipelineDomain
+sealed class Volume : PipelineDomain
 
 data class HostPathVolume(
     val mountPath: String,
     val hostPath: String,
-) : PipelineDomain
+) : Volume()
 
 data class EmptyDirVolume(
     val memory: Boolean,
     val mountPath: String,
-) : PipelineDomain
+) : Volume()
 
 data class ConfigMapVolume(
     val configMapName: String,
     val mountPath: String,
     val subPath: String,
-) : PipelineDomain
+) : Volume()
 
 data class Container(
     val name: String,
@@ -73,6 +70,3 @@ data class Container(
     val resourceLimitMemory: String,
 ) : PipelineDomain
 
-data class ImagePullSecret(
-    val name: String,
-) : PipelineDomain

@@ -10,6 +10,7 @@ data class DockerAgent(
     override val labels: List<String>,
     val dockerHost: String,
     val templates: List<DockerTemplate>,
+    override val type: String,
 ) : Agent
 
 data class DockerTemplate(
@@ -18,15 +19,11 @@ data class DockerTemplate(
     val remoteFs: String,
     val user: String,
     val instanceCapStr: String,
-    val retentionStrategy: RetentionStrategy,
+    val retentionStrategy: Int
 ) : Template
 
 data class DockerTemplateBase(
     val image: String,
     val mounts: List<String>,
     val environmentsString: String,
-) : PipelineDomain
-
-data class RetentionStrategy(
-    val idleMinutes: Int,
 ) : PipelineDomain

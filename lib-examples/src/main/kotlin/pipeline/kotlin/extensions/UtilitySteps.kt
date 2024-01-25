@@ -2,7 +2,10 @@ package pipeline.kotlin.extensions
 
 import com.google.gson.Gson
 import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.model.PipelineException
+import dev.rubentxu.pipeline.model.workspace.WorkspaceManager
 import java.io.File
+import java.nio.file.Path
 
 
 fun StepsBlock.readJSON(file: File): Map<String, Any> {
@@ -24,10 +27,14 @@ fun StepsBlock.writeJSON(returnText: Boolean, json: Map<String, Any>): String {
 
 }
 
-fun StepsBlock.findFiles(glob: String): List<File> {
-    val workingDir = this.pipeline.workingDir
-    val directory = workingDir.toFile()
+suspend fun StepsBlock.findFiles(glob: String): List<Path> {
+    val result =  this.context.getService(WorkspaceManager::class)
+        .map {
+            it.findFiles(glob)
+        }
 
-    val files = directory.listFiles { file -> file.name.matches(glob.toRegex()) }?.toList() ?: emptyList()
-    return files
+    if (result.isFailure) {
+        throw PipelineException("Error finding files: ${result.exceptionOrNull()?.message}")
+    }
+    return result.getOrNull()!!
 }

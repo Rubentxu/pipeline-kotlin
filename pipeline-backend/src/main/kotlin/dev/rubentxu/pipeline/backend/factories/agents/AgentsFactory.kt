@@ -1,39 +1,36 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-import arrow.core.Either
-import arrow.core.raise.Raise
-import arrow.core.raise.either
+import arrow.core.getOrElse
 import arrow.fx.coroutines.parZip
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.resolveValueExpressions
+import dev.rubentxu.pipeline.backend.mapper.toPropertySet
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.agents.Agent
-import dev.rubentxu.pipeline.model.mapper.*
-import pipeline.kotlin.extensions.resolveValueExpressions
 
 class AgentsProviderFactory {
-    context(Raise<PropertiesError>)
+
     companion object {
-        context(Raise<PropertiesError>)
+
         suspend fun create(rawYaml: PropertySet): IAgentProvider {
             val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
+            val agents: Map<IDComponent, Agent> = createAgents(resolvedYaml.toPropertySet())
+                .associateBy { it.id }
 
-            val agents: MutableMap<IDComponent, Agent> = createAgents(resolvedYaml.toPropertySet()).bind()
-                .associateBy { it.id } as MutableMap<IDComponent, Agent>
 
             return AgentsProvider(
-                agents = agents
+                agents = agents.toMutableMap()
             )
         }
 
-        private suspend fun createAgents(agentsConfig: PropertySet): Either<PropertiesError, List<Agent>> =
-            either {
-                parZip(
-                    { DockerAgentFactory.create(agentsConfig) },
-                    { KubernetesAgentFactory.create(agentsConfig) }
-                ) { dockerAgent, kubernetesAgent ->
-                    buildList {
-                        addAll(dockerAgent)
-                        addAll(kubernetesAgent)
-                    }
+        private suspend fun createAgents(agentsConfig: PropertySet): List<Agent> =
+            parZip(
+                { KubernetesAgentFactory.create(agentsConfig) },
+                { KubernetesAgentFactory.create(agentsConfig) }
+            ) { dockerAgent, kubernetesAgent ->
+                buildList {
+                    addAll(dockerAgent.getOrElse { emptyList() })
+                    addAll(kubernetesAgent.getOrElse { emptyList() })
                 }
             }
     }

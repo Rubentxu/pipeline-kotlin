@@ -5,16 +5,16 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parZip
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
+import dev.rubentxu.pipeline.backend.mapper.*
 import dev.rubentxu.pipeline.model.jobs.*
-import dev.rubentxu.pipeline.model.mapper.*
-
+import dev.rubentxu.pipeline.model.PropertiesError
 
 class JobParameterFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<JobParameter<*>>> {
-        override val rootPath: PropertyPath = "pipeline.parameters".propertyPath()
+        override val rootPath: String = "pipeline.parameters"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<JobParameter<*>> {
@@ -49,7 +49,7 @@ class JobParameterFactory {
 class StringJobParameterFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<StringJobParameter>> {
-        override var rootPath: PropertyPath = "pipeline.parameters[*].string".propertyPath()
+        override var rootPath: String = "pipeline.parameters[*].string"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<StringJobParameter> {
@@ -69,7 +69,7 @@ class ChoiceJobParameterFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<ChoiceJobParameter>> {
-        override var rootPath: PropertyPath = "pipeline.parameters[*].choice".propertyPath()
+        override var rootPath: String = "pipeline.parameters[*].choice"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<ChoiceJobParameter> {
@@ -93,7 +93,7 @@ class BooleanJobParameterFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<BooleanJobParameter>> {
-        override var rootPath: PropertyPath = "pipeline.parameters[*].boolean".propertyPath()
+        override var rootPath: String = "pipeline.parameters[*].boolean"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<BooleanJobParameter> {
@@ -112,7 +112,7 @@ class BooleanJobParameterFactory {
 class PasswordJobParameterFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<PasswordJobParameter>> {
-        override var rootPath: PropertyPath = "pipeline.parameters[*].password".propertyPath()
+        override var rootPath: String = "pipeline.parameters[*].password"
 
         override suspend fun create(data: PropertySet): List<PasswordJobParameter> {
             return getRootListPropertySet(data)
@@ -130,7 +130,7 @@ class PasswordJobParameterFactory {
 class TextJobParameterFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<TextJobParameter>> {
-        override var rootPath: PropertyPath = "pipeline.parameters[*].text".propertyPath()
+        override var rootPath: String = "pipeline.parameters[*].text"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<TextJobParameter> {

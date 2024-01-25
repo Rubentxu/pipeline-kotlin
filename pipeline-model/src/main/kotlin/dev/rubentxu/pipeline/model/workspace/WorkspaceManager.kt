@@ -7,6 +7,7 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.util.*
 import dev.rubentxu.pipeline.model.events.EventBus
+import java.io.File
 
 
 interface IWorkspaceManager: PipelineDomain {
@@ -20,6 +21,8 @@ interface IWorkspaceManager: PipelineDomain {
         inclusions: List<String>,
         exclusions: List<String>,
     ): Boolean
+
+    fun findFiles(glob: String): List<Path>
 }
 
 class WorkspaceManager(
@@ -129,6 +132,14 @@ class WorkspaceManager(
             }
         }
         return changedFilesFiltered.isNotEmpty()
+    }
+
+    override fun findFiles(glob: String): List<Path> {
+        val workingDir = currentWorkspacePath
+        val directory = workingDir.toFile()
+
+        val files = directory.listFiles { file -> file.name.matches(glob.toRegex()) }?.toList() ?: emptyList()
+        return files.map { it.toPath() }
     }
 
     private fun globMatch(pattern: String, str: String, caseSensitive: Boolean = true): Boolean {

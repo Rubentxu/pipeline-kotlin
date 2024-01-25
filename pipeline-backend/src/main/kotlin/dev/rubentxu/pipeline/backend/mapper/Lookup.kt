@@ -1,10 +1,11 @@
 @file:OptIn(ExperimentalEncodingApi::class)
 
-package pipeline.kotlin.extensions
+package dev.rubentxu.pipeline.backend.mapper
 
 
+import com.charleskorn.kaml.Yaml
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
-import org.yaml.snakeyaml.Yaml
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -137,10 +138,10 @@ fun String.deserializeJsonField(): Result<String> {
 }
 
 
-fun Path.deserializeYamlFileToMap(): Result<Map<String, Any>> {
+fun Path.deserializeYamlFileToMap(): Result<PropertySet> {
     return try {
         val content = String(Files.readAllBytes(this), StandardCharsets.UTF_8)
-        val yaml = Yaml().load(content) as Map<String, Any>
+        val yaml = Yaml.default.decodeFromString<PropertySet>(content)
         success(yaml)
     } catch (e: Exception) {
         failure(LookupException("Error in YAML lookup ${e.javaClass.simpleName} ${e.message}", e))
@@ -158,7 +159,7 @@ fun String.deserializeYamlField(): Result<String> {
         val yamlFieldName = components[0]
         val yamlFile = components[1]
         val yaml = yamlFile.readFileLookup().getOrThrow()
-        val yamlObject = Yaml().load(yaml) as Map<String, Any>
+        val yamlObject =  Yaml.default.decodeFromString<PropertySet>(yaml)
 
         yamlObject[yamlFieldName]?.toString()?.let {
             success(it)
@@ -208,21 +209,24 @@ fun String.isJsonValid(): Boolean {
     }
 }
 
-fun Map<*, *>.resolveValueExpressions(): Map<*, *> {
-    return this.entries.associate { (key, value) ->
+
+fun PropertySet.resolveValueExpressions(): PropertySet {
+    val resolvedData = this.data.entries.associate { (key, value) ->
         key to when (value) {
-            is Map<*, *> -> value.resolveValueExpressions()
+            is PropertySet -> value.resolveValueExpressions()
             is List<*> -> value.resolveValueExpressions()
             is String -> if (value.startsWith("\${")) value.lookup().getOrThrow() else value
             else -> value
         }
     }
+    return PropertySet(resolvedData, this.absolutePath)
 }
+
 
 fun List<*>.resolveValueExpressions(): List<*> {
     return this.map { item ->
         when (item) {
-            is Map<*, *> -> item.resolveValueExpressions()
+            is PropertySet -> item.resolveValueExpressions()
             is List<*> -> item.resolveValueExpressions()
             is String -> if (item.startsWith("\${")) item.lookup().getOrThrow() else item
             else -> item

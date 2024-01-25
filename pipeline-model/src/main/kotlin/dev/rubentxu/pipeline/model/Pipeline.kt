@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.model
 
-import arrow.core.raise.Raise
-import dev.rubentxu.pipeline.model.mapper.*
+import arrow.core.Either
+
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -9,39 +9,35 @@ import kotlin.reflect.KClass
 
 interface PipelineDomain
 
-interface IPipelineConfig: PipelineDomain
+interface IPipelineConfig : PipelineDomain
+
+class PipelineException(message: String) : Exception(message)
 
 
+sealed class PipelineError
 
-interface PipelineDomainFactory<T>  {
-    val rootPath: PropertyPath
+/**
+ * Data class for validation errors.
+ *
+ * @property message The error message. This is used to represent an error
+ *     that occurs during validation.
+ */
+data class PropertiesError(val message: String) : PipelineError()
 
-    context(Raise<PropertiesError>)
-     fun getRootPropertySet(data: PropertySet): PropertySet {
-        return data.required<PropertySet>(rootPath)
-    }
-
-    context(Raise<PropertiesError>)
-    fun getRootListPropertySet(data: PropertySet): List<PropertySet> {
-        return data.required<List<PropertySet>>(rootPath)
-    }
+data class NoSuchServiceError(val message: String) : PipelineError()
 
 
-    suspend fun create(data: PropertySet): T
-}
+typealias Res<T> = Either<out PipelineError, T>
 
 
-
-
-
-interface PipelineDomainDslFactory<T: PipelineDomain> {
+interface PipelineDomainDslFactory<T : PipelineDomain> {
     suspend fun create(block: T.() -> Unit): PipelineDomain
 }
 
 
 data class IDComponent private constructor(
     val id: String,
-)  {
+) {
     companion object {
         fun create(id: String): IDComponent {
             require(id.isNotEmpty()) { "ID cannot be empty" }
@@ -56,19 +52,23 @@ data class IDComponent private constructor(
     }
 }
 
-interface IPipelineContext: PipelineDomain {
+interface IPipelineContext : PipelineDomain {
     val pipelineName: String
-    suspend fun <T: PipelineDomain> getService(interfaceType: KClass<T>, name: String = pipelineName): Result<T>
+    suspend fun <T : PipelineDomain> getService(interfaceType: KClass<T>, name: String = pipelineName): Result<T>
 
-    suspend fun <T: PipelineDomain> registerService(interfaceType: KClass<T>, service: T, name: String = pipelineName)
+    suspend fun <T : PipelineDomain> registerService(interfaceType: KClass<T>, service: T, name: String = pipelineName)
 
-    suspend fun <T: PipelineDomain> registerResource(interfaceType: KClass<T>, resource: T, name: String = pipelineName)
+    suspend fun <T : PipelineDomain> registerResource(
+        interfaceType: KClass<T>,
+        resource: T,
+        name: String = pipelineName,
+    )
 
-    suspend fun <T: PipelineDomain> getResource(interfaceType: KClass<T>, name: String = pipelineName ): Result<T>
+    suspend fun <T : PipelineDomain> getResource(interfaceType: KClass<T>, name: String = pipelineName): Result<T>
 
 }
 
-class PipelineContext(override val pipelineName:String = "default") : IPipelineContext {
+class PipelineContext(override val pipelineName: String = "default") : IPipelineContext {
     private val services = ConcurrentHashMap<Pair<KClass<*>, String>, Any>()
     private val resources = ConcurrentHashMap<Pair<KClass<*>, String>, Any>()
 
@@ -95,14 +95,14 @@ class PipelineContext(override val pipelineName:String = "default") : IPipelineC
         }
     }
 
-    override suspend fun <T: PipelineDomain> registerResource(interfaceType: KClass<T>, resource: T, name: String) {
+    override suspend fun <T : PipelineDomain> registerResource(interfaceType: KClass<T>, resource: T, name: String) {
         mutex.withLock {
             val key = Pair(interfaceType, name)
             resources[key] = resource
         }
     }
 
-    override suspend fun <T: PipelineDomain> getResource(interfaceType: KClass<T>, name: String): Result<T> {
+    override suspend fun <T : PipelineDomain> getResource(interfaceType: KClass<T>, name: String): Result<T> {
         return mutex.withLock {
             val key = Pair(interfaceType, name)
             val resource = resources[key]

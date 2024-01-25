@@ -1,32 +1,31 @@
 package dev.rubentxu.pipeline.backend.factories
 
 
-import dev.rubentxu.pipeline.backend.factories.credentials.LocalCredentialsFactory
+import arrow.core.raise.Raise
+import dev.rubentxu.pipeline.backend.factories.credentials.CredentialsProviderFactory
 import dev.rubentxu.pipeline.backend.factories.jobs.JobInstanceFactory
-import dev.rubentxu.pipeline.backend.factories.sources.SourceCodeRepositoryFactory
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.model.IPipelineContext
 import dev.rubentxu.pipeline.model.PipelineContext
 import dev.rubentxu.pipeline.model.PipelineDomain
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
-import dev.rubentxu.pipeline.model.mapper.PropertySet
+import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
 
 class PipelineContextFactory : PipelineDomain {
-        companion object : PipelineDomainFactory<IPipelineContext> {
-            override val rootPath: String = "pipeline"
-            override val instanceName: String = "PipelineContext"
+    companion object  {
+        context(Raise<PropertiesError>)
+        suspend fun create(data: PropertySet): IPipelineContext {
+            val context = PipelineContext()
 
-            override suspend fun create(data: PropertySet): IPipelineContext {
-                val context = PipelineContext()
+            val job = JobInstanceFactory.create(data)
+            val credentials = CredentialsProviderFactory.create(data)
 
-                val job = JobInstanceFactory.create(data)
-                val repositories = SourceCodeRepositoryFactory.create(data)
-                val credentials = LocalCredentialsFactory.create(data)
+            context.registerService(JobInstance::class, job)
+            context.registerService(ICredentialsProvider::class, credentials)
 
-                context.registerService(JobInstance::class, job)
-
-                return context
-            }
+            return context
         }
+    }
 }
 

@@ -50,6 +50,7 @@ dependencies {
 
     implementation("io.arrow-kt:arrow-core:1.2.1")
     implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
+    implementation("io.arrow-kt:arrow-optics:1.2.1")
 
     implementation("org.freemarker:freemarker:2.3.32")
 
@@ -124,3 +125,13 @@ tasks.withType<KotlinCompile>().configureEach {
         freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn" + "-Xcontext-receivers"
     }
 }
+
+tasks
+    .withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>()
+    .configureEach {
+        compilerOptions
+            .languageVersion
+            .set(
+                org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9
+            )
+    }

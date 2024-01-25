@@ -5,107 +5,98 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parZip
+import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.propertyPath
+import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.model.Res
 import dev.rubentxu.pipeline.model.agents.*
-import dev.rubentxu.pipeline.model.mapper.*
 import dev.rubentxu.pipeline.model.steps.EnvVars
 
-
 class KubernetesAgentFactory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<List<KubernetesAgent>> {
-        override val rootPath: PropertyPath = "agents.clouds[*].kubernetes".propertyPath()
 
-        context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): List<KubernetesAgent> {
-            return getRootListPropertySet(data)
-                .parMap { kubernetesProperties ->
-                    createKubernetesAgent(kubernetesProperties)
+    companion object : PipelineDomainFactory<Res<List<KubernetesAgent>>> {
+        override val rootPath: String = "agents.clouds[*].kubernetes"
+
+        override suspend fun create(data: PropertySet): Res<List<KubernetesAgent>> = either {
+            getRootListPropertySet(data)
+                .parMap { properties ->
+                    val id: IDComponent = IDComponent.create(properties.required<String>("id".propertyPath()))
+                    val labels: List<String> = properties.required<List<String>>("labels".propertyPath())
+                    val templates = KubernetesTemplateFactory.create(properties)
+
+
+                    KubernetesAgent(
+                        id = id,
+                        name = properties.required("name"),
+                        serverUrl = properties.required("serverUrl"),
+                        serverCertificate = properties.required("serverCertificate"),
+                        skipTlsVerify = properties.required("skipTlsVerify"),
+                        credentialsId = properties.required("credentialsId"),
+                        namespace = properties.required("namespace"),
+                        pipelineUrl = properties.required("pipelineUrl"),
+                        pipelineTunnel = properties.required("pipelineTunnel"),
+                        containerCapStr = properties.required("containerCapStr"),
+                        maxRequestsPerHostStr = properties.required("maxRequestsPerHostStr"),
+                        retentionTimeout = properties.required("retentionTimeout"),
+                        connectTimeout = properties.required("connectTimeout"),
+                        readTimeout = properties.required("readTimeout"),
+                        templates = templates,
+                        labels = labels,
+                        type = "kubernetes"
+                    )
                 }
         }
-
-        private suspend fun createKubernetesAgent(
-            // (
-            properties: PropertySet,
-        ): KubernetesAgent {
-            val id: IDComponent = IDComponent.create(properties.required<String>("id".propertyPath()))
-            val labels: List<String> = properties.required<List<String>>("labels".propertyPath())
-            val templates = KubernetesTemplateFactory.create(properties)
-
-
-            return KubernetesAgent(
-                id = id,
-                name = properties.required("name"),
-                serverUrl = properties.required("serverUrl"),
-                serverCertificate = properties.required("serverCertificate"),
-                skipTlsVerify = properties.required("skipTlsVerify"),
-                credentialsId = properties.required("credentialsId"),
-                namespace = properties.required("namespace"),
-                pipelineUrl = properties.required("pipelineUrl"),
-                pipelineTunnel = properties.required("pipelineTunnel"),
-                containerCapStr = properties.required("containerCapStr"),
-                maxRequestsPerHostStr = properties.required("maxRequestsPerHostStr"),
-                retentionTimeout = properties.required("retentionTimeout"),
-                connectTimeout = properties.required("connectTimeout"),
-                readTimeout = properties.required("readTimeout"),
-                templates = templates,
-                labels = labels,
-                type = "kubernetes"
-            )
-        }
     }
+
+
 }
 
 class KubernetesTemplateFactory {
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<List<K8sTemplate>> {
-        override val rootPath: PropertyPath = "templates".propertyPath()
+
+    companion object : PipelineDomainFactory<Res<List<K8sTemplate>>> {
+        override val rootPath: String = "templates"
 
         context(Raise<PropertiesError>)
-        override suspend fun create(kubernetesProperties: PropertySet): List<K8sTemplate> {
-            return getRootListPropertySet(kubernetesProperties)
+        override suspend fun create(kubernetesProperties: PropertySet): Res<List<K8sTemplate>> = either {
+            getRootListPropertySet(kubernetesProperties)
                 .parMap { templateProperties ->
-                    createTemplate(templateProperties)
+                    val volumes: List<Volume> = VolumeFactory.create(templateProperties)
+                    val containers: List<Container> = ContainerFactory.create(templateProperties)
+                    val imagePullSecrets: List<String> = templateProperties.required("imagePullSecrets[*].name")
+
+
+                    val envVarsMap: Map<String, String> = templateProperties.required<List<PropertySet>>("envVars")
+                        .map {
+                            it.required<String>("key") to it.required<String>("value")
+                        }.toMap()
+
+                    val envVars = EnvVars(envVarsMap)
+
+                    K8sTemplate(
+                        name = templateProperties.required("name"),
+                        serviceAccount = templateProperties.required("serviceAccount"),
+                        instanceCap = templateProperties.required("instanceCap"),
+                        idleMinutes = templateProperties.required("idleMinutes"),
+                        label = templateProperties.required("label"),
+                        showRawYaml = templateProperties.required("showRawYaml"),
+                        volumes = volumes,
+                        containers = containers,
+                        imagePullSecrets = imagePullSecrets,
+                        envVars = envVars
+                    )
                 }
         }
 
-        context(Raise<PropertiesError>)
-        private suspend fun createTemplate(templateProperties: PropertySet): K8sTemplate {
-
-            val volumes: List<Volume> = VolumeFactory.create(templateProperties)
-            val containers: List<Container> = ContainerFactory.create(templateProperties)
-            val imagePullSecrets: List<String> = templateProperties.required("imagePullSecrets[*].name")
-
-
-            val envVarsMap: Map<String, String> = templateProperties.required<List<PropertySet>>("envVars")
-                .map {
-                    it.required<String>("key") to it.required<String>("value")
-                }.toMap()
-
-            val envVars = EnvVars(envVarsMap)
-
-            return K8sTemplate(
-                name = templateProperties.required("name"),
-                serviceAccount = templateProperties.required("serviceAccount"),
-                instanceCap = templateProperties.required("instanceCap"),
-                idleMinutes = templateProperties.required("idleMinutes"),
-                label = templateProperties.required("label"),
-                showRawYaml = templateProperties.required("showRawYaml"),
-                volumes = volumes,
-                containers = containers,
-                imagePullSecrets = imagePullSecrets,
-                envVars = envVars
-            )
-
-        }
     }
 }
 
 class VolumeFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<Volume>> {
-        override val rootPath: PropertyPath = "volumes".propertyPath()
+        override val rootPath: String = "volumes"
 
         context(Raise<PropertiesError>)
         override suspend fun create(templateProperties: PropertySet): List<Volume> {
@@ -132,7 +123,7 @@ class VolumeFactory {
 class HostPathVolumeFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<HostPathVolume>> {
-        override val rootPath: PropertyPath = "volumes[*].hostPathVolume".propertyPath()
+        override val rootPath: String = "volumes[*].hostPathVolume"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<HostPathVolume> {
@@ -150,7 +141,7 @@ class HostPathVolumeFactory {
 class EmptyDirVolumeFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<EmptyDirVolume>> {
-        override val rootPath: PropertyPath = "volumes[*].emptyDirVolume".propertyPath()
+        override val rootPath: String = "volumes[*].emptyDirVolume"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<EmptyDirVolume> {
@@ -168,7 +159,7 @@ class EmptyDirVolumeFactory {
 class ConfigMapVolumeFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<ConfigMapVolume>> {
-        override val rootPath: PropertyPath = "volumes[*].configMapVolume".propertyPath()
+        override val rootPath: String = "volumes[*].configMapVolume"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<ConfigMapVolume> {
@@ -188,7 +179,7 @@ class ConfigMapVolumeFactory {
 class ContainerFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<Container>> {
-        override val rootPath: PropertyPath = "containers".propertyPath()
+        override val rootPath: String = "containers"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<Container> {

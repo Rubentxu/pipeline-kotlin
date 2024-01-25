@@ -2,8 +2,7 @@ package dev.rubentxu.pipeline.model.credentials
 
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomain
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
-import dev.rubentxu.pipeline.model.validations.validateAndGet
+
 
 interface Credentials : PipelineDomain {
     val id: IDComponent

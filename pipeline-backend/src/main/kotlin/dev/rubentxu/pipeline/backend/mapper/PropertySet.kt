@@ -1,10 +1,18 @@
-package dev.rubentxu.pipeline.model.mapper
+package dev.rubentxu.pipeline.backend.mapper
 
 import arrow.core.*
 import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.raise.ensure
+import dev.rubentxu.pipeline.model.PropertiesError
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.serialization.*
+
+
+typealias ListProperties = List<PropertySet>
+
+
+typealias PropertiesCache = ConcurrentHashMap<PropertyPath, PropertySet>
 
 /**
  * Type alias for a map where the key is a string and the value can be any
@@ -14,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 class PropertySet(
     val data: Map<String, Any?>,
     val absolutePath: PropertyPath,
-    private val cache: ConcurrentHashMap<PropertyPath, PropertySet> = ConcurrentHashMap(),
+    private val cache: PropertiesCache = ConcurrentHashMap(),
 ) : Map<String, Any?> by data {
 
     context(Raise<PropertiesError>)
@@ -96,13 +104,7 @@ fun Map<String, Any?>.toPropertySet(): PropertySet {
     return PropertySet(this, EmptyPropertyPath)
 }
 
-/**
- * Data class for validation errors.
- *
- * @property message The error message. This is used to represent an error
- *     that occurs during validation.
- */
-data class PropertiesError(val message: String)
+
 
 /**
  * Exception class for validation errors.
@@ -121,7 +123,7 @@ class PropertiesException(message: String) : Exception(message)
  * @return PropertyPath instance which could be either a NestedPath or a
  *     PathSegment.
  */
-inline fun String.propertyPath(): PropertyPath {
+fun String.propertyPath(): PropertyPath {
      return either {
          toPropertyPath(this@propertyPath)
      }.getOrElse { InvalidPropertyPath(it.message) }

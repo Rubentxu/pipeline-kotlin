@@ -1,8 +1,13 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
+import arrow.core.Either
+import arrow.core.getOrElse
+import arrow.core.raise.effect
+import arrow.core.raise.either
 import dev.rubentxu.pipeline.backend.cdi.CascManager
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.credentials.*
+import dev.rubentxu.pipeline.model.mapper.PropertiesError
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.scopes.StringSpecScope
@@ -20,13 +25,10 @@ class CredentialsProviderFactoryTest : StringSpec({
         )
         val idExpected = IDComponent.create("ssh_with_passphrase_provided")
         val cascFileName = "casc/testData/credentials-basicSSH_Private_Key.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
-        result = testConfig(environmentVariables, cascFileName, result)
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as BasicSSHUserPrivateKey
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe IDComponent.create("ssh_with_passphrase_provided")
         credential?.username shouldBe "ssh_root"
@@ -43,15 +45,10 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SSH_PRIVATE_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-basicSSH_Private_Key_with_file.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
 
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as BasicSSHUserPrivateKey
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "SYSTEM"
@@ -69,14 +66,10 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SECRET_CERT_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-certificate.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
 
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as CertificateCredentials
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -93,11 +86,10 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SECRET_CERT_FILE_PATH" to "casc/testData/keystore-not-exist.txt"
         )
         val cascFileName = "casc/testData/credentials-certificate.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
 
         val exception = shouldThrow<LookupException> {
-            testConfig(environmentVariables, cascFileName, result).getOrThrow()
+            testConfig(environmentVariables, cascFileName)
         }
         exception.message shouldBe "Error in file base64 lookup: NoSuchFileException casc/testData/keystore-not-exist.txt"
 
@@ -110,15 +102,9 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SECRET_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-file.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-        val credentialsProvider = result.getOrThrow()
-
-
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as FileCredentials
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -134,10 +120,9 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SECRET_FILE_PATH" to "casc/testData/secret-not-exist.txt"
         )
         val cascFileName = "casc/testData/credentials-file.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
 
         val exception = shouldThrow<LookupException> {
-            testConfig(environmentVariables, cascFileName, result).getOrThrow()
+            testConfig(environmentVariables, cascFileName)
         }
         exception.message shouldBe "Error in file string lookup NoSuchFileException casc/testData/secret-not-exist.txt"
     }
@@ -150,15 +135,10 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SECRET_FILE_PATH" to resolveResourceFile
         )
         val cascFileName = "casc/testData/credentials-file-with-readFileBase64.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
 
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as FileCredentials
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe IDComponent.create("secret-file_via_binary_file")
         credential?.scope shouldBe "GLOBAL"
@@ -175,14 +155,10 @@ class CredentialsProviderFactoryTest : StringSpec({
             "AWS_SECRET_ACCESS_KEY" to "awsSecretAccessKeyTest"
         )
         val cascFileName = "casc/testData/credentials-aws.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as AwsCredentials
 
-        result.isSuccess shouldBe true
+
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -198,15 +174,10 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SECRET_TEXT" to "secretTest",
         )
         val cascFileName = "casc/testData/credentials-string.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential =
             credentialsProvider.getCredentialsById(idExpected).getOrThrow() as StringCredentials
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -220,14 +191,14 @@ class CredentialsProviderFactoryTest : StringSpec({
         val environmentVariables = mapOf("GREETING" to "Hello")
 
         val cascFileName = "casc/testData/credentials-string-with-default-value.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
+        var result: Either<PropertiesError, ICredentialsProvider> =
+            Either.Left(PropertiesError("No se ha podido ejecutar el test"))
 
-        result = testConfig(environmentVariables, cascFileName, result)
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential =
             credentialsProvider.getCredentialsById(idExpected).getOrThrow() as StringCredentials
 
-        result.isSuccess shouldBe true
+        result.isRight() shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -242,13 +213,9 @@ class CredentialsProviderFactoryTest : StringSpec({
             "SOME_USER_PASSWORD" to "userPasswordTest",
         )
         val cascFileName = "casc/testData/credentials-usernamePassword.yaml"
-        var result: Result<ICredentialsProvider> = Result.failure(Exception("No se ha podido ejecutar el test"))
-
-        result = testConfig(environmentVariables, cascFileName, result)
-        val credentialsProvider = result.getOrThrow()
+        val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential = credentialsProvider.getCredentialsById(idExpected).getOrThrow() as UsernamePassword
 
-        result.isSuccess shouldBe true
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -260,25 +227,24 @@ class CredentialsProviderFactoryTest : StringSpec({
 
 })
 
-private fun StringSpecScope.testConfig(
+
+private suspend fun StringSpecScope.testConfig(
     environmentVariables: Map<String, String>,
     cascFileName: String,
-    result: Result<ICredentialsProvider>,
-): Result<ICredentialsProvider> {
-    var result1 = result
+): ICredentialsProvider {
+    var result: Either<PropertiesError, ICredentialsProvider> = Either.Left(PropertiesError("No se ha podido ejecutar el test"))
     EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
         val cascManager = CascManager()
         // Ruta al archivo YAML de prueba
         val resourcePath = this::class.java.classLoader.getResource(cascFileName).path
         val testYamlPath = Path.of(resourcePath)
 
-        val data = cascManager.getRawConfig(testYamlPath).getOrThrow()
-
-        runTest() {
-            val credentialsProvider = CredentialsProviderFactory.create(data)
-            result1 = Result.success(credentialsProvider)
-
+        return@execute runTest() {
+            result = either {
+                val data = cascManager.getRawConfig(testYamlPath)
+                CredentialsProviderFactory.create(data)
+            }
         }
     }
-    return result1
+    return result.getOrElse { throw Exception("No se ha podido ejecutar el test ${it}") }
 }

@@ -1,27 +1,28 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-import arrow.core.NonEmptyList
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import arrow.fx.coroutines.parMap
+import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.model.Res
 import dev.rubentxu.pipeline.model.agents.DockerAgent
 import dev.rubentxu.pipeline.model.agents.DockerTemplate
 import dev.rubentxu.pipeline.model.agents.DockerTemplateBase
-import dev.rubentxu.pipeline.model.mapper.*
 
 class DockerAgentFactory {
 
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<List<DockerAgent>> {
-        override val rootPath: PropertyPath = "agents.clouds[*].docker".propertyPath()
+    companion object : PipelineDomainFactory<Res<List<DockerAgent>>> {
+        override val rootPath: String = "agents.clouds[*].docker"
 
-        context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): List<DockerAgent> {
 
-            return getRootListPropertySet(data)
+        override suspend fun create(data: PropertySet): Res<List<DockerAgent>> = either {
+            getRootListPropertySet(data)
                 .parMap { properties: PropertySet ->
-                    val templates: List<DockerTemplate> = DockerTemplateFactory.create(properties)
+                    val templates: List<DockerTemplate> = DockerTemplateFactory.create(properties).bind()
 
                     DockerAgent(
                         id = IDComponent.create(properties.required<String>("id")),
@@ -32,28 +33,24 @@ class DockerAgentFactory {
                         type = "docker"
                     )
                 }
-
-
         }
     }
 }
 
 class DockerTemplateFactory {
 
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<List<DockerTemplate>> {
-        override val rootPath: PropertyPath = "templates".propertyPath()
+    companion object : PipelineDomainFactory<Res<List<DockerTemplate>>> {
+        override val rootPath: String = "templates"
 
 
-        context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): List<DockerTemplate> {
-            return getRootListPropertySet(data)
+        override suspend fun create(data: PropertySet): Res<List<DockerTemplate>> = either {
+            getRootListPropertySet(data)
                 .parMap { properties: PropertySet ->
                     val labelString: String = properties.required<String>("labelString")
                     val templateBaseMap: PropertySet = properties.required<PropertySet>("dockerTemplateBase")
                     DockerTemplate(
                         labelString = labelString,
-                        dockerTemplateBase = DockerTemplateBaseFactory.create(templateBaseMap),
+                        dockerTemplateBase = DockerTemplateBaseFactory.create(templateBaseMap).bind(),
                         remoteFs = properties.required<String>("remoteFs"),
                         user = properties.required<String>("connector.attach.user"),
                         instanceCapStr = properties.required<String>("instanceCapStr"),
@@ -66,14 +63,12 @@ class DockerTemplateFactory {
 
 class DockerTemplateBaseFactory {
 
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<DockerTemplateBase> {
-        override val rootPath: PropertyPath = "dockerTemplateBase".propertyPath()
+    companion object : PipelineDomainFactory<Res<DockerTemplateBase>> {
+        override val rootPath: String = "dockerTemplateBase"
 
-        context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): DockerTemplateBase {
+        override suspend fun create(data: PropertySet): Res<DockerTemplateBase> = either {
             val templateBase = getRootPropertySet(data)
-            return DockerTemplateBase(
+            DockerTemplateBase(
                 image = templateBase.required<String>("image"),
                 mounts = templateBase.required<List<String>>("mounts"),
                 environmentsString = templateBase.required<String>("environmentsString")

@@ -2,14 +2,18 @@ package dev.rubentxu.pipeline.backend.factories.sources
 
 import arrow.core.raise.Raise
 import arrow.fx.coroutines.parMap
+import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
+import dev.rubentxu.pipeline.backend.mapper.PropertyPath
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.propertyPath
+import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.backend.sources.CleanRepository
 import dev.rubentxu.pipeline.backend.sources.GitSourceCodeRepository
 import dev.rubentxu.pipeline.backend.sources.LocalSourceCodeRepository
 import dev.rubentxu.pipeline.backend.sources.Mercurial
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomain
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
-import dev.rubentxu.pipeline.model.mapper.*
+import dev.rubentxu.pipeline.model.PropertiesError
 import dev.rubentxu.pipeline.model.repository.*
 import java.net.URL
 import java.nio.file.Path
@@ -19,7 +23,7 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<PluginSourceCodeConfig>> {
-        override val rootPath: PropertyPath = "plugins".propertyPath()
+        override val rootPath: String = "plugins"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<PluginSourceCodeConfig> {
@@ -61,7 +65,7 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<SourceCodeConfig> {
-        override val rootPath: PropertyPath = "pipelineSourceCode".propertyPath()
+        override val rootPath: String = "pipelineSourceCode"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): SourceCodeConfig {
@@ -86,7 +90,7 @@ class ProjectSourceCodeFactory : PipelineDomain {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<SourceCodeConfig> {
-        override val rootPath: PropertyPath = "projectSourceCode".propertyPath()
+        override val rootPath: String = "projectSourceCode"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): SourceCodeConfig {
@@ -112,7 +116,7 @@ class MercurialSourceCodeRepositoryFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<Mercurial> {
-        override val rootPath: PropertyPath = "repositories.mercurial".propertyPath()
+        override val rootPath: String = "repositories.mercurial"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): Mercurial {
@@ -147,7 +151,7 @@ class LocalGitSourceCodeRepositoryFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<LocalSourceCodeRepository> {
-        override val rootPath: PropertyPath = "repositories.local".propertyPath()
+        override val rootPath: String = "repositories.local"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): LocalSourceCodeRepository {
@@ -178,7 +182,7 @@ class LocalGitSourceCodeRepositoryFactory {
 class GitSourceCodeRepositoryFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<GitSourceCodeRepository> {
-        override val rootPath: PropertyPath = "repositories.git".propertyPath()
+        override val rootPath: String = "repositories.git"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): GitSourceCodeRepository {
@@ -260,7 +264,7 @@ class GitSourceCodeRepositoryFactory {
 class CleanRepositoryFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<CleanRepository> {
-        override val rootPath: PropertyPath = "repositories.git.extensions.cleanRepository".propertyPath()
+        override val rootPath: String = "repositories.git.extensions.cleanRepository"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): CleanRepository {

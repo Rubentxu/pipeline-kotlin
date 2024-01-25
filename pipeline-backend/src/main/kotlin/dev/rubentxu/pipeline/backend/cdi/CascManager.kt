@@ -1,51 +1,40 @@
 package dev.rubentxu.pipeline.backend.cdi
 
+import arrow.core.raise.Raise
 import com.charleskorn.kaml.Yaml
 import dev.rubentxu.pipeline.backend.factories.PipelineContextFactory
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.model.IPipelineContext
-import kotlinx.coroutines.coroutineScope
-import pipeline.kotlin.extensions.LookupException
-import pipeline.kotlin.extensions.resolveValueExpressions
+import dev.rubentxu.pipeline.model.PropertiesError
+import kotlinx.serialization.decodeFromString
+import dev.rubentxu.pipeline.backend.mapper.resolveValueExpressions
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 
 
-fun Path.deserializeYamlFileToMap(): Result<Map<String, Any>> {
+context(Raise<PropertiesError>)
+fun Path.deserializeYamlFileToMap(): PropertySet {
     return try {
         val content = String(Files.readAllBytes(this), StandardCharsets.UTF_8)
-//        val yaml = Yaml().load(content) as Map<String, Any>
-        Yaml.default.decodeFromString(Any, content)
-        Result.success(yaml)
+        val yaml = Yaml.default.decodeFromString<PropertySet>(content)
+        return yaml
     } catch (e: Exception) {
-        Result.failure(LookupException("Error in YAML lookup ${e.javaClass.simpleName} ${e.message}", e))
+        raise(PropertiesError("Error deserializing yaml file to map ${e.message}"))
     }
 }
 
-class CascManager() {
-    suspend fun resolveConfig(path: Path): Result<IPipelineContext> {
-        return try {
-            coroutineScope {
-                val rawYaml = getRawConfig(path).getOrThrow()
-                val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
-                val config = PipelineContextFactory.create(resolvedYaml)
-                Result.success(config)
-            }
+class CascManager {
 
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    context(Raise<PropertiesError>)
+    suspend fun resolveConfig(path: Path): IPipelineContext {
+        val rawYaml = getRawConfig(path)
+        val resolvedYaml = rawYaml.resolveValueExpressions()
+        return PipelineContextFactory.create(resolvedYaml)
+
     }
 
-    fun getRawConfig(path: Path): Result<Map<String, Any>> {
-        return try {
-            val yamlResult: Result<Map<String, Any>> = path.deserializeYamlFileToMap()
-            if (yamlResult.isFailure) return Result.failure(yamlResult.exceptionOrNull()!!)
-            val rawYaml = yamlResult.getOrThrow()
-            Result.success(rawYaml)
+    context(Raise<PropertiesError>)
+    fun getRawConfig(path: Path): PropertySet = path.deserializeYamlFileToMap()
 
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 }

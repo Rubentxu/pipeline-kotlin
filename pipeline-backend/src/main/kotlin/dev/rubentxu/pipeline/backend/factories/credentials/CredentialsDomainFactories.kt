@@ -5,16 +5,20 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.fx.coroutines.parMap
 import arrow.fx.coroutines.parZip
+import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
+import dev.rubentxu.pipeline.backend.mapper.PropertyPath
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.propertyPath
+import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineDomainFactory
+import dev.rubentxu.pipeline.model.PropertiesError
 import dev.rubentxu.pipeline.model.credentials.*
-import dev.rubentxu.pipeline.model.mapper.*
 
 class LocalCredentialsFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<Credentials>> {
-        override val rootPath: PropertyPath = "credentials".propertyPath()
+        override val rootPath: String = "credentials"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<Credentials> {
@@ -58,8 +62,7 @@ class BasicSSHUserPrivateKeyFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<BasicSSHUserPrivateKey>> {
-        override val rootPath: PropertyPath =
-            "local[*].basicSSHUserPrivateKey".propertyPath()
+        override val rootPath: String = "local[*].basicSSHUserPrivateKey"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<BasicSSHUserPrivateKey> =
@@ -81,7 +84,7 @@ class UsernamePasswordFactory {
 
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<UsernamePassword>> {
-        override val rootPath: PropertyPath = "local[*].usernamePassword".propertyPath()
+        override val rootPath: String = "local[*].usernamePassword"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<UsernamePassword> {
@@ -105,7 +108,7 @@ class UsernamePasswordFactory {
 class StringCredentialsFatory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<StringCredentials>> {
-        override val rootPath: PropertyPath = "local[*].string".propertyPath()
+        override val rootPath: String = "local[*].string"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<StringCredentials> {
@@ -128,7 +131,7 @@ class StringCredentialsFatory {
 class AwsCredentialsFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<AwsCredentials>> {
-        override val rootPath: PropertyPath = "local[*].aws".propertyPath()
+        override val rootPath: String = "local[*].aws"
 
         override suspend fun create(data: PropertySet): List<AwsCredentials> {
             return getRootListPropertySet(data)
@@ -150,7 +153,7 @@ class AwsCredentialsFactory {
 class FileCredentialsFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<FileCredentials>> {
-        override val rootPath: PropertyPath = "local[*].file".propertyPath()
+        override val rootPath: String = "local[*].file"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<FileCredentials> {
@@ -174,7 +177,7 @@ class FileCredentialsFactory {
 class CertificateCredentialsFactory {
     context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<List<CertificateCredentials>> {
-        override val rootPath: PropertyPath = "local[*].certificate".propertyPath()
+        override val rootPath: String = "local[*].certificate"
 
         context(Raise<PropertiesError>)
         override suspend fun create(data: PropertySet): List<CertificateCredentials> {

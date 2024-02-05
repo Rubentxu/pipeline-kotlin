@@ -1,44 +1,40 @@
 package dev.rubentxu.pipeline.backend.factories.jobs
 
-import arrow.core.raise.Raise
+import arrow.core.raise.either
 import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PipelineFileSourceCodeFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PluginsDefinitionSourceFactory
 import dev.rubentxu.pipeline.backend.factories.sources.ProjectSourceCodeFactory
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
-import dev.rubentxu.pipeline.backend.mapper.PropertyPath
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
-import dev.rubentxu.pipeline.backend.mapper.propertyPath
 import dev.rubentxu.pipeline.backend.mapper.required
-import dev.rubentxu.pipeline.model.PropertiesError
-
+import dev.rubentxu.pipeline.model.Res
 
 class JobInstanceFactory {
 
-    context(Raise<PropertiesError>)
     companion object : PipelineDomainFactory<JobInstance> {
         override val rootPath: String = "pipeline"
 
-        context(Raise<PropertiesError>)
-        override suspend fun create(data: PropertySet): JobInstance {
-            val pipeline = getRootPropertySet(data)
-            return parZip(
-                { pipeline.required<String>("name") },
-                { ProjectSourceCodeFactory.create(pipeline) },
-                { PluginsDefinitionSourceFactory.create(pipeline) },
-                { PipelineFileSourceCodeFactory.create(pipeline) },
-                { JobParameterFactory.create(pipeline) }
+        override suspend fun create(data: PropertySet): Res<JobInstance> =
+            either {
+                val pipeline = getRootPropertySet(data)
+                parZip(
+                    { pipeline.required<String>("name") },
+                    { ProjectSourceCodeFactory.create(pipeline).bind() },
+                    { PluginsDefinitionSourceFactory.create(pipeline).bind() },
+                    { PipelineFileSourceCodeFactory.create(pipeline).bind() },
+                    { JobParameterFactory.create(pipeline).bind() }
 
-            ) { name, project, plugins, pipelineSourceCode, parameters ->
-                return@parZip JobInstance(
-                    name = name,
-                    projectSourceCode = project,
-                    pluginsSources = plugins,
-                    pipelineSourceCode = pipelineSourceCode,
-                    parameters = parameters
-                )
+                ) { name, project, plugins, pipelineSourceCode, parameters ->
+                    return@parZip JobInstance(
+                        name = name,
+                        projectSourceCode = project,
+                        pluginsSources = plugins,
+                        pipelineSourceCode = pipelineSourceCode,
+                        parameters = parameters
+                    )
+                }
             }
-        }
     }
 }

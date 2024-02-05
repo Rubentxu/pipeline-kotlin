@@ -15,13 +15,13 @@ import dev.rubentxu.pipeline.model.agents.DockerTemplateBase
 
 class DockerAgentFactory {
 
-    companion object : PipelineDomainFactory<Res<List<DockerAgent>>> {
+    companion object : PipelineDomainFactory<List<DockerAgent>> {
         override val rootPath: String = "agents.clouds[*].docker"
 
 
         override suspend fun create(data: PropertySet): Res<List<DockerAgent>> = either {
             getRootListPropertySet(data)
-                .parMap { properties: PropertySet ->
+                ?.parMap { properties: PropertySet ->
                     val templates: List<DockerTemplate> = DockerTemplateFactory.create(properties).bind()
 
                     DockerAgent(
@@ -32,20 +32,20 @@ class DockerAgentFactory {
                         labels = properties.required<List<String>>("labels"),
                         type = "docker"
                     )
-                }
+                }?: emptyList()
         }
     }
 }
 
 class DockerTemplateFactory {
 
-    companion object : PipelineDomainFactory<Res<List<DockerTemplate>>> {
+    companion object : PipelineDomainFactory<List<DockerTemplate>> {
         override val rootPath: String = "templates"
 
 
         override suspend fun create(data: PropertySet): Res<List<DockerTemplate>> = either {
             getRootListPropertySet(data)
-                .parMap { properties: PropertySet ->
+                ?.parMap { properties: PropertySet ->
                     val labelString: String = properties.required<String>("labelString")
                     val templateBaseMap: PropertySet = properties.required<PropertySet>("dockerTemplateBase")
                     DockerTemplate(
@@ -56,14 +56,14 @@ class DockerTemplateFactory {
                         instanceCapStr = properties.required<String>("instanceCapStr"),
                         retentionStrategy = properties.required<Int>("retentionStrategy.idleMinutes")
                     )
-                }
+                }?: emptyList()
         }
     }
 }
 
 class DockerTemplateBaseFactory {
 
-    companion object : PipelineDomainFactory<Res<DockerTemplateBase>> {
+    companion object : PipelineDomainFactory<DockerTemplateBase> {
         override val rootPath: String = "dockerTemplateBase"
 
         override suspend fun create(data: PropertySet): Res<DockerTemplateBase> = either {

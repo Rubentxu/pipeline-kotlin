@@ -1,31 +1,29 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
 
+import arrow.core.raise.either
 import dev.rubentxu.pipeline.backend.credentials.LocalCredentialsProvider
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.resolveValueExpressions
+import dev.rubentxu.pipeline.backend.mapper.toPropertySet
 import dev.rubentxu.pipeline.model.IDComponent
+import dev.rubentxu.pipeline.model.Res
 import dev.rubentxu.pipeline.model.credentials.Credentials
 import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
-import arrow.core.raise.Raise
-import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
-import dev.rubentxu.pipeline.backend.mapper.*
-import dev.rubentxu.pipeline.model.PropertiesError
 
 class CredentialsProviderFactory {
+    companion object {
+        suspend fun create(rawYaml: PropertySet): Res<ICredentialsProvider> =
+            either {
+                val resolvedYaml = rawYaml.resolveValueExpressions()
 
-    context(Raise<PropertiesError>)
-    companion object : PipelineDomainFactory<ICredentialsProvider> {
-        override val rootPath: String = "pipeline.credentialsProvider"
+                val credentialsMap: MutableMap<IDComponent, Credentials> =
+                    LocalCredentialsFactory.create(resolvedYaml.toPropertySet()).bind()
+                        .associateBy { it.id } as MutableMap<IDComponent, Credentials>
 
-        context(Raise<PropertiesError>)
-        override suspend fun create(rawYaml: PropertySet): ICredentialsProvider {
-            val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
-
-            val credentialsMap: MutableMap<IDComponent, Credentials> = LocalCredentialsFactory.create(resolvedYaml.toPropertySet())
-                .associateBy { it.id } as MutableMap<IDComponent, Credentials>
-
-            return LocalCredentialsProvider(
-                credentials = credentialsMap
-            )
-        }
+                LocalCredentialsProvider(
+                    credentials = credentialsMap
+                )
+            }
     }
 }

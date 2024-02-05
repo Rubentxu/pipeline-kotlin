@@ -416,7 +416,7 @@ inline fun <reified T> PropertySet.getValue(
         return getValueFromCollection<T>(segment, value, false) as T
     }
     ensure(value != null) { PropertiesError("PathSegment '${segment.getKey()}' is null in PropertySet") }
-    ensure(value is T) { PropertiesError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
+    ensure(value is T) { PropertiesError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class.simpleName} but ${value::class.simpleName}") }
 
     return value
 }

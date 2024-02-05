@@ -31,7 +31,8 @@ dependencies {
     implementation(project(":pipeline-dsl"))
     implementation(project(":pipeline-model"))
 
-    implementation("com.charleskorn.kaml:kaml:0.56.0")
+    implementation("org.yaml:snakeyaml:2.2")
+//    implementation("com.charleskorn.kaml:kaml:0.56.0")
     implementation("io.ktor:ktor-server-content-negotiation-jvm")
     implementation("io.ktor:ktor-server-core-jvm")
     implementation("io.ktor:ktor-serialization-gson-jvm")

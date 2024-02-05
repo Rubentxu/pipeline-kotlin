@@ -2,22 +2,33 @@ package dev.rubentxu.pipeline.backend.factories.credentials
 
 import arrow.core.Either
 import arrow.core.getOrElse
-import arrow.core.raise.effect
 import arrow.core.raise.either
 import dev.rubentxu.pipeline.backend.cdi.CascManager
+import dev.rubentxu.pipeline.backend.mapper.LookupException
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
+import dev.rubentxu.pipeline.model.PipelineError
+import dev.rubentxu.pipeline.model.PropertiesError
 import dev.rubentxu.pipeline.model.credentials.*
-import dev.rubentxu.pipeline.model.mapper.PropertiesError
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.scopes.StringSpecScope
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.test.runTest
-import pipeline.kotlin.extensions.LookupException
 import uk.org.webcompere.systemstubs.environment.EnvironmentVariables
 import java.nio.file.Path
 
 class CredentialsProviderFactoryTest : StringSpec({
+
+    "resolveConfig should correctly deserialize YAML secrets with basic SSH Private Key to PropertySet" {
+        val cascFileName = "casc/testData/credentials-basicSSH_Private_Key.yaml"
+        val properties = getProperties(cascFileName).getOrThrow()
+        val result = either { properties.required<String>("credentials.local[*].basicSSHUserPrivateKey[0].id") }
+        val result2 = result.getOrElse { throw Exception("No se ha podido ejecutar el test ") }
+        result2 shouldBe "ssh_with_passphrase_provided"
+    }
+
     "resolveConfig should correctly deserialize YAML secrets with basic SSH Private Key to PipelineConfig" {
         val environmentVariables = mapOf(
             "SSH_KEY_PASSWORD" to "miSSHKeyPassword",
@@ -227,24 +238,30 @@ class CredentialsProviderFactoryTest : StringSpec({
 
 })
 
+private val cascManager = CascManager()
 
 private suspend fun StringSpecScope.testConfig(
     environmentVariables: Map<String, String>,
     cascFileName: String,
 ): ICredentialsProvider {
-    var result: Either<PropertiesError, ICredentialsProvider> = Either.Left(PropertiesError("No se ha podido ejecutar el test"))
+    var result: Either<PipelineError, ICredentialsProvider> =
+        Either.Left(PropertiesError("No se ha podido ejecutar el test"))
     EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
-        val cascManager = CascManager()
-        // Ruta al archivo YAML de prueba
-        val resourcePath = this::class.java.classLoader.getResource(cascFileName).path
-        val testYamlPath = Path.of(resourcePath)
 
+        // Ruta al archivo YAML de prueba
+        val data = getProperties(cascFileName)
         return@execute runTest() {
-            result = either {
-                val data = cascManager.getRawConfig(testYamlPath)
-                CredentialsProviderFactory.create(data)
-            }
+            result = CredentialsProviderFactory.create(data.getOrThrow())
+
         }
     }
     return result.getOrElse { throw Exception("No se ha podido ejecutar el test ${it}") }
 }
+
+private fun StringSpecScope.getProperties(cascFileName: String): Result<PropertySet> {
+    val resourcePath = this::class.java.classLoader.getResource(cascFileName).path
+    val testYamlPath = Path.of(resourcePath)
+    val data = cascManager.getRawConfig(testYamlPath)
+    return data
+}
+

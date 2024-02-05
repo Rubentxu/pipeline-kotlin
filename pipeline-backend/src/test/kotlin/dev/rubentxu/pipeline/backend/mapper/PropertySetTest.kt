@@ -46,7 +46,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type String but Int"))
     }
 
     "required should return value if value is a list and index is present" {
@@ -64,7 +64,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type String but ArrayList"))
     }
 
     "required should fail if value is a list and index is out of range" {
@@ -100,7 +100,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type String but ArrayList"))
     }
 
     "required should fail if value is a list and index is out of range and value is a list" {
@@ -296,7 +296,7 @@ class PropertySetTest : StringSpec({
         result.toEither() shouldBe Either.Right(
             listOf(
                 PropertySet(
-                    data = mapOf("key4" to "valueKey4", "key8" to "valueKey8"),
+                    data = mapOf("key4" to "valueKey4", "key8" to "valueKey8") ,
                     absolutePath = "key.key2[0].key3".propertyPath()
                 ),
                 PropertySet(
@@ -378,7 +378,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.collections.List"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type List but String"))
     }
 
     "required should fail if path points to a list but a non-list value is expected" {
@@ -387,7 +387,7 @@ class PropertySetTest : StringSpec({
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Value for PathSegment 'key' is not of type String but ArrayList"))
     }
 
     "required should fail if path points to a list and index is out of range" {
@@ -636,11 +636,11 @@ class PropertySetTest : StringSpec({
         result.toEither() shouldBe Either.Right(
             listOf(
                 PropertySet(
-                    data = mapOf("key4" to "value1"),
+                    data = mapOf("key4" to "value1") ,
                     absolutePath = "key1.key2[0].key3".propertyPath()
                 ),
                 PropertySet(
-                    data = mapOf("key4" to "value2"),
+                    data = mapOf("key4" to "value2") ,
                     absolutePath = "key1.key2[1].key3".propertyPath()
                 )
             )
@@ -662,16 +662,16 @@ class PropertySetTest : StringSpec({
 
         resultEither shouldBe Either.Right(
             PropertySet(
-                data = mapOf("key3" to propertiesOf("key4" to "value1")),
+                data = mapOf("key3" to propertiesOf("key4" to "value1")) ,
                 absolutePath = "key1.key2".propertyPath()
             )
         )
-        resultEither.getOrNull()?.absolutePath.toString() shouldBe "key1.key2"
+        val resultPropertySet = resultEither.getOrNull()
+        resultPropertySet?.absolutePath.toString() shouldBe "key1.key2"
     }
 
     "required should return value if present with errorPathContext" {
         val result = effect {
-            val errorPathContext = "root".propertyPath()
             val subPropertySet = propertiesOf("key" to "value")
             subPropertySet.required<String>("key")
         }
@@ -700,6 +700,6 @@ class PropertySetTest : StringSpec({
             val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to 123))
             propertySet.required<String>("key2.key4")
         }
-        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key2.key4' | Value for PathSegment 'key4' is not of type class kotlin.String"))
+        result.toEither() shouldBe Either.Left(PropertiesError("Error in path 'key2.key4' | Value for PathSegment 'key4' is not of type String but Int"))
     }
 })

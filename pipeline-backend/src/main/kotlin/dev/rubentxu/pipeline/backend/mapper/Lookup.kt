@@ -2,10 +2,9 @@
 
 package dev.rubentxu.pipeline.backend.mapper
 
-
-import com.charleskorn.kaml.Yaml
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
+import org.yaml.snakeyaml.Yaml
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,7 +29,7 @@ fun String.systemPropertyLookup(): Result<String> {
 fun String.environmentVariableLookup(): Result<String> {
     return try {
         val matchResult = regexEnvironmentVariable.matchEntire(this)
-        val (envVar, _,defaultValue) = matchResult!!.destructured
+        val (envVar, _, defaultValue) = matchResult!!.destructured
         val envVarValue = System.getenv(envVar)
 
         if (envVarValue != null) {
@@ -40,7 +39,9 @@ fun String.environmentVariableLookup(): Result<String> {
                 return success(defaultValue)
             } else {
                 return failure(
-                    LookupException("Error in environment variable lookup. Variable not found for key: $this", Exception("Environment variable not found for key: $this")
+                    LookupException(
+                        "Error in environment variable lookup. Variable not found for key: $this",
+                        Exception("Environment variable not found for key: $this")
                     )
                 )
             }
@@ -141,7 +142,7 @@ fun String.deserializeJsonField(): Result<String> {
 fun Path.deserializeYamlFileToMap(): Result<PropertySet> {
     return try {
         val content = String(Files.readAllBytes(this), StandardCharsets.UTF_8)
-        val yaml = Yaml.default.decodeFromString<PropertySet>(content)
+        val yaml = Yaml().load<PropertySet>(content)
         success(yaml)
     } catch (e: Exception) {
         failure(LookupException("Error in YAML lookup ${e.javaClass.simpleName} ${e.message}", e))
@@ -159,7 +160,7 @@ fun String.deserializeYamlField(): Result<String> {
         val yamlFieldName = components[0]
         val yamlFile = components[1]
         val yaml = yamlFile.readFileLookup().getOrThrow()
-        val yamlObject =  Yaml.default.decodeFromString<PropertySet>(yaml)
+        val yamlObject = Yaml().load<PropertySet>(yaml)
 
         yamlObject[yamlFieldName]?.toString()?.let {
             success(it)
@@ -211,7 +212,7 @@ fun String.isJsonValid(): Boolean {
 
 
 fun PropertySet.resolveValueExpressions(): PropertySet {
-    val resolvedData = this.data.entries.associate { (key, value) ->
+    val resolvedData = this.entries.associate { (key, value) ->
         key to when (value) {
             is PropertySet -> value.resolveValueExpressions()
             is List<*> -> value.resolveValueExpressions()

@@ -4,7 +4,6 @@ import arrow.core.getOrElse
 import arrow.fx.coroutines.parZip
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.resolveValueExpressions
-import dev.rubentxu.pipeline.backend.mapper.toPropertySet
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.agents.Agent
 
@@ -13,8 +12,8 @@ class AgentsProviderFactory {
     companion object {
 
         suspend fun create(rawYaml: PropertySet): IAgentProvider {
-            val resolvedYaml: Map<String, Any> = rawYaml.resolveValueExpressions() as Map<String, Any>
-            val agents: Map<IDComponent, Agent> = createAgents(resolvedYaml.toPropertySet())
+            val resolvedYaml: PropertySet = rawYaml.resolveValueExpressions()
+            val agents: Map<IDComponent, Agent> = createAgents(resolvedYaml)
                 .associateBy { it.id }
 
 

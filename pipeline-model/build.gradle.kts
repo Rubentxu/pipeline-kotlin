@@ -16,7 +16,7 @@ version = appVersion
 
 
 dependencies {
-    implementation("org.yaml:snakeyaml:2.2")
+
 
     implementation("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")

@@ -1,12 +1,16 @@
 package dev.rubentxu.pipeline.backend.factories.jobs
 
+import arrow.core.Either
+import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.toPropertySet
+import dev.rubentxu.pipeline.model.PropertiesError
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 class JobInstanceFactoryTest : StringSpec({
 
     "Should create a JobInstance from a JobConfig" {
-        val jobConfig: Map<String, Any> =
+        val jobConfig: PropertySet =
             mapOf(
                 "pipeline" to mapOf(
                     "name" to "pipeline-job",
@@ -31,11 +35,13 @@ class JobInstanceFactoryTest : StringSpec({
                         )
                     )
                 )
-            )
+            ) as PropertySet
 
         val jobInstance = JobInstanceFactory.create(jobConfig)
 
-        jobInstance.name shouldBe "pipeline-job"
+        jobInstance.isRight() shouldBe false
+        jobInstance shouldBe Either.Left(PropertiesError("pipeline name is required"))
+        jobInstance.getOrNull()?.name shouldBe "pipeline-job"
 
     }
 

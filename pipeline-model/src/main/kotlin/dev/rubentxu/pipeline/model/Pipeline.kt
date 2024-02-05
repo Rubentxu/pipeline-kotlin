@@ -14,7 +14,9 @@ interface IPipelineConfig : PipelineDomain
 class PipelineException(message: String) : Exception(message)
 
 
-sealed class PipelineError
+sealed interface PipelineError{
+    val message: String
+}
 
 /**
  * Data class for validation errors.
@@ -22,9 +24,9 @@ sealed class PipelineError
  * @property message The error message. This is used to represent an error
  *     that occurs during validation.
  */
-data class PropertiesError(val message: String) : PipelineError()
+data class PropertiesError(override val message: String) : PipelineError
 
-data class NoSuchServiceError(val message: String) : PipelineError()
+data class NoSuchServiceError(override val message: String) : PipelineError
 
 
 typealias Res<T> = Either<out PipelineError, T>

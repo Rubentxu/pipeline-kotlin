@@ -1,16 +1,14 @@
 package dev.rubentxu.pipeline.backend.factories
 
-import arrow.core.Either
 import arrow.core.raise.Raise
-import dev.rubentxu.pipeline.backend.mapper.PropertyPath
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
+import dev.rubentxu.pipeline.backend.mapper.optional
 import dev.rubentxu.pipeline.backend.mapper.required
-import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.model.Res
 
 
-
-interface PipelineDomainFactory<T>  {
+interface PipelineDomainFactory<T> {
     val rootPath: String
 
     context(Raise<PropertiesError>)
@@ -19,10 +17,10 @@ interface PipelineDomainFactory<T>  {
     }
 
     context(Raise<PropertiesError>)
-    fun getRootListPropertySet(data: PropertySet): List<PropertySet> {
-        return data.required<List<PropertySet>>(rootPath)
+    fun getRootListPropertySet(data: PropertySet): List<PropertySet>? {
+        return data.optional<List<PropertySet>>(rootPath)
     }
 
 
-    suspend fun create(data: PropertySet): T
+    suspend fun create(data: PropertySet): Res<T>
 }

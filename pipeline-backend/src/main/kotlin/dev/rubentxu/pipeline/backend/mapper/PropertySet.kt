@@ -4,9 +4,10 @@ import arrow.core.*
 import arrow.core.raise.Raise
 import arrow.core.raise.either
 import arrow.core.raise.ensure
+import arrow.core.raise.result
 import dev.rubentxu.pipeline.model.PropertiesError
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.*
+import java.util.concurrent.ConcurrentHashMap
 
 
 typealias ListProperties = List<PropertySet>
@@ -25,24 +26,23 @@ class PropertySet(
     private val cache: PropertiesCache = ConcurrentHashMap(),
 ) : Map<String, Any?> by data {
 
-    context(Raise<PropertiesError>)
-    fun getParentPropertySet(nestedPath: NestedPath): PropertySet {
-        val keys = nestedPath.getPathSegments()
+
+    fun getParentPropertySet(nestedPath: NestedPath): Result<PropertySet> = result {
+        val keys = nestedPath.getPathSegments().bind()
 
         val parentPath = getFullParentPath(nestedPath)
-        val result = cache.getOrPut(parentPath, {
-            keys.dropLast(1).fold(this) { acc: PropertySet, key: PropertyPath ->
-                acc.required<PropertySet>(key as PathSegment)
+        val result = cache.getOrPut(parentPath.bind(), {
+            keys.dropLast(1).fold(this@PropertySet) { acc: PropertySet, key: PropertyPath ->
+                acc.required<PropertySet>(key as PathSegment) as PropertySet
             }
         })
-        return result
+        result
     }
 
-    context(Raise<PropertiesError>)
-    private fun getFullParentPath(nestedPath: NestedPath): PropertyPath {
-        val segments = nestedPath.getPathSegments()
+    private fun getFullParentPath(nestedPath: NestedPath): Result<PropertyPath> = result {
+        val segments = nestedPath.getPathSegments().bind()
         val path = segments.dropLast(1).joinToString(".")
-        return path.propertyPath()
+        path.propertyPath()
     }
 
     override fun equals(other: Any?): Boolean {
@@ -100,10 +100,23 @@ fun listPropertiesOf(vararg pairs: PropertySet): List<PropertySet> {
  *
  * @return PropertySet instance.
  */
-fun Map<String, Any?>.toPropertySet(): PropertySet {
-    return PropertySet(this, EmptyPropertyPath)
-}
+fun Map<String, Any?>.toPropertySet(parentPath: PropertyPath = EmptyPropertyPath): PropertySet {
+    val updatedMap = this.mapValues { (key, value) ->
+        when (value) {
+            is Map<*, *> -> (value as Map<String, Any?>).toPropertySet(parentPath.combine(key.propertyPath()))
+            is List<*> -> value.map {
+                if (it is Map<*, *>) {
+                    (it as Map<String, Any?>).toPropertySet(parentPath.combine(key.propertyPath()))
+                } else {
+                    it
+                }
+            }
 
+            else -> value
+        }
+    }
+    return PropertySet(updatedMap, parentPath)
+}
 
 
 /**
@@ -124,9 +137,9 @@ class PropertiesException(message: String) : Exception(message)
  *     PathSegment.
  */
 fun String.propertyPath(): PropertyPath {
-     return either {
-         toPropertyPath(this@propertyPath)
-     }.getOrElse { InvalidPropertyPath(it.message) }
+    return either {
+        toPropertyPath(this@propertyPath)
+    }.getOrElse { InvalidPropertyPath(this, it.message) }
 }
 
 fun Raise<PropertiesError>.toPropertyPath(path: String): PropertyPath {
@@ -143,7 +156,7 @@ fun Raise<PropertiesError>.toPropertyPath(path: String): PropertyPath {
  *
  * @return PropertyPath instance which is a PathSegment.
  */
-context(Raise<PropertiesError>)
+
 inline fun String.pathSegment(): PathSegment = PathSegment(this) as PathSegment
 
 
@@ -152,7 +165,7 @@ inline fun String.pathSegment(): PathSegment = PathSegment(this) as PathSegment
  *
  * @return PropertyPath instance which is a NestedPath.
  */
-context(Raise<PropertiesError>)
+
 inline fun String.nestedPath(): NestedPath = NestedPath(this) as NestedPath
 
 sealed class IndexType
@@ -161,28 +174,32 @@ data class AsteriskIndex(val keyFilter: String) : IndexType()
 object EmptyValidIndex : IndexType()
 
 
-/**
- * Sealed interface for PropertyPath. This is used to represent a path to a
- * property. It can be a PathSegment or a NestedPath.
- */
 sealed interface PropertyPath {
-    context(Raise<PropertiesError>)
-    fun combine(other: PropertyPath): String {
-        val result = when (other) {
-            is EmptyPropertyPath -> this.toString()
-            else -> "${if (this.toString().isEmpty()) "" else "${this}."}${other}"
-        }
-        return result
-    }
+    val path: String
+
+    fun empty(): PropertyPath = EmptyPropertyPath
+    fun combine(other: PropertyPath): PropertyPath
 }
+
 
 object EmptyPropertyPath : PropertyPath {
-    override fun toString(): String {
-        return ""
+    override val path: String = ""
+
+    override fun combine(other: PropertyPath): PropertyPath {
+        return other
     }
+
+    override fun toString(): String {
+        return path
+    }
+
 }
 
-data class InvalidPropertyPath(val errorMsg: String) : PropertyPath {
+data class InvalidPropertyPath(override val path: String, val errorMsg: String) : PropertyPath {
+    override fun combine(other: PropertyPath): PropertyPath {
+        return this
+    }
+
     override fun toString(): String {
         return errorMsg
     }
@@ -196,7 +213,7 @@ data class InvalidPropertyPath(val errorMsg: String) : PropertyPath {
  *
  * @property path The path segment.
  */
-data class PathSegment private constructor(val path: String) : PropertyPath {
+data class PathSegment private constructor(override val path: String) : PropertyPath {
     private val indexRegex = """.*\[(.*)\].*""".toRegex()
     private val numberRegex = """.*\[([\d]+)\]""".toRegex()
     private val asteriskRegex = """.*\[\*].*""".toRegex()
@@ -210,12 +227,12 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
          * @param path The path string.
          * @return PropertyPath instance which is a PathSegment.
          */
-        context(Raise<PropertiesError>)
-        operator fun invoke(path: String): PropertyPath {
+
+        operator fun invoke(path: String): Result<PropertyPath> = result {
             ensure(path.isNotEmpty()) { PropertiesError("PathSegment cannot be empty") }
             ensure(path.all { it.isDefined() }) { PropertiesError("PathSegment can only contain alphanumeric characters : ${this}") }
 //            ensure(!path.contains(".")) { ValidationError("PathSegment cannot contain '.'") }
-            return PathSegment(path)
+            PathSegment(path)
         }
     }
 
@@ -235,7 +252,7 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
      *
      * @return The key as a string.
      */
-    context(Raise<PropertiesError>)
+
     fun getKey(): String = path.substringBefore("[")
 
     /**
@@ -256,6 +273,13 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
         return EmptyValidIndex
     }
 
+    override fun combine(other: PropertyPath): PropertyPath {
+        return when (other) {
+            is EmptyPropertyPath -> return this
+            else -> "${this.path}.${other.path}".propertyPath()
+        }
+    }
+
     override fun toString(): String {
         return path
     }
@@ -269,7 +293,7 @@ data class PathSegment private constructor(val path: String) : PropertyPath {
  *
  * @property path The nested path.
  */
-data class NestedPath private constructor(val path: String) : PropertyPath {
+data class NestedPath private constructor(override val path: String) : PropertyPath {
 
     /**
      * Factory method to create a NestedPath instance. It validates the path
@@ -281,13 +305,12 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
     companion object {
         private val nestedPathRegex = """([a-zA-Z0-9]+(\[[\d\*]+\])?\.)*[a-zA-Z0-9]+(\[[\d\*]+\])?""".toRegex()
 
-        context(Raise<PropertiesError>)
-        operator fun invoke(path: String): PropertyPath {
+        operator fun invoke(path: String): Result<PropertyPath> = result {
             ensure(validatePath(path)) { PropertiesError("NestedPath is not valid for path '$path'") }
             ensure(path.isNotEmpty()) { PropertiesError("NestedPath cannot be empty") }
             ensure(path.contains(".") || path.contains("[")) { PropertiesError("NestedPath must contain '.' or '[]'") }
             ensure(path.all { it.isDefined() }) { PropertiesError("NestedPath can only contain alphanumeric characters : ${this}") }
-            return NestedPath(path)
+            NestedPath(path)
         }
 
 
@@ -302,22 +325,7 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
     }
 
 
-    /**
-     * This function is used to get the path segments from a nested path. It
-     * splits the path into segments using the "." character as a delimiter.
-     * Then it iterates over each segment and checks if it ends with "[*]". If
-     * it does, and if there is a next segment, it concatenates the current
-     * segment with the next one using "." as a separator. The concatenated
-     * segment is then treated as a single segment. Each segment is then
-     * converted to a PathSegment and added to the list of path segments. The
-     * function returns the list of path segments.
-     *
-     * @return A list of PathSegment instances representing the segments of the
-     *     path.
-     * @throws PropertiesError if the path is not valid.
-     */
-    context(Raise<PropertiesError>)
-    fun getPathSegments(): List<PathSegment> {
+    fun getPathSegments(): Result<List<PathSegment>> = result {
         val segments = path.split(".")
         val pathSegments = mutableListOf<PathSegment>()
 
@@ -336,7 +344,14 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
             pathSegments.add(PathSegment(segment) as PathSegment)
             i++
         }
-        return pathSegments
+        pathSegments
+    }
+
+    override fun combine(other: PropertyPath): PropertyPath {
+        return when (other) {
+            is EmptyPropertyPath -> return this
+            else -> NestedPath("${this.path}.${other.path}")
+        }
     }
 
     override fun toString(): String {
@@ -352,8 +367,8 @@ data class NestedPath private constructor(val path: String) : PropertyPath {
  * @param path The PropertyPath.
  * @return The required value of type T.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.required(path: PropertyPath): T {
+
+inline fun <reified T> PropertySet.required(path: PropertyPath): Result<T> = result {
     return when (path) {
         is PathSegment -> required<T>(path)
         is NestedPath -> required<T>(path)
@@ -372,8 +387,8 @@ inline fun <reified T> PropertySet.required(path: PropertyPath): T {
  *     and if the value is of type T. If all checks pass, it returns the
  *     value. Otherwise, it throws a ValidationErrorException.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.required(path: String): T {
+
+inline fun <reified T> PropertySet.required(path: String): Result<T> = result {
     val propertyPath: PropertyPath = path.propertyPath()
     return required<T>(propertyPath)
 }
@@ -389,8 +404,10 @@ inline fun <reified T> PropertySet.required(path: String): T {
  *     and if the value is of type T. If all checks pass, it returns the
  *     value. Otherwise, it throws a ValidationErrorException.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.required(segment: PathSegment): T = getValue<T>(segment)
+
+inline fun <reified T> PropertySet.required(segment: PathSegment): Result<T> = result {
+    getValue<T>(segment).bind()
+}
 
 
 /**
@@ -405,36 +422,34 @@ inline fun <reified T> PropertySet.required(segment: PathSegment): T = getValue<
  *     ValidationErrorException. If the segment does not contain an index,
  *     it returns the value.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.getValue(
-    segment: PathSegment,
-): T {
+
+inline fun <reified T> PropertySet.getValue(segment: PathSegment): Result<T> = result {
     ensure(containsKey(segment.getKey())) { PropertiesError("PathSegment '${segment.getKey()}' not found in PropertySet") }
-    val value: Any? = updateAbsolutePathIfPropertySet(get(segment.getKey()), segment)
+    val value: Any? = updateAbsolutePathIfPropertySet<T>(get(segment.getKey()), segment).bind()
 
     if (segment.containsIndex()) {
-        return getValueFromCollection<T>(segment, value, false) as T
+        getValueFromCollection<T>(segment, value, false)
     }
     ensure(value != null) { PropertiesError("PathSegment '${segment.getKey()}' is null in PropertySet") }
     ensure(value is T) { PropertiesError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class.simpleName} but ${value::class.simpleName}") }
 
-    return value
+    value
 }
 
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.updateAbsolutePathIfPropertySet(value: Any?, segment: PathSegment): T {
+
+inline fun <reified T> PropertySet.updateAbsolutePathIfPropertySet(value: Any?, segment: PathSegment): Result<T> = result {
     if (value is PropertySet) {
-        val newPath = absolutePath.combine(segment).propertyPath()
-        return PropertySet(value.data, newPath) as T
+        val newPath = absolutePath.combine(segment)
+        PropertySet(value.data, newPath) as T
     }
     if (value is List<*> && value.isNotEmpty() && value.first() is PropertySet) {
-        return value.mapIndexed { index, it ->
-            val newPath = absolutePath.combine(segment).replace("[*]", "[$index]").propertyPath()
+        value.mapIndexed { index, it ->
+            val newPath = absolutePath.combine(segment).path.replace("[*]", "[$index]").propertyPath()
             it as PropertySet
             PropertySet(it.data, newPath)
         } as T
     }
-    return value as T
+    value as T
 }
 
 
@@ -452,12 +467,12 @@ inline fun <reified T> PropertySet.updateAbsolutePathIfPropertySet(value: Any?, 
  *     found and isOptional is true, it returns null. If the value is not
  *     found and isOptional is false, it raises a ValidationError.
  */
-context(Raise<PropertiesError>)
+
 inline fun <reified T> PropertySet.getValueFromCollection(
     segment: PathSegment,
     value: Any?,
     isOptional: Boolean,
-): T? {
+): Result<Any?> = result {
     val indexType = segment.getIndexType()
     when (indexType) {
         is NumberIndex -> {
@@ -466,7 +481,7 @@ inline fun <reified T> PropertySet.getValueFromCollection(
             ensure(index != null) { PropertiesError("PathSegment '${segment.path}' does not contain an index ${index}") }
             if (isOptional) {
                 if (!value.isInRangeCollection(index)) {
-                    return null
+                    null
                 }
             } else {
                 ensure(value.isInRangeCollection(index)) { PropertiesError("PathSegment '${segment.path}' index ${index} is out of range") }
@@ -516,20 +531,20 @@ inline fun <reified T> PropertySet.getValueFromCollection(
  * @return The value of type T or null if the value is not present or does
  *     not pass the checks.
  */
-context(Raise<PropertiesError>)
+
 inline fun <reified T> PropertySet.getOptionalValue(
     segment: PathSegment,
-): T? {
-    val value: Any? = updateAbsolutePathIfPropertySet(get(segment.getKey()), segment)
+): Result<T?> = result {
+    val value: Any? = updateAbsolutePathIfPropertySet<T>(get(segment.getKey()), segment).bind()
 
     if (segment.containsIndex() && value != null) {
-        return getValueFromCollection<T>(segment, value, true) as T?
+        getValueFromCollection<T>(segment, value, true) as T?
     }
     ensure(value is T?) { PropertiesError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class}") }
-    if(value is List<*> && value.isEmpty()) {
-        return emptyList<T>() as T?
+    if (value is List<*> && value.isEmpty()) {
+        emptyList<T>() as T?
     }
-    return value
+    value
 }
 
 /**
@@ -558,22 +573,15 @@ fun List<*>.isInRangeCollection(index: Int): Boolean {
  *     required value in the PropertySet.
  * @return The required value of type T.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.required(nestedPath: NestedPath): T {
-    val result = either {
-        val keys = nestedPath.getPathSegments()
-        val parentProperties = this@required.getParentPropertySet(nestedPath)
-        parentProperties.required<T>(keys.last() as PathSegment)
-    }
-    return result
-        .mapLeft { error ->
-            PropertiesError(
-                "Error in path '${
-                    if (absolutePath.toString().isNotEmpty()) absolutePath else nestedPath
-                }' | ${error.message}"
-            )
-        }
-        .bind()
+
+inline fun <reified T> PropertySet.required(nestedPath: NestedPath): Result<T> = result {
+    val keys = nestedPath.getPathSegments().bind()
+    val parentProperties = this@required.getParentPropertySet(nestedPath).bind()
+
+    parentProperties.required<T>(keys.last() as PathSegment)
+        .recover { error ->
+            Result.failure<T>(exception = PropertiesError("Error in nested path '${nestedPath.path}': ${error.message}")) as T
+        }.bind()
 
 }
 
@@ -603,8 +611,8 @@ fun <T> Either<PropertiesError, T>.unwrap(): T {
  *     PathSegment. If the path is a NestedPath, it calls the optional
  *     function for NestedPath.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.optional(path: PropertyPath): T? {
+
+inline fun <reified T> PropertySet.optional(path: PropertyPath): Result<T?> = result {
     return when (path) {
         is PathSegment -> optional<T>(path)
         is NestedPath -> optional<T>(path)
@@ -626,8 +634,8 @@ inline fun <reified T> PropertySet.optional(path: PropertyPath): T? {
  *     is not of type T, it returns a ValidationError. If the value is of
  *     type T, it returns the value.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.optional(segment: PathSegment): T? = getOptionalValue<T?>(segment)
+
+inline fun <reified T> PropertySet.optional(segment: PathSegment): Result<T?> = getOptionalValue<T?>(segment)
 
 
 /**
@@ -642,11 +650,11 @@ inline fun <reified T> PropertySet.optional(segment: PathSegment): T? = getOptio
  *     is not of type T, it returns a ValidationError. If the value is of
  *     type T, it returns the value.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.optional(path: String): T? {
+
+inline fun <reified T> PropertySet.optional(path: String): Result<T?> = result {
     val pathSegment: PropertyPath = path.propertyPath()
     return when (pathSegment) {
-        is PathSegment -> optional<T>(pathSegment) as T?
+        is PathSegment -> optional<T>(pathSegment)
         is NestedPath -> optional<T>(pathSegment)
         is EmptyPropertyPath -> raise(PropertiesError("PathSegment cannot be empty"))
         is InvalidPropertyPath -> raise(PropertiesError(pathSegment.errorMsg))
@@ -665,16 +673,16 @@ inline fun <reified T> PropertySet.optional(path: String): T? {
  *     each segment. Finally, it gets the optional value from the last
  *     segment.
  */
-context(Raise<PropertiesError>)
-inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
-    val keys = path.getPathSegments()
+
+inline fun <reified T> PropertySet.optional(path: NestedPath): Result<T?> = result {
+    val keys = path.getPathSegments().bind()
     val partialPath = keys.dropLast(1)
 
-    val finalPath: PropertySet = partialPath.fold(this) { acc: PropertySet, key: PropertyPath ->
-        acc.optional<PropertySet>(key as PathSegment) ?: PropertySet(emptyMap(), path)
+    val finalPath: PropertySet = partialPath.fold(this@optional) { acc: PropertySet, key: PropertyPath ->
+        acc.optional<PropertySet>(key as PathSegment).bind() ?: PropertySet(emptyMap(), path)
     }
 
-    return finalPath.optional<T>(keys.last())
+    finalPath.optional<T>(keys.last()).bind()
 }
 
 
@@ -687,7 +695,7 @@ inline fun <reified T> PropertySet.optional(path: NestedPath): T? {
  *     the PropertySet instances in the list. Returns true if the path
  *     segment is present, otherwise, returns false.
  */
-context(Raise<PropertiesError>)
+
 inline fun <reified T> List<PropertySet>.contains(segment: PathSegment): Boolean {
     return this.any { property: PropertySet -> property.optional<T>(segment) != null }
 }

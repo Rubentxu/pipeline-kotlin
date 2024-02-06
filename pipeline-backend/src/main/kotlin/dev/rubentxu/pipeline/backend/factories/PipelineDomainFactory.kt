@@ -10,17 +10,15 @@ import dev.rubentxu.pipeline.model.Res
 
 interface PipelineDomainFactory<T> {
     val rootPath: String
-
-    context(Raise<PropertiesError>)
-    fun getRootPropertySet(data: PropertySet): PropertySet {
+    
+    fun getRootPropertySet(data: PropertySet): Result<PropertySet> {
         return data.required<PropertySet>(rootPath)
     }
-
-    context(Raise<PropertiesError>)
-    fun getRootListPropertySet(data: PropertySet): List<PropertySet>? {
+    
+    fun getRootListPropertySet(data: PropertySet): Result<List<PropertySet>?> {
         return data.optional<List<PropertySet>>(rootPath)
     }
 
 
-    suspend fun create(data: PropertySet): Res<T>
+    suspend fun create(data: PropertySet): Result<T>
 }

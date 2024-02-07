@@ -16,13 +16,13 @@ class PipelineContextFactory : PipelineDomain {
             return fold(
                 block = {
                     val context = PipelineContext()
-                    val job = JobInstanceFactory.create(data).bind()
-                    val credentials = CredentialsProviderFactory.create(data).bind()
+                    val job = JobInstanceFactory.create(data).getOrThrow()
+                    val credentials = CredentialsProviderFactory.create(data).getOrThrow()
                     context.registerService(JobInstance::class, job)
                     context.registerService(ICredentialsProvider::class, credentials)
                     context
                 },
-                recover = { error: PipelineError -> Result.failure(PipelineException("Error creating pipeline context ${error.message}}")) },
+                recover = { error: PipelineError -> Result.failure(PipelineError("Error creating pipeline context ${error.message}}")) },
                 transform = { context: PipelineContext -> Result.success(context) }
             )
         }

@@ -2,7 +2,7 @@ package pipeline.kotlin.extensions
 
 import com.google.gson.Gson
 import dev.rubentxu.pipeline.dsl.StepsBlock
-import dev.rubentxu.pipeline.model.PipelineException
+import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.workspace.WorkspaceManager
 import java.io.File
 import java.nio.file.Path
@@ -34,7 +34,7 @@ suspend fun StepsBlock.findFiles(glob: String): List<Path> {
         }
 
     if (result.isFailure) {
-        throw PipelineException("Error finding files: ${result.exceptionOrNull()?.message}")
+        throw PipelineError("Error finding files: ${result.exceptionOrNull()?.message}")
     }
     return result.getOrNull()!!
 }

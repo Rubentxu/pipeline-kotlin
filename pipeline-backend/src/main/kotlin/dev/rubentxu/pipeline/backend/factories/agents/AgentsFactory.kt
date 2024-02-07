@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-import arrow.core.getOrElse
-import arrow.fx.coroutines.parZip
+import dev.rubentxu.pipeline.backend.coroutines.parZipResult
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.resolveValueExpressions
 import dev.rubentxu.pipeline.model.IDComponent
@@ -14,6 +13,7 @@ class AgentsProviderFactory {
         suspend fun create(rawYaml: PropertySet): IAgentProvider {
             val resolvedYaml: PropertySet = rawYaml.resolveValueExpressions()
             val agents: Map<IDComponent, Agent> = createAgents(resolvedYaml)
+                .getOrThrow()
                 .associateBy { it.id }
 
 
@@ -22,15 +22,12 @@ class AgentsProviderFactory {
             )
         }
 
-        private suspend fun createAgents(agentsConfig: PropertySet): List<Agent> =
-            parZip(
+        private suspend fun createAgents(agentsConfig: PropertySet): Result<List<Agent>> =
+            parZipResult(
                 { KubernetesAgentFactory.create(agentsConfig) },
-                { KubernetesAgentFactory.create(agentsConfig) }
-            ) { dockerAgent, kubernetesAgent ->
-                buildList {
-                    addAll(dockerAgent.getOrElse { emptyList() })
-                    addAll(kubernetesAgent.getOrElse { emptyList() })
-                }
+                { DockerAgentFactory.create(agentsConfig) }
+            ) { kubernetesAgents, dockerAgents ->
+                kubernetesAgents + dockerAgents
             }
     }
 }

@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.backend.cdi
 
-import arrow.core.flatMap
 import dev.rubentxu.pipeline.backend.factories.PipelineContextFactory
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.propertyPath
@@ -27,9 +26,7 @@ class CascManager {
     suspend fun resolvePipelineContext(path: Path): Result<IPipelineContext> =
         getRawConfig(path)
             .map { it.resolveValueExpressions() }
-            .flatMap { PipelineContextFactory.create(it) }
-
-
+            .mapCatching { PipelineContextFactory.create(it).getOrThrow() }
     fun getRawConfig(path: Path): Result<PropertySet> = path.deserializeYamlFileToMap()
 
 }

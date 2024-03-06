@@ -12,7 +12,7 @@ class PropertySetTest : StringSpec({
 
     "required should return value if present" {
 
-        val propertySet = propertiesOf("key" to "value")
+        val propertySet = mapOf("key" to "value").toPropertySet()
         val pathSegment = "key".propertyPath()
         val result = propertySet.required<String>(pathSegment)
 
@@ -20,7 +20,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if key is not present" {
-        val propertySet: PropertySet = propertiesOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val pathSegment = "key2".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -29,7 +29,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is null" {
-        val propertySet: PropertySet = propertiesOf("key" to null)
+        val propertySet: PropertySet = mapOf("key" to null).toPropertySet()
         val pathSegment = "key".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -38,7 +38,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is not of type T" {
-        val propertySet: PropertySet = propertiesOf("key" to 123)
+        val propertySet: PropertySet = mapOf("key" to 123).toPropertySet()
         val pathSegment = "key".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -47,7 +47,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should return value if value is a list and index is present" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[0]".propertyPath()
         val result = propertySet.required<String>(pathSegment)
 
@@ -55,7 +55,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is not present" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -64,7 +64,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is out of range" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[2]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -73,7 +73,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is not a number" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[a]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -82,7 +82,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is not range" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[-1]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -91,7 +91,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is not present and value is a list" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -100,7 +100,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is out of range and value is a list" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[2]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -109,7 +109,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is not a number and value is a list" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[a]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -118,7 +118,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is a list and index is not range and value is a list" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[-1]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -127,7 +127,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should return value if nested path is present" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key2[0]".propertyPath()
         val result = propertySet.required<String>(nestedPath)
 
@@ -135,11 +135,11 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if nested path is not present" {
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf(
                 "key2" to listOf("value1", "value2")
             )
-        )
+        ).toPropertySet()
         val nestedPath = "key1.key3[0]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -148,7 +148,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if nested path is invalid" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1..key2[0]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -157,7 +157,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if nested path index is out of range" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key2[2]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -166,7 +166,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if nested path index is not a number" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key2[a]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -175,7 +175,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return value if present" {
-        val propertySet: PropertySet = propertiesOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val pathSegment = "key".propertyPath()
         val result = propertySet.optional<String>(pathSegment)
 
@@ -183,7 +183,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if key is not present" {
-        val propertySet: PropertySet = propertiesOf("key" to "value")
+        val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
         val pathSegment = "key2".propertyPath()
         val result = propertySet.optional<String>(pathSegment)
 
@@ -191,7 +191,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if value is null" {
-        val propertySet: PropertySet = propertiesOf("key" to null)
+        val propertySet: PropertySet = mapOf("key" to null).toPropertySet()
         val pathSegment = "key".propertyPath()
         val result = propertySet.optional<String>(pathSegment)
 
@@ -199,7 +199,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if value is not of type T" {
-        val propertySet: PropertySet = propertiesOf("key" to 123)
+        val propertySet: PropertySet = mapOf("key" to 123).toPropertySet()
         val pathSegment = "key".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -208,7 +208,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return value if value is a list and index is present" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[0]".propertyPath()
         val result = propertySet.optional<String>(pathSegment)
 
@@ -216,7 +216,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return a list if value is a list and index is not present" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key".propertyPath()
         val result = propertySet.optional<List<String>>(pathSegment)
 
@@ -224,7 +224,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if value is a list and index is out of range" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[2]".propertyPath()
         val result = propertySet.optional<String>(pathSegment)
 
@@ -232,7 +232,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return error if value is a list and index is not a number" {
-        val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+        val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
         val pathSegment = "key[a]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -241,11 +241,11 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return value if value is a list and index is not present and value is a list" {
-        val propertySet: PropertySet = propertiesOf(
-            "key" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key" to mapOf(
                 "key2" to listOf("value1", "value2")
             )
-        )
+        ).toPropertySet()
         val pathSegment = "key.key2[*].key3".propertyPath()
         val result = propertySet.optional<List<String>>(pathSegment)
 
@@ -254,11 +254,11 @@ class PropertySetTest : StringSpec({
 
     "Optional should return a list of values when the path with an asterisk index points to a list of key-value " +
             "pairs where the key matches the filter of the asterisk index" {
-                val propertySet: PropertySet = propertiesOf(
-                    "key" to propertiesOf(
+                val propertySet: PropertySet = mapOf(
+                    "key" to mapOf(
                         "key2" to listOf("key3" to "value1", "key3" to "value2")
                     )
-                )
+                ).toPropertySet()
                 val pathSegment = "key.key2[*].key3".propertyPath()
                 val result = propertySet.optional<List<String>>(pathSegment)
 
@@ -266,15 +266,15 @@ class PropertySetTest : StringSpec({
             }
 
     "optional should return list of PropertySet if path with asterisk index points to a list of PropertySet" {
-        val propertySet: PropertySet = propertiesOf(
-            "key" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key" to mapOf(
                 "key2" to listOf(
-                    "key3" to propertiesOf("key4" to "valueKey4", "key8" to "valueKey8"),
-                    "key3" to propertiesOf("key5" to "valueKey5"),
-                    "key7" to propertiesOf("key6" to "valueKey6")
+                    "key3" to mapOf("key4" to "valueKey4", "key8" to "valueKey8"),
+                    "key3" to mapOf("key5" to "valueKey5"),
+                    "key7" to mapOf("key6" to "valueKey6")
                 )
             )
-        )
+        ).toPropertySet()
         val pathSegment = "key.key2[*].key3".propertyPath()
         val result = propertySet.optional<List<PropertySet>>(pathSegment)
 
@@ -291,7 +291,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return value if nested path is present" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key2[0]".propertyPath()
         val result = propertySet.optional<String>(nestedPath)
 
@@ -299,7 +299,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if nested path is not present" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key3[0]".propertyPath()
         val result = propertySet.optional<String>(nestedPath)
 
@@ -307,7 +307,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if nested path index is out of range" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key2[2]".propertyPath()
         val result = propertySet.optional<String>(nestedPath)
 
@@ -315,7 +315,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if nested path index is not a number" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to listOf("value1", "value2")))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to listOf("value1", "value2"))).toPropertySet()
         val nestedPath = "key1.key2[a]".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -324,7 +324,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should fail if value is null" {
-        val propertySet: PropertySet = propertiesOf("key" to null)
+        val propertySet: PropertySet = mapOf("key" to null).toPropertySet()
         val pathSegment = "key".propertyPath()
 
         shouldThrow<PropertiesError> {
@@ -333,7 +333,7 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if value is null" {
-        val propertySet: PropertySet = propertiesOf("key" to null)
+        val propertySet: PropertySet = mapOf("key" to null).toPropertySet()
         val pathSegment = "key".propertyPath()
         val result = propertySet.optional<String>(pathSegment)
 
@@ -342,7 +342,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path is invalid" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to "value")
+            val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
             val pathSegment = "key..value".propertyPath()
             propertySet.required<String>(pathSegment)
         }
@@ -351,7 +351,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path points to a non-list value but a list is expected" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to "value")
+            val propertySet: PropertySet = mapOf("key" to "value").toPropertySet()
             val pathSegment = "key".propertyPath()
             propertySet.required<List<String>>(pathSegment)
         }
@@ -360,7 +360,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path points to a list but a non-list value is expected" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+            val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
             val pathSegment = "key".propertyPath()
             propertySet.required<String>(pathSegment)
         }
@@ -369,7 +369,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path points to a list and index is out of range" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+            val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
             val pathSegment = "key[3]".propertyPath()
             propertySet.required<String>(pathSegment)
         }
@@ -378,7 +378,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path points to a list and index is not a number" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to listOf("value1", "value2"))
+            val propertySet: PropertySet = mapOf("key" to listOf("value1", "value2")).toPropertySet()
             val pathSegment = "key[a]".propertyPath()
             propertySet.required<String>(pathSegment)
         }
@@ -387,7 +387,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path points to a map and key is not present in the map" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to propertiesOf("key2" to "value"))
+            val propertySet: PropertySet = mapOf("key" to mapOf("key2" to "value")).toPropertySet()
             val pathSegment = "key.key3".propertyPath()
             propertySet.required<String>(pathSegment)
         }
@@ -395,7 +395,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should return value if path points to a map and key is present" {
-        val propertySet: PropertySet = propertiesOf("key" to propertiesOf("key2" to "value"))
+        val propertySet: PropertySet = mapOf("key" to mapOf("key2" to "value")).toPropertySet()
         val pathSegment = "key.key2".propertyPath()
         val result = propertySet.required<String>(pathSegment)
 
@@ -404,7 +404,7 @@ class PropertySetTest : StringSpec({
 
     "required should fail if path points to a map and key is not present" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf("key" to propertiesOf("key2" to "value"))
+            val propertySet: PropertySet = mapOf("key" to mapOf("key2" to "value")).toPropertySet()
             val pathSegment = "key.key3".propertyPath()
             propertySet.required<String>(pathSegment)
         }
@@ -412,7 +412,7 @@ class PropertySetTest : StringSpec({
     }
 
     "contains returns true when path segment is present" {
-        val propertySetList = listPropertiesOf(propertiesOf("key" to "value"))
+        val propertySetList = listOf(mapOf("key" to "value")).toPropertySet()
         val segment = "key".pathSegment()
         val result = propertySetList.contains<String>(segment)
 
@@ -420,7 +420,7 @@ class PropertySetTest : StringSpec({
     }
 
     "contains returns false when path segment is not present" {
-        val propertySetList = listPropertiesOf(propertiesOf("key" to "value"))
+        val propertySetList = listOf(mapOf("key" to "value")).toPropertySet()
         val segment = "nonexistent".pathSegment()
         val result = propertySetList.contains<String>(segment)
 
@@ -429,12 +429,12 @@ class PropertySetTest : StringSpec({
 
 
     "required should return cached value if nested path is called more than once" {
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf(
                 "key2" to
-                        propertiesOf("key3" to "valueKey3", "key4" to "valueKey4")
+                        mapOf("key3" to "valueKey3", "key4" to "valueKey4")
             )
-        )
+        ).toPropertySet()
 
         val result1 = runCatching {
             val nestedPath = "key1.key2.key3".propertyPath()
@@ -474,7 +474,7 @@ class PropertySetTest : StringSpec({
     }
 
     "required should return different values if nested path is different" {
-        val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to "value", "key3" to "value2"))
+        val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to "value", "key3" to "value2")).toPropertySet()
 
         val nestedPath1 = "key1.key2".propertyPath()
 
@@ -495,9 +495,9 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return empty list if path with asterisk index points to an empty list" {
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf("key2" to emptyList<Any>())
-        )
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf("key2" to emptyList<Any>())
+        ).toPropertySet()
         val nestedPath = "key1.key2[*].key3".propertyPath()
         val result = propertySet.optional<List<String>>(nestedPath)
 
@@ -505,14 +505,14 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return list of values if path with asterisk index points to a list" {
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf(
                 "key2" to listOf(
-                    propertiesOf("key3" to "value1"),
-                    propertiesOf("key3" to "value2")
+                    mapOf("key3" to "value1"),
+                    mapOf("key3" to "value2")
                 )
             )
-        )
+        ).toPropertySet()
         val nestedPath = "key1.key2[*].key3".propertyPath()
         val result = propertySet.optional<List<String>>(nestedPath)
 
@@ -520,14 +520,14 @@ class PropertySetTest : StringSpec({
     }
 
     "optional should return null if path with asterisk index points to a non-existing key" {
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf(
                 "key2" to listOf(
-                    propertiesOf("key3" to "value1"),
-                    propertiesOf("key3" to "value2")
+                    mapOf("key3" to "value1"),
+                    mapOf("key3" to "value2")
                 )
             )
-        )
+        ).toPropertySet()
         val nestedPath = "key1.key2[*].nonExistingKey".propertyPath()
         val result = propertySet.optional<List<String>>(nestedPath)
 
@@ -537,7 +537,7 @@ class PropertySetTest : StringSpec({
 
     "required should throw error if path with asterisk index points to an empty list" {
         shouldThrow<PropertiesError> {
-            val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to emptyList<Any>()))
+            val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to emptyList<Any>())).toPropertySet()
             val nestedPath = "key1.key2[*].key3".propertyPath()
             propertySet.required<List<String>>(nestedPath)
         }
@@ -545,14 +545,14 @@ class PropertySetTest : StringSpec({
 
     "required should return list of values if path with asterisk index points to a list" {
         val result = runCatching {
-            val propertySet: PropertySet = propertiesOf(
-                "key1" to propertiesOf(
+            val propertySet: PropertySet = mapOf(
+                "key1" to mapOf(
                     "key2" to listOf(
-                        propertiesOf("key3" to "value1"),
-                        propertiesOf("key3" to "value2")
+                        mapOf("key3" to "value1"),
+                        mapOf("key3" to "value2")
                     )
                 )
-            )
+            ).toPropertySet()
             val nestedPath = "key1.key2[*].key3".propertyPath()
             propertySet.required<List<String>>(nestedPath)
         }
@@ -561,14 +561,14 @@ class PropertySetTest : StringSpec({
 
     "required should throw error if path with asterisk index points to a non-existing key" {
         shouldThrow<PropertiesError> {
-            val propertySet: PropertySet = propertiesOf(
-                "key1" to propertiesOf(
+            val propertySet: PropertySet = mapOf(
+                "key1" to mapOf(
                     "key2" to listOf(
-                        propertiesOf("key3" to "value1"),
-                        propertiesOf("key3" to "value2")
+                        mapOf("key3" to "value1"),
+                        mapOf("key3" to "value2")
                     )
                 )
-            )
+            ).toPropertySet()
             val nestedPath = "key1.key2[*].nonExistingKey".propertyPath()
             propertySet.required<List<String>>(nestedPath)
         }
@@ -576,7 +576,7 @@ class PropertySetTest : StringSpec({
 
     "required should throw error if path with asterisk index points to an empty list" {
         shouldThrow<PropertiesError> {
-            val propertySet: PropertySet = propertiesOf("key1" to propertiesOf("key2" to emptyList<Any>()))
+            val propertySet: PropertySet = mapOf("key1" to mapOf("key2" to emptyList<Any>())).toPropertySet()
             val nestedPath = "key1.key2[*].key3.key4".propertyPath()
             propertySet.required<String>(nestedPath)
         }
@@ -584,14 +584,14 @@ class PropertySetTest : StringSpec({
 
     "required should return a list of PropertySets when the path with an asterisk index points to a list of PropertySets" {
 
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf(
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf(
                 "key2" to listOf(
-                    propertiesOf("key3" to "value1"),
-                    propertiesOf("key3" to "value2")
+                    mapOf("key3" to "value1"),
+                    mapOf("key3" to "value2")
                 )
             )
-        )
+        ).toPropertySet()
         val nestedPath = "key1.key2[*].key3".propertyPath()
         val result = propertySet.required<List<PropertySet>>(nestedPath)
 
@@ -602,11 +602,11 @@ class PropertySetTest : StringSpec({
 
     "required should return a PropertySet when the path with an asterisk index points to a list of PropertySets" {
 
-        val propertySet: PropertySet = propertiesOf(
-            "key1" to propertiesOf(
-                "key2" to propertiesOf("key3" to "value1")
+        val propertySet: PropertySet = mapOf(
+            "key1" to mapOf(
+                "key2" to mapOf("key3" to "value1")
             )
-        )
+        ).toPropertySet()
 
         val nestedPath = "key1.key2".propertyPath()
         val result = propertySet.required<PropertySet>(nestedPath)
@@ -618,7 +618,7 @@ class PropertySetTest : StringSpec({
 
     "required should return value if present with errorPathContext" {
         val result = runCatching {
-            val subPropertySet = propertiesOf("key" to "value")
+            val subPropertySet = mapOf("key" to "value").toPropertySet()
             subPropertySet.required<String>("key")
         }
         result.getOrThrow() shouldBe "value"
@@ -626,21 +626,21 @@ class PropertySetTest : StringSpec({
 
     "required should fail if key is not present with errorPathContext" {
         shouldThrow<PropertiesError> {
-            val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to "value4"))
+            val propertySet: PropertySet = mapOf("key2" to mapOf("key4" to "value4")).toPropertySet()
             propertySet.required<String>("key2.key3")
         }
     }
 
     "required should fail if value is null with errorPathContext" {
         shouldThrow<PropertiesError> {
-            val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to null))
+            val propertySet: PropertySet = mapOf("key2" to mapOf("key4" to null)).toPropertySet()
             propertySet.required<String>("key2.key4")
         }
     }
 
     "required should fail if value is not of type T with errorPathContext" {
         shouldThrow<PropertiesError> {
-            val propertySet: PropertySet = propertiesOf("key2" to propertiesOf("key4" to 123))
+            val propertySet: PropertySet = mapOf("key2" to mapOf("key4" to 123)).toPropertySet()
             propertySet.required<String>("key2.key4")
         }
     }

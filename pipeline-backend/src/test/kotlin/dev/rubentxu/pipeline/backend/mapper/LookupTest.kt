@@ -1,4 +1,4 @@
-package pipeline.kotlin.extensions
+package dev.rubentxu.pipeline.backend.mapper
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec

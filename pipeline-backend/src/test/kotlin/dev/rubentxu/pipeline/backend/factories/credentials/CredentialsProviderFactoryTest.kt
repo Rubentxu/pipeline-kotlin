@@ -1,8 +1,6 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
-import arrow.core.Either
-import arrow.core.getOrElse
-import arrow.core.raise.either
+
 import dev.rubentxu.pipeline.backend.cdi.CascManager
 import dev.rubentxu.pipeline.backend.mapper.LookupException
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
@@ -11,6 +9,7 @@ import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.PropertiesError
 import dev.rubentxu.pipeline.model.credentials.*
+import io.kotest.assertions.failure
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.scopes.StringSpecScope
@@ -24,7 +23,7 @@ class CredentialsProviderFactoryTest : StringSpec({
     "resolveConfig should correctly deserialize YAML secrets with basic SSH Private Key to PropertySet" {
         val cascFileName = "casc/testData/credentials-basicSSH_Private_Key.yaml"
         val properties = getProperties(cascFileName).getOrThrow()
-        val result = either { properties.required<String>("credentials.local[*].basicSSHUserPrivateKey[0].id") }
+        val result =  properties.required<String>("credentials.local[*].basicSSHUserPrivateKey[0].id")
         val result2 = result.getOrElse { throw Exception("No se ha podido ejecutar el test ") }
         result2 shouldBe "ssh_with_passphrase_provided"
     }
@@ -202,14 +201,12 @@ class CredentialsProviderFactoryTest : StringSpec({
         val environmentVariables = mapOf("GREETING" to "Hello")
 
         val cascFileName = "casc/testData/credentials-string-with-default-value.yaml"
-        var result: Either<PropertiesError, ICredentialsProvider> =
-            Either.Left(PropertiesError("No se ha podido ejecutar el test"))
 
         val credentialsProvider = testConfig(environmentVariables, cascFileName)
         val credential =
             credentialsProvider.getCredentialsById(idExpected).getOrThrow() as StringCredentials
 
-        result.isRight() shouldBe true
+
         credentialsProvider.listCredentials().size shouldBe 1
         credential?.id shouldBe idExpected
         credential?.scope shouldBe "GLOBAL"
@@ -244,8 +241,8 @@ private suspend fun StringSpecScope.testConfig(
     environmentVariables: Map<String, String>,
     cascFileName: String,
 ): ICredentialsProvider {
-    var result: Either<PipelineError, ICredentialsProvider> =
-        Either.Left(PropertiesError("No se ha podido ejecutar el test"))
+    var result: Result<ICredentialsProvider> =
+        Result.failure(PropertiesError("No se ha podido ejecutar el test"))
     EnvironmentVariables(environmentVariables).execute {// Crear una instancia de CascManager
 
         // Ruta al archivo YAML de prueba

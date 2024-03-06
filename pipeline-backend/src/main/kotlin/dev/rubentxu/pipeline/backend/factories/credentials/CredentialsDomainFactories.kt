@@ -1,13 +1,14 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
-import arrow.core.raise.result
-import arrow.fx.coroutines.parMap
-import dev.rubentxu.pipeline.backend.coroutines.parZipResult
+
 import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.credentials.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class LocalCredentialsFactory {
 
@@ -16,32 +17,26 @@ class LocalCredentialsFactory {
         override val rootPath: String = "credentials"
 
 
-        override suspend fun create(data: PropertySet): Result<List<Credentials>> {
+        override suspend fun create(data: PropertySet): Result<List<Credentials>> = runCatching {
             val credentialsProperties = getRootPropertySet(data)
-            return parZipResult(
-                { BasicSSHUserPrivateKeyFactory.create(credentialsProperties) },
-                { UsernamePasswordFactory.create(credentialsProperties) },
-                { StringCredentialsFatory.create(credentialsProperties) },
-                { AwsCredentialsFactory.create(credentialsProperties) },
-                { FileCredentialsFactory.create(credentialsProperties) },
-                { CertificateCredentialsFactory.create(credentialsProperties) }
-            ) {
-                    basicSSHUserPrivateKey,
-                    usernamePassword,
-                    stringCredentials,
-                    awsCredentials,
-                    fileCredentials,
-                    certificateCredentials,
-                ->
-                buildList {
-                    addAll(basicSSHUserPrivateKey)
-                    addAll(usernamePassword)
-                    addAll(stringCredentials)
-                    addAll(awsCredentials)
-                    addAll(fileCredentials)
-                    addAll(certificateCredentials)
-                }
+            coroutineScope {
+                val basicSSHUserPrivateKey =
+                    async { BasicSSHUserPrivateKeyFactory.create(credentialsProperties).getOrThrow() }
+                val usernamePassword = async { UsernamePasswordFactory.create(credentialsProperties).getOrThrow() }
+                val stringCredentials = async { StringCredentialsFatory.create(credentialsProperties).getOrThrow() }
+                val awsCredentials = async { AwsCredentialsFactory.create(credentialsProperties).getOrThrow() }
+                val fileCredentials = async { FileCredentialsFactory.create(credentialsProperties).getOrThrow() }
+                val certificateCredentials =
+                    async { CertificateCredentialsFactory.create(credentialsProperties).getOrThrow() }
 
+                buildList {
+                    addAll(basicSSHUserPrivateKey.await())
+                    addAll(usernamePassword.await())
+                    addAll(stringCredentials.await())
+                    addAll(awsCredentials.await())
+                    addAll(fileCredentials.await())
+                    addAll(certificateCredentials.await())
+                }
             }
         }
 
@@ -54,35 +49,39 @@ class BasicSSHUserPrivateKeyFactory {
         override val rootPath: String = "local[*].basicSSHUserPrivateKey"
 
 
-        override suspend fun create(data: PropertySet): Result<List<BasicSSHUserPrivateKey>> =
-            result {
-                getRootListPropertySet(data)
-                    ?.parMap { properties ->
-                        createBasicSSHUserPrivateKey(properties).bind()
-                    } ?: emptyList()
+        override suspend fun create(data: PropertySet): Result<List<BasicSSHUserPrivateKey>> = runCatching {
+            val basicSSHUserPrivateKeyProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val basicSSHUserPrivateKeys = basicSSHUserPrivateKeyProperties.map { properties ->
+                    async { createBasicSSHUserPrivateKey(properties) }
+                }
+                basicSSHUserPrivateKeys.awaitAll()
             }
+        }
 
-        suspend fun createBasicSSHUserPrivateKey(basicSSHUserPrivateKeyProperties: PropertySet): Result<BasicSSHUserPrivateKey> {
-            return parZipResult(
-                { basicSSHUserPrivateKeyProperties.required<String>("scope") },
-                { basicSSHUserPrivateKeyProperties.required<String>("id") },
-                { basicSSHUserPrivateKeyProperties.required<String>("username") },
-                { basicSSHUserPrivateKeyProperties.required<String>("passphrase") },
-                { basicSSHUserPrivateKeyProperties.required<String>("description") },
-                { basicSSHUserPrivateKeyProperties.required<String>("privateKeySource.directEntry.privateKey") }
-            ) { scope, id, username, passphrase, description, privateKey ->
-                BasicSSHUserPrivateKey(
-                    scope = scope,
-                    id = IDComponent.create(id),
-                    username = username,
-                    passphrase = passphrase,
-                    description = description,
-                    privateKey = privateKey
-                )
-            }
+        suspend fun createBasicSSHUserPrivateKey(basicSSHUserPrivateKeyProperties: PropertySet): BasicSSHUserPrivateKey {
+
+            val scope = basicSSHUserPrivateKeyProperties.required<String>("scope").getOrThrow()
+            val id = basicSSHUserPrivateKeyProperties.required<String>("id").getOrThrow()
+            val username = basicSSHUserPrivateKeyProperties.required<String>("username").getOrThrow()
+            val passphrase = basicSSHUserPrivateKeyProperties.required<String>("passphrase").getOrThrow()
+            val description = basicSSHUserPrivateKeyProperties.required<String>("description").getOrThrow()
+            val privateKey =
+                basicSSHUserPrivateKeyProperties.required<String>("privateKeySource.directEntry.privateKey")
+                    .getOrThrow()
+
+            return BasicSSHUserPrivateKey(
+                scope = scope,
+                id = IDComponent.create(id),
+                username = username,
+                passphrase = passphrase,
+                description = description,
+                privateKey = privateKey
+            )
         }
     }
 }
+
 
 class UsernamePasswordFactory {
 
@@ -90,32 +89,35 @@ class UsernamePasswordFactory {
     companion object : PipelineDomainFactory<List<UsernamePassword>> {
         override val rootPath: String = "local[*].usernamePassword"
 
-        override suspend fun create(data: PropertySet): Result<List<UsernamePassword>> = result {
-            getRootListPropertySet(data)
-                ?.parMap { properties ->
-                    createUsernamePassword(properties).bind()
-                } ?: emptyList()
+        override suspend fun create(data: PropertySet): Result<List<UsernamePassword>> = runCatching {
+            val usernamePasswordProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val usernamePasswords = usernamePasswordProperties.map { properties ->
+                    async { createUsernamePassword(properties) }
+                }
+                usernamePasswords.awaitAll()
+            }
         }
 
-        suspend fun createUsernamePassword(usernamePasswordProperties: PropertySet): Result<UsernamePassword> {
-            return parZipResult(
-                { usernamePasswordProperties.required<String>("scope") },
-                { usernamePasswordProperties.required<String>("id") },
-                { usernamePasswordProperties.required<String>("username") },
-                { usernamePasswordProperties.required<String>("password") },
-                { usernamePasswordProperties.required<String>("description") }
-            ) { scope, id, username, password, description ->
-                UsernamePassword(
-                    scope = scope,
-                    id = IDComponent.create(id),
-                    username = username,
-                    password = password,
-                    description = description
-                )
-            }
+        suspend fun createUsernamePassword(usernamePasswordProperties: PropertySet): UsernamePassword {
+
+            val scope = usernamePasswordProperties.required<String>("scope").getOrThrow()
+            val id = usernamePasswordProperties.required<String>("id").getOrThrow()
+            val username = usernamePasswordProperties.required<String>("username").getOrThrow()
+            val password = usernamePasswordProperties.required<String>("password").getOrThrow()
+            val description = usernamePasswordProperties.required<String>("description").getOrThrow()
+
+            return UsernamePassword(
+                scope = scope,
+                id = IDComponent.create(id),
+                username = username,
+                password = password,
+                description = description
+            )
         }
     }
 }
+
 
 class StringCredentialsFatory {
 
@@ -123,27 +125,28 @@ class StringCredentialsFatory {
         override val rootPath: String = "local[*].string"
 
 
-        override suspend fun create(data: PropertySet): Result<List<StringCredentials>> = result {
-            getRootListPropertySet(data)
-                ?.parMap { properties ->
-                    createStringCredentials(properties).bind()
-                } ?: emptyList()
+        override suspend fun create(data: PropertySet): Result<List<StringCredentials>> = runCatching {
+            val stringCredentialsProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val stringCredentials = stringCredentialsProperties.map { properties ->
+                    async { createStringCredentials(properties) }
+                }
+                stringCredentials.awaitAll()
+            }
         }
 
-        suspend fun createStringCredentials(stringCredentialsProperties: PropertySet): Result<StringCredentials> {
-            return parZipResult(
-                { stringCredentialsProperties.required<String>("scope") },
-                { stringCredentialsProperties.required<String>("id") },
-                { stringCredentialsProperties.required<String>("secret") },
-                { stringCredentialsProperties.required<String>("description") }
-            ) { scope, id, secret, description ->
-                StringCredentials(
-                    scope = scope,
-                    id = IDComponent.create(id),
-                    secret = secret,
-                    description = description
-                )
-            }
+        suspend fun createStringCredentials(stringCredentialsProperties: PropertySet): StringCredentials {
+            val scope = stringCredentialsProperties.required<String>("scope").getOrThrow()
+            val id = stringCredentialsProperties.required<String>("id").getOrThrow()
+            val secret = stringCredentialsProperties.required<String>("secret").getOrThrow()
+            val description = stringCredentialsProperties.required<String>("description").getOrThrow()
+
+            return StringCredentials(
+                scope = scope,
+                id = IDComponent.create(id),
+                secret = secret,
+                description = description
+            )
         }
     }
 }
@@ -153,30 +156,30 @@ class AwsCredentialsFactory {
     companion object : PipelineDomainFactory<List<AwsCredentials>> {
         override val rootPath: String = "local[*].aws"
 
-        override suspend fun create(data: PropertySet): Result<List<AwsCredentials>> =
-            result {
-                getRootListPropertySet(data)
-                    ?.parMap { properties ->
-                        createAwsCredentials(properties).bind()
-                    } ?: emptyList()
+        override suspend fun create(data: PropertySet): Result<List<AwsCredentials>> = runCatching {
+            val awsCredentialsProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val awsCredentials = awsCredentialsProperties.map { properties ->
+                    async { createAwsCredentials(properties) }
+                }
+                awsCredentials.awaitAll()
             }
+        }
 
-        suspend fun createAwsCredentials(awsCredentialsProperties: PropertySet): Result<AwsCredentials> {
-            return parZipResult(
-                { awsCredentialsProperties.required<String>("scope") },
-                { awsCredentialsProperties.required<String>("id") },
-                { awsCredentialsProperties.required<String>("accessKey") },
-                { awsCredentialsProperties.required<String>("secretKey") },
-                { awsCredentialsProperties.required<String>("description") }
-            ) { scope, id, accessKey, secretKey, description ->
-                AwsCredentials(
-                    scope = scope,
-                    id = IDComponent.create(id),
-                    accessKey = accessKey,
-                    secretKey = secretKey,
-                    description = description
-                )
-            }
+        suspend fun createAwsCredentials(awsCredentialsProperties: PropertySet): AwsCredentials {
+            val scope = awsCredentialsProperties.required<String>("scope").getOrThrow()
+            val id = awsCredentialsProperties.required<String>("id").getOrThrow()
+            val accessKey = awsCredentialsProperties.required<String>("accessKey").getOrThrow()
+            val secretKey = awsCredentialsProperties.required<String>("secretKey").getOrThrow()
+            val description = awsCredentialsProperties.required<String>("description").getOrThrow()
+
+            return AwsCredentials(
+                scope = scope,
+                id = IDComponent.create(id),
+                accessKey = accessKey,
+                secretKey = secretKey,
+                description = description
+            )
         }
     }
 }
@@ -186,66 +189,64 @@ class FileCredentialsFactory {
     companion object : PipelineDomainFactory<List<FileCredentials>> {
         override val rootPath: String = "local[*].file"
 
-        override suspend fun create(data: PropertySet): Result<List<FileCredentials>> =
-            result {
-                getRootListPropertySet(data)
-                    ?.parMap { properties ->
-                        createFileCredentials(properties).bind()
-                    } ?: emptyList()
+        override suspend fun create(data: PropertySet): Result<List<FileCredentials>> = runCatching {
+            val fileCredentialsProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val fileCredentials = fileCredentialsProperties.map { properties ->
+                    async { createFileCredentials(properties) }
+                }
+                fileCredentials.awaitAll()
             }
+        }
 
-        suspend fun createFileCredentials(fileCredentialsProperties: PropertySet): Result<FileCredentials> {
-            return parZipResult(
-                { fileCredentialsProperties.required<String>("scope") },
-                { fileCredentialsProperties.required<String>("id") },
-                { fileCredentialsProperties.required<String>("fileName") },
-                { fileCredentialsProperties.required<String>("secretBytes") },
-                { fileCredentialsProperties.required<String>("description") }
-            ) { scope, id, fileName, secretBytes, description ->
-                FileCredentials(
-                    scope = scope,
-                    id = IDComponent.create(id),
-                    fileName = fileName,
-                    secretBytes = secretBytes,
-                    description = description
-                )
-            }
+        suspend fun createFileCredentials(fileCredentialsProperties: PropertySet): FileCredentials {
+            val scope = fileCredentialsProperties.required<String>("scope").getOrThrow()
+            val id = fileCredentialsProperties.required<String>("id").getOrThrow()
+            val fileName = fileCredentialsProperties.required<String>("fileName").getOrThrow()
+            val secretBytes = fileCredentialsProperties.required<String>("secretBytes").getOrThrow()
+            val description = fileCredentialsProperties.required<String>("description").getOrThrow()
+
+            return FileCredentials(
+                scope = scope,
+                id = IDComponent.create(id),
+                fileName = fileName,
+                secretBytes = secretBytes,
+                description = description
+            )
         }
     }
 }
-
 
 class CertificateCredentialsFactory {
 
     companion object : PipelineDomainFactory<List<CertificateCredentials>> {
         override val rootPath: String = "local[*].certificate"
 
-
-        override suspend fun create(data: PropertySet): Result<List<CertificateCredentials>> =
-            result {
-                getRootListPropertySet(data)
-                    ?.parMap { properties ->
-                        createCertificateCredentials(properties).bind()
-                    } ?: emptyList()
+        override suspend fun create(data: PropertySet): Result<List<CertificateCredentials>> = runCatching {
+            val certificateCredentialsProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val certificateCredentials = certificateCredentialsProperties.map { properties ->
+                    async { createCertificateCredentials(properties) }
+                }
+                certificateCredentials.awaitAll()
             }
+        }
 
+        suspend fun createCertificateCredentials(certificateCredentialsProperties: PropertySet): CertificateCredentials {
+            val scope = certificateCredentialsProperties.required<String>("scope").getOrThrow()
+            val id = certificateCredentialsProperties.required<String>("id").getOrThrow()
+            val password = certificateCredentialsProperties.required<String>("password").getOrThrow()
+            val description = certificateCredentialsProperties.required<String>("description").getOrThrow()
+            val keyStore = certificateCredentialsProperties.required<String>("keyStoreSource.uploaded.uploadedKeystore")
+                .getOrThrow()
 
-        suspend fun createCertificateCredentials(certificateCredentialsProperties: PropertySet): Result<CertificateCredentials> {
-            return parZipResult(
-                { certificateCredentialsProperties.required<String>("scope") },
-                { certificateCredentialsProperties.required<String>("id") },
-                { certificateCredentialsProperties.required<String>("password") },
-                { certificateCredentialsProperties.required<String>("description") },
-                { certificateCredentialsProperties.required<String>("keyStoreSource.uploaded.uploadedKeystore") }
-            ) { scope, id, password, description, keyStore ->
-                CertificateCredentials(
-                    scope = scope,
-                    id = IDComponent.create(id),
-                    password = password,
-                    description = description,
-                    keyStore = keyStore
-                )
-            }
+            return CertificateCredentials(
+                scope = scope,
+                id = IDComponent.create(id),
+                password = password,
+                description = description,
+                keyStore = keyStore
+            )
         }
     }
 }

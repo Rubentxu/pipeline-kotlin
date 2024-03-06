@@ -2,6 +2,8 @@
 
 package dev.rubentxu.pipeline.backend.mapper
 
+import dev.rubentxu.pipeline.model.PipelineError
+import dev.rubentxu.pipeline.model.PropertiesError
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.*
 import org.yaml.snakeyaml.Yaml
@@ -123,7 +125,7 @@ fun String.deserializeJsonField(): Result<String> {
     return try {
         val components = this.split(":", limit = 2)
         if (components.size < 2) {
-            throw IllegalArgumentException("Input string is not in the expected format 'key:json'")
+            throw PropertiesError("Input string is not in the expected format 'key:json'")
         }
 
         val jsonFieldName = components[0]
@@ -154,7 +156,7 @@ fun String.deserializeYamlField(): Result<String> {
     return try {
         val components = this.split(":", limit = 2)
         if (components.size < 2) {
-            throw IllegalArgumentException("Input string is not in the expected format 'key:yaml'")
+            throw PipelineError("Input string is not in the expected format 'key:yaml'")
         }
 
         val yamlFieldName = components[0]

@@ -4,9 +4,7 @@ import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineContext
-import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.repository.SourceCodeConfig
-import dev.rubentxu.pipeline.model.repository.SourceCodeRepositoryManager
 import dev.rubentxu.pipeline.model.repository.SourceCodeType
 import io.kotest.core.spec.style.StringSpec
 import org.mockito.Mockito.mock
@@ -29,8 +27,8 @@ class JobLauncherTest : StringSpec({
         println("scriptFile: $scriptFile")
         val job = JobInstance(
             name = "test",
-            projectSourceCode= sourceCodeConfig,
-            pipelineSourceCode =  sourceCodeConfig,
+            projectSourceCode = sourceCodeConfig,
+            pipelineSourceCode = sourceCodeConfig,
             parameters = emptyList(),
             pluginsSources = emptyList(),
         )

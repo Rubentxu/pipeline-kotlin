@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.backend.credentials
 
 import dev.rubentxu.pipeline.model.IDComponent
+import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.credentials.Credentials
 import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider
 
@@ -12,7 +13,7 @@ class LocalCredentialsProvider(
     override fun getCredentialsById(id: IDComponent): Result<Credentials> {
         credentials[id]?.let {
             return Result.success(it)
-        } ?: return Result.failure(IllegalArgumentException("Credentials with id '$id' not found"))
+        } ?: return Result.failure(PipelineError("Credentials with id '$id' not found"))
     }
 
     override fun registerCredentials(vararg credentialsConfig: Credentials) {

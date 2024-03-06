@@ -49,9 +49,9 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
 
-    implementation("io.arrow-kt:arrow-core:1.2.1")
-    implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
-    implementation("io.arrow-kt:arrow-optics:1.2.1")
+//    implementation("io.arrow-kt:arrow-core:1.2.1")
+//    implementation("io.arrow-kt:arrow-fx-coroutines:1.2.1")
+//    implementation("io.arrow-kt:arrow-optics:1.2.1")
 
     implementation("org.freemarker:freemarker:2.3.32")
 

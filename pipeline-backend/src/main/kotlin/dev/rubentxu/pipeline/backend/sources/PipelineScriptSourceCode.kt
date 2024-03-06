@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.backend.sources
 
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.IPipelineContext
+import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.jobs.IPipeline
 import dev.rubentxu.pipeline.model.jobs.PipelineSource
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
@@ -36,7 +37,7 @@ class PipelineScriptSourceCode(
         val engine = getScriptEngine()
         val scriptFile = scriptPath.toFile()
         return engine.eval(scriptFile.reader()) as? PipelineDefinition
-            ?: throw IllegalArgumentException("Script does not contain a PipelineDefinition")
+            ?: throw PipelineError("Script does not contain a PipelineDefinition")
     }
 
     override fun getScriptEngine(): ScriptEngine =

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.backend.agent.docker
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.BuildImageResultCallback
 import com.github.dockerjava.api.model.Image
+import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.logger.IPipelineLogger
 import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import freemarker.template.Configuration
@@ -52,7 +53,7 @@ class DockerImageBuilder(
     private fun buildImage(imageTag: String, tarFile: File): String {
         val callback = BuildImageResultCallback()
 
-        val result = dockerClient.buildImageCmd()
+        dockerClient.buildImageCmd()
             .withBaseDirectory(File(".")) //
             .withTarInputStream(Files.newInputStream(tarFile.toPath()))
             .withTags(setOf(imageTag))
@@ -124,7 +125,7 @@ class DockerImageBuilder(
                 // Verificar si el archivo existe
                 if (!file.exists()) {
                     logger.warn("Archivo no encontrado, omitido: ${file.absolutePath}")
-                    throw IllegalArgumentException("File does not exist: ${file.absolutePath}")
+                    throw PipelineError("File does not exist: ${file.absolutePath}")
                 }
 
                 val tarEntry = TarArchiveEntry(file, resolveFilename(file.name)).apply {

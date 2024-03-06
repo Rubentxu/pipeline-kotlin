@@ -1,18 +1,6 @@
 package dev.rubentxu.pipeline.backend
 
-import dev.rubentxu.pipeline.backend.cdi.CascManager
-import dev.rubentxu.pipeline.model.jobs.*
-import dev.rubentxu.pipeline.model.steps.EnvVars
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldNotBeEmpty
-import io.kotest.matchers.maps.shouldNotBeEmpty
-import io.kotest.matchers.nulls.shouldNotBeNull
-import io.kotest.matchers.should
-import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldNotBeEmpty
-import io.kotest.matchers.types.shouldBeInstanceOf
-import io.kotest.matchers.types.shouldBeTypeOf
-import java.nio.file.Path
 
 class JobConfigTest : StringSpec({
 //    "Should get Job Config from the job config file" {

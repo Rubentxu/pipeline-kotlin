@@ -1,10 +1,12 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-import dev.rubentxu.pipeline.backend.coroutines.parZipResult
+
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.resolveValueExpressions
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.agents.Agent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 class AgentsProviderFactory {
 
@@ -22,13 +24,17 @@ class AgentsProviderFactory {
             )
         }
 
-        private suspend fun createAgents(agentsConfig: PropertySet): Result<List<Agent>> =
-            parZipResult(
-                { KubernetesAgentFactory.create(agentsConfig) },
-                { DockerAgentFactory.create(agentsConfig) }
-            ) { kubernetesAgents, dockerAgents ->
+        private suspend fun createAgents(agentsConfig: PropertySet): Result<List<Agent>> = runCatching {
+            coroutineScope {
+                val kubernetesAgentsDeferred = async { KubernetesAgentFactory.create(agentsConfig).getOrThrow() }
+                val dockerAgentsDeferred = async { DockerAgentFactory.create(agentsConfig).getOrThrow() }
+
+                val kubernetesAgents = kubernetesAgentsDeferred.await()
+                val dockerAgents = dockerAgentsDeferred.await()
+
                 kubernetesAgents + dockerAgents
             }
+        }
     }
 }
 

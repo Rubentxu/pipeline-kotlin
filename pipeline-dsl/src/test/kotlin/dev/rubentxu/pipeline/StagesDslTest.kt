@@ -2,11 +2,10 @@ package dev.rubentxu.pipeline
 
 import dev.rubentxu.pipeline.dsl.Step
 import dev.rubentxu.pipeline.dsl.pipeline
-import dev.rubentxu.pipeline.logger.LogLevel
-import dev.rubentxu.pipeline.logger.PipelineLogger
-import dev.rubentxu.pipeline.model.config.IPipelineConfig
-import dev.rubentxu.pipeline.model.job.JobExecutor
+import dev.rubentxu.pipeline.model.IPipelineConfig
 import dev.rubentxu.pipeline.model.jobs.Status
+import dev.rubentxu.pipeline.model.logger.LogLevel
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -104,9 +103,9 @@ class StagesDslTest : StringSpec({
 
         val config: IPipelineConfig = PipelineConfigTest()
 
-        val pipeline = pipelineDefResult.getOrNull()!!.build(config)
-        val executor = JobExecutor()
-        val result = executor.execute(pipeline)
+        val pipeline = pipelineDefResult.getOrNull()!!.build()
+
+        val result = pipeline.executeStages()
 
         result.status shouldBe Status.Success
         result.stageResults.size shouldBe 2
@@ -165,7 +164,7 @@ class StagesDslTest : StringSpec({
         val config: IPipelineConfig = PipelineConfigTest()
 
         val pipeline = pipelineDefResult.getOrNull()!!.build(config)
-        val executor = JobExecutor()
+
         val result = executor.execute(pipeline)
 
         result.status shouldBe Status.Success

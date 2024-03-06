@@ -1,8 +1,5 @@
 package dev.rubentxu.pipeline.backend.factories.sources
 
-import arrow.core.raise.result
-import arrow.fx.coroutines.parMap
-import dev.rubentxu.pipeline.backend.coroutines.parZipResult
 import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
@@ -12,8 +9,11 @@ import dev.rubentxu.pipeline.backend.sources.LocalSourceCodeRepository
 import dev.rubentxu.pipeline.backend.sources.Mercurial
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.PipelineDomain
-
+import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.repository.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.net.URL
 import java.nio.file.Path
 
@@ -22,21 +22,24 @@ class PluginsDefinitionSourceFactory : PipelineDomain {
     companion object : PipelineDomainFactory<List<PluginSourceCodeConfig>> {
         override val rootPath: String = "plugins"
 
-        override suspend fun create(data: PropertySet): Result<List<PluginSourceCodeConfig>> = result {
-            getRootListPropertySet(data)?.parMap { plugin ->
-                createPluginSourceCodeConfig(plugin).bind()
-            } ?: emptyList()
-
+        override suspend fun create(data: PropertySet): Result<List<PluginSourceCodeConfig>> = runCatching {
+            val pluginsProperties = getRootListPropertySet(data) ?: emptyList()
+            coroutineScope {
+                val plugins = pluginsProperties.map { plugin ->
+                    async { createPluginSourceCodeConfig(plugin).getOrThrow() }
+                }
+                plugins.awaitAll()
+            }
         }
 
         suspend fun createPluginSourceCodeConfig(plugin: PropertySet): Result<PluginSourceCodeConfig> {
-            return parZipResult(
-                { plugin.required<String>("name") },
-                { plugin.required<String>("description") },
-                { plugin.required<String>("fromFile") },
-                { plugin.required<String>("fromLocalDirectory") },
-                { plugin.required<String>("module") }
-            ) { name, description, fromFile, fromLocalDirectory, module ->
+            return runCatching {
+                val name = plugin.required<String>("name").getOrThrow()
+                val description = plugin.required<String>("description").getOrThrow()
+                val fromFile = plugin.required<String>("fromFile").getOrThrow()
+                val fromLocalDirectory = plugin.required<String>("fromLocalDirectory").getOrThrow()
+                val module = plugin.required<String>("module").getOrThrow()
+
                 val fromFilePath = if (fromFile.isNotEmpty()) Path.of(fromFile) else null
                 val fromLocalDirectoryPath =
                     if (fromLocalDirectory.isNotEmpty()) Path.of(fromLocalDirectory) else null
@@ -61,13 +64,13 @@ class PipelineFileSourceCodeFactory : PipelineDomain {
         override val rootPath: String = "pipelineSourceCode"
 
 
-        override suspend fun create(data: PropertySet): Result<SourceCodeConfig> = result {
+        override suspend fun create(data: PropertySet): Result<SourceCodeConfig> = runCatching {
             val pipelineSourceCode = getRootPropertySet(data)
 
             val scmReferenceId = IDComponent.create(
-                pipelineSourceCode.required<String>("repository.referenceId").bind()
+                pipelineSourceCode.required<String>("repository.referenceId").getOrThrow()
             )
-            val relativeScriptPath = pipelineSourceCode.required<String>("scriptPath").bind()
+            val relativeScriptPath = pipelineSourceCode.required<String>("scriptPath").getOrThrow()
 
             SourceCodeConfig(
                 repositoryId = scmReferenceId,
@@ -84,11 +87,11 @@ class ProjectSourceCodeFactory : PipelineDomain {
     companion object : PipelineDomainFactory<SourceCodeConfig> {
         override val rootPath: String = "projectSourceCode"
 
-        override suspend fun create(data: PropertySet): Result<SourceCodeConfig> = result {
+        override suspend fun create(data: PropertySet): Result<SourceCodeConfig> = runCatching {
             val projectSourceCode = getRootPropertySet(data)
 
             val scmReferenceId = IDComponent.create(
-                projectSourceCode.required<String>("repository.referenceId").bind()
+                projectSourceCode.required<String>("repository.referenceId").getOrThrow()
             )
 
             SourceCodeConfig(
@@ -107,27 +110,25 @@ class MercurialSourceCodeRepositoryFactory {
         override val rootPath: String = "repositories.mercurial"
 
 
-        override suspend fun create(data: PropertySet): Result<Mercurial> {
+        override suspend fun create(data: PropertySet): Result<Mercurial> = runCatching {
             val repositoryMercurial = getRootPropertySet(data)
 
-            return parZipResult(
-                { repositoryMercurial.required<String>("id") },
-                { repositoryMercurial.required<String>("name") },
-                { repositoryMercurial.required<String>("description") },
-                { repositoryMercurial.required<List<String>>("branches") },
-                { repositoryMercurial.required<String>("remote.url") },
-                { repositoryMercurial.required<String>("remote.credentialsId") }
-            ) { id, name, description, branches, url, credentialsId ->
-                Mercurial(
-                    id = IDComponent.create(id),
-                    name = name,
-                    description = description,
-                    extensions = emptyList(),
-                    branches = branches,
-                    url = URL(url),
-                    credentialsId = credentialsId,
-                )
-            }
+            val id = repositoryMercurial.required<String>("id").getOrThrow()
+            val name = repositoryMercurial.required<String>("name").getOrThrow()
+            val description = repositoryMercurial.required<String>("description").getOrThrow()
+            val branches = repositoryMercurial.required<List<String>>("branches").getOrThrow()
+            val url = repositoryMercurial.required<String>("remote.url").getOrThrow()
+            val credentialsId = repositoryMercurial.required<String>("remote.credentialsId").getOrThrow()
+
+            Mercurial(
+                id = IDComponent.create(id),
+                name = name,
+                description = description,
+                extensions = emptyList(),
+                branches = branches,
+                url = URL(url),
+                credentialsId = credentialsId,
+            )
         }
     }
 }
@@ -139,23 +140,21 @@ class LocalGitSourceCodeRepositoryFactory {
         override val rootPath: String = "repositories.local"
 
 
-        override suspend fun create(data: PropertySet): Result<LocalSourceCodeRepository> = result {
+        override suspend fun create(data: PropertySet): Result<LocalSourceCodeRepository> = runCatching {
             val localRepository = getRootPropertySet(data)
 
             val id = IDComponent.create(
-                localRepository.required<String>("id").bind()
+                localRepository.required<String>("id").getOrThrow()
             )
-            val name: String = localRepository.required<String>("name").bind()
-            val description: String = localRepository.required<String>("description").bind()
+            val name: String = localRepository.required<String>("name").getOrThrow()
+            val description: String = localRepository.required<String>("description").getOrThrow()
 
-            val path = Path.of(
-                localRepository.required<String>("path").bind()
-            )
+
             LocalSourceCodeRepository(
                 id = id,
                 name = name,
                 description = description,
-                path = Path.of(data.required<String>("git.local.path").bind()),
+                path = Path.of(data.required<String>("git.local.path").getOrThrow()),
             )
         }
     }
@@ -167,75 +166,77 @@ class GitSourceCodeRepositoryFactory {
     companion object : PipelineDomainFactory<GitSourceCodeRepository> {
         override val rootPath: String = "repositories.git"
 
-
-        override suspend fun create(data: PropertySet): Result<GitSourceCodeRepository>  {
+        override suspend fun create(data: PropertySet): Result<GitSourceCodeRepository> {
             val gitRepository = getRootPropertySet(data)
 
-           return parZipResult(
-                { gitRepository.required<String>("id") },
-                { gitRepository.required<String>("name") },
-                { gitRepository.required<String>("description") },
-                { gitRepository.required<List<String>>("branches") },
-                { gitRepository.required<String>("globalConfigName") },
-                { gitRepository.required<String>("globalConfigEmail") },
-                { scmExtension(gitRepository) },
-                { gitRepository.required<String>("remote.url") },
-                { gitRepository.required<String>("remote.credentialsId") }
-            ) { id, name, description, branches, globalConfigName, globalConfigEmail, extensions, url, credentialsId ->
+            return coroutineScope {
+                val id = async { gitRepository.required<String>("id").getOrThrow() }
+                val name = async { gitRepository.required<String>("name").getOrThrow() }
+                val description = async { gitRepository.required<String>("description").getOrThrow() }
+                val branches = async { gitRepository.required<List<String>>("branches").getOrThrow() }
+                val globalConfigName = async { gitRepository.required<String>("globalConfigName").getOrThrow() }
+                val globalConfigEmail = async { gitRepository.required<String>("globalConfigEmail").getOrThrow() }
+                val extensions = async { scmExtension(gitRepository) }
+                val url = async { gitRepository.required<String>("remote.url").getOrThrow() }
+                val credentialsId = async { gitRepository.required<String>("remote.credentialsId").getOrThrow() }
 
-                GitSourceCodeRepository(
-                    id = IDComponent.create(id),
-                    branches = branches,
-                    name = name,
-                    description = description,
-                    globalConfigName = globalConfigName,
-                    globalConfigEmail = globalConfigEmail,
-                    extensions = extensions,
-                    url = URL(url),
-                    credentialsId = credentialsId,
-                )
+                runCatching {
+                    GitSourceCodeRepository(
+                        id = IDComponent.create(id.await()),
+                        branches = branches.await(),
+                        name = name.await(),
+                        description = description.await(),
+                        globalConfigName = globalConfigName.await(),
+                        globalConfigEmail = globalConfigEmail.await(),
+                        extensions = extensions.await(),
+                        url = URL(url.await()),
+                        credentialsId = credentialsId.await(),
+                    )
+                }
             }
-
-
         }
 
-        private fun scmExtension(gitRepository: PropertySet): Result<List<SCMExtension>> = result {
-            val extensionsMap = gitRepository.required<PropertySet>("extensions").bind()
+        private suspend fun scmExtension(gitRepository: PropertySet): List<SCMExtension> = coroutineScope {
+            val extensionsMap = gitRepository.required<PropertySet>("extensions").getOrThrow()
 
-            extensionsMap.map {
-                when (it.key) {
-                    "sparseCheckoutPaths" -> SimpleSCMExtension(
-                        "sparseCheckoutPaths", extensionsMap.required<List<String>>("sparseCheckoutPaths")
-                    )
+            val extensions = extensionsMap.map {
+                async {
+                    when (it.key) {
+                        "sparseCheckoutPaths" -> SimpleSCMExtension(
+                            "sparseCheckoutPaths",
+                            extensionsMap.required<List<String>>("sparseCheckoutPaths").getOrThrow()
+                        )
 
-                    "cloneOptions" -> SimpleSCMExtension(
-                        "cloneOptions", extensionsMap.required("cloneOptions")
-                    )
+                        "cloneOptions" -> SimpleSCMExtension(
+                            "cloneOptions", extensionsMap.required<String>("cloneOptions").getOrThrow()
+                        )
 
-                    "relativeTargetDirectory" -> SimpleSCMExtension(
-                        "relativeTargetDirectory", extensionsMap.required("relativeTargetDirectory")
-                    )
+                        "relativeTargetDirectory" -> SimpleSCMExtension(
+                            "relativeTargetDirectory",
+                            extensionsMap.required<String>("relativeTargetDirectory").getOrThrow()
+                        ) as SCMExtension
 
-                    "shallowClone" -> SimpleSCMExtension(
-                        "shallowClone", extensionsMap.required("shallowClone")
-                    )
+                        "shallowClone" -> SimpleSCMExtension(
+                            "shallowClone", extensionsMap.required<String>("shallowClone").getOrThrow()
+                        )
 
-                    "timeout" -> SimpleSCMExtension(
-                        "timeout", extensionsMap.required("timeout")
-                    )
+                        "timeout" -> SimpleSCMExtension(
+                            "timeout", extensionsMap.required<String>("timeout").getOrThrow()
+                        )
 
-                    "lfs" -> SimpleSCMExtension(
-                        "lfs", extensionsMap.required("lfs")
-                    )
+                        "lfs" -> SimpleSCMExtension(
+                            "lfs", extensionsMap.required<String>("lfs").getOrThrow()
+                        )
 
-                    "submodules" -> SimpleSCMExtension(
-                        "submodules", extensionsMap.required("submodules")
-                    )
+                        "submodules" -> SimpleSCMExtension(
+                            "submodules", extensionsMap.required<String>("submodules").getOrThrow()
+                        )
 
-                    else -> throw IllegalArgumentException("Invalid SCM extension type for '${extensionsMap.keys.first()}'")
+                        else -> throw PipelineError("Invalid SCM extension type for '${extensionsMap.keys.first()}'")
+                    }
                 }
-
             }
+            extensions.awaitAll()
         }
     }
 }
@@ -245,11 +246,14 @@ class CleanRepositoryFactory {
     companion object : PipelineDomainFactory<CleanRepository> {
         override val rootPath: String = "repositories.git.extensions.cleanRepository"
 
+        override suspend fun create(data: PropertySet): Result<CleanRepository> = coroutineScope {
+            val clean = async { getRootPropertySet(data).required<Boolean>("clean").getOrThrow() }
 
-        override suspend fun create(data: PropertySet): Result<CleanRepository> = result {
-            CleanRepository(
-                getRootPropertySet(data).required<Boolean>("clean").bind()
-            )
+            runCatching {
+                CleanRepository(
+                    clean = clean.await()
+                )
+            }
         }
     }
 }

@@ -1,14 +1,8 @@
 package dev.rubentxu.pipeline.backend
 
-import dev.rubentxu.pipeline.backend.cdi.CascManager
-
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.extension.ExtendWith
-import uk.org.webcompere.systemstubs.environment.EnvironmentVariables
 import uk.org.webcompere.systemstubs.jupiter.SystemStubsExtension
-import java.nio.file.Path
 
 @ExtendWith(SystemStubsExtension::class)
 class PipelineContextTest : StringSpec({

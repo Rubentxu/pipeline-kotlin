@@ -1,10 +1,5 @@
 package dev.rubentxu.pipeline.backend.factories.agents
 
-
-import arrow.core.raise.result
-import arrow.fx.coroutines.parMap
-import arrow.fx.coroutines.parZip
-import dev.rubentxu.pipeline.backend.coroutines.parZipResult
 import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
@@ -18,14 +13,17 @@ class KubernetesAgentFactory {
         override val rootPath: String = "agents.clouds[*].kubernetes"
 
         override suspend fun create(data: PropertySet): Result<List<KubernetesAgent>> = runCatching {
-            getRootListPropertySet(data)
-                ?.parMap { properties ->
-                    val id = IDComponent.create(properties.required<String>("id").getOrThrow())
-                    val labels = properties.required<List<String>>("labels").getOrThrow()
-                    val templates = KubernetesTemplateFactory.create(properties).getOrThrow()
-
-                    kubernetesAgent(id, properties, templates, labels).getOrThrow()
+            val result = getRootListPropertySet(data)
+                ?.map { properties: PropertySet ->
+                    kubernetesAgent(
+                        id = IDComponent.create(properties.required<String>("id").getOrThrow()),
+                        properties = properties,
+                        templates = KubernetesTemplateFactory.create(properties).getOrThrow(),
+                        labels = properties.required<List<String>>("labels").getOrThrow()
+                    ).getOrThrow()
                 } ?: emptyList()
+
+            result
         }
 
         private suspend fun kubernetesAgent(
@@ -34,26 +32,20 @@ class KubernetesAgentFactory {
             templates: List<K8sTemplate>,
             labels: List<String>,
         ): Result<KubernetesAgent> {
-            return parZipResult(
-                { properties.required<String>("name") },
-                { properties.required<String>("serverUrl") },
-                { properties.required<String>("serverCertificate") },
-                { properties.required<Boolean>("skipTlsVerify") },
-                { properties.required<String>("credentialsId") },
-                { properties.required<String>("namespace") },
-                { properties.required<String>("pipelineUrl") },
-                { properties.required<String>("pipelineTunnel") },
-                { properties.required<Int>("containerCapStr") },
-
-                ) {
-                    name, serverUrl, serverCertificate, skipTlsVerify, credentialsId, namespace, pipelineUrl, pipelineTunnel,
-                    containerCapStr,
-                ->
-
-                val maxRequestsPerHostStr = properties.required<Int>("maxRequestsPerHostStr")
-                val retentionTimeout = properties.required<Int>("retentionTimeout")
-                val connectTimeout = properties.required<Int>("connectTimeout")
-                val readTimeout = properties.required<Int>("readTimeout")
+            return runCatching {
+                val name = properties.required<String>("name").getOrThrow()
+                val serverUrl = properties.required<String>("serverUrl").getOrThrow()
+                val serverCertificate = properties.required<String>("serverCertificate").getOrThrow()
+                val skipTlsVerify = properties.required<Boolean>("skipTlsVerify").getOrThrow()
+                val credentialsId = properties.required<String>("credentialsId").getOrThrow()
+                val namespace = properties.required<String>("namespace").getOrThrow()
+                val pipelineUrl = properties.required<String>("pipelineUrl").getOrThrow()
+                val pipelineTunnel = properties.required<String>("pipelineTunnel").getOrThrow()
+                val containerCapStr = properties.required<Int>("containerCapStr").getOrThrow()
+                val maxRequestsPerHostStr = properties.required<Int>("maxRequestsPerHostStr").getOrThrow()
+                val retentionTimeout = properties.required<Int>("retentionTimeout").getOrThrow()
+                val connectTimeout = properties.required<Int>("connectTimeout").getOrThrow()
+                val readTimeout = properties.required<Int>("readTimeout").getOrThrow()
 
                 KubernetesAgent(
                     id = id,
@@ -66,41 +58,17 @@ class KubernetesAgentFactory {
                     pipelineUrl = pipelineUrl,
                     pipelineTunnel = pipelineTunnel,
                     containerCapStr = containerCapStr,
-                    maxRequestsPerHostStr = maxRequestsPerHostStr.getOrThrow(),
-                    retentionTimeout = retentionTimeout.getOrThrow(),
-                    connectTimeout = connectTimeout.getOrThrow(),
-                    readTimeout = readTimeout.getOrThrow(),
+                    maxRequestsPerHostStr = maxRequestsPerHostStr,
+                    retentionTimeout = retentionTimeout,
+                    connectTimeout = connectTimeout,
+                    readTimeout = readTimeout,
                     templates = templates,
                     labels = labels,
                     type = "kubernetes"
                 )
             }
-
-
-
-            KubernetesAgent(
-                id = id,
-                name = properties.required<String>("name").getOrThrow() as String,
-                serverUrl = properties.required<String>("serverUrl").getOrThrow(),
-                serverCertificate = properties.required<String>("serverCertificate").getOrThrow(),
-                skipTlsVerify = properties.required<Boolean>("skipTlsVerify").getOrThrow(),
-                credentialsId = properties.required<String>("credentialsId").getOrThrow(),
-                namespace = properties.required<String>("namespace").getOrThrow(),
-                pipelineUrl = properties.required<String>("pipelineUrl").getOrThrow(),
-                pipelineTunnel = properties.required<String>("pipelineTunnel").getOrThrow(),
-                containerCapStr = properties.required<Int>("containerCapStr").getOrThrow(),
-                maxRequestsPerHostStr = properties.required<Int>("maxRequestsPerHostStr").getOrThrow(),
-                retentionTimeout = properties.required<Int>("retentionTimeout").getOrThrow(),
-                connectTimeout = properties.required<Int>("connectTimeout").getOrThrow(),
-                readTimeout = properties.required<Int>("readTimeout").getOrThrow(),
-                templates = templates,
-                labels = labels,
-                type = "kubernetes"
-            )
         }
     }
-
-
 }
 
 class KubernetesTemplateFactory {
@@ -108,50 +76,45 @@ class KubernetesTemplateFactory {
     companion object : PipelineDomainFactory<List<K8sTemplate>> {
         override val rootPath: String = "templates"
 
-        override suspend fun create(kubernetesProperties: PropertySet): Result<List<K8sTemplate>> = result {
-            getRootListPropertySet(kubernetesProperties)
-                ?.parMap { templateProperties ->
-                    createK8sTemplate(templateProperties).bind()
+        override suspend fun create(kubernetesProperties: PropertySet): Result<List<K8sTemplate>> = runCatching {
+            val result = getRootListPropertySet(kubernetesProperties)
+                ?.map { templateProperties ->
+                    createK8sTemplate(templateProperties)
                 } ?: emptyList()
+
+            result
         }
 
-        suspend fun createK8sTemplate(templateProperties: PropertySet): Result<K8sTemplate> {
-            return parZipResult(
-                { templateProperties.required<String>("name") },
-                { templateProperties.required<String>("serviceAccount") },
-                { templateProperties.required<Int>("instanceCap") },
-                { templateProperties.required<Int>("idleMinutes") },
-                { templateProperties.required<String>("label") },
-                { templateProperties.required<Boolean>("showRawYaml") },
-                { VolumeFactory.create(templateProperties) },
-                { ContainerFactory.create(templateProperties) },
-                { templateProperties.required<List<String>>("imagePullSecrets[*].name") }
+        suspend fun createK8sTemplate(templateProperties: PropertySet): K8sTemplate {
+            val name = templateProperties.required<String>("name").getOrThrow()
+            val serviceAccount = templateProperties.required<String>("serviceAccount").getOrThrow()
+            val instanceCap = templateProperties.required<Int>("instanceCap").getOrThrow()
+            val idleMinutes = templateProperties.required<Int>("idleMinutes").getOrThrow()
+            val label = templateProperties.required<String>("label").getOrThrow()
+            val showRawYaml = templateProperties.required<Boolean>("showRawYaml").getOrThrow()
+            val volumes = VolumeFactory.create(templateProperties).getOrThrow()
+            val containers = ContainerFactory.create(templateProperties).getOrThrow()
+            val imagePullSecrets = templateProperties.required<List<String>>("imagePullSecrets[*].name").getOrThrow()
 
-            ) { name, serviceAccount, instanceCap, idleMinutes, label, showRawYaml, volumes, containers, imagePullSecrets ->
-                val envVars: EnvVars = result {
-                    val envVarsMap = templateProperties.required<List<PropertySet>>("envVars").bind()
-                        .map {
-                            it.required<String>("key").getOrThrow() to it.required<String>("value").bind()
-                        }.toMap()
+            val envVarsMap = templateProperties.required<List<PropertySet>>("envVars").getOrThrow()
+                .map {
+                    it.required<String>("key").getOrThrow() to it.required<String>("value").getOrThrow()
+                }.toMap()
 
-                    EnvVars(envVarsMap)
-                }.getOrElse { EnvVars(emptyMap()) }
+            val envVars = EnvVars(envVarsMap)
 
-
-                K8sTemplate(
-                    name = name,
-                    serviceAccount = serviceAccount,
-                    instanceCap = instanceCap,
-                    idleMinutes = idleMinutes,
-                    label = label,
-                    showRawYaml = showRawYaml,
-                    volumes = volumes,
-                    containers = containers,
-                    imagePullSecrets = imagePullSecrets,
-                    envVars = envVars
-                )
-            }
-
+            return K8sTemplate(
+                name = name,
+                serviceAccount = serviceAccount,
+                instanceCap = instanceCap,
+                idleMinutes = idleMinutes,
+                label = label,
+                showRawYaml = showRawYaml,
+                volumes = volumes,
+                containers = containers,
+                imagePullSecrets = imagePullSecrets,
+                envVars = envVars
+            )
         }
     }
 }
@@ -168,19 +131,18 @@ class VolumeFactory {
 
         private suspend fun createVolume(volumeProperties: PropertySet): Result<List<Volume>> =
             runCatching {
-                parZip(
-                    { HostPathVolumeFactory.create(volumeProperties).getOrThrow() },
-                    { EmptyDirVolumeFactory.create(volumeProperties).getOrThrow() },
-                    { ConfigMapVolumeFactory.create(volumeProperties).getOrThrow() }
-                ) { hostPathVolume, emptyDirVolume, configMapVolume ->
-                    buildList {
-                        addAll(hostPathVolume)
-                        addAll(emptyDirVolume)
-                        addAll(configMapVolume)
-                    }
+                val hostPathVolume = HostPathVolumeFactory.create(volumeProperties).getOrThrow()
+                val emptyDirVolume = EmptyDirVolumeFactory.create(volumeProperties).getOrThrow()
+                val configMapVolume = ConfigMapVolumeFactory.create(volumeProperties).getOrThrow()
+
+                buildList {
+                    addAll(hostPathVolume)
+                    addAll(emptyDirVolume)
+                    addAll(configMapVolume)
                 }
             }
     }
+
 }
 
 class HostPathVolumeFactory {
@@ -188,16 +150,16 @@ class HostPathVolumeFactory {
     companion object : PipelineDomainFactory<List<HostPathVolume>> {
         override val rootPath: String = "volumes[*].hostPathVolume"
 
-
         override suspend fun create(data: PropertySet): Result<List<HostPathVolume>> =
             runCatching {
-                getRootListPropertySet(data)
-                    ?.parMap { hostPathVolumeProperties ->
-                        HostPathVolume(
-                            mountPath = hostPathVolumeProperties.required<String>("mountPath").getOrThrow(),
-                            hostPath = hostPathVolumeProperties.required<String>("hostPath").getOrThrow()
-                        )
-                    } ?: emptyList()
+                val rootListPropertySet = getRootListPropertySet(data) ?: emptyList()
+                val hostPathVolumes = rootListPropertySet.map { hostPathVolumeProperties ->
+                    HostPathVolume(
+                        mountPath = hostPathVolumeProperties.required<String>("mountPath").getOrThrow(),
+                        hostPath = hostPathVolumeProperties.required<String>("hostPath").getOrThrow()
+                    )
+                }
+                hostPathVolumes
             }
     }
 }
@@ -206,16 +168,16 @@ class EmptyDirVolumeFactory {
     companion object : PipelineDomainFactory<List<EmptyDirVolume>> {
         override val rootPath: String = "volumes[*].emptyDirVolume"
 
-
         override suspend fun create(data: PropertySet): Result<List<EmptyDirVolume>> =
             runCatching {
-                getRootListPropertySet(data)
-                    ?.parMap { emptyDirVolumeProperties ->
-                        EmptyDirVolume(
-                            memory = emptyDirVolumeProperties.required<Boolean>("memory").getOrThrow(),
-                            mountPath = emptyDirVolumeProperties.required<String>("mountPath").getOrThrow()
-                        )
-                    } ?: emptyList()
+                val rootListPropertySet = getRootListPropertySet(data) ?: emptyList()
+                val emptyDirVolumes = rootListPropertySet.map { emptyDirVolumeProperties ->
+                    EmptyDirVolume(
+                        memory = emptyDirVolumeProperties.required<Boolean>("memory").getOrThrow(),
+                        mountPath = emptyDirVolumeProperties.required<String>("mountPath").getOrThrow()
+                    )
+                }
+                emptyDirVolumes
             }
     }
 }
@@ -225,18 +187,17 @@ class ConfigMapVolumeFactory {
     companion object : PipelineDomainFactory<List<ConfigMapVolume>> {
         override val rootPath: String = "volumes[*].configMapVolume"
 
-
         override suspend fun create(data: PropertySet): Result<List<ConfigMapVolume>> =
             runCatching {
-                getRootListPropertySet(data)
-                    ?.parMap { configMapVolumeProperties ->
-                        ConfigMapVolume(
-                            configMapName = configMapVolumeProperties.required<String>("configMapName")
-                                .getOrThrow(),
-                            mountPath = configMapVolumeProperties.required<String>("mountPath").getOrThrow(),
-                            subPath = configMapVolumeProperties.required<String>("subPath").getOrThrow()
-                        )
-                    } ?: emptyList()
+                val rootListPropertySet = getRootListPropertySet(data) ?: emptyList()
+                val configMapVolumes = rootListPropertySet.map { configMapVolumeProperties ->
+                    ConfigMapVolume(
+                        configMapName = configMapVolumeProperties.required<String>("configMapName").getOrThrow(),
+                        mountPath = configMapVolumeProperties.required<String>("mountPath").getOrThrow(),
+                        subPath = configMapVolumeProperties.required<String>("subPath").getOrThrow()
+                    )
+                }
+                configMapVolumes
             }
     }
 }
@@ -247,47 +208,44 @@ class ContainerFactory {
     companion object : PipelineDomainFactory<List<Container>> {
         override val rootPath: String = "containers"
 
-
         override suspend fun create(data: PropertySet): Result<List<Container>> =
             runCatching {
-                getRootListPropertySet(data)
-                    ?.parMap { containerProperties ->
-                        createContainer(containerProperties).getOrThrow()
-                    } ?: emptyList()
+                val rootListPropertySet = getRootListPropertySet(data) ?: emptyList()
+                val containers = rootListPropertySet.map { containerProperties ->
+                    createContainer(containerProperties)
+                }
+                containers
             }
 
-        private suspend fun createContainer(data: PropertySet): Result<Container> {
-            return parZipResult(
-                { data.required<String>("name") },
-                { data.required<String>("image") },
-                { data.required<Boolean>("privileged") },
-                { data.required<Boolean>("alwaysPullImage") },
-                { data.required<String>("command") },
-                { data.required<String>("args") },
-                { data.required<String>("workingDir") },
-                { data.required<Boolean>("ttyEnabled") },
-                { data.required<String>("resourceRequestCpu") }
-            ) { name, image, privileged, alwaysPullImage, command, args, workingDir, ttyEnabled, resourceRequestCpu ->
+        private suspend fun createContainer(data: PropertySet): Container {
+            val name = data.required<String>("name").getOrThrow()
+            val image = data.required<String>("image").getOrThrow()
+            val privileged = data.required<Boolean>("privileged").getOrThrow()
+            val alwaysPullImage = data.required<Boolean>("alwaysPullImage").getOrThrow()
+            val command = data.required<String>("command").getOrThrow()
+            val args = data.required<String>("args").getOrThrow()
+            val workingDir = data.required<String>("workingDir").getOrThrow()
+            val ttyEnabled = data.required<Boolean>("ttyEnabled").getOrThrow()
+            val resourceRequestCpu = data.required<String>("resourceRequestCpu").getOrThrow()
+            val resourceRequestMemory = data.required<String>("resourceRequestMemory").getOrThrow()
+            val resourceLimitCpu = data.required<String>("resourceLimitCpu").getOrThrow()
+            val resourceLimitMemory = data.required<String>("resourceLimitMemory").getOrThrow()
 
-                val resourceRequestMemory = data.required<String>("resourceRequestMemory").getOrThrow()
-                val resourceLimitCpu = data.required<String>("resourceLimitCpu").getOrThrow()
-                val resourceLimitMemory = data.required<String>("resourceLimitMemory").getOrThrow()
-
-                Container(
-                    name = name,
-                    image = image,
-                    privileged = privileged,
-                    alwaysPullImage = alwaysPullImage,
-                    command = command,
-                    args = args,
-                    workingDir = workingDir,
-                    ttyEnabled = ttyEnabled,
-                    resourceRequestCpu = resourceRequestCpu,
-                    resourceRequestMemory = resourceRequestMemory,
-                    resourceLimitCpu = resourceLimitCpu,
-                    resourceLimitMemory = resourceLimitMemory
-                )
-            }
+            return Container(
+                name = name,
+                image = image,
+                privileged = privileged,
+                alwaysPullImage = alwaysPullImage,
+                command = command,
+                args = args,
+                workingDir = workingDir,
+                ttyEnabled = ttyEnabled,
+                resourceRequestCpu = resourceRequestCpu,
+                resourceRequestMemory = resourceRequestMemory,
+                resourceLimitCpu = resourceLimitCpu,
+                resourceLimitMemory = resourceLimitMemory
+            )
         }
     }
 }
+

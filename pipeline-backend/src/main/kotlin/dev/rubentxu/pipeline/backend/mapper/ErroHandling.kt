@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.backend.mapper
 
-import arrow.core.raise.result
+
 
 
 fun <T> T.toResult(): Result<T> =

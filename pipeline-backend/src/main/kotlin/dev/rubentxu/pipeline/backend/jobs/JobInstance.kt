@@ -35,7 +35,7 @@ class JobInstance(
     override suspend fun resolveProjectPath(context: IPipelineContext): Path {
         val sourceCodeRepositoryManager: ISourceCodeManager = context.getService(ISourceCodeManager::class).getOrThrow()
         val scmReferenceId = projectSourceCode.repositoryId
-        val workspaceManager = context.getService(WorkspaceManager::class).getOrThrow()
+//        val workspaceManager = context.getService(WorkspaceManager::class).getOrThrow()
 
         val repository = sourceCodeRepositoryManager.findSourceRepository(scmReferenceId)
         val sourceCode: ProjectSourceCode = repository.retrieve(projectSourceCode, context) as ProjectSourceCode
@@ -44,7 +44,7 @@ class JobInstance(
     }
 
     override suspend fun loadPlugins(context: IPipelineContext): Boolean {
-        val sourceCodeRepositoryManager: ISourceCodeManager = context.getService(ISourceCodeManager::class).getOrThrow()
+//        val sourceCodeRepositoryManager: ISourceCodeManager = context.getService(ISourceCodeManager::class).getOrThrow()
 
 
         // Cargar en classpath los plugins

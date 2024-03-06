@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.backend
 
-import arrow.core.raise.either
+
 import dev.rubentxu.pipeline.backend.cdi.CascManager
-import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe

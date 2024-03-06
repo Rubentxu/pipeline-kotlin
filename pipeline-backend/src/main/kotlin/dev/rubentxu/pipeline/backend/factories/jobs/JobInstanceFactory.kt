@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.backend.factories.jobs
 
-import dev.rubentxu.pipeline.backend.coroutines.parZipResult
 import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PipelineFileSourceCodeFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PluginsDefinitionSourceFactory
@@ -8,6 +7,8 @@ import dev.rubentxu.pipeline.backend.factories.sources.ProjectSourceCodeFactory
 import dev.rubentxu.pipeline.backend.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 
 class JobInstanceFactory {
@@ -17,21 +18,22 @@ class JobInstanceFactory {
 
         override suspend fun create(data: PropertySet): Result<JobInstance> {
             val pipeline = getRootPropertySet(data)
-            return parZipResult(
-                { pipeline.required<String>("name") },
-                { ProjectSourceCodeFactory.create(pipeline) },
-                { PluginsDefinitionSourceFactory.create(pipeline) },
-                { PipelineFileSourceCodeFactory.create(pipeline) },
-                { JobParameterFactory.create(pipeline) }
+            return coroutineScope {
+                val name = async { pipeline.required<String>("name").getOrThrow() }
+                val project = async { ProjectSourceCodeFactory.create(pipeline).getOrThrow() }
+                val plugins = async { PluginsDefinitionSourceFactory.create(pipeline).getOrThrow() }
+                val pipelineSourceCode = async { PipelineFileSourceCodeFactory.create(pipeline).getOrThrow() }
+                val parameters = async { JobParameterFactory.create(pipeline).getOrThrow() }
 
-            ) { name, project, plugins, pipelineSourceCode, parameters ->
-                JobInstance(
-                    name = name,
-                    projectSourceCode = project,
-                    pluginsSources = plugins,
-                    pipelineSourceCode = pipelineSourceCode,
-                    parameters = parameters
-                )
+                runCatching {
+                    JobInstance(
+                        name = name.await(),
+                        projectSourceCode = project.await(),
+                        pluginsSources = plugins.await(),
+                        pipelineSourceCode = pipelineSourceCode.await(),
+                        parameters = parameters.await()
+                    )
+                }
             }
         }
     }

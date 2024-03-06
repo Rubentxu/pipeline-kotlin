@@ -58,6 +58,6 @@ class SourceCodeRepositoryManager(
     override val definitions: Map<IDComponent, SourceCodeRepository>
 ): ISourceCodeManager {
     override fun findSourceRepository(id: IDComponent): SourceCodeRepository {
-        return definitions[id] ?: throw IllegalArgumentException("Source code repository with id '$id' not found")
+        return definitions[id] ?: throw PipelineError("Source code repository with id '$id' not found")
     }
 }

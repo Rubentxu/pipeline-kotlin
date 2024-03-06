@@ -1,8 +1,6 @@
 package dev.rubentxu.pipeline.backend
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.shouldBe
-import java.net.URL
 import java.nio.file.Path
 
 class ScmConfigTest : StringSpec({

@@ -21,16 +21,6 @@ jobs:
       - name: Build JAR with Gradle
         run: ./gradlew clean :pipeline-cli:shadowJar
 
-      - name: Set up GraalVM
-        uses: DeLaGuardo/setup-graalvm@5.1
-        with:
-          graalvm-version: '22.2.0'
-          java-version: '11'
-
-      - name: Build native image
-        run: |
-          native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
-          -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
 
       - name: Create Release
         id: create_release

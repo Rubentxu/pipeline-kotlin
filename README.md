@@ -24,12 +24,12 @@ Este comando realiza dos tareas:
 Una vez compilado el archivo JAR, puede ejecutarlo utilizando el siguiente comando:
 
 ```bash
-java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
 Este comando hace lo siguiente:
 
-* **`java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar`:** Ejecuta el archivo JAR generado en el paso anterior.
+* **`java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar`:** Ejecuta el archivo JAR generado en el paso anterior.
 * **`-c pipeline-cli/testData/config.yaml`:** Especifica la ubicación del archivo de configuración que define la pipeline que se va a ejecutar.
 * **`-s pipeline-cli/testData/success.pipeline.kts`:** Especifica la ubicación del script Kotlin que implementa la lógica de la pipeline.
 
@@ -43,7 +43,7 @@ Para compilar una imagen nativa, siga estos pasos:
 2. Ejecute el siguiente comando:
 
 ```bash
-$ native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
+$ native-image --class-path pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
   -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
 ```
 
@@ -64,7 +64,7 @@ También puede ejecutar la aplicación CLI en la JVM y generar automáticamente 
 Para hacerlo, ejecute el siguiente comando:
 
 ```bash
-$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
 Este comando genera los archivos de configuración en el directorio `pipeline-cli/build/libs`.
@@ -76,7 +76,7 @@ La aplicación CLI también se puede ejecutar utilizando el compilador de Kotlin
 Para hacerlo, ejecute el siguiente comando:
 
 ```bash
-$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar 
+$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar 
 ```
 
 Este comando ejecuta el script Kotlin especificado.
@@ -289,12 +289,12 @@ This command performs two tasks:
 Once the JAR file is compiled, you can run it using the following command:
 
 ```bash
-java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
 This command does the following:
 
-* **`java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar`:** Executes the JAR file generated in the previous step.
+* **`java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar`:** Executes the JAR file generated in the previous step.
 * **`-c pipeline-cli/testData/config.yaml`:** Specifies the location of the configuration file that defines the pipeline to be executed.
 * **`-s pipeline-cli/testData/success.pipeline.kts`:** Specifies the location of the Kotlin script that implements the logic of the pipeline.
 
@@ -308,7 +308,7 @@ To compile a native image, follow these steps:
 2. Execute the following command:
 
 ```bash
-$ native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
+$ native-image --class-path pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
   -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
 ```
 
@@ -329,7 +329,7 @@ You can also run the CLI application on the JVM and automatically generate the n
 To do this, execute the following command:
 
 ```bash
-$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
 This command generates the configuration files in the directory `pipeline-cli/build/libs`.
@@ -341,7 +341,7 @@ The CLI application can also be run using the Kotlin compiler `kotlinc`.
 To do this, execute the following command:
 
 ```bash
-$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar 
+$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar 
 ```
 
 This command executes the specified Kotlin script.

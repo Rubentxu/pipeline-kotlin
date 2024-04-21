@@ -23,6 +23,8 @@ Este comando realiza dos tareas:
 
 Una vez compilado el archivo JAR, puede ejecutarlo utilizando el siguiente comando:
 
+Nota: Se tiene que ejecutar con una versión de java 17 mínimo
+
 ```bash
 java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```

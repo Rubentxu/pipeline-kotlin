@@ -9,7 +9,7 @@ val kotlinVersion: String by rootProject.extra
 val kotlinCoroutinesVersion: String by rootProject.extra
 
 group = "dev.rubentxu.pipeline.cli"
-version = "1.0-SNAPSHOT"
+version = "0.1.0"
 
 
 dependencies {

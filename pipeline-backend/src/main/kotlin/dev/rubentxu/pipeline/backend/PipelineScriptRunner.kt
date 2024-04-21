@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.logger.SocketLogConfigurationStrategy
 import dev.rubentxu.pipeline.model.CascManager
 import dev.rubentxu.pipeline.model.PipelineConfig
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.job.JobExecutor
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
@@ -18,7 +19,6 @@ import javax.script.ScriptEngine
 import javax.script.ScriptEngineManager
 
 
-
 class PipelineScriptRunner {
 
     companion object {
@@ -27,7 +27,10 @@ class PipelineScriptRunner {
             scriptPath: String,
             configPath: String,
             jarLocation: File = File(PipelineScriptRunner::class.java.protectionDomain.codeSource.location.toURI()),
-            logger: PipelineLogger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = SocketLogConfigurationStrategy())
+            logger: PipelineLogger = PipelineLogger(
+                logLevel = LogLevel.TRACE,
+                logConfigurationStrategy = SocketLogConfigurationStrategy()
+            ),
         ): PipelineResult {
 
             val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
@@ -35,16 +38,28 @@ class PipelineScriptRunner {
             logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
 
             logger.info("JAR location: ${jarLocation.absolutePath}")
-            val resolveExecutablePath =
+            val executablePath =
                 if (pipelineExecutable.exists()) pipelineExecutable.absolutePath else jarLocation.absolutePath
-            logger.info("Resolve executable path: $resolveExecutablePath")
+            logger.info("Resolve executable path: $executablePath")
 
             return try {
                 val pipelineDef = evaluateScriptFile(scriptPath)
                 logger.system("Pipeline definition: $pipelineDef")
-                val pipeline = buildPipeline(pipelineDef)
+
+
+                val configurationResult: Result<PipelineConfig> =
+                    CascManager().resolveConfig(normalizeAndAbsolutePath(configPath))
+
+                if (configurationResult.isFailure) {
+                    logger.error("Error reading config file: ${configurationResult.exceptionOrNull()?.message}")
+                    return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+                }
+                val configuration = configurationResult.getOrThrow()
+
+                val pipeline = buildPipeline(pipelineDef, configuration)
                 logger.system("Build Pipeline: $pipeline")
-                executePipeline(pipeline, scriptPath, configPath, resolveExecutablePath, logger)
+                val listOfPaths = listOf(scriptPath, configPath, executablePath).map { normalizeAndAbsolutePath(it) }
+                executePipeline(pipeline, configuration, listOfPaths, logger)
 
             } catch (e: Exception) {
                 handleScriptExecutionException(e, logger)
@@ -63,28 +78,24 @@ fun getScriptEngine(): ScriptEngine =
 fun evaluateScriptFile(scriptPath: String): PipelineDefinition {
     val engine = getScriptEngine()
     val scriptFile = normalizeAndAbsolutePath(scriptPath).toFile()
-    return engine.eval(scriptFile.reader()) as? PipelineDefinition
-        ?: throw IllegalArgumentException("Script does not contain a PipelineDefinition")
+    if (!scriptFile.exists()) {
+        throw IllegalArgumentException("Script file ${scriptPath} does not exist")
+    }
+    val result =  engine.eval(scriptFile.reader()) as? PipelineDefinition
+    if (result != null) {
+        return result
+    }
+    throw IllegalArgumentException("Script does not contain a PipelineDefinition")
 }
 
 // Procesa la definición del pipeline después de la evaluación.
 fun executePipeline(
     pipeline: Pipeline,
-    scriptPath: String,
-    configPath: String,
-    executablePath: String,
-    logger: PipelineLogger
+    configuration: PipelineConfig,
+    listOfPaths: List<Path>,
+    logger: PipelineLogger,
 ): PipelineResult {
 
-    val listOfPaths = listOf(scriptPath, configPath, executablePath).map { normalizeAndAbsolutePath(it) }
-//    val configuration = readConfigFile(normalizeAndAbsolutePath(configPath).toString())
-    val configurationResult = CascManager().resolveConfig(normalizeAndAbsolutePath(configPath))
-
-    if (configurationResult.isFailure) {
-        logger.error("Error reading config file: ${configurationResult.exceptionOrNull()?.message}")
-        return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
-    }
-    val configuration = configurationResult.getOrThrow()
 
     val isAgentEnv = System.getenv("IS_AGENT")
     logger.system("Env isAgent: $isAgentEnv")
@@ -97,8 +108,8 @@ fun executePipeline(
 }
 
 // Construye el pipeline usando coroutines.
-fun buildPipeline(pipelineDef: PipelineDefinition): Pipeline = runBlocking {
-    pipelineDef.build()
+fun buildPipeline(pipelineDef: PipelineDefinition, configuration: IPipelineConfig): Pipeline = runBlocking {
+    pipelineDef.build(configuration)
 }
 
 // Maneja las excepciones ocurridas durante la ejecución del script.

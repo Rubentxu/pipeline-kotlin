@@ -1,202 +1,528 @@
-### Comandos
+### Introducción
 
-#### Compilar
+Esta aplicación CLI permite ejecutar pipelines similares a los de Jenkinsfile pipeline DSL, pero con una sintaxis más sencilla y fácil de entender. La aplicación está diseñada para ser utilizada por desarrolladores, incluso aquellos con poca experiencia en pipelines.
+
+### Compilación
+
+Para compilar la aplicación CLI, siga estos pasos:
+
+1. Abra una terminal o ventana de comandos.
+2. Navegue hasta el directorio raíz del proyecto.
+3. Ejecute el siguiente comando:
 
 ```bash
 $ gradle clean :pipeline-cli:shadowJar
 ```
 
-Este comando realiza dos tareas. Primero, `gradle clean` se utiliza para eliminar el directorio de compilación, lo que
-significa que elimina todos los archivos compilados previamente. Esto se hace para asegurarse de que no haya conflictos
-entre las compilaciones antiguas y nuevas.
+Este comando realiza dos tareas:
 
-Después, `:pipeline-cli:shadowJar` es una tarea de Gradle que compila el código fuente del proyecto en un archivo JAR (
-Java Archive). Este archivo JAR, conocido como "fat JAR" o "shadow JAR", incluirá todas las dependencias necesarias, por
-lo que se puede ejecutar de forma independiente sin necesidad de instalar ninguna dependencia adicional. Un "fat JAR" es
-un archivo JAR que contiene tanto las clases de la aplicación como todas sus dependencias en un solo archivo.
+* **`gradle clean`:** Elimina el directorio de compilación, asegurando que no haya conflictos entre compilaciones antiguas y nuevas.
+* **`:pipeline-cli:shadowJar`:** Compila el código fuente del proyecto en un archivo JAR (Java Archive) llamado "fat JAR" o "shadow JAR". Este archivo JAR contiene todas las dependencias necesarias para ejecutar la aplicación sin necesidad de instalarlas por separado.
 
----
+### Ejecución
 
-#### Compilación nativa
+Una vez compilado el archivo JAR, puede ejecutarlo utilizando el siguiente comando:
 
-Es importante tener en cuenta que native-image es muy sensible a la reflexión y a la carga dinámica de clases.
-Si tu aplicación utiliza estas características, es posible que necesites proporcionar configuraciones adicionales para
-que native-image pueda analizar y compilar adecuadamente tu aplicación.
-Esto se hace a menudo a través de archivos de configuración JSON que especifican qué clases y métodos deben ser
-considerados para la reflexión. Puedes generar estos archivos automáticamente durante la ejecución de tu aplicación en
-una JVM normal utilizando el agente de native-image:
+Nota: Se tiene que ejecutar con una versión de java 17 mínimo
 
 ```bash
-java  -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
+Este comando hace lo siguiente:
+
+* **`java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar`:** Ejecuta el archivo JAR generado en el paso anterior.
+* **`-c pipeline-cli/testData/config.yaml`:** Especifica la ubicación del archivo de configuración que define la pipeline que se va a ejecutar.
+* **`-s pipeline-cli/testData/success.pipeline.kts`:** Especifica la ubicación del script Kotlin que implementa la lógica de la pipeline.
+
+### Compilación nativa
+
+La aplicación CLI también puede compilarse en una imagen nativa utilizando GraalVM native-image. Esto permite ejecutar la aplicación sin necesidad de una JVM (Java Virtual Machine).
+
+Para compilar una imagen nativa, siga estos pasos:
+
+1. Instale GraalVM.
+2. Ejecute el siguiente comando:
+
 ```bash
-$  native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
-  -H:IncludeResources='.*\.properties|templates/.*\.tpl|META-INF/services/.*' \
-  --initialize-at-build-time=javax.script.ScriptEngineFactory \
+$ native-image --class-path pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
   -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
 ```
 
-Este comando utiliza la herramienta native-image de GraalVM para compilar el código en una imagen nativa. Aunque la
-imagen nativa normalmente puede ejecutarse directamente sin necesidad de una JVM (Java Virtual Machine), en este caso,
-se está generando una imagen de "fallback".
+Este comando genera una imagen nativa llamada "pipeline-kts".
 
-La advertencia que se mostrara en la compilación, "Warning: Image 'pipeline-kts' is a fallback image that requires a JDK
-for execution", indica que la imagen nativa generada requerirá una JDK (Java Development Kit) para su ejecución. Esto
-puede suceder cuando native-image no puede analizar completamente el código para crear una imagen nativa completamente
-independiente. En tales casos, genera una imagen de "fallback" que aún necesita una JVM para ejecutarse.
-
-El argumento `--class-path` especifica la ruta al archivo JAR que se va a compilar. `-H:Name=pipeline-kts` establece el
-nombre de la imagen nativa resultante. Finalmente, `dev.rubentxu.pipeline.cli.PipelineCliCommand` es la clase principal
-que se ejecutará cuando se inicie la imagen nativa.
-
-```bash
-native-image \
-  --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar \
-  -H:Name=pipeline-kts \
-  -H:IncludeResources='.*\.properties|templates/.*\.tpl|META-INF/services/.*' \
-  --initialize-at-build-time=javax.script.ScriptEngineFactory \
-  -H:ReflectionConfigurationFiles=pipeline-cli/build/libs/reflect-config.json \
-  -H:DynamicProxyConfigurationFiles=pipeline-cli/build/libs/proxy-config.json \
-  -H:ResourceConfigurationFiles=pipeline-cli/build/libs/resource-config.json \
-  dev.rubentxu.pipeline.cli.PipelineCliCommand
-```
-
-Este es un ejemplo de un comando `native-image` que utiliza archivos de configuración JSON para especificar qué clases y
-métodos deben ser considerados para la reflexión, la carga dinámica de clases y la configuración de recursos.
-Los archivos de configuración JSON se pueden generar automáticamente durante la ejecución de la aplicación en una JVM
-normal
-utilizando el agente de native-image.
-
-
----
-
-#### Ejecutar
-
-```bash
-$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
-```
-
-Este comando ejecuta el archivo JAR generado utilizando el comando `java -jar`. Los argumentos `-c` y `-s`
-son probablemente opciones específicas de la aplicación, que especifican la ubicación de un archivo de configuración y
-un script, respectivamente.
-GraalVM también proporciona la herramienta native-image-agent, que puedes usar para ejecutar tu aplicación en la JVM y
-generar automáticamente estos archivos de configuración.
-Esto se puede hacer agregando el argumento `-agentlib:native-image-agent=config-output-dir=<output-dir>` al
-comando `java`:
-
-```bash
----
-
-```bash
-$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
-```
-
-Este comando es similar al anterior, pero en lugar de usar `-jar`, usa `-cp` (classpath) para especificar el archivo JAR
-y luego proporciona la clase principal que se debe ejecutar. Los argumentos `-c` y `-s` funcionan de la misma manera que
-en el comando anterior.
-
----
+Para ejecutar la imagen nativa, ejecute el siguiente comando:
 
 ```bash
 $ ./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
-Este comando ejecuta la imagen nativa generada por el comando `native-image`. Nuevamente, los argumentos `-c` y `-s`
-especifican la ubicación de un archivo de configuración y un script, respectivamente.
+Este comando es similar al comando de ejecución normal, pero en lugar de usar `java -jar`, utiliza la imagen nativa generada.
 
----
+### Ejecución con GraalVM native-image-agent
+
+También puede ejecutar la aplicación CLI en la JVM y generar automáticamente los archivos de configuración necesarios para la compilación nativa utilizando la herramienta GraalVM native-image-agent.
+
+Para hacerlo, ejecute el siguiente comando:
 
 ```bash
-$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  
+$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
-Este comando utiliza el compilador de Kotlin `kotlinc` para ejecutar un script de Kotlin. El argumento `-script`
-especifica la ubicación del script que se va a ejecutar, y `-classpath` especifica la ruta al archivo JAR que contiene
-las clases y recursos necesarios para ejecutar el script.
+Este comando genera los archivos de configuración en el directorio `pipeline-cli/build/libs`.
+
+### Ejecución con Kotlin
+
+La aplicación CLI también se puede ejecutar utilizando el compilador de Kotlin `kotlinc`.
+
+Para hacerlo, ejecute el siguiente comando:
+
+```bash
+$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar 
+```
+
+Este comando ejecuta el script Kotlin especificado.
+
+### Ejemplo de pipeline
+
+El siguiente es un ejemplo de un script Kotlin que implementa una pipeline simple:
+
+```kotlin
+#!/usr/bin/env kotlin
+import dev.rubentxu.pipeline.dsl.*
+import pipeline.kotlin.extensions.*
+
+pipeline {
+    environment {
+        "DISABLE_AUTH" += "true"
+        "DB_ENGINE" += "sqlite"
+    }
+    stages {
+        stage("Build") {
+            steps {
+                delay(1000) {
+                    echo("Delay antes de ejecutar los pasos paralelos")
+                }
+
+                parallel(
+                    "a" to Step {
+                        delay(1000) {
+                            echo("Delay This is branch a")
+                        }
+
+                    },
+                    "b" to Step {
+                        delay(300) {
+                            echo("Delay This is branch b")
+                        }
+                    }
+                )
+                var stdOut = sh("pwd", returnStdout = true)
+                echo(stdOut)
+                var text = readFile("build.gradle.kts")
+                echo(text)
+                echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
+            }
+            post {
+                always {
+                    echo("This is the post section always in stage Test")
+                }
+
+                failure {
+                    echo("This is the post section failure in stage Test")
+                }
+            }
+        }
+        stage("Test") {
+            steps {
+                sh("ls -la", returnStdout = true)
+                retry(3) {
+                    delay(3000) {
+                        echo("Tests retry ....")
+                        sh("ls -la .", returnStdout = true)
+                    }
+
+                }
+
+                sh("ls -la /home", returnStdout = true)
+            }
+
+        }
+    }
+    post {
+        always {
+            echo("This is the post section always")
+        }
+
+        success {
+            echo("This is the post section success")
+        }
+
+        failure {
+            echo("This is the post section failure")
+        }
+    }
+}
+```
+
+### Conceptos Claves
+
+1. **Kotlin Scripting (Kotlin DSL):**
+   Kotlin DSL (Domain Specific Language) permite escribir código Kotlin que es claro y conciso para definir configuraciones estructuradas,
+   similar a cómo XML o YAML son usados en otras tecnologías. 
+   Esto es especialmente útil en la definición de pipelines donde se prefieren configuraciones que son tanto legibles como mantenibles.
+
+2. **Script Engine Manager:**
+   En Kotlin, el `Script Engine Manager` gestiona diferentes tipos de scripts (incluyendo Kotlin scripts) que se pueden ejecutar. 
+   Es útil en entornos donde se requiere cargar y ejecutar dinámicamente scripts basados en Kotlin, 
+   permitiendo a los desarrolladores incorporar y evaluar código en tiempo de ejecución sin necesidad de recompilar la aplicación principal.
+
+3. **Hosts:**
+   En el contexto de los scripts, un "host" es el entorno que carga y ejecuta el script. Este puede proporcionar funciones adicionales como variables de entorno, métodos utilitarios (`echo`, `sh`, etc.), y manejo de errores, que el script puede utilizar directamente.
+
+### Explicación del Pipeline Script
+
+El script que has proporcionado define un pipeline de CI/CD usando Kotlin DSL. Este script incluye múltiples etapas y configuraciones que se ejecutan de manera secuencial o paralela dependiendo de la definición. Aquí te explico cada sección:
+
+```kotlin
+#!/usr/bin/env kotlin
+import dev.rubentxu.pipeline.dsl.*
+import pipeline.kotlin.extensions.*
+
+pipeline {
+    environment {
+        "DISABLE_AUTH" += "true"
+        "DB_ENGINE" += "sqlite"
+    }
+    ...
+```
+
+- **Shebang y Imports:**
+    - `#!/usr/bin/env kotlin` indica que este script debe ejecutarse usando el intérprete de Kotlin.
+    - Se importan módulos específicos que probablemente contienen definiciones DSL y extensiones que facilitan la creación del pipeline.
+
+- **Entorno:**
+  Se definen variables de entorno que estarán disponibles globalmente en todas las etapas del pipeline. 
+  Estas pueden controlar el comportamiento de la aplicación, como deshabilitar la autenticación o definir el motor de base de datos.
+
+```kotlin
+stages {
+    stage("Build") {
+        steps {
+            delay(1000) {
+                echo("Delay antes de ejecutar los pasos paralelos")
+            }
+        ...
+```
+
+- **Etapas y Pasos:**
+    - Define múltiples `stages` como "Build" y "Test". Cada `stage` contiene `steps` que se ejecutan en orden.
+    - `delay(1000)` introduce una pausa de 1000 milisegundos antes de ejecutar el código dentro de su bloque, útil para sincronizar tareas.
+
+```kotlin
+            parallel(
+                "a" to Step {
+                    delay(1000) {
+                        echo("Delay This is branch a")
+                    }
+                },
+                "b" to Step {
+                    delay(300) {
+                        echo("Delay This is branch b")
+                    }
+                }
+            )
+```
+
+- **Paralelismo:**
+    - `parallel` permite ejecutar múltiples `Step` simultáneamente. En este caso, las ramas "a" y "b" se ejecutan en paralelo, cada una con sus propios delays y mensajes.
+
+```kotlin
+        post {
+            always {
+                echo("This is the post section always in stage Test")
+            }
+        ...
+```
+
+- **Sección Post:**
+    - Dentro de cada etapa, se pueden definir acciones `post` que se ejecutan siempre (`always`), 
+    - en caso de éxito (`success`), o fallo (`failure`). Esto es útil para limpieza o notificaciones finales.
+
+### Utilidad en CI/CD
+
+Este script es un ejemplo de cómo Kotlin DSL puede ser utilizado para definir procesos complejos de integración 
+y despliegue continuo de una forma que es altamente legible y fácil de mantener. 
+Permite a los desarrolladores especificar detalladamente cómo construir, probar y manejar post-procesos dependiendo del 
+resultado de cada etapa, todo dentro del mismo script.
+
+En resumen, Kotlin Scripting y su configuración de engine manager facilitan la ejecución dinámica y adaptable de scripts, 
+mientras que los hosts proporcionan un entorno rico en funcionalidades para ejecutar esos scripts, 
+haciéndolos extremamente poderosos para automatizar y gestionar pipelines de CI/CD
+
 
 
 ---
 
----
 
-### Commands
+### Introduction
 
-#### Compile
+This CLI application allows executing pipelines similar to those of the Jenkinsfile pipeline DSL, but with a simpler and easier-to-understand syntax. The application is designed to be used by developers, including those with little experience in pipelines.
+
+### Compilation
+
+To compile the CLI application, follow these steps:
+
+1. Open a terminal or command window.
+2. Navigate to the root directory of the project.
+3. Execute the following command:
 
 ```bash
 $ gradle clean :pipeline-cli:shadowJar
 ```
 
-This command performs two tasks. First, `gradle clean` is used to remove the build directory, which means it deletes all
-previously compiled files. This is done to ensure there are no conflicts between old and new builds.
+This command performs two tasks:
 
-Next, `:pipeline-cli:shadowJar` is a Gradle task that compiles the project's source code into a JAR (Java Archive) file.
-This JAR file, known as a "fat JAR" or "shadow JAR", will include all necessary dependencies, so it can be run
-independently without needing to install any additional dependencies. A "fat JAR" is a JAR file that contains both the
-application's classes and all its dependencies in a single file.
+* **`gradle clean`:** Removes the build directory, ensuring there are no conflicts between old and new builds.
+* **`:pipeline-cli:shadowJar`:** Compiles the project's source code into a JAR file (Java Archive) called "fat JAR" or "shadow JAR". This JAR file contains all the necessary dependencies to run the application without needing to install them separately.
 
----
+### Execution
 
-#### Native Compilation
+Once the JAR file is compiled, you can run it using the following command:
 
 ```bash
-$  native-image --class-path pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
+java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
-This command uses the GraalVM's native-image tool to compile the code into a native image. Although the native image can
-usually be run directly without needing a JVM (Java Virtual Machine), in this case, a "fallback" image is being
-generated.
+This command does the following:
 
-The warning that will be shown during the compilation, "Warning: Image 'pipeline-kts' is a fallback image that requires
-a JDK for execution", indicates that the generated native image will require a JDK (Java Development Kit) for its
-execution. This can happen when native-image cannot fully analyze the code to create a completely independent native
-image. In such cases, it generates a "fallback" image that still needs a JVM to run.
+* **`java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar`:** Executes the JAR file generated in the previous step.
+* **`-c pipeline-cli/testData/config.yaml`:** Specifies the location of the configuration file that defines the pipeline to be executed.
+* **`-s pipeline-cli/testData/success.pipeline.kts`:** Specifies the location of the Kotlin script that implements the logic of the pipeline.
 
-The `--class-path` argument specifies the path to the JAR file to be compiled. `-H:Name=pipeline-kts` sets the name of
-the resulting native image. Finally, `dev.rubentxu.pipeline.cli.PipelineCliCommand` is the main class that will be run
-when the native image is started.
+### Native Compilation
 
----
+The CLI application can also be compiled into a native image using GraalVM native-image. This allows the application to run without the need for a JVM (Java Virtual Machine).
 
-#### Run
+To compile a native image, follow these steps:
+
+1. Install GraalVM.
+2. Execute the following command:
 
 ```bash
-$ java -jar pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+$ native-image --class-path pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
+  -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
 ```
 
-This command runs the generated JAR file using the `java -jar` command. The `-c` and `-s` arguments are likely
-application-specific options, specifying the location of a configuration file and a script, respectively.
+This command generates a native image called "pipeline-kts".
 
----
-
-```bash
-$ java -cp pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar dev.rubentxu.pipeline.cli.PipelineCliCommand -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
-```
-
-This command is similar to the previous one, but instead of using `-jar`, it uses `-cp` (classpath) to specify the JAR
-file and then provides the main class to be run. The `-c` and `-s` arguments work in the same way as in the previous
-command.
-
----
+To execute the native image, run the following command:
 
 ```bash
 $ ./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
+This command is similar to the normal execution command, but instead of using `java -jar`, it uses the generated native image.
+
+### Execution with GraalVM native-image-agent
+
+You can also run the CLI application on the JVM and automatically generate the necessary configuration files for native compilation using the GraalVM native-image-agent tool.
+
+To do this, execute the following command:
+
 ```bash
-$ ./pipeline-kts -c pipeline-cli/src/test/resources/config.yaml -s pipeline-cli/src/test/resources/success.pipeline.kts
+$ java -agentlib:native-image-agent=config-output-dir=pipeline-cli/build/libs -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
 ```
 
-This command runs the native image generated by the `native-image` command. Again, the `-c` and `-s` arguments specify
-the location of a configuration file and a script, respectively.
+This command generates the configuration files in the directory `pipeline-cli/build/libs`.
 
----
+### Execution with Kotlin
+
+The CLI application can also be run using the Kotlin compiler `kotlinc`.
+
+To do this, execute the following command:
 
 ```bash
-$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar  
+$ kotlinc -script pipeline-cli/testData/success.pipeline.kts -classpath pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar 
 ```
 
-This command uses the Kotlin compiler `kotlinc` to run a Kotlin script. The `-script` argument specifies the location of
-the script to be run, and `-classpath` specifies the path to the JAR file containing the classes and resources necessary
-to run the script.
+This command executes the specified Kotlin script.
+
+### Example of a Pipeline
+
+Here is an example of a Kotlin script that implements a simple pipeline:
+
+```kotlin
+#!/usr/bin/env kotlin
+import dev.rubentxu.pipeline.dsl.*
+import pipeline.kotlin.extensions.*
+
+pipeline {
+    environment {
+        "DISABLE_AUTH" += "true"
+        "DB_ENGINE" += "sqlite"
+    }
+    stages {
+        stage("Build") {
+            steps {
+                delay(1000) {
+                    echo("Delay before executing the parallel steps")
+                }
+
+                parallel(
+                    "a" to Step {
+                        delay(1000) {
+                            echo("Delay This is branch a")
+                        }
+
+                    },
+                    "b" to Step {
+                        delay(300) {
+                            echo("Delay This is branch b")
+                        }
+                    }
+                )
+                var stdOut = sh("pwd", returnStdout = true)
+                echo(stdOut)
+                var text = readFile("build.gradle.kts")
+                echo(text)
+                echo("Environment variable for DB_ENGINE is ${env["DB_ENGINE"]}")
+            }
+            post {
+                always {
+                    echo("This is the post section always in stage Test")
+                }
+
+                failure {
+                    echo("This is the post section failure in stage Test")
+                }
+            }
+        }
+        stage("Test") {
+            steps {
+                sh("ls -la", returnStd
+
+out = true)
+                retry(3) {
+                    delay(3000) {
+                        echo("Tests retry ....")
+                        sh("ls -la .", returnStdout = true)
+                    }
+
+                }
+
+                sh("ls -la /home", returnStdout = true)
+            }
+
+        }
+    }
+    post {
+        always {
+            echo("This is the post section always")
+        }
+
+        success {
+            echo("This is the post section success")
+        }
+
+        failure {
+            echo("This is the post section failure")
+        }
+    }
+}
+```
+
+### Key Concepts
+
+1. **Kotlin Scripting (Kotlin DSL):**
+   Kotlin DSL (Domain Specific Language) allows you to write clear and concise Kotlin code to define structured configurations,
+   similar to how XML or YAML are used in other technologies.
+   This is particularly useful in defining pipelines where configurations that are both readable and maintainable are preferred.
+
+2. **Script Engine Manager:**
+   In Kotlin, the `Script Engine Manager` manages different types of scripts (including Kotlin scripts) that can be executed.
+   It is useful in environments where dynamic loading and execution of Kotlin-based scripts are required,
+   allowing developers to incorporate and evaluate code in real-time without the need to recompile the main application.
+
+3. **Hosts:**
+   In the context of the scripts, a "host" is the environment that loads and executes the script. This can provide additional functions such as environment variables, utility methods (`echo`, `sh`, etc.), and error handling, which the script can use directly.
+
+### Explanation of the Pipeline Script
+
+The script you provided defines a CI/CD pipeline using Kotlin DSL. This script includes multiple stages and configurations that are executed either sequentially or in parallel, depending on the definition. Here I explain each section:
+
+```kotlin
+#!/usr/bin/env kotlin
+import dev.rubentxu.pipeline.dsl.*
+import pipeline.kotlin.extensions.*
+
+pipeline {
+    environment {
+        "DISABLE_AUTH" += "true"
+        "DB_ENGINE" += "sqlite"
+    }
+    ...
+```
+
+- **Shebang and Imports:**
+    - `#!/usr/bin/env kotlin` indicates that this script should be executed using the Kotlin interpreter.
+    - Specific modules are imported, likely containing DSL definitions and extensions that facilitate the creation of the pipeline.
+
+- **Environment:**
+  Environment variables are defined that will be available globally across all stages of the pipeline.
+  These can control the application's behavior, such as disabling authentication or defining the database engine.
+
+```kotlin
+stages {
+    stage("Build") {
+        steps {
+            delay(1000) {
+                echo("Delay before executing the parallel steps")
+            }
+        ...
+```
+
+- **Stages and Steps:**
+    - Defines multiple `stages` such as "Build" and "Test". Each `stage` contains `steps` that are executed in order.
+    - `delay(1000)` introduces a pause of 1000 milliseconds before executing the code within its block, useful for synchronizing tasks.
+
+```kotlin
+            parallel(
+                "a" to Step {
+                    delay(1000) {
+                        echo("Delay This is branch a")
+                    }
+                },
+                "b" to Step {
+                    delay(300) {
+                        echo("Delay This is branch b")
+                    }
+                }
+            )
+```
+
+- **Parallelism:**
+    - `parallel` allows executing multiple `Step` simultaneously. In this case, branches "a" and "b" are executed in parallel, each with their own delays and messages.
+
+```kotlin
+        post {
+            always {
+                echo("This is the post section always in stage Test")
+            }
+        ...
+```
+
+- **Post Section:**
+    - Within each stage, actions `post` that are executed always (`always`),
+    - in case of success (`success`), or failure (`failure`). This is useful for cleanup or final notifications.
+
+### Utility in CI/CD
+
+This script is an example of how Kotlin DSL can be used to define complex processes of integration
+and continuous deployment in a way that is highly readable and easy to maintain.
+It allows developers to specify in detail how to build, test, and handle post-processes depending on the
+outcome of each stage, all within the same script.
+
+In summary, Kotlin Scripting and its engine manager configuration facilitate the dynamic and adaptable execution of scripts,
+while the hosts provide a feature-rich environment to execute those scripts,
+making them extremely powerful for automating and managing CI/CD pipelines.

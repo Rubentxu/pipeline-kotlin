@@ -1,30 +1,15 @@
 package dev.rubentxu.pipeline.backend
 
-import dev.rubentxu.pipeline.backend.agent.docker.ContainerLifecycleManager
-import dev.rubentxu.pipeline.backend.agent.docker.DockerConfigManager
-import dev.rubentxu.pipeline.backend.agent.docker.DockerImageBuilder
-import dev.rubentxu.pipeline.backend.jobs.JobInstance
-import dev.rubentxu.pipeline.backend.jobs.JobLauncherImpl
+import dev.rubentxu.pipeline.core.cdi.annotations.PipelineComponent
 import dev.rubentxu.pipeline.backend.ktor.configureRouting
 import dev.rubentxu.pipeline.backend.ktor.configureSerialization
-
-import dev.rubentxu.pipeline.model.PipelineContext
-import dev.rubentxu.pipeline.model.jobs.JobResult
-import dev.rubentxu.pipeline.model.jobs.Status
-import dev.rubentxu.pipeline.model.logger.LogLevel
-import dev.rubentxu.pipeline.model.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.*
-import dev.rubentxu.pipeline.model.steps.EnvVars
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
-import kotlinx.coroutines.CompletionHandler
-import kotlinx.coroutines.runBlocking
-import java.io.File
-import java.nio.file.Path
-import javax.script.ScriptEngine
-import javax.script.ScriptEngineManager
+import org.koin.dsl.module
+import java.util.*
 
 
 //
@@ -159,7 +144,20 @@ fun main() {
         .start(wait = true)
 }
 
+fun pluginsModule() = module {
+    val plugins = loadServices<PipelineComponent>()
+
+    plugins.forEach { plugin ->
+        single { plugin }
+    }
+}
+
+inline fun <reified T : Any> loadServices(): List<T> {
+    return ServiceLoader.load(T::class.java).iterator().asSequence().toList()
+}
+
 fun Application.module() {
+
     configureSerialization()
     configureRouting()
 }

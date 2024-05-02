@@ -23,10 +23,10 @@ dependencies {
 
     testImplementation(kotlin("test"))
 
-    testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")
-    testImplementation("io.kotest:kotest-assertions-core-jvm:5.7.2")
+    testImplementation("io.kotest:kotest-runner-junit5-jvm:${kotestVersion}")
+    testImplementation("io.kotest:kotest-assertions-core-jvm:${kotestVersion}")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testImplementation("io.kotest:kotest-property-jvm:5.7.2")
+    testImplementation("io.kotest:kotest-property-jvm:${kotestVersion}")
 
 
 }
@@ -49,14 +49,15 @@ tasks {
         }
     }
 
-    test {
-        useJUnitPlatform()
-//        jvmArgs()
-    }
+
 }
 
 tasks.withType<Test> {
     jvmArgs("--add-opens", "java.base/java.util=ALL-UNNAMED")
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
 
 tasks

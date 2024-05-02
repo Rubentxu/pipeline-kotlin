@@ -68,20 +68,18 @@ tasks {
         }
     }
 
-    test {
-        useJUnitPlatform()
-//        jvmArgs()
-    }
 }
 
-tasks.withType<Test> {
-    jvmArgs("--add-opens", "java.base/java.util=ALL-UNNAMED")
-}
+
 
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions {
         freeCompilerArgs = freeCompilerArgs + "-Xopt-in=kotlin.RequiresOptIn" + "-Xcontext-receivers"
     }
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
 
 tasks

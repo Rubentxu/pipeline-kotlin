@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.backend
 
 
-import dev.rubentxu.pipeline.backend.cdi.CascManager
+import dev.rubentxu.pipeline.backend.retrievers.CascManager
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe

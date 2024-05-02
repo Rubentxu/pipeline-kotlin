@@ -1,15 +1,13 @@
 package dev.rubentxu.pipeline.backend.factories.credentials
 
 
-import dev.rubentxu.pipeline.backend.cdi.CascManager
+import dev.rubentxu.pipeline.backend.retrievers.CascManager
 import dev.rubentxu.pipeline.backend.mapper.LookupException
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PipelineError
 import dev.rubentxu.pipeline.model.PropertiesError
 import dev.rubentxu.pipeline.model.credentials.*
-import io.kotest.assertions.failure
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.spec.style.scopes.StringSpecScope

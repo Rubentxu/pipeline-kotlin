@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.backend.cdi
+package dev.rubentxu.pipeline.backend.retrievers
 
 import dev.rubentxu.pipeline.backend.factories.PipelineContextFactory
 import dev.rubentxu.pipeline.backend.mapper.PropertySet

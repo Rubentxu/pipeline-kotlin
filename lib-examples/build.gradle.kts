@@ -27,12 +27,12 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.21")
 
 
-    testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")
-    testImplementation("io.kotest:kotest-assertions-core-jvm:5.7.2")
+    testImplementation("io.kotest:kotest-runner-junit5:${kotestVersion}")
+    testImplementation("io.kotest:kotest-assertions-core:${kotestVersion}")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testImplementation("io.kotest:kotest-property-jvm:5.7.2")
+    testImplementation("io.kotest:kotest-property-jvm:${kotestVersion}")
 }
 
-tasks.test {
+tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }

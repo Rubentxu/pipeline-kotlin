@@ -289,18 +289,17 @@ inline fun <reified T> PropertySet.required(segment: PathSegment): Result<T> = r
     Result.failure(PropertiesError(it.message ?: "Error in required"))
 }
 
-
 inline fun <reified T> PropertySet.getValue(segment: PathSegment): T {
-    ensure(containsKey(segment.getKey())) { "PathSegment '${segment.getKey()}' not found in PropertySet" }
-    val value: Any? = updateAbsolutePathIfPropertySet<T>(get(segment.getKey()), segment).getOrThrow()
+    ensure(containsKey(segment.getKey())) { PropertiesError("PathSegment '${segment.getKey()}' not found in PropertySet") }
+    var value: Any? = updateAbsolutePathIfPropertySet<T>(get(segment.getKey()), segment).getOrThrow()
 
     if (segment.containsIndex()) {
-        getValueFromCollection<T>(segment, value, false)
+        value = getValueFromCollection<T>(segment, value, false).getOrThrow()
     }
-    ensure(value != null) { "PathSegment '${segment.getKey()}' is null in PropertySet" }
-    ensure(value is T) { "Value for PathSegment '${segment.getKey()}' is not of type ${T::class.simpleName} but ${value::class.simpleName}" }
+    ensure(value != null) { PropertiesError("PathSegment '${segment.getKey()}' is null in PropertySet") }
+    ensure(value is T) { PropertiesError("Value for PathSegment '${segment.getKey()}' is not of type ${T::class.simpleName} but ${value!!::class.simpleName}") }
 
-    return value
+    return value as T
 }
 
 inline fun <reified T> PropertySet.updateAbsolutePathIfPropertySet(value: Any?, segment: PathSegment): Result<T> {

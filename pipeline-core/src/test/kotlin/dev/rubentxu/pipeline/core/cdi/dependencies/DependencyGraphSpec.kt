@@ -1,10 +1,7 @@
 package dev.rubentxu.pipeline.core.cdi.dependencies
 
 
-import core.cdi.cyclicdependencies.*
-import core.cdi.cyclicdependencies.interfaces.*
-import core.cdi.nocyclicdependencies.*
-import core.cdi.nocyclicdependencies.interfaces.*
+
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 

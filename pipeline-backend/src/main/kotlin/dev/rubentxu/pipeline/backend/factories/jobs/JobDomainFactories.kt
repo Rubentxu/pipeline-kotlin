@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.optional
 import dev.rubentxu.pipeline.backend.mapper.required
+import dev.rubentxu.pipeline.core.jobs.*
 import dev.rubentxu.pipeline.model.jobs.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

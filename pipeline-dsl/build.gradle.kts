@@ -15,7 +15,7 @@ group = "dev.rubentxu.pipeline.dsl"
 version = appVersion
 
 dependencies {
-    implementation(project(":pipeline-model"))
+//    implementation(project(":pipeline-model"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
 
 //    implementation("org.gradle:gradle-tooling-api:8.4")

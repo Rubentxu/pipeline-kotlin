@@ -21,8 +21,8 @@ application {
 
 dependencies {
     implementation(project(":pipeline-dsl"))
-    implementation(project(":pipeline-model"))
-    implementation(project(":pipeline-backend"))
+    implementation(project(":pipeline-core"))
+//    implementation(project(":pipeline-backend"))
 
 
     implementation("info.picocli:picocli-codegen:4.6.3")

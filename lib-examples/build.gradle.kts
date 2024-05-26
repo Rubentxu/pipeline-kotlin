@@ -21,7 +21,7 @@ repositories {
 
 dependencies {
     implementation(project(":pipeline-dsl"))
-    implementation(project(":pipeline-model"))
+//    implementation(project(":pipeline-model"))
 
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.21")

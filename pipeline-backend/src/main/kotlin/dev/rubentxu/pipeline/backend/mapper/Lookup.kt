@@ -3,8 +3,7 @@
 package dev.rubentxu.pipeline.backend.mapper
 
 import dev.rubentxu.pipeline.model.PipelineError
-import dev.rubentxu.pipeline.model.PropertiesError
-import kotlinx.serialization.decodeFromString
+import dev.rubentxu.pipeline.core.pipeline.PropertiesError
 import kotlinx.serialization.json.*
 import org.yaml.snakeyaml.Yaml
 import java.nio.charset.StandardCharsets

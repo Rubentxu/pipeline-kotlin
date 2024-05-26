@@ -2,6 +2,10 @@ package dev.rubentxu.pipeline.cli
 
 
 
+import dev.rubentxu.pipeline.model.logger.LogLevel
+import dev.rubentxu.pipeline.model.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.logger.SocketLogConfigurationStrategy
+import org.slf4j.LoggerFactory
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
@@ -25,16 +29,16 @@ class PipelineCliCommand() : Runnable {
         assert(configPath.isNotEmpty()) { "Config path is empty" }
         assert(scriptPath.isNotEmpty()) { "Script path is empty" }
 
-//        val logConfiguration = SocketLogConfigurationStrategy()
-//        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
-//        logConfiguration.configure(loggerContext, LogLevel.TRACE)
-//        val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = logConfiguration)
-//        logger.info("Pipeline CLI started...")
-//        PipelineScriptRunner.evalWithScriptEngineManager(
-//            scriptPath,
-//            configPath,
-////            logger = logger
-//            )
+        val logConfiguration = SocketLogConfigurationStrategy()
+        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+        logConfiguration.configure(loggerContext, LogLevel.TRACE)
+        val logger = PipelineLogger(logLevel = LogLevel.TRACE, logConfigurationStrategy = logConfiguration)
+        logger.info("Pipeline CLI started...")
+        PipelineScriptRunner.evalWithScriptEngineManager(
+            scriptPath,
+            configPath,
+//            logger = logger
+            )
 
 
 //        detachAndStopAllAppenders()

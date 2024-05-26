@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.backend.factories
 
 import dev.rubentxu.pipeline.backend.factories.credentials.CredentialsProviderFactory
 import dev.rubentxu.pipeline.backend.factories.jobs.JobInstanceFactory
-import dev.rubentxu.pipeline.backend.jobs.JobInstance
+import dev.rubentxu.pipeline.core.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.model.*
 import dev.rubentxu.pipeline.model.credentials.ICredentialsProvider

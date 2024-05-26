@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.backend.factories.PipelineDomainFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PipelineFileSourceCodeFactory
 import dev.rubentxu.pipeline.backend.factories.sources.PluginsDefinitionSourceFactory
 import dev.rubentxu.pipeline.backend.factories.sources.ProjectSourceCodeFactory
-import dev.rubentxu.pipeline.backend.jobs.JobInstance
+import dev.rubentxu.pipeline.core.jobs.JobInstance
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
 import kotlinx.coroutines.async

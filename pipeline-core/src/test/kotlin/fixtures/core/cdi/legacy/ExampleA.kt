@@ -1,6 +1,5 @@
 package fixtures.core.cdi.legacy
 
-import core.cdi.legacy.interfaces.*
 import dev.rubentxu.pipeline.core.cdi.annotations.PipelineComponent
 import dev.rubentxu.pipeline.core.cdi.annotations.Qualifier
 

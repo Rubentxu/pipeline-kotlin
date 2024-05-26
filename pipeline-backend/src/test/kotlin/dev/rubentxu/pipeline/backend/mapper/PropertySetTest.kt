@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.backend.mapper
 
 
-import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.core.pipeline.PropertiesError
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe

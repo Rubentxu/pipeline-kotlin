@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.backend.sources
 
 import dev.rubentxu.pipeline.model.IDComponent
 import dev.rubentxu.pipeline.model.IPipelineContext
-import dev.rubentxu.pipeline.model.jobs.PluginsDefinitionSource
+import dev.rubentxu.pipeline.core.jobs.PluginsDefinitionSource
 import dev.rubentxu.pipeline.model.jobs.ProjectSourceCode
 import dev.rubentxu.pipeline.model.repository.*
 import java.net.URL

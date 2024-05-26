@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.core.interfaces
 
+import dev.rubentxu.pipeline.core.logger.LogConfigurationStrategy
 import dev.rubentxu.pipeline.core.logger.LogLevel
 
 
@@ -7,20 +8,22 @@ interface ILogger : Configurable {
 
     fun setLogLevel(level: LogLevel)
 
-    fun info(message: String)
+    fun info(tag: String, message: String)
 
-    fun warn(message: String)
+    fun warn(tag: String, message: String)
 
-    fun debug(message: String)
+    fun debug(tag: String, message: String)
 
-    fun error(message: String)
+    fun error(tag: String, message: String)
 
-    fun trace(message: String)
+    fun system(tag: String, message: String)
 
-    fun <T> printPrettyLog(level: LogLevel, obj: T)
+    fun <T> printPrettyLog(tag: String, level: LogLevel, obj: T)
 
-    fun logPrettyMessages(level: LogLevel, messages: List<String>)
+    fun logPrettyMessages(tag: String, level: LogLevel, messages: List<String>)
 
-    fun logPrettyError(msgs: List<String>)
+    fun logPrettyError(tag: String, msgs: List<String>)
+
+    fun changeConfigurationStrategy(logConfigurationStrategy: LogConfigurationStrategy)
 
 }

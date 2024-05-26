@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.backend.mapper.LookupException
 import dev.rubentxu.pipeline.backend.mapper.PropertySet
 import dev.rubentxu.pipeline.backend.mapper.required
 import dev.rubentxu.pipeline.model.IDComponent
-import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.core.pipeline.PropertiesError
 import dev.rubentxu.pipeline.model.credentials.*
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec

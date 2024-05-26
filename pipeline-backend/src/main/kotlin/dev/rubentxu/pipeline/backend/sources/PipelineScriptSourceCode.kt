@@ -22,27 +22,6 @@ class PipelineScriptSourceCode(
 ) : PipelineSource {
     private val logger = PipelineLogger.getLogger()
 
-    override suspend fun getPipeline(context: IPipelineContext): IPipeline {
-        val pipelineDef = evaluateScriptFile(path)
-        logger.system("Pipeline definition: $pipelineDef")
-        return buildPipeline(pipelineDef)
-    }
-
-    fun buildPipeline(pipelineDef: PipelineDefinition): Pipeline = runBlocking {
-        pipelineDef.build()
-    }
-
-    // Evalúa el archivo de script y devuelve la definición del pipeline.
-    fun evaluateScriptFile(scriptPath: Path): PipelineDefinition {
-        val engine = getScriptEngine()
-        val scriptFile = scriptPath.toFile()
-        return engine.eval(scriptFile.reader()) as? PipelineDefinition
-            ?: throw PipelineError("Script does not contain a PipelineDefinition")
-    }
-
-    override fun getScriptEngine(): ScriptEngine =
-        ScriptEngineManager().getEngineByExtension("kts")
-            ?: throw IllegalStateException("Script engine for .kts files not found")
 
 
 }

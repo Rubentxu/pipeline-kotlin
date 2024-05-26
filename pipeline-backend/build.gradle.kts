@@ -56,8 +56,6 @@ dependencies {
 
     implementation("org.freemarker:freemarker:2.3.32")
 
-    implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:$kotlinVersion")
-    implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:$kotlinVersion")
 
     implementation("com.github.docker-java:docker-java-core:3.3.4")
     implementation("com.github.docker-java:docker-java-transport-zerodep:3.3.4")

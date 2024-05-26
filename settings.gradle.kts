@@ -12,7 +12,7 @@ rootProject.name = "pipeline-kotlin"
 
 include(":pipeline-dsl")
 include(":pipeline-core")
-include(":pipeline-cli")
-include(":pipeline-model")
-include(":pipeline-backend")
-include(":lib-examples")
+//include(":pipeline-cli")
+//include(":pipeline-model")
+//include(":pipeline-backend")
+//include(":lib-examples")

@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.core.events
 
-import dev.rubentxu.pipeline.core.interfaces.IEventStore
+
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 

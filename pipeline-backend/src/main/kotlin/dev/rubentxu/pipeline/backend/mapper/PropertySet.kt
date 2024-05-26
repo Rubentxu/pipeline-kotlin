@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.backend.mapper
 
-import dev.rubentxu.pipeline.model.PropertiesError
+import dev.rubentxu.pipeline.core.pipeline.PropertiesError
 import java.util.concurrent.ConcurrentHashMap
 
 

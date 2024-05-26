@@ -1,14 +1,16 @@
 package dev.rubentxu.pipeline.core.logger
 
+import ch.qos.logback.classic.LoggerContext
 import dev.rubentxu.pipeline.core.cdi.annotations.PipelineComponent
 import dev.rubentxu.pipeline.core.interfaces.IConfigClient
 import dev.rubentxu.pipeline.core.interfaces.ILogger
+import org.slf4j.LoggerFactory
 
 @PipelineComponent
-class Logger : ILogger {
-
-    private var logLevel: LogLevel = LogLevel.INFO
-
+class Logger(
+    private var logLevel: LogLevel= LogLevel.INFO,
+    var logConfigurationStrategy: LogConfigurationStrategy = ConsoleLogConfigurationStrategy()
+)  : ILogger {
 
     fun logMessage(level: LogLevel, message: String) {
 
@@ -22,24 +24,24 @@ class Logger : ILogger {
         TODO("Not yet implemented")
     }
 
-    override fun info(message: String) {
+    override fun info(tag: String, message: String) {
         logMessage(LogLevel.INFO, message)
     }
 
-    override fun warn(message: String) {
+    override fun warn(tag: String, message: String) {
         logMessage(LogLevel.WARN, message)
     }
 
-    override fun debug(message: String) {
+    override fun debug(tag: String, message: String) {
         logMessage(LogLevel.DEBUG, message)
     }
 
-    override fun error(message: String) {
+    override fun error(tag: String, message: String) {
         logMessage(LogLevel.ERROR, message)
     }
 
-    override fun trace(message: String) {
-        logMessage(LogLevel.TRACE, message)
+    override fun system(tag: String, message: String) {
+        logMessage(LogLevel.SYSTEM, message)
     }
 
     fun executeWhenDebug(body: () -> Unit) {
@@ -48,17 +50,17 @@ class Logger : ILogger {
         }
     }
 
-    override fun <T> printPrettyLog(level: LogLevel, obj: T) {
+    override fun <T> printPrettyLog(tag: String, level: LogLevel, obj: T) {
         if (isLoggable(level)) {
             logMessage(level, extendPrettyPrint(obj, 0, StringBuilder()).toString())
         }
     }
 
-    override fun logPrettyMessages(level: LogLevel, messages: List<String>) {
+    override fun logPrettyMessages(tag: String, level: LogLevel, messages: List<String>) {
         logMessage(level, createPrettyMessage(messages))
     }
 
-    override fun logPrettyError(msgs: List<String>) {
+    override fun logPrettyError(tag: String, msgs: List<String>) {
         error(createPrettyMessage(msgs))
     }
 
@@ -128,6 +130,17 @@ class Logger : ILogger {
             logLevel = LogLevel.DEBUG
         }
         logLevel = LogLevel.INFO
+    }
+
+    private fun configureLogger() {
+        val loggerContext = LoggerFactory.getILoggerFactory() as LoggerContext
+        logConfigurationStrategy.configure(loggerContext, logLevel)
+    }
+
+
+    override fun changeConfigurationStrategy(logConfigurationStrategy: LogConfigurationStrategy) {
+        this.logConfigurationStrategy = logConfigurationStrategy
+        configureLogger()
     }
 
 }

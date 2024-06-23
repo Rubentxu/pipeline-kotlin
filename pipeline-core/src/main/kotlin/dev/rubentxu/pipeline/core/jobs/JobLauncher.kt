@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.core.jobs
 
 import dev.rubentxu.pipeline.core.interfaces.*
 import dev.rubentxu.pipeline.core.jobs.*
-import dev.rubentxu.pipeline.core.pipeline.PipelineDefinition
+import dev.rubentxu.pipeline.core.pipeline.PipelineBuilder
 import dev.rubentxu.pipeline.core.pipeline.PipelineError
 import kotlinx.coroutines.*
 import java.io.InputStreamReader
@@ -119,15 +119,15 @@ class JobLauncherImpl(
         return buildPipeline(pipelineDef, context)
     }
 
-    fun buildPipeline(pipelineDef: PipelineDefinition, context: IPipelineContext): IPipeline = runBlocking {
+    fun buildPipeline(pipelineDef: PipelineBuilder, context: IPipelineContext): IPipeline = runBlocking {
         pipelineDef.build(context)
     }
 
     // Evalúa el archivo de script y devuelve la definición del pipeline.
-    fun evaluateScript(scriptReader: InputStreamReader): PipelineDefinition {
+    fun evaluateScript(scriptReader: InputStreamReader): PipelineBuilder {
         val engine = getScriptEngine()
 //        val scriptFile = scriptPath.toFile().reader()
-        return engine.eval(scriptReader) as? PipelineDefinition
+        return engine.eval(scriptReader) as? PipelineBuilder
             ?: throw PipelineError("Script does not contain a PipelineDefinition")
     }
 

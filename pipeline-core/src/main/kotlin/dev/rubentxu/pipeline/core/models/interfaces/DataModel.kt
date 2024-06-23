@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.core.models
+package dev.rubentxu.pipeline.core.models.interfaces
 
 
 import java.io.Serializable

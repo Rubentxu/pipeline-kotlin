@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.model.steps
 
 import dev.rubentxu.pipeline.core.interfaces.ILogger
 import dev.rubentxu.pipeline.core.interfaces.IWorkspace
-import dev.rubentxu.pipeline.core.pipeline.EnvVars
+import dev.rubentxu.pipeline.core.models.pipeline.EnvVars
 import kotlinx.coroutines.*
 
 /**

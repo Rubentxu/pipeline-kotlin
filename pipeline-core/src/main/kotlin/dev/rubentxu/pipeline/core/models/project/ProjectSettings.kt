@@ -1,18 +1,18 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
 data class ProjectSettings(
-    var apiVersion: String = "v1",
-    var name: String,
-    var description: String,
-    var inceptionYear: String,
-    var developCenter: String,
-    var codeCapp: String,
-    var elementoPromocionable: String,
-    var version: String,
-) : ProjectDescriptorModel {
+    val apiVersion: String = "v1",
+    val name: String,
+    val description: String,
+    val inceptionYear: String,
+    val developCenter: String,
+    val codeCapp: String,
+    val elementoPromocionable: String,
+    val version: String,
+) : ProjectModel {
 
     override fun toMap(): Map<String, Any> {
         return mapOf(

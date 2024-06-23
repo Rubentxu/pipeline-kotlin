@@ -1,15 +1,15 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
-data class ProjectDescriptor(
-    var projectSettings: ProjectSettings,
-    var sourceRepositories: List<SourceRepository>,
-    var notifications: Notification,
-    var spec: ProjectSpec,
-    var status: ProjectStatus
-) : ProjectDescriptorModel {
+data class Project(
+    val projectSettings: ProjectSettings,
+    val sourceRepositories: List<SourceRepository>,
+    val notifications: Notification,
+    val spec: ProjectSpec,
+    val status: ProjectStatus
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "apiVersion" to projectSettings.apiVersion,

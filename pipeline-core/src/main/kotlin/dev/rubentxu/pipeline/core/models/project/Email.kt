@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 data class Email(
     val id: String,
@@ -8,7 +8,7 @@ data class Email(
     val description: String,
     val email: String,
     val notificatiosInteresteds: Set<Notification>
-) : ProjectDescriptorModel {
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "id" to id,

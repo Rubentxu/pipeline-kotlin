@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.core.steps
 
 import dev.rubentxu.pipeline.core.dsl.StepsBlock
 import dev.rubentxu.pipeline.core.interfaces.IWorkspace
-import dev.rubentxu.pipeline.core.pipeline.EnvVars
+import dev.rubentxu.pipeline.core.models.pipeline.EnvVars
 import dev.rubentxu.pipeline.model.steps.Shell
 import kotlinx.coroutines.runBlocking
 import java.io.File

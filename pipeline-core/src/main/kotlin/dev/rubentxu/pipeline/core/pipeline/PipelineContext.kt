@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.core.events.EventStore
 import dev.rubentxu.pipeline.core.events.IEventStore
 import dev.rubentxu.pipeline.core.events.PipelineEvent
 import dev.rubentxu.pipeline.core.interfaces.*
+import dev.rubentxu.pipeline.core.models.pipeline.EnvVars
 
 import kotlin.reflect.KClass
 import kotlin.reflect.full.findAnnotation

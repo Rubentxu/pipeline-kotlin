@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.core.jobs
 
-import dev.rubentxu.pipeline.core.pipeline.EnvVars
+import dev.rubentxu.pipeline.core.models.pipeline.EnvVars
 
 
 /**

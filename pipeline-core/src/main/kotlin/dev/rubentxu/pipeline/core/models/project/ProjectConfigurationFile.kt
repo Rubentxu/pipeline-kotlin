@@ -2,21 +2,16 @@ package dev.rubentxu.pipeline.core.models.project
 
 import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
-
-data class DeployTarget(
-    val id: String,
+data class ProjectConfigurationFile(
     val name: String,
-    val description: String,
-    val type: String,
-    val metadata: Metadata,
+    val version: String,
+    val dependencies: Any,
 ) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
-            "id" to id,
             "name" to name,
-            "description" to description,
-            "type" to type,
-            "metadata" to metadata
+            "version" to version,
+            "dependencies" to dependencies
         )
     }
 }

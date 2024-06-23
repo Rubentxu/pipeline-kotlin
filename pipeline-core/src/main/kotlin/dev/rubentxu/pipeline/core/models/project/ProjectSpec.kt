@@ -1,15 +1,15 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
 data class ProjectSpec(
-    var tools: List<ProjectTool>,
-    var artifactsRepositories: List<ArtifactsRepository>,
-    var deployTargets: List<DeployTarget>,
-    var scannerTools: List<ScannerToolModel>,
-    var vendorServices: List<VendorService>
-) : ProjectDescriptorModel {
+    val tools: List<ProjectTool>,
+    val artifactsRepositories: List<ArtifactsRepository>,
+    val deployTargets: List<DeployTarget>,
+    val scannerTools: List<ScannerToolModel>,
+    val vendorServices: List<VendorService>
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "tools" to tools.map { it.toMap() },

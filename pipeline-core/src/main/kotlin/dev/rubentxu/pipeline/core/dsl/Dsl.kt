@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.core.dsl
 
-import dev.rubentxu.pipeline.core.pipeline.PipelineDefinition
+import dev.rubentxu.pipeline.core.pipeline.PipelineBuilder
 
 @DslMarker
 annotation class PipelineDsl
@@ -14,9 +14,9 @@ annotation class PipelineDsl
  *  * @param block A block of code to run in the pipeline.
  *  * @return A PipelineResult instance containing the results of the pipeline execution.
  *  */
-fun pipeline(block: PipelineBlock.() -> Unit): Result<PipelineDefinition> {
+fun pipeline(block: PipelineBlock.() -> Unit): Result<PipelineBuilder> {
     return try {
-        val definition = PipelineDefinition(block)
+        val definition = PipelineBuilder(block)
         Result.success(definition) // Retorna un Result exitoso
     } catch (e: Exception) {
         Result.failure(e) // Retorna un Result con error

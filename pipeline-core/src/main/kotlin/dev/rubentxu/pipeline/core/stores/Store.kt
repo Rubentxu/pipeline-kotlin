@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.core.stores
 
-import dev.rubentxu.pipeline.core.models.DataModel
+import dev.rubentxu.pipeline.core.models.interfaces.DataModel
 import dev.rubentxu.pipeline.core.stores.interfaces.CoreAction
 import dev.rubentxu.pipeline.core.stores.interfaces.Dispacher
 import dev.rubentxu.pipeline.core.stores.interfaces.Effect

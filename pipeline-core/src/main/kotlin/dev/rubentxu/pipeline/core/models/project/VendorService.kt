@@ -3,19 +3,19 @@ package dev.rubentxu.pipeline.core.models.project
 import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
-data class DeployTarget(
+data class VendorService(
     val id: String,
     val name: String,
-    val description: String,
-    val type: String,
-    val metadata: Metadata,
+    val baseUrl: String,
+    val credentialsId: String,
+    val metadata: Metadata
 ) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "id" to id,
             "name" to name,
-            "description" to description,
-            "type" to type,
+            "baseUrl" to baseUrl,
+            "credentialsId" to credentialsId,
             "metadata" to metadata
         )
     }

@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.core.dsl
 import dev.rubentxu.pipeline.core.events.EventStore
 import dev.rubentxu.pipeline.core.interfaces.ILogger
 import dev.rubentxu.pipeline.core.interfaces.IPipelineContext
-import dev.rubentxu.pipeline.core.pipeline.EnvVars
+import dev.rubentxu.pipeline.core.models.pipeline.EnvVars
 import dev.rubentxu.pipeline.core.pipeline.Pipeline
 import dev.rubentxu.pipeline.core.pipeline.PostExecution
 import dev.rubentxu.pipeline.model.pipeline.*

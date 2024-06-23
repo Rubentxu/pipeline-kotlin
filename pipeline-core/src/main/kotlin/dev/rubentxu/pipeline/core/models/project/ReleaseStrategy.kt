@@ -1,15 +1,13 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
-import kotlin.Metadata
+import dev.rubentxu.pipeline.core.models.project.strategies.ProjectActionStrategy
 
 class ReleaseStrategy(
-    var id: String,
-    var name: String,
-    var description: String,
-    var metadata: Metadata
-) : ProjectDescriptorModel  {
-
+    id: String,
+    name: String,
+    description: String,
+    metadata: Metadata,
+) : ProjectActionStrategy(id, name, description, "", metadata) {
 
     override fun toMap(): Map<String, Any> {
         return mapOf(

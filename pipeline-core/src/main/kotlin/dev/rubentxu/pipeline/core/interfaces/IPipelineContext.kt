@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.core.interfaces
 
 import dev.rubentxu.pipeline.core.cdi.ConfigurationPriority
 import dev.rubentxu.pipeline.core.events.IEventStore
-import dev.rubentxu.pipeline.core.pipeline.EnvVars
+import dev.rubentxu.pipeline.core.models.pipeline.EnvVars
 
 interface IPipelineContext : IServiceLocator, IEventStore {
 

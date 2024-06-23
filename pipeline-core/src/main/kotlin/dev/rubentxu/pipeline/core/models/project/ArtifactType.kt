@@ -1,12 +1,12 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
 data class ArtifactType(
-    var name: String,
-    var extension: String
-) : ProjectDescriptorModel {
+    val name: String,
+    val extension: String
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "name" to name,

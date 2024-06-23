@@ -1,12 +1,12 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
 data class ProjectStatus(
-    var artifacts: List<Artifact>,
-    var projectConfigurationFiles: List<ProjectConfigurationFile>
-) : ProjectDescriptorModel {
+    val artifacts: List<Artifact>,
+    val projectConfigurationFiles: List<ProjectConfigurationFile>
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "artifacts" to artifacts.map { it.toMap() },

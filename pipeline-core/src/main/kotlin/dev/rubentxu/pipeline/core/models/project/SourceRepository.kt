@@ -1,16 +1,16 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 
 
 data class SourceRepository(
-    var id: String,
-    var url: String,
-    var branch: String,
-    var email: String,
-    var userName: String,
-    var credentialsId: String
-) : ProjectDescriptorModel {
+    val id: String,
+    val url: String,
+    val branch: String,
+    val email: String,
+    val userName: String,
+    val credentialsId: String
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "id" to id,

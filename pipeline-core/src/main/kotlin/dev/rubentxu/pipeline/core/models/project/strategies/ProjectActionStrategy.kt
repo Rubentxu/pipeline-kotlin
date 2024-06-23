@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.core.models.project.strategies
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
+import dev.rubentxu.pipeline.core.models.project.Metadata
 
 
 open class ProjectActionStrategy(
@@ -9,7 +10,7 @@ open class ProjectActionStrategy(
     var description: String,
     var command: String,
     var metadata: Metadata
-) : ProjectDescriptorModel {
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         return mapOf(
             "id" to id,

@@ -1,19 +1,19 @@
 package dev.rubentxu.pipeline.core.models.project
 
-import dev.rubentxu.pipeline.core.models.ProjectDescriptorModel
+import dev.rubentxu.pipeline.core.models.interfaces.ProjectModel
 import dev.rubentxu.pipeline.core.models.project.strategies.*
 
 
 data class ProjectTool(
-    var id: String,
-    var name: String,
-    var version: String,
-    var cache: Boolean,
-    var toolConfigurationFile: String,
-    var artifactsRepositoryId: String,
-    var strategies: List<ProjectActionStrategy>,
-    var releaseStrategies: List<ReleaseStrategy>
-) : ProjectDescriptorModel {
+    val id: String,
+    val name: String,
+    val version: String,
+    val cache: Boolean,
+    val toolConfigurationFile: String,
+    val artifactsRepositoryId: String,
+    val strategies: List<ProjectActionStrategy>,
+    val releaseStrategies: List<ReleaseStrategy>
+) : ProjectModel {
     override fun toMap(): Map<String, Any> {
         val buildStrategies: Map<String, Any> = strategies.find { it is BuildStrategy }.let { (it as BuildStrategy?)?.toMap() }?: emptyMap()
         val testStrategies: Map<String, Any> = strategies.find { it is TestStrategy }.let { (it as TestStrategy?)?.toMap() }?: emptyMap()
@@ -33,8 +33,14 @@ data class ProjectTool(
             "cache" to cache,
             "toolConfigurationFile" to toolConfigurationFile,
             "artifactsRepositoryId" to artifactsRepositoryId,
-            "releaseStrategies" to releaseStrategies.map { it.toMap() },
-            "buildStrategies" to buildStrategies
+            "releaseStrategies" to releaseStrategies,
+            "buildStrategies" to buildStrategies,
+            "testStrategies" to testStrategies,
+            "deployStrategies" to deployStrategies,
+            "publishStrategies" to publishStrategies,
+            "undeployStrategies" to undeployStrategies,
+            "rollbackStrategies" to rollbackStrategies,
+            "cleanupStrategies" to cleanupStrategies
 
 
         )

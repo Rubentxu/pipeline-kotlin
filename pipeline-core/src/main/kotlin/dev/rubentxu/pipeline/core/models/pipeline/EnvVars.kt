@@ -1,12 +1,13 @@
-package dev.rubentxu.pipeline.core.pipeline
+package dev.rubentxu.pipeline.core.models.pipeline
 
+import dev.rubentxu.pipeline.core.models.interfaces.PipelineModel
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * `EnvVars` is a thread-safe class for storing and managing environment variables.
  * It provides various operators for convenient access and modification of the variables.
  */
-class EnvVars(val map: Map<String, String>) : MutableMap<String, String> by ConcurrentHashMap(map) {
+class EnvVars(val map: Map<String, String>) : MutableMap<String, String> by ConcurrentHashMap(map), PipelineModel {
 
 
     /**
@@ -37,5 +38,9 @@ class EnvVars(val map: Map<String, String>) : MutableMap<String, String> by Conc
         }
 
         return result
+    }
+
+    override fun toMap(): Map<String, Any> {
+        return this
     }
 }

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.core.models.project.strategies
 
+import dev.rubentxu.pipeline.core.models.project.Metadata
 
 class BuildStrategy(
     id: String,

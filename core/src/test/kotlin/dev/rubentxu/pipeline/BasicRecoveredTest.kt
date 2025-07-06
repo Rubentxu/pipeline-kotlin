@@ -1,0 +1,258 @@
+package dev.rubentxu.pipeline
+
+import dev.rubentxu.pipeline.dsl.DslManager
+import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.security.SandboxManager
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.string.shouldContain
+import io.mockk.*
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.seconds
+
+class BasicRecoveredTest : DescribeSpec({
+
+    describe("Basic Pipeline Components Recovery") {
+        
+        it("should initialize DslManager successfully") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            dslManager shouldNotBe null
+            
+            // Verify initialization
+            verify { mockLogger.info(match { it.contains("built-in DSL engines") }) }
+        }
+        
+        it("should generate DslManager report") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            val report = dslManager.generateReport()
+            report shouldNotBe null
+            report.registeredEngines shouldBe 1 // Pipeline engine
+            report.engines.shouldNotBeEmpty()
+            
+            val formattedReport = report.getFormattedReport()
+            formattedReport shouldContain "DSL Manager Report"
+        }
+        
+        it("should provide engine information") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            val engineInfo = dslManager.getEngineInfo()
+            engineInfo.shouldNotBeEmpty()
+            
+            // Should have at least the pipeline engine
+            val pipelineEngine = engineInfo.find { it.engineId.contains("pipeline") }
+            pipelineEngine shouldNotBe null
+        }
+        
+        it("should handle DslManager shutdown") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            runBlocking {
+                withTimeout(10.seconds) {
+                    dslManager.shutdown()
+                    
+                    verify { mockLogger.info(match { it.contains("Shutting down DSL manager") }) }
+                    verify { mockLogger.info(match { it.contains("DSL manager shutdown complete") }) }
+                }
+            }
+        }
+        
+        it("should initialize SandboxManager successfully") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            
+            val sandboxManager = SandboxManager(mockLogger)
+            sandboxManager shouldNotBe null
+        }
+        
+        it("should handle SandboxManager shutdown") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            
+            val sandboxManager = SandboxManager(mockLogger)
+            
+            // Should not throw exception
+            sandboxManager.shutdown()
+            
+            // Verify shutdown was logged
+            verify { mockLogger.info(match { it.contains("shutdown") || it.contains("Shutting down") }) }
+        }
+        
+        it("should validate security policy with SandboxManager") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            
+            val sandboxManager = SandboxManager(mockLogger)
+            
+            // Create a basic execution context for validation
+            val workingDir = createTempDir()
+            val context = dev.rubentxu.pipeline.dsl.DslExecutionContext(
+                workingDirectory = workingDir,
+                environmentVariables = emptyMap(),
+                resourceLimits = dev.rubentxu.pipeline.dsl.DslResourceLimits(
+                    maxMemoryMb = 256,
+                    maxCpuTimeMs = 30_000L
+                )
+            )
+            
+            val validation = sandboxManager.validateSecurityPolicy(context)
+            validation shouldNotBe null
+            
+            // Cleanup
+            workingDir.deleteRecursively()
+        }
+        
+        it("should track execution statistics in DslManager") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            val stats = dslManager.getExecutionStats()
+            stats shouldNotBe null
+            // Should be empty initially
+            
+            val activeExecutions = dslManager.getActiveExecutions()
+            activeExecutions shouldNotBe null
+            // Should be empty initially
+        }
+        
+        it("should provide resource management in DslManager") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            // Test resource management methods
+            val resourceUsage = dslManager.getResourceUsage("non-existent")
+            resourceUsage shouldBe null
+            
+            val allActiveExecutions = dslManager.getAllActiveResourceLimitedExecutions()
+            allActiveExecutions shouldNotBe null
+            
+            val terminated = dslManager.terminateResourceLimitedExecution("non-existent")
+            terminated shouldBe false
+        }
+        
+        it("should provide secure execution management in DslManager") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            // Test secure execution methods
+            val activeSecureExecutions = dslManager.getActiveSecureExecutions()
+            activeSecureExecutions shouldNotBe null
+            
+            val resourceUsage = dslManager.getSecureExecutionResourceUsage("non-existent")
+            resourceUsage shouldBe null
+            
+            val terminated = dslManager.terminateSecureExecution("non-existent")
+            terminated shouldBe false
+        }
+    }
+    
+    describe("Basic Integration Tests") {
+        
+        it("should validate simple script content") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            runBlocking {
+                withTimeout(10.seconds) {
+                    val simpleScript = """
+                        val message = "Hello, Pipeline!"
+                        println(message)
+                        message
+                    """.trimIndent()
+                    
+                    val engineInfo = dslManager.getEngineInfo()
+                    if (engineInfo.isNotEmpty()) {
+                        val engineId = engineInfo.first().engineId
+                        
+                        val validationResult = dslManager.validateContent(
+                            scriptContent = simpleScript,
+                            engineId = engineId
+                        )
+                        
+                        validationResult shouldNotBe null
+                    }
+                }
+            }
+        }
+        
+        it("should provide enhanced validation reporting") {
+            val mockLogger = mockk<IPipelineLogger>(relaxed = true)
+            val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
+            
+            val dslManager = DslManager(
+                pipelineConfig = mockPipelineConfig,
+                logger = mockLogger
+            )
+            
+            runBlocking {
+                withTimeout(10.seconds) {
+                    val script = """
+                        val test = "Enhanced validation test"
+                        test
+                    """.trimIndent()
+                    
+                    val engineInfo = dslManager.getEngineInfo()
+                    if (engineInfo.isNotEmpty()) {
+                        val engineId = engineInfo.first().engineId
+                        
+                        val report = dslManager.validateContentWithEnhancedReporting(
+                            scriptContent = script,
+                            engineId = engineId,
+                            scriptName = "enhanced-test.kts"
+                        )
+                        
+                        report shouldNotBe null
+                        report.scriptName shouldBe "enhanced-test.kts"
+                    }
+                }
+            }
+        }
+    }
+})

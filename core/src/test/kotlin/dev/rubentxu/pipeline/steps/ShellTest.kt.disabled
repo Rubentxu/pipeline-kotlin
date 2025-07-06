@@ -1,0 +1,281 @@
+package dev.rubentxu.pipeline.steps
+
+import dev.rubentxu.pipeline.PipelineConfigTest
+import dev.rubentxu.pipeline.model.pipeline.*
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotBeEmpty
+import io.kotest.assertions.throwables.shouldThrow
+import io.mockk.*
+import kotlinx.coroutines.test.runTest
+import java.io.File
+import java.nio.file.Path
+
+class ShellTest : DescribeSpec({
+
+    describe("Shell") {
+        
+        beforeEach {
+            clearAllMocks()
+        }
+        
+        afterEach {
+            unmockkAll()
+        }
+
+        it("should initialize with correct pipeline and timeout") {
+            val pipeline = createTestPipeline()
+            val customTimeout = 30000L
+            
+            val shell = Shell(pipeline, customTimeout)
+            
+            shell.pipeline shouldBe pipeline
+            shell.timeout shouldBe customTimeout
+        }
+
+        it("should use default timeout when not specified") {
+            val pipeline = createTestPipeline()
+            
+            val shell = Shell(pipeline)
+            
+            shell.timeout shouldBe 15000L // Default timeout
+        }
+
+        it("should execute simple command successfully") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val result = shell.execute("echo 'Hello World'")
+            
+            result shouldBe ""  // returnStdout = false by default
+        }
+
+        it("should return stdout when returnStdout is true") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val result = shell.execute("echo 'Hello World'", returnStdout = true)
+            
+            result shouldContain "Hello World"
+        }
+
+        it("should throw exception when command fails") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val exception = shouldThrow<Exception> {
+                shell.execute("exit 1")  // Command that exits with non-zero code
+            }
+            
+            exception.message shouldContain "exit code"
+            exception.message shouldContain "1"
+        }
+
+        it("should handle command with non-zero exit code") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val exception = shouldThrow<Exception> {
+                shell.execute("false")  // Command that always returns 1
+            }
+            
+            exception.message shouldContain "Error executing command"
+        }
+
+        it("should set environment variables from pipeline") {
+            val env = EnvVars(mutableMapOf(
+                "TEST_VAR" to "test_value",
+                "BUILD_NUMBER" to "123"
+            ))
+            val pipeline = createTestPipeline(env = env)
+            val shell = Shell(pipeline)
+            
+            val process = shell.run("echo $TEST_VAR")
+            
+            process shouldNotBe null
+            process.isAlive shouldBe true
+            process.destroy()
+        }
+
+        it("should set JAVA_HOME in PATH when provided") {
+            val env = EnvVars(mutableMapOf(
+                "JAVA_HOME" to "/usr/lib/jvm/java-11",
+                "PATH" to "/usr/bin:/bin"
+            ))
+            val pipeline = createTestPipeline(env = env)
+            val shell = Shell(pipeline)
+            
+            shell.run("echo 'test'")
+            
+            // JAVA_HOME/bin should be added to PATH
+            pipeline.env["PATH"] shouldContain "/usr/lib/jvm/java-11/bin"
+        }
+
+        it("should set M2_HOME in PATH when provided") {
+            val env = EnvVars(mutableMapOf(
+                "M2_HOME" to "/opt/maven",
+                "PATH" to "/usr/bin:/bin"
+            ))
+            val pipeline = createTestPipeline(env = env)
+            val shell = Shell(pipeline)
+            
+            shell.run("echo 'test'")
+            
+            // M2_HOME/bin should be added to PATH
+            pipeline.env["PATH"] shouldContain "/opt/maven/bin"
+        }
+
+        it("should use pipeline working directory") {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val process = shell.run("pwd")
+            
+            process shouldNotBe null
+            process.destroy()
+        }
+
+        it("should handle concurrent executions") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val results = listOf(
+                shell.execute("echo 'Command 1'", returnStdout = true),
+                shell.execute("echo 'Command 2'", returnStdout = true),
+                shell.execute("echo 'Command 3'", returnStdout = true)
+            )
+            
+            results.size shouldBe 3
+            results.all { it.isNotEmpty() } shouldBe true
+        }
+
+        it("should handle stdout and stderr streams correctly") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            // Command that writes to stdout
+            val stdoutResult = shell.execute("echo 'stdout message'", returnStdout = true)
+            stdoutResult shouldContain "stdout message"
+            
+            // Command that writes to stderr should throw exception
+            shouldThrow<Exception> {
+                shell.execute("bash -c 'echo \"stderr message\" >&2; exit 1'")
+            }
+        }
+
+        it("should respect timeout setting") = runTest {
+            val pipeline = createTestPipeline()
+            val shortTimeout = 100L
+            val shell = Shell(pipeline, shortTimeout)
+            
+            // This test is tricky because we can't easily test timeout without 
+            // actual long-running commands, so we verify the timeout is set
+            shell.timeout shouldBe shortTimeout
+        }
+
+        it("should handle empty commands gracefully") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val exception = shouldThrow<Exception> {
+                shell.execute("")
+            }
+            
+            // Should fail due to empty command
+            exception.message shouldNotBe null
+        }
+
+        it("should handle commands with special characters") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val result = shell.execute("echo 'Special chars: !@#$%^&*()'", returnStdout = true)
+            
+            result shouldContain "Special chars: !@#$%^&*()"
+        }
+
+        it("should handle multi-line commands") = runTest {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val command = """
+                echo 'Line 1'
+                echo 'Line 2'
+                echo 'Line 3'
+            """.trimIndent()
+            
+            val result = shell.execute(command, returnStdout = true)
+            
+            result shouldContain "Line 1"
+            result shouldContain "Line 2"
+            result shouldContain "Line 3"
+        }
+
+        it("should work with different pipeline agents") = runTest {
+            val dockerAgent = DockerAgent(image = "ubuntu:latest")
+            val anyAgent = AnyAgent("local")
+            
+            val dockerPipeline = createTestPipeline(agent = dockerAgent)
+            val anyPipeline = createTestPipeline(agent = anyAgent)
+            
+            val dockerShell = Shell(dockerPipeline)
+            val anyShell = Shell(anyPipeline)
+            
+            // Both should be able to execute commands
+            dockerShell.execute("echo 'docker test'", returnStdout = true)
+            anyShell.execute("echo 'any test'", returnStdout = true)
+        }
+
+        it("should handle pipeline environment variable modifications") {
+            val env = EnvVars(mutableMapOf(
+                "ORIGINAL_VAR" to "original_value"
+            ))
+            val pipeline = createTestPipeline(env = env)
+            val shell = Shell(pipeline)
+            
+            // Modify environment during execution
+            pipeline.env["NEW_VAR"] = "new_value"
+            
+            val process = shell.run("echo $NEW_VAR")
+            process shouldNotBe null
+            process.destroy()
+        }
+
+        it("should create process with correct working directory") {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val process = shell.run("pwd")
+            
+            process shouldNotBe null
+            process.destroy()
+        }
+
+        it("should handle process builder configuration") {
+            val pipeline = createTestPipeline()
+            val shell = Shell(pipeline)
+            
+            val process = shell.run("echo 'test'")
+            
+            process shouldNotBe null
+            process.isAlive shouldBe true
+            process.destroy()
+        }
+    }
+})
+
+private fun createTestPipeline(
+    agent: Agent = AnyAgent("test"),
+    env: EnvVars = EnvVars(mutableMapOf()),
+    workingDir: Path? = null
+): Pipeline {
+    return Pipeline(
+        agent = agent,
+        stages = emptyList(),
+        env = env,
+        postExecution = PostExecution(),
+        pipelineConfig = PipelineConfigTest()
+    )
+}

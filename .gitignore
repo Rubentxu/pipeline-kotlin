@@ -45,3 +45,7 @@ bin/
 ### Mac OS ###
 .DS_Store
 pipeline-kts
+/.claude/commands/connascence.md
+/.claude/commands/execute-prp.md
+/.claude/commands/generate-prp.md
+CLAUDE.md

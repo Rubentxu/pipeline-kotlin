@@ -1,17 +1,17 @@
 package dev.rubentxu.pipeline.events
 
-import dev.rubentxu.pipeline.events.EventManager.subscribeToEvents
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlin.reflect.KClass
 
 /**
- * Singleton class that manages events.
+ * Legacy EventManager for backward compatibility.
+ * New code should use the DomainEvent system with EventBus.
  *
- * This class provides mechanisms to emit and subscribe to events in an asynchronous way using Kotlin Flow.
- * It provides a [subscribeToEvents] method that allows subscribing to specific types of events.
+ * @deprecated Use EventBus and DomainEvent instead
  */
+@Deprecated("Use EventBus and DomainEvent instead", ReplaceWith("EventBus", "dev.rubentxu.pipeline.events.EventBus"))
 object EventManager {
     private val _events = MutableSharedFlow<Event>() // Backing property
 

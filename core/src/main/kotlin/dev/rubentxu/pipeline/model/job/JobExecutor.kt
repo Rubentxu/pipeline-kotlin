@@ -39,7 +39,7 @@ class JobExecutor {
         logger.system("Create handler for pipeline exceptions...")
         val pipelineExceptionHandler = CoroutineExceptionHandler { _, exception ->
             logger.error("Pipeline execution failed: ${exception.message}")
-            status = Status.Failure
+            status = Status.FAILURE
             pipeline.stageResults.addAll(listOf(StageResult(pipeline.currentStage, status)))
         }
 
@@ -58,7 +58,7 @@ class JobExecutor {
             // Wait for all preExecute jobs to complete
             preExecuteJobs.forEach { it.await() }
 
-            status = if (pipeline.stageResults.any { it.status == Status.Failure }) Status.Failure else Status.Success
+            status = if (pipeline.stageResults.any { it.status == Status.FAILURE }) Status.FAILURE else Status.SUCCESS
 
             val result = PipelineResult(status, pipeline.stageResults, pipeline.env, logger.logs())
 

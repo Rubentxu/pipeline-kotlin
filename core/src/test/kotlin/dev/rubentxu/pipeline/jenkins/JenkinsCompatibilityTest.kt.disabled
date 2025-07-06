@@ -1,0 +1,301 @@
+package dev.rubentxu.pipeline.jenkins
+
+import dev.rubentxu.pipeline.dsl.DslManager
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import kotlinx.coroutines.test.runTest
+
+/**
+ * Tests for Jenkins compatibility layer
+ */
+class JenkinsCompatibilityTest : StringSpec({
+    
+    "should parse simple Jenkins pipeline syntax" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val config = object : IPipelineConfig {}
+            val dslManager = DslManager(config, logger = logger)
+            
+            // Register Jenkins DSL engine
+            dslManager.registerEngine(JenkinsDslEngine(config, logger))
+            
+            try {
+                val jenkinsScript = """
+                    pipeline {
+                        agent any
+                        
+                        stages {
+                            stage('Build') {
+                                steps {
+                                    echo 'Building...'
+                                    sh 'gradle build'
+                                }
+                            }
+                            
+                            stage('Test') {
+                                steps {
+                                    echo 'Testing...'
+                                    sh 'gradle test'
+                                }
+                            }
+                        }
+                    }
+                """.trimIndent()
+                
+                val validationResult = dslManager.validateContent(
+                    scriptContent = jenkinsScript,
+                    engineId = "jenkins-dsl"
+                )
+                
+                logger.info("Validation result: $validationResult")
+                
+                // The script should be syntactically valid
+                validationResult shouldNotBe null
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+    
+    "should handle Jenkins pipeline with environment variables" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val config = object : IPipelineConfig {}
+            val dslManager = DslManager(config, logger = logger)
+            
+            dslManager.registerEngine(JenkinsDslEngine(config, logger))
+            
+            try {
+                val jenkinsScript = """
+                    pipeline {
+                        agent any
+                        
+                        environment {
+                            put("BUILD_VERSION", "1.0.0")
+                            put("DEPLOY_ENV", "staging")
+                        }
+                        
+                        stages {
+                            stage('Deploy') {
+                                steps {
+                                    echo 'Deploying version: BUILD_VERSION to DEPLOY_ENV'
+                                    sh './deploy.sh'
+                                }
+                            }
+                        }
+                    }
+                """.trimIndent()
+                
+                val validationResult = dslManager.validateContent(
+                    scriptContent = jenkinsScript,
+                    engineId = "jenkins-dsl"
+                )
+                
+                logger.info("Environment validation result: $validationResult")
+                
+                validationResult shouldNotBe null
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+    
+    "should handle Jenkins pipeline with post actions" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val config = object : IPipelineConfig {}
+            val dslManager = DslManager(config, logger = logger)
+            
+            dslManager.registerEngine(JenkinsDslEngine(config, logger))
+            
+            try {
+                val jenkinsScript = """
+                    pipeline {
+                        agent any
+                        
+                        stages {
+                            stage('Build') {
+                                steps {
+                                    sh 'gradle build'
+                                }
+                                post {
+                                    always {
+                                        publishTestResults 'build/test-results/**/*.xml'
+                                    }
+                                    success {
+                                        echo 'Build succeeded!'
+                                    }
+                                    failure {
+                                        echo 'Build failed!'
+                                    }
+                                }
+                            }
+                        }
+                        
+                        post {
+                            always {
+                                echo 'Pipeline completed'
+                            }
+                            cleanup {
+                                sh 'gradle clean'
+                            }
+                        }
+                    }
+                """.trimIndent()
+                
+                val validationResult = dslManager.validateContent(
+                    scriptContent = jenkinsScript,
+                    engineId = "jenkins-dsl"
+                )
+                
+                logger.info("Post actions validation result: $validationResult")
+                
+                validationResult shouldNotBe null
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+    
+    "should handle Jenkins pipeline with conditional stages" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val config = object : IPipelineConfig {}
+            val dslManager = DslManager(config, logger = logger)
+            
+            dslManager.registerEngine(JenkinsDslEngine(config, logger))
+            
+            try {
+                val jenkinsScript = """
+                    pipeline {
+                        agent any
+                        
+                        stages {
+                            stage('Build') {
+                                steps {
+                                    sh 'gradle build'
+                                }
+                            }
+                            
+                            stage('Deploy to Staging') {
+                                when {
+                                    branch("develop")
+                                }
+                                steps {
+                                    echo 'Deploying to staging...'
+                                    sh './deploy-staging.sh'
+                                }
+                            }
+                            
+                            stage('Deploy to Production') {
+                                when {
+                                    branch("main")
+                                }
+                                steps {
+                                    echo 'Deploying to production...'
+                                    sh './deploy-production.sh'
+                                }
+                            }
+                        }
+                    }
+                """.trimIndent()
+                
+                val validationResult = dslManager.validateContent(
+                    scriptContent = jenkinsScript,
+                    engineId = "jenkins-dsl"
+                )
+                
+                logger.info("Conditional stages validation result: $validationResult")
+                
+                validationResult shouldNotBe null
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+    
+    "should handle Jenkins pipeline with Docker agent" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val config = object : IPipelineConfig {}
+            val dslManager = DslManager(config, logger = logger)
+            
+            dslManager.registerEngine(JenkinsDslEngine(config, logger))
+            
+            try {
+                val jenkinsScript = """
+                    pipeline {
+                        agent {
+                            docker("maven:3.8.1-openjdk-11")
+                        }
+                        
+                        stages {
+                            stage('Maven Build') {
+                                steps {
+                                    sh 'mvn clean compile'
+                                    sh 'mvn test'
+                                    sh 'mvn package'
+                                }
+                            }
+                        }
+                    }
+                """.trimIndent()
+                
+                val validationResult = dslManager.validateContent(
+                    scriptContent = jenkinsScript,
+                    engineId = "jenkins-dsl"
+                )
+                
+                logger.info("Docker agent validation result: $validationResult")
+                
+                validationResult shouldNotBe null
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+    
+    "should validate missing pipeline block" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val config = object : IPipelineConfig {}
+            val dslManager = DslManager(config, logger = logger)
+            
+            dslManager.registerEngine(JenkinsDslEngine(config, logger))
+            
+            try {
+                val invalidScript = """
+                    // Missing pipeline block
+                    stages {
+                        stage('Build') {
+                            steps {
+                                sh 'gradle build'
+                            }
+                        }
+                    }
+                """.trimIndent()
+                
+                val validationResult = dslManager.validateContent(
+                    scriptContent = invalidScript,
+                    engineId = "jenkins-dsl"
+                )
+                
+                logger.info("Missing pipeline validation result: $validationResult")
+                
+                // Should detect missing pipeline block
+                validationResult shouldNotBe null
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+})

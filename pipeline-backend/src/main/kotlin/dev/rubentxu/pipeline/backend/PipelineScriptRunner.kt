@@ -52,7 +52,7 @@ class PipelineScriptRunner {
 
                 if (configurationResult.isFailure) {
                     logger.error("Error reading config file: ${configurationResult.exceptionOrNull()?.message}")
-                    return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+                    return PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
                 }
                 val configuration = configurationResult.getOrThrow()
 
@@ -63,7 +63,7 @@ class PipelineScriptRunner {
 
             } catch (e: Exception) {
                 handleScriptExecutionException(e, logger)
-                PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+                PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
             }
         }
     }
@@ -146,7 +146,7 @@ fun executeWithAgent(pipeline: Pipeline, config: PipelineConfig, paths: List<Pat
 //        return executeInKubernetesAgent(agent, config, paths)
 
     }
-    return PipelineResult(Status.Failure, emptyList(), EnvVars(mapOf()), mutableListOf())
+    return PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 fun executeInDockerAgent(agent: DockerAgent, config: PipelineConfig, paths: List<Path>): PipelineResult {
@@ -156,7 +156,7 @@ fun executeInDockerAgent(agent: DockerAgent, config: PipelineConfig, paths: List
 
     val imageId = imageBuilder.buildCustomImage("${agent.image}:${agent.tag}", paths)
     containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
-    return PipelineResult(Status.Success, emptyList(), EnvVars(mapOf()), mutableListOf())
+    return PipelineResult(Status.SUCCESS, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 

@@ -1,38 +1,30 @@
 plugins {
-    kotlin("jvm")
-    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.21"
-    id("io.kotest") version "0.4.10"
-
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotest)
 }
 
 group = "dev.rubentxu.pipeline.core"
 version = "1.0-SNAPSHOT"
 
-
-
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
-
 dependencies {
-    implementation("org.yaml:snakeyaml:2.2")
-
-    implementation("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.1")
-
-
-    implementation("org.gradle:gradle-tooling-api:8.4")
-    implementation("org.eclipse.jgit:org.eclipse.jgit:6.7.0.202309050840-r")
-    implementation("ch.qos.logback:logback-classic:1.4.11")
+    implementation(libs.snakeyaml)
+    implementation(libs.kotlin.serialization)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.gradle.tooling.api)
+    implementation(libs.jgit)
+    implementation(libs.logback.classic)
+    implementation(libs.bundles.kotlin.scripting)
+    implementation(libs.bundles.docker)
+    implementation(libs.bundles.graalvm)
+    implementation(libs.bundles.maven.resolver)
 
     testImplementation(kotlin("test"))
-
-    testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")
-    testImplementation("io.kotest:kotest-assertions-core-jvm:5.7.2")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testImplementation("io.kotest:kotest-property-jvm:5.7.2")
-
-
+    testImplementation(libs.bundles.kotest)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.mockk)
+    testImplementation(libs.junit.jupiter)
 }
 
 

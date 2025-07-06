@@ -1,0 +1,246 @@
+package dev.rubentxu.pipeline.security
+
+import dev.rubentxu.pipeline.dsl.*
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.should
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.test.runTest
+import java.nio.file.Files
+
+class SandboxManagerTest : StringSpec({
+    
+    "should validate security policy correctly" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandboxManager = SandboxManager(logger)
+            
+            try {
+                // Valid policy
+                val validContext = createSecureExecutionContext(
+                    maxMemoryMb = 512,
+                    maxCpuTimeMs = 30_000
+                )
+                
+                val validationResult = sandboxManager.validateSecurityPolicy(validContext)
+                validationResult.isValid shouldBe true
+                validationResult.issues should { it.isEmpty() }
+                
+                // Invalid policy - too much memory
+                val invalidContext = DslExecutionContext(
+                    workingDirectory = Files.createTempDirectory("test").toFile(),
+                    environmentVariables = emptyMap(),
+                    resourceLimits = DslResourceLimits(
+                        maxMemoryMb = 4096, // Exceeds limit
+                        maxCpuTimeMs = 600_000, // Exceeds limit
+                        maxWallTimeMs = 60_000,
+                        maxThreads = 20 // Exceeds limit
+                    ),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.THREAD,
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val invalidValidationResult = sandboxManager.validateSecurityPolicy(invalidContext)
+                invalidValidationResult.isValid shouldBe false
+                invalidValidationResult.issues should { it.isNotEmpty() }
+                invalidValidationResult.issues should { 
+                    it.any { issue -> issue.contains("Memory limit exceeds") }
+                }
+                
+            } finally {
+                sandboxManager.shutdown()
+            }
+        }
+    }
+    
+    "should execute script securely with appropriate sandbox selection" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandboxManager = SandboxManager(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("sandbox-manager-test").toFile()
+                
+                // Test with thread-level isolation (should use GraalVM)
+                val threadContext = DslExecutionContext(
+                    workingDirectory = tempDir,
+                    environmentVariables = mapOf("TEST_MODE" to "thread_isolation"),
+                    resourceLimits = DslResourceLimits(
+                        maxMemoryMb = 256,
+                        maxCpuTimeMs = 15_000,
+                        maxWallTimeMs = 30_000,
+                        maxThreads = 2
+                    ),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.THREAD,
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val scriptContent = """
+                    console.log("Testing sandbox manager execution");
+                    var result = "sandbox manager test completed";
+                    result;
+                """.trimIndent()
+                
+                val result = sandboxManager.executeSecurely<String>(
+                    scriptContent = scriptContent,
+                    scriptName = "sandbox-manager-test.kts",
+                    executionContext = threadContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = threadContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                result.shouldBeInstanceOf<SandboxExecutionResult.Success<String>>()
+                result as SandboxExecutionResult.Success
+                result.isolationId shouldNotBe null
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandboxManager.shutdown()
+            }
+        }
+    }
+    
+    "should handle execution timeout correctly" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandboxManager = SandboxManager(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("sandbox-timeout-test").toFile()
+                val timeoutContext = DslExecutionContext(
+                    workingDirectory = tempDir,
+                    environmentVariables = emptyMap(),
+                    resourceLimits = DslResourceLimits(
+                        maxMemoryMb = 256,
+                        maxCpuTimeMs = 5_000,
+                        maxWallTimeMs = 2_000, // Very short timeout
+                        maxThreads = 1
+                    ),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.THREAD,
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val longRunningScript = """
+                    // Script that should timeout
+                    var count = 0;
+                    while (count < 10000000) {
+                        count++;
+                    }
+                    "should not reach this";
+                """.trimIndent()
+                
+                val result = sandboxManager.executeSecurely<String>(
+                    scriptContent = longRunningScript,
+                    scriptName = "timeout-test.kts",
+                    executionContext = timeoutContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = timeoutContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                result.shouldBeInstanceOf<SandboxExecutionResult.Failure<String>>()
+                result as SandboxExecutionResult.Failure
+                result.error.shouldBeInstanceOf<SecurityViolationException>()
+                (result.error as SecurityViolationException).violationType shouldBe SecurityViolationType.EXECUTION_TIMEOUT
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandboxManager.shutdown()
+            }
+        }
+    }
+    
+    "should track active executions" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandboxManager = SandboxManager(logger)
+            
+            try {
+                // Initially no active executions
+                val initialExecutions = sandboxManager.getActiveExecutions()
+                initialExecutions should { it.isEmpty() }
+                
+                // Test that we can get active executions (though they may complete quickly)
+                val activeExecutions = sandboxManager.getActiveExecutions()
+                activeExecutions shouldNotBe null
+                
+            } finally {
+                sandboxManager.shutdown()
+            }
+        }
+    }
+    
+    "should handle security policy violations" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandboxManager = SandboxManager(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("security-violation-test").toFile()
+                val violatingContext = DslExecutionContext(
+                    workingDirectory = tempDir,
+                    environmentVariables = mapOf("SYSTEM_SECRET" to "should_not_be_allowed"),
+                    resourceLimits = DslResourceLimits(
+                        maxMemoryMb = 4096, // Exceeds limits
+                        maxCpuTimeMs = 600_000, // Exceeds limits
+                        maxWallTimeMs = 60_000,
+                        maxThreads = 1
+                    ),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.PROCESS,
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val scriptContent = """
+                    console.log("This should not execute due to policy violation");
+                    "violation test";
+                """.trimIndent()
+                
+                val result = sandboxManager.executeSecurely<String>(
+                    scriptContent = scriptContent,
+                    scriptName = "security-violation-test.kts",
+                    executionContext = violatingContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = violatingContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                result.shouldBeInstanceOf<SandboxExecutionResult.Failure<String>>()
+                result as SandboxExecutionResult.Failure
+                result.reason should { it.contains("Security policy validation failed") }
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandboxManager.shutdown()
+            }
+        }
+    }
+    
+    "should properly clean up resources on shutdown" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandboxManager = SandboxManager(logger)
+            
+            // Verify clean shutdown
+            sandboxManager.shutdown()
+            
+            // After shutdown, active executions should be empty
+            val executionsAfterShutdown = sandboxManager.getActiveExecutions()
+            executionsAfterShutdown should { it.isEmpty() }
+        }
+    }
+})

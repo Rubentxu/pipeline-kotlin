@@ -1,49 +1,38 @@
 plugins {
-    id("org.jetbrains.kotlin.jvm")
-    id("com.google.devtools.ksp") version "1.9.20-1.0.14"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
-    id("io.micronaut.application") version "4.0.4"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.shadow)
+    application
 }
-
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
 
 group = "dev.rubentxu.pipeline.cli"
 version = "0.1.0"
-
 
 dependencies {
     implementation(project(":core"))
     implementation(project(":pipeline-config"))
     implementation(project(":pipeline-backend"))
 
-
-    ksp("info.picocli:picocli-codegen")
-    ksp("io.micronaut.serde:micronaut-serde-processor")
-    implementation("info.picocli:picocli")
-    implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
-    implementation("io.micronaut.picocli:micronaut-picocli")
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
-    implementation("ch.qos.logback:logback-core:1.4.11")
-    implementation("ch.qos.logback:logback-classic:1.4.11")
-
-    implementation("org.slf4j:slf4j-api:1.7.30")
-
-//
-//    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-//    implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVersion")
-//    implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersion")
+    // Modern CLI with Kotlin Native libraries
+    implementation(libs.clikt)
+    implementation(libs.mordant)
+    implementation(libs.okio)
+    implementation(libs.kaml)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
+    
+    // Logging
+    implementation(libs.logback.core)
+    implementation(libs.logback.classic)
+    implementation(libs.slf4j.api)
 
     testImplementation(kotlin("test"))
-    testImplementation("io.kotest:kotest-runner-junit5-jvm:5.7.2")
-    testImplementation("io.kotest:kotest-assertions-core-jvm:5.7.2")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testImplementation("io.kotest:kotest-property-jvm:5.7.2")
-
+    testImplementation(libs.bundles.kotest)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.junit.jupiter)
 }
 
 application {
-    mainClass.set("dev.rubentxu.pipeline.cli.PipelineCliCommand")
+    mainClass.set("dev.rubentxu.pipeline.cli.MainKt")
 }
 
 java {
@@ -65,16 +54,16 @@ tasks {
     test {
         useJUnitPlatform()
     }
-}
-
-
-micronaut {
-    testRuntime("kotest5")
-    processing {
-        incremental(true)
-        annotations("dev.rubentxu.pipeline.cli.*")
+    
+    shadowJar {
+        isZip64 = true
+        archiveBaseName.set("pipeline-cli")
+        archiveClassifier.set("")
+        archiveVersion.set("")
     }
 }
+
+
 
 
 

@@ -23,7 +23,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
      * @param pipeline The pipeline to run the stage in.
      */
     suspend fun run(pipeline: Pipeline): Any {
-        var status: Status = Status.Success
+        var status: Status = Status.SUCCESS
         var errorMessage = ""
         val dsl = StageBlock(name, pipeline)
 //        val steps = StepsBlock(pipeline)
@@ -37,7 +37,7 @@ class StageExecutor(val name: String, val block: suspend StageBlock.() -> Any) {
             }
 
         } catch (e: Exception) {
-            status = Status.Failure
+            status = Status.FAILURE
             errorMessage = e.message ?: ""
             logger.error("Error running stage $name, ${e.message}")
             throw e

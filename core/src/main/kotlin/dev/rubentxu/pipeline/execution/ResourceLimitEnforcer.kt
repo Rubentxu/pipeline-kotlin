@@ -212,7 +212,7 @@ class ResourceLimitEnforcer(
     
     private fun getCurrentCpuTimeMs(): Long {
         // Get CPU time for current thread
-        val threadId = Thread.currentThread().threadId()
+        val threadId = Thread.currentThread().id
         return if (threadMXBean.isThreadCpuTimeSupported) {
             threadMXBean.getThreadCpuTime(threadId) / 1_000_000 // Convert nanoseconds to milliseconds
         } else {

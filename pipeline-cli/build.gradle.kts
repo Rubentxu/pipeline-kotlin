@@ -87,7 +87,6 @@ graalvmNative {
             buildArgs.addAll(
                 // Basic initialization
                 "--initialize-at-build-time=kotlin",
-                "--initialize-at-build-time=kotlinx.coroutines",
                 "--initialize-at-build-time=org.slf4j",
                 
                 // Performance optimizations
@@ -98,12 +97,12 @@ graalvmNative {
                 "-J-Xmx4g",
                 "-H:+ReportExceptionStackTraces",
                 
-                // Exclude problematic GraalVM enterprise features
+                // JLine exclusions to prevent configuration conflicts
                 "--exclude-config",
-                "org.graalvm.polyglot:polyglot",
+                ".*jline.*",
                 "META-INF/native-image/.*",
                 
-                // Resources inclusion with unlock experimental
+                // Resources inclusion
                 "-H:+UnlockExperimentalVMOptions",
                 "-H:IncludeResources=.*\\.kts$",
                 "-H:IncludeResources=.*\\.yaml$",

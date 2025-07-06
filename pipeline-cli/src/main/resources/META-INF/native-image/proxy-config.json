@@ -1,0 +1,14 @@
+[
+  {
+    "interfaces":["com.github.ajalt.mordant.internal.jna.PosixLibC"]
+  },
+  {
+    "interfaces":["org.jetbrains.kotlin.com.intellij.openapi.command.CommandListener"]
+  },
+  {
+    "interfaces":["org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFileListener"]
+  },
+  {
+    "interfaces":["org.jetbrains.kotlin.com.intellij.psi.util.PsiModificationTracker$Listener"]
+  }
+]

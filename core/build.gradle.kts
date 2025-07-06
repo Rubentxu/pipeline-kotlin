@@ -17,7 +17,7 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(libs.bundles.kotlin.scripting)
     implementation(libs.bundles.docker)
-    implementation(libs.bundles.graalvm)
+    compileOnly(libs.bundles.graalvm) // Only needed for compilation, not runtime
     implementation(libs.bundles.maven.resolver)
 
     testImplementation(kotlin("test"))

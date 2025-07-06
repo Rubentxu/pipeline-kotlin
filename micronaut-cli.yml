@@ -1,6 +1,0 @@
-applicationType: cli
-defaultPackage: dev.rubentxu.pipeline
-testFramework: kotest
-sourceLanguage: kotlin
-buildTool: gradle_kotlin
-features: [ app-name, graalvm, gradle, http-client-test, kotest, kotlin, ksp, logback, micronaut-build, picocli, picocli-kotest, picocli-kotlin-application, properties, readme, serialization-jackson, shade ]

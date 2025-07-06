@@ -30,6 +30,7 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 - **🐳 Contenedores Primero**: Soporte nativo de Docker para ejecución de tareas basadas en agentes
 - **⚡ Alto Rendimiento**: Ejecución asíncrona con corrutinas de Kotlin
 - **🛡️ Gestión de Recursos**: Límites de CPU, memoria y tiempo de ejecución con monitoreo detallado
+- **🏎️ Compilación Nativa**: Soporte para imágenes nativas de GraalVM con arranque instantáneo y menor uso de memoria
 
 ## Instalación
 
@@ -38,7 +39,19 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 - JDK 21 o superior
 - Gradle 8.4 o superior
 - Docker (para agentes basados en contenedores)
-- GraalVM (opcional, para características de seguridad mejoradas)
+- **GraalVM CE 21+ (recomendado para compilación nativa)**
+
+#### Instalando GraalVM
+
+```bash
+# Usando SDKMAN (recomendado)
+sdk install java 21.0.2-graalce
+sdk use java 21.0.2-graalce
+
+# Verificar instalación
+java -version
+native-image --version
+```
 
 ### Compilar desde el Código Fuente
 
@@ -70,14 +83,52 @@ java -jar pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
 
 ### Compilación de Imagen Nativa
 
-Para mejor rendimiento, compila a un ejecutable nativo usando GraalVM:
+Para rendimiento óptimo y tiempos de arranque más rápidos, compila a un ejecutable nativo usando GraalVM:
+
+#### Método 1: Usando Plugin de Gradle (Recomendado)
 
 ```bash
-native-image --class-path pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar \
-  -H:Name=pipeline-kts dev.rubentxu.pipeline.cli.PipelineCliCommand
+# Construir el shadow JAR primero
+gradle :pipeline-cli:shadowJar
 
-# Ejecutar el ejecutable nativo
-./pipeline-kts -c pipeline-cli/testData/config.yaml -s pipeline-cli/testData/success.pipeline.kts
+# Compilar a ejecutable nativo usando el plugin configurado
+gradle :pipeline-cli:nativeCompile
+```
+
+#### Método 2: Comando Directo de Native Image
+
+```bash
+# Construir el shadow JAR
+gradle :pipeline-cli:shadowJar
+
+# Compilar directamente con native-image
+/ruta/a/graalvm/bin/native-image \
+  -cp pipeline-cli/build/libs/pipeline-cli.jar \
+  dev.rubentxu.pipeline.cli.MainKt \
+  --no-fallback \
+  --report-unsupported-elements-at-runtime \
+  -H:+ReportExceptionStackTraces \
+  -H:+UnlockExperimentalVMOptions \
+  -o pipeline-cli/build/native-standalone/pipeline-cli-native
+```
+
+#### Beneficios de Rendimiento
+
+- **Tamaño del ejecutable**: ~31MB (vs 152MB JAR)
+- **Tiempo de arranque**: Casi instantáneo (vs calentamiento JVM)
+- **Uso de memoria**: Significativamente reducido
+- **Tiempo de compilación**: ~37 segundos
+
+#### Ejecutar el Ejecutable Nativo
+
+```bash
+# Probar el ejecutable nativo
+./pipeline-cli/build/native-standalone/pipeline-cli-native --help
+
+# Ejecutar scripts de pipeline
+./pipeline-cli/build/native-standalone/pipeline-cli-native run \
+  -c pipeline-cli/testData/config.yaml \
+  -s pipeline-cli/testData/success.pipeline.kts
 ```
 
 ## Uso

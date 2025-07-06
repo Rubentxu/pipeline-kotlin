@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.shadow)
+    alias(libs.plugins.graalvm.native)
     application
 }
 
@@ -70,5 +71,67 @@ tasks {
 tasks.register("printClasspath") {
     doLast {
         configurations["runtimeClasspath"].forEach { println(it) }
+    }
+}
+
+// GraalVM Native Image configuration
+graalvmNative {
+    toolchainDetection.set(true)
+    
+    binaries {
+        named("main") {
+            imageName.set("pipeline-cli")
+            mainClass.set("dev.rubentxu.pipeline.cli.MainKt")
+            
+            // Build arguments for optimization
+            buildArgs.addAll(
+                // Basic initialization
+                "--initialize-at-build-time=kotlin",
+                "--initialize-at-build-time=kotlinx.coroutines",
+                "--initialize-at-build-time=org.slf4j",
+                
+                // Performance optimizations
+                "--no-fallback",
+                "--report-unsupported-elements-at-runtime",
+                
+                // Memory settings
+                "-J-Xmx4g",
+                "-H:+ReportExceptionStackTraces",
+                
+                // Exclude problematic GraalVM enterprise features
+                "--exclude-config",
+                "org.graalvm.polyglot:polyglot",
+                "META-INF/native-image/.*",
+                
+                // Resources inclusion with unlock experimental
+                "-H:+UnlockExperimentalVMOptions",
+                "-H:IncludeResources=.*\\.kts$",
+                "-H:IncludeResources=.*\\.yaml$",
+                "-H:IncludeResources=.*\\.yml$",
+                "-H:IncludeResources=.*\\.properties$"
+            )
+            
+            // JVM arguments for build process
+            jvmArgs.addAll(
+                "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
+                "--add-exports=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.nio=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED"
+            )
+        }
+    }
+    
+    // Agent configuration for automatic metadata generation
+    agent {
+        defaultMode.set("standard")
+        
+        // Configure modes
+        modes {
+            standard {
+                // Standard mode configuration
+            }
+        }
     }
 }

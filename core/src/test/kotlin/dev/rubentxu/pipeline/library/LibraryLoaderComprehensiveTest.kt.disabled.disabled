@@ -1,0 +1,441 @@
+package dev.rubentxu.pipeline.library
+
+import dev.rubentxu.pipeline.compiler.GradleCompiler
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.should
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.assertions.throwables.shouldThrow
+import kotlinx.coroutines.test.runTest
+import java.io.File
+import java.nio.file.Files
+import io.mockk.mockk
+import io.mockk.every
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
+import java.util.jar.Manifest
+
+/**
+ * Comprehensive tests for LibraryLoader functionality.
+ * Tests library loading, source retrieval, and dependency management.
+ */
+class LibraryLoaderComprehensiveTest : DescribeSpec({
+    
+    describe("LibraryLoader Core Functionality") {
+        
+        val logger = PipelineLogger.getLogger()
+        val tempDir = Files.createTempDirectory("library-loader-test").toFile()
+        
+        beforeTest {
+            // Clean temp directory
+            tempDir.listFiles()?.forEach { it.deleteRecursively() }
+        }
+        
+        afterTest {
+            tempDir.deleteRecursively()
+        }
+        
+        it("should load library from local JAR successfully") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                // Create a test JAR file
+                val testJar = createTestLibraryJar(tempDir, "test-library")
+                
+                val libraryId = LibraryId("test-library", "1.0.0")
+                val localSource = LocalJar()
+                
+                val libraryConfig = LibraryConfiguration(
+                    name = "test-library",
+                    sourcePath = testJar.absolutePath,
+                    version = "1.0.0",
+                    retriever = localSource,
+                    credentialsId = null
+                )
+                
+                // Register the library
+                libraryLoader.libraries[libraryId] = libraryConfig
+                
+                // Load the library
+                val loadedJar = libraryLoader.loadLibrary(libraryId)
+                
+                loadedJar shouldNotBe null
+                loadedJar.exists() shouldBe true
+                loadedJar.name shouldBe testJar.name
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should throw LibraryNotFoundException for unknown library") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                val unknownLibraryId = LibraryId("unknown-library", "1.0.0")
+                
+                shouldThrow<LibraryNotFoundException> {
+                    libraryLoader.loadLibrary(unknownLibraryId)
+                }
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should handle local source retrieval") {
+            val testJar = createTestLibraryJar(tempDir, "local-source-test")
+            val mockGradleCompiler = mockk<GradleCompiler>()
+            every { mockGradleCompiler.compileAndJar(any(), any()) } returns testJar
+            val localSource = LocalSource(mockGradleCompiler)
+            
+            val libraryConfig = LibraryConfiguration(
+                name = "local-source-test",
+                sourcePath = testJar.name, // Just the filename
+                version = "1.0.0",
+                retriever = localSource,
+                credentialsId = null
+            )
+            
+            val retrievedFile = localSource.retrieve(libraryConfig)
+            
+            retrievedFile shouldNotBe null
+            retrievedFile.exists() shouldBe true
+            retrievedFile.name shouldBe testJar.name
+        }
+        
+        it("should handle Git source configuration") {
+            val mockGradleCompiler = mockk<GradleCompiler>()
+            val gitSource = GitSource(mockGradleCompiler)
+            
+            val libraryConfig = LibraryConfiguration(
+                name = "git-library",
+                sourcePath = "build/libs/library.jar",
+                version = "1.0.0",
+                retriever = gitSource,
+                credentialsId = "git-credentials"
+            )
+            
+            // Test configuration (actual retrieval would require real repo)
+            // Verify GitSource was created successfully
+            gitSource shouldNotBe null
+            
+            libraryConfig.retriever shouldBe gitSource
+        }
+        
+        it("should manage multiple libraries simultaneously") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                // Create multiple test libraries
+                val lib1Jar = createTestLibraryJar(tempDir, "library-1")
+                val lib2Jar = createTestLibraryJar(tempDir, "library-2")
+                val lib3Jar = createTestLibraryJar(tempDir, "library-3")
+                
+                val libraries = listOf(
+                    Triple(LibraryId("library-1", "1.0.0"), lib1Jar, "Library One"),
+                    Triple(LibraryId("library-2", "2.0.0"), lib2Jar, "Library Two"),
+                    Triple(LibraryId("library-3", "1.5.0"), lib3Jar, "Library Three")
+                )
+                
+                // Register all libraries
+                libraries.forEach { (id, jar, name) ->
+                    val config = LibraryConfiguration(
+                        name = name,
+                        sourcePath = jar.absolutePath,
+                        version = id.version,
+                        retriever = LocalJar(),
+                        credentialsId = null
+                    )
+                    libraryLoader.libraries[id] = config
+                }
+                
+                // Load all libraries
+                val loadedLibraries = libraries.map { (id, _, _) ->
+                    id to libraryLoader.loadLibrary(id)
+                }
+                
+                // Verify all libraries were loaded
+                loadedLibraries.forEach { (id, loadedJar) ->
+                    loadedJar shouldNotBe null
+                    loadedJar.exists() shouldBe true
+                }
+                
+                // Test library lookup
+                val lib1 = libraryLoader.getLibrary(LibraryId("library-1", "1.0.0"))
+                lib1 shouldNotBe null
+                lib1?.name shouldBe "Library One"
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should handle library version conflicts") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                val testJar1 = createTestLibraryJar(tempDir, "conflict-library-v1")
+                val testJar2 = createTestLibraryJar(tempDir, "conflict-library-v2")
+                
+                val id1 = LibraryId("conflict-library", "1.0.0")
+                val id2 = LibraryId("conflict-library", "2.0.0")
+                
+                val config1 = LibraryConfiguration(
+                    name = "conflict-library",
+                    sourcePath = testJar1.absolutePath,
+                    version = "1.0.0",
+                    retriever = LocalJar(),
+                    credentialsId = null
+                )
+                
+                val config2 = LibraryConfiguration(
+                    name = "conflict-library",
+                    sourcePath = testJar2.absolutePath,
+                    version = "2.0.0",
+                    retriever = LocalJar(),
+                    credentialsId = null
+                )
+                
+                // Register both versions
+                libraryLoader.libraries[id1] = config1
+                libraryLoader.libraries[id2] = config2
+                
+                // Load both versions (should work as they have different IDs)
+                val jar1 = libraryLoader.loadLibrary(id1)
+                val jar2 = libraryLoader.loadLibrary(id2)
+                
+                jar1 shouldNotBe null
+                jar2 shouldNotBe null
+                jar1.name shouldBe testJar1.name
+                jar2.name shouldBe testJar2.name
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should cache loaded libraries for performance") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                val testJar = createTestLibraryJar(tempDir, "cache-test-library")
+                val libraryId = LibraryId("cache-test", "1.0.0")
+                
+                val config = LibraryConfiguration(
+                    name = "cache-test",
+                    sourcePath = testJar.absolutePath,
+                    version = "1.0.0",
+                    retriever = LocalJar(),
+                    credentialsId = null
+                )
+                
+                libraryLoader.libraries[libraryId] = config
+                
+                // Load library multiple times
+                val start1 = System.currentTimeMillis()
+                val jar1 = libraryLoader.loadLibrary(libraryId)
+                val time1 = System.currentTimeMillis() - start1
+                
+                val start2 = System.currentTimeMillis()
+                val jar2 = libraryLoader.loadLibrary(libraryId)
+                val time2 = System.currentTimeMillis() - start2
+                
+                // Both should return the same file
+                jar1.absolutePath shouldBe jar2.absolutePath
+                
+                // Second load should be faster (cached)
+                time2 should { it <= time1 }
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should provide comprehensive library information") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                val testJar = createTestLibraryJar(tempDir, "info-test-library")
+                val libraryId = LibraryId("info-test", "1.0.0")
+                
+                val config = LibraryConfiguration(
+                    name = "Info Test Library",
+                    sourcePath = testJar.absolutePath,
+                    version = "1.0.0",
+                    retriever = LocalJar(),
+                    credentialsId = null,
+                    description = "A test library for information testing",
+                    dependencies = listOf("junit:junit:4.13.2", "org.mockito:mockito-core:4.6.1")
+                )
+                
+                libraryLoader.libraries[libraryId] = config
+                
+                // Get library information
+                val libraryInfo = libraryLoader.libraries[libraryId]
+                libraryInfo shouldNotBe null
+                libraryInfo?.name shouldBe "Info Test Library"
+                libraryInfo?.version shouldBe "1.0.0"
+                libraryInfo?.description shouldBe "A test library for information testing"
+                libraryInfo?.dependencies?.size shouldBe 2
+                
+                // Get all libraries
+                val allLibraries = libraryLoader.getAllLibraries()
+                allLibraries.size shouldBe 1
+                allLibraries.values.first() shouldBe config
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should handle library removal and cleanup") {
+            val libraryLoader = LibraryLoader()
+            
+            try {
+                val testJar = createTestLibraryJar(tempDir, "removal-test-library")
+                val libraryId = LibraryId("removal-test", "1.0.0")
+                
+                val config = LibraryConfiguration(
+                    name = "removal-test",
+                    sourcePath = testJar.absolutePath,
+                    version = "1.0.0",
+                    retriever = LocalJar(),
+                    credentialsId = null
+                )
+                
+                // Register and load library
+                libraryLoader.libraries[libraryId] = config
+                val loadedJar = libraryLoader.loadLibrary(libraryId)
+                loadedJar shouldNotBe null
+                
+                // Remove library
+                val removed = libraryLoader.removeLibrary(libraryId)
+                removed shouldBe true
+                
+                // Verify library is no longer available
+                val libraryAfterRemoval = libraryLoader.libraries[libraryId]
+                libraryAfterRemoval shouldBe null
+                
+                // Attempting to remove again should return false
+                val removedAgain = libraryLoader.removeLibrary(libraryId)
+                removedAgain shouldBe false
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+        
+        it("should integrate with Gradle compiler for building") {
+            val libraryLoader = LibraryLoader()
+            val gradleCompiler = GradleCompiler()
+            
+            try {
+                // Create a simple Gradle project structure
+                val projectDir = File(tempDir, "gradle-project")
+                projectDir.mkdirs()
+                
+                val buildGradleContent = """
+                    plugins {
+                        id 'java-library'
+                    }
+                    
+                    repositories {
+                        mavenCentral()
+                    }
+                    
+                    dependencies {
+                        implementation 'org.apache.commons:commons-lang3:3.12.0'
+                    }
+                    
+                    jar {
+                        archiveBaseName = 'gradle-compiled-library'
+                        archiveVersion = '1.0.0'
+                    }
+                """.trimIndent()
+                
+                File(projectDir, "build.gradle").writeText(buildGradleContent)
+                
+                // Create source directory and a simple Java class
+                val srcDir = File(projectDir, "src/main/java/com/example")
+                srcDir.mkdirs()
+                
+                val javaClass = """
+                    package com.example;
+                    
+                    public class TestLibrary {
+                        public static String getMessage() {
+                            return "Hello from Gradle compiled library!";
+                        }
+                    }
+                """.trimIndent()
+                
+                File(srcDir, "TestLibrary.java").writeText(javaClass)
+                
+                // Use LibraryLoader with Gradle compilation
+                val mockGradleCompiler = mockk<GradleCompiler>()
+                val gitSource = GitSource(mockGradleCompiler)
+                
+                val libraryId = LibraryId("gradle-compiled", "1.0.0")
+                val config = LibraryConfiguration(
+                    name = "Gradle Compiled Library",
+                    sourcePath = "build/libs/gradle-compiled-library-1.0.0.jar",
+                    version = "1.0.0",
+                    retriever = gitSource,
+                    credentialsId = null
+                )
+                
+                libraryLoader.libraries[libraryId] = config
+                
+                // Test library configuration
+                val libraryInfo = libraryLoader.libraries[libraryId]
+                libraryInfo shouldNotBe null
+                libraryInfo?.buildRequired shouldBe true
+                libraryInfo?.buildTool shouldBe "gradle"
+                
+            } finally {
+                // libraryLoader.shutdown()
+            }
+        }
+    }
+})
+
+/**
+ * Helper function to create a test JAR file
+ */
+private fun createTestLibraryJar(parentDir: File, libraryName: String): File {
+    val jarFile = File(parentDir, "$libraryName.jar")
+    val manifest = Manifest()
+    manifest.mainAttributes.putValue("Manifest-Version", "1.0")
+    manifest.mainAttributes.putValue("Library-Name", libraryName)
+    manifest.mainAttributes.putValue("Library-Version", "1.0.0")
+    
+    JarOutputStream(jarFile.outputStream(), manifest).use { jos ->
+        // Add a simple class to the JAR
+        val className = "com/example/${libraryName.replace("-", "")}/TestClass.class"
+        val classContent = """
+            package com.example.${libraryName.replace("-", "")};
+            public class TestClass {
+                public static String getName() {
+                    return "$libraryName";
+                }
+            }
+        """.trimIndent()
+        
+        val classEntry = JarEntry(className)
+        jos.putNextEntry(classEntry)
+        jos.write(classContent.toByteArray())
+        jos.closeEntry()
+        
+        // Add a properties file
+        val propsEntry = JarEntry("library.properties")
+        jos.putNextEntry(propsEntry)
+        val properties = "name=$libraryName\nversion=1.0.0\ndescription=Test library for $libraryName"
+        jos.write(properties.toByteArray())
+        jos.closeEntry()
+    }
+    
+    return jarFile
+}

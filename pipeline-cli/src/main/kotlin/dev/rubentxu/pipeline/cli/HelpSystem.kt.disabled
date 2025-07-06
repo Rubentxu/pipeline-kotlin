@@ -1,0 +1,222 @@
+package dev.rubentxu.pipeline.cli
+
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.parameters.options.choice
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.mordant.rendering.TextColors.*
+import com.github.ajalt.mordant.rendering.TextStyles.*
+import com.github.ajalt.mordant.widgets.Panel
+import com.github.ajalt.mordant.table.table
+
+/**
+ * Advanced help system with examples and tips
+ */
+object HelpSystem {
+    
+    fun getQuickStart(): String = Panel.fit("""
+        ${bold(cyan("🚀 Quick Start Guide"))}
+        
+        ${yellow("1. Run your first pipeline:")}
+        ${dim("   pipeline run examples/hello.kts")}
+        
+        ${yellow("2. List available pipelines:")}
+        ${dim("   pipeline get pipelines")}
+        
+        ${yellow("3. Analyze a pipeline:")}
+        ${dim("   pipeline describe build.kts")}
+        
+        ${yellow("4. Configure CLI:")}
+        ${dim("   pipeline config set user.name \"Your Name\"")}
+        
+        ${yellow("5. Enable auto-completion:")}
+        ${dim("   pipeline completion bash >> ~/.bashrc")}
+        
+        ${green("💡 Tip:")} Use ${yellow("--help")} with any command for detailed help
+    """.trimIndent())
+    
+    fun getAdvancedExamples(): String = Panel.fit("""
+        ${bold(cyan("🎯 Advanced Examples"))}
+        
+        ${yellow("Continuous Integration Pipeline:")}
+        ${dim("   pipeline run ci.kts --watch --retry 3")}
+        
+        ${yellow("Production Deployment:")}
+        ${dim("   pipeline run deploy.kts --config prod.yaml --timeout 1800")}
+        
+        ${yellow("Development with Hot Reload:")}
+        ${dim("   pipeline run dev.kts --watch --verbose")}
+        
+        ${yellow("Dry Run for Testing:")}
+        ${dim("   pipeline run complex.kts --dry-run --validate")}
+        
+        ${yellow("Pipeline Analysis:")}
+        ${dim("   pipeline describe pipeline.kts --syntax --validate")}
+        
+        ${yellow("Bulk Operations:")}
+        ${dim("   pipeline get pipelines --filter '.*test.*' --output json")}
+    """.trimIndent())
+    
+    fun getTroubleshootingGuide(): String = Panel.fit("""
+        ${bold(red("🔧 Troubleshooting Guide"))}
+        
+        ${yellow("Common Issues & Solutions:")}
+        
+        ${cyan("1. Pipeline fails to execute:")}
+        ${dim("   • Check file permissions: chmod +x pipeline.kts")}
+        ${dim("   • Validate syntax: pipeline describe --validate pipeline.kts")}
+        ${dim("   • Run with debug: pipeline run --log-level DEBUG pipeline.kts")}
+        
+        ${cyan("2. Configuration not found:")}
+        ${dim("   • Create default config: mkdir -p ~/.pipeline")}
+        ${dim("   • Check config path: pipeline config list")}
+        ${dim("   • Use explicit config: pipeline run --config path/to/config.yaml")}
+        
+        ${cyan("3. Slow execution:")}
+        ${dim("   • Increase timeout: pipeline run --timeout 3600 pipeline.kts")}
+        ${dim("   • Check resource usage: pipeline describe --syntax pipeline.kts")}
+        ${dim("   • Use verbose mode: pipeline run --verbose pipeline.kts")}
+        
+        ${cyan("4. Auto-completion not working:")}
+        ${dim("   • Generate completion: pipeline completion bash > completion.sh")}
+        ${dim("   • Source it: source completion.sh")}
+        ${dim("   • Add to profile: echo 'source completion.sh' >> ~/.bashrc")}
+        
+        ${green("💡 Still having issues?")} Use ${yellow("--verbose")} flag for detailed logs
+    """.trimIndent())
+    
+    fun getBestPractices(): String = Panel.fit("""
+        ${bold(green("✨ Best Practices"))}
+        
+        ${yellow("Pipeline Structure:")}
+        ${dim("   • Use descriptive stage names")}
+        ${dim("   • Add error handling with post blocks")}
+        ${dim("   • Keep stages focused and atomic")}
+        ${dim("   • Use parallel execution for independent tasks")}
+        
+        ${yellow("Configuration Management:")}
+        ${dim("   • Store sensitive data in config files, not scripts")}
+        ${dim("   • Use environment-specific configs (dev, staging, prod)")}
+        ${dim("   • Version control your configuration")}
+        
+        ${yellow("Development Workflow:")}
+        ${dim("   • Use --dry-run to test changes")}
+        ${dim("   • Enable --watch during development")}
+        ${dim("   • Use descriptive commit messages")}
+        ${dim("   • Add validation steps to your pipelines")}
+        
+        ${yellow("Performance:")}
+        ${dim("   • Set appropriate timeouts")}
+        ${dim("   • Use caching for repeated operations")}
+        ${dim("   • Monitor execution times")}
+        ${dim("   • Profile resource usage")}
+        
+        ${yellow("Debugging:")}
+        ${dim("   • Start with --verbose for troubleshooting")}
+        ${dim("   • Use pipeline describe for analysis")}
+        ${dim("   • Check logs in ~/.pipeline/logs/")}
+        ${dim("   • Test with minimal examples first")}
+    """.trimIndent())
+    
+    fun getFeatureMatrix(): String = """
+        ${bold(cyan("📋 Feature Matrix"))}
+        
+        ${table {
+            header {
+                row(bold("Feature"), bold("Status"), bold("Description"))
+            }
+            body {
+                row(green("✅ Pipeline Execution"), green("Stable"), "Execute Kotlin DSL pipelines")
+                row(green("✅ Configuration"), green("Stable"), "Manage CLI and pipeline settings")
+                row(green("✅ Auto-completion"), green("Stable"), "Shell completion for all commands")
+                row(green("✅ Rich Output"), green("Stable"), "Colored, formatted terminal output")
+                row(green("✅ Progress Tracking"), green("Stable"), "Real-time execution progress")
+                row(green("✅ Validation"), green("Stable"), "Pipeline syntax and structure validation")
+                row(yellow("🔄 Watch Mode"), yellow("Beta"), "Hot reload on file changes")
+                row(yellow("🔄 Plugin System"), yellow("Beta"), "Extensible plugin architecture")
+                row(blue("🚧 History"), blue("Planned"), "Execution history and analytics")
+                row(blue("🚧 Remote Execution"), blue("Planned"), "Execute pipelines on remote systems")
+                row(blue("🚧 Web Dashboard"), blue("Planned"), "Web-based pipeline management")
+            }
+        }}
+    """.trimIndent()
+    
+    fun getKeyboardShortcuts(): String = Panel.fit("""
+        ${bold(yellow("⌨️  Keyboard Shortcuts & Tips"))}
+        
+        ${cyan("Interactive Mode:")}
+        ${dim("   Ctrl+C        # Interrupt execution")}
+        ${dim("   Ctrl+Z        # Suspend process")}
+        ${dim("   Tab           # Auto-complete commands and files")}
+        
+        ${cyan("Shell Integration:")}
+        ${dim("   pipeline !!   # Run last pipeline command")}
+        ${dim("   alias p=pipeline  # Create short alias")}
+        ${dim("   export PIPELINE_CONFIG=~/.pipeline/config.yaml")}
+        
+        ${cyan("Useful Aliases:")}
+        ${dim("   alias pr='pipeline run'")}
+        ${dim("   alias pg='pipeline get'")}
+        ${dim("   alias pd='pipeline describe'")}
+        ${dim("   alias pc='pipeline config'")}
+        
+        ${cyan("Environment Variables:")}
+        ${dim("   PIPELINE_HOME     # Override default config directory")}
+        ${dim("   PIPELINE_VERBOSE  # Enable verbose mode by default")}
+        ${dim("   PIPELINE_TIMEOUT  # Set default timeout")}
+        
+        ${green("💡 Pro Tip:")} Add these to your ${yellow("~/.bashrc")} or ${yellow("~/.zshrc")}
+    """.trimIndent())
+}
+
+/**
+ * Interactive help command with multiple sections
+ */
+class HelpCommand : CliktCommand(
+    name = "help",
+    help = "Show comprehensive help and documentation"
+) {
+    
+    private val section by option(
+        "--section", "-s",
+        help = "Show specific help section"
+    ).choice(
+        "quick-start", "examples", "troubleshooting", 
+        "best-practices", "features", "shortcuts"
+    )
+    
+    override fun run() {
+        val terminal = currentContext.terminal
+        
+        when (section) {
+            "quick-start" -> terminal.println(HelpSystem.getQuickStart())
+            "examples" -> terminal.println(HelpSystem.getAdvancedExamples())
+            "troubleshooting" -> terminal.println(HelpSystem.getTroubleshootingGuide())
+            "best-practices" -> terminal.println(HelpSystem.getBestPractices())
+            "features" -> terminal.println(HelpSystem.getFeatureMatrix())
+            "shortcuts" -> terminal.println(HelpSystem.getKeyboardShortcuts())
+            null -> showAllHelp(terminal)
+        }
+    }
+    
+    private fun showAllHelp(terminal: Terminal) {
+        terminal.println(HelpSystem.getQuickStart())
+        terminal.println()
+        terminal.println(HelpSystem.getAdvancedExamples())
+        terminal.println()
+        
+        terminal.println(Panel.fit("""
+            ${bold(blue("📚 More Help Sections"))}
+            
+            ${dim("Use --section to view specific help:")}
+            ${dim("  pipeline help --section troubleshooting")}
+            ${dim("  pipeline help --section best-practices")}
+            ${dim("  pipeline help --section features")}
+            ${dim("  pipeline help --section shortcuts")}
+            
+            ${dim("For command-specific help:")}
+            ${dim("  pipeline run --help")}
+            ${dim("  pipeline get --help")}
+            ${dim("  pipeline describe --help")}
+        """.trimIndent()))
+    }
+}

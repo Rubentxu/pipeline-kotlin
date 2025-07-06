@@ -30,7 +30,7 @@ class PipelineScriptRunnerTest : StringSpec({
         println("result: $result")
 
         result is PipelineResult
-        result.status shouldBe Status.Failure
+        result.status shouldBe Status.FAILURE
 
     }
 
@@ -61,7 +61,7 @@ class PipelineScriptRunnerTest : StringSpec({
         val result: PipelineResult = PipelineScriptRunner.evalWithScriptEngineManager(scriptFile, configFile, jarFile)
         println("result with scriptManager: $result")
         println(result)
-        result.status shouldBe Status.Success
+        result.status shouldBe Status.SUCCESS
     }
 
 

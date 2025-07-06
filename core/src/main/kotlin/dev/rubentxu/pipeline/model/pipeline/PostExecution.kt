@@ -13,7 +13,7 @@ class PostExecution(
     suspend fun run(pipeline: Pipeline, results: List<StageResult>) {
         val steps = StepsBlock(pipeline)
         logger.system("Pipeline finished with status: ${results.map { it.status }}")
-        if (results.any { it.status == Status.Failure }) {
+        if (results.any { it.status == Status.FAILURE }) {
             failureFunc?.invoke(steps)
         } else {
             successFunc?.invoke(steps)

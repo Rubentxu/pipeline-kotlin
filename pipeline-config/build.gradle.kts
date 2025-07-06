@@ -1,33 +1,20 @@
 plugins {
-    kotlin("jvm")
-    id("io.kotest") version "0.4.10"
-
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotest)
 }
 
 group = "dev.rubentxu.pipeline.core"
 version = "1.0-SNAPSHOT"
 
-
-
-val kotlinVersion: String by rootProject.extra
-val kotlinCoroutinesVersion: String by rootProject.extra
-val kotestVersion: String by rootProject.extra
-
 dependencies {
     implementation(project(":core"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-
+    implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(kotlin("test"))
-    testImplementation("io.kotest:kotest-runner-junit5-jvm:$kotestVersion")
-    testImplementation("io.kotest:kotest-assertions-core-jvm:$kotestVersion")
-    testImplementation("io.kotest:kotest-property-jvm:$kotestVersion")
-    testImplementation("io.kotest:kotest-extensions-junit5:$kotestVersion")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.1.0")
-    testImplementation("uk.org.webcompere:system-stubs-jupiter:2.1.5")
-    testImplementation("io.kotest:kotest-framework-datatest-jvm:5.8.0")
-
-
+    testImplementation(libs.bundles.kotest.extended)
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.system.stubs.jupiter)
+    testImplementation(libs.junit.jupiter)
 }
 
 

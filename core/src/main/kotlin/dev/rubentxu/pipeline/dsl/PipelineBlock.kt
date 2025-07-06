@@ -1,65 +1,70 @@
 package dev.rubentxu.pipeline.dsl
 
-
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.steps.EnvVars
 
-class PipelineBlock() {
-    var stages: List<StageExecutor> = mutableListOf()
-    var agent: Agent = AnyAgent("any")
-    var env: EnvVars = EnvVars(mutableMapOf())
-    var postExecution: PostExecution = PostExecution()
+/**
+ * Main pipeline configuration block following modern Kotlin DSL best practices.
+ * This class provides a type-safe DSL for defining CI/CD pipelines.
+ */
+@PipelineDsl
+class PipelineBlock {
+    private var stages: List<StageExecutor> = emptyList()
+    private var agent: Agent = AnyAgent("any")
+    private var env: EnvVars = EnvVars(mutableMapOf())
+    private var postExecution: PostExecution = PostExecution()
 
     /**
-    //     * This function sets the agent for the pipeline to any available agent.
-    //     *
-    //     * @param agentParam Placeholder for the any available agent.
-    //     */
+     * Configures the agent for the pipeline execution.
+     * Uses a type-safe DSL builder pattern.
+     *
+     * @param block Configuration block for agent settings
+     */
     fun agent(block: AgentBlock.() -> Unit) {
-//        logger.system("Running pipeline using any available agent... ")
-        val agentBlock = AgentBlock()
-        agentBlock.block()
-        agent = agentBlock.agent
+        agent = AgentBlock().apply(block).agent
     }
 
     /**
-     * This function sets the environment variables for the pipeline.
+     * Configures environment variables for the pipeline.
+     * Uses a type-safe DSL builder pattern.
      *
-     * @param block A block of code to define the environment variables.
+     * @param block Configuration block for environment variables
      */
     fun environment(block: EnvironmentBlock.() -> Unit) {
-        val environmentBlock = EnvironmentBlock()
-        environmentBlock.block()
-        env = EnvVars(environmentBlock.map)
-
+        env = EnvVars(EnvironmentBlock().apply(block).map)
     }
 
     /**
-     * This function adds a stage to the pipeline.
+     * Defines the stages to be executed in the pipeline.
+     * Uses a type-safe DSL builder pattern.
      *
-     * @param name The name of the stage.
-     * @param block A block of code to run in the stage.
+     * @param block Configuration block for stages
      */
     fun stages(block: StagesCollectionBlock.() -> Unit) {
         stages = StagesCollectionBlock().apply(block).build()
     }
 
     /**
-     * Defines a block of code to execute after all stages have been executed.
+     * Defines post-execution actions for the pipeline.
+     * Uses a type-safe DSL builder pattern.
      *
-     * @param block The block of code to execute.
+     * @param block Configuration block for post-execution actions
      */
     fun post(block: PostExecutionBlock.() -> Unit) {
         postExecution = PostExecutionBlock().apply(block).build()
     }
 
     /**
-     * This function builds the pipeline.
+     * Builds the pipeline configuration into a Pipeline instance.
+     * This method is internal and should only be called by the pipeline engine.
      *
-     * @return A Pipeline instance representing the pipeline.
+     * @param configuration The pipeline configuration
+     * @return A fully configured Pipeline instance
      */
-    fun build(configuration: IPipelineConfig): Pipeline {
+    internal fun build(configuration: IPipelineConfig): Pipeline {
+        require(stages.isNotEmpty()) { "Pipeline must have at least one stage" }
+        
         return Pipeline(
             stages = stages,
             agent = agent,
@@ -68,5 +73,4 @@ class PipelineBlock() {
             pipelineConfig = configuration
         )
     }
-
 }

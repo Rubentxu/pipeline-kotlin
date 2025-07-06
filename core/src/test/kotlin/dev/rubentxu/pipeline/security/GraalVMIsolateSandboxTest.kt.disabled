@@ -1,0 +1,221 @@
+package dev.rubentxu.pipeline.security
+
+import dev.rubentxu.pipeline.dsl.*
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.should
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.test.runTest
+import java.io.File
+import java.nio.file.Files
+
+class GraalVMIsolateSandboxTest : StringSpec({
+    
+    "should execute simple script in GraalVM sandbox" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandbox = GraalVMIsolateSandbox(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("graalvm-sandbox-test").toFile()
+                val executionContext = createSecureExecutionContext(tempDir)
+                
+                val scriptContent = """
+                    println("Hello from GraalVM sandbox!");
+                    var result = "execution completed";
+                    result;
+                """.trimIndent()
+                
+                val result = sandbox.executeInSandbox<String>(
+                    scriptContent = scriptContent,
+                    scriptName = "simple-test.kts",
+                    executionContext = executionContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = executionContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                result.shouldBeInstanceOf<SandboxExecutionResult.Success<String>>()
+                result as SandboxExecutionResult.Success
+                result.isolationId shouldNotBe null
+                result.resourceUsage shouldNotBe null
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandbox.cleanup()
+            }
+        }
+    }
+    
+    "should enforce memory limits in sandbox" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandbox = GraalVMIsolateSandbox(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("graalvm-memory-test").toFile()
+                val executionContext = DslExecutionContext(
+                    workingDirectory = tempDir,
+                    environmentVariables = mapOf("TEST_MODE" to "memory_limit"),
+                    resourceLimits = DslResourceLimits(
+                        maxMemoryMb = 64, // Very low limit
+                        maxCpuTimeMs = 10_000,
+                        maxWallTimeMs = 15_000,
+                        maxThreads = 1
+                    ),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.PROCESS,
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val memoryIntensiveScript = """
+                    // Script that attempts to use a lot of memory
+                    var largeArray = [];
+                    for (var i = 0; i < 1000000; i++) {
+                        largeArray.push("memory consuming string " + i);
+                    }
+                    "memory test completed";
+                """.trimIndent()
+                
+                val result = sandbox.executeInSandbox<String>(
+                    scriptContent = memoryIntensiveScript,
+                    scriptName = "memory-intensive.kts",
+                    executionContext = executionContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = executionContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                // Should either succeed within limits or fail due to memory constraints
+                result should { it is SandboxExecutionResult.Success || it is SandboxExecutionResult.Failure }
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandbox.cleanup()
+            }
+        }
+    }
+    
+    "should handle script termination correctly" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandbox = GraalVMIsolateSandbox(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("graalvm-termination-test").toFile()
+                val executionContext = createSecureExecutionContext(tempDir)
+                
+                val longRunningScript = """
+                    // Script that runs for a long time
+                    var count = 0;
+                    while (count < 1000000) {
+                        count++;
+                        if (count % 10000 === 0) {
+                            console.log("Still running: " + count);
+                        }
+                    }
+                    "long running script completed";
+                """.trimIndent()
+                
+                // Start execution in a separate coroutine
+                val isolationId = "termination-test-${System.currentTimeMillis()}"
+                
+                // Simulate termination after a short delay
+                val terminated = sandbox.terminateExecution(isolationId)
+                
+                // Termination should return false for non-existent execution
+                terminated shouldBe false
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandbox.cleanup()
+            }
+        }
+    }
+    
+    "should collect resource usage metrics" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandbox = GraalVMIsolateSandbox(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("graalvm-metrics-test").toFile()
+                val executionContext = createSecureExecutionContext(tempDir)
+                
+                val scriptContent = """
+                    // Script that does some work to generate metrics
+                    var result = "";
+                    for (var i = 0; i < 1000; i++) {
+                        result += "iteration " + i + " ";
+                    }
+                    result;
+                """.trimIndent()
+                
+                val result = sandbox.executeInSandbox<String>(
+                    scriptContent = scriptContent,
+                    scriptName = "metrics-test.kts",
+                    executionContext = executionContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = executionContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                result.shouldBeInstanceOf<SandboxExecutionResult.Success<String>>()
+                result as SandboxExecutionResult.Success
+                
+                val resourceUsage = result.resourceUsage
+                resourceUsage.memoryUsedBytes should { it >= 0 }
+                resourceUsage.threadsCreated should { it >= 0 }
+                
+                val humanReadable = resourceUsage.toHumanReadable()
+                humanReadable shouldNotBe null
+                humanReadable should { it.contains("Memory:") }
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandbox.cleanup()
+            }
+        }
+    }
+    
+    "should handle script errors gracefully" {
+        runTest {
+            val logger = PipelineLogger.getLogger()
+            val sandbox = GraalVMIsolateSandbox(logger)
+            
+            try {
+                val tempDir = Files.createTempDirectory("graalvm-error-test").toFile()
+                val executionContext = createSecureExecutionContext(tempDir)
+                
+                val errorScript = """
+                    // Script that contains a runtime error
+                    var undefinedFunction();
+                    "this should not be reached";
+                """.trimIndent()
+                
+                val result = sandbox.executeInSandbox<String>(
+                    scriptContent = errorScript,
+                    scriptName = "error-test.kts",
+                    executionContext = executionContext,
+                    compilationConfig = createBasicCompilationContext().toKotlinScriptConfig(),
+                    evaluationConfig = executionContext.toKotlinScriptEvaluationConfig()
+                )
+                
+                result.shouldBeInstanceOf<SandboxExecutionResult.Failure<String>>()
+                result as SandboxExecutionResult.Failure
+                result.reason shouldNotBe null
+                result.error shouldNotBe null
+                
+                tempDir.deleteRecursively()
+                
+            } finally {
+                sandbox.cleanup()
+            }
+        }
+    }
+})

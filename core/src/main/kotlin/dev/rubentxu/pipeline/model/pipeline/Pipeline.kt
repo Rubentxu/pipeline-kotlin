@@ -61,7 +61,7 @@ class Pipeline(
      */
     suspend fun executeStages() {
         for (stage in stages) {
-            var status = Status.Success
+            var status = Status.SUCCESS
 
             currentStage = stage.name
             registerEvent(StartEvent(currentStage!!, System.currentTimeMillis()))
@@ -69,13 +69,13 @@ class Pipeline(
                 try {
                     stage.run(this)
                 } catch (e: Exception) {
-                    status = Status.Failure
+                    status = Status.FAILURE
                     logger.error("Abort pipeline stages in stage $currentStage, ${e.message}")
                 }
             }
 
             stageRegister(time, status, stage)
-            if (status == Status.Failure) {
+            if (status == Status.FAILURE) {
                 break
             }
         }

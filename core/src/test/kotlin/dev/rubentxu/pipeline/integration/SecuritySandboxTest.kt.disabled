@@ -1,0 +1,142 @@
+package dev.rubentxu.pipeline.integration
+
+import dev.rubentxu.pipeline.dsl.*
+import dev.rubentxu.pipeline.PipelineConfigTest
+import dev.rubentxu.pipeline.model.pipeline.PipelineResult
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.test.runTest
+import java.io.File
+import java.nio.file.Files
+
+class SecuritySandboxTest : StringSpec({
+    
+    "should enforce resource limits in execution context" {
+        runTest {
+            val tempDir = Files.createTempDirectory("security-sandbox-test")
+            val workingDir = tempDir.toFile()
+            val config = PipelineConfigTest()
+            val dslManager = DslManager(config)
+            
+            try {
+                // Create execution context with strict resource limits
+                val executionContext = DslExecutionContext(
+                    workingDirectory = workingDir,
+                    environmentVariables = mapOf("RESTRICTED_ENV" to "true"),
+                    resourceLimits = DslResourceLimits(
+                        maxMemoryMb = 64,  // Very low memory limit
+                        maxCpuTimeMs = 5_000,  // 5 seconds CPU time limit
+                        maxWallTimeMs = 10_000,  // 10 seconds wall time limit
+                        maxThreads = 2  // Limited threads
+                    ),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.THREAD,
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val simpleScript = """
+                    // Simple script that should respect resource limits
+                    println("Running under resource constraints")
+                    val result = "execution completed"
+                    result
+                """.trimIndent()
+                
+                val result = dslManager.executeContent<Any>(
+                    scriptContent = simpleScript,
+                    engineId = "pipeline-dsl",
+                    scriptName = "constrained-script.pipeline.kts",
+                    executionContext = executionContext
+                )
+                
+                // Should execute successfully within limits
+                result.shouldBeInstanceOf<DslExecutionResult.Success<*>>()
+                
+            } finally {
+                dslManager.shutdown()
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+    }
+    
+    "should validate working directory restrictions" {
+        runTest {
+            val tempDir = Files.createTempDirectory("security-working-dir-test")
+            val workingDir = tempDir.toFile()
+            val config = PipelineConfigTest()
+            val dslManager = DslManager(config)
+            
+            try {
+                // Create a test file in the working directory
+                val testFile = File(workingDir, "test.txt")
+                testFile.writeText("This is a test file")
+                
+                val executionContext = DslExecutionContext(
+                    workingDirectory = workingDir,
+                    environmentVariables = mapOf("WORKING_DIR" to workingDir.absolutePath)
+                )
+                
+                val script = """
+                    // Script that accesses files in working directory
+                    val workingDir = System.getenv("WORKING_DIR")
+                    println("Working directory: " + workingDir)
+                    "directory access test completed"
+                """.trimIndent()
+                
+                val result = dslManager.executeContent<Any>(
+                    scriptContent = script,
+                    engineId = "pipeline-dsl",
+                    scriptName = "directory-test.pipeline.kts",
+                    executionContext = executionContext
+                )
+                
+                result.shouldBeInstanceOf<DslExecutionResult.Success<*>>()
+                
+            } finally {
+                dslManager.shutdown()
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+    }
+    
+    "should demonstrate plugin isolation capabilities" {
+        runTest {
+            val config = PipelineConfigTest()
+            val dslManager = DslManager(config)
+            
+            try {
+                // Test that we can configure isolation policies
+                val executionContext = DslExecutionContext(
+                    workingDirectory = File(System.getProperty("user.dir")),
+                    executionPolicy = DslExecutionPolicy(
+                        isolationLevel = DslIsolationLevel.PROCESS, // Higher isolation
+                        allowConcurrentExecution = false,
+                        enableEventPublishing = true
+                    )
+                )
+                
+                val isolatedScript = """
+                    // Script running in isolated context
+                    println("Running in isolated environment")
+                    val isolationLevel = "process-level"
+                    isolationLevel
+                """.trimIndent()
+                
+                val result = dslManager.executeContent<Any>(
+                    scriptContent = isolatedScript,
+                    engineId = "pipeline-dsl",
+                    scriptName = "isolated-script.pipeline.kts",
+                    executionContext = executionContext
+                )
+                
+                // Should demonstrate that isolation configuration is accepted
+                result.shouldBeInstanceOf<DslExecutionResult.Success<*>>()
+                
+            } finally {
+                dslManager.shutdown()
+            }
+        }
+    }
+})

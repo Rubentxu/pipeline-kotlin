@@ -1,0 +1,272 @@
+package dev.rubentxu.pipeline.model.pipeline
+
+import dev.rubentxu.pipeline.PipelineConfigTest
+import dev.rubentxu.pipeline.dsl.StageBlock
+import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.steps.EnvVars
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.assertions.throwables.shouldThrow
+import io.mockk.*
+import kotlinx.coroutines.test.runTest
+
+class StageExecutorTest : DescribeSpec({
+
+    describe("StageExecutor") {
+        
+        beforeEach {
+            clearAllMocks()
+        }
+        
+        afterEach {
+            unmockkAll()
+        }
+
+        it("should initialize with correct name and block") {
+            val stageName = "Test Stage"
+            val block: suspend StageBlock.() -> Any = { "test result" }
+            
+            val stageExecutor = StageExecutor(stageName, block)
+            
+            stageExecutor.name shouldBe stageName
+            stageExecutor.postExecution shouldBe null
+        }
+
+        it("should execute simple stage block successfully") = runTest {
+            var executed = false
+            val block: suspend StageBlock.() -> Any = {
+                executed = true
+                "success"
+            }
+            
+            val stageExecutor = StageExecutor("Simple Stage", block)
+            val pipeline = createTestPipeline()
+            
+            val result = stageExecutor.run(pipeline)
+            
+            executed shouldBe true
+            result shouldBe ""  // executeSteps returns Unit, so result defaults to ""
+        }
+
+        it("should execute stage with steps block") = runTest {
+            var stepsExecuted = false
+            val block: suspend StageBlock.() -> Any = {
+                steps {
+                    stepsExecuted = true
+                }
+                "stage completed"
+            }
+            
+            val stageExecutor = StageExecutor("Stage With Steps", block)
+            val pipeline = createTestPipeline()
+            
+            stageExecutor.run(pipeline)
+            
+            stepsExecuted shouldBe true
+        }
+
+        it("should handle stage exceptions and rethrow them") = runTest {
+            val errorMessage = "Stage execution failed"
+            val block: suspend StageBlock.() -> Any = {
+                throw RuntimeException(errorMessage)
+            }
+            
+            val stageExecutor = StageExecutor("Failing Stage", block)
+            val pipeline = createTestPipeline()
+            
+            val exception = shouldThrow<RuntimeException> {
+                stageExecutor.run(pipeline)
+            }
+            
+            exception.message shouldContain errorMessage
+        }
+
+        it("should execute post-execution block after stage completion") = runTest {
+            var postExecuted = false
+            val mockPostExecution = mockk<PostExecution>()
+            coEvery { mockPostExecution.run(any(), any()) } answers {
+                postExecuted = true
+            }
+            
+            val block: suspend StageBlock.() -> Any = {
+                post {
+                    // This should set up the post execution
+                }
+                "completed"
+            }
+            
+            val stageExecutor = StageExecutor("Stage With Post", block)
+            val pipeline = createTestPipeline()
+            
+            // Mock the StageBlock to return our mock post execution
+            mockkConstructor(StageBlock::class)
+            every { anyConstructed<StageBlock>().postExecution } returns mockPostExecution
+            
+            stageExecutor.run(pipeline)
+            
+            // Verify post execution was called
+            coVerify { mockPostExecution.run(pipeline, any()) }
+        }
+
+        it("should execute post-execution even when stage fails") = runTest {
+            var postExecuted = false
+            val mockPostExecution = mockk<PostExecution>()
+            coEvery { mockPostExecution.run(any(), any()) } answers {
+                postExecuted = true
+            }
+            
+            val block: suspend StageBlock.() -> Any = {
+                post {
+                    // Set up post execution
+                }
+                throw RuntimeException("Stage failed")
+            }
+            
+            val stageExecutor = StageExecutor("Failing Stage With Post", block)
+            val pipeline = createTestPipeline()
+            
+            // Mock the StageBlock
+            mockkConstructor(StageBlock::class)
+            every { anyConstructed<StageBlock>().postExecution } returns mockPostExecution
+            
+            shouldThrow<RuntimeException> {
+                stageExecutor.run(pipeline)
+            }
+            
+            // Verify post execution was still called
+            coVerify { mockPostExecution.run(pipeline, any()) }
+        }
+
+        it("should create StageBlock with correct name and pipeline") = runTest {
+            val stageName = "Test Stage"
+            val pipeline = createTestPipeline()
+            var capturedStageBlock: StageBlock? = null
+            
+            val block: suspend StageBlock.() -> Any = {
+                capturedStageBlock = this
+                "result"
+            }
+            
+            val stageExecutor = StageExecutor(stageName, block)
+            stageExecutor.run(pipeline)
+            
+            capturedStageBlock shouldNotBe null
+            capturedStageBlock?.name shouldBe stageName
+            capturedStageBlock?.pipeline shouldBe pipeline
+        }
+
+        it("should execute steps through executeSteps method") {
+            val pipeline = createTestPipeline()
+            val stageExecutor = StageExecutor("Test", { })
+            
+            var stepsBlockExecuted = false
+            val stepsBlock: StepsBlock.() -> Unit = {
+                stepsBlockExecuted = true
+            }
+            
+            stageExecutor.executeSteps(stepsBlock, pipeline)
+            
+            stepsBlockExecuted shouldBe true
+        }
+
+        it("should handle complex stage workflow") = runTest {
+            val events = mutableListOf<String>()
+            
+            val block: suspend StageBlock.() -> Any = {
+                events.add("stage_start")
+                
+                steps {
+                    events.add("steps_executed")
+                }
+                
+                post {
+                    events.add("post_configured")
+                }
+                
+                events.add("stage_end")
+                "workflow_completed"
+            }
+            
+            val stageExecutor = StageExecutor("Complex Stage", block)
+            val pipeline = createTestPipeline()
+            
+            stageExecutor.run(pipeline)
+            
+            events shouldContain "stage_start"
+            events shouldContain "steps_executed"
+            events shouldContain "stage_end"
+        }
+
+        it("should pass stage result with failure status when exception occurs") = runTest {
+            val mockPostExecution = mockk<PostExecution>()
+            var capturedResults: List<StageResult>? = null
+            
+            coEvery { mockPostExecution.run(any(), any()) } answers {
+                capturedResults = secondArg()
+            }
+            
+            val block: suspend StageBlock.() -> Any = {
+                throw RuntimeException("Test failure")
+            }
+            
+            val stageExecutor = StageExecutor("Failing Stage", block)
+            val pipeline = createTestPipeline()
+            
+            // Mock the post execution setup
+            mockkConstructor(StageBlock::class)
+            every { anyConstructed<StageBlock>().postExecution } returns mockPostExecution
+            
+            shouldThrow<RuntimeException> {
+                stageExecutor.run(pipeline)
+            }
+            
+            capturedResults shouldNotBe null
+            capturedResults?.size shouldBe 1
+            capturedResults?.get(0)?.status shouldBe Status.FAILURE
+            capturedResults?.get(0)?.stageName shouldBe "Failing Stage"
+        }
+
+        it("should handle nested DSL blocks correctly") = runTest {
+            var innerBlockExecuted = false
+            
+            val block: suspend StageBlock.() -> Any = {
+                steps {
+                    step {
+                        innerBlockExecuted = true
+                        "inner result"
+                    }
+                }
+                "outer result"
+            }
+            
+            val stageExecutor = StageExecutor("Nested Stage", block)
+            val pipeline = createTestPipeline()
+            
+            stageExecutor.run(pipeline)
+            
+            innerBlockExecuted shouldBe true
+        }
+
+        it("should maintain stage name consistency") = runTest {
+            val stageName = "Consistency Test Stage"
+            val stageExecutor = StageExecutor(stageName, { "test" })
+            val pipeline = createTestPipeline()
+            
+            stageExecutor.run(pipeline)
+            
+            stageExecutor.name shouldBe stageName
+        }
+    }
+})
+
+private fun createTestPipeline(): Pipeline {
+    return Pipeline(
+        agent = AnyAgent("test"),
+        stages = emptyList(),
+        env = EnvVars(mutableMapOf()),
+        postExecution = PostExecution(),
+        pipelineConfig = PipelineConfigTest()
+    )
+}

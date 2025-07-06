@@ -1,0 +1,553 @@
+package pipeline.kotlin.extensions
+
+import dev.rubentxu.pipeline.PipelineConfigTest
+import dev.rubentxu.pipeline.context.StepExecutionContext
+import dev.rubentxu.pipeline.dsl.StepsBlock
+import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.model.pipeline.*
+import dev.rubentxu.pipeline.model.scm.*
+import dev.rubentxu.pipeline.steps.EnvVars
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
+import io.kotest.assertions.throwables.shouldThrow
+import io.mockk.*
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+
+class StepBlockExtensionsTest : DescribeSpec({
+
+    describe("StepBlockExtensions") {
+        
+        beforeEach {
+            clearAllMocks()
+        }
+        
+        afterEach {
+            unmockkAll()
+        }
+
+        describe("sh extension function") {
+            it("should execute shell command successfully") {
+                val mockPipeline = createMockPipeline()
+                val mockLogger = mockk<IPipelineLogger>()
+                every { mockLogger.info(any()) } just Runs
+                
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock Shell execution
+                mockkConstructor(dev.rubentxu.pipeline.steps.Shell::class)
+                coEvery { anyConstructed<dev.rubentxu.pipeline.steps.Shell>().execute(any(), any()) } returns ""
+                
+                val result = stepsBlock.sh("echo 'Hello World'")
+                
+                result shouldBe ""
+                verify { mockLogger.info("+ sh echo 'Hello World'") }
+            }
+
+            it("should return stdout when returnStdout is true") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock Shell execution to return output
+                mockkConstructor(dev.rubentxu.pipeline.steps.Shell::class)
+                coEvery { anyConstructed<dev.rubentxu.pipeline.steps.Shell>().execute(any(), true) } returns "Hello World"
+                
+                val result = stepsBlock.sh("echo 'Hello World'", returnStdout = true)
+                
+                result shouldBe "Hello World"
+            }
+
+            it("should throw exception for blank command") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<IllegalArgumentException> {
+                    stepsBlock.sh("")
+                }
+                
+                exception.message shouldContain "Command cannot be blank"
+            }
+
+            it("should handle command execution errors") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock Shell execution to throw exception
+                mockkConstructor(dev.rubentxu.pipeline.steps.Shell::class)
+                coEvery { anyConstructed<dev.rubentxu.pipeline.steps.Shell>().execute(any(), any()) } throws RuntimeException("Command failed")
+                
+                shouldThrow<RuntimeException> {
+                    stepsBlock.sh("exit 1")
+                }
+            }
+        }
+
+        describe("echo extension function") {
+            it("should log message correctly") {
+                val mockLogger = mockk<IPipelineLogger>()
+                every { mockLogger.info(any()) } just Runs
+                
+                val mockPipeline = createMockPipeline(logger = mockLogger)
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                stepsBlock.echo("Test message")
+                
+                verify { mockLogger.info("+ echo") }
+                verify { mockLogger.info("Test message") }
+            }
+
+            it("should throw exception for blank message") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<IllegalArgumentException> {
+                    stepsBlock.echo("")
+                }
+                
+                exception.message shouldContain "Message cannot be blank"
+            }
+
+            it("should handle special characters in message") {
+                val mockLogger = mockk<IPipelineLogger>()
+                every { mockLogger.info(any()) } just Runs
+                
+                val mockPipeline = createMockPipeline(logger = mockLogger)
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val specialMessage = "Special chars: !@#$%^&*()"
+                stepsBlock.echo(specialMessage)
+                
+                verify { mockLogger.info(specialMessage) }
+            }
+        }
+
+        describe("checkout extension function") {
+            it("should execute checkout successfully") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                val gitScm = GitScm(url = "https://github.com/test/repo.git")
+                
+                // Mock CheckoutStep execution
+                mockkConstructor(dev.rubentxu.pipeline.steps.CheckoutStep::class)
+                coEvery { 
+                    anyConstructed<dev.rubentxu.pipeline.steps.CheckoutStep>().execute(any()) 
+                } returns dev.rubentxu.pipeline.steps.CheckoutResult(
+                    success = true,
+                    commitId = "abc123",
+                    branch = "main",
+                    url = "https://github.com/test/repo.git"
+                )
+                
+                val result = stepsBlock.checkout(gitScm)
+                
+                result shouldBe "abc123"
+            }
+
+            it("should throw exception when checkout fails") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                val gitScm = GitScm(url = "https://github.com/test/repo.git")
+                
+                // Mock CheckoutStep execution to fail
+                mockkConstructor(dev.rubentxu.pipeline.steps.CheckoutStep::class)
+                coEvery { 
+                    anyConstructed<dev.rubentxu.pipeline.steps.CheckoutStep>().execute(any()) 
+                } returns dev.rubentxu.pipeline.steps.CheckoutResult(
+                    success = false,
+                    commitId = "",
+                    branch = "main",
+                    url = "https://github.com/test/repo.git",
+                    error = "Repository not found"
+                )
+                
+                val exception = shouldThrow<Exception> {
+                    stepsBlock.checkout(gitScm)
+                }
+                
+                exception.message shouldContain "Checkout failed: Repository not found"
+            }
+        }
+
+        describe("git DSL function") {
+            it("should create GitScm with default values") {
+                val gitScm = git("https://github.com/test/repo.git")
+                
+                gitScm.url shouldBe "https://github.com/test/repo.git"
+                gitScm.branch shouldBe "main"
+                gitScm.credentialsId shouldBe null
+            }
+
+            it("should create GitScm with custom configuration") {
+                val gitScm = git("https://github.com/test/repo.git") {
+                    branch = "develop"
+                    credentialsId = "github-credentials"
+                    shallow = true
+                    timeout = 30
+                }
+                
+                gitScm.url shouldBe "https://github.com/test/repo.git"
+                gitScm.branch shouldBe "develop"
+                gitScm.credentialsId shouldBe "github-credentials"
+            }
+
+            it("should throw exception for blank URL") {
+                val exception = shouldThrow<IllegalArgumentException> {
+                    git("")
+                }
+                
+                exception.message shouldContain "Git URL cannot be blank"
+            }
+        }
+
+        describe("GitScmBuilder") {
+            it("should build GitScm with all properties") {
+                val builder = GitScmBuilder("https://github.com/test/repo.git")
+                builder.branch = "feature-branch"
+                builder.credentialsId = "credentials"
+                builder.shallow = true
+                builder.noTags = true
+                builder.timeout = 60
+                builder.recursiveSubmodules = true
+                
+                val gitScm = builder.build()
+                
+                gitScm.url shouldBe "https://github.com/test/repo.git"
+                gitScm.branch shouldBe "feature-branch"
+                gitScm.credentialsId shouldBe "credentials"
+            }
+        }
+
+        describe("retry extension function") {
+            it("should succeed on first attempt") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val result = stepsBlock.retry(3) {
+                    "success"
+                }
+                
+                result shouldBe "success"
+            }
+
+            it("should retry and succeed on second attempt") {
+                val mockLogger = mockk<IPipelineLogger>()
+                every { mockLogger.info(any()) } just Runs
+                
+                val mockPipeline = createMockPipeline(logger = mockLogger)
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                var attemptCount = 0
+                val result = stepsBlock.retry(3) {
+                    attemptCount++
+                    if (attemptCount == 1) {
+                        throw RuntimeException("First attempt failed")
+                    }
+                    "success on retry"
+                }
+                
+                result shouldBe "success on retry"
+                attemptCount shouldBe 2
+            }
+
+            it("should fail after max retries") {
+                val mockLogger = mockk<IPipelineLogger>()
+                every { mockLogger.info(any()) } just Runs
+                
+                val mockPipeline = createMockPipeline(logger = mockLogger)
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<Exception> {
+                    stepsBlock.retry(2) {
+                        throw RuntimeException("Always fails")
+                    }
+                }
+                
+                exception.message shouldContain "Operation failed after 2 attempts"
+            }
+
+            it("should throw exception for invalid max retries") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<IllegalArgumentException> {
+                    stepsBlock.retry(0) { "test" }
+                }
+                
+                exception.message shouldContain "Max retries must be positive"
+            }
+        }
+
+        describe("delay extension function") {
+            it("should execute block after delay") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                var executed = false
+                val startTime = System.currentTimeMillis()
+                
+                stepsBlock.delay(100) {
+                    executed = true
+                }
+                
+                val endTime = System.currentTimeMillis()
+                executed shouldBe true
+                (endTime - startTime) shouldBe >(95L) // Allow some variance
+            }
+
+            it("should throw exception for negative delay") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<IllegalArgumentException> {
+                    stepsBlock.delay(-1) { }
+                }
+                
+                exception.message shouldContain "Delay time must be non-negative"
+            }
+        }
+
+        describe("readFile extension function") {
+            it("should read file content successfully") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("test.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns true
+                
+                mockkStatic(Files::class)
+                every { Files.readString(mockPath) } returns "File content"
+                
+                val content = stepsBlock.readFile("test.txt")
+                
+                content shouldBe "File content"
+            }
+
+            it("should throw security exception for path outside working directory") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations for path traversal attack
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("../../../etc/passwd") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns false
+                
+                val exception = shouldThrow<SecurityException> {
+                    stepsBlock.readFile("../../../etc/passwd")
+                }
+                
+                exception.message shouldContain "File access outside working directory not allowed"
+            }
+
+            it("should throw exception for blank file path") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<IllegalArgumentException> {
+                    stepsBlock.readFile("")
+                }
+                
+                exception.message shouldContain "File path cannot be blank"
+            }
+        }
+
+        describe("fileExists extension function") {
+            it("should return true for existing file") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("existing.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns true
+                
+                mockkStatic(Files::class)
+                every { Files.exists(mockPath) } returns true
+                every { Files.isRegularFile(mockPath) } returns true
+                
+                val exists = stepsBlock.fileExists("existing.txt")
+                
+                exists shouldBe true
+            }
+
+            it("should return false for non-existing file") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("missing.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns true
+                
+                mockkStatic(Files::class)
+                every { Files.exists(mockPath) } returns false
+                
+                val exists = stepsBlock.fileExists("missing.txt")
+                
+                exists shouldBe false
+            }
+
+            it("should return false for path outside working directory") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations for path traversal
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("../outside.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns false
+                
+                val exists = stepsBlock.fileExists("../outside.txt")
+                
+                exists shouldBe false
+            }
+        }
+
+        describe("writeFile extension function") {
+            it("should write file content successfully") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations
+                val mockPath = mockk<Path>()
+                val mockParentPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("output.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns true
+                every { mockPath.parent } returns mockParentPath
+                
+                mockkStatic(Files::class)
+                every { Files.createDirectories(mockParentPath) } returns mockParentPath
+                every { Files.writeString(mockPath, "Hello World") } just Runs
+                
+                stepsBlock.writeFile("output.txt", "Hello World")
+                
+                verify { Files.writeString(mockPath, "Hello World") }
+            }
+
+            it("should create parent directories if needed") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations
+                val mockPath = mockk<Path>()
+                val mockParentPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("subdir/output.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns true
+                every { mockPath.parent } returns mockParentPath
+                
+                mockkStatic(Files::class)
+                every { Files.createDirectories(mockParentPath) } returns mockParentPath
+                every { Files.writeString(mockPath, "Content") } just Runs
+                
+                stepsBlock.writeFile("subdir/output.txt", "Content")
+                
+                verify { Files.createDirectories(mockParentPath) }
+                verify { Files.writeString(mockPath, "Content") }
+            }
+
+            it("should throw security exception for path outside working directory") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations for path traversal attack
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("../../../malicious.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns false
+                
+                val exception = shouldThrow<SecurityException> {
+                    stepsBlock.writeFile("../../../malicious.txt", "malicious content")
+                }
+                
+                exception.message shouldContain "File access outside working directory not allowed"
+            }
+
+            it("should throw exception for blank file path") {
+                val mockPipeline = createMockPipeline()
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                val exception = shouldThrow<IllegalArgumentException> {
+                    stepsBlock.writeFile("", "content")
+                }
+                
+                exception.message shouldContain "File path cannot be blank"
+            }
+        }
+
+        describe("integration scenarios") {
+            it("should handle complex workflow with multiple steps") {
+                val mockLogger = mockk<IPipelineLogger>()
+                every { mockLogger.info(any()) } just Runs
+                
+                val mockPipeline = createMockPipeline(logger = mockLogger)
+                val stepsBlock = StepsBlock(mockPipeline)
+                
+                // Mock file operations
+                val mockPath = mockk<Path>()
+                val workingDir = mockPipeline.workingDir
+                every { workingDir.resolve("test.txt") } returns mockPath
+                every { mockPath.normalize() } returns mockPath
+                every { mockPath.startsWith(workingDir) } returns true
+                every { mockPath.parent } returns null
+                
+                mockkStatic(Files::class)
+                every { Files.writeString(mockPath, any()) } just Runs
+                every { Files.exists(mockPath) } returns true
+                every { Files.isRegularFile(mockPath) } returns true
+                every { Files.readString(mockPath) } returns "test content"
+                
+                // Execute workflow
+                stepsBlock.echo("Starting workflow")
+                stepsBlock.writeFile("test.txt", "test content")
+                val exists = stepsBlock.fileExists("test.txt")
+                val content = stepsBlock.readFile("test.txt")
+                
+                exists shouldBe true
+                content shouldBe "test content"
+                verify { mockLogger.info("Starting workflow") }
+            }
+        }
+    }
+})
+
+private fun createMockPipeline(logger: IPipelineLogger = mockk(relaxed = true)): Pipeline {
+    val mockWorkingDir = mockk<Path>()
+    every { mockWorkingDir.resolve(any<String>()) } returns mockWorkingDir
+    every { mockWorkingDir.normalize() } returns mockWorkingDir
+    every { mockWorkingDir.startsWith(any<Path>()) } returns true
+    every { mockWorkingDir.toString() } returns "/test/workspace"
+    
+    val mockPipeline = mockk<Pipeline>()
+    every { mockPipeline.workingDir } returns mockWorkingDir
+    every { mockPipeline.env } returns EnvVars(mutableMapOf())
+    every { mockPipeline.agent } returns AnyAgent("test")
+    every { mockPipeline.stages } returns emptyList()
+    every { mockPipeline.postExecution } returns PostExecution()
+    
+    // Mock StepsBlock creation with logger access
+    mockkConstructor(StepsBlock::class)
+    every { anyConstructed<StepsBlock>().logger } returns logger
+    every { anyConstructed<StepsBlock>().pipeline } returns mockPipeline
+    every { anyConstructed<StepsBlock>().stepContext } returns mockk(relaxed = true)
+    
+    return mockPipeline
+}

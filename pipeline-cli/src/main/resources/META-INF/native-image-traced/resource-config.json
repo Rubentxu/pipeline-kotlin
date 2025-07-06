@@ -1,0 +1,83 @@
+{
+  "resources":{
+  "includes":[{
+    "pattern":"\\QBOOT-INF/classes\\E"
+  }, {
+    "pattern":"\\QBOOT-INF/lib\\E"
+  }, {
+    "pattern":"\\QMETA-INF/MANIFEST.MF\\E"
+  }, {
+    "pattern":"\\QMETA-INF/compiler.version\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/ch.qos.logback.classic.spi.Configurator\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.lang.System$LoggerFinder\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.net.spi.InetAddressResolverProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.nio.file.spi.FileSystemProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/java.time.zone.ZoneRulesProvider\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/javax.script.ScriptEngineFactory\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/kotlin.reflect.jvm.internal.impl.resolve.ExternalOverridabilityCondition\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/kotlin.reflect.jvm.internal.impl.util.ModuleVisibilityHelper\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.jetbrains.kotlin.builtins.BuiltInsLoader\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.jetbrains.kotlin.compiler.plugin.ComponentRegistrar\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.jetbrains.kotlin.resolve.ExternalOverridabilityCondition\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.jetbrains.kotlin.resolve.jvm.jvmSignature.KotlinToJvmSignatureMapper\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.jetbrains.kotlin.util.ModuleVisibilityHelper\\E"
+  }, {
+    "pattern":"\\QMETA-INF/services/org.slf4j.spi.SLF4JServiceProvider\\E"
+  }, {
+    "pattern":"\\QWEB-INF/classes\\E"
+  }, {
+    "pattern":"\\QWEB-INF/lib\\E"
+  }, {
+    "pattern":"\\Q\\E"
+  }, {
+    "pattern":"\\Qcom/sun/jna/linux-x86-64/libjnidispatch.so\\E"
+  }, {
+    "pattern":"\\Qkotlin/annotation/annotation.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/collections/collections.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/coroutines/coroutines.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/internal/internal.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/jvm/JvmStatic.class\\E"
+  }, {
+    "pattern":"\\Qkotlin/kotlin.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/ranges/ranges.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/reflect/full/KClasses.class\\E"
+  }, {
+    "pattern":"\\Qkotlin/reflect/reflect.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/script/experimental/jsr223/jsr223.kotlin_builtins\\E"
+  }, {
+    "pattern":"\\Qkotlin/script/templates/standard/ScriptTemplateWithArgs.class\\E"
+  }, {
+    "pattern":"\\Qlogback-test.scmo\\E"
+  }, {
+    "pattern":"\\Qlogback-test.xml\\E"
+  }, {
+    "pattern":"\\Qlogback.scmo\\E"
+  }, {
+    "pattern":"\\Qlogback.xml\\E"
+  }, {
+    "pattern":"\\Qorg/jetbrains/kotlin/cli/jvm/compiler/KotlinCoreEnvironment$Companion.class\\E"
+  }]},
+  "bundles":[]
+}

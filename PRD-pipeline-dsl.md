@@ -1,4 +1,4 @@
-### **Meta-Instrucciones para el Intérprete LLM**
+### **Definición de Requisitos**
 
 **Asunto:** Documentación de Proyecto para un Motor de CI/CD en Kotlin.
 **Objetivo:** Interpretar los dos documentos delimitados a continuación: una Propuesta de Proyecto (PRP) y un Documento de Requisitos de Producto (PRD).

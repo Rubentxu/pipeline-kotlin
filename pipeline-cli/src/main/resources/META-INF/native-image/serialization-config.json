@@ -1,0 +1,41 @@
+[
+  {
+    "name": "dev.rubentxu.pipeline.model.pipeline.Pipeline"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.model.pipeline.StageExecutor"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.model.pipeline.Status"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.model.job.JobExecutor"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.dsl.PipelineBlock"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.dsl.StagesCollectionBlock"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.dsl.StageBlock"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.dsl.StepsBlock"
+  },
+  {
+    "name": "dev.rubentxu.pipeline.steps.EnvVars"
+  },
+  {
+    "name": "kotlinx.serialization.json.JsonElement"
+  },
+  {
+    "name": "kotlinx.serialization.json.JsonObject"
+  },
+  {
+    "name": "kotlinx.serialization.json.JsonArray"
+  },
+  {
+    "name": "kotlinx.serialization.json.JsonPrimitive"
+  }
+]

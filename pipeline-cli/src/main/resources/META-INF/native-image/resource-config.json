@@ -1,0 +1,54 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "\\Qlogback.xml\\E"
+      },
+      {
+        "pattern": "\\Qlogback-spring.xml\\E"
+      },
+      {
+        "pattern": "\\Qapplication.properties\\E"
+      },
+      {
+        "pattern": "\\Qapplication.yml\\E"
+      },
+      {
+        "pattern": "\\Qapplication.yaml\\E"
+      },
+      {
+        "pattern": ".*\\.kts$"
+      },
+      {
+        "pattern": ".*\\.kt$"
+      },
+      {
+        "pattern": ".*\\.yaml$"
+      },
+      {
+        "pattern": ".*\\.yml$"
+      },
+      {
+        "pattern": ".*\\.properties$"
+      },
+      {
+        "pattern": ".*\\.conf$"
+      },
+      {
+        "pattern": ".*\\.json$"
+      },
+      {
+        "pattern": "META-INF/services/.*"
+      },
+      {
+        "pattern": "META-INF/native-image/.*"
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "name": "kotlin.reflect.full",
+      "locales": ["en", "es"]
+    }
+  ]
+}

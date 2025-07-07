@@ -1,0 +1,50 @@
+credentials:
+  - name: test-credentials
+    id: test-credentials
+    type: username_password
+    user: test_user
+    pass: test_pass
+
+scmConfig:
+  userRemoteConfigs:
+    - name: test-repo
+      url: https://github.com/test/test-repo
+      refspec: ''
+      credentialsId: 'test-credentials'
+  branches:
+    - name: main
+  extensions:
+    sparseCheckoutPaths: []
+    localBranch: ''
+    relativeTargetDirectory: ''
+    cleanCheckout: true
+
+sharedLibrary:
+  name: commons
+  version: master
+  source:
+    local: src/test/resources/scripts
+
+environment:
+  TEST_MODE: sandbox
+  SECURITY_ENABLED: true
+  ISOLATION_TESTS: true
+
+# Security and resource configuration for sandbox tests
+security:
+  isolationLevel: THREAD  # Default, can be overridden per test
+  resourceLimits:
+    maxMemoryMb: 512
+    maxCpuTimeMs: 60000
+    maxWallTimeMs: 120000
+    maxThreads: 10
+    maxFileHandles: 100
+  policies:
+    allowNetworkAccess: false
+    allowFileSystemAccess: true
+    allowedDirectories: 
+      - /tmp
+      - /home/rubentxu/Proyectos/Kotlin/pipeline-kotlin
+    allowReflection: false
+    allowNativeCode: false
+    sandboxEnabled: true

@@ -1,0 +1,646 @@
+package dev.rubentxu.pipeline.backend.integration
+
+import dev.rubentxu.pipeline.testing.kotest.PipelineIntegrationTestSpec
+import dev.rubentxu.pipeline.testing.mocks.wildcard
+import io.kotest.matchers.shouldBe
+import java.nio.file.Files
+import java.nio.file.Path
+
+/**
+ * End-to-End Integration Tests for Pipeline DSL using the Pipeline Testing Framework
+ * Tests complete pipeline execution with all advanced features integrated
+ */
+class EndToEndPipelineTest : PipelineIntegrationTestSpec() {
+    
+    init {
+        
+        testPipelineWithFileSystem(
+            "Complete Pipeline with All Features - should execute successfully",
+            setupBlock = { tempDir ->
+                // Create test pipeline script
+                val pipelineScript = tempDir.resolve("complete.pipeline.kts")
+                pipelineScript.toFile().writeText("""
+                    pipeline {
+                        agent {
+                            docker("openjdk:21")
+                        }
+                        
+                        libraries {
+                            source("local", "${tempDir}/libs/build-tools.jar")
+                        }
+                        
+                        plugins {
+                            load("notification-plugin.jar")
+                        }
+                        
+                        sandbox {
+                            isolationLevel = "THREAD"
+                            resourceLimits {
+                                maxMemoryMB = 256
+                                maxCpuTimeMs = 15000
+                            }
+                        }
+                        
+                        environment {
+                            "BUILD_NUMBER" += "123"
+                            "ENVIRONMENT" += "test"
+                        }
+                        
+                        stages {
+                            stage("Setup") {
+                                steps {
+                                    echo("Setting up complete pipeline...")
+                                    sh("pwd")
+                                    writeFile("setup.txt", "Pipeline setup completed")
+                                }
+                            }
+                            
+                            stage("Build and Test") {
+                                steps {
+                                    echo("Building and testing...")
+                                    
+                                    parallel(
+                                        "Build" to {
+                                            sh("./gradlew build")
+                                            echo("Build completed")
+                                        },
+                                        "Test" to {
+                                            sh("./gradlew test")
+                                            echo("Tests completed")
+                                        }
+                                    )
+                                    
+                                    archiveArtifacts("build/libs/*.jar")
+                                }
+                            }
+                            
+                            stage("Deploy") {
+                                steps {
+                                    echo("Deploying application...")
+                                    
+                                    retry(3) {
+                                        sh("kubectl apply -f deployment.yaml")
+                                    }
+                                    
+                                    sendNotification("Deployment completed successfully")
+                                }
+                            }
+                        }
+                        
+                        post {
+                            always {
+                                echo("Cleaning up...")
+                                cleanupResources()
+                            }
+                            
+                            success {
+                                echo("Pipeline completed successfully")
+                                sendNotification("Build SUCCESS for #" + env["BUILD_NUMBER"])
+                            }
+                            
+                            failure {
+                                echo("Pipeline failed")
+                                sendNotification("Build FAILED for #" + env["BUILD_NUMBER"])
+                            }
+                        }
+                    }
+                """.trimIndent())
+                
+                // Create libs directory
+                Files.createDirectories(tempDir.resolve("libs"))
+            },
+            testBlock = { builder, tempDir ->
+                builder.pipelineScript(tempDir.resolve("complete.pipeline.kts").toString())
+                
+                // Mock all the steps used in the pipeline
+                builder.mockStep("echo") {
+                    returnOutput("")
+                }
+                
+                builder.mockStep("sh") { args ->
+                    val script = args["script"] as String
+                    when {
+                        script.contains("pwd") -> returnOutput("/workspace")
+                        script.contains("./gradlew build") -> {
+                            returnExitCode(0)
+                            returnOutput("BUILD SUCCESSFUL")
+                        }
+                        script.contains("./gradlew test") -> {
+                            returnExitCode(0)
+                            returnOutput("Test SUCCESSFUL")
+                        }
+                        script.contains("kubectl") -> {
+                            returnExitCode(0)
+                            returnOutput("deployment.apps/app configured")
+                        }
+                        else -> returnOutput("Command executed")
+                    }
+                }
+                
+                builder.mockStep("writeFile") {
+                    returnExitCode(0)
+                }
+                
+                builder.mockStep("parallel") {
+                    returnExitCode(0)
+                }
+                
+                builder.mockStep("archiveArtifacts") {
+                    returnExitCode(0)
+                    returnOutput("Artifacts archived")
+                }
+                
+                builder.mockStep("retry") {
+                    returnExitCode(0)
+                }
+                
+                builder.mockStep("sendNotification") {
+                    returnExitCode(0)
+                    returnOutput("Notification sent")
+                }
+                
+                builder.mockStep("cleanupResources") {
+                    returnExitCode(0)
+                }
+            },
+            verificationBlock = { tempDir ->
+                // Verify all main pipeline phases executed
+                stepWasCalled("echo")
+                stepCallCount("echo", 8) // Setup, Build/Test messages, Deploy, Cleanup, Success
+                
+                stepWasCalled("sh")
+                stepCallCount("sh", 4) // pwd, gradlew build, gradlew test, kubectl
+                
+                stepWasCalled("writeFile")
+                stepCalledWith("writeFile", mapOf("file" to "setup.txt", "text" to "Pipeline setup completed"))
+                
+                stepWasCalled("parallel")
+                
+                stepWasCalled("archiveArtifacts")
+                stepCalledWith("archiveArtifacts", mapOf("artifacts" to "build/libs/*.jar"))
+                
+                stepWasCalled("retry")
+                
+                stepWasCalled("sendNotification")
+                stepCallCount("sendNotification", 2) // Deploy success + Pipeline success
+                
+                stepWasCalled("cleanupResources")
+                
+                // Verify execution order
+                stepsCalledInOrder("echo", "sh", "writeFile", "parallel", "archiveArtifacts", "retry", "sendNotification", "cleanupResources")
+            }
+        )
+        
+        testPipelineFromResource(
+            "Library Loading Pipeline - should load and use external libraries",
+            resourcePath = "/testdata/pipelines/library-loading.pipeline.kts",
+            testBlock = {
+                // Mock library loading steps
+                mockStep("echo") {
+                    returnOutput("")
+                }
+                
+                mockStep("checkLibraries") {
+                    returnExitCode(0)
+                    returnOutput("All libraries loaded successfully")
+                }
+                
+                // Database steps
+                mockStep("connectDatabase") {
+                    returnExitCode(0)
+                    returnOutput("Connected to database")
+                }
+                
+                mockStep("executeQuery") { args ->
+                    val query = args["query"] as? String
+                    val returnResult = args["returnResult"] as? Boolean ?: false
+                    
+                    when {
+                        returnResult -> returnOutput("5")
+                        query?.contains("CREATE TABLE") == true -> returnOutput("Table created")
+                        query?.contains("INSERT") == true -> returnOutput("Row inserted")
+                        else -> returnOutput("Query executed")
+                    }
+                }
+                
+                mockStep("disconnectDatabase") {
+                    returnExitCode(0)
+                }
+                
+                // Build steps
+                mockStep("initializeBuild") {
+                    returnExitCode(0)
+                }
+                
+                mockStep("compileCode") {
+                    returnExitCode(0)
+                    returnOutput("Compilation successful")
+                }
+                
+                mockStep("processResources") {
+                    returnExitCode(0)
+                    returnOutput("Resources processed")
+                }
+                
+                mockStep("packageArtifact") {
+                    returnExitCode(0)
+                    returnOutput("Artifact packaged")
+                }
+                
+                // Publishing steps
+                mockStep("publishArtifact") {
+                    returnExitCode(0)
+                    returnOutput("Artifact published")
+                }
+                
+                mockStep("sendNotification") {
+                    returnExitCode(0)
+                }
+                
+                mockStep("cleanupLibraries") {
+                    returnExitCode(0)
+                }
+                
+                mockStep("parallel") {
+                    returnExitCode(0)
+                }
+            },
+            verificationBlock = {
+                // Verify library loading sequence
+                stepWasCalled("checkLibraries")
+                
+                // Verify database operations
+                stepWasCalled("connectDatabase")
+                stepWasCalled("executeQuery")
+                stepCallCount("executeQuery", 3) // CREATE, INSERT, SELECT
+                stepWasCalled("disconnectDatabase")
+                
+                // Verify build operations
+                stepWasCalled("initializeBuild")
+                stepWasCalled("parallel")
+                stepWasCalled("compileCode")
+                stepWasCalled("processResources")
+                stepWasCalled("packageArtifact")
+                
+                // Verify publishing
+                stepWasCalled("publishArtifact")
+                stepWasCalled("sendNotification")
+                
+                // Verify cleanup
+                stepWasCalled("cleanupLibraries")
+                
+                stepsCalledInOrder("checkLibraries", "connectDatabase", "executeQuery", "initializeBuild", "publishArtifact")
+            }
+        )
+        
+        testPipelineFromResource(
+            "Sandbox Security Pipeline - should enforce security controls",
+            resourcePath = "/testdata/pipelines/sandbox-security.pipeline.kts",
+            testBlock = {
+                mockStep("echo") {
+                    returnOutput("")
+                }
+                
+                mockStep("sh") { args ->
+                    val script = args["script"] as String
+                    when {
+                        script.contains("echo 'Hello from secure sandbox'") -> returnOutput("Hello from secure sandbox")
+                        script.contains("pwd") -> returnOutput("/workspace")
+                        script.contains("whoami") -> returnOutput("pipeline-user")
+                        script.contains("sleep") -> returnOutput("")
+                        script.contains("curl http://google.com") -> {
+                            returnExitCode(1)
+                            returnError("Access denied: blocked host")
+                        }
+                        script.contains("curl https://github.com") -> returnOutput("API response")
+                        script.contains("echo $$") -> returnOutput("12345")
+                        script.contains("ps aux") -> returnOutput("Process list")
+                        else -> returnOutput("Command executed")
+                    }
+                }
+                
+                mockStep("writeFile") { args ->
+                    val file = args["file"] as String
+                    if (file.startsWith("/etc")) {
+                        returnExitCode(1)
+                        returnError("Access denied: restricted path")
+                    } else {
+                        returnExitCode(0)
+                    }
+                }
+                
+                mockStep("readFile") { args ->
+                    val file = args["file"] as String
+                    when {
+                        file.contains("security-test.txt") -> returnOutput("This is a security test")
+                        file.contains("/tmp/temp-file.txt") -> returnOutput("Temporary file")
+                        file.contains("/tmp/temp-test.txt") -> returnOutput("temporary content")
+                        file.startsWith("/etc") -> {
+                            returnExitCode(1)
+                            returnError("Access denied: restricted path")
+                        }
+                        else -> returnOutput("File content")
+                    }
+                }
+                
+                mockStep("checkResourceUsage") {
+                    returnOutput("Memory: 128MB/512MB, CPU: 5000ms/30000ms")
+                }
+                
+                mockStep("checkSandboxBoundaries") {
+                    returnOutput("Sandbox boundaries verified")
+                }
+                
+                mockStep("checkSecurityViolations") {
+                    returnOutput(emptyList<String>())
+                }
+                
+                mockStep("cleanupSandbox") {
+                    returnExitCode(0)
+                }
+                
+                mockStep("generateSecurityReport") {
+                    returnExitCode(0)
+                }
+                
+                mockStep("dir") {
+                    returnExitCode(0)
+                }
+            },
+            verificationBlock = {
+                // Verify security validation steps
+                stepWasCalled("writeFile")
+                stepWasCalled("readFile")
+                stepWasCalled("checkResourceUsage")
+                stepWasCalled("checkSandboxBoundaries")
+                stepWasCalled("checkSecurityViolations")
+                
+                // Verify network access control
+                stepWasCalled("sh")
+                
+                // Verify cleanup
+                stepWasCalled("cleanupSandbox")
+                stepWasCalled("generateSecurityReport")
+                
+                // All security checks should pass
+                allStepsSucceeded()
+            }
+        )
+        
+        testPipelinePerformance(
+            "Performance Test - should complete within time limits",
+            maxExecutionTimeMs = 5000,
+            testBlock = {
+                pipelineScriptContent(simplePipelineScript("""
+                    parallel(
+                        "Task1" to {
+                            sh("echo 'Task 1'")
+                            sleep(1)
+                        },
+                        "Task2" to {
+                            sh("echo 'Task 2'")
+                            sleep(1)
+                        },
+                        "Task3" to {
+                            sh("echo 'Task 3'")
+                            sleep(1)
+                        }
+                    )
+                    echo("Performance test completed")
+                """))
+                
+                mockStep("sh") {
+                    returnExitCode(0)
+                    returnOutput("Task output")
+                }
+                
+                mockStep("sleep") {
+                    // Mock sleep to be instant for performance testing
+                    returnExitCode(0)
+                }
+                
+                mockStep("parallel") {
+                    returnExitCode(0)
+                }
+                
+                mockStep("echo") {
+                    returnOutput("")
+                }
+            }
+        )
+        
+        testPipelineFailure(
+            "Error Handling - should handle pipeline failures gracefully",
+            testBlock = {
+                pipelineScriptContent(simplePipelineScript("""
+                    sh("command-that-will-fail")
+                    echo("This should not be reached")
+                """))
+                
+                mockStep("sh") {
+                    returnExitCode(1)
+                    returnError("Command failed with exit code 1")
+                }
+                
+                mockStep("echo") {
+                    returnOutput("")
+                }
+            },
+            expectedErrorMatch = { error ->
+                error.message?.contains("Command failed") == true ||
+                error.message?.contains("exit code 1") == true
+            }
+        )
+        
+        testPipeline(
+            "Backend Integration - should integrate with PipelineScriptRunner",
+            testBlock = {
+                pipelineScriptContent(buildPipelineScript())
+                
+                // Mock backend components
+                mockStep("sh") {
+                    returnExitCode(0)
+                    returnOutput("BUILD SUCCESSFUL")
+                }
+                
+                mockStep("echo") {
+                    returnOutput("")
+                }
+                
+                // Mock PipelineScriptRunner behavior
+                mockStep("evaluateScript") {
+                    returnExitCode(0)
+                    returnOutput("Script evaluated successfully")
+                }
+                
+                mockStep("loadConfiguration") {
+                    returnExitCode(0)
+                    returnOutput("Configuration loaded")
+                }
+                
+                mockStep("executePipeline") {
+                    returnExitCode(0)
+                    returnOutput("Pipeline executed")
+                }
+            },
+            verificationBlock = {
+                stepWasCalled("sh")
+                stepCallCount("sh", 2) // clean + build
+                
+                stepWasCalled("echo")
+                stepCalledWith("echo", mapOf("message" to "Build completed successfully"))
+                
+                // Verify script execution completed
+                allStepsSucceeded()
+            }
+        )
+        
+        testPipeline(
+            "Multi-Stage Complex Pipeline - should handle complex workflows",
+            testBlock = {
+                pipelineScriptContent("""
+                    pipeline {
+                        agent {
+                            docker("openjdk:21")
+                        }
+                        
+                        environment {
+                            "ENVIRONMENT" += "production"
+                            "DATABASE_URL" += "postgresql://prod-db:5432/app"
+                        }
+                        
+                        stages {
+                            stage("Preparation") {
+                                steps {
+                                    echo("Preparing environment...")
+                                    sh("mkdir -p build reports")
+                                    writeFile("build-info.txt", "Build started at " + new Date())
+                                }
+                            }
+                            
+                            stage("Quality Gates") {
+                                parallel(
+                                    "Unit Tests" to {
+                                        sh("./gradlew test")
+                                        publishTestResults("**/test-results/*.xml")
+                                    },
+                                    "Code Coverage" to {
+                                        sh("./gradlew jacocoTestReport")
+                                        publishCoverage("build/reports/jacoco/test/html")
+                                    },
+                                    "Static Analysis" to {
+                                        sh("./gradlew sonarqube")
+                                        waitForQualityGate()
+                                    }
+                                )
+                            }
+                            
+                            stage("Build and Package") {
+                                steps {
+                                    sh("./gradlew build")
+                                    sh("docker build -t app:latest .")
+                                    sh("docker tag app:latest app:" + env["BUILD_NUMBER"])
+                                }
+                            }
+                            
+                            stage("Integration Tests") {
+                                steps {
+                                    sh("docker-compose up -d")
+                                    try {
+                                        sh("./gradlew integrationTest")
+                                    } finally {
+                                        sh("docker-compose down")
+                                    }
+                                }
+                            }
+                            
+                            stage("Deployment") {
+                                when {
+                                    env["ENVIRONMENT"] == "production" -> {
+                                        steps {
+                                            input(message: "Deploy to production?", ok: "Deploy")
+                                            sh("kubectl apply -f k8s/production/")
+                                            waitForDeployment("app", timeout: 300)
+                                        }
+                                    }
+                                    else -> {
+                                        steps {
+                                            sh("kubectl apply -f k8s/staging/")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        post {
+                            always {
+                                publishTestResults("**/test-results/*.xml")
+                                archiveArtifacts("build/libs/*.jar")
+                                cleanWs()
+                            }
+                            
+                            success {
+                                sendNotification("Production deployment successful!")
+                            }
+                            
+                            failure {
+                                sendNotification("Production deployment failed!")
+                                captureDeploymentLogs()
+                            }
+                        }
+                    }
+                """.trimIndent())
+                
+                // Mock all the complex pipeline steps
+                mockStep("echo") { returnOutput("") }
+                mockStep("sh") { args ->
+                    val script = args["script"] as String
+                    when {
+                        script.contains("mkdir") -> returnOutput("Directories created")
+                        script.contains("./gradlew test") -> returnOutput("Tests PASSED")
+                        script.contains("./gradlew jacocoTestReport") -> returnOutput("Coverage report generated")
+                        script.contains("./gradlew sonarqube") -> returnOutput("Sonar analysis completed")
+                        script.contains("./gradlew build") -> returnOutput("BUILD SUCCESSFUL")
+                        script.contains("docker build") -> returnOutput("Image built successfully")
+                        script.contains("docker tag") -> returnOutput("Image tagged")
+                        script.contains("docker-compose up") -> returnOutput("Services started")
+                        script.contains("./gradlew integrationTest") -> returnOutput("Integration tests PASSED")
+                        script.contains("docker-compose down") -> returnOutput("Services stopped")
+                        script.contains("kubectl") -> returnOutput("Deployment successful")
+                        else -> returnOutput("Command executed")
+                    }
+                }
+                
+                mockStep("writeFile") { returnExitCode(0) }
+                mockStep("parallel") { returnExitCode(0) }
+                mockStep("publishTestResults") { returnExitCode(0) }
+                mockStep("publishCoverage") { returnExitCode(0) }
+                mockStep("waitForQualityGate") { returnExitCode(0) }
+                mockStep("input") { returnOutput("Deploy") }
+                mockStep("waitForDeployment") { returnExitCode(0) }
+                mockStep("archiveArtifacts") { returnExitCode(0) }
+                mockStep("cleanWs") { returnExitCode(0) }
+                mockStep("sendNotification") { returnExitCode(0) }
+            },
+            verificationBlock = {
+                // Verify all stages executed
+                stepWasCalled("echo")
+                stepWasCalled("sh")
+                stepCallCount("sh", 11) // All the various commands
+                
+                stepWasCalled("parallel")
+                stepWasCalled("publishTestResults")
+                stepWasCalled("publishCoverage")
+                stepWasCalled("waitForQualityGate")
+                stepWasCalled("waitForDeployment")
+                
+                stepWasCalled("archiveArtifacts")
+                stepWasCalled("cleanWs")
+                stepWasCalled("sendNotification")
+                
+                // Verify execution completed successfully
+                allStepsSucceeded()
+            }
+        )
+    }
+}

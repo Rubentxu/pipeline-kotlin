@@ -25,6 +25,8 @@ dependencies {
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.mockk)
     testImplementation(libs.junit.jupiter)
+    // GraalVM dependencies for tests that use sandbox functionality
+    testImplementation(libs.bundles.graalvm)
 }
 
 

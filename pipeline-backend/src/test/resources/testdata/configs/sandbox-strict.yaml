@@ -1,0 +1,94 @@
+sandbox:
+  isolationLevel: PROCESS
+  securityPolicy: STRICT
+  resourceLimits:
+    maxMemoryMB: 512
+    maxCpuTimeMs: 30000
+    maxWallTimeMs: 60000
+    maxThreads: 10
+    maxFileDescriptors: 100
+  
+  fileAccess:
+    allowedPaths:
+      - "/workspace"
+      - "/tmp"
+      - "/var/tmp"
+    blockedPaths:
+      - "/etc"
+      - "/root"
+      - "/home"
+    readOnlyPaths:
+      - "/usr"
+      - "/lib"
+      - "/bin"
+  
+  networkAccess:
+    allowOutbound: false
+    allowedHosts:
+      - "github.com"
+      - "maven.central.org"
+      - "repo1.maven.org"
+    allowedPorts:
+      - 80
+      - 443
+      - 22
+    blockedIPs:
+      - "192.168.1.0/24"
+      - "10.0.0.0/8"
+  
+  monitoring:
+    enableResourceMonitoring: true
+    enableSecurityViolationDetection: true
+    logViolations: true
+    violationLogLevel: "WARN"
+    
+  violations:
+    maxViolationsBeforeAbort: 5
+    violationCooldownMs: 1000
+
+plugins:
+  security:
+    requireSignature: true
+    checkBytecode: true
+    trustedAuthors:
+      - "Company DevOps Team"
+      - "Security Team"
+    blockedPackages:
+      - "java.lang.reflect"
+      - "sun.misc"
+      - "java.security"
+    
+  isolation:
+    defaultIsolationLevel: "CLASSLOADER"
+    allowCrossPluginCommunication: false
+    
+libraries:
+  security:
+    allowLocalSources: true
+    allowGitSources: true
+    allowMavenSources: true
+    requireSignedJars: false
+    trustedRepositories:
+      - "https://repo1.maven.org/maven2"
+      - "https://github.com/company"
+  
+  loading:
+    enableHotReload: true
+    dependencyResolutionTimeout: 30000
+    maxLibrarySize: "100MB"
+
+logging:
+  level: "INFO"
+  enableAuditLog: true
+  auditLogLevel: "DEBUG"
+  
+security:
+  enableSecurityManager: true
+  customSecurityPolicy: |
+    grant {
+      permission java.io.FilePermission "/workspace/-", "read,write,delete";
+      permission java.io.FilePermission "/tmp/-", "read,write,delete";
+      permission java.lang.RuntimePermission "modifyThread";
+      permission java.net.SocketPermission "github.com:443", "connect,resolve";
+      permission java.net.SocketPermission "maven.central.org:443", "connect,resolve";
+    };

@@ -21,6 +21,9 @@ dependencies {
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.junit.jupiter)
+    
+    // Pipeline Testing Framework
+    testImplementation(project(":pipeline-testing"))
 }
 
 

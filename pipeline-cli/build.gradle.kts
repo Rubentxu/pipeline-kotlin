@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.shadow)
@@ -30,6 +32,10 @@ dependencies {
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.junit.jupiter)
+    
+    // GraalVM dependencies for testing sandbox functionality
+    testImplementation(libs.bundles.graalvm)
+    testImplementation(libs.mockk)
 }
 
 application {
@@ -54,6 +60,37 @@ tasks {
 
     test {
         useJUnitPlatform()
+        
+        // Allow parallel execution for non-conflicting tests
+        // CLI resource conflicts are handled by AbstractE2ETest lock
+        maxParallelForks = 4  // Run tests in parallel, but CLI tests sync internally
+        
+        // Increase timeouts for E2E tests
+        timeout.set(Duration.ofMinutes(10))
+        
+        // System properties for test isolation
+        systemProperty("java.io.tmpdir", System.getProperty("java.io.tmpdir"))
+        // Remove global parallelism restriction - let individual tests decide
+        // systemProperty("kotest.framework.parallelism", "1")
+        
+        // JVM options for better test stability
+        jvmArgs(
+            "-XX:+UseG1GC",
+            "-Xmx3g",  // Increase memory for parallel execution
+            "-XX:MaxMetaspaceSize=768m"
+        )
+        
+        // Filter E2E tests for special handling
+        filter {
+            includeTestsMatching("*")
+        }
+        
+        // Clean up temp directories before tests
+        doFirst {
+            delete(fileTree("${System.getProperty("java.io.tmpdir")}").matching {
+                include("cli-test-*/**")
+            })
+        }
     }
     
     shadowJar {

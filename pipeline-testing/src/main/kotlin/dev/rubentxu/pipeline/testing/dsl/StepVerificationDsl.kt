@@ -12,13 +12,16 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.assertions.fail
 
 /**
- * DSL for verifying step invocations in pipeline tests
- * Provides fluent API for asserting pipeline step behavior
+ * DSL for verifying step invocations in pipeline tests.
+ *
+ * Provides a fluent API for making assertions about the behavior of pipeline steps.
  */
 class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     
     /**
-     * Verify that a step was called
+     * Verifies that a step was called.
+     *
+     * @param stepName Name of the step.
      */
     fun stepWasCalled(stepName: String) {
         if (!recorder.containsMethod(stepName)) {
@@ -27,7 +30,9 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     }
     
     /**
-     * Verify that a step was not called
+     * Verifies that a step was NOT called.
+     *
+     * @param stepName Name of the step.
      */
     fun stepWasNotCalled(stepName: String) {
         if (recorder.containsMethod(stepName)) {
@@ -36,7 +41,10 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     }
     
     /**
-     * Verify step call count
+     * Verifies the number of calls to a step.
+     *
+     * @param stepName Name of the step.
+     * @param expectedCount Expected number of calls.
      */
     fun stepCallCount(stepName: String, expectedCount: Int) {
         val actualCount = recorder.getCallCount(stepName)
@@ -44,9 +52,12 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
             fail("Expected step '$stepName' to be called $expectedCount times, but was called $actualCount times")
         }
     }
-    
+
     /**
-     * Verify step was called with specific named arguments
+     * Verifies that a step was called with specific named arguments.
+     *
+     * @param stepName Name of the step.
+     * @param expectedArgs Expected arguments.
      */
     fun stepCalledWith(stepName: String, expectedArgs: Map<String, Any>) {
         val invocations = recorder.getMethodInvocations(stepName)
@@ -75,7 +86,10 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     }
     
     /**
-     * Verify step was called with specific positional arguments
+     * Verifies that a step was called with specific positional arguments.
+     *
+     * @param stepName Name of the step.
+     * @param expectedArgs Expected arguments.
      */
     fun stepCalledWith(stepName: String, vararg expectedArgs: Any?) {
         val expectedArgsList = expectedArgs.toList()
@@ -105,41 +119,39 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     }
     
     /**
-     * Get all invocations for a step (for custom verification)
+     * Gets all invocations of a step (for custom verification).
+     *
+     * @param stepName Name of the step.
+     * @return List of invocations.
      */
     fun getInvocations(stepName: String): List<StepInvocation<*>> {
         return recorder.getMethodInvocations(stepName)
     }
     
     /**
-     * Verify step invocation order
+     * Verifies the order of step invocations.
+     *
+     * @param stepNames Names of the steps in the expected order.
      */
     fun stepsCalledInOrder(vararg stepNames: String) {
-        val allInvocations = recorder.getInvocations()
-        val actualOrder = mutableListOf<String>()
+        val actualOrder = recorder.getExecutionOrder()
+        val expectedOrder = stepNames.toList()
         
-        // Build chronological order based on invocation recording
-        allInvocations.forEach { (stepName, invocations) ->
-            repeat(invocations.size) {
-                actualOrder.add(stepName)
-            }
-        }
-        
-        var stepIndex = 0
-        for (expectedStep in stepNames) {
-            val foundIndex = actualOrder.indexOf(expectedStep)
+        // Check if the expected steps appear in the actual order in the same sequence
+        var lastFoundIndex = -1
+        for (expectedStep in expectedOrder) {
+            val foundIndex = actualOrder.subList(lastFoundIndex + 1, actualOrder.size).indexOf(expectedStep)
             if (foundIndex == -1) {
-                fail("Expected step '$expectedStep' was not found in execution order")
+                fail("Expected step '$expectedStep' was not found in execution order after position $lastFoundIndex. Expected order: $expectedOrder, Actual order: $actualOrder")
             }
-            if (foundIndex < stepIndex) {
-                fail("Step '$expectedStep' was called before expected position. Expected order: ${stepNames.toList()}, Actual order: $actualOrder")
-            }
-            stepIndex = foundIndex + 1
+            lastFoundIndex = lastFoundIndex + 1 + foundIndex
         }
     }
     
     /**
-     * Verify that only specific steps were called
+     * Verifies that only the specified steps were called.
+     *
+     * @param stepNames Names of the allowed steps.
      */
     fun onlyStepsCalled(vararg stepNames: String) {
         val expectedSteps = stepNames.toSet()
@@ -158,7 +170,11 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     }
     
     /**
-     * Advanced verification with custom matcher function
+     * Advanced verification with a custom matcher function.
+     *
+     * @param stepName Name of the step.
+     * @param matcher Matcher function.
+     * @param errorMessage Custom error message.
      */
     fun verifyStep(stepName: String, matcher: (List<StepInvocation<*>>) -> Boolean, errorMessage: String = "Step verification failed") {
         val invocations = recorder.getMethodInvocations(stepName)
@@ -168,7 +184,7 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
     }
     
     /**
-     * Verify that all steps passed (no exceptions thrown)
+     * Verifies that all steps succeeded (no exceptions).
      */
     fun allStepsSucceeded() {
         val allInvocations = recorder.getInvocations()
@@ -180,9 +196,12 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
             }
         }
     }
-    
+
     /**
-     * Builder pattern for complex step verification
+     * Builder for complex step invocation verification.
+     *
+     * @param stepName Name of the step.
+     * @param block Verification configuration block.
      */
     fun verifyStepInvocation(stepName: String, block: StepInvocationVerificationBuilder.() -> Unit) {
         val builder = StepInvocationVerificationBuilder(stepName, recorder)
@@ -192,7 +211,9 @@ class StepVerificationDsl(private val recorder: StepInvocationRecorder) {
 }
 
 /**
- * Builder for complex step invocation verification
+ * Builder for complex step invocation verification.
+ *
+ * Allows defining multiple verifications on a step's invocations.
  */
 class StepInvocationVerificationBuilder(
     private val stepName: String,
@@ -201,7 +222,9 @@ class StepInvocationVerificationBuilder(
     private val verifications = mutableListOf<(List<StepInvocation<*>>) -> Unit>()
     
     /**
-     * Verify call count
+     * Verifies the number of calls to the step.
+     *
+     * @param expected Expected number of invocations.
      */
     fun callCount(expected: Int) {
         verifications.add { invocations ->
@@ -210,9 +233,11 @@ class StepInvocationVerificationBuilder(
             }
         }
     }
-    
+
     /**
-     * Verify that step was called with wildcard support
+     * Verifies that the step was called with arguments (supports wildcard).
+     *
+     * @param expectedArgs Expected arguments.
      */
     fun calledWith(expectedArgs: Map<String, Any>) {
         verifications.add { invocations ->
@@ -234,9 +259,11 @@ class StepInvocationVerificationBuilder(
             }
         }
     }
-    
+
     /**
-     * Verify step result
+     * Verifies the result of the step with a predicate.
+     *
+     * @param predicate Function that validates the result.
      */
     fun resultMatches(predicate: (dev.rubentxu.pipeline.testing.MockResult) -> Boolean) {
         verifications.add { invocations ->
@@ -245,9 +272,9 @@ class StepInvocationVerificationBuilder(
             }
         }
     }
-    
+
     /**
-     * Execute all verifications
+     * Executes all configured verifications.
      */
     internal fun verify() {
         val invocations = recorder.getMethodInvocations(stepName)

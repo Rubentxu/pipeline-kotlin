@@ -12,13 +12,18 @@ import java.nio.file.Path
 import kotlin.io.path.createTempFile
 
 /**
- * Base Kotest specification for Pipeline DSL testing
- * Provides convenient DSL methods for testing Pipeline scripts
+ * Base Kotest specification for testing Pipeline DSL.
+ *
+ * Provides convenient DSL methods for testing Pipeline scripts.
  */
 abstract class PipelineTestSpec : StringSpec() {
     
     /**
-     * Test a pipeline script with verification
+     * Tests a pipeline script with verification.
+     *
+     * @param testName Name of the test.
+     * @param testBlock Test configuration block.
+     * @param verificationBlock Verification block.
      */
     protected fun testPipeline(
         testName: String,
@@ -35,7 +40,10 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Test a pipeline script execution without verification
+     * Tests the execution of a pipeline script without verification.
+     *
+     * @param testName Name of the test.
+     * @param testBlock Test configuration block.
      */
     protected fun testPipelineExecution(
         testName: String,
@@ -51,7 +59,11 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Test that a pipeline script fails with expected error
+     * Tests that a pipeline script fails with the expected error.
+     *
+     * @param testName Name of the test.
+     * @param testBlock Test configuration block.
+     * @param expectedErrorMatch Function to validate the error.
      */
     protected fun testPipelineFailure(
         testName: String,
@@ -72,7 +84,10 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Create a temporary pipeline script file with given content
+     * Creates a temporary pipeline script file with the given content.
+     *
+     * @param content Script content.
+     * @return Path to the temporary file.
      */
     protected fun createTempPipelineScript(content: String): Path {
         val tempFile = createTempFile("test-pipeline", ".pipeline.kts")
@@ -81,7 +96,10 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Helper method to create common pipeline script content
+     * Helper to create simple pipeline script content.
+     *
+     * @param content Steps content.
+     * @return Full script.
      */
     protected fun simplePipelineScript(content: String): String {
         return """
@@ -102,7 +120,9 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Helper method to create build pipeline script
+     * Helper to create a build pipeline script.
+     *
+     * @return Build script.
      */
     protected fun buildPipelineScript(): String {
         return simplePipelineScript("""
@@ -113,7 +133,9 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Helper method to create test pipeline script with file operations
+     * Helper to create a pipeline script with file operations.
+     *
+     * @return Script with file operations.
      */
     protected fun fileOperationsPipelineScript(): String {
         return simplePipelineScript("""
@@ -127,7 +149,9 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Helper method to create pipeline script with parallel execution
+     * Helper to create a pipeline script with parallel execution.
+     *
+     * @return Script with parallel steps.
      */
     protected fun parallelPipelineScript(): String {
         return simplePipelineScript("""
@@ -146,7 +170,9 @@ abstract class PipelineTestSpec : StringSpec() {
     }
     
     /**
-     * Helper method to create pipeline script with error handling
+     * Helper to create a pipeline script with error handling.
+     *
+     * @return Script with error handling.
      */
     protected fun errorHandlingPipelineScript(): String {
         return simplePipelineScript("""
@@ -162,13 +188,19 @@ abstract class PipelineTestSpec : StringSpec() {
 }
 
 /**
- * Extended specification for integration testing of Pipeline DSL
- * Provides additional utilities for complex pipeline testing scenarios
+ * Extended specification for integration testing of Pipeline DSL.
+ *
+ * Provides additional utilities for complex testing scenarios.
  */
 abstract class PipelineIntegrationTestSpec : PipelineTestSpec() {
     
     /**
-     * Test pipeline with real file system operations
+     * Tests a pipeline with real file system operations.
+     *
+     * @param testName Name of the test.
+     * @param setupBlock Setup block.
+     * @param testBlock Test configuration block.
+     * @param verificationBlock Verification block.
      */
     protected fun testPipelineWithFileSystem(
         testName: String,
@@ -196,7 +228,12 @@ abstract class PipelineIntegrationTestSpec : PipelineTestSpec() {
     }
     
     /**
-     * Test pipeline script from resources
+     * Tests a pipeline script from resources.
+     *
+     * @param testName Name of the test.
+     * @param resourcePath Path to the resource.
+     * @param testBlock Test configuration block.
+     * @param verificationBlock Verification block.
      */
     protected fun testPipelineFromResource(
         testName: String,
@@ -219,7 +256,11 @@ abstract class PipelineIntegrationTestSpec : PipelineTestSpec() {
     }
     
     /**
-     * Performance testing of pipeline execution
+     * Pipeline execution performance test.
+     *
+     * @param testName Name of the test.
+     * @param maxExecutionTimeMs Maximum allowed time in ms.
+     * @param testBlock Test configuration block.
      */
     protected fun testPipelinePerformance(
         testName: String,
@@ -244,12 +285,12 @@ abstract class PipelineIntegrationTestSpec : PipelineTestSpec() {
 }
 
 /**
- * Kotest matchers extension for Pipeline testing
+ * Kotest matcher extensions for Pipeline testing.
  */
 object PipelineMatchers {
     
     /**
-     * Matcher for successful pipeline execution
+     * Matcher for successful pipeline execution.
      */
     fun beSuccessful() = object : io.kotest.matchers.Matcher<PipelineExecutionResult> {
         override fun test(value: PipelineExecutionResult): io.kotest.matchers.MatcherResult {
@@ -262,7 +303,7 @@ object PipelineMatchers {
     }
     
     /**
-     * Matcher for failed pipeline execution
+     * Matcher for failed pipeline execution.
      */
     fun beFailure() = object : io.kotest.matchers.Matcher<PipelineExecutionResult> {
         override fun test(value: PipelineExecutionResult): io.kotest.matchers.MatcherResult {
@@ -275,7 +316,7 @@ object PipelineMatchers {
     }
     
     /**
-     * Matcher for execution time
+     * Matcher for execution time.
      */
     fun executeInLessThan(maxTimeMs: Long) = object : io.kotest.matchers.Matcher<PipelineExecutionResult> {
         override fun test(value: PipelineExecutionResult): io.kotest.matchers.MatcherResult {

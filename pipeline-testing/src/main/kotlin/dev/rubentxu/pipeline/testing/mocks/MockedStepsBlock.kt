@@ -260,6 +260,30 @@ class MockedStepsBlock(
     fun step(stepName: String, args: Map<String, Any> = emptyMap()): Any {
         val mockResult = stepMocks[stepName]?.invoke(args) ?: MockResult()
         recorder.recordInvocation(stepName, args, mockResult)
+        
+        // Check if this step should fail based on its mock result
+        if (mockResult.exitCode != 0) {
+            throw RuntimeException(mockResult.error.ifEmpty { "Step $stepName failed with exit code ${mockResult.exitCode}" })
+        }
+        
+        return mockResult.output
+    }
+    
+    /**
+     * Execute a generic step with positional arguments
+     */
+    fun step(stepName: String, args: List<Any>): Any {
+        // Convert list to map for mock handler
+        val argsMap = args.mapIndexed { index, value -> "arg$index" to value }.toMap()
+        val mockResult = stepMocks[stepName]?.invoke(argsMap) ?: MockResult()
+        // Record with the original list for proper verification
+        recorder.recordInvocation(stepName, args, mockResult)
+        
+        // Check if this step should fail based on its mock result
+        if (mockResult.exitCode != 0) {
+            throw RuntimeException(mockResult.error.ifEmpty { "Step $stepName failed with exit code ${mockResult.exitCode}" })
+        }
+        
         return mockResult.output
     }
     

@@ -88,6 +88,11 @@ class PipelineTestFrameworkExampleTest : PipelineTestSpec() {
                     returnExitCode(0)
                     returnOutput("SUCCESS")
                 }
+                
+                mockStep("parallel") {
+                    returnExitCode(0)
+                    returnOutput("Parallel execution completed")
+                }
             },
             verificationBlock = {
                 stepWasCalled("sh")
@@ -109,6 +114,16 @@ class PipelineTestFrameworkExampleTest : PipelineTestSpec() {
                 mockStep("sh") {
                     returnExitCode(0)
                     returnOutput("SUCCESS")
+                }
+                
+                mockStep("retry") {
+                    returnExitCode(0)
+                    returnOutput("Retry completed")
+                }
+                
+                mockStep("dir") {
+                    returnExitCode(0)
+                    returnOutput("Directory changed")
                 }
             },
             verificationBlock = {
@@ -167,6 +182,11 @@ class PipelineTestFrameworkExampleTest : PipelineTestSpec() {
                 mockStep("sh") {
                     returnExitCode(1)
                     returnError("Compilation failed")
+                }
+                
+                mockStep("error") {
+                    returnExitCode(1)
+                    returnError("Build failed!")
                 }
             },
             expectedErrorMatch = { error ->

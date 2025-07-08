@@ -10,7 +10,10 @@ import java.nio.file.Files
 import java.nio.file.Paths
 
 /**
- * Core engine for testing Pipeline DSL scripts with mocked steps
+ * Main engine for testing Pipeline DSL scripts with mocked steps.
+ *
+ * Allows executing pipeline scripts in a test environment, recording step invocations,
+ * and defining mock behaviors for steps.
  */
 class PipelineTestEngine {
     private val stepMocks = mutableMapOf<String, StepMockHandler>()
@@ -18,7 +21,10 @@ class PipelineTestEngine {
     private val mockExecutionContext = MockPipelineExecutionContext()
     
     /**
-     * Execute a .pipeline.kts script file with mocked steps
+     * Executes a .pipeline.kts script file with mocked steps.
+     *
+     * @param scriptPath Path to the script file.
+     * @return Result of the pipeline execution.
      */
     fun executePipelineScript(scriptPath: String): PipelineExecutionResult {
         val scriptContent = loadPipelineScript(scriptPath)
@@ -28,7 +34,10 @@ class PipelineTestEngine {
     }
     
     /**
-     * Execute pipeline script content directly with mocked steps
+     * Executes the content of a pipeline script directly with mocked steps.
+     *
+     * @param scriptContent Script content.
+     * @return Result of the pipeline execution.
      */
     fun executePipelineScriptContent(scriptContent: String): PipelineExecutionResult {
         val mockedStepsBlock = createMockedStepsBlock()
@@ -37,19 +46,27 @@ class PipelineTestEngine {
     }
     
     /**
-     * Configure mock behavior for a specific step
+     * Sets the mock behavior for a specific step.
+     *
+     * @param stepName Name of the step.
+     * @param handler Function defining the mock behavior.
      */
     fun mockStep(stepName: String, handler: StepMockHandler) {
         stepMocks[stepName] = handler
     }
     
     /**
-     * Get the step recorder for verification
+     * Gets the step recorder for verification.
+     *
+     * @return Instance of StepInvocationRecorder.
      */
     fun getStepRecorder(): StepInvocationRecorder = stepRecorder
     
     /**
-     * Load pipeline script content from file
+     * Loads the content of a pipeline script from a file.
+     *
+     * @param scriptPath Path to the file.
+     * @return File content.
      */
     private fun loadPipelineScript(scriptPath: String): String {
         val file = File(scriptPath)
@@ -60,7 +77,9 @@ class PipelineTestEngine {
     }
     
     /**
-     * Create a mocked steps block with configured mock handlers
+     * Creates a mocked steps block with the configured handlers.
+     *
+     * @return Instance of MockedStepsBlock.
      */
     private fun createMockedStepsBlock(): MockedStepsBlock {
         return MockedStepsBlock(stepMocks, stepRecorder)
@@ -68,12 +87,21 @@ class PipelineTestEngine {
 }
 
 /**
- * Handler for defining mock behavior of steps
+ * Handler to define the mock behavior of steps.
+ *
+ * @param args Step arguments.
+ * @return Mock result of the step.
  */
 typealias StepMockHandler = (args: Map<String, Any>) -> MockResult
 
 /**
- * Result returned by mocked steps
+ * Result returned by mocked steps.
+ *
+ * @property exitCode Simulated exit code.
+ * @property output Simulated standard output.
+ * @property error Simulated error output.
+ * @property executionTimeMs Simulated execution time in milliseconds.
+ * @property environmentChanges Simulated environment changes.
  */
 data class MockResult(
     val exitCode: Int = 0,
@@ -84,12 +112,29 @@ data class MockResult(
 )
 
 /**
- * Result of pipeline execution in test environment
+ * Result of pipeline execution in test environment.
  */
 sealed class PipelineExecutionResult {
+    /**
+     * Successful execution.
+     *
+     * @property executionTimeMs Execution time in milliseconds.
+     */
     data class Success(val executionTimeMs: Long) : PipelineExecutionResult()
+    /**
+     * Failed execution.
+     *
+     * @property error Exception thrown.
+     * @property executionTimeMs Execution time in milliseconds.
+     */
     data class Failure(val error: Exception, val executionTimeMs: Long) : PipelineExecutionResult()
     
+    /**
+     * Indicates if the execution was successful.
+     */
     val isSuccess: Boolean get() = this is Success
+    /**
+     * Indicates if the execution failed.
+     */
     val isFailure: Boolean get() = this is Failure
 }

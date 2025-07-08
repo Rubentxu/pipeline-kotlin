@@ -71,7 +71,7 @@ class LibraryLoadingPipelineTest : PipelineTestSpec() {
                 
                 // Verify custom steps were called
                 stepWasCalled("customStep")
-                stepCalledWith("customStep", listOf("parameter1", "parameter2"))
+                stepCalledWith("customStep", "parameter1", "parameter2")
                 
                 stepWasCalled("databaseQuery")
                 stepCalledWith("databaseQuery", mapOf("query" to "SELECT * FROM users"))

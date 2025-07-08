@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.testing.MockResult
  */
 class StepInvocationRecorder {
     private val methodCalls = mutableMapOf<String, MutableList<StepInvocation<*>>>()
+    private val executionOrder = mutableListOf<String>()
     
     /**
      * Record a step invocation with its arguments and result
@@ -20,6 +21,7 @@ class StepInvocationRecorder {
         } as StepInvocation<T>
         
         methodCalls.getOrPut(methodName) { mutableListOf() }.add(invocation)
+        executionOrder.add(methodName)
         return invocation
     }
     
@@ -45,10 +47,16 @@ class StepInvocationRecorder {
     fun getCallCount(methodName: String): Int = getMethodInvocations(methodName).size
     
     /**
+     * Get the execution order of steps
+     */
+    fun getExecutionOrder(): List<String> = executionOrder.toList()
+    
+    /**
      * Clear all recorded invocations
      */
     fun clear() {
         methodCalls.clear()
+        executionOrder.clear()
     }
     
     override fun toString(): String {

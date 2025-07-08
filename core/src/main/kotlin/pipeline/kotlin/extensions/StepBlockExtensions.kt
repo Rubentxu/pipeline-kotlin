@@ -1,5 +1,6 @@
 package pipeline.kotlin.extensions
 
+import dev.rubentxu.pipeline.annotations.ExtensionStep
 import dev.rubentxu.pipeline.context.StepExecutionScope
 import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.model.scm.Scm
@@ -24,6 +25,7 @@ import java.nio.file.Paths
  * @param returnStdout Whether to return the stdout output
  * @return The command output if returnStdout is true, empty string otherwise
  */
+@ExtensionStep(name = "sh", description = "Executes a shell command within the pipeline context")
 fun StepsBlock.sh(command: String, returnStdout: Boolean = false): String = runBlocking {
     require(command.isNotBlank()) { "Command cannot be blank" }
     
@@ -44,6 +46,7 @@ fun StepsBlock.sh(command: String, returnStdout: Boolean = false): String = runB
  *
  * @param message The message to log
  */
+@ExtensionStep(name = "echo", description = "Prints a message to the pipeline logs")
 fun StepsBlock.echo(message: String) {
     require(message.isNotBlank()) { "Message cannot be blank" }
     logger.info("+ echo")
@@ -57,6 +60,7 @@ fun StepsBlock.echo(message: String) {
  * @param scm The SCM configuration
  * @return The checkout result
  */
+@ExtensionStep(name = "checkout", description = "Checks out source code from an SCM repository")
 fun StepsBlock.checkout(scm: Scm): String = runBlocking {
     val checkoutStep = CheckoutStep(stepContext)
     val result = checkoutStep.execute(scm)
@@ -152,6 +156,7 @@ fun StepsBlock.delay(timeMillis: Long, block: () -> Unit) = runBlocking {
  * @param file The file path relative to working directory
  * @return The file content as string
  */
+@ExtensionStep(name = "readFile", description = "Reads file content within the pipeline working directory")
 fun StepsBlock.readFile(file: String): String {
     require(file.isNotBlank()) { "File path cannot be blank" }
     
@@ -173,6 +178,7 @@ fun StepsBlock.readFile(file: String): String {
  * @param file The file path relative to working directory
  * @return True if file exists and is readable
  */
+@ExtensionStep(name = "fileExists", description = "Checks if a file exists within the pipeline working directory")
 fun StepsBlock.fileExists(file: String): Boolean {
     require(file.isNotBlank()) { "File path cannot be blank" }
     
@@ -194,6 +200,7 @@ fun StepsBlock.fileExists(file: String): Boolean {
  * @param file The file path relative to working directory
  * @param text The content to write
  */
+@ExtensionStep(name = "writeFile", description = "Writes content to a file within the pipeline working directory")
 fun StepsBlock.writeFile(file: String, text: String) {
     require(file.isNotBlank()) { "File path cannot be blank" }
     

@@ -23,7 +23,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     
     // Pipeline Testing Framework
-    testImplementation(project(":pipeline-testing"))
+    testImplementation(project(":pipeline-testing-framework:runtime"))
 }
 
 

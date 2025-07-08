@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.dsl
 
+import dev.rubentxu.pipeline.annotations.PipelineDsl
+import dev.rubentxu.pipeline.annotations.PipelineStep
 import dev.rubentxu.pipeline.context.StepExecutionContext
 import dev.rubentxu.pipeline.context.StepExecutionScope
 import dev.rubentxu.pipeline.logger.IPipelineLogger
@@ -137,6 +139,7 @@ open class StepsBlock(val pipeline: Pipeline) : StepExecutionScope {
      * @see Step
      * @since 1.0.0
      */
+    @PipelineStep(description = "Executes a custom step with suspendable logic")
     fun step(block: suspend () -> Any) {
         steps += Step(block)
     }
@@ -183,6 +186,7 @@ open class StepsBlock(val pipeline: Pipeline) : StepExecutionScope {
      * @see Step
      * @since 1.0.0
      */
+    @PipelineStep(description = "Executes multiple steps concurrently in parallel")
     fun parallel(vararg steps: Pair<String, Step>) = runBlocking {
         steps.map { (name, step) ->
             async {

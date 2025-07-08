@@ -278,12 +278,21 @@ class MockPipelineExecutionContext {
                     logger.info("Executing sleep step: $trimmedLine")
                     parseAndExecuteSleepStep(trimmedLine, mockedStepsBlock)
                 }
+                trimmedLine.startsWith("complexOperation(") && !isInsideProcessedBlock(line, stepsContent) -> {
+                    logger.info("Executing complexOperation step: $trimmedLine")
+                    parseAndExecuteComplexOperationStep(trimmedLine, mockedStepsBlock)
+                }
                 else -> {
                     // Try to parse as a generic step call
-                    if (trimmedLine.contains("(") && trimmedLine.contains(")") && 
-                        !trimmedLine.contains("=") && !trimmedLine.contains("{") && 
-                        !trimmedLine.contains("if") && !trimmedLine.contains("val") &&
-                        !isInsideProcessedBlock(line, stepsContent)) {
+                    val hasParens = trimmedLine.contains("(") && trimmedLine.contains(")")
+                    val hasEquals = trimmedLine.contains("=")
+                    val hasBraces = trimmedLine.contains("{")
+                    val hasIf = trimmedLine.contains(Regex("\\bif\\b"))
+                    val hasVal = trimmedLine.contains(Regex("\\bval\\b"))
+                    val isInsideBlock = isInsideProcessedBlock(line, stepsContent)
+                    
+                    
+                    if (hasParens && !hasEquals && !hasBraces && !hasIf && !hasVal && !isInsideBlock) {
                         logger.info("Attempting to parse as generic step: $trimmedLine")
                         parseAndExecuteGenericStep(trimmedLine, mockedStepsBlock)
                     } else {
@@ -530,6 +539,21 @@ class MockPipelineExecutionContext {
             val message = match.groupValues[1]
             // error() step should throw an exception
             throw RuntimeException(message)
+        }
+    }
+    
+    private fun parseAndExecuteComplexOperationStep(line: String, mockedStepsBlock: MockedStepsBlock) {
+        val pattern = """complexOperation\s*\(\s*"([^"]+)"\s*\)""".toRegex()
+        val match = pattern.find(line)
+        if (match != null) {
+            val operation = match.groupValues[1]
+            // Execute the complexOperation step with mock configuration
+            mockedStepsBlock.step("complexOperation", mapOf(
+                "operation" to operation,
+                "inputFile" to "data.csv",
+                "outputFile" to "processed-data.json"
+            ))
+            logger.info("Simulated execution of step: complexOperation")
         }
     }
     

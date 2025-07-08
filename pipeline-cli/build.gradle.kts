@@ -43,18 +43,18 @@ application {
 }
 
 java {
-    sourceCompatibility = JavaVersion.toVersion("17")
+    sourceCompatibility = JavaVersion.toVersion("21")
 }
 
 tasks {
     compileKotlin {
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
     }
     compileTestKotlin {
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
     }
 

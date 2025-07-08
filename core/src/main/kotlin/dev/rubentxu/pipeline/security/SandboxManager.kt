@@ -10,9 +10,66 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Central manager for script execution sandboxes
+ * Central manager for script execution sandboxes.
+ *
+ * SandboxManager provides a unified interface for secure script execution across
+ * different sandbox implementations. It automatically selects the appropriate sandbox
+ * based on security requirements, manages execution contexts, and provides centralized
+ * monitoring and control of all active script executions.
+ *
+ * ## Key Responsibilities
+ * - **Sandbox Selection**: Automatically chooses the appropriate sandbox implementation
+ * - **Execution Management**: Coordinates concurrent script executions
+ * - **Resource Monitoring**: Tracks active executions and resource usage
+ * - **Security Enforcement**: Ensures consistent security policies across sandboxes
+ * - **Timeout Management**: Enforces execution time limits
+ * - **Lifecycle Management**: Handles sandbox initialization and cleanup
+ *
+ * ## Sandbox Selection Strategy
+ * The manager selects sandboxes based on the isolation level:
+ * - **PROCESS**: [ProcessLevelSandbox] for maximum isolation
+ * - **THREAD**: [GraalVMIsolateSandbox] for balanced performance and security
+ * - **NONE**: Direct execution with minimal security (development only)
+ *
+ * ## Concurrency Model
+ * The manager supports concurrent execution of multiple scripts:
+ * - Each script runs in its own isolation context
+ * - Resource limits are enforced per-script
+ * - Timeout handling is managed centrally
+ * - Cleanup is performed automatically
+ *
+ * ## Usage Example
+ * ```kotlin
+ * val sandboxManager = SandboxManager(logger)
  * 
- * Coordinates different sandbox implementations and provides unified security management
+ * val context = DslExecutionContext.builder()
+ *     .isolationLevel(DslIsolationLevel.PROCESS)
+ *     .memoryLimit(128 * 1024 * 1024) // 128MB
+ *     .timeLimit(30_000) // 30 seconds
+ *     .build()
+ *
+ * val result = sandboxManager.executeSecurely<String>(
+ *     scriptContent = "println('Hello, secure world!')",
+ *     scriptName = "greeting.kts",
+ *     executionContext = context,
+ *     compilationConfig = defaultCompilationConfig,
+ *     evaluationConfig = defaultEvaluationConfig
+ * )
+ * ```
+ *
+ * ## Security Considerations
+ * - All scripts are executed in isolated environments
+ * - Resource limits are enforced strictly
+ * - Timeout violations result in immediate termination
+ * - Active executions are monitored for security violations
+ * - Cleanup is performed even on abnormal termination
+ *
+ * @param logger Pipeline logger for security event logging and monitoring
+ * @since 1.0.0
+ * @see ScriptExecutionSandbox
+ * @see GraalVMIsolateSandbox
+ * @see ProcessLevelSandbox
+ * @see DslExecutionContext
  */
 class SandboxManager(
     private val logger: IPipelineLogger
@@ -28,7 +85,52 @@ class SandboxManager(
     private val coroutineScope = CoroutineScope(Dispatchers.Default + supervisorJob)
     
     /**
-     * Execute a script with appropriate sandbox based on isolation level
+     * Execute a script securely with automatic sandbox selection and resource management.
+     *
+     * This method provides the primary interface for secure script execution. It automatically
+     * selects the appropriate sandbox implementation based on the isolation level, manages
+     * execution timeouts, and provides comprehensive error handling and resource cleanup.
+     *
+     * ## Execution Flow
+     * 1. **Sandbox Selection**: Choose sandbox based on isolation level and security requirements
+     * 2. **Context Setup**: Create execution context with resource limits and security policies
+     * 3. **Timeout Management**: Apply execution time limits if configured
+     * 4. **Script Execution**: Execute the script in the selected sandbox
+     * 5. **Result Processing**: Handle success/failure and resource cleanup
+     * 6. **Cleanup**: Remove from active executions and release resources
+     *
+     * ## Security Features
+     * - **Automatic Sandbox Selection**: Based on isolation level and security requirements
+     * - **Resource Limit Enforcement**: Memory, CPU, and time constraints
+     * - **Timeout Protection**: Prevents infinite loops and runaway scripts
+     * - **Concurrent Execution**: Safe handling of multiple simultaneous scripts
+     * - **Exception Handling**: Comprehensive error handling with security context
+     *
+     * ## Error Handling
+     * The method handles various error scenarios:
+     * - **Timeout Exceptions**: Scripts that exceed time limits
+     * - **Resource Exhaustion**: Scripts that consume too many resources
+     * - **Security Violations**: Unauthorized access attempts
+     * - **Compilation Errors**: Script syntax and dependency issues
+     * - **Runtime Exceptions**: Unhandled exceptions during execution
+     *
+     * ## Performance Considerations
+     * - Sandbox selection is cached for performance
+     * - Resource monitoring adds minimal overhead
+     * - Concurrent executions are managed efficiently
+     * - Cleanup is performed asynchronously when possible
+     *
+     * @param T The expected return type of the script execution
+     * @param scriptContent The script source code to execute
+     * @param scriptName Identifier for the script (used for logging and tracking)
+     * @param executionContext Execution context with security policies and resource limits
+     * @param compilationConfig Kotlin script compilation configuration
+     * @param evaluationConfig Script evaluation configuration
+     * @return [SandboxExecutionResult] containing either successful execution result or failure details
+     * @throws SecurityViolationException if severe security violations are detected
+     * @see SandboxExecutionResult
+     * @see DslExecutionContext
+     * @since 1.0.0
      */
     suspend fun <T> executeSecurely(
         scriptContent: String,

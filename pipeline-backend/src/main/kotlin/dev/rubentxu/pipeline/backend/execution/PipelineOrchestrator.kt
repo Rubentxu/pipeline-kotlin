@@ -33,8 +33,9 @@ class PipelineOrchestrator(
         // 1. Evaluate script
         val pipelineDefResult = scriptEvaluator.evaluate(scriptPath)
         if (pipelineDefResult.isFailure) {
-            logger.error("Failed to evaluate script: ${pipelineDefResult.exceptionOrNull()?.message}")
-            return Result.failure(pipelineDefResult.exceptionOrNull()!!)
+            val error = pipelineDefResult.exceptionOrNull()!!
+            logger.error("Failed to evaluate script: ${error.message}")
+            return Result.failure(PipelineExecutionException("Script evaluation failed", error))
         }
         val pipelineDef = pipelineDefResult.getOrThrow()
         logger.system("Pipeline definition: $pipelineDef")
@@ -42,13 +43,20 @@ class PipelineOrchestrator(
         // 2. Load configuration
         val configResult = configLoader.load(configPath)
         if (configResult.isFailure) {
-            logger.error("Failed to load configuration: ${configResult.exceptionOrNull()?.message}")
-            return Result.failure(configResult.exceptionOrNull()!!)
+            val error = configResult.exceptionOrNull()!!
+            logger.error("Failed to load configuration: ${error.message}")
+            return Result.failure(PipelineExecutionException("Configuration loading failed", error))
         }
         val configuration = configResult.getOrThrow()
         
         // 3. Build pipeline
-        val pipeline = buildPipeline(pipelineDef, configuration)
+        val pipelineResult = buildPipeline(pipelineDef, configuration)
+        if (pipelineResult.isFailure) {
+            val error = pipelineResult.exceptionOrNull()!!
+            logger.error("Failed to build pipeline: ${error.message}")
+            return Result.failure(PipelineExecutionException("Pipeline building failed", error))
+        }
+        val pipeline = pipelineResult.getOrThrow()
         logger.system("Built Pipeline: $pipeline")
         
         // 4. Execute pipeline based on agent type and context
@@ -59,8 +67,18 @@ class PipelineOrchestrator(
         }
     }
     
-    private fun buildPipeline(pipelineDef: PipelineDefinition, configuration: dev.rubentxu.pipeline.model.config.IPipelineConfig): Pipeline = runBlocking {
-        pipelineDef.build(configuration)
+    private fun buildPipeline(
+        pipelineDef: PipelineDefinition, 
+        configuration: dev.rubentxu.pipeline.model.config.IPipelineConfig
+    ): Result<Pipeline> {
+        return try {
+            val pipeline = runBlocking {
+                pipelineDef.build(configuration)
+            }
+            Result.success(pipeline)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
     
     private fun executeWithAgent(
@@ -72,8 +90,20 @@ class PipelineOrchestrator(
         logger.info("Executing pipeline with agent: ${agent::class.simpleName}")
         
         val manager = agentManagers.find { it.canHandle(agent) }
-            ?: return Result.failure(IllegalStateException("No agent manager found for agent type: ${agent::class.simpleName}"))
+            ?: return Result.failure(
+                AgentManagerNotFoundException("No agent manager found for agent type: ${agent::class.simpleName}")
+            )
         
         return manager.execute(pipeline, config, files)
     }
 }
+
+/**
+ * Exception thrown when pipeline execution fails.
+ */
+class PipelineExecutionException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
+ * Exception thrown when no agent manager is found for a specific agent type.
+ */
+class AgentManagerNotFoundException(message: String) : Exception(message)

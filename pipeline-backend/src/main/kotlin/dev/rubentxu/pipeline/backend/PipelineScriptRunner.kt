@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.backend
 
 import dev.rubentxu.pipeline.backend.execution.ExecutionContext
+import dev.rubentxu.pipeline.backend.execution.PipelineExecutionException
 import dev.rubentxu.pipeline.backend.execution.PipelineOrchestrator
 import dev.rubentxu.pipeline.logger.LogLevel
 import dev.rubentxu.pipeline.logger.PipelineLogger
@@ -10,6 +11,7 @@ import dev.rubentxu.pipeline.model.pipeline.Status
 import dev.rubentxu.pipeline.steps.EnvVars
 import java.io.File
 import java.nio.file.Path
+import javax.script.ScriptException
 
 
 class PipelineScriptRunner {
@@ -28,23 +30,38 @@ class PipelineScriptRunner {
             // Note: jarLocation parameter is now ignored as it's no longer needed
             // This maintains backward compatibility while removing the unnecessary complexity
             
-            return try {
-                val orchestrator = PipelineOrchestrator(logger = logger)
-                val context = ExecutionContext(System.getenv())
-                
-                val result = orchestrator.execute(
-                    scriptPath = normalizeAndAbsolutePath(scriptPath),
-                    configPath = normalizeAndAbsolutePath(configPath),
-                    context = context
-                )
-                
-                result.getOrElse { exception ->
-                    handleScriptExecutionException(exception, logger)
-                    PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
+            val orchestrator = PipelineOrchestrator(logger = logger)
+            val context = ExecutionContext(System.getenv())
+            
+            val result = orchestrator.execute(
+                scriptPath = normalizeAndAbsolutePath(scriptPath),
+                configPath = normalizeAndAbsolutePath(configPath),
+                context = context
+            )
+            
+            return result.getOrElse { exception ->
+                when (exception) {
+                    is PipelineExecutionException -> {
+                        // Handle pipeline-specific errors with more context
+                        logger.error("Pipeline execution failed: ${exception.message}")
+                        exception.cause?.let { cause ->
+                            if (cause is ScriptException) {
+                                handleScriptExecutionException(cause, logger)
+                            } else {
+                                logger.error("Underlying cause: ${cause.message}")
+                            }
+                        }
+                    }
+                    is ScriptException -> {
+                        handleScriptExecutionException(exception, logger)
+                    }
+                    else -> {
+                        logger.error("Unexpected error: ${exception.message}")
+                        if (logger.logLevel == LogLevel.TRACE) {
+                            exception.printStackTrace()
+                        }
+                    }
                 }
-                
-            } catch (e: Exception) {
-                handleScriptExecutionException(e, logger)
                 PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
             }
         }
@@ -64,7 +81,7 @@ fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger,
     }
 
     // Imprime el stacktrace completo si el flag está activado.
-    if (showStackTrace) {
+    if (showStackTrace && logger.logLevel.ordinal <= dev.rubentxu.pipeline.logger.LogLevel.DEBUG.ordinal) {
         exception.printStackTrace()
     }
 }

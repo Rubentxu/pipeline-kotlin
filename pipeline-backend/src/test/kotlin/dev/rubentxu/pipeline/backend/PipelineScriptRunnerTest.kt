@@ -21,7 +21,8 @@ class PipelineScriptRunnerTest : StringSpec({
 
     }
 //
-    "eval script pipeline dsl" {
+    "eval script pipeline dsl with error" {
+        // Test that error handling works with the new architecture
         val scriptFile = File("testData/error.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
 
@@ -54,6 +55,8 @@ class PipelineScriptRunnerTest : StringSpec({
     }
 
     "eval with script manager pipeline dsl" {
+        // This test verifies backward compatibility - the old API still works
+        // even though the implementation now uses the new SOLID architecture
         val scriptFile = File("testData/success.pipeline.kts").path
         val configFile = File("testData/config.yaml").path
         val jarFile = File("build/libs/pipeline-cli-1.0-SNAPSHOT-all.jar")

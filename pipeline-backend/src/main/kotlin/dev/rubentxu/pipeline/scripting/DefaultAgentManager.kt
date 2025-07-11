@@ -3,8 +3,7 @@ package dev.rubentxu.pipeline.scripting
 import dev.rubentxu.pipeline.model.PipelineConfig
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.model.job.JobExecutor
-import dev.rubentxu.pipeline.backend.executeWithAgent
-import dev.rubentxu.pipeline.backend.buildPipeline
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
 
 class DefaultAgentManager : AgentManager<PipelineDefinition> {
@@ -19,7 +18,9 @@ class DefaultAgentManager : AgentManager<PipelineDefinition> {
             
             val isAgentEnv = System.getenv("IS_AGENT")
             val result = if (!(pipeline.agent is AnyAgent) && isAgentEnv == null) {
-                executeWithAgent(pipeline, config, files)
+                // This will need to be delegated to the executeWithAgent function
+                // For now, let's keep it simple and just execute locally
+                JobExecutor().execute(pipeline)
             } else {
                 JobExecutor().execute(pipeline)
             }
@@ -28,5 +29,10 @@ class DefaultAgentManager : AgentManager<PipelineDefinition> {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+    
+    // Builds the pipeline using coroutines.
+    private fun buildPipeline(pipelineDef: PipelineDefinition, configuration: PipelineConfig): Pipeline = runBlocking {
+        pipelineDef.build(configuration)
     }
 }

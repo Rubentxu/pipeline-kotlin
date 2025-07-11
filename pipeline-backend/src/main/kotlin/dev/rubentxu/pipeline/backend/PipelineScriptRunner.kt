@@ -13,6 +13,8 @@ import dev.rubentxu.pipeline.model.job.JobExecutor
 import dev.rubentxu.pipeline.model.pipeline.*
 import dev.rubentxu.pipeline.scripting.*
 import dev.rubentxu.pipeline.steps.EnvVars
+import dev.rubentxu.pipeline.utils.buildPipeline
+import dev.rubentxu.pipeline.utils.normalizeAndAbsolutePath
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Path
@@ -47,6 +49,16 @@ class PipelineScriptRunner {
             return orchestrator.executeScript(scriptPath, configPath, dslType, logger)
         }
     }
+}
+
+fun executeInDockerAgent(agent: DockerAgent, config: PipelineConfig, paths: List<Path>): PipelineResult {
+    val dockerClientProvider = DockerConfigManager(agent)
+    val imageBuilder = DockerImageBuilder(dockerClientProvider)
+    val containerManager = ContainerLifecycleManager(dockerClientProvider)
+
+    val imageId = imageBuilder.buildCustomImage("${agent.image}:${agent.tag}", paths)
+    containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
+    return PipelineResult(Status.SUCCESS, emptyList(), EnvVars(mapOf()), mutableListOf())
 }
 
 
@@ -87,11 +99,6 @@ fun executePipeline(
     return JobExecutor().execute(pipeline)
 }
 
-// Construye el pipeline usando coroutines.
-fun buildPipeline(pipelineDef: PipelineDefinition, configuration: IPipelineConfig): Pipeline = runBlocking {
-    pipelineDef.build(configuration)
-}
-
 // Maneja las excepciones ocurridas durante la ejecución del script.
 fun handleScriptExecutionException(exception: Exception, logger: PipelineLogger, showStackTrace: Boolean = true) {
     val regex = """ERROR (.*) \(.*:(\d+):(\d+)\)""".toRegex()
@@ -127,24 +134,5 @@ fun executeWithAgent(pipeline: Pipeline, config: PipelineConfig, paths: List<Pat
 
     }
     return PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
-}
-
-fun executeInDockerAgent(agent: DockerAgent, config: PipelineConfig, paths: List<Path>): PipelineResult {
-    val dockerClientProvider = DockerConfigManager(agent)
-    val imageBuilder = DockerImageBuilder(dockerClientProvider)
-    val containerManager = ContainerLifecycleManager(dockerClientProvider)
-
-    val imageId = imageBuilder.buildCustomImage("${agent.image}:${agent.tag}", paths)
-    containerManager.createAndStartContainer(mapOf("IS_AGENT" to "true"))
-    return PipelineResult(Status.SUCCESS, emptyList(), EnvVars(mapOf()), mutableListOf())
-}
-
-
-fun normalizeAndAbsolutePath(file: String): Path {
-    return Path.of(file).toAbsolutePath().normalize()
-}
-
-fun normalizeAndAbsolutePath(path: Path): Path {
-    return path.toAbsolutePath().normalize()
 }
 

@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.scripting
 
-import dev.rubentxu.pipeline.backend.normalizeAndAbsolutePath
+import dev.rubentxu.pipeline.utils.normalizeAndAbsolutePath
 import dev.rubentxu.pipeline.model.pipeline.PipelineDefinition
 import javax.script.ScriptEngine
 import javax.script.ScriptEngineManager

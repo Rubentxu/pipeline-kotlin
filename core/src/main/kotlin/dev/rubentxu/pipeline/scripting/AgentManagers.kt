@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.scripting
 
-import dev.rubentxu.pipeline.backend.buildPipeline
+import dev.rubentxu.pipeline.utils.buildPipeline
 import dev.rubentxu.pipeline.backend.executeWithAgent
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.pipeline.*

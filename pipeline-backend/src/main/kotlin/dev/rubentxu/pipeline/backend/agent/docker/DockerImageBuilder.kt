@@ -25,13 +25,11 @@ class DockerImageBuilder(
 
     companion object {
         const val IMAGE_NAME = "pipeline-kts"
-        private const val JAR_NAME = "pipeline-cli.jar"
     }
 
     fun buildCustomImage(baseImage: String, paths: List<Path>): String {
-        val executable = determineExecutable(paths)
         val buildDir = prepareBuildDirectory()
-        val dockerfile = renderDockerfile(mapOf("baseImage" to baseImage, "executable" to executable), buildDir)
+        val dockerfile = renderDockerfile(mapOf("baseImage" to baseImage), buildDir)
 
         val pathsWithDockerfile = paths + listOf(dockerfile.toPath())
         val tarFile = createTarFile(pathsWithDockerfile, buildDir)
@@ -59,18 +57,6 @@ class DockerImageBuilder(
             .exec(callback)
 
         return callback.awaitImageId()
-    }
-
-    fun determineExecutable(paths: List<Path>): String {
-        // Verifica si 'paths' contiene un archivo llamado "pipeline-kts"
-        val containsBinary = paths.any { it.fileName.toString() == IMAGE_NAME }
-
-        // Establece 'executable' basado en si se encuentra el archivo binario
-        return if (containsBinary) {
-            IMAGE_NAME
-        } else {
-            JAR_NAME
-        }
     }
 
     private fun prepareBuildDirectory(): Path {
@@ -143,7 +129,6 @@ class DockerImageBuilder(
         return when {
             filename.endsWith(".yaml") -> "app/config.yaml"
             filename.endsWith("pipeline.kts") -> "app/script.pipeline.kts"
-            filename.endsWith(".jar") -> "app/${JAR_NAME}"
             filename.endsWith("Dockerfile") -> "Dockerfile"
             else -> "app/$filename"
         }

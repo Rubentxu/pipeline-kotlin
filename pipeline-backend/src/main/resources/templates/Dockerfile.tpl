@@ -11,11 +11,4 @@ COPY /app /app
 
 WORKDIR /app
 
-
-<#-- Aquí se decide el comando a ejecutar -->
-<#if executable == "pipeline-cli.jar">
-CMD ["java", "-jar", "pipeline-cli.jar", "-c", "config.yaml", "-s", "script.pipeline.kts"]
-<#else>
-RUN chmod +x /app/pipeline-kts
-CMD ["./${executable}", "-c", "config.yaml", "-s", "script.pipeline.kts"]
-</#if>
+CMD ["java","-jar","/usr/local/bin/pipeline-runner.jar","-c","config.yaml","-s","script.pipeline.kts"]

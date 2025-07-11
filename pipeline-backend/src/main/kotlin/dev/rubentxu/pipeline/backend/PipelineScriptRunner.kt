@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.model.PipelineConfig
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.job.JobExecutor
 import dev.rubentxu.pipeline.model.pipeline.*
+import dev.rubentxu.pipeline.scripting.*
 import dev.rubentxu.pipeline.steps.EnvVars
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -26,45 +27,24 @@ class PipelineScriptRunner {
         fun evalWithScriptEngineManager(
             scriptPath: String,
             configPath: String,
-            jarLocation: File = File(PipelineScriptRunner::class.java.protectionDomain.codeSource.location.toURI()),
+            dslType: String = "pipeline",
             logger: PipelineLogger = PipelineLogger(
                 logLevel = LogLevel.TRACE,
                 logConfigurationStrategy = SocketLogConfigurationStrategy()
             ),
         ): PipelineResult {
-
-            val pipelineExecutable = Path.of("", "pipeline-kts").toAbsolutePath().toFile()
-            logger.info("Pipeline executable: ${pipelineExecutable.absolutePath}")
-            logger.info("Pipeline executable exists: ${pipelineExecutable.exists()}")
-
-            logger.info("JAR location: ${jarLocation.absolutePath}")
-            val executablePath =
-                if (pipelineExecutable.exists()) pipelineExecutable.absolutePath else jarLocation.absolutePath
-            logger.info("Resolve executable path: $executablePath")
-
-            return try {
-                val pipelineDef = evaluateScriptFile(scriptPath)
-                logger.system("Pipeline definition: $pipelineDef")
-
-
-                val configurationResult: Result<PipelineConfig> =
-                    CascManager().resolveConfig(normalizeAndAbsolutePath(configPath))
-
-                if (configurationResult.isFailure) {
-                    logger.error("Error reading config file: ${configurationResult.exceptionOrNull()?.message}")
-                    return PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
-                }
-                val configuration = configurationResult.getOrThrow()
-
-                val pipeline = buildPipeline(pipelineDef, configuration)
-                logger.system("Build Pipeline: $pipeline")
-                val listOfPaths = listOf(scriptPath, configPath, executablePath).map { normalizeAndAbsolutePath(it) }
-                executePipeline(pipeline, configuration, listOfPaths, logger)
-
-            } catch (e: Exception) {
-                handleScriptExecutionException(e, logger)
-                PipelineResult(Status.FAILURE, emptyList(), EnvVars(mapOf()), mutableListOf())
+            
+            // Create the orchestrator with the appropriate DSL evaluator
+            val evaluatorRegistry = DslEvaluatorRegistry().apply {
+                registerEvaluator("pipeline", PipelineDslEvaluator())
+                registerEvaluator("task", TaskDslEvaluator())
             }
+            
+            val executorResolver = DefaultExecutorResolver()
+            val orchestrator = PipelineOrchestrator<Any>(evaluatorRegistry, executorResolver)
+            
+            // Delegate to the orchestrator
+            return orchestrator.executeScript(scriptPath, configPath, dslType, logger)
         }
     }
 }

@@ -50,3 +50,7 @@ pipeline-kts
 /.claude/commands/execute-prp.md
 /.claude/commands/generate-prp.md
 CLAUDE.md
+
+# Kotlin compiled class files in scripting package
+**/scripting/**/*.class
+**/scripting/**/META-INF/

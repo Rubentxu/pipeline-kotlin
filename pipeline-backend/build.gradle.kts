@@ -22,8 +22,8 @@ dependencies {
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.junit.jupiter)
     
-    // Pipeline Testing Framework
-    testImplementation(project(":pipeline-testing-framework:runtime"))
+    // TODO: Re-enable testing framework when compatibility is fixed
+    // testImplementation(project(":pipeline-testing-framework:runtime"))
 }
 
 

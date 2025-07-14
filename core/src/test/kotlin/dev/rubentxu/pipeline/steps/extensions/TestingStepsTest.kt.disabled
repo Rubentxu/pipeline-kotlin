@@ -1,0 +1,420 @@
+package dev.rubentxu.pipeline.steps.extensions
+
+import dev.rubentxu.pipeline.steps.testing.runStepTest
+import dev.rubentxu.pipeline.steps.extensions.*
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+
+class TestingStepsTest : FunSpec({
+    
+    test("junitTest should run tests with gradle") {
+        runStepTest {
+            createTestFile("build.gradle.kts", "plugins { id(\"java\") }")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("gradle test") -> {
+                        command shouldContain "--no-daemon"
+                        if (returnStdout) {
+                            """
+                            BUILD SUCCESSFUL in 5s
+                            3 actionable tasks: 3 executed
+                            """.trimIndent()
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                junitTest()
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("junitTest should run specific test classes") {
+        runStepTest {
+            createTestFile("build.gradle.kts", "plugins { id(\"java\") }")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("gradle test") -> {
+                        command shouldContain "--tests com.example.UserTest"
+                        command shouldContain "--tests com.example.OrderTest"
+                        "BUILD SUCCESSFUL"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                junitTest(testClasses = listOf("com.example.UserTest", "com.example.OrderTest"))
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("junitTest should fail when build file doesn't exist") {
+        runStepTest {
+            testSteps {
+                shouldThrow<RuntimeException> {
+                    junitTest()
+                }.message shouldContain "No Gradle build file found"
+            }
+        }
+    }
+    
+    test("mavenTest should run tests with maven") {
+        runStepTest {
+            createTestFile("pom.xml", "<project></project>")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command == "mvn clean test" -> {
+                        if (returnStdout) {
+                            """
+                            [INFO] BUILD SUCCESS
+                            [INFO] Total time:  10.5 s
+                            """.trimIndent()
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                mavenTest()
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("mavenTest should run with custom profile and properties") {
+        runStepTest {
+            createTestFile("pom.xml", "<project></project>")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("mvn clean test") -> {
+                        command shouldContain "-Pintegration"
+                        command shouldContain "-Dskip.unit.tests=true"
+                        command shouldContain "-Denv=ci"
+                        "[INFO] BUILD SUCCESS"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                mavenTest(
+                    profile = "integration",
+                    properties = mapOf("skip.unit.tests" to "true", "env" to "ci")
+                )
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("integrationTest should run with docker-compose") {
+        runStepTest {
+            createTestFile("docker-compose.test.yml", """
+                version: '3'
+                services:
+                  app:
+                    image: myapp:test
+            """.trimIndent())
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("docker-compose") && command.contains("up") -> {
+                        command shouldContain "-f docker-compose.test.yml"
+                        command shouldContain "--abort-on-container-exit"
+                        command shouldContain "--exit-code-from tests"
+                        "tests exited with code 0"
+                    }
+                    command.contains("docker-compose") && command.contains("down") -> {
+                        "Removing network test_default"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                integrationTest("docker-compose.test.yml", "tests")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("integrationTest should handle test failures") {
+        runStepTest {
+            createTestFile("docker-compose.test.yml", "version: '3'")
+            
+            var downCalled = false
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("docker-compose") && command.contains("up") -> {
+                        throw RuntimeException("tests exited with code 1")
+                    }
+                    command.contains("docker-compose") && command.contains("down") -> {
+                        downCalled = true
+                        ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                shouldThrow<RuntimeException> {
+                    integrationTest("docker-compose.test.yml", "tests")
+                }
+            }
+            
+            // Verify cleanup was called
+            downCalled shouldBe true
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("apiTest should run Newman tests") {
+        runStepTest {
+            createTestFile("api-tests.json", """{"info": {"name": "API Tests"}}""")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("newman run") -> {
+                        command shouldContain "api-tests.json"
+                        if (returnStdout) {
+                            """
+                            newman
+                            
+                            API Tests
+                            
+                            → GET /users
+                              ✓ Status code is 200
+                            """.trimIndent()
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                apiTest("api-tests.json")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("apiTest should run with environment and reporters") {
+        runStepTest {
+            createTestFile("api-tests.json", """{"info": {"name": "API Tests"}}""")
+            createTestFile("prod.env.json", """{"values": []}""")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("newman run") -> {
+                        command shouldContain "-e prod.env.json"
+                        command shouldContain "-r cli,junit"
+                        command shouldContain "--reporter-junit-export newman-results.xml"
+                        "All tests passed!"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                apiTest(
+                    collection = "api-tests.json",
+                    environment = "prod.env.json",
+                    reporters = listOf("cli", "junit")
+                )
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("performanceTest should run Apache Bench tests") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("ab -n") -> {
+                        command shouldContain "-n 1000"
+                        command shouldContain "-c 10"
+                        command shouldContain "https://api.example.com/"
+                        if (returnStdout) {
+                            """
+                            Requests per second:    500.25 [#/sec] (mean)
+                            Time per request:       20.123 [ms] (mean)
+                            """.trimIndent()
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                val result = performanceTest("https://api.example.com/", requests = 1000, concurrency = 10)
+                result shouldContain "Requests per second"
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("performanceTest should save results to file") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("ab -n") -> {
+                        command shouldContain "-g performance-results.tsv"
+                        "Test completed"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                performanceTest(
+                    url = "https://api.example.com/",
+                    outputFile = "performance-results.tsv"
+                )
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("securityTest should run OWASP ZAP scan") {
+        runStepTest {
+            var zapStarted = false
+            var scanRun = false
+            var reportGenerated = false
+            var zapStopped = false
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("zap.sh -daemon") -> {
+                        zapStarted = true
+                        "ZAP started"
+                    }
+                    command.contains("zap-cli quick-scan") -> {
+                        scanRun = true
+                        "Quick scan completed"
+                    }
+                    command.contains("zap-cli report") -> {
+                        reportGenerated = true
+                        "Report generated"
+                    }
+                    command.contains("zap-cli shutdown") -> {
+                        zapStopped = true
+                        "ZAP shutdown"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                securityTest("https://app.example.com")
+            }
+            
+            zapStarted shouldBe true
+            scanRun shouldBe true
+            reportGenerated shouldBe true
+            zapStopped shouldBe true
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("publishTestResults should publish to multiple systems") {
+        runStepTest {
+            createTestFile("test-results.xml", "<testsuites></testsuites>")
+            createTestFile("coverage.xml", "<coverage></coverage>")
+            
+            var s3Uploaded = false
+            var slackNotified = false
+            var sonarPublished = false
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("aws s3 cp") -> {
+                        s3Uploaded = true
+                        command shouldContain "test-results.xml"
+                        command shouldContain "s3://test-results/build-123/"
+                        "upload: test-results.xml"
+                    }
+                    command.contains("curl") && command.contains("slack.com") -> {
+                        slackNotified = true
+                        command shouldContain "Build 123 tests:"
+                        "ok"
+                    }
+                    command.contains("sonar-scanner") -> {
+                        sonarPublished = true
+                        command shouldContain "-Dsonar.projectKey=myproject"
+                        "EXECUTION SUCCESS"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                publishTestResults(
+                    buildId = "123",
+                    testResults = listOf("test-results.xml"),
+                    coverageFiles = listOf("coverage.xml"),
+                    targets = listOf("s3", "slack", "sonarqube")
+                )
+            }
+            
+            s3Uploaded shouldBe true
+            slackNotified shouldBe true
+            sonarPublished shouldBe true
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("publishTestResults should validate required configurations") {
+        runStepTest {
+            testSteps {
+                shouldThrow<IllegalArgumentException> {
+                    publishTestResults(
+                        buildId = "123",
+                        targets = listOf("unknown-target")
+                    )
+                }.message shouldContain "Unknown publish target"
+            }
+        }
+    }
+    
+    test("Testing operations framework integration") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("gradle test") -> "BUILD SUCCESSFUL"
+                    command.contains("mvn clean test") -> "[INFO] BUILD SUCCESS"
+                    else -> ""
+                }
+            }
+            
+            mockEcho()
+            
+            testSteps {
+                echo("Testing framework integration")
+                echo("All operations working correctly")
+            }
+            
+            verifyStepCalled("echo")
+            verifyStepCalledTimes("echo", 2)
+        }
+    }
+})

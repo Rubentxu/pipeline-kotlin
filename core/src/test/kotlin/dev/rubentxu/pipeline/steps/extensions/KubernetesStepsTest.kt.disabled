@@ -1,0 +1,348 @@
+package dev.rubentxu.pipeline.steps.extensions
+
+import dev.rubentxu.pipeline.steps.testing.runStepTest
+import dev.rubentxu.pipeline.steps.extensions.*
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+
+class KubernetesStepsTest : FunSpec({
+    
+    test("kubectlApply should apply manifest file") {
+        runStepTest {
+            // Setup
+            createTestFile("deployment.yaml", """
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: myapp
+                spec:
+                  replicas: 3
+            """.trimIndent())
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl apply") -> {
+                        command shouldContain "-f deployment.yaml"
+                        command shouldContain "-n default"
+                        "deployment.apps/myapp created"
+                    }
+                    else -> ""
+                }
+            }
+            
+            // Execute
+            testSteps {
+                kubectlApply("deployment.yaml")
+            }
+            
+            // Verify
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlApply should apply to custom namespace") {
+        runStepTest {
+            createTestFile("service.yaml", "apiVersion: v1\nkind: Service")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl apply") -> {
+                        command shouldContain "-n production"
+                        command shouldContain "-f service.yaml"
+                        "service/myapp created"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                kubectlApply("service.yaml", namespace = "production")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlApply should fail when file doesn't exist") {
+        runStepTest {
+            testSteps {
+                shouldThrow<RuntimeException> {
+                    kubectlApply("nonexistent.yaml")
+                }.message shouldContain "Manifest file not found"
+            }
+        }
+    }
+    
+    test("kubectlDelete should delete resources") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl delete") -> {
+                        command shouldContain "deployment/myapp"
+                        command shouldContain "-n staging"
+                        "deployment.apps \"myapp\" deleted"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                kubectlDelete("deployment/myapp", namespace = "staging")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlGet should get resource information") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl get") -> {
+                        command shouldContain "pods"
+                        command shouldContain "-n default"
+                        if (returnStdout) {
+                            """
+                            NAME                     READY   STATUS    RESTARTS   AGE
+                            myapp-6d4cf56db6-2xkzj   1/1     Running   0          5m
+                            myapp-6d4cf56db6-4nftd   1/1     Running   0          5m
+                            """.trimIndent()
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                val output = kubectlGet("pods")
+                output shouldContain "myapp-6d4cf56db6"
+                output shouldContain "Running"
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlGet should support output format") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl get") -> {
+                        command shouldContain "services"
+                        command shouldContain "-o json"
+                        if (returnStdout) {
+                            """{"items": [{"metadata": {"name": "myapp"}}]}"""
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                val output = kubectlGet("services", output = "json")
+                output shouldContain """"name": "myapp""""
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlDescribe should describe resource") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl describe") -> {
+                        command shouldContain "pod/myapp-6d4cf56db6-2xkzj"
+                        command shouldContain "-n production"
+                        if (returnStdout) {
+                            """
+                            Name:         myapp-6d4cf56db6-2xkzj
+                            Namespace:    production
+                            Status:       Running
+                            """.trimIndent()
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                val output = kubectlDescribe("pod/myapp-6d4cf56db6-2xkzj", namespace = "production")
+                output shouldContain "Status:       Running"
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlLogs should get pod logs") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl logs") -> {
+                        command shouldContain "myapp-6d4cf56db6-2xkzj"
+                        command shouldContain "-n default"
+                        if (returnStdout) {
+                            "2024-01-01 10:00:00 Application started"
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                val logs = kubectlLogs("myapp-6d4cf56db6-2xkzj")
+                logs shouldContain "Application started"
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlLogs should follow logs when requested") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl logs") -> {
+                        command shouldContain "-f"
+                        command shouldContain "--tail=100"
+                        if (returnStdout) {
+                            "Log line 1\nLog line 2"
+                        } else ""
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                kubectlLogs("myapp-pod", follow = true, tail = 100)
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlScale should scale deployment") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl scale") -> {
+                        command shouldContain "--replicas=5"
+                        command shouldContain "deployment/myapp"
+                        command shouldContain "-n production"
+                        "deployment.apps/myapp scaled"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                kubectlScale("deployment/myapp", 5, namespace = "production")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("kubectlWait should wait for resource condition") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("kubectl wait") -> {
+                        command shouldContain "--for=condition=ready"
+                        command shouldContain "pod/myapp-pod"
+                        command shouldContain "--timeout=300s"
+                        command shouldContain "-n staging"
+                        "pod/myapp-pod condition met"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                kubectlWait("pod/myapp-pod", "condition=ready", namespace = "staging")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("helmDeploy should deploy helm chart") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command == "helm list -n production | grep myapp" -> ""
+                    command.contains("helm upgrade --install") -> {
+                        command shouldContain "myapp"
+                        command shouldContain "./charts/myapp"
+                        command shouldContain "-n production"
+                        "Release \"myapp\" has been upgraded"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                helmDeploy("myapp", "./charts/myapp", namespace = "production")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("helmDeploy should deploy with values file and overrides") {
+        runStepTest {
+            createTestFile("values-prod.yaml", "replicas: 3")
+            
+            mockShell { command, returnStdout ->
+                when {
+                    command == "helm list -n prod | grep myapp" -> "myapp 1 2024-01-01"
+                    command.contains("helm upgrade --install") -> {
+                        command shouldContain "-f values-prod.yaml"
+                        command shouldContain "--set image.tag=v1.2.3"
+                        command shouldContain "--set replicas=5"
+                        command shouldContain "--wait"
+                        "Release \"myapp\" has been upgraded"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                helmDeploy(
+                    releaseName = "myapp",
+                    chartPath = "./charts/myapp",
+                    namespace = "prod",
+                    valuesFile = "values-prod.yaml",
+                    setValues = mapOf("image.tag" to "v1.2.3", "replicas" to "5"),
+                    wait = true
+                )
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    
+    test("helmUninstall should uninstall helm release") {
+        runStepTest {
+            mockShell { command, returnStdout ->
+                when {
+                    command.contains("helm uninstall") -> {
+                        command shouldContain "myapp"
+                        command shouldContain "-n production"
+                        "release \"myapp\" uninstalled"
+                    }
+                    else -> ""
+                }
+            }
+            
+            testSteps {
+                helmUninstall("myapp", namespace = "production")
+            }
+            
+            verifyStepCalled("sh")
+        }
+    }
+    \n    test(\"Kubernetes operations should work together in a complete workflow\") {\n        runStepTest {\n            // Create Kubernetes manifest files\n            createTestFile(\"deployment.yaml\", \"\"\"\n                apiVersion: apps/v1\n                kind: Deployment\n                metadata:\n                  name: myapp\n                  namespace: production\n                spec:\n                  replicas: 2\n                  selector:\n                    matchLabels:\n                      app: myapp\n                  template:\n                    metadata:\n                      labels:\n                        app: myapp\n                    spec:\n                      containers:\n                      - name: myapp\n                        image: myregistry.com/myapp:v1.0\n                        ports:\n                        - containerPort: 8080\n            \"\"\".trimIndent())\n            \n            createTestFile(\"service.yaml\", \"\"\"\n                apiVersion: v1\n                kind: Service\n                metadata:\n                  name: myapp-service\n                  namespace: production\n                spec:\n                  selector:\n                    app: myapp\n                  ports:\n                  - protocol: TCP\n                    port: 80\n                    targetPort: 8080\n                  type: LoadBalancer\n            \"\"\".trimIndent())\n            \n            createTestFile(\"values.yaml\", \"\"\"\n                replicaCount: 3\n                image:\n                  repository: myregistry.com/myapp\n                  tag: v1.0\n                service:\n                  type: LoadBalancer\n                  port: 80\n            \"\"\".trimIndent())\n            \n            // Mock all Kubernetes operations for a complete workflow\n            mockShell { command, returnStdout ->\n                when {\n                    command.contains(\"kubectl apply\") && command.contains(\"deployment.yaml\") -> {\n                        \"deployment.apps/myapp created\"\n                    }\n                    command.contains(\"kubectl apply\") && command.contains(\"service.yaml\") -> {\n                        \"service/myapp-service created\"\n                    }\n                    command.contains(\"kubectl get pods\") -> {\n                        if (returnStdout) {\n                            \"\"\"\n                            NAME                     READY   STATUS    RESTARTS   AGE\n                            myapp-6d4cf56db6-abc12   1/1     Running   0          30s\n                            myapp-6d4cf56db6-def34   1/1     Running   0          30s\n                            \"\"\".trimIndent()\n                        } else \"\"\n                    }\n                    command.contains(\"kubectl wait\") && command.contains(\"condition=ready\") -> {\n                        \"pod/myapp-6d4cf56db6-abc12 condition met\"\n                    }\n                    command.contains(\"kubectl scale\") -> {\n                        \"deployment.apps/myapp scaled\"\n                    }\n                    command.contains(\"kubectl get services\") -> {\n                        if (returnStdout) {\n                            \"\"\"\n                            NAME           TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE\n                            myapp-service  LoadBalancer   10.0.141.27    20.62.184.180    80:30000/TCP   1m\n                            \"\"\".trimIndent()\n                        } else \"\"\n                    }\n                    command.contains(\"kubectl logs\") -> {\n                        if (returnStdout) {\n                            \"2024-01-01 10:00:00 Application started successfully\"\n                        } else \"\"\n                    }\n                    command.contains(\"kubectl describe\") -> {\n                        if (returnStdout) {\n                            \"\"\"\n                            Name:         myapp-6d4cf56db6-abc12\n                            Namespace:    production\n                            Status:       Running\n                            IP:           10.244.1.5\n                            Containers:\n                              myapp:\n                                Image:        myregistry.com/myapp:v1.0\n                                State:        Running\n                            \"\"\".trimIndent()\n                        } else \"\"\n                    }\n                    command == \"helm list -n production | grep myapp\" -> \"\"\n                    command.contains(\"helm upgrade --install\") -> {\n                        \"Release \\\"myapp\\\" has been upgraded. Happy Helming!\"\n                    }\n                    command.contains(\"kubectl delete\") -> {\n                        \"deployment.apps \\\"myapp\\\" deleted\"\n                    }\n                    command.contains(\"helm uninstall\") -> {\n                        \"release \\\"myapp\\\" uninstalled\"\n                    }\n                    else -> \"\"\n                }\n            }\n            \n            testSteps {\n                // Deploy application using kubectl\n                kubectlApply(\"deployment.yaml\", namespace = \"production\")\n                kubectlApply(\"service.yaml\", namespace = \"production\")\n                \n                // Wait for pods to be ready\n                kubectlWait(\"pod\", \"condition=ready\", namespace = \"production\", timeout = \"300s\", selector = \"app=myapp\")\n                \n                // Verify deployment\n                val pods = kubectlGet(\"pods\", namespace = \"production\")\n                pods shouldContain \"myapp-6d4cf56db6\"\n                pods shouldContain \"Running\"\n                \n                val services = kubectlGet(\"services\", namespace = \"production\")\n                services shouldContain \"myapp-service\"\n                services shouldContain \"LoadBalancer\"\n                \n                // Scale the deployment\n                kubectlScale(\"deployment/myapp\", 3, namespace = \"production\")\n                \n                // Check logs\n                val logs = kubectlLogs(\"myapp-6d4cf56db6-abc12\", namespace = \"production\")\n                logs shouldContain \"Application started successfully\"\n                \n                // Describe pod for debugging\n                val podDetails = kubectlDescribe(\"pod/myapp-6d4cf56db6-abc12\", namespace = \"production\")\n                podDetails shouldContain \"Status:       Running\"\n                podDetails shouldContain \"myregistry.com/myapp:v1.0\"\n                \n                // Deploy using Helm\n                helmDeploy(\n                    releaseName = \"myapp\",\n                    chartPath = \"./charts/myapp\",\n                    namespace = \"production\",\n                    valuesFile = \"values.yaml\",\n                    setValues = mapOf(\"image.tag\" to \"v1.1\"),\n                    wait = true\n                )\n                \n                // Cleanup - delete deployment\n                kubectlDelete(\"deployment/myapp\", namespace = \"production\")\n                \n                // Cleanup - uninstall Helm release\n                helmUninstall(\"myapp\", namespace = \"production\")\n            }\n            \n            // Verify all operations were called\n            verifyStepCalled(\"sh\")\n            verifyStepCalledTimes(\"sh\", 14) // All kubectl and helm operations\n        }\n    }\n})

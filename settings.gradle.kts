@@ -16,6 +16,8 @@ pluginManagement {
 
 rootProject.name = "pipeline-kotlin"
 
+includeBuild("pipeline-steps-system/gradle-plugin")
+
 include(":core")
 include(":pipeline-cli")
 include(":pipeline-config")
@@ -33,4 +35,4 @@ include(":pipeline-backend")
 include(":pipeline-steps-system")
 include(":pipeline-steps-system:annotations")
 include(":pipeline-steps-system:compiler-plugin")
-include(":pipeline-steps-system:gradle-plugin")
+// include(":pipeline-steps-system:gradle-plugin") // Now an included build

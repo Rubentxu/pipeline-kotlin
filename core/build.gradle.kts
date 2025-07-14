@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("io.kotest")
     id("com.google.devtools.ksp")
+    id("dev.rubentxu.pipeline.steps")
 }
 
 group = "dev.rubentxu.pipeline.core"

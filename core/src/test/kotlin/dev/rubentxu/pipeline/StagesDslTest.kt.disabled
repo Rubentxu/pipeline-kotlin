@@ -1,0 +1,227 @@
+package dev.rubentxu.pipeline
+
+import dev.rubentxu.pipeline.dsl.Step
+import dev.rubentxu.pipeline.dsl.pipeline
+import dev.rubentxu.pipeline.logger.LogLevel
+import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.model.config.IPipelineConfig
+import dev.rubentxu.pipeline.model.job.JobExecutor
+import dev.rubentxu.pipeline.model.pipeline.Status
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import pipeline.kotlin.extensions.*
+
+
+class StagesDslTest : StringSpec({
+
+    "should create and execute a basic pipeline with stages" {
+        val result = pipeline {
+            agent {
+                docker("openjdk:21")
+            }
+            environment {
+                "DISABLE_AUTH" += "true"
+                "DB_ENGINE" += "sqlite"
+            }
+            stages {
+                stage("Build") {
+                    steps {
+                        echo("Starting parallel execution")
+
+                        parallel(
+                            "a" to Step {
+                                echo("This is branch a")
+                                echo("Coroutine A ${Thread.currentThread().name}")
+                                echo("Coroutine A2 ${Thread.currentThread().name}")
+                            },
+                            "b" to Step {
+                                echo("This is branch b")
+                                echo("Coroutine B ${Thread.currentThread().name}")
+                                echo("Coroutine B2 ${Thread.currentThread().name}")
+                            }
+                        )
+                        val pwdResult = sh("pwd", returnStdout = true)
+                        val text = readFile("build.gradle.kts")
+                        echo(text)
+                        echo("Variable de entorno para DB_ENGINE es ${env["DB_ENGINE"]}")
+                    }
+                    post {
+                        always {
+                            echo("This is the post section always in stage Test")
+                        }
+                        success {
+                            echo("This is the post section success in stage Test")
+                        }
+                        failure {
+                            echo("This is the post section failure in stage Test")
+                        }
+                    }
+                }
+                stage("Test") {
+                    steps {
+                        sh("ls -la")
+                        sh("whoami")
+                    }
+                    post {
+                        always {
+                            echo("This is the post section always in stage Test")
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    sh("echo ${env["USER"]}", returnStdout = true)
+                    sh("echo ${env["HOME"]}")
+                    echo("Test execution")
+                    sh("ls")
+                }
+                success {
+                    echo("Build was successful!")
+                }
+                failure {
+                    echo("Build failed!")
+                }
+            }
+        }
+
+        result shouldNotBe null
+        result.status shouldBe Status.PENDING
+    }
+
+    "should handle single stage pipeline" {
+        val result = pipeline {
+            stage("Single Stage") {
+                steps {
+                    sh("git status")
+                    echo("Step execution")
+                    sh("ls")
+                }
+            }
+        }
+
+        result shouldNotBe null
+        result.stages.size shouldBe 1
+    }
+
+    "should handle multiple sequential stages" {
+        val result = pipeline {
+            stage("Preparation") {
+                steps {
+                    echo("Test step")
+                }
+            }
+            stage("Build") {
+                steps {
+                    sh("ls -la")
+                    sh("pwd")
+                    echo("Final step")
+                }
+            }
+            stage("Deploy") {
+                steps {
+                    sh("git log --oneline -n 5")
+                    sh("git branch")
+                }
+                post {
+                    always {
+                        echo("Starting cleanup")
+                        sh("docker system prune -f")
+                    }
+                }
+            }
+        }
+
+        result shouldNotBe null
+        result.stages.size shouldBe 3
+    }
+
+    "should configure post sections correctly" {
+        val result = pipeline {
+            stage("Build") {
+                steps {
+                    echo("Building...")
+                }
+            }
+            post {
+                failure {
+                    echo("Failure handler")
+                    sh("cat build.log")
+                }
+                success {
+                    echo("Success handler")
+                    sh("echo 'Build completed successfully'")
+                }
+                unstable {
+                    echo("Unstable handler")
+                    sh("echo 'Build is unstable'")
+                }
+                changed {
+                    echo("Changed handler")
+                    sh("echo 'Files have changed'")
+                }
+                always {
+                    echo("Always runs")
+                }
+            }
+        }
+
+        result shouldNotBe null
+        result.postExecution shouldNotBe null
+    }
+
+    "should handle environment variables" {
+        val result = pipeline {
+            environment {
+                "NODE_ENV" += "test"
+                "API_URL" += "http://localhost:3000"
+                "DEBUG" += "true"
+            }
+            
+            stage("Environment Test") {
+                steps {
+                    echo("NODE_ENV: ${env["NODE_ENV"]}")
+                    echo("API_URL: ${env["API_URL"]}")
+                    echo("DEBUG: ${env["DEBUG"]}")
+                }
+            }
+        }
+
+        result shouldNotBe null
+        result.env.get("NODE_ENV") shouldBe "test"
+        result.env.get("API_URL") shouldBe "http://localhost:3000"
+        result.env.get("DEBUG") shouldBe "true"
+    }
+
+    "should configure logger properly" {
+        PipelineLogger.configure(LogLevel.INFO)
+        val logger = PipelineLogger.getLogger()
+        
+        logger shouldNotBe null
+        logger.logLevel shouldBe LogLevel.INFO
+    }
+
+    "should handle custom pipeline configuration" {
+        val customConfig = object : IPipelineConfig {
+            override val timeout: Long = 3600
+            override val retryCount: Int = 3
+        }
+
+        val result = pipeline(customConfig) {
+            stage("Test") {
+                steps {
+                    echo("Testing with custom config")
+                }
+            }
+        }
+
+        result shouldNotBe null
+        result.pipelineConfig shouldBe customConfig
+    }
+
+    "should create job executor correctly" {
+        val executor = JobExecutor()
+        executor shouldNotBe null
+    }
+})

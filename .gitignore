@@ -50,3 +50,5 @@ pipeline-kts
 /.claude/commands/execute-prp.md
 /.claude/commands/generate-prp.md
 CLAUDE.md
+/.windsurfrules
+.aider*

@@ -1,9 +1,5 @@
-
-
-
 plugins {
-    id("org.jetbrains.intellij.platform") version "2.6.0"
-    id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.jvm)
     id("maven-publish")
 }
 
@@ -12,18 +8,12 @@ version = "2.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
-    intellijPlatform {
-        defaultRepositories()
-    }
 }
 
 dependencies {
-    intellijPlatform {
-        intellijIdeaCommunity("2025.1")  // Updated for K2 mode support
-    }
-    
-    // Annotations module (lightweight dependency)
-    implementation(project(":pipeline-steps-system:annotations"))
+    // NOTE: Temporarily removing core dependency due to GraalVM resolution issues
+    // Will add back after fixing GraalVM dependencies
+    // compileOnly(project(":core"))
     
     // Core K2 compiler dependencies for Kotlin 2.2+
     compileOnly(libs.kotlin.compiler.embeddable)
@@ -32,14 +22,18 @@ dependencies {
     // For ServiceLoader generation
     implementation(libs.google.autoservice)
     
-    // Testing dependencies
+    // ASM for deep bytecode analysis and verification
+    implementation("org.ow2.asm:asm:9.6")
+    implementation("org.ow2.asm:asm-util:9.6")
+    implementation("org.ow2.asm:asm-commons:9.6")
+    
+    // Testing dependencies WITHOUT IntelliJ Platform
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.kotlin.compiler.embeddable)
     testImplementation(libs.kotlin.test)
     
-    // kotlin-compile-testing for comprehensive compiler plugin testing
-    testImplementation("com.github.tschuchortdev:kotlin-compile-testing:1.6.0")
+    // Testing approach focused on plugin functionality verification
     
     // Coroutines for testing async steps
     testImplementation(libs.kotlinx.coroutines.core)
@@ -127,9 +121,6 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
         
         freeCompilerArgs.addAll(
-            // Suppress deprecated IR API usage during migration
-            "-Xsuppress-deprecated-ir-api-usage",
-            
             // Enable Context Parameters (Beta in Kotlin 2.2)
             "-Xcontext-receivers",
             
@@ -138,8 +129,8 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
             "-opt-in=org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi",
             "-opt-in=org.jetbrains.kotlin.fir.extensions.ExperimentalFirExtensionApi",
             
-            // Show deprecation warnings for migration
-            "-Xdeprecation-as-warning"
+            // Allow deprecated API usage for compatibility
+            "-Xallow-unstable-dependencies"
         )
     }
 }

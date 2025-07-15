@@ -1,61 +1,64 @@
 plugins {
-    id("org.jetbrains.kotlin.multiplatform")
-    id("org.jetbrains.kotlin.plugin.serialization")
-    id("io.kotest")
-    id("com.google.devtools.ksp")
-    id("dev.rubentxu.pipeline.steps")
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotest)
+    alias(libs.plugins.ksp)
 }
 
 group = "dev.rubentxu.pipeline.core"
 version = "1.0-SNAPSHOT"
 
-kotlin {
-    jvmToolchain(21)
+dependencies {
 
-    jvm {
+    implementation(libs.snakeyaml)
+    implementation(libs.kotlin.serialization)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.gradle.tooling.api)
+    implementation(libs.jgit)
+    implementation(libs.logback.classic)
+    implementation(libs.bundles.kotlin.scripting)
+    implementation(libs.bundles.docker)
+//    compileOnly(libs.bundles.graalvm) // Only needed for compilation, not runtime
+    implementation(libs.bundles.maven.resolver)
 
-        testRuns["test"].executionTask.configure {
-            useJUnitPlatform()
-            jvmArgs("--add-opens", "java.base/java.util=ALL-UNNAMED")
+    // Kotest required for generated test frameworks
+    implementation(libs.bundles.kotest)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.mockk)
+    testImplementation(libs.junit.jupiter)
+    // GraalVM dependencies for tests that use sandbox functionality
+//    testImplementation(libs.bundles.graalvm)
+}
+
+
+
+java {
+    sourceCompatibility = JavaVersion.toVersion("21")
+}
+
+tasks {
+    compileKotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        }
+    }
+    compileTestKotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
     }
 
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(project(":pipeline-steps-system:annotations"))
-                implementation(libs.kotlin.serialization)
-                implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.serialization.json)
-                implementation(libs.bundles.kotest)
-            }
-        }
-        val commonTest by getting {
-            dependencies {
-                implementation(kotlin("test"))
-            }
-        }
-        val jvmMain by getting {
-            dependencies {
-                implementation(libs.snakeyaml)
-                implementation(libs.gradle.tooling.api)
-                implementation(libs.jgit)
-                implementation(libs.logback.classic)
-                implementation(libs.bundles.kotlin.scripting)
-                implementation(libs.bundles.docker)
-                compileOnly(libs.bundles.graalvm) // Only needed for compilation, not runtime
-                implementation(libs.bundles.maven.resolver)
-            }
-        }
-        val jvmTest by getting {
-            dependencies {
-                implementation(libs.mockito.kotlin)
-                implementation(libs.mockk)
-                implementation(libs.junit.jupiter)
-                implementation(libs.bundles.graalvm)
-            }
-        }
+    test {
+        useJUnitPlatform()
+//        jvmArgs()
     }
+}
+
+tasks.withType<Test> {
+    jvmArgs("--add-opens", "java.base/java.util=ALL-UNNAMED")
 }
 
 tasks
@@ -64,6 +67,6 @@ tasks
         compilerOptions
             .languageVersion
             .set(
-                org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
+                org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9
             )
     }

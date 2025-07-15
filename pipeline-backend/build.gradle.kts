@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    id("dev.rubentxu.pipeline.steps")
+//    id("dev.rubentxu.pipeline.steps")
 }
 
 group = "dev.rubentxu.pipeline.backend"

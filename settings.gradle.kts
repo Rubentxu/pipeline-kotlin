@@ -16,7 +16,7 @@ pluginManagement {
 
 rootProject.name = "pipeline-kotlin"
 
-includeBuild("pipeline-steps-system/gradle-plugin")
+
 
 include(":core")
 include(":pipeline-cli")
@@ -33,6 +33,5 @@ include(":pipeline-backend")
 
 // Sistema de @Step plugins con estructura K2 canónica
 include(":pipeline-steps-system")
-include(":pipeline-steps-system:annotations")
 include(":pipeline-steps-system:compiler-plugin")
 // include(":pipeline-steps-system:gradle-plugin") // Now an included build

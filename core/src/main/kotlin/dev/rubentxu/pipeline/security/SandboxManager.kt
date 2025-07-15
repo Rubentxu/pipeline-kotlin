@@ -75,7 +75,7 @@ class SandboxManager(
     private val logger: IPipelineLogger
 ) {
     
-    private val graalVMSandbox = GraalVMIsolateSandbox(logger)
+
     private val processLevelSandbox = ProcessLevelSandbox(logger)
     
     private val activeSandboxes = ConcurrentHashMap<String, ScriptExecutionSandbox>()
@@ -151,7 +151,7 @@ class SandboxManager(
         try {
             val result = if (executionContext.resourceLimits?.maxWallTimeMs != null) {
                 // Execute with timeout
-                withTimeout(executionContext.resourceLimits.maxWallTimeMs!!) {
+                withTimeout(executionContext.resourceLimits.maxWallTimeMs) {
                     sandbox.executeInSandbox<T>(
                         scriptContent, fullScriptName, executionContext, 
                         compilationConfig, evaluationConfig
@@ -232,15 +232,15 @@ class SandboxManager(
         
         // Validate resource limits
         executionContext.resourceLimits?.let { limits ->
-            if (limits.maxMemoryMb != null && limits.maxMemoryMb!! > 2048) {
+            if (limits.maxMemoryMb != null && limits.maxMemoryMb > 2048) {
                 issues.add("Memory limit exceeds maximum allowed (2048MB): ${limits.maxMemoryMb}MB")
             }
             
-            if (limits.maxCpuTimeMs != null && limits.maxCpuTimeMs!! > 300_000) {
+            if (limits.maxCpuTimeMs != null && limits.maxCpuTimeMs > 300_000) {
                 issues.add("CPU time limit exceeds maximum allowed (5 minutes): ${limits.maxCpuTimeMs}ms")
             }
             
-            if (limits.maxThreads != null && limits.maxThreads!! > 10) {
+            if (limits.maxThreads != null && limits.maxThreads > 10) {
                 issues.add("Thread limit exceeds maximum allowed (10): ${limits.maxThreads}")
             }
         }
@@ -283,7 +283,7 @@ class SandboxManager(
         
         // Clean up sandbox implementations
         try {
-            graalVMSandbox.cleanup()
+
             processLevelSandbox.cleanup()
         } catch (e: Exception) {
             logger.error("Error during sandbox cleanup: ${e.message}")
@@ -301,13 +301,10 @@ class SandboxManager(
                 logger.debug("Selected process-level sandbox for high security execution")
                 processLevelSandbox
             }
-            DslIsolationLevel.THREAD -> {
-                logger.debug("Selected GraalVM isolate sandbox for medium security execution")
-                graalVMSandbox
-            }
+
             else -> {
                 logger.debug("Selected GraalVM isolate sandbox for standard execution")
-                graalVMSandbox
+                processLevelSandbox
             }
         }
     }

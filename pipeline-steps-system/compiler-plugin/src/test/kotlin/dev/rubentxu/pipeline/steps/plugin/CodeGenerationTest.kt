@@ -403,7 +403,7 @@ class CodeGenerationTest {
         
         result.verifyNoCompilationErrors()
         
-        // Verificar inyección específica de PipelineContext
+        // Direct transformation: verify original function has PipelineContext
         result.verifyPipelineContextInjection("processRequest")
         
         // Mostrar contenido decompilado según solicitó el usuario
@@ -420,7 +420,7 @@ class CodeGenerationTest {
         if (result.pluginOutput.contains("already has PipelineContext parameter")) {
             println("ℹ️ Plugin detected function already has PipelineContext")
         } else if (result.pluginOutput.contains("marked for context injection")) {
-            println("🔧 Plugin marked function for PipelineContext injection")
+            println("🔧 Plugin marked function for direct PipelineContext injection")
         }
     }
     

@@ -11,9 +11,12 @@ repositories {
 }
 
 dependencies {
-    // NOTE: Temporarily removing core dependency due to GraalVM resolution issues
-    // Will add back after fixing GraalVM dependencies
-    // compileOnly(project(":core"))
+    // Core project for LocalPipelineContext and runtime dependencies
+    // Using testImplementation to avoid GraalVM resolution issues in main compilation
+    testImplementation(project(":core"))
+    
+    // Also add core as compileOnly for compiler plugin to access classes during transformation
+    compileOnly(project(":core"))
     
     // Core K2 compiler dependencies for Kotlin 2.2+
     compileOnly(libs.kotlin.compiler.embeddable)

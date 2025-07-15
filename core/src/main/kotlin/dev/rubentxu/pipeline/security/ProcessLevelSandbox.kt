@@ -201,7 +201,7 @@ class ProcessLevelSandbox(
     ): Process {
         
         val javaHome = System.getProperty("java.home")
-        val kotlincPath = findKotlinCompiler()
+
         
         val command = mutableListOf<String>().apply {
             add("$javaHome/bin/java")

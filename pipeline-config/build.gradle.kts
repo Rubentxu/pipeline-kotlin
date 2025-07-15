@@ -11,7 +11,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(kotlin("test"))
-    testImplementation(libs.bundles.kotest.extended)
+//    testImplementation(libs.bundles.kotest.extended)
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.system.stubs.jupiter)
     testImplementation(libs.junit.jupiter)

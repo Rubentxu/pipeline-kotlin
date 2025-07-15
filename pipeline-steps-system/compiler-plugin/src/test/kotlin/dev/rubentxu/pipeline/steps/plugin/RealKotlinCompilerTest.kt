@@ -431,15 +431,55 @@ class RealKotlinCompilerTest {
             assertTrue(success, "Compilation must succeed to verify PipelineContext injection")
             
             val classFiles = this.classFiles.filter { it.isFile && it.name.endsWith(".class") }
-            val functionClassName = "${functionName.replaceFirstChar { it.uppercaseChar() }}Kt.class"
-            val functionClassFile = classFiles.find { it.name == functionClassName }
             
-            if (functionClassFile != null) {
-                println("🔍 ASM Deep Analysis of ${functionClassName} for PipelineContext injection...")
+            // Try multiple potential class file names
+            val potentialClassNames = listOf(
+                "${functionName.replaceFirstChar { it.uppercaseChar() }}Kt.class",
+                "${functionName}Kt.class", 
+                "TestKt.class",
+                "ComplexStepKt.class"
+            )
+            
+            val functionClassFile = potentialClassNames.mapNotNull { className ->
+                classFiles.find { it.name == className }
+            }.firstOrNull()
+            
+            if (functionClassFile == null) {
+                println("🔍 Searching for function '$functionName' in available class files:")
+                classFiles.forEach { classFile ->
+                    println("   - ${classFile.name}")
+                    try {
+                        val analyzer = BytecodeAnalyzer()
+                        val analysis = analyzer.analyzeClassFile(classFile)
+                        val methods = analysis.methods.map { it.name }
+                        if (methods.contains(functionName)) {
+                            println("     ✅ Contains function '$functionName'!")
+                        } else {
+                            println("     Methods: ${methods.take(5)}")
+                        }
+                    } catch (e: Exception) {
+                        println("     Error analyzing: ${e.message}")
+                    }
+                }
+            }
+            
+            val targetClassFile = functionClassFile 
+                ?: classFiles.find { classFile ->
+                    try {
+                        val analyzer = BytecodeAnalyzer()
+                        val analysis = analyzer.analyzeClassFile(classFile)
+                        analysis.methods.any { it.name == functionName }
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+            
+            if (targetClassFile != null) {
+                println("🔍 ASM Deep Analysis of ${targetClassFile.name} for PipelineContext injection...")
                 
                 try {
                     val analyzer = BytecodeAnalyzer()
-                    val classAnalysis = analyzer.analyzeClassFile(functionClassFile)
+                    val classAnalysis = analyzer.analyzeClassFile(targetClassFile)
                     
                     println("📊 ASM ANALYSIS RESULTS:")
                     println("   - Class: ${classAnalysis.className}")
@@ -475,7 +515,7 @@ class RealKotlinCompilerTest {
                         }
                         
                         // Validate bytecode integrity
-                        val validation = analyzer.validateBytecode(functionClassFile)
+                        val validation = analyzer.validateBytecode(targetClassFile)
                         println("   🔧 Bytecode validation: ${if (validation.isValid) "PASSED" else "FAILED"}")
                         
                     } else {
@@ -485,14 +525,14 @@ class RealKotlinCompilerTest {
                     }
                     
                 } catch (e: Exception) {
-                    println("❌ ASM Analysis error for $functionClassName: ${e.message}")
+                    println("❌ ASM Analysis error for ${targetClassFile.name}: ${e.message}")
                     e.printStackTrace()
                     throw e
                 }
             } else {
-                println("⚠️ Function class file not found: $functionClassName")
+                println("⚠️ Function class file not found for: $functionName")
                 println("Available files: ${classFiles.map { it.name }}")
-                assertTrue(false, "Class file $functionClassName not found")
+                assertTrue(false, "Class file containing function $functionName not found")
             }
         }
         

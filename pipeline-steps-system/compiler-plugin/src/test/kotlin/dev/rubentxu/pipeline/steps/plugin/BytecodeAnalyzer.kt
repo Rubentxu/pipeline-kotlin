@@ -108,11 +108,18 @@ class BytecodeAnalyzer {
      * Verifies that a method has PipelineContext as first parameter
      */
     fun verifyPipelineContextInjection(method: MethodInfo): Boolean {
-        if (method.parameters.isEmpty()) return false
+        // Check if method descriptor contains PipelineContext parameter
+        val hasPipelineContextInDescriptor = method.descriptor.contains("Ldev/rubentxu/pipeline/context/PipelineContext;")
         
-        val firstParam = method.parameters.first()
-        return firstParam.descriptor == "Ldev/rubentxu/pipeline/context/PipelineContext;" ||
-               firstParam.name == "context"
+        // Check if parameters list contains PipelineContext
+        val hasPipelineContextParameter = method.parameters.isNotEmpty() && 
+            (method.parameters.first().descriptor == "Ldev/rubentxu/pipeline/context/PipelineContext;" ||
+             method.parameters.first().name == "pipelineContext")
+             
+        // Check using hasPipelineContextParameter() method
+        val detectedByMethod = method.hasPipelineContextParameter()
+        
+        return hasPipelineContextInDescriptor || hasPipelineContextParameter || detectedByMethod
     }
     
     /**

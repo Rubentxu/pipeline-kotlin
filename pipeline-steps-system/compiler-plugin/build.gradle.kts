@@ -130,7 +130,10 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
             "-opt-in=org.jetbrains.kotlin.fir.extensions.ExperimentalFirExtensionApi",
             
             // Allow deprecated API usage for compatibility
-            "-Xallow-unstable-dependencies"
+            "-Xallow-unstable-dependencies",
+            
+            // Suppress deprecation warnings as errors for IR transformation development
+            "-Xsuppress-version-warnings"
         )
     }
 }

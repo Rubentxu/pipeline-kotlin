@@ -17,6 +17,9 @@ dependencies {
     testImplementation(libs.junit.jupiter)
 }
 
+// Testing @Step functions without compiler plugin for now
+// The compiler plugin integration will be tested separately
+
 tasks.test {
     useJUnitPlatform()
 }

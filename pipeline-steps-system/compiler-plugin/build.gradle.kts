@@ -25,6 +25,10 @@ dependencies {
     // For ServiceLoader generation
     implementation(libs.google.autoservice)
     
+    // Modern structured logging for compiler plugin
+    implementation("io.github.oshai:kotlin-logging-jvm:7.0.0")
+    implementation("ch.qos.logback:logback-classic:1.5.12")
+    
     // ASM for deep bytecode analysis and verification
     implementation("org.ow2.asm:asm:9.6")
     implementation("org.ow2.asm:asm-util:9.6")

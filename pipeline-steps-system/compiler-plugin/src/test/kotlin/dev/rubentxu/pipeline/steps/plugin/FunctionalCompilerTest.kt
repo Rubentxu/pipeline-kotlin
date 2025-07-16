@@ -56,10 +56,10 @@ class FunctionalCompilerTest {
     @Test
     fun `FIR extension should have correct constants`() {
         // Verificar que la extensión FIR tiene las constantes correctas
-        val stepClassId = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.STEP_ANNOTATION_CLASS_ID
+        val stepFqName = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.STEP_ANNOTATION_FQN
         val contextClassId = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.PIPELINE_CONTEXT_CLASS_ID
         
-        assertEquals("dev.rubentxu.pipeline.steps.annotations.Step", stepClassId.asFqNameString())
+        assertEquals("dev.rubentxu.pipeline.steps.annotations.Step", stepFqName.asString())
         assertEquals("dev.rubentxu.pipeline.context.PipelineContext", contextClassId.asFqNameString())
     }
 
@@ -191,7 +191,7 @@ class FunctionalCompilerTest {
         
         // 2. Verificar que las constantes son consistentes entre componentes
         val irStepName = StepIrTransformer.STEP_ANNOTATION_FQ_NAME.asString()
-        val firStepName = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.STEP_ANNOTATION_CLASS_ID.asFqNameString()
+        val firStepName = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.STEP_ANNOTATION_FQN.asString()
         
         assertEquals(irStepName, firStepName, "Step annotation names should be consistent")
     }

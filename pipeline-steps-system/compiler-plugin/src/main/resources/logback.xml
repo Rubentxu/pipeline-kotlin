@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Console appender for development -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <!-- JSON appender for structured logging -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+                <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
+                    <prettyPrint>false</prettyPrint>
+                </jsonFormatter>
+                <includeLevel>true</includeLevel>
+                <includeTimestamp>true</includeTimestamp>
+                <includeLoggerName>true</includeLoggerName>
+                <includeFormattedMessage>true</includeFormattedMessage>
+                <includeMDC>true</includeMDC>
+            </layout>
+        </encoder>
+    </appender>
+    
+    <!-- Pipeline Steps Plugin specific logger -->
+    <logger name="PipelineStepsPlugin" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    
+    <!-- Kotlin logging framework -->
+    <logger name="io.github.oshai.kotlinlogging" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+    
+    <!-- Root logger configuration -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+    
+    <!-- Enable JSON logging when debug property is set -->
+    <if condition='property("dev.rubentxu.pipeline.steps.debug").equals("true")'>
+        <then>
+            <logger name="PipelineStepsPlugin" level="DEBUG" additivity="false">
+                <appender-ref ref="JSON_CONSOLE"/>
+            </logger>
+        </then>
+    </if>
+</configuration>

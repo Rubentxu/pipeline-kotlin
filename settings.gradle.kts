@@ -22,7 +22,7 @@ include(":core")
 include(":pipeline-cli")
 include(":pipeline-config")
 include(":pipeline-backend")
-// include(":lib-examples")
+include(":lib-examples")
 
 // Framework de testing organizado como módulo padre con submódulos
 // TODO: Fix testing framework compatibility with new StepsBlock
@@ -34,4 +34,4 @@ include(":pipeline-backend")
 // Sistema de @Step plugins con estructura K2 canónica
 include(":pipeline-steps-system")
 include(":pipeline-steps-system:compiler-plugin")
-// include(":pipeline-steps-system:gradle-plugin") // Now an included build
+include(":pipeline-steps-system:gradle-plugin")

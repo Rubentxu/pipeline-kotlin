@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.steps.plugin
 
 import com.google.auto.service.AutoService
+import dev.rubentxu.pipeline.steps.plugin.logging.PluginEvent
+import dev.rubentxu.pipeline.steps.plugin.logging.StructuredLogger
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
@@ -36,6 +38,15 @@ class StepCompilerPluginRegistrar : CompilerPluginRegistrar() {
     override val supportsK2: Boolean = true
     
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
+        // Configure structured logging
+        StructuredLogger.configure(configuration)
+        
+        StructuredLogger.logPluginEvent(PluginEvent.PLUGIN_REGISTERED, mapOf(
+            "plugin_id" to PLUGIN_ID,
+            "plugin_name" to PLUGIN_NAME,
+            "supports_k2" to supportsK2
+        ))
+        
         // FIR (frontend) extensions are registered automatically via ServiceLoader
         // through StepFirExtensionRegistrar
         
@@ -44,18 +55,26 @@ class StepCompilerPluginRegistrar : CompilerPluginRegistrar() {
         val enableDslGeneration = configuration.get(ENABLE_DSL_GENERATION, true)
         val debugMode = configuration.get(DEBUG_MODE, false)
         
+        StructuredLogger.logPluginEvent(PluginEvent.PLUGIN_CONFIGURED, mapOf(
+            "enable_context_injection" to enableContextInjection,
+            "enable_dsl_generation" to enableDslGeneration,
+            "debug_mode" to debugMode
+        ))
+        
         if (enableContextInjection) {
             IrGenerationExtension.registerExtension(StepIrTransformer())
-            if (debugMode) {
-                println("Registered StepIrTransformer for context parameter injection")
-            }
+            StructuredLogger.logPluginEvent(PluginEvent.IR_TRANSFORMATION_STARTED, mapOf(
+                "extension" to "StepIrTransformer",
+                "purpose" to "context_parameter_injection"
+            ))
         }
         
         if (enableDslGeneration) {
             IrGenerationExtension.registerExtension(StepDslRegistryGenerator())
-            if (debugMode) {
-                println("Registered StepDslRegistryGenerator for automatic DSL generation")
-            }
+            StructuredLogger.logPluginEvent(PluginEvent.DSL_GENERATION_STARTED, mapOf(
+                "extension" to "StepDslRegistryGenerator",
+                "purpose" to "automatic_dsl_generation"
+            ))
         }
     }
 }

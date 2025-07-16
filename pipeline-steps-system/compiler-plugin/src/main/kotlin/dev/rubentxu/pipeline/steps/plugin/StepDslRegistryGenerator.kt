@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.steps.plugin
 
+import dev.rubentxu.pipeline.steps.plugin.logging.PluginEvent
+import dev.rubentxu.pipeline.steps.plugin.logging.StructuredLogger
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.ir.IrElement
@@ -31,20 +33,32 @@ class StepDslRegistryGenerator : IrGenerationExtension {
     }
 
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
-        println("StepDslRegistryGenerator: Starting REAL DSL extension generation for module: ${moduleFragment.name}")
+        StructuredLogger.measureAndLog("dsl_generation_complete") {
+            StructuredLogger.logPluginEvent(PluginEvent.DSL_GENERATION_STARTED, mapOf(
+                "module" to moduleFragment.name.asString()
+            ))
 
-        // Find all @Step functions
-        val stepFunctions = mutableListOf<IrSimpleFunction>()
-        moduleFragment.acceptVoid(StepFunctionCollector(stepFunctions))
+            // Find all @Step functions
+            val stepFunctions = mutableListOf<IrSimpleFunction>()
+            moduleFragment.acceptVoid(StepFunctionCollector(stepFunctions))
 
-        println("StepDslRegistryGenerator: Found ${stepFunctions.size} @Step functions")
+            StructuredLogger.logPerformanceMetric(
+                operation = "step_function_discovery",
+                durationMs = 0, // Measured by acceptVoid
+                metadata = mapOf("found_functions" to stepFunctions.size)
+            )
 
-        stepFunctions.forEach { function ->
-            println("StepDslRegistryGenerator: Processing @Step function: ${function.name}")
-            generateRealDslExtension(function, pluginContext, moduleFragment)
+            stepFunctions.forEach { function ->
+                StructuredLogger.measureAndLog("generate_dsl_extension_${function.name}") {
+                    generateRealDslExtension(function, pluginContext, moduleFragment)
+                }
+            }
+
+            StructuredLogger.logPluginEvent(PluginEvent.DSL_GENERATION_COMPLETED, mapOf(
+                "module" to moduleFragment.name.asString(),
+                "processed_functions" to stepFunctions.size
+            ))
         }
-
-        println("StepDslRegistryGenerator: Completed REAL DSL extension generation")
     }
 
     /**
@@ -60,29 +74,43 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             // Check if StepsBlock exists
             val stepsBlockSymbol = pluginContext.referenceClass(STEPS_BLOCK_CLASS_ID)
             if (stepsBlockSymbol == null) {
-                println("StepDslRegistryGenerator: StepsBlock class not found, skipping DSL generation")
+                StructuredLogger.logWarning(
+                    operation = "dsl_extension_generation",
+                    message = "StepsBlock class not found, skipping DSL generation",
+                    context = mapOf("function_name" to stepFunction.name.asString())
+                )
                 return
             }
 
-            println("StepDslRegistryGenerator: Generating DSL extension for ${stepFunction.name}")
-            
             // Analyze the step function
             val functionName = stepFunction.name.asString()
             val parameters = stepFunction.parameters.filter { 
                 it.kind == IrParameterKind.Regular 
             }
             
-            println("StepDslRegistryGenerator: Function '$functionName' has ${parameters.size} parameters")
-            
             // Build DSL signature with PipelineContext injection
             val dslSignature = buildDslExtensionSignature(stepFunction)
-            println("StepDslRegistryGenerator: Would generate: $dslSignature")
+            
+            StructuredLogger.logPerformanceMetric(
+                operation = "dsl_extension_analysis",
+                durationMs = 0,
+                metadata = mapOf(
+                    "function_name" to functionName,
+                    "parameter_count" to parameters.size,
+                    "dsl_signature" to dslSignature,
+                    "is_suspend" to stepFunction.isSuspend
+                )
+            )
             
             // Create REAL extension function
             createRealDslExtensionFunction(stepFunction, pluginContext, moduleFragment)
             
         } catch (e: Exception) {
-            println("StepDslRegistryGenerator: Error generating DSL extension for ${stepFunction.name}: ${e.message}")
+            StructuredLogger.logError(
+                operation = "dsl_extension_generation",
+                error = e,
+                context = mapOf("function_name" to stepFunction.name.asString())
+            )
         }
     }
     
@@ -129,19 +157,16 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             val isAsync = stepFunction.isSuspend
             val regularParams = stepFunction.parameters.filter { it.kind == IrParameterKind.Regular }
             
-            println("StepDslRegistryGenerator: DSL Extension Analysis:")
-            println("  - Function: $functionName")
-            println("  - Is suspend: $isAsync")
-            println("  - Regular parameter count: ${regularParams.size}")
-            
             // Get StepsBlock class reference
             val stepsBlockSymbol = pluginContext.referenceClass(STEPS_BLOCK_CLASS_ID)
             if (stepsBlockSymbol == null) {
-                println("StepDslRegistryGenerator: Cannot find StepsBlock class")
+                StructuredLogger.logWarning(
+                    operation = "dsl_extension_analysis",
+                    message = "Cannot find StepsBlock class",
+                    context = mapOf("function_name" to functionName)
+                )
                 return
             }
-            
-            println("StepDslRegistryGenerator: ✅ StepsBlock class found: ${stepsBlockSymbol.owner.name}")
             
             // Build extension signature
             val params = regularParams.map { param ->
@@ -152,12 +177,26 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             val suspendModifier = if (isAsync) "suspend " else ""
             val extensionSignature = "${suspendModifier}fun StepsBlock.$functionName($params)"
             
-            println("StepDslRegistryGenerator: Would generate extension: $extensionSignature")
-            println("StepDslRegistryGenerator: Extension would delegate to: $functionName(context, ${regularParams.map { it.name }.joinToString(", ")})")
+            StructuredLogger.logPerformanceMetric(
+                operation = "dsl_extension_creation",
+                durationMs = 0,
+                metadata = mapOf(
+                    "function_name" to functionName,
+                    "is_suspend" to isAsync,
+                    "parameter_count" to regularParams.size,
+                    "extension_signature" to extensionSignature,
+                    "steps_block_available" to true,
+                    "steps_block_name" to stepsBlockSymbol.owner.name.asString(),
+                    "delegate_call" to "$functionName(context, ${regularParams.map { it.name }.joinToString(", ")})"
+                )
+            )
             
         } catch (e: Exception) {
-            println("StepDslRegistryGenerator: ❌ Error analyzing DSL extension: ${e.message}")
-            e.printStackTrace()
+            StructuredLogger.logError(
+                operation = "dsl_extension_analysis",
+                error = e,
+                context = mapOf("function_name" to stepFunction.name.asString())
+            )
         }
     }
 
@@ -175,7 +214,15 @@ class StepDslRegistryGenerator : IrGenerationExtension {
         override fun visitSimpleFunction(declaration: IrSimpleFunction) {
             if (declaration.hasStepAnnotation()) {
                 stepFunctions.add(declaration)
-                println("StepDslRegistryGenerator: Found @Step function: ${declaration.name}")
+                StructuredLogger.logPerformanceMetric(
+                    operation = "step_function_discovered",
+                    durationMs = 0,
+                    metadata = mapOf(
+                        "function_name" to declaration.name.asString(),
+                        "is_suspend" to declaration.isSuspend,
+                        "parameter_count" to declaration.parameters.size
+                    )
+                )
             }
             super.visitSimpleFunction(declaration)
         }

@@ -9,6 +9,11 @@ group = "dev.rubentxu.pipeline.core"
 version = "1.0-SNAPSHOT"
 
 dependencies {
+    // Plugin annotations for @Step and related annotations
+    implementation(project(":pipeline-steps-system:plugin-annotations"))
+    
+    // Compiler plugin for @Step transformation
+    kotlinCompilerPluginClasspath(project(":pipeline-steps-system:compiler-plugin"))
 
     implementation(libs.snakeyaml)
     implementation(libs.kotlin.serialization)
@@ -44,6 +49,8 @@ tasks {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
+        exclude("**/disabled/**")
+        dependsOn(":pipeline-steps-system:compiler-plugin:jar")
     }
     compileTestKotlin {
         compilerOptions {
@@ -67,6 +74,6 @@ tasks
         compilerOptions
             .languageVersion
             .set(
-                org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9
+                org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2
             )
     }

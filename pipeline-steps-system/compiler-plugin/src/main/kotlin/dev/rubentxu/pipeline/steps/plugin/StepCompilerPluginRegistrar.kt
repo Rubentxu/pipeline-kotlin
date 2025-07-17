@@ -62,9 +62,9 @@ class StepCompilerPluginRegistrar : CompilerPluginRegistrar() {
         ))
         
         if (enableContextInjection) {
-            IrGenerationExtension.registerExtension(StepIrTransformer())
+            IrGenerationExtension.registerExtension(StepIrTransformerStable())
             StructuredLogger.logPluginEvent(PluginEvent.IR_TRANSFORMATION_STARTED, mapOf(
-                "extension" to "StepIrTransformer",
+                "extension" to "StepIrTransformerStable",
                 "purpose" to "context_parameter_injection"
             ))
         }

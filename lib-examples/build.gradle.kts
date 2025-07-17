@@ -9,6 +9,7 @@ version = "unspecified"
 dependencies {
     implementation(project(":core"))
     implementation(project(":pipeline-config"))
+    implementation(project(":pipeline-steps-system:plugin-annotations"))
     implementation(libs.gson)
     implementation(libs.kotlin.reflect)
 

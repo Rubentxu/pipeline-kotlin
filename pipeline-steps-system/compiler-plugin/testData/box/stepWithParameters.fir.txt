@@ -1,0 +1,7 @@
+FILE: stepWithParameters.kt
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(multiParamStep), description = String(Step with multiple parameters), category = Q|dev/rubentxu/pipeline/annotations/StepCategory|.R|dev/rubentxu/pipeline/annotations/StepCategory.BUILD|, securityLevel = Q|dev/rubentxu/pipeline/annotations/SecurityLevel|.R|dev/rubentxu/pipeline/annotations/SecurityLevel.TRUSTED|) public final suspend fun multiParamStep(param1: R|kotlin/String|, param2: R|kotlin/Int| = Int(42), param3: R|kotlin/Boolean| = Boolean(true)): R|kotlin/String| {
+        ^multiParamStep <strcat>(String(Params: ), R|<local>/param1|, String(, ), R|<local>/param2|, String(, ), R|<local>/param3|)
+    }
+    public final fun box(): R|kotlin/String| {
+        ^box String(OK)
+    }

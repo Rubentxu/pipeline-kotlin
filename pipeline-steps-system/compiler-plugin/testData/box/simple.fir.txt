@@ -1,0 +1,13 @@
+FILE: simple.kt
+    public final fun box(): R|kotlin/String| {
+        lval result: R|kotlin/String| = String(Hello World)
+        ^box when () {
+            ==(R|<local>/result|, String(Hello World)) ->  {
+                String(OK)
+            }
+            else ->  {
+                <strcat>(String(Fail: ), R|<local>/result|)
+            }
+        }
+
+    }

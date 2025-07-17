@@ -1,0 +1,13 @@
+FILE: stepValidation.kt
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(validStep), description = String(A valid step function), category = Q|dev/rubentxu/pipeline/annotations/StepCategory|.R|dev/rubentxu/pipeline/annotations/StepCategory.BUILD|) public final suspend fun validStep(param1: R|kotlin/String|, param2: R|kotlin/Int|): R|kotlin/String| {
+        ^validStep String(Valid step)
+    }
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(_invalidName), description = String(Step with invalid name starting with underscore)) public final fun invalidNameStep(): R|kotlin/String| {
+        ^invalidNameStep String(Invalid name)
+    }
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(tooManyParams), description = String(Step with too many parameters)) public final fun stepWithTooManyParams(p1: R|kotlin/String|, p2: R|kotlin/String|, p3: R|kotlin/String|, p4: R|kotlin/String|, p5: R|kotlin/String|, p6: R|kotlin/String|, p7: R|kotlin/String|, p8: R|kotlin/String|, p9: R|kotlin/String|, p10: R|kotlin/String|, p11: R|kotlin/String|): R|kotlin/String| {
+        ^stepWithTooManyParams String(Too many params)
+    }
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(noParams), description = String(Step with no parameters)) public final fun stepWithNoParams(): R|kotlin/String| {
+        ^stepWithNoParams String(No params)
+    }

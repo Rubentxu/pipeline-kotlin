@@ -36,8 +36,8 @@ class StepFunctionChecker(mppKind: MppCheckerKind) : FirSimpleFunctionChecker(mp
     
     companion object {
         // @Step annotation class ID
-        val STEP_ANNOTATION_CLASS_ID = ClassId.fromString("dev.rubentxu.pipeline.steps.annotations/Step")
-        val STEP_ANNOTATION_FQN = FqName("dev.rubentxu.pipeline.steps.annotations.Step")
+        val STEP_ANNOTATION_CLASS_ID = ClassId.fromString("dev.rubentxu.pipeline.annotations/Step")
+        val STEP_ANNOTATION_FQN = FqName("dev.rubentxu.pipeline.annotations.Step")
         
         // PipelineContext class ID  
         val PIPELINE_CONTEXT_CLASS_ID = ClassId.fromString("dev.rubentxu.pipeline.context/PipelineContext")

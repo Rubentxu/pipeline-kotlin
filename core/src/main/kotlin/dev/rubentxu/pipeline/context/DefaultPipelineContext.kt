@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.logger.IPipelineLogger
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import dev.rubentxu.pipeline.steps.Shell
 import dev.rubentxu.pipeline.steps.registry.StepRegistry
-import dev.rubentxu.pipeline.steps.annotations.StepValidationException
+import dev.rubentxu.pipeline.annotations.StepValidationException
 import dev.rubentxu.pipeline.steps.security.StepSecurityManager
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -161,9 +161,9 @@ class DefaultPipelineContext(
             category = stepInfo.category.name,
             parameters = emptyList(), // TODO: Extract from function parameters
             securityLevel = when (stepInfo.securityLevel) {
-                dev.rubentxu.pipeline.steps.annotations.SecurityLevel.TRUSTED -> SecurityLevel.TRUSTED
-                dev.rubentxu.pipeline.steps.annotations.SecurityLevel.RESTRICTED -> SecurityLevel.RESTRICTED
-                dev.rubentxu.pipeline.steps.annotations.SecurityLevel.ISOLATED -> SecurityLevel.ISOLATED
+                dev.rubentxu.pipeline.annotations.SecurityLevel.TRUSTED -> SecurityLevel.TRUSTED
+                dev.rubentxu.pipeline.annotations.SecurityLevel.RESTRICTED -> SecurityLevel.RESTRICTED
+                dev.rubentxu.pipeline.annotations.SecurityLevel.ISOLATED -> SecurityLevel.ISOLATED
             }
         )
     }

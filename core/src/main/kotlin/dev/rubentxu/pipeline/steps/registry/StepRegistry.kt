@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.steps.registry
 
-import dev.rubentxu.pipeline.steps.annotations.*
+import dev.rubentxu.pipeline.annotations.*
 import dev.rubentxu.pipeline.context.PipelineContext
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KFunction

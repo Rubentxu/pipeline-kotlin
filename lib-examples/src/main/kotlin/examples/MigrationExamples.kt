@@ -3,7 +3,7 @@ package examples
 import dev.rubentxu.pipeline.dsl.pipeline
 import dev.rubentxu.pipeline.dsl.StepsBlock
 import dev.rubentxu.pipeline.context.LocalPipelineContext
-import dev.rubentxu.pipeline.steps.annotations.*
+import dev.rubentxu.pipeline.annotations.*
 
 /**
  * Migration examples showing how to convert from extension functions to @Step system.

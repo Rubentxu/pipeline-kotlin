@@ -22,10 +22,13 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin-api:${libs.versions.kotlin.get()}")
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
     
+    // Plugin annotations module for @Step and related annotations
+    implementation(project(":pipeline-steps-system:plugin-annotations"))
+    
     // Referencia al compiler plugin para configuración automática
     implementation(project(":pipeline-steps-system:compiler-plugin"))
     
-    // Core para tipos y anotaciones
+    // Core para tipos y anotaciones (solo las necesarias)
     compileOnly(project(":core"))
     
     // Testing dependencies

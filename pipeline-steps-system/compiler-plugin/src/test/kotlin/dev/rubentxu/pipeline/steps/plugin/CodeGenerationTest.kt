@@ -167,7 +167,7 @@ class CodeGenerationTest {
             """
             package test
             
-            import dev.rubentxu.pipeline.steps.annotations.Step
+            import dev.rubentxu.pipeline.annotations.Step
             import dev.rubentxu.pipeline.context.PipelineContext
             
             @Step(name = "complexOperation", description = "Complex step")

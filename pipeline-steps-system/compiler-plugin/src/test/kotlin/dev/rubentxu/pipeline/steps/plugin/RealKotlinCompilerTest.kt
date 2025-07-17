@@ -893,7 +893,7 @@ object TestSources {
             """
             package test
             
-            import dev.rubentxu.pipeline.steps.annotations.Step
+            import dev.rubentxu.pipeline.annotations.Step
             import dev.rubentxu.pipeline.context.PipelineContext
             
             @Step
@@ -924,7 +924,7 @@ object TestSources {
         return RealKotlinCompilerTest.SourceFile(
             "Annotations.kt",
             """
-            package dev.rubentxu.pipeline.steps.annotations
+            package dev.rubentxu.pipeline.annotations
             
             annotation class Step(
                 val name: String = "",

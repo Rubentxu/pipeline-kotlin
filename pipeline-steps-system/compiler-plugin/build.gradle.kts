@@ -11,12 +11,15 @@ repositories {
 }
 
 dependencies {
+    // Plugin annotations module for @Step and related annotations
+    implementation(project(":pipeline-steps-system:plugin-annotations"))
+    
     // Core project for LocalPipelineContext and runtime dependencies
     // Using testImplementation to avoid GraalVM resolution issues in main compilation
     testImplementation(project(":core"))
     
     // Also add core as compileOnly for compiler plugin to access classes during transformation
-    compileOnly(project(":core"))
+    // compileOnly(project(":core")) // Removed to avoid circular dependency
     
     // Core K2 compiler dependencies for Kotlin 2.2+
     compileOnly(libs.kotlin.compiler.embeddable)
@@ -159,6 +162,89 @@ tasks.register("performanceTest", Test::class) {
     testLogging {
         events("passed", "failed")
         showStandardStreams = true
+    }
+}
+
+// Task para generar tests automáticamente desde testData
+tasks.register("generateTests") {
+    description = "Genera tests automáticamente desde testData/ siguiendo el patrón del template oficial"
+    group = "verification"
+    
+    doLast {
+        val testDataDir = file("testData")
+        val testSourceDir = file("src/test/kotlin/dev/rubentxu/pipeline/steps/plugin/generated")
+        
+        testSourceDir.mkdirs()
+        
+        // Generar tests para box/ (codegen tests)
+        val boxDir = file("$testDataDir/box")
+        if (boxDir.exists()) {
+            val boxTestFile = file("$testSourceDir/BoxTests.kt")
+            boxTestFile.writeText("""
+                package dev.rubentxu.pipeline.steps.plugin.generated
+                
+                import org.junit.jupiter.api.Test
+                import org.junit.jupiter.api.TestFactory
+                import org.junit.jupiter.api.DynamicTest
+                import kotlin.io.path.Path
+                import kotlin.io.path.listDirectoryEntries
+                import kotlin.io.path.name
+                
+                class BoxTests {
+                    @TestFactory
+                    fun `generate box tests`() = generateBoxTests()
+                    
+                    private fun generateBoxTests(): List<DynamicTest> {
+                        val testDataPath = Path("testData/box")
+                        return testDataPath.listDirectoryEntries("*.kt")
+                            .map { testFile ->
+                                DynamicTest.dynamicTest("Box test: ${'$'}{testFile.name}") {
+                                    // TODO: Implement actual compilation test
+                                    // For now, just verify the test file exists
+                                    assert(testFile.toFile().exists()) { "Test file should exist: ${'$'}{testFile.name}" }
+                                }
+                            }
+                    }
+                }
+            """.trimIndent())
+        }
+        
+        // Generar tests para diagnostics/ (diagnostic tests)
+        val diagnosticsDir = file("$testDataDir/diagnostics")
+        if (diagnosticsDir.exists()) {
+            val diagnosticsTestFile = file("$testSourceDir/DiagnosticsTests.kt")
+            diagnosticsTestFile.writeText("""
+                package dev.rubentxu.pipeline.steps.plugin.generated
+                
+                import org.junit.jupiter.api.Test
+                import org.junit.jupiter.api.TestFactory
+                import org.junit.jupiter.api.DynamicTest
+                import kotlin.io.path.Path
+                import kotlin.io.path.listDirectoryEntries
+                import kotlin.io.path.name
+                
+                class DiagnosticsTests {
+                    @TestFactory
+                    fun `generate diagnostics tests`() = generateDiagnosticsTests()
+                    
+                    private fun generateDiagnosticsTests(): List<DynamicTest> {
+                        val testDataPath = Path("testData/diagnostics")
+                        return testDataPath.listDirectoryEntries("*.kt")
+                            .map { testFile ->
+                                DynamicTest.dynamicTest("Diagnostics test: ${'$'}{testFile.name}") {
+                                    // TODO: Implement actual diagnostic test
+                                    // For now, just verify the test file exists
+                                    assert(testFile.toFile().exists()) { "Test file should exist: ${'$'}{testFile.name}" }
+                                }
+                            }
+                    }
+                }
+            """.trimIndent())
+        }
+        
+        println("✅ Tests generados automáticamente en: $testSourceDir")
+        println("✅ Box tests: ${'$'}{boxDir.listFiles()?.size ?: 0} archivos")
+        println("✅ Diagnostics tests: ${'$'}{diagnosticsDir.listFiles()?.size ?: 0} archivos")
     }
 }
 

@@ -2,7 +2,7 @@ package examples
 
 import dev.rubentxu.pipeline.dsl.pipeline
 import dev.rubentxu.pipeline.context.LocalPipelineContext
-import dev.rubentxu.pipeline.steps.annotations.*
+import dev.rubentxu.pipeline.annotations.*
 
 /**
  * Comprehensive examples demonstrating the new @Step system.

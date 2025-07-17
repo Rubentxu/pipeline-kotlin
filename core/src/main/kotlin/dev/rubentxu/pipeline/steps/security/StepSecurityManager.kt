@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.dsl.DslExecutionContext
 import dev.rubentxu.pipeline.dsl.DslIsolationLevel
 import dev.rubentxu.pipeline.logger.IPipelineLogger
 import dev.rubentxu.pipeline.security.SandboxManager
-import dev.rubentxu.pipeline.steps.annotations.StepMetadata
+import dev.rubentxu.pipeline.annotations.StepMetadata
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -54,15 +54,15 @@ class StepSecurityManager(
             logger.info("Starting secure execution of step '$stepName' (${stepMetadata.securityLevel})")
             
             return when (stepMetadata.securityLevel) {
-                dev.rubentxu.pipeline.steps.annotations.SecurityLevel.TRUSTED -> {
+                dev.rubentxu.pipeline.annotations.SecurityLevel.TRUSTED -> {
                     // Trusted steps run with minimal restrictions
                     executeTrusted(stepFunction, execution)
                 }
-                dev.rubentxu.pipeline.steps.annotations.SecurityLevel.RESTRICTED -> {
+                dev.rubentxu.pipeline.annotations.SecurityLevel.RESTRICTED -> {
                     // Restricted steps run with resource limits and monitoring
                     executeRestricted(stepFunction, execution, context)
                 }
-                dev.rubentxu.pipeline.steps.annotations.SecurityLevel.ISOLATED -> {
+                dev.rubentxu.pipeline.annotations.SecurityLevel.ISOLATED -> {
                     // Isolated steps run in maximum sandbox
                     executeIsolated(stepFunction, execution, context)
                 }
@@ -198,8 +198,8 @@ class StepSecurityManager(
         }
         
         // Check security level constraints
-        if (stepMetadata.securityLevel == dev.rubentxu.pipeline.steps.annotations.SecurityLevel.ISOLATED && 
-            stats.securityLevelDistribution[dev.rubentxu.pipeline.steps.annotations.SecurityLevel.ISOLATED] ?: 0 > 2) {
+        if (stepMetadata.securityLevel == dev.rubentxu.pipeline.annotations.SecurityLevel.ISOLATED && 
+            stats.securityLevelDistribution[dev.rubentxu.pipeline.annotations.SecurityLevel.ISOLATED] ?: 0 > 2) {
             errors.add("Too many isolated steps running concurrently")
         }
         
@@ -234,7 +234,7 @@ class StepSecurityManager(
 data class StepExecution(
     val id: String,
     val stepName: String,
-    val securityLevel: dev.rubentxu.pipeline.steps.annotations.SecurityLevel,
+    val securityLevel: dev.rubentxu.pipeline.annotations.SecurityLevel,
     val resourceLimits: ResourceLimits,
     val startTime: Long,
     var endTime: Long = 0L
@@ -247,7 +247,7 @@ data class StepExecutionStatistics(
     val activeExecutions: Int,
     val longestRunningExecution: Pair<String, Long>?,
     val totalMemoryUsage: Long,
-    val securityLevelDistribution: Map<dev.rubentxu.pipeline.steps.annotations.SecurityLevel, Int>
+    val securityLevelDistribution: Map<dev.rubentxu.pipeline.annotations.SecurityLevel, Int>
 )
 
 /**

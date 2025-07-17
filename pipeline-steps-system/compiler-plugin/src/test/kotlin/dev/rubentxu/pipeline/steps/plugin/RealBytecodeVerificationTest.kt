@@ -232,7 +232,7 @@ class RealBytecodeVerificationTest {
             """
             package test
             
-            import dev.rubentxu.pipeline.steps.annotations.Step
+            import dev.rubentxu.pipeline.annotations.Step
             import dev.rubentxu.pipeline.context.PipelineContext
             
             @Step(name = "processOrder", description = "Process complex order")
@@ -287,7 +287,7 @@ class RealBytecodeVerificationTest {
             """
             package test
             
-            import dev.rubentxu.pipeline.steps.annotations.Step
+            import dev.rubentxu.pipeline.annotations.Step
             import dev.rubentxu.pipeline.context.PipelineContext
             
             @Step(name = "processData", description = "Process some data")

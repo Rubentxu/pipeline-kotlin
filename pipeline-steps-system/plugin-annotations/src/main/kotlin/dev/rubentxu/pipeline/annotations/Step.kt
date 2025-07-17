@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.steps.annotations
+package dev.rubentxu.pipeline.annotations
 
 /**
  * Marks a function as a pipeline step that should have PipelineContext automatically injected.

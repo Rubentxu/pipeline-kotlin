@@ -45,7 +45,7 @@ class FunctionalCompilerTest {
         val stepFqName = StepIrTransformer.STEP_ANNOTATION_FQ_NAME
         val contextFqName = StepIrTransformer.PIPELINE_CONTEXT_FQ_NAME
         
-        assertEquals("dev.rubentxu.pipeline.steps.annotations.Step", stepFqName.asString())
+        assertEquals("dev.rubentxu.pipeline.annotations.Step", stepFqName.asString())
         assertEquals("dev.rubentxu.pipeline.context.PipelineContext", contextFqName.asString())
         
         // Verificar que los nombres están bien formateados
@@ -59,7 +59,7 @@ class FunctionalCompilerTest {
         val stepFqName = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.STEP_ANNOTATION_FQN
         val contextClassId = dev.rubentxu.pipeline.steps.plugin.fir.StepContextParameterExtension.PIPELINE_CONTEXT_CLASS_ID
         
-        assertEquals("dev.rubentxu.pipeline.steps.annotations.Step", stepFqName.asString())
+        assertEquals("dev.rubentxu.pipeline.annotations.Step", stepFqName.asString())
         assertEquals("dev.rubentxu.pipeline.context.PipelineContext", contextClassId.asFqNameString())
     }
 

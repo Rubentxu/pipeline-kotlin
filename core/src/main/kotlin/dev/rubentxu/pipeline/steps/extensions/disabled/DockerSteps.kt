@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.steps.extensions
 
 import dev.rubentxu.pipeline.context.PipelineContext
-import dev.rubentxu.pipeline.steps.annotations.Step
-import dev.rubentxu.pipeline.steps.annotations.StepCategory
-import dev.rubentxu.pipeline.steps.annotations.SecurityLevel
+import dev.rubentxu.pipeline.annotations.Step
+import dev.rubentxu.pipeline.annotations.StepCategory
+import dev.rubentxu.pipeline.annotations.SecurityLevel
 import dev.rubentxu.pipeline.steps.builtin.sh
 
 /**

@@ -1,6 +1,6 @@
 package examples
 
-import dev.rubentxu.pipeline.steps.annotations.*
+import dev.rubentxu.pipeline.annotations.*
 
 /**
  * Ejemplos modernos de funciones @Step que demuestran la inyección automática de pipelineContext.

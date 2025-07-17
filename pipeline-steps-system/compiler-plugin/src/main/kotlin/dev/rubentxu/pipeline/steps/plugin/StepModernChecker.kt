@@ -49,21 +49,38 @@ class StepFunctionChecker(mppKind: MppCheckerKind) : FirSimpleFunctionChecker(mp
         try {
             // Enhanced @Step annotation detection with fallback mechanisms
             val hasStepAnnotation = detectStepAnnotationWithFallbacks(declaration)
-            
             if (!hasStepAnnotation) {
                 return // Not a @Step function, skip validation
             }
-            
+
+            // === NUEVO: Validar argumentos requeridos en la anotación @Step ===
+            val stepAnnotation = declaration.annotations.find { annotation ->
+                annotation.annotationTypeRef.coneType.toString().contains("Step")
+            }
+            if (stepAnnotation != null) {
+                // Buscar argumentos requeridos
+                val requiredArgs = listOf("name", "description")
+                val presentArgs = stepAnnotation.argumentMapping?.mapping?.keys?.map { it.asString() } ?: emptyList()
+                val missingArgs = requiredArgs.filter { it !in presentArgs }
+                if (missingArgs.isNotEmpty()) {
+                    StructuredLogger.logWarning(
+                        operation = "step_annotation_argument_validation",
+                        message = "@Step annotation missing required arguments: ${missingArgs.joinToString()}",
+                        context = mapOf("function_name" to declaration.name.asString())
+                    )
+                    // Aquí se podría emitir un diagnóstico personalizado si se desea
+                }
+            }
+            // === FIN NUEVO ===
+
             StructuredLogger.logValidation(
                 functionName = declaration.name.asString(),
                 validationType = ValidationType.STEP_ANNOTATION,
                 success = true,
                 message = "@Step annotation detected successfully"
             )
-            
             // Perform comprehensive validation with error handling
             performValidationWithErrorHandling(declaration)
-            
         } catch (e: Exception) {
             // Graceful handling of validation errors
             handleValidationError(declaration, e)

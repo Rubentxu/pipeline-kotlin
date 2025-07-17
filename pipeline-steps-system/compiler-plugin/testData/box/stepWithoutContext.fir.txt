@@ -1,0 +1,7 @@
+FILE: stepWithoutContext.kt
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(stepWithoutContext), description = String(Test step without explicit PipelineContext - should be injected automatically), category = Q|dev/rubentxu/pipeline/annotations/StepCategory|.R|dev/rubentxu/pipeline/annotations/StepCategory.UTIL|) public final suspend fun stepWithoutContext(message: R|kotlin/String|): R|kotlin/String| {
+        ^stepWithoutContext <strcat>(String(OK: ), R|<local>/message|)
+    }
+    public final fun box(): R|kotlin/String| {
+        ^box String(OK)
+    }

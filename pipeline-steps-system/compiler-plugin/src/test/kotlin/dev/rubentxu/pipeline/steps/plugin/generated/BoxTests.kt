@@ -12,7 +12,7 @@ class BoxTests {
     fun `generate box tests`() = generateBoxTests()
     
     private fun generateBoxTests(): List<DynamicTest> {
-        val testDataPath = Path("testData/box")
+        val testDataPath = Path("pipeline-steps-system/compiler-plugin/testData/box")
         return testDataPath.listDirectoryEntries("*.kt")
             .map { testFile ->
                 DynamicTest.dynamicTest("Box test: ${testFile.name}") {

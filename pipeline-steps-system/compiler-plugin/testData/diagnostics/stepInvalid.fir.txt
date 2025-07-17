@@ -1,0 +1,4 @@
+FILE: stepInvalid.kt
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(), description = String()) public final fun invalidStep(): R|kotlin/Unit| {
+        R|kotlin/io/println|(String(This should cause diagnostic issues))
+    }

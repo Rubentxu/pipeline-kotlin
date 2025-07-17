@@ -1,0 +1,7 @@
+FILE: stepWithContext.kt
+    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(stepWithContext), description = String(Test step for context scenarios), category = Q|dev/rubentxu/pipeline/annotations/StepCategory|.R|dev/rubentxu/pipeline/annotations/StepCategory.BUILD|, securityLevel = Q|dev/rubentxu/pipeline/annotations/SecurityLevel|.R|dev/rubentxu/pipeline/annotations/SecurityLevel.RESTRICTED|) public final suspend fun stepWithContext(message: R|kotlin/String|): R|kotlin/String| {
+        ^stepWithContext <strcat>(String(OK: ), R|<local>/message|, String( with context))
+    }
+    public final fun box(): R|kotlin/String| {
+        ^box String(OK)
+    }

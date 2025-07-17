@@ -12,7 +12,7 @@ class DiagnosticsTests {
     fun `generate diagnostics tests`() = generateDiagnosticsTests()
     
     private fun generateDiagnosticsTests(): List<DynamicTest> {
-        val testDataPath = Path("testData/diagnostics")
+        val testDataPath = Path("pipeline-steps-system/compiler-plugin/testData/diagnostics")
         return testDataPath.listDirectoryEntries("*.kt")
             .map { testFile ->
                 DynamicTest.dynamicTest("Diagnostics test: ${testFile.name}") {

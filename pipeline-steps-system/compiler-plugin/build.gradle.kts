@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     id("maven-publish")
+    `java-test-fixtures`
+    idea
 }
 
 group = "dev.rubentxu.pipeline.steps-system"
@@ -10,16 +12,29 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    main {
+        java.setSrcDirs(listOf("src/main/kotlin"))
+        resources.setSrcDirs(listOf("src/main/resources"))
+    }
+    testFixtures {
+        java.setSrcDirs(listOf("test-fixtures"))
+    }
+    test {
+        java.setSrcDirs(listOf("src/test/kotlin", "test-gen"))
+        resources.setSrcDirs(listOf("testData"))
+    }
+}
+
+idea {
+    module.generatedSourceDirs.add(projectDir.resolve("test-gen"))
+}
+
+val annotationsRuntimeClasspath: Configuration by configurations.creating { isTransitive = false }
+
 dependencies {
     // Plugin annotations module for @Step and related annotations
     implementation(project(":pipeline-steps-system:plugin-annotations"))
-    
-    // Core project for LocalPipelineContext and runtime dependencies
-    // Using testImplementation to avoid GraalVM resolution issues in main compilation
-    testImplementation(project(":core"))
-    
-    // Also add core as compileOnly for compiler plugin to access classes during transformation
-    // compileOnly(project(":core")) // Removed to avoid circular dependency
     
     // Core K2 compiler dependencies for Kotlin 2.2+
     compileOnly(libs.kotlin.compiler.embeddable)
@@ -37,27 +52,47 @@ dependencies {
     implementation("org.ow2.asm:asm-util:9.6")
     implementation("org.ow2.asm:asm-commons:9.6")
     
-    // Testing dependencies WITHOUT IntelliJ Platform
-    testImplementation(libs.junit.jupiter)
-    testImplementation(libs.bundles.kotest)
-    testImplementation(libs.kotlin.compiler.embeddable)
-    testImplementation(libs.kotlin.test)
+    // Test fixtures for official Kotlin compiler test framework
+    testFixturesApi(libs.junit.jupiter)
+    testFixturesApi("org.jetbrains.kotlin:kotlin-compiler-internal-test-framework")
+    testFixturesApi("org.jetbrains.kotlin:kotlin-test-junit5")
+    testFixturesApi(libs.kotlin.compiler)
+
+    annotationsRuntimeClasspath(project(":pipeline-steps-system:plugin-annotations"))
     
-    // Testing approach focused on plugin functionality verification
+    // Dependencies required to run the internal test framework
+    testRuntimeOnly("junit:junit:4.13.2")
+    testRuntimeOnly(libs.kotlin.reflect)
+    testRuntimeOnly(libs.kotlin.test)
+    testRuntimeOnly("org.jetbrains.kotlin:kotlin-script-runtime")
+    testRuntimeOnly("org.jetbrains.kotlin:kotlin-annotations-jvm")
     
     // Coroutines for testing async steps
     testImplementation(libs.kotlinx.coroutines.core)
 }
 
 tasks.test {
+    dependsOn(annotationsRuntimeClasspath)
+
     useJUnitPlatform()
+    workingDir = rootDir
+
+    systemProperty("annotationsRuntime.classpath", annotationsRuntimeClasspath.asPath)
+
+    // Properties required to run the internal test framework.
+    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-stdlib", "kotlin-stdlib")
+    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-stdlib-jdk8", "kotlin-stdlib-jdk8")
+    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-reflect", "kotlin-reflect")
+    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-test", "kotlin-test")
+    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-script-runtime", "kotlin-script-runtime")
+    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-annotations-jvm", "kotlin-annotations-jvm")
+
+    systemProperty("idea.ignore.disabled.plugins", "true")
+    systemProperty("idea.home.path", rootDir)
     
     // Configure for K2 testing
     systemProperty("kotlin.compiler.version", libs.versions.kotlin.get())
     systemProperty("kotlin.test.supportsK2", "true")
-    
-    // Performance testing configuration
-    systemProperty("performance.tests", project.findProperty("runPerformanceTests") ?: "false")
     
     // More memory for compilation testing
     maxHeapSize = "2g"
@@ -68,11 +103,16 @@ tasks.test {
         showExceptions = true
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
-    
-    // Filter tests for CI vs local development
-    if (project.hasProperty("ci")) {
-        exclude("**/*PerformanceTest*")
-    }
+}
+
+fun Test.setLibraryProperty(propName: String, jarName: String) {
+    val path = project.configurations
+        .testRuntimeClasspath.get()
+        .files
+        .find { """$jarName-\d.*jar""".toRegex().matches(it.name) }
+        ?.absolutePath
+        ?: return
+    systemProperty(propName, path)
 }
 
 tasks.jar {
@@ -165,86 +205,18 @@ tasks.register("performanceTest", Test::class) {
     }
 }
 
-// Task para generar tests automáticamente desde testData
-tasks.register("generateTests") {
-    description = "Genera tests automáticamente desde testData/ siguiendo el patrón del template oficial"
-    group = "verification"
-    
-    doLast {
-        val testDataDir = file("testData")
-        val testSourceDir = file("src/test/kotlin/dev/rubentxu/pipeline/steps/plugin/generated")
-        
-        testSourceDir.mkdirs()
-        
-        // Generar tests para box/ (codegen tests)
-        val boxDir = file("$testDataDir/box")
-        if (boxDir.exists()) {
-            val boxTestFile = file("$testSourceDir/BoxTests.kt")
-            boxTestFile.writeText("""
-                package dev.rubentxu.pipeline.steps.plugin.generated
-                
-                import org.junit.jupiter.api.Test
-                import org.junit.jupiter.api.TestFactory
-                import org.junit.jupiter.api.DynamicTest
-                import kotlin.io.path.Path
-                import kotlin.io.path.listDirectoryEntries
-                import kotlin.io.path.name
-                
-                class BoxTests {
-                    @TestFactory
-                    fun `generate box tests`() = generateBoxTests()
-                    
-                    private fun generateBoxTests(): List<DynamicTest> {
-                        val testDataPath = Path("testData/box")
-                        return testDataPath.listDirectoryEntries("*.kt")
-                            .map { testFile ->
-                                DynamicTest.dynamicTest("Box test: ${'$'}{testFile.name}") {
-                                    // TODO: Implement actual compilation test
-                                    // For now, just verify the test file exists
-                                    assert(testFile.toFile().exists()) { "Test file should exist: ${'$'}{testFile.name}" }
-                                }
-                            }
-                    }
-                }
-            """.trimIndent())
-        }
-        
-        // Generar tests para diagnostics/ (diagnostic tests)
-        val diagnosticsDir = file("$testDataDir/diagnostics")
-        if (diagnosticsDir.exists()) {
-            val diagnosticsTestFile = file("$testSourceDir/DiagnosticsTests.kt")
-            diagnosticsTestFile.writeText("""
-                package dev.rubentxu.pipeline.steps.plugin.generated
-                
-                import org.junit.jupiter.api.Test
-                import org.junit.jupiter.api.TestFactory
-                import org.junit.jupiter.api.DynamicTest
-                import kotlin.io.path.Path
-                import kotlin.io.path.listDirectoryEntries
-                import kotlin.io.path.name
-                
-                class DiagnosticsTests {
-                    @TestFactory
-                    fun `generate diagnostics tests`() = generateDiagnosticsTests()
-                    
-                    private fun generateDiagnosticsTests(): List<DynamicTest> {
-                        val testDataPath = Path("testData/diagnostics")
-                        return testDataPath.listDirectoryEntries("*.kt")
-                            .map { testFile ->
-                                DynamicTest.dynamicTest("Diagnostics test: ${'$'}{testFile.name}") {
-                                    // TODO: Implement actual diagnostic test
-                                    // For now, just verify the test file exists
-                                    assert(testFile.toFile().exists()) { "Test file should exist: ${'$'}{testFile.name}" }
-                                }
-                            }
-                    }
-                }
-            """.trimIndent())
-        }
-        
-        println("✅ Tests generados automáticamente en: $testSourceDir")
-        println("✅ Box tests: ${'$'}{boxDir.listFiles()?.size ?: 0} archivos")
-        println("✅ Diagnostics tests: ${'$'}{diagnosticsDir.listFiles()?.size ?: 0} archivos")
-    }
+val generateTests by tasks.registering(JavaExec::class) {
+    inputs.dir(layout.projectDirectory.dir("testData"))
+        .withPropertyName("testData")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(layout.projectDirectory.dir("test-gen"))
+        .withPropertyName("generatedTests")
+
+    classpath = sourceSets.testFixtures.get().runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.steps.plugin.GenerateTestsKt")
+    workingDir = rootDir
 }
 
+tasks.compileTestKotlin {
+    dependsOn(generateTests)
+}

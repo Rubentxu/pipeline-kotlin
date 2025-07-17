@@ -1,0 +1,5 @@
+FILE: stepAnnotationMissing.kt
+    @R|dev/rubentxu/pipeline/annotations/Step|() public final fun invalidStep(): R|kotlin/Unit| {
+    }
+    public final fun validStep(): R|kotlin/Unit| {
+    }

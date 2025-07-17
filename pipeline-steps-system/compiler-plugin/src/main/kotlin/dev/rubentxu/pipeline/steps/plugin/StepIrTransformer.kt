@@ -25,7 +25,7 @@ import org.jetbrains.kotlin.name.Name
  * Stable IR transformer that performs @Step function transformation using stable APIs.
  * This implementation adds PipelineContext parameter and transforms call sites properly.
  */
-class StepIrTransformerStable : IrGenerationExtension {
+class StepIrTransformer : IrGenerationExtension {
 
     companion object {
         val STEP_ANNOTATION_FQ_NAME = FqName("dev.rubentxu.pipeline.annotations.Step")

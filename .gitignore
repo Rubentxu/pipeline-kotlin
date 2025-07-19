@@ -8,6 +8,7 @@ gradle
 gradlew
 gradlew.bat
 .kotlin/
+docs/repomix.md
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
@@ -52,3 +53,6 @@ pipeline-kts
 CLAUDE.md
 /.windsurfrules
 .aider*
+
+### Generated test files ###
+**/test-gen/

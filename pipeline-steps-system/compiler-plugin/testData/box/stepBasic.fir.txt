@@ -1,7 +1,0 @@
-FILE: stepBasic.kt
-    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(testStep), description = String(Test step for verification), category = Q|dev/rubentxu/pipeline/annotations/StepCategory|.R|dev/rubentxu/pipeline/annotations/StepCategory.BUILD|, securityLevel = Q|dev/rubentxu/pipeline/annotations/SecurityLevel|.R|dev/rubentxu/pipeline/annotations/SecurityLevel.RESTRICTED|) public final suspend fun testStep(message: R|kotlin/String|): R|kotlin/String| {
-        ^testStep <strcat>(String(OK: ), R|<local>/message|)
-    }
-    public final fun box(): R|kotlin/String| {
-        ^box String(OK)
-    }

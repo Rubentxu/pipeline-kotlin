@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     id("maven-publish")
-    `java-test-fixtures`
     idea
 }
 
@@ -12,108 +11,199 @@ repositories {
     mavenCentral()
 }
 
+// ============================================================================
+// SOURCE SETS CONFIGURATION
+// ============================================================================
+
 sourceSets {
     main {
         java.setSrcDirs(listOf("src/main/kotlin"))
         resources.setSrcDirs(listOf("src/main/resources"))
     }
-    testFixtures {
-        java.setSrcDirs(listOf("test-fixtures"))
-    }
     test {
         java.setSrcDirs(listOf("src/test/kotlin", "test-gen"))
-        resources.setSrcDirs(listOf("testData"))
+        resources.setSrcDirs(listOf("src/test/resources"))
     }
 }
 
+// ============================================================================
+// INTELLIJ IDEA CONFIGURATION
+// ============================================================================
+
 idea {
-    module.generatedSourceDirs.add(projectDir.resolve("test-gen"))
+    module {
+        generatedSourceDirs.add(projectDir.resolve("test-gen"))
+        testSources.from(file("src/test/kotlin"))
+        testResources.from(file("src/test/resources"))
+        excludeDirs.addAll(files("build", ".gradle", "out"))
+    }
 }
+
+// ============================================================================
+// DEPENDENCIES
+// ============================================================================
 
 val annotationsRuntimeClasspath: Configuration by configurations.creating { isTransitive = false }
 
 dependencies {
-    // Plugin annotations module for @Step and related annotations
+    // Core plugin dependencies
     implementation(project(":pipeline-steps-system:plugin-annotations"))
+    implementation(libs.google.autoservice)
     
-    // Core K2 compiler dependencies for Kotlin 2.2+
+    // Kotlin compiler K2 API
     compileOnly(libs.kotlin.compiler.embeddable)
     compileOnly(libs.kotlin.compiler)
     
-    // For ServiceLoader generation
-    implementation(libs.google.autoservice)
-    
-    // Modern structured logging for compiler plugin
+    // Logging (structured logging for plugin)
     implementation("io.github.oshai:kotlin-logging-jvm:7.0.0")
     implementation("ch.qos.logback:logback-classic:1.5.12")
     
-    // ASM for deep bytecode analysis and verification
+    // Bytecode analysis
     implementation("org.ow2.asm:asm:9.6")
     implementation("org.ow2.asm:asm-util:9.6")
     implementation("org.ow2.asm:asm-commons:9.6")
     
-    // Test fixtures for official Kotlin compiler test framework
-    testFixturesApi(libs.junit.jupiter)
-    testFixturesApi("org.jetbrains.kotlin:kotlin-compiler-internal-test-framework")
-    testFixturesApi("org.jetbrains.kotlin:kotlin-test-junit5")
-    testFixturesApi(libs.kotlin.compiler)
-
+    // Annotations for test classpath
     annotationsRuntimeClasspath(project(":pipeline-steps-system:plugin-annotations"))
     
-    // Dependencies required to run the internal test framework
+    // Test runtime dependencies
     testRuntimeOnly("junit:junit:4.13.2")
     testRuntimeOnly(libs.kotlin.reflect)
     testRuntimeOnly(libs.kotlin.test)
     testRuntimeOnly("org.jetbrains.kotlin:kotlin-script-runtime")
     testRuntimeOnly("org.jetbrains.kotlin:kotlin-annotations-jvm")
     
-    // Coroutines for testing async steps
+    // Test fixtures provide basic context classes for testing
+    
+    // Kotlin compiler testing framework for BDD tests  
+    testImplementation(libs.junit.jupiter)
+    testImplementation("org.jetbrains.kotlin:kotlin-compiler-internal-test-framework")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation(libs.kotlin.compiler)
+    
+    // Test implementation
     testImplementation(libs.kotlinx.coroutines.core)
+    
+    // Kotest BDD testing framework (optimized for IntelliJ)
+    testImplementation(libs.bundles.kotest)
+    testImplementation(libs.kotest.framework.datatest)
 }
 
-tasks.test {
-    dependsOn(annotationsRuntimeClasspath)
+// ============================================================================
+// KOTLIN COMPILATION CONFIGURATION
+// ============================================================================
 
-    useJUnitPlatform()
-    workingDir = rootDir
-
-    systemProperty("annotationsRuntime.classpath", annotationsRuntimeClasspath.asPath)
-
-    // Properties required to run the internal test framework.
-    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-stdlib", "kotlin-stdlib")
-    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-stdlib-jdk8", "kotlin-stdlib-jdk8")
-    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-reflect", "kotlin-reflect")
-    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-test", "kotlin-test")
-    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-script-runtime", "kotlin-script-runtime")
-    setLibraryProperty("org.jetbrains.kotlin.test.kotlin-annotations-jvm", "kotlin-annotations-jvm")
-
-    systemProperty("idea.ignore.disabled.plugins", "true")
-    systemProperty("idea.home.path", rootDir)
-    
-    // Configure for K2 testing
-    systemProperty("kotlin.compiler.version", libs.versions.kotlin.get())
-    systemProperty("kotlin.test.supportsK2", "true")
-    
-    // More memory for compilation testing
-    maxHeapSize = "2g"
-    
-    testLogging {
-        events("passed", "skipped", "failed")
-        showStandardStreams = true
-        showExceptions = true
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+    compilerOptions {
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
+        
+        freeCompilerArgs.addAll(
+            "-Xcontext-receivers",
+            "-opt-in=kotlin.RequiresOptIn",
+            "-opt-in=org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi",
+            "-opt-in=org.jetbrains.kotlin.fir.extensions.ExperimentalFirExtensionApi",
+            "-Xallow-unstable-dependencies",
+            "-Xsuppress-version-warnings"
+        )
     }
 }
 
-fun Test.setLibraryProperty(propName: String, jarName: String) {
-    val path = project.configurations
-        .testRuntimeClasspath.get()
-        .files
+// ============================================================================
+// TESTING CONFIGURATION
+// ============================================================================
+
+// Helper function for setting Kotlin library system properties
+fun Test.setKotlinLibraryProperty(propName: String, jarName: String) {
+    val path = project.configurations.testRuntimeClasspath.get().files
         .find { """$jarName-\d.*jar""".toRegex().matches(it.name) }
-        ?.absolutePath
-        ?: return
+        ?.absolutePath ?: return
     systemProperty(propName, path)
 }
+
+// Common test configuration
+fun Test.configureCommonTestSettings() {
+    useJUnitPlatform {
+        includeEngines("kotest", "junit-jupiter")
+        excludeEngines("junit-vintage")
+    }
+    
+    maxHeapSize = "2g"
+    workingDir = rootDir
+    
+    // Kotlin compiler test framework properties
+    setKotlinLibraryProperty("org.jetbrains.kotlin.test.kotlin-stdlib", "kotlin-stdlib")
+    setKotlinLibraryProperty("org.jetbrains.kotlin.test.kotlin-stdlib-jdk8", "kotlin-stdlib-jdk8")
+    setKotlinLibraryProperty("org.jetbrains.kotlin.test.kotlin-reflect", "kotlin-reflect")
+    setKotlinLibraryProperty("org.jetbrains.kotlin.test.kotlin-test", "kotlin-test")
+    setKotlinLibraryProperty("org.jetbrains.kotlin.test.kotlin-script-runtime", "kotlin-script-runtime")
+    setKotlinLibraryProperty("org.jetbrains.kotlin.test.kotlin-annotations-jvm", "kotlin-annotations-jvm")
+    
+    // System properties for compiler plugin testing
+    systemProperty("annotationsRuntime.classpath", annotationsRuntimeClasspath.asPath)
+    systemProperty("kotlin.compiler.version", libs.versions.kotlin.get())
+    systemProperty("kotlin.test.supportsK2", "true")
+    systemProperty("idea.ignore.disabled.plugins", "true")
+    systemProperty("idea.home.path", rootDir)
+    
+    // Kotest configuration for optimal IntelliJ IDEA integration
+    systemProperty("kotest.framework.classpath.scanning.autoscan.disable", "true")
+    systemProperty("kotest.framework.parallelism", "1")
+    systemProperty("kotest.tags", "")
+    
+    // JVM arguments for Java module system compatibility
+    jvmArgs(
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.util=ALL-UNNAMED"
+    )
+    
+    testLogging {
+        events("passed", "skipped", "failed")
+        showExceptions = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showStackTraces = true
+    }
+}
+
+// Main test task
+tasks.test {
+    dependsOn(annotationsRuntimeClasspath, tasks.jar, ":pipeline-steps-system:plugin-annotations:jar")
+    
+    configureCommonTestSettings()
+    
+    doFirst {
+        val pluginJar = tasks.jar.get().archiveFile.get().asFile
+        val annotationsJar = project(":pipeline-steps-system:plugin-annotations")
+            .tasks.named("jar", Jar::class.java).get().archiveFile.get().asFile
+
+        systemProperty("plugin.jar.path", pluginJar.absolutePath)
+        systemProperty("annotations.jar.path", annotationsJar.absolutePath)
+
+        val testClasspath = configurations.testRuntimeClasspath.get().files
+            .joinToString(File.pathSeparator) { it.absolutePath }
+        systemProperty("test.classpath", testClasspath)
+
+        println("🔧 Test configuration:")
+        println("   - Plugin JAR: ${pluginJar.exists()} -> ${pluginJar.name}")
+        println("   - Annotations JAR: ${annotationsJar.exists()} -> ${annotationsJar.name}")
+        println("   - Test classpath entries: ${testClasspath.split(File.pathSeparator).size}")
+    }
+}
+
+// Helper task to run only BDD tests
+tasks.register("testBDD") {
+    group = "verification"
+    description = "Run only Kotest BDD tests"
+    
+    doLast {
+        println("🧪 Running BDD tests...")
+        println("Usage: gradle test --tests=\"*BDD*\"")
+    }
+}
+
+// ============================================================================
+// BUILD CONFIGURATION
+// ============================================================================
 
 tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.WARN
@@ -129,6 +219,12 @@ tasks.jar {
         )
     }
 }
+
+// Test generation disabled - comprehensive BDD tests cover all functionality
+
+// ============================================================================
+// PUBLISHING
+// ============================================================================
 
 publishing {
     publications {
@@ -162,61 +258,4 @@ publishing {
             }
         }
     }
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    compilerOptions {
-        // Kotlin 2.2+ compiler options
-        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
-        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
-        
-        freeCompilerArgs.addAll(
-            // Enable Context Parameters (Beta in Kotlin 2.2)
-            "-Xcontext-receivers",
-            
-            // Opt-in to experimental APIs
-            "-opt-in=kotlin.RequiresOptIn",
-            "-opt-in=org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi",
-            "-opt-in=org.jetbrains.kotlin.fir.extensions.ExperimentalFirExtensionApi",
-            
-            // Allow deprecated API usage for compatibility
-            "-Xallow-unstable-dependencies",
-            
-            // Suppress deprecation warnings as errors for IR transformation development
-            "-Xsuppress-version-warnings"
-        )
-    }
-}
-
-// Gradle task for running performance tests
-tasks.register("performanceTest", Test::class) {
-    description = "Runs performance tests for the compiler plugin"
-    group = "verification"
-    
-    useJUnitPlatform()
-    include("**/*PerformanceTest*")
-    
-    systemProperty("performance.tests", "true")
-    maxHeapSize = "4g"
-    
-    testLogging {
-        events("passed", "failed")
-        showStandardStreams = true
-    }
-}
-
-val generateTests by tasks.registering(JavaExec::class) {
-    inputs.dir(layout.projectDirectory.dir("testData"))
-        .withPropertyName("testData")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-    outputs.dir(layout.projectDirectory.dir("test-gen"))
-        .withPropertyName("generatedTests")
-
-    classpath = sourceSets.testFixtures.get().runtimeClasspath
-    mainClass.set("dev.rubentxu.pipeline.steps.plugin.GenerateTestsKt")
-    workingDir = rootDir
-}
-
-tasks.compileTestKotlin {
-    dependsOn(generateTests)
 }

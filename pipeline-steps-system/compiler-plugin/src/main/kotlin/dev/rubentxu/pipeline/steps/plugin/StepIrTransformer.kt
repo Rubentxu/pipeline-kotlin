@@ -39,7 +39,7 @@ class StepIrTransformer : IrGenerationExtension {
 
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         println("========================================")
-        println("StepIrTransformerStable: Starting transformation for module: ${moduleFragment.name}")
+        println("StepIrTransformerStable: Starting transformation for module: ${moduleFragment.descriptor.name.asString()}")
         println("========================================")
 
         // Get required class symbols

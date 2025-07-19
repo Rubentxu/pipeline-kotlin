@@ -39,7 +39,20 @@ dependencies {
 }
 
 application {
-    mainClass.set("dev.rubentxu.pipeline.cli.MainKt")
+    mainClass.set("dev.rubentxu.pipeline.cli.PipelineCli")
+}
+
+distributions {
+    main {
+        distributionBaseName.set("pipeline-cli")
+        contents {
+            from("README.md")
+            into("bin") {
+                from("src/main/resources/run.sh")
+
+            }
+        }
+    }
 }
 
 java {

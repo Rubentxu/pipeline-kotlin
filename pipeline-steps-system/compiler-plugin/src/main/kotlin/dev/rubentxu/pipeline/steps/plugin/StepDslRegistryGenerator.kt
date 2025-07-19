@@ -37,7 +37,7 @@ class StepDslRegistryGenerator : IrGenerationExtension {
         StructuredLogger.measureAndLog("dsl_generation_complete") {
             StructuredLogger.logPluginEvent(
                 PluginEvent.DSL_GENERATION_STARTED, mapOf(
-                    "module" to moduleFragment.name.asString()
+                    "module" to moduleFragment.descriptor.name.asString()
                 )
             )
             val stepFunctions = mutableListOf<IrSimpleFunction>()
@@ -54,7 +54,7 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             }
             StructuredLogger.logPluginEvent(
                 PluginEvent.DSL_GENERATION_COMPLETED, mapOf(
-                    "module" to moduleFragment.name.asString(),
+                    "module" to moduleFragment.descriptor.name.asString(),
                     "processed_functions" to stepFunctions.size
                 )
             )

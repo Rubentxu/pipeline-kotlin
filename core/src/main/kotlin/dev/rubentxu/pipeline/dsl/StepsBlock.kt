@@ -112,75 +112,7 @@ open class StepsBlock(val pipeline: Pipeline) : StepExecutionScope {
         }
     }
     
-    /**
-     * Print message to logs (bridges to @Step function)
-     */
-    open fun echo(message: String) {
-        require(message.isNotBlank()) { "Message cannot be blank" }
-        
-        logger.info("+ echo")
-        logger.info(message)
-    }
-    
-    /**
-     * Read file content (bridges to @Step function)
-     */
-    open suspend fun readFile(file: String): String {
-        require(file.isNotBlank()) { "File path cannot be blank" }
-        return pipelineContext.readFile(file)
-    }
-    
-    /**
-     * Write file content (bridges to @Step function)
-     */
-    open suspend fun writeFile(file: String, text: String) {
-        require(file.isNotBlank()) { "File path cannot be blank" }
-        pipelineContext.writeFile(file, text)
-    }
-    
-    /**
-     * Check if file exists (bridges to @Step function)
-     */
-    open suspend fun fileExists(file: String): Boolean {
-        require(file.isNotBlank()) { "File path cannot be blank" }
-        return pipelineContext.fileExists(file)
-    }
-    
-    /**
-     * Sleep for specified time (bridges to @Step function)
-     */
-    open suspend fun sleep(timeMillis: Long) {
-        require(timeMillis >= 0) { "Delay time must be non-negative" }
-        logger.info("+ sleep ${timeMillis}ms")
-        kotlinx.coroutines.delay(timeMillis)
-    }
-    
-    /**
-     * Retry operation with backoff (bridges to @Step function)
-     */
-    suspend fun retry(maxRetries: Int, block: suspend () -> Any): Any {
-        require(maxRetries > 0) { "Max retries must be positive" }
-        
-        var currentRetry = 0
-        var lastError: Throwable? = null
-        var backoffMs = 1000L
 
-        while (currentRetry < maxRetries) {
-            try {
-                return block()
-            } catch (e: Throwable) {
-                lastError = e
-                currentRetry++
-                if (currentRetry >= maxRetries) {
-                    break
-                }
-                logger.info("Attempt $currentRetry/$maxRetries failed, retrying in ${backoffMs}ms...")
-                kotlinx.coroutines.delay(backoffMs)
-                backoffMs = (backoffMs * 1.5).toLong().coerceAtMost(30000L) // Cap at 30 seconds
-            }
-        }
-        throw Exception("Operation failed after $maxRetries attempts.", lastError)
-    }
     
     /**
      * Execute any registered step by name with configuration
@@ -232,3 +164,76 @@ open class StepsBlock(val pipeline: Pipeline) : StepExecutionScope {
 fun StepsBlock.error(message: String) {
     throw RuntimeException(message)
 }
+//
+///**
+// * Print message to logs (bridges to @Step function)
+// */
+//@Step(
+//
+//)
+//fun echo(message: String) {
+//    require(message.isNotBlank()) { "Message cannot be blank" }
+//
+//    logger.info("+ echo")
+//    logger.info(message)
+//}
+//
+///**
+// * Read file content (bridges to @Step function)
+// */
+//open suspend fun readFile(file: String): String {
+//    require(file.isNotBlank()) { "File path cannot be blank" }
+//    return pipelineContext.readFile(file)
+//}
+//
+///**
+// * Write file content (bridges to @Step function)
+// */
+//open suspend fun writeFile(file: String, text: String) {
+//    require(file.isNotBlank()) { "File path cannot be blank" }
+//    pipelineContext.writeFile(file, text)
+//}
+//
+///**
+// * Check if file exists (bridges to @Step function)
+// */
+//open suspend fun fileExists(file: String): Boolean {
+//    require(file.isNotBlank()) { "File path cannot be blank" }
+//    return pipelineContext.fileExists(file)
+//}
+//
+///**
+// * Sleep for specified time (bridges to @Step function)
+// */
+//open suspend fun sleep(timeMillis: Long) {
+//    require(timeMillis >= 0) { "Delay time must be non-negative" }
+//    logger.info("+ sleep ${timeMillis}ms")
+//    kotlinx.coroutines.delay(timeMillis)
+//}
+//
+///**
+// * Retry operation with backoff (bridges to @Step function)
+// */
+//suspend fun retry(maxRetries: Int, block: suspend () -> Any): Any {
+//    require(maxRetries > 0) { "Max retries must be positive" }
+//
+//    var currentRetry = 0
+//    var lastError: Throwable? = null
+//    var backoffMs = 1000L
+//
+//    while (currentRetry < maxRetries) {
+//        try {
+//            return block()
+//        } catch (e: Throwable) {
+//            lastError = e
+//            currentRetry++
+//            if (currentRetry >= maxRetries) {
+//                break
+//            }
+//            logger.info("Attempt $currentRetry/$maxRetries failed, retrying in ${backoffMs}ms...")
+//            kotlinx.coroutines.delay(backoffMs)
+//            backoffMs = (backoffMs * 1.5).toLong().coerceAtMost(30000L) // Cap at 30 seconds
+//        }
+//    }
+//    throw Exception("Operation failed after $maxRetries attempts.", lastError)
+//}

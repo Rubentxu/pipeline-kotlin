@@ -1,5 +1,0 @@
-FILE: simple.kt
-    @R|dev/rubentxu/pipeline/annotations/Step|(name = String(simpleTest), description = String(Simple test step)) public final fun test(): R|kotlin/Unit| {
-        lval s: R|kotlin/String| = String(hello)
-        R|kotlin/io/println|(R|<local>/s|)
-    }

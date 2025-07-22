@@ -12,8 +12,8 @@ dependencies {
     // Plugin annotations for @Step and related annotations
     implementation(project(":pipeline-steps-system:plugin-annotations"))
     
-    // Compiler plugin for @Step transformation
-    kotlinCompilerPluginClasspath(project(":pipeline-steps-system:compiler-plugin"))
+    // Compiler plugin for @Step transformation (temporarily disabled due to IR errors)
+    // kotlinCompilerPluginClasspath(project(":pipeline-steps-system:compiler-plugin"))
 
     implementation(libs.snakeyaml)
     implementation(libs.kotlin.serialization)
@@ -50,7 +50,7 @@ tasks {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         }
         exclude("**/disabled/**")
-        dependsOn(":pipeline-steps-system:compiler-plugin:jar")
+        // dependsOn(":pipeline-steps-system:compiler-plugin:jar")
     }
     compileTestKotlin {
         compilerOptions {

@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.builders.irCall
+import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
@@ -89,6 +90,10 @@ class StepIrTransformer : IrGenerationExtension {
         val callTransformer =
             StepCallSiteTransformer(pluginContext, stepFunctions, localPipelineContextSymbol, currentProperty.getter!!)
         moduleFragment.transform(callTransformer, null)
+
+        // Phase 4: Transform LocalPipelineContext.current calls within @Step function bodies
+        val bodyTransformer = StepBodyTransformer(pluginContext, stepFunctions, localPipelineContextSymbol, currentProperty.getter!!)
+        moduleFragment.transform(bodyTransformer, null)
 
         println("✅ StepIrTransformerStable: Transformation complete")
         println("========================================")
@@ -297,6 +302,77 @@ class StepIrTransformer : IrGenerationExtension {
             }
 
             return transformedCall
+        }
+    }
+
+    /**
+     * Transforms LocalPipelineContext.current calls within @Step function bodies
+     * to use the injected pipelineContext parameter directly
+     */
+    private class StepBodyTransformer(
+        private val pluginContext: IrPluginContext,
+        private val stepFunctions: Set<IrSimpleFunctionSymbol>,
+        private val localPipelineContextSymbol: IrClassSymbol,
+        private val currentGetter: IrSimpleFunction
+    ) : IrElementTransformerVoid() {
+
+        private var currentStepFunction: IrSimpleFunction? = null
+
+        override fun visitSimpleFunction(declaration: IrSimpleFunction): IrSimpleFunction {
+            val previousFunction = currentStepFunction
+            
+            if (declaration.hasStepAnnotation()) {
+                println("🔧 Transforming body of @Step function: ${declaration.name}")
+                currentStepFunction = declaration
+            }
+            
+            val result = super.visitSimpleFunction(declaration) as IrSimpleFunction
+            currentStepFunction = previousFunction
+            return result
+        }
+
+        override fun visitCall(expression: IrCall): IrExpression {
+            val transformedCall = super.visitCall(expression) as IrCall
+            
+            // Only transform calls within @Step function bodies
+            if (currentStepFunction != null && isLocalPipelineContextCurrentCall(transformedCall)) {
+                println("🔧 Replacing LocalPipelineContext.current with pipelineContext parameter in ${currentStepFunction!!.name}")
+                
+                // Find the pipelineContext parameter in the current @Step function
+                val pipelineContextParam = currentStepFunction!!.parameters.find { param ->
+                    param.name.asString() == "pipelineContext" && 
+                    param.type.getClass()?.kotlinFqName == PIPELINE_CONTEXT_FQ_NAME
+                }
+                
+                if (pipelineContextParam != null) {
+                    // Create a parameter reference to replace the LocalPipelineContext.current call
+                    val irBuilder = DeclarationIrBuilder(
+                        pluginContext,
+                        currentStepFunction!!.symbol,
+                        expression.startOffset,
+                        expression.endOffset
+                    )
+                    
+                    val paramRef = irBuilder.irGet(pipelineContextParam)
+                    println("✅ Successfully replaced LocalPipelineContext.current with pipelineContext parameter")
+                    return paramRef
+                } else {
+                    println("❌ Could not find pipelineContext parameter in ${currentStepFunction!!.name}")
+                }
+            }
+            
+            return transformedCall
+        }
+
+        private fun isLocalPipelineContextCurrentCall(call: IrCall): Boolean {
+            return call.symbol == currentGetter.symbol &&
+                   call.dispatchReceiver == null // Static call to LocalPipelineContext.current
+        }
+
+        private fun IrFunction.hasStepAnnotation(): Boolean {
+            return annotations.any { annotation ->
+                annotation.type.getClass()?.kotlinFqName == STEP_ANNOTATION_FQ_NAME
+            }
         }
     }
 }

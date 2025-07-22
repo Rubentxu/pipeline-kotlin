@@ -46,8 +46,6 @@ idea {
 val annotationsRuntimeClasspath: Configuration by configurations.creating { isTransitive = false }
 
 dependencies {
-    // Core plugin dependencies
-    implementation(project(":pipeline-steps-system:plugin-annotations"))
     implementation(libs.google.autoservice)
     
     // Kotlin compiler K2 API
@@ -64,7 +62,7 @@ dependencies {
     implementation("org.ow2.asm:asm-commons:9.6")
     
     // Annotations for test classpath
-    annotationsRuntimeClasspath(project(":pipeline-steps-system:plugin-annotations"))
+    annotationsRuntimeClasspath(project(":core"))
     
     // Test runtime dependencies
     testRuntimeOnly("junit:junit:4.13.2")
@@ -82,6 +80,7 @@ dependencies {
     testImplementation(libs.kotlin.compiler)
     
     // Test implementation
+    testImplementation(project(":core"))
     testImplementation(libs.kotlinx.coroutines.core)
     
     // Kotest BDD testing framework (optimized for IntelliJ)
@@ -167,13 +166,13 @@ fun Test.configureCommonTestSettings() {
 
 // Main test task
 tasks.test {
-    dependsOn(annotationsRuntimeClasspath, tasks.jar, ":pipeline-steps-system:plugin-annotations:jar")
+    dependsOn(annotationsRuntimeClasspath, tasks.jar, ":core:jar")
     
     configureCommonTestSettings()
     
     doFirst {
         val pluginJar = tasks.jar.get().archiveFile.get().asFile
-        val annotationsJar = project(":pipeline-steps-system:plugin-annotations")
+        val annotationsJar = project(":core")
             .tasks.named("jar", Jar::class.java).get().archiveFile.get().asFile
 
         systemProperty("plugin.jar.path", pluginJar.absolutePath)

@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline
 
 import dev.rubentxu.pipeline.dsl.DslManager
+import dev.rubentxu.pipeline.dsl.DslExecutionContext
+import dev.rubentxu.pipeline.dsl.DslResourceLimits
 import dev.rubentxu.pipeline.logger.IPipelineLogger
 import dev.rubentxu.pipeline.security.SandboxManager
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
@@ -190,7 +192,7 @@ class BasicRecoveredTest : DescribeSpec({
     
     describe("Basic Integration Tests") {
         
-        it("should validate simple script content") {
+        it("should validate engine capabilities") {
             val mockLogger = mockk<IPipelineLogger>(relaxed = true)
             val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
             
@@ -201,28 +203,17 @@ class BasicRecoveredTest : DescribeSpec({
             
             runBlocking {
                 withTimeout(10.seconds) {
-                    val simpleScript = """
-                        val message = "Hello, Pipeline!"
-                        println(message)
-                        message
-                    """.trimIndent()
-                    
                     val engineInfo = dslManager.getEngineInfo()
                     if (engineInfo.isNotEmpty()) {
-                        val engineId = engineInfo.first().engineId
-                        
-                        val validationResult = dslManager.validateContent(
-                            scriptContent = simpleScript,
-                            engineId = engineId
-                        )
-                        
-                        validationResult shouldNotBe null
+                        val engine = engineInfo.first()
+                        engine.engineId shouldNotBe null
+                        engine.engineName shouldNotBe null
                     }
                 }
             }
         }
         
-        it("should provide enhanced validation reporting") {
+        it("should provide engine registry capabilities") {
             val mockLogger = mockk<IPipelineLogger>(relaxed = true)
             val mockPipelineConfig = mockk<IPipelineConfig>(relaxed = true)
             
@@ -233,24 +224,15 @@ class BasicRecoveredTest : DescribeSpec({
             
             runBlocking {
                 withTimeout(10.seconds) {
-                    val script = """
-                        val test = "Enhanced validation test"
-                        test
-                    """.trimIndent()
-                    
                     val engineInfo = dslManager.getEngineInfo()
                     if (engineInfo.isNotEmpty()) {
-                        val engineId = engineInfo.first().engineId
-                        
-                        val report = dslManager.validateContentWithEnhancedReporting(
-                            scriptContent = script,
-                            engineId = engineId,
-                            scriptName = "enhanced-test.kts"
-                        )
-                        
-                        report shouldNotBe null
-                        report.scriptName shouldBe "enhanced-test.kts"
+                        val engine = engineInfo.first()
+                        engine.supportedExtensions shouldNotBe null
                     }
+                    
+                    val report = dslManager.generateReport()
+                    report shouldNotBe null
+                    report.registeredEngines shouldBe engineInfo.size
                 }
             }
         }

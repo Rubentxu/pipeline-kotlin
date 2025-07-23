@@ -2,8 +2,7 @@ package dev.rubentxu.pipeline.dsl
 
 import dev.rubentxu.pipeline.compilation.ScriptCompilationCache
 import dev.rubentxu.pipeline.events.EventBus
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import kotlinx.coroutines.flow.Flow
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import java.io.File
 import kotlin.script.experimental.api.*
 
@@ -352,7 +351,7 @@ interface DslEngineRegistry {
  * Base execution context that provides common services to all DSL engines.
  */
 interface ExecutionContext {
-    val logger: IPipelineLogger
+    val logger: ILogger
     val eventBus: EventBus
     val compilationCache: ScriptCompilationCache
     val workingDirectory: File

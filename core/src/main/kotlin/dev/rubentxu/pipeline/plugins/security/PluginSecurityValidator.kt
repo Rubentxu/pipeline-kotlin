@@ -1,14 +1,12 @@
 package dev.rubentxu.pipeline.plugins.security
 
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.plugins.PluginMetadata
 import java.io.File
-import java.net.URL
 import java.security.MessageDigest
 import java.security.cert.Certificate
 import java.util.jar.JarFile
 import java.util.jar.Manifest
-import kotlin.reflect.KClass
 
 /**
  * Security validator for plugins that ensures plugins are safe to load and execute.
@@ -16,7 +14,7 @@ import kotlin.reflect.KClass
  * plugin metadata for potential security issues.
  */
 class PluginSecurityValidator(
-    private val logger: IPipelineLogger,
+    private val logger: ILogger,
     private val securityPolicy: PluginSecurityPolicy = PluginSecurityPolicy.DEFAULT
 ) {
     

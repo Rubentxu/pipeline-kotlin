@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.dsl.engines
 import dev.rubentxu.pipeline.compilation.CachedScriptEngine
 import dev.rubentxu.pipeline.compilation.ScriptCompilationCacheFactory
 import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,7 +42,7 @@ class GenericKotlinDslEngine(
         DslCapability.COMPILATION_CACHING,
         DslCapability.SYNTAX_VALIDATION
     ),
-    private val logger: IPipelineLogger = PipelineLogger.getLogger(),
+    private val logger: ILogger = PipelineLogger.getLogger(),
     private val enableCaching: Boolean = true
 ) : DslEngine<Any> {
     
@@ -424,7 +424,7 @@ class GenericKotlinDslEngineBuilder {
         DslCapability.COMPILATION_CACHING,
         DslCapability.SYNTAX_VALIDATION
     )
-    private var logger: IPipelineLogger = PipelineLogger.getLogger()
+    private var logger: ILogger = PipelineLogger.getLogger()
     private var enableCaching: Boolean = true
     
     fun engineId(id: String) = apply { this.engineId = id }
@@ -444,7 +444,7 @@ class GenericKotlinDslEngineBuilder {
     fun dependencies(vararg deps: String) = apply { this.dependencies = deps.toList() }
     fun capabilities(caps: Set<DslCapability>) = apply { this.capabilities = caps }
     fun capabilities(vararg caps: DslCapability) = apply { this.capabilities = caps.toSet() }
-    fun logger(log: IPipelineLogger) = apply { this.logger = log }
+    fun logger(log: ILogger) = apply { this.logger = log }
     fun enableCaching(enable: Boolean) = apply { this.enableCaching = enable }
     
     fun build(): GenericKotlinDslEngine {

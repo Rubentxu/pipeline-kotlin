@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.security
 
 import dev.rubentxu.pipeline.dsl.DslExecutionContext
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import kotlinx.coroutines.*
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import java.io.File
@@ -19,7 +18,7 @@ import java.util.concurrent.TimeUnit
  * and limited file system access.
  */
 class ProcessLevelSandbox(
-    private val logger: IPipelineLogger
+    private val logger: ILogger
 ) : ScriptExecutionSandbox {
     
     private val activeProcesses = ConcurrentHashMap<String, Process>()

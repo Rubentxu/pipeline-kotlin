@@ -22,7 +22,12 @@ include(":core")
 include(":pipeline-cli")
 include(":pipeline-config")
 include(":pipeline-backend")
-include(":lib-examples")
+// include(":lib-examples") // Disabled due to DSL dependencies on excluded classes
+// Consolidated all phases into core - phase modules no longer needed
+// include(":phase1-validation") 
+// include(":phase2-validation")
+// include(":phase3-validation")  
+// include(":phase4-step-migration")
 
 // Framework de testing organizado como módulo padre con submódulos
 // TODO: Fix testing framework compatibility with new StepsBlock

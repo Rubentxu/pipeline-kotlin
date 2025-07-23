@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.steps.plugin
 
-import dev.rubentxu.pipeline.context.LocalPipelineContext
 import dev.rubentxu.pipeline.context.PipelineContext
 import dev.rubentxu.pipeline.annotations.SecurityLevel
 import dev.rubentxu.pipeline.annotations.Step
@@ -40,14 +39,11 @@ class MinimalWorkingTest : FunSpec({
         
         // Test 2: Verify context classes are available
         val contextClass = PipelineContext::class.java
-        val localContextClass = LocalPipelineContext::class.java
         
         contextClass shouldNotBe null
-        localContextClass shouldNotBe null
         
         println("✅ Context classes are available:")
         println("   - PipelineContext: ${contextClass.simpleName}")
-        println("   - LocalPipelineContext: ${localContextClass.simpleName}")
         
         // Test 3: Call the annotated function defined below
         val result = testStepFunction("test parameter")
@@ -85,7 +81,7 @@ class MinimalWorkingTest : FunSpec({
     securityLevel = SecurityLevel.RESTRICTED
 )
 private fun testStepFunction(param: String): String {
-    // Note: In a real plugin, this would access LocalPipelineContext.current
+    // Note: In a real plugin, this would access pipeline context
     // but for this test, we just simulate the behavior
     return "Step executed with: $param"
 }

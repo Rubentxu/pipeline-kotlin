@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.plugins
 
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.plugins.security.PluginSecurityValidator
 import dev.rubentxu.pipeline.plugins.security.PluginSecurityPolicy
@@ -119,7 +119,7 @@ class PluginManager(
     private val pluginDirectory: File = File("plugins"),
     private val enableHotReload: Boolean = false,
     private val securityPolicy: PluginSecurityPolicy = PluginSecurityPolicy.DEFAULT,
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: ILogger = PipelineLogger.getLogger()
 ) {
     
     private val loadedPlugins = ConcurrentHashMap<String, LoadedPlugin>()
@@ -1218,7 +1218,7 @@ interface Plugin {
  */
 data class PluginInitializationContext(
     val pluginId: String,
-    val logger: IPipelineLogger,
+    val logger: ILogger,
     val classLoader: ClassLoader
 )
 

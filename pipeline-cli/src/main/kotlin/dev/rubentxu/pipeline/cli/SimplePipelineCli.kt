@@ -7,9 +7,10 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.mordant.rendering.TextColors.*
-import com.github.ajalt.mordant.rendering.TextStyles.*
+import com.github.ajalt.mordant.rendering.TextStyles.*  
 import dev.rubentxu.pipeline.backend.PipelineScriptRunner
 import dev.rubentxu.pipeline.backend.normalizeAndAbsolutePath
+import dev.rubentxu.pipeline.context.PipelineServiceInitializer
 import java.io.File
 
 /**
@@ -77,12 +78,20 @@ class SimpleRunCommand : CliktCommand(
         try {
             terminal.println(green("🚀 Starting pipeline execution..."))
             
+            // Initialize pipeline services first
+            if (verbose.toBoolean()) {
+                terminal.println(cyan("🔧 Initializing pipeline services..."))
+            }
+            val serviceInitializer = PipelineServiceInitializer()
+            val serviceLocator = serviceInitializer.initialize()
+            
             val configPath = config?.absolutePath ?: getDefaultConfigPath()
             val scriptPath = script.absolutePath
             
             if (verbose.toBoolean()) {
                 terminal.println(cyan("📄 Script: ${normalizeAndAbsolutePath(scriptPath)}"))
                 terminal.println(cyan("⚙️  Config: ${normalizeAndAbsolutePath(configPath)}"))
+                terminal.println(cyan("✅ Services initialized successfully"))
             }
             
             val startTime = System.currentTimeMillis()

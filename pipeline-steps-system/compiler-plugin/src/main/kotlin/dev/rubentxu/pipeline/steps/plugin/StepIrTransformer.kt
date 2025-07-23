@@ -2,40 +2,29 @@ package dev.rubentxu.pipeline.steps.plugin
 
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
-import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.builders.irCall
-import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrCall
-import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
-import org.jetbrains.kotlin.ir.symbols.impl.IrValueParameterSymbolImpl
-import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.getClass
 import org.jetbrains.kotlin.ir.util.kotlinFqName
-import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.name.Name
 
 /**
- * Stable IR transformer that performs @Step function transformation using stable APIs.
- * This implementation adds PipelineContext parameter and transforms call sites properly.
+ * Stable IR transformer that validates @Step function signatures.
+ * This implementation validates that @Step functions have context: PipelineContext as first parameter.
  */
 class StepIrTransformer : IrGenerationExtension {
 
     companion object {
         val STEP_ANNOTATION_FQ_NAME = FqName("dev.rubentxu.pipeline.annotations.Step")
         val PIPELINE_CONTEXT_FQ_NAME = FqName("dev.rubentxu.pipeline.context.PipelineContext")
-        val LOCAL_PIPELINE_CONTEXT_FQ_NAME = FqName("dev.rubentxu.pipeline.context.LocalPipelineContext")
-
         val STEP_ANNOTATION_CLASS_ID = ClassId.topLevel(STEP_ANNOTATION_FQ_NAME)
         val PIPELINE_CONTEXT_CLASS_ID = ClassId.topLevel(PIPELINE_CONTEXT_FQ_NAME)
-        val LOCAL_PIPELINE_CONTEXT_CLASS_ID = ClassId.topLevel(LOCAL_PIPELINE_CONTEXT_FQ_NAME)
     }
 
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
@@ -45,32 +34,12 @@ class StepIrTransformer : IrGenerationExtension {
 
         // Get required class symbols
         val pipelineContextSymbol = pluginContext.referenceClass(PIPELINE_CONTEXT_CLASS_ID)
-        val localPipelineContextSymbol = pluginContext.referenceClass(LOCAL_PIPELINE_CONTEXT_CLASS_ID)
 
         if (pipelineContextSymbol == null) {
             println("❌ StepIrTransformerStable: PipelineContext class not found")
             return
         } else {
             println("✅ StepIrTransformerStable: PipelineContext class found")
-        }
-
-        if (localPipelineContextSymbol == null) {
-            println("❌ StepIrTransformerStable: LocalPipelineContext class not found")
-            return
-        } else {
-            println("✅ StepIrTransformerStable: LocalPipelineContext class found")
-        }
-
-        // Find 'current' property in LocalPipelineContext
-        val currentProperty = localPipelineContextSymbol.owner.declarations
-            .filterIsInstance<IrProperty>()
-            .find { it.name.asString() == "current" }
-
-        if (currentProperty?.getter == null) {
-            println("❌ StepIrTransformerStable: LocalPipelineContext.current property not found")
-            return
-        } else {
-            println("✅ StepIrTransformerStable: LocalPipelineContext.current property found")
         }
 
         // Phase 1: Find and analyze @Step functions
@@ -80,20 +49,15 @@ class StepIrTransformer : IrGenerationExtension {
 
         println("✅ StepIrTransformerStable: Found ${stepFunctions.size} @Step functions")
 
-        // Phase 2: Transform @Step functions by adding PipelineContext parameter
-        val functionTransformer = StepFunctionTransformer(pluginContext, pipelineContextSymbol)
-        moduleFragment.acceptChildrenVoid(functionTransformer)
+        // Phase 2: Validate @Step functions have required context: PipelineContext parameter
+        val functionValidator = StepFunctionValidator(pluginContext, pipelineContextSymbol)
+        moduleFragment.acceptChildrenVoid(functionValidator)
 
-        println("✅ StepIrTransformerStable: Processed function signatures")
+        println("✅ StepIrTransformerStable: Validated function signatures")
 
-        // Phase 3: Transform call sites to inject LocalPipelineContext.current
-        val callTransformer =
-            StepCallSiteTransformer(pluginContext, stepFunctions, localPipelineContextSymbol, currentProperty.getter!!)
-        moduleFragment.transform(callTransformer, null)
-
-        // Phase 4: Transform LocalPipelineContext.current calls within @Step function bodies
-        val bodyTransformer = StepBodyTransformer(pluginContext, stepFunctions, localPipelineContextSymbol, currentProperty.getter!!)
-        moduleFragment.transform(bodyTransformer, null)
+        // Phase 3: Validate step function calls (no transformation needed)
+        val callValidator = StepCallSiteValidator(pluginContext, stepFunctions)
+        moduleFragment.acceptChildrenVoid(callValidator)
 
         println("✅ StepIrTransformerStable: Transformation complete")
         println("========================================")
@@ -127,9 +91,9 @@ class StepIrTransformer : IrGenerationExtension {
     }
 
     /**
-     * Transforms @Step function bodies by injecting pipelineContext variable
+     * Validates that @Step functions have context: PipelineContext as first parameter
      */
-    private class StepFunctionTransformer(
+    private class StepFunctionValidator(
         private val pluginContext: IrPluginContext,
         private val pipelineContextSymbol: IrClassSymbol
     ) : IrVisitorVoid() {
@@ -142,62 +106,38 @@ class StepIrTransformer : IrGenerationExtension {
             super.visitSimpleFunction(declaration)
 
             if (declaration.hasStepAnnotation()) {
-                println("🔧 StepIrTransformerStable: Procesando función @Step: ${declaration.name}")
-
-                // Verificar si ya tiene parámetro PipelineContext usando la nueva API
-                val hasPipelineContext = declaration.parameters.any { param ->
-                    param.type.getClass()?.kotlinFqName == PIPELINE_CONTEXT_FQ_NAME
-                }
-
-                if (!hasPipelineContext) {
-                    println("🔧 StepIrTransformerStable: Añadiendo parámetro PipelineContext a ${declaration.name}")
-
-                    try {
-                        // Crear el nuevo parámetro
-                        val pipelineContextParam = pluginContext.irFactory.createValueParameter(
-                            startOffset = declaration.startOffset,
-                            endOffset = declaration.endOffset,
-                            origin = IrDeclarationOrigin.DEFINED,
-                            kind = IrParameterKind.Regular,
-                            name = Name.identifier("pipelineContext"),
-                            type = pipelineContextSymbol.defaultType,
-                            isAssignable = false,
-                            symbol = IrValueParameterSymbolImpl(),
-                            varargElementType = null,
-                            isCrossinline = false,
-                            isNoinline = false,
-                            isHidden = false
-                        )
-
-                        pipelineContextParam.parent = declaration
-
-                        // Usar la nueva API: modificar directamente la lista parameters
-                        // Mantener receptores (dispatch/extension) y agregar el nuevo parámetro al inicio de los regulares
-                        val existingParams = declaration.parameters
-                        val dispatchReceiver =
-                            existingParams.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
-                        val contextParams = existingParams.filter { it.kind == IrParameterKind.Context }
-                        val extensionReceiver =
-                            existingParams.firstOrNull { it.kind == IrParameterKind.ExtensionReceiver }
-                        val regularParams = existingParams.filter { it.kind == IrParameterKind.Regular }
-
-                        val newParams = buildList {
-                            dispatchReceiver?.let { add(it) }
-                            addAll(contextParams)
-                            extensionReceiver?.let { add(it) }
-                            add(pipelineContextParam) // Agregar el nuevo parámetro
-                            addAll(regularParams)     // Mantener los parámetros existentes
-                        }
-
-                        declaration.parameters = newParams
-
-                        println("✅ StepIrTransformerStable: Parámetro PipelineContext añadido a ${declaration.name}")
-                    } catch (e: Exception) {
-                        println("❌ StepIrTransformerStable: Error añadiendo parámetro: ${e.message}")
-                        e.printStackTrace()
-                    }
-                }
+                println("🔍 StepIrTransformerStable: Validando función @Step: ${declaration.name}")
+                
+                validateStepFunctionSignature(declaration)
             }
+        }
+
+        private fun validateStepFunctionSignature(declaration: IrSimpleFunction) {
+            // Encontrar el primer parámetro regular (no dispatch/extension receiver)
+            val regularParams = declaration.parameters.filter { it.kind == IrParameterKind.Regular }
+            
+            if (regularParams.isEmpty()) {
+                println("❌ StepIrTransformerStable: @Step function '${declaration.name}' must have 'context: PipelineContext' as first parameter")
+                return
+            }
+            
+            val firstRegularParam = regularParams.first()
+            
+            // Validar que el primer parámetro sea de tipo PipelineContext
+            val isPipelineContext = firstRegularParam.type.getClass()?.kotlinFqName == PIPELINE_CONTEXT_FQ_NAME
+            
+            if (!isPipelineContext) {
+                println("❌ StepIrTransformerStable: @Step function '${declaration.name}' must have 'context: PipelineContext' as first parameter, but found '${firstRegularParam.name}: ${firstRegularParam.type}'")
+                return
+            }
+            
+            // Validar que el parámetro se llame 'context' o similar
+            val paramName = firstRegularParam.name.asString()
+            if (paramName != "context" && paramName != "pipelineContext") {
+                println("⚠️  StepIrTransformerStable: @Step function '${declaration.name}' should name the context parameter 'context' (found: '$paramName')")
+            }
+            
+            println("✅ StepIrTransformerStable: @Step function '${declaration.name}' has valid context parameter: $paramName")
         }
 
         private fun IrFunction.hasStepAnnotation(): Boolean {
@@ -208,171 +148,40 @@ class StepIrTransformer : IrGenerationExtension {
     }
 
     /**
-     * Transforms call sites to @Step functions by injecting PipelineContext
+     * Validates call sites to @Step functions
      */
-    private class StepCallSiteTransformer(
+    private class StepCallSiteValidator(
         private val pluginContext: IrPluginContext,
-        private val stepFunctions: Set<IrSimpleFunctionSymbol>,
-        private val localPipelineContextSymbol: IrClassSymbol,
-        private val currentGetter: IrSimpleFunction
-    ) : IrElementTransformerVoid() {
+        private val stepFunctions: Set<IrSimpleFunctionSymbol>
+    ) : IrVisitorVoid() {
 
-        override fun visitCall(expression: IrCall): IrExpression {
-            val transformedCall = super.visitCall(expression) as IrCall
-
-            if (transformedCall.symbol in stepFunctions) {
-                println("🔧 Transformando llamada a función @Step: ${transformedCall.symbol.owner.name}")
-
-                try {
-                    // Usar DeclarationIrBuilder para crear llamadas IR correctamente
-                    val irBuilder = DeclarationIrBuilder(
-                        pluginContext,
-                        transformedCall.symbol,
-                        expression.startOffset,
-                        expression.endOffset
-                    )
-
-                    // Crear la llamada al getter de LocalPipelineContext.current
-                    val pipelineContextCall = irBuilder.irCall(currentGetter.symbol)
-
-                    // Crear la nueva llamada con argumentos modificados
-                    val newCall = irBuilder.irCall(transformedCall.symbol).apply {
-                        // Copiar receptores usando la nueva API
-                        dispatchReceiver = transformedCall.dispatchReceiver
-
-                        // Para extension receiver, usar arguments directamente en lugar de la propiedad obsoleta
-                        val targetFunction = transformedCall.symbol.owner
-                        val extensionReceiverIndex = targetFunction.parameters.indexOfFirst {
-                            it.kind == IrParameterKind.ExtensionReceiver
-                        }
-                        if (extensionReceiverIndex >= 0) {
-                            arguments[extensionReceiverIndex] = transformedCall.arguments[extensionReceiverIndex]
-                        }
-
-                        // Copiar argumentos de tipo
-                        for (i in 0 until transformedCall.typeArguments.size) {
-                            typeArguments[i] = transformedCall.typeArguments[i]
-                        }
-
-                        // Encontrar la posición donde insertar el contexto (después de receivers)
-                        val dispatchReceiverCount =
-                            if (targetFunction.parameters.any { it.kind == IrParameterKind.DispatchReceiver }) 1 else 0
-                        val contextParamCount = targetFunction.parameters.count { it.kind == IrParameterKind.Context }
-                        val extensionReceiverCount = if (extensionReceiverIndex >= 0) 1 else 0
-                        val contextInsertIndex = dispatchReceiverCount + contextParamCount + extensionReceiverCount
-
-                        // Insertar el contexto como primer parámetro regular
-                        arguments[contextInsertIndex] = pipelineContextCall
-
-                        // Copiar argumentos originales desplazados
-                        var originalArgIndex = 0
-                        for (i in 0 until targetFunction.parameters.size) {
-                            val param = targetFunction.parameters[i]
-                            when (param.kind) {
-                                IrParameterKind.DispatchReceiver -> {
-                                    arguments[i] = transformedCall.arguments[originalArgIndex++]
-                                }
-
-                                IrParameterKind.Context -> {
-                                    arguments[i] = transformedCall.arguments[originalArgIndex++]
-                                }
-
-                                IrParameterKind.ExtensionReceiver -> {
-                                    arguments[i] = transformedCall.arguments[originalArgIndex++]
-                                }
-
-                                IrParameterKind.Regular -> {
-                                    if (i == contextInsertIndex) {
-                                        // Ya insertamos el contexto arriba
-                                    } else {
-                                        arguments[i] = transformedCall.arguments[originalArgIndex++]
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    println("✅ Transformación completada para ${transformedCall.symbol.owner.name}")
-                    return newCall
-                } catch (e: Exception) {
-                    println("❌ Error en transformación: ${e.message}")
-                    e.printStackTrace()
-                    return transformedCall
-                }
-            }
-
-            return transformedCall
-        }
-    }
-
-    /**
-     * Transforms LocalPipelineContext.current calls within @Step function bodies
-     * to use the injected pipelineContext parameter directly
-     */
-    private class StepBodyTransformer(
-        private val pluginContext: IrPluginContext,
-        private val stepFunctions: Set<IrSimpleFunctionSymbol>,
-        private val localPipelineContextSymbol: IrClassSymbol,
-        private val currentGetter: IrSimpleFunction
-    ) : IrElementTransformerVoid() {
-
-        private var currentStepFunction: IrSimpleFunction? = null
-
-        override fun visitSimpleFunction(declaration: IrSimpleFunction): IrSimpleFunction {
-            val previousFunction = currentStepFunction
-            
-            if (declaration.hasStepAnnotation()) {
-                println("🔧 Transforming body of @Step function: ${declaration.name}")
-                currentStepFunction = declaration
-            }
-            
-            val result = super.visitSimpleFunction(declaration) as IrSimpleFunction
-            currentStepFunction = previousFunction
-            return result
+        override fun visitElement(element: IrElement) {
+            element.acceptChildrenVoid(this)
         }
 
-        override fun visitCall(expression: IrCall): IrExpression {
-            val transformedCall = super.visitCall(expression) as IrCall
-            
-            // Only transform calls within @Step function bodies
-            if (currentStepFunction != null && isLocalPipelineContextCurrentCall(transformedCall)) {
-                println("🔧 Replacing LocalPipelineContext.current with pipelineContext parameter in ${currentStepFunction!!.name}")
+        override fun visitCall(call: IrCall) {
+            super.visitCall(call)
+
+            if (call.symbol in stepFunctions) {
+                println("🔍 StepIrTransformerStable: Verificando llamada a función @Step: ${call.symbol.owner.name}")
+
+                val targetFunction = call.symbol.owner
+                val regularParams = targetFunction.parameters.filter { it.kind == IrParameterKind.Regular }
                 
-                // Find the pipelineContext parameter in the current @Step function
-                val pipelineContextParam = currentStepFunction!!.parameters.find { param ->
-                    param.name.asString() == "pipelineContext" && 
-                    param.type.getClass()?.kotlinFqName == PIPELINE_CONTEXT_FQ_NAME
-                }
-                
-                if (pipelineContextParam != null) {
-                    // Create a parameter reference to replace the LocalPipelineContext.current call
-                    val irBuilder = DeclarationIrBuilder(
-                        pluginContext,
-                        currentStepFunction!!.symbol,
-                        expression.startOffset,
-                        expression.endOffset
-                    )
+                if (regularParams.isNotEmpty()) {
+                    val firstRegularParam = regularParams.first()
+                    val isContextParam = firstRegularParam.type.getClass()?.kotlinFqName == PIPELINE_CONTEXT_FQ_NAME
                     
-                    val paramRef = irBuilder.irGet(pipelineContextParam)
-                    println("✅ Successfully replaced LocalPipelineContext.current with pipelineContext parameter")
-                    return paramRef
+                    if (isContextParam) {
+                        println("✅ StepIrTransformerStable: Función @Step ${targetFunction.name} correctamente definida con context como primer parámetro")
+                    } else {
+                        println("❌ StepIrTransformerStable: Función @Step ${targetFunction.name} no tiene context como primer parámetro")
+                    }
                 } else {
-                    println("❌ Could not find pipelineContext parameter in ${currentStepFunction!!.name}")
+                    println("❌ StepIrTransformerStable: Función @Step ${targetFunction.name} no tiene parámetros regulares")
                 }
-            }
-            
-            return transformedCall
-        }
-
-        private fun isLocalPipelineContextCurrentCall(call: IrCall): Boolean {
-            return call.symbol == currentGetter.symbol &&
-                   call.dispatchReceiver == null // Static call to LocalPipelineContext.current
-        }
-
-        private fun IrFunction.hasStepAnnotation(): Boolean {
-            return annotations.any { annotation ->
-                annotation.type.getClass()?.kotlinFqName == STEP_ANNOTATION_FQ_NAME
             }
         }
     }
+
 }

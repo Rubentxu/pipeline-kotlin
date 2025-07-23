@@ -1,12 +1,9 @@
 package dev.rubentxu.pipeline.events.handlers
 
 import dev.rubentxu.pipeline.events.*
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -19,7 +16,7 @@ import java.time.format.DateTimeFormatter
  * Logs all pipeline events to the provided logger.
  * This handler provides detailed logging of the pipeline execution flow.
  */
-class LoggingEventHandler(private val logger: IPipelineLogger) : EventHandler<DomainEvent> {
+class LoggingEventHandler(private val logger: ILogger) : EventHandler<DomainEvent> {
     
     override suspend fun handle(event: DomainEvent) {
         when (event) {

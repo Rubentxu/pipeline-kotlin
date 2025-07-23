@@ -4,8 +4,8 @@ package dev.rubentxu.pipeline.dsl
 // import dev.rubentxu.pipeline.annotations.PipelineDsl
 // import dev.rubentxu.pipeline.annotations.PipelineStep
 import dev.rubentxu.pipeline.context.*
-import dev.rubentxu.pipeline.logger.IPipelineLogger
-import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
+
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
 import dev.rubentxu.pipeline.steps.builtin.*
 import kotlinx.coroutines.*
@@ -28,7 +28,7 @@ import kotlinx.coroutines.*
  */
 // @PipelineDsl
 open class StepsBlock(val pipeline: Pipeline) : StepExecutionScope {
-    val logger: IPipelineLogger = PipelineLogger.getLogger()
+    val logger: ILogger = PipelineLogger.getLogger()
     val env = pipeline.env
 
     val steps = mutableListOf<Step>()

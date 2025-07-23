@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.dsl
 
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  * with thread-safe registration and lookup capabilities.
  */
 class DefaultDslEngineRegistry(
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: ILogger = PipelineLogger.getLogger()
 ) : DslEngineRegistry {
     
     private val engines = ConcurrentHashMap<String, DslEngine<*>>()
@@ -264,9 +264,9 @@ class NoSuitableDslEngineException(
  */
 class DslEngineRegistryBuilder {
     private val engines = mutableListOf<DslEngine<*>>()
-    private var logger: IPipelineLogger = PipelineLogger.getLogger()
+    private var logger: ILogger = PipelineLogger.getLogger()
     
-    fun withLogger(logger: IPipelineLogger) = apply {
+    fun withLogger(logger: ILogger) = apply {
         this.logger = logger
     }
     

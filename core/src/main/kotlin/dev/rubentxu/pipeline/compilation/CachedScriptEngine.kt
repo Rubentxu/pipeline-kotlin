@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.compilation
 
 import dev.rubentxu.pipeline.dsl.engines.PipelineScript
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,7 +21,7 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  */
 class CachedScriptEngine(
     private val cache: ScriptCompilationCache = ScriptCompilationCacheFactory.createProductionCache(),
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: ILogger = PipelineLogger.getLogger()
 ) {
     
     private val scriptingHost = BasicJvmScriptingHost()

@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.steps.plugin
 
-import dev.rubentxu.pipeline.steps.plugin.StepIrTransformer.Companion.LOCAL_PIPELINE_CONTEXT_CLASS_ID
 import dev.rubentxu.pipeline.steps.plugin.logging.PluginEvent
 import dev.rubentxu.pipeline.steps.plugin.logging.StructuredLogger
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
@@ -64,15 +63,20 @@ class StepDslRegistryGenerator : IrGenerationExtension {
     private fun buildDslExtensionSignature(stepFunction: IrSimpleFunction): String {
         val functionName = stepFunction.name.asString()
         val isAsync = stepFunction.isSuspend
-        val regularParams = stepFunction.parameters.filter {
-            it.kind == IrParameterKind.Regular &&
-                    !it.type.toString().contains("PipelineContext")
+        // Omitir el primer parámetro regular si es de tipo PipelineContext (context parameter)
+        val allRegularParams = stepFunction.parameters.filter { it.kind == IrParameterKind.Regular }
+        val regularParams = if (allRegularParams.isNotEmpty() && 
+                                allRegularParams.first().type.getClass()?.kotlinFqName?.asString()?.contains("PipelineContext") == true) {
+            allRegularParams.drop(1)  // Omitir el primer parámetro context
+        } else {
+            allRegularParams  // Mantener todos si no hay context parameter
         }
         val paramList = regularParams.joinToString(", ") { param ->
             val typeName = param.type.getClass()?.kotlinFqName?.shortName()?.asString() ?: param.type.toString()
             "${param.name}: $typeName"
         }
-        val callParams = listOf("context") + regularParams.map { it.name.asString() }
+        // El contexto se obtiene del StepsBlock (this.context) para las extensiones
+        val callParams = listOf("this.context") + regularParams.map { it.name.asString() }
         val callSignature = callParams.joinToString(", ")
         val suspendModifier = if (isAsync) "suspend " else ""
         return "${suspendModifier}fun StepsBlock.$functionName($paramList) = step(\"$functionName\") { $functionName($callSignature) }"
@@ -88,9 +92,13 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             val stepsBlockSymbol = pluginContext.referenceClass(STEPS_BLOCK_CLASS_ID)
             if (stepsBlockSymbol == null) return
             val targetFile = moduleFragment.files.firstOrNull() ?: return
-            val regularParams = stepFunction.parameters.filter {
-                it.kind == IrParameterKind.Regular &&
-                        !it.type.toString().contains("PipelineContext")
+            // Omitir el primer parámetro regular si es de tipo PipelineContext (context parameter)
+            val allRegularParams = stepFunction.parameters.filter { it.kind == IrParameterKind.Regular }
+            val regularParams = if (allRegularParams.isNotEmpty() && 
+                                    allRegularParams.first().type.getClass()?.kotlinFqName?.asString()?.contains("PipelineContext") == true) {
+                allRegularParams.drop(1)  // Omitir el primer parámetro context
+            } else {
+                allRegularParams  // Mantener todos si no hay context parameter
             }
             val extensionFunction = pluginContext.irFactory.createSimpleFunction(
                 startOffset = stepFunction.startOffset,
@@ -199,15 +207,16 @@ class StepDslRegistryGenerator : IrGenerationExtension {
         pluginContext: IrPluginContext,
         irBuilder: DeclarationIrBuilder
     ): IrExpression {
-        // Crea una lambda anónima: { stepFunction(LocalPipelineContext.current, ...params) }
+        // Crea una lambda anónima: { stepFunction(this.context, ...params) }
+        // Donde this.context proviene del StepsBlock
         return irBuilder.irBlock {
             val call = irBuilder.irCall(stepFunction.symbol).apply {
-                // Inyectar contexto como primer argumento
-                val contextCall = createLocalPipelineContextCall(pluginContext, irBuilder)
+                // Obtener el contexto del StepsBlock (this.context)
+                val contextCall = createStepsBlockContextCall(pluginContext, irBuilder, extensionFunction)
                 if (contextCall != null) {
-                    arguments[0] = contextCall
+                    arguments[0] = contextCall  // Pasar contexto como primer argumento
                 }
-                // Agregar los demás parámetros
+                // Agregar los demás parámetros (sin incluir el context parameter)
                 val extensionRegularParams = extensionFunction.parameters.filter {
                     it.kind == IrParameterKind.Regular
                 }
@@ -220,17 +229,27 @@ class StepDslRegistryGenerator : IrGenerationExtension {
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun createLocalPipelineContextCall(
+    private fun createStepsBlockContextCall(
         pluginContext: IrPluginContext,
-        irBuilder: DeclarationIrBuilder
+        irBuilder: DeclarationIrBuilder,
+        extensionFunction: IrSimpleFunction
     ): IrExpression? {
-        val localPipelineContextSymbol = pluginContext.referenceClass(LOCAL_PIPELINE_CONTEXT_CLASS_ID)
-        if (localPipelineContextSymbol != null) {
-            val currentProperty = localPipelineContextSymbol.owner.declarations
+        // Obtener el contexto del receptor de extensión (StepsBlock)
+        val stepsBlockSymbol = pluginContext.referenceClass(STEPS_BLOCK_CLASS_ID)
+        if (stepsBlockSymbol != null) {
+            val contextProperty = stepsBlockSymbol.owner.declarations
                 .filterIsInstance<IrProperty>()
-                .find { it.name.asString() == "current" }
-            if (currentProperty?.getter != null) {
-                return irBuilder.irCall(currentProperty.getter!!.symbol)
+                .find { it.name.asString() == "context" }
+            if (contextProperty?.getter != null) {
+                // Obtener 'this' del StepsBlock (extension receiver)
+                val extensionReceiver = extensionFunction.parameters.firstOrNull { 
+                    it.kind == IrParameterKind.ExtensionReceiver 
+                }
+                if (extensionReceiver != null) {
+                    return irBuilder.irCall(contextProperty.getter!!.symbol).apply {
+                        dispatchReceiver = irBuilder.irGet(extensionReceiver)
+                    }
+                }
             }
         }
         return null

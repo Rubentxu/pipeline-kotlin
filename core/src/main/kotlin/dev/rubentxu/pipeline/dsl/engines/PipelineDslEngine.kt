@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.dsl.engines
 import dev.rubentxu.pipeline.compilation.CachedScriptEngine
 import dev.rubentxu.pipeline.compilation.ScriptCompilationCacheFactory
 import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
@@ -25,7 +25,7 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  */
 class PipelineDslEngine(
     private val pipelineConfig: IPipelineConfig,
-    private val logger: IPipelineLogger = PipelineLogger.getLogger(),
+    private val logger: ILogger = PipelineLogger.getLogger(),
     private val enableCaching: Boolean = true
 ) : DslEngine<PipelineResult> {
     

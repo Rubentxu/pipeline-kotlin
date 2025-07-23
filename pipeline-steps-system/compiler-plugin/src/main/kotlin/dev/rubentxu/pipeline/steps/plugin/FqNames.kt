@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.name.FqName
 object FqNames {
     
     // Annotation classes
-    val STEP_ANNOTATION = FqName("dev.rubentxu.pipeline.annotations.Step")
+    val STEP_ANNOTATION = FqName("dev.rubentxu.pipeline.annotations.Step") 
     val STEP_CATEGORY = FqName("dev.rubentxu.pipeline.annotations.StepCategory")
     val SECURITY_LEVEL = FqName("dev.rubentxu.pipeline.annotations.SecurityLevel")
     

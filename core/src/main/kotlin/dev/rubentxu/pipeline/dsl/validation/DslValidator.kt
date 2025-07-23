@@ -1,11 +1,8 @@
 package dev.rubentxu.pipeline.dsl.validation
 
 import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.security.SandboxManager
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlin.script.experimental.api.*
 
 /**
  * Enhanced DSL validation system that provides comprehensive validation
@@ -13,7 +10,7 @@ import kotlin.script.experimental.api.*
  */
 class DslValidator(
     private val sandboxManager: SandboxManager,
-    private val logger: IPipelineLogger
+    private val logger: ILogger
 ) {
     
     /**

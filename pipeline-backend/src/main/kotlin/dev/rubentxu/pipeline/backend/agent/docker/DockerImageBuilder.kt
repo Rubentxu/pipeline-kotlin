@@ -3,8 +3,9 @@ package dev.rubentxu.pipeline.backend.agent.docker
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.BuildImageResultCallback
 import com.github.dockerjava.api.model.Image
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.logger.model.LoggingContext
 import freemarker.template.Configuration
 import freemarker.template.TemplateExceptionHandler
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
@@ -20,7 +21,11 @@ import java.nio.file.Path
 class DockerImageBuilder(
     private val dockerClientProvider: DockerClientProvider,
 ) {
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: ILogger = PipelineLogger(
+        "DockerImageBuilder",
+        LoggingContext(),
+        { event -> println("[${event.level}] ${event.loggerName}: ${event.message}") }
+    )
     private val dockerClient: DockerClient = dockerClientProvider.dockerClient
 
     companion object {

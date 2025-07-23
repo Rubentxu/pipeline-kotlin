@@ -1,12 +1,10 @@
 package dev.rubentxu.pipeline.plugins
 
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import java.io.File
 import java.net.URL
 import java.net.URLClassLoader
-import java.security.AccessController
-import java.security.PrivilegedAction
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -26,7 +24,7 @@ class PluginClassLoader(
     private val enableLogging: Boolean = true
 ) : URLClassLoader(urls, parent) {
     
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: ILogger = PipelineLogger.getLogger()
     private val loadedClasses = ConcurrentHashMap<String, Class<*>>()
     private val lock = ReentrantReadWriteLock()
     

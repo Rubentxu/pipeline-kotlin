@@ -1,11 +1,8 @@
 package dev.rubentxu.pipeline.steps.security
 
 import dev.rubentxu.pipeline.context.PipelineContext
-import dev.rubentxu.pipeline.context.SecurityLevel
 import dev.rubentxu.pipeline.context.ResourceLimits
-import dev.rubentxu.pipeline.dsl.DslExecutionContext
-import dev.rubentxu.pipeline.dsl.DslIsolationLevel
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.security.SandboxManager
 import dev.rubentxu.pipeline.annotations.StepMetadata
 import kotlinx.coroutines.*
@@ -23,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong
  * @Step functions have runtime security enforcement.
  */
 class StepSecurityManager(
-    private val logger: IPipelineLogger,
+    private val logger: ILogger,
     private val sandboxManager: SandboxManager = SandboxManager(logger)
 ) {
     
@@ -266,7 +263,7 @@ sealed class StepSecurityValidation {
  */
 private class ResourceMonitor(
     private val limits: ResourceLimits,
-    private val logger: IPipelineLogger
+    private val logger: ILogger
 ) {
     private var monitoring = false
     private var monitoringJob: Job? = null

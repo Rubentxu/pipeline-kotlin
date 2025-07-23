@@ -4,14 +4,19 @@ import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.LogContainerCmd
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.core.command.LogContainerResultCallback
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
+import dev.rubentxu.pipeline.logger.model.LoggingContext
 import java.util.concurrent.CountDownLatch
 
 class DockerLogManager(
     private val dockerClient: DockerClient,
 ) {
-    private val logger: IPipelineLogger = PipelineLogger.getLogger()
+    private val logger: ILogger = PipelineLogger(
+        "DockerLogManager",
+        LoggingContext(),
+        { event -> println("[${event.level}] ${event.loggerName}: ${event.message}") }
+    )
     fun showContainerLogs(containerId: String) {
         val latch = CountDownLatch(1)
 

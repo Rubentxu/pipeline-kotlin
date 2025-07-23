@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.security
 
 import dev.rubentxu.pipeline.dsl.DslExecutionContext
 import dev.rubentxu.pipeline.dsl.DslIsolationLevel
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import kotlinx.coroutines.*
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
@@ -72,7 +72,7 @@ import java.util.concurrent.atomic.AtomicLong
  * @see DslExecutionContext
  */
 class SandboxManager(
-    private val logger: IPipelineLogger
+    private val logger: ILogger
 ) {
     
 

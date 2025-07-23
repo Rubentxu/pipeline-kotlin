@@ -1,14 +1,13 @@
 package dev.rubentxu.pipeline.execution
 
 import dev.rubentxu.pipeline.dsl.DslResourceLimits
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import kotlinx.coroutines.*
 import java.lang.management.ManagementFactory
 import java.lang.management.MemoryMXBean
 import java.lang.management.ThreadMXBean
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.system.measureTimeMillis
 
 /**
  * Enforces resource limits on script execution to prevent resource exhaustion.
@@ -16,7 +15,7 @@ import kotlin.system.measureTimeMillis
  * during script execution and terminates execution if limits are exceeded.
  */
 class ResourceLimitEnforcer(
-    private val logger: IPipelineLogger
+    private val logger: ILogger
 ) {
     
     private val activeExecutions = ConcurrentHashMap<String, ExecutionMonitor>()

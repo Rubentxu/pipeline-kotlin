@@ -20,11 +20,11 @@ import java.nio.file.Files
  * This test suite serves as both comprehensive testing and documentation
  * for the @Step annotation compiler plugin functionality.
  *
- * The plugin transforms Kotlin functions annotated with @Step by:
- * 1. Injecting PipelineContext as the first parameter
- * 2. Maintaining original function signatures
- * 3. Handling suspend functions correctly (with Continuation parameter)
- * 4. Leaving non-@Step functions unchanged
+ * The plugin validates and transforms Kotlin functions annotated with @Step by:
+ * 1. Validating that PipelineContext is explicitly provided as the first parameter
+ * 2. Maintaining original function signatures for user-defined functions
+ * 3. Generating StepsBlock extensions that omit the context parameter
+ * 4. Transforming LocalPipelineContext.current calls to use the context parameter directly
  *
  * Architecture:
  * - Uses K2 IR transformation for Kotlin 2.2+
@@ -72,12 +72,12 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     class TestSteps {
                         
                         @Step
-                        fun buildStep(name: String): String {
+                        fun buildStep(context: PipelineContext, name: String): String {
                             return "Building: ${'$'}name"
                         }
                         
                         @Step  
-                        fun deployStep(env: String): String {
+                        fun deployStep(context: PipelineContext, env: String): String {
                             return "Deploying to: ${'$'}env"
                         }
                         
@@ -106,8 +106,8 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val originalBuildStep = originalAnalysis.findMethod("buildStep")!!
                     val transformedBuildStep = transformedAnalysis.findMethod("buildStep")!!
 
-                    // Plugin should add PipelineContext parameter to @Step functions
-                    transformedBuildStep.getParameterCount() shouldBe originalBuildStep.getParameterCount() + 1
+                    // Plugin should validate that @Step functions already have PipelineContext parameter
+                    transformedBuildStep.getParameterCount() shouldBe originalBuildStep.getParameterCount()
                     transformedBuildStep.hasPipelineContextParameter() shouldBe true
 
                     // Non-@Step methods should remain unchanged
@@ -117,7 +117,7 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     transformedNormal.getParameterCount() shouldBe originalNormal.getParameterCount()
 
                     println("✅ Plugin processed @Step methods successfully")
-                    println("   - buildStep: ${originalBuildStep.getParameterCount()} parameters (preserved)")
+                    println("   - buildStep: ${transformedBuildStep.getParameterCount()} parameters (with explicit context)")
                     println("   - normalMethod unchanged: ${transformedNormal.getParameterCount()} parameters")
                 }
             }
@@ -166,17 +166,17 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     import dev.rubentxu.pipeline.context.LocalPipelineContext
             
                     @Step
-                    fun deployApp(appName: String, environment: String): String {
+                    fun deployApp(context: PipelineContext, appName: String, environment: String): String {
                         return "Deploying ${'$'}appName to ${'$'}environment"
                     }
                     
                     @Step
-                    suspend fun buildProject(projectPath: String): Boolean {
+                    suspend fun buildProject(context: PipelineContext, projectPath: String): Boolean {
                         return true
                     }
                     
                     @Step
-                    fun simpleStep() {
+                    fun simpleStep(context: PipelineContext) {
                         println("Simple step executed")
                     }
                 """.trimIndent()
@@ -193,15 +193,15 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val buildProject = analysis.findMethod("buildProject")!!
                     val simpleStep = analysis.findMethod("simpleStep")!!
 
-                    // deployApp: PipelineContext + appName + environment = 3 parameters
+                    // deployApp: context + appName + environment = 3 parameters
                     deployApp.getParameterCount() shouldBe 3
                     deployApp.hasPipelineContextParameter() shouldBe true
 
-                    // buildProject is suspend: PipelineContext + projectPath + Continuation = 3 parameters
+                    // buildProject is suspend: context + projectPath + Continuation = 3 parameters
                     buildProject.getParameterCount() shouldBe 3
                     buildProject.hasPipelineContextParameter() shouldBe true
 
-                    // simpleStep: PipelineContext = 1 parameter
+                    // simpleStep: context = 1 parameter
                     simpleStep.getParameterCount() shouldBe 1
                     simpleStep.hasPipelineContextParameter() shouldBe true
 
@@ -221,12 +221,12 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     import dev.rubentxu.pipeline.context.LocalPipelineContext
             
                     @Step
-                    fun echo(message: String) {
+                    fun echo(context: PipelineContext, message: String) {
                         println("Echo: ${'$'}message")
                     }
                     
                     @Step
-                    suspend fun compile(project: String, clean: Boolean = true): Boolean {
+                    suspend fun compile(context: PipelineContext, project: String, clean: Boolean = true): Boolean {
                         println("Compiling ${'$'}project (clean=${'$'}clean)")
                         return true
                     }
@@ -254,12 +254,12 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                         val compileMethod = analysis.findMethod("compile")
 
                         if (echoMethod != null) {
-                            echoMethod.getParameterCount() shouldBe 2 // PipelineContext + message
+                            echoMethod.getParameterCount() shouldBe 2 // context + message
                             echoMethod.hasPipelineContextParameter() shouldBe true
                         }
 
                         if (compileMethod != null) {
-                            compileMethod.getParameterCount() shouldBe 4 // PipelineContext + project + clean + Continuation
+                            compileMethod.getParameterCount() shouldBe 4 // context + project + clean + Continuation
                             compileMethod.hasPipelineContextParameter() shouldBe true
                         }
                     }
@@ -279,23 +279,24 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     import dev.rubentxu.pipeline.annotations.StepCategory
                     
                     @Step(category = StepCategory.BUILD)
-                    fun noParams() = "No parameters"
+                    fun noParams(context: PipelineContext) = "No parameters"
                     
                     @Step(category = StepCategory.TEST)
-                    suspend fun withVarargs(vararg values: String): List<String> = values.toList()
+                    suspend fun withVarargs(context: PipelineContext, vararg values: String): List<String> = values.toList()
                     
                     @Step(name = "customName", category = StepCategory.DEPLOY)
                     fun withDefaults(
+                        context: PipelineContext,
                         required: String,
                         optional: String = "default",
                         flag: Boolean = false
                     ): String = "${'$'}required-${'$'}optional-${'$'}flag"
                     
                     @Step
-                    suspend fun withNullable(value: String?): String = value ?: "null"
+                    suspend fun withNullable(context: PipelineContext, value: String?): String = value ?: "null"
                     
                     @Step
-                    inline fun withInline(block: () -> Unit) {
+                    inline fun withInline(context: PipelineContext, block: () -> Unit) {
                         block()
                     }
                 """.trimIndent()
@@ -309,11 +310,11 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
 
                     // Expected parameter counts after PipelineContext injection
                     val expectedCounts = mapOf(
-                        "noParams" to 1,      // PipelineContext only
-                        "withVarargs" to 3,   // PipelineContext + varargs + Continuation (suspend)
-                        "withDefaults" to 4,  // PipelineContext + 3 original params (no suspend)
-                        "withNullable" to 3,  // PipelineContext + nullable + Continuation (suspend)
-                        "withInline" to 2     // PipelineContext + function param (no suspend)
+                        "noParams" to 1,      // context only
+                        "withVarargs" to 3,   // context + varargs + Continuation (suspend)
+                        "withDefaults" to 4,  // context + 3 original params (no suspend)
+                        "withNullable" to 3,  // context + nullable + Continuation (suspend)
+                        "withInline" to 2     // context + function param (no suspend)
                     )
 
                     expectedCounts.forEach { (methodName, expectedParams) ->
@@ -341,7 +342,7 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
             
                     class TestSteps {
                         @Step
-                        fun simpleStep(): String = "test"
+                        fun simpleStep(context: PipelineContext): String = "test"
                     }
                 """.trimIndent()
 
@@ -353,13 +354,13 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val analysis = analyzer.analyzeClassFile(result)
 
                     val method = analysis.findMethod("simpleStep")!!
-                    method.getParameterCount() shouldBe 1  // PipelineContext added
+                    method.getParameterCount() shouldBe 1  // context parameter
                     method.hasPipelineContextParameter() shouldBe true
 
                     println("✅ @Step annotation compilation successful")
                     println("   - Method: ${method.name}")
-                    println("   - Parameters: ${method.getParameterCount()} (with PipelineContext)")
-                    println("   - Plugin transformed signature by adding PipelineContext")
+                    println("   - Parameters: ${method.getParameterCount()} (with context)")
+                    println("   - Plugin validated signature with explicit context parameter")
                 }
             }
         }
@@ -381,6 +382,7 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                         category = StepCategory.DEPLOY
                     )
                     suspend fun deployToCloud(
+                        context: PipelineContext,
                         appName: String, 
                         region: String = "us-east-1",
                         replicas: Int = 3
@@ -398,13 +400,13 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
 
                     val deployMethod = analysis.findMethod("deployToCloud")!!
 
-                    // PipelineContext + original parameters + Continuation (suspend) = 5 parameters
+                    // context + original parameters + Continuation (suspend) = 5 parameters
                     deployMethod.getParameterCount() shouldBe 5
                     deployMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ Complex @Step signature verification:")
                     println("   - Name: ${deployMethod.name}")
-                    println("   - Parameters: ${deployMethod.getParameterCount()} (with PipelineContext + Continuation)")
+                    println("   - Parameters: ${deployMethod.getParameterCount()} (with context + Continuation)")
                     println("   - Descriptor: ${deployMethod.descriptor}")
                     println("   - Successfully compiled with complex metadata and PipelineContext injection")
                 }
@@ -422,7 +424,7 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     import dev.rubentxu.pipeline.context.LocalPipelineContext
                     
                     @Step
-                    fun processData(input: String): String {
+                    fun processData(context: PipelineContext, input: String): String {
                         return "Processed: ${'$'}input"
                     }
                 """.trimIndent()
@@ -440,13 +442,13 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     // Verify @Step function compilation
                     val processDataMethod = analysis.findMethod("processData")!!
 
-                    // processData gets PipelineContext + original input parameter
-                    processDataMethod.getParameterCount() shouldBe 2  // PipelineContext + input parameter
+                    // processData gets context + original input parameter
+                    processDataMethod.getParameterCount() shouldBe 2  // context + input parameter
                     processDataMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ @Step function compilation successful:")
                     println("   - @Step function processData: ${processDataMethod.getParameterCount()} params")
-                    println("   - PipelineContext injected")
+                    println("   - Context parameter validated")
                     println("   - Ready for DSL integration")
                 }
             }
@@ -456,16 +458,15 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     package test.context
             
                     import dev.rubentxu.pipeline.annotations.Step
-                    import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                    import dev.rubentxu.pipeline.context.PipelineContext                    
                     
                     @Step
-                    fun stepOne(value: String): String {
+                    fun stepOne(context: PipelineContext, value: String): String {
                         return "Step1: ${'$'}value"
                     }
                     
                     @Step
-                    fun stepTwo(input: String): String {
+                    fun stepTwo(context: PipelineContext, input: String): String {
                         return "Step2: ${'$'}input"
                     }
                 """.trimIndent()
@@ -481,14 +482,14 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val stepOneMethod = analysis.findMethod("stepOne")!!
                     val stepTwoMethod = analysis.findMethod("stepTwo")!!
 
-                    stepOneMethod.getParameterCount() shouldBe 2  // PipelineContext + value parameter
+                    stepOneMethod.getParameterCount() shouldBe 2  // context + value parameter
                     stepOneMethod.hasPipelineContextParameter() shouldBe true
-                    stepTwoMethod.getParameterCount() shouldBe 2  // PipelineContext + input parameter  
+                    stepTwoMethod.getParameterCount() shouldBe 2  // context + input parameter  
                     stepTwoMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ Multiple @Step functions compiled successfully:")
-                    println("   - stepOne: ${stepOneMethod.getParameterCount()} params (with PipelineContext)")
-                    println("   - stepTwo: ${stepTwoMethod.getParameterCount()} params (with PipelineContext)")
+                    println("   - stepOne: ${stepOneMethod.getParameterCount()} params (with context)")
+                    println("   - stepTwo: ${stepTwoMethod.getParameterCount()} params (with context)")
                     println("   - All functions ready for call-site transformation")
                 }
             }
@@ -496,23 +497,30 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
 
         `when`("@Step functions access injected PipelineContext in runtime") {
 
-            and("functions use LocalPipelineContext.current to access context") {
+            and("functions use context parameter directly") {
                 val sourceCode = """
                     package test.context
             
                     import dev.rubentxu.pipeline.annotations.Step
                     import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                
+                    
+                    data class ShellOptions(val workingDir: String? = null, val timeout: Long = 30000)
+                    data class ShellResult(val exitCode: Int, val stdout: String, val stderr: String) {
+                        val success: Boolean get() = exitCode == 0
+                        fun contains(text: String): Boolean = stdout.contains(text) || stderr.contains(text)
+                    }
                     
                     @Step
-                    fun logStep(message: String): String {                       
-                        pipelineContext.info("Step executed: ${'$'}message")
+                    fun logStep(context: PipelineContext, message: String): String {                       
+                        context.info("Step executed: ${'$'}message")
                         return "Logged: ${'$'}message"
                     }
                     
                     @Step
-                    fun shellStep(command: String): String {                       
-                        return pipelineContext.executeShell(command)
+                    fun shellStep(context: PipelineContext, command: String): String {                       
+                        val result = context.executeShell(command)
+                        return result
                     }
                 """.trimIndent()
 
@@ -527,18 +535,18 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val logStepMethod = analysis.findMethod("logStep")!!
                     val shellStepMethod = analysis.findMethod("shellStep")!!
 
-                    // logStep: PipelineContext + message = 2 parameters
+                    // logStep: context + message = 2 parameters
                     logStepMethod.getParameterCount() shouldBe 2
                     logStepMethod.hasPipelineContextParameter() shouldBe true
 
-                    // shellStep: PipelineContext + command = 2 parameters
+                    // shellStep: context + command = 2 parameters
                     shellStepMethod.getParameterCount() shouldBe 2
                     shellStepMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ @Step functions with context access compiled successfully:")
-                    println("   - logStep: ${logStepMethod.getParameterCount()} params (with PipelineContext)")
-                    println("   - shellStep: ${shellStepMethod.getParameterCount()} params (with PipelineContext)")
-                    println("   - Functions can access LocalPipelineContext.current")
+                    println("   - logStep: ${logStepMethod.getParameterCount()} params (with context)")
+                    println("   - shellStep: ${shellStepMethod.getParameterCount()} params (with context)")
+                    println("   - Functions can access context directly from parameter")
                 }
             }
 
@@ -548,12 +556,16 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
             
                     import dev.rubentxu.pipeline.annotations.Step
                     import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                    
+                    data class ShellOptions(val workingDir: String? = null, val timeout: Long = 30000)
+                    data class ShellResult(val exitCode: Int, val stdout: String, val stderr: String) {
+                        val success: Boolean get() = exitCode == 0
+                        fun contains(text: String): Boolean = stdout.contains(text) || stderr.contains(text)
+                    }
                    
                     
                     @Step
-                    suspend fun asyncStep(data: String): String {
-                        val context = LocalPipelineContext.current
+                    suspend fun asyncStep(context: PipelineContext, data: String): String {
                         context.info("Starting async operation with: ${'$'}data")
                         return context.asyncOperation(data)
                     }
@@ -568,13 +580,13 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
 
                     val asyncStepMethod = analysis.findMethod("asyncStep")!!
 
-                    // asyncStep: PipelineContext + data + Continuation = 3 parameters
+                    // asyncStep: context + data + Continuation = 3 parameters
                     asyncStepMethod.getParameterCount() shouldBe 3
                     asyncStepMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ Suspend @Step function with context compiled successfully:")
-                    println("   - asyncStep: ${asyncStepMethod.getParameterCount()} params (PipelineContext + data + Continuation)")
-                    println("   - Suspend function can access LocalPipelineContext.current")
+                    println("   - asyncStep: ${asyncStepMethod.getParameterCount()} params (context + data + Continuation)")
+                    println("   - Suspend function can access context parameter directly")
                 }
             }
 
@@ -583,13 +595,18 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     package test.context
             
                     import dev.rubentxu.pipeline.annotations.Step
+                    import dev.rubentxu.pipeline.annotations.StepCategory 
                     import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                    
+                    data class ShellOptions(val workingDir: String? = null, val timeout: Long = 30000)
+                    data class ShellResult(val exitCode: Int, val stdout: String, val stderr: String) {
+                        val success: Boolean get() = exitCode == 0
+                        fun contains(text: String): Boolean = stdout.contains(text) || stderr.contains(text)
+                    }
                    
                     
                     @Step(category = StepCategory.BUILD)
-                    fun buildWithLogging(projectName: String, version: String): String {
-                        val context = LocalPipelineContext.current
+                    suspend fun buildWithLogging(context: PipelineContext, projectName: String, version: String): String {
                         
                         context.info("Starting build for ${'$'}projectName version ${'$'}version")
                         context.setEnv("PROJECT_NAME", projectName)
@@ -608,8 +625,7 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     }
                     
                     @Step(category = StepCategory.DEPLOY) 
-                    fun deployWithEnvironment(appName: String, targetEnv: String = "staging"): String {
-                        val context = LocalPipelineContext.current
+                    suspend fun deployWithEnvironment(context: PipelineContext, appName: String, targetEnv: String = "staging"): String {
                         
                         context.info("Deploying ${'$'}appName to ${'$'}targetEnv")
                         
@@ -633,11 +649,11 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val buildMethod = analysis.findMethod("buildWithLogging")!!
                     val deployMethod = analysis.findMethod("deployWithEnvironment")!!
 
-                    // buildWithLogging: PipelineContext + projectName + version = 3 parameters
+                    // buildWithLogging: context + projectName + version = 3 parameters
                     buildMethod.getParameterCount() shouldBe 3
                     buildMethod.hasPipelineContextParameter() shouldBe true
 
-                    // deployWithEnvironment: PipelineContext + appName + targetEnv = 3 parameters
+                    // deployWithEnvironment: context + appName + targetEnv = 3 parameters
                     deployMethod.getParameterCount() shouldBe 3
                     deployMethod.hasPipelineContextParameter() shouldBe true
 
@@ -657,27 +673,34 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
             
                     import dev.rubentxu.pipeline.annotations.Step
                     import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                    import dev.rubentxu.pipeline.annotations.StepCategory
+                    
+                   
+                    data class ShellOptions(val workingDir: String? = null, val timeout: Long = 30000)
+                    data class ShellResult(val exitCode: Int, val stdout: String, val stderr: String) {
+                        val success: Boolean get() = exitCode == 0
+                        fun contains(text: String): Boolean = stdout.contains(text) || stderr.contains(text)
+                    }
                    
                     
                     @Step(category = StepCategory.BUILD)
-                    fun compileCode(sourcePath: String): String {
-                        val context = LocalPipelineContext.current
+                    suspend fun compileCode(context: PipelineContext, sourcePath: String): String {
                         context.currentStage = "compile"
                         context.info("Compiling code from ${'$'}sourcePath")
-                        return context.executeShell("javac ${'$'}sourcePath")
+                        val result = context.executeShell("javac ${'$'}sourcePath", ShellOptions())
+                        return result.stdout
                     }
                     
                     @Step(category = StepCategory.TEST)
-                    fun runTests(testSuite: String): String {
-                        val context = LocalPipelineContext.current
+                    suspend fun runTests(context: PipelineContext, testSuite: String): String {
                         context.currentStage = "test"
                         context.info("Running test suite: ${'$'}testSuite")
-                        return context.executeShell("junit ${'$'}testSuite")
+                        val result = context.executeShell("junit ${'$'}testSuite", ShellOptions())
+                        return result.stdout
                     }
                     
                     @Step(category = StepCategory.UTIL)
-                    fun simpleStep(message: String): String {
+                    fun simpleStep(context: PipelineContext, message: String): String {
                         return "Simple step: ${'$'}message"
                     }
                 """.trimIndent()
@@ -693,64 +716,69 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val testMethod = analysis.findMethod("runTests")!!
                     val simpleMethod = analysis.findMethod("simpleStep")!!
 
-                    // All methods should have PipelineContext injected
-                    compileMethod.getParameterCount() shouldBe 2 // PipelineContext + sourcePath
+                    // All methods should have context parameter
+                    compileMethod.getParameterCount() shouldBe 2 // context + sourcePath
                     compileMethod.hasPipelineContextParameter() shouldBe true
 
-                    testMethod.getParameterCount() shouldBe 2 // PipelineContext + testSuite
+                    testMethod.getParameterCount() shouldBe 2 // context + testSuite
                     testMethod.hasPipelineContextParameter() shouldBe true
 
-                    simpleMethod.getParameterCount() shouldBe 2 // PipelineContext + message
+                    simpleMethod.getParameterCount() shouldBe 2 // context + message
                     simpleMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ @Step functions with various usage patterns compiled successfully:")
                     println("   - compileCode: ${compileMethod.getParameterCount()} params (uses context extensively)")
                     println("   - runTests: ${testMethod.getParameterCount()} params (uses context for logging and shell)")
                     println("   - simpleStep: ${simpleMethod.getParameterCount()} params (minimal context usage)")
-                    println("   - All functions have PipelineContext injected correctly")
+                    println("   - All functions have context parameter correctly")
                 }
             }
         }
 
-        `when`("@Step functions use injected PipelineContext directly without LocalPipelineContext.current") {
+        `when`("@Step functions use context parameter directly") {
 
-            and("@Step functions access context parameter directly") {
+            and("@Step functions access explicit context parameter") {
                 val sourceCode = """
                     package test.context
             
                     import dev.rubentxu.pipeline.annotations.Step
-                    import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                    import dev.rubentxu.pipeline.context.PipelineContext                   
+                    
+                    data class ShellOptions(val workingDir: String? = null, val timeout: Long = 30000)
+                    data class ShellResult(val exitCode: Int, val stdout: String, val stderr: String) {
+                        val success: Boolean get() = exitCode == 0
+                        fun contains(text: String): Boolean = stdout.contains(text) || stderr.contains(text)
+                    }
                    
                     
                     @Step
-                    fun directContextStep(projectName: String) {
-                        // Plugin should inject pipelineContext parameter and make it directly usable
-                        pipelineContext.info("Building project: ${'$'}projectName")
-                        val result = pipelineContext.executeShell("gradle build")
+                    suspend fun directContextStep(context: PipelineContext, projectName: String) {
+                        // Context parameter is explicitly available
+                        context.info("Building project: ${'$'}projectName")
+                        val result = context.executeShell("gradle build")
                         if (result.contains("FAILED")) {
-                            pipelineContext.warn("Build may have issues")
+                            context.warn("Build may have issues")
                         }
                     }
                     
                     @Step
-                    suspend fun directContextSuspendStep(taskName: String) {
-                        // Plugin should handle suspend functions with direct pipelineContext access
-                        pipelineContext.info("Starting task: ${'$'}taskName")
-                        pipelineContext.executeShell("./run_task.sh ${'$'}taskName")
+                    suspend fun directContextSuspendStep(context: PipelineContext, taskName: String) {
+                        // Context parameter is explicitly available in suspend functions
+                        context.info("Starting task: ${'$'}taskName")
+                        context.executeShell("./run_task.sh ${'$'}taskName")
                     }
                 """.trimIndent()
 
-                then("@Step functions should compile and use pipelineContext directly") {
-                    // This test should PASS if the plugin correctly injects pipelineContext parameter
-                    // and makes it available for direct use within @Step functions
+                then("@Step functions should compile and use context parameter directly") {
+                    // This test should PASS if the plugin correctly validates context parameter
+                    // and allows it to be used directly within @Step functions
 
                     val result = try {
                         compileKotlin(sourceCode, usePlugin = true, tempDir)
                     } catch (e: Exception) {
-                        println("❌ Plugin doesn't yet support direct pipelineContext access")
+                        println("❌ Plugin doesn't validate context parameter correctly")
                         println("   Error: ${e.message}")
-                        println("   The plugin needs to inject pipelineContext parameter and make it available")
+                        println("   The plugin needs to validate context parameter and allow its direct use")
                         return@then // Exit early since this functionality isn't implemented yet
                     }
 
@@ -762,51 +790,56 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val directMethod = analysis.findMethod("directContextStep")!!
                     val suspendMethod = analysis.findMethod("directContextSuspendStep")!!
 
-                    // Plugin should inject PipelineContext and make it available as 'context'
-                    directMethod.getParameterCount() shouldBe 2 // PipelineContext + projectName
+                    // Plugin should validate that PipelineContext is available as 'context'
+                    directMethod.getParameterCount() shouldBe 2 // context + projectName
                     directMethod.hasPipelineContextParameter() shouldBe true
 
-                    suspendMethod.getParameterCount() shouldBe 3 // PipelineContext + taskName + Continuation
+                    suspendMethod.getParameterCount() shouldBe 3 // context + taskName + Continuation
                     suspendMethod.hasPipelineContextParameter() shouldBe true
 
                     println("✅ @Step functions using direct pipelineContext access compiled successfully:")
                     println("   - directContextStep: ${directMethod.getParameterCount()} params")
                     println("   - directContextSuspendStep: ${suspendMethod.getParameterCount()} params")
-                    println("   - Functions can use pipelineContext directly without LocalPipelineContext.current")
+                    println("   - Functions can use context parameter directly")
                 }
             }
 
-            and("@Step functions use context parameter name implicitly") {
+            and("@Step functions use explicit context parameter") {
                 val sourceCode = """
                     package test.context
             
                     import dev.rubentxu.pipeline.annotations.Step
-                    import dev.rubentxu.pipeline.context.PipelineContext
-                    import dev.rubentxu.pipeline.context.LocalPipelineContext
+                    import dev.rubentxu.pipeline.context.PipelineContext                    
+                    
+                    data class ShellOptions(val workingDir: String? = null, val timeout: Long = 30000)
+                    data class ShellResult(val exitCode: Int, val stdout: String, val stderr: String) {
+                        val success: Boolean get() = exitCode == 0
+                        fun contains(text: String): Boolean = stdout.contains(text) || stderr.contains(text)
+                    }
                    
                     
                     @Step
-                    fun implicitContextStep(fileName: String) {
-                        // Plugin should inject pipelineContext and make it directly accessible
-                        pipelineContext.debug("Processing file: ${'$'}fileName")
+                    fun explicitContextStep(context: PipelineContext, fileName: String) {
+                        // Context parameter is explicitly available
+                        context.debug("Processing file: ${'$'}fileName")
                         
                         try {
                             // Simulate some work
                             val processed = "processed_${'$'}fileName"
                         } catch (e: Exception) {
-                            pipelineContext.error("Failed to process ${'$'}fileName: ${'$'}{e.message}")
+                            context.error("Failed to process ${'$'}fileName: ${'$'}{e.message}")
                             throw e
                         }
                     }
                 """.trimIndent()
 
-                then("plugin should make pipelineContext available directly") {
+                then("plugin should validate explicit context parameter") {
                     // This will also fail until the plugin is enhanced
                     val result = try {
                         compileKotlin(sourceCode, usePlugin = true, tempDir)
                     } catch (e: Exception) {
-                        println("❌ Plugin doesn't yet support direct pipelineContext parameter access")
-                        println("   The plugin should inject pipelineContext and make it usable within function body")
+                        println("❌ Plugin doesn't validate explicit context parameter correctly")
+                        println("   The plugin should validate explicit context parameter")
                         return@then
                     }
 
@@ -815,11 +848,11 @@ class StepCompilerPluginBDDTest : BehaviorSpec({
                     val analyzer = BytecodeAnalyzer()
                     val analysis = analyzer.analyzeClassFile(result)
 
-                    val implicitMethod = analysis.findMethod("implicitContextStep")!!
-                    implicitMethod.getParameterCount() shouldBe 2 // PipelineContext + fileName
-                    implicitMethod.hasPipelineContextParameter() shouldBe true
+                    val explicitMethod = analysis.findMethod("explicitContextStep")!!
+                    explicitMethod.getParameterCount() shouldBe 2 // context + fileName
+                    explicitMethod.hasPipelineContextParameter() shouldBe true
 
-                    println("✅ Direct pipelineContext parameter test passed")
+                    println("✅ Explicit context parameter test passed")
                 }
             }
         }
@@ -1016,7 +1049,20 @@ private fun buildClasspath(): String {
         }
     }
 
-    // Add test-fixtures to classpath
+    // Add compiled test classes to classpath for mock classes
+    val testClassesPath = File("pipeline-steps-system/compiler-plugin/build/classes/kotlin/test").absolutePath
+    if (File(testClassesPath).exists()) {
+        classpathEntries.add(testClassesPath)
+        println("🔧 Test classes added: $testClassesPath")
+    } else {
+        val altTestClasses = File("build/classes/kotlin/test").absolutePath
+        if (File(altTestClasses).exists()) {
+            classpathEntries.add(altTestClasses)
+            println("🔧 Test classes added: $altTestClasses")
+        }
+    }
+
+    // Add test-fixtures to classpath if they exist
     val testFixturesPath = File("pipeline-steps-system/compiler-plugin/test-fixtures").absolutePath
     if (File(testFixturesPath).exists()) {
         classpathEntries.add(testFixturesPath)

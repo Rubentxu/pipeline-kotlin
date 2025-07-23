@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.dsl.engines.GenericKotlinDslEngineBuilder
 import dev.rubentxu.pipeline.dsl.engines.PipelineDslEngine
 import dev.rubentxu.pipeline.events.EventBus
 import dev.rubentxu.pipeline.events.DefaultEventBus
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.plugins.PluginManager
@@ -29,7 +29,7 @@ class DslManager(
     private val pipelineConfig: IPipelineConfig,
     private val pluginManager: PluginManager? = null,
     private val eventBus: EventBus = DefaultEventBus(),
-    private val logger: IPipelineLogger = PipelineLogger.getLogger(),
+    private val logger: ILogger = PipelineLogger.getLogger(),
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 ) {
     

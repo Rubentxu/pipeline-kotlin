@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.dsl.validation
 
 import dev.rubentxu.pipeline.dsl.*
-import dev.rubentxu.pipeline.logger.IPipelineLogger
+import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.security.SandboxManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -19,7 +19,7 @@ suspend fun DslEngine<*>.validateWithEnhancedReporting(
     compilationContext: DslCompilationContext = createDefaultCompilationContext(),
     executionContext: DslExecutionContext = createDefaultExecutionContext(),
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): DslValidationReport {
     
     val validator = DslValidator(sandboxManager, logger)
@@ -34,7 +34,7 @@ suspend fun DslEngine<*>.validateFileWithEnhancedReporting(
     compilationContext: DslCompilationContext = createDefaultCompilationContext(),
     executionContext: DslExecutionContext = createDefaultExecutionContext(),
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): DslValidationReport {
     
     val scriptContent = scriptFile.readText()
@@ -97,7 +97,7 @@ fun DslEngine<*>.createValidationStream(
     compilationContext: DslCompilationContext = createDefaultCompilationContext(),
     executionContext: DslExecutionContext = createDefaultExecutionContext(),
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): Flow<DslValidationReport> = flow {
     
     val validator = DslValidator(sandboxManager, logger)
@@ -118,7 +118,7 @@ suspend fun DslEngine<*>.validateBatch(
     compilationContext: DslCompilationContext = createDefaultCompilationContext(),
     executionContext: DslExecutionContext = createDefaultExecutionContext(),
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): List<DslValidationReport> {
     
     val validator = DslValidator(sandboxManager, logger)
@@ -137,7 +137,7 @@ suspend fun DslEngine<*>.validateWithQuickFixes(
     compilationContext: DslCompilationContext = createDefaultCompilationContext(),
     executionContext: DslExecutionContext = createDefaultExecutionContext(),
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): DslValidationReportWithFixes {
     
     val report = validateWithEnhancedReporting(
@@ -307,7 +307,7 @@ suspend fun validateAndLogResults(
     scriptContent: String,
     scriptName: String,
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): Boolean {
     val report = engine.validateWithEnhancedReporting(
         scriptContent = scriptContent,
@@ -328,7 +328,7 @@ suspend fun validateFileAndLogResults(
     engine: DslEngine<*>,
     scriptFile: java.io.File,
     sandboxManager: SandboxManager,
-    logger: IPipelineLogger
+    logger: ILogger
 ): Boolean {
     val report = engine.validateFileWithEnhancedReporting(
         scriptFile = scriptFile,

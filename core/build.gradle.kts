@@ -64,9 +64,26 @@ tasks {
         
         // === TDD Phase 1: Exclude components not yet ready ===
         
-        // DSL System - Complex dependency tree, excluded during service initialization phase
-        exclude("**/dsl/**")
-        exclude("**/engines/**")
+        // DSL System - Enable only DslManager.kt (minimal implementation)
+        exclude("**/dsl/AgentBlock.kt")
+        exclude("**/dsl/Dsl.kt")
+        exclude("**/dsl/DslEngine.kt") 
+        exclude("**/dsl/DefaultDslEngineRegistry.kt")
+        exclude("**/dsl/DslContextExtensions.kt")
+        exclude("**/dsl/EnviromentBlock.kt")
+        exclude("**/dsl/NodeDsl.kt")
+        exclude("**/dsl/PipelineBlock.kt")
+        exclude("**/dsl/PostExecutionBlock.kt")
+        exclude("**/dsl/StageBlock.kt")
+        exclude("**/dsl/StagesCollectionBlock.kt")
+        exclude("**/dsl/Step.kt")
+        exclude("**/dsl/StepsBlock.kt")
+        exclude("**/dsl/WorkspaceDslExtensions.kt")
+        exclude("**/dsl/engines/**")
+        exclude("**/dsl/examples/**")
+        exclude("**/dsl/interfaces/**")
+        exclude("**/dsl/validation/**")
+        exclude("**/dsl/MinimalDslManager.kt")  // Remove this since it's copied to DslManager.kt
         
         // Execution & Compilation - Depends on DSL and pipeline models
         exclude("**/execution/**")

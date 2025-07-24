@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.context.managers
 import dev.rubentxu.pipeline.context.managers.interfaces.*
 import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.nio.file.*
@@ -27,6 +29,7 @@ class DefaultWorkspaceManager(
 
     private val tempWorkspaces = ConcurrentHashMap<String, Workspace>()
     private val workspaceStack = ArrayDeque<Workspace>()
+    private val tempWorkspaceCreationMutex = Mutex()
 
     override val current: Workspace = DefaultWorkspace(
         initialDirectory.toAbsolutePath().normalize(),
@@ -98,10 +101,29 @@ class DefaultWorkspaceManager(
     }
 
     override suspend fun getTempWorkspace(name: String): Workspace {
-        return tempWorkspaces.computeIfAbsent(name) {
-            val tempPath = Files.createTempDirectory("pipeline-workspace-$name")
+        // 2. Primera comprobación (sin bloqueo): Es la ruta más rápida y común.
+        // Si el workspace ya existe, lo devolvemos inmediatamente.
+        tempWorkspaces[name]?.let { return it }
+
+        // 3. Si no existe, usamos el Mutex para asegurar que solo una corrutina lo cree.
+        return tempWorkspaceCreationMutex.withLock {
+            // 4. Segunda comprobación (dentro del bloqueo):
+            // Otra corrutina podría haberlo creado mientras esperábamos el bloqueo.
+            // Volvemos a comprobar para evitar trabajo duplicado.
+            tempWorkspaces[name]?.let { return@withLock it }
+
+            // 5. Ahora estamos seguros de que somos los únicos creando este workspace.
+            // Todas las operaciones son ahora suspend y seguras.
+            val tempPath = withContext(Dispatchers.IO) {
+                Files.createTempDirectory("pipeline-workspace-$name")
+            }
+
             logger?.debug("Created temporary workspace '$name' at: $tempPath")
-            DefaultWorkspace(tempPath, this)
+
+            val newWorkspace = DefaultWorkspace(tempPath, this)
+            tempWorkspaces[name] = newWorkspace
+
+            newWorkspace
         }
     }
 
@@ -137,7 +159,14 @@ class DefaultWorkspaceManager(
 
     override fun createScope(name: String, basePath: Path): IWorkspaceManager {
         val scopedPath = basePath.toAbsolutePath().normalize()
-        logger?.debug("Creating scoped workspace manager '$name' at: $scopedPath")
+        // TODO: Non-suspend method calling suspend logger - consider making interface suspend
+        try {
+            kotlinx.coroutines.runBlocking {
+                logger?.debug("Creating scoped workspace manager '$name' at: $scopedPath")
+            }
+        } catch (e: Exception) {
+            System.err.println("Failed to log scope creation: ${e.message}")
+        }
         return DefaultWorkspaceManager(scopedPath, logger, security)
     }
 

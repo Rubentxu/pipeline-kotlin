@@ -42,7 +42,8 @@ open class StepsBlock(val pipeline: Pipeline) : StepExecutionScope {
     )
     
     // Create PipelineContext from existing StepExecutionContext
-    private val pipelineContext: PipelineContext = stepContext.toPipelineContext()
+    // Made internal so compiler plugin can access it for generated extensions
+    internal val pipelineContext: PipelineContext = stepContext.toPipelineContext()
     
     /**
      * Adds a custom step to this steps block.

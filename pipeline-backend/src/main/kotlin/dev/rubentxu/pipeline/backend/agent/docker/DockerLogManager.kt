@@ -12,11 +12,7 @@ import java.util.concurrent.CountDownLatch
 class DockerLogManager(
     private val dockerClient: DockerClient,
 ) {
-    private val logger: ILogger = PipelineLogger(
-        "DockerLogManager",
-        LoggingContext(),
-        { event -> println("[${event.level}] ${event.loggerName}: ${event.message}") }
-    )
+    private val logger: ILogger = PipelineLogger.getLogger("DockerLogManager")
     fun showContainerLogs(containerId: String) {
         val latch = CountDownLatch(1)
 

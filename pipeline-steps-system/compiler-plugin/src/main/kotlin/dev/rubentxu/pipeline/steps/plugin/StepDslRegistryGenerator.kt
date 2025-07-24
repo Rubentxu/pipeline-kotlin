@@ -26,9 +26,10 @@ import org.jetbrains.kotlin.name.Name
 
 class StepDslRegistryGenerator : IrGenerationExtension {
     companion object {
-        val STEP_ANNOTATION_FQ_NAME = FqName("dev.rubentxu.pipeline.steps.annotations.Step")
+        val STEP_ANNOTATION_FQ_NAME = FqName("dev.rubentxu.pipeline.annotations.Step")
         val STEPS_BLOCK_FQ_NAME = FqName("dev.rubentxu.pipeline.dsl.StepsBlock")
         val STEPS_BLOCK_CLASS_ID = ClassId.topLevel(STEPS_BLOCK_FQ_NAME)
+        val PIPELINE_CONTEXT_FQ_NAME = FqName("dev.rubentxu.pipeline.context.PipelineContext")
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -75,8 +76,8 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             val typeName = param.type.getClass()?.kotlinFqName?.shortName()?.asString() ?: param.type.toString()
             "${param.name}: $typeName"
         }
-        // El contexto se obtiene del StepsBlock (this.context) para las extensiones
-        val callParams = listOf("this.context") + regularParams.map { it.name.asString() }
+        // El contexto se obtiene del StepsBlock (this.pipelineContext) para las extensiones
+        val callParams = listOf("this.pipelineContext") + regularParams.map { it.name.asString() }
         val callSignature = callParams.joinToString(", ")
         val suspendModifier = if (isAsync) "suspend " else ""
         return "${suspendModifier}fun StepsBlock.$functionName($paramList) = step(\"$functionName\") { $functionName($callSignature) }"
@@ -189,34 +190,16 @@ class StepDslRegistryGenerator : IrGenerationExtension {
             endOffset = extensionFunction.endOffset
         ).apply {
             val irBuilder = DeclarationIrBuilder(pluginContext, extensionFunction.symbol)
-            val stepMethodSymbol = findStepMethod(pluginContext)
-            if (stepMethodSymbol != null) {
-                val stepCall = irBuilder.irCall(stepMethodSymbol).apply {
-                    arguments[0] = irBuilder.irString(stepFunction.name.asString())
-                    arguments[1] = createStepLambda(stepFunction, extensionFunction, pluginContext, irBuilder)
-                }
-                statements.add(irBuilder.irReturn(stepCall))
-            }
-        }
-    }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun createStepLambda(
-        stepFunction: IrSimpleFunction,
-        extensionFunction: IrSimpleFunction,
-        pluginContext: IrPluginContext,
-        irBuilder: DeclarationIrBuilder
-    ): IrExpression {
-        // Crea una lambda anónima: { stepFunction(this.context, ...params) }
-        // Donde this.context proviene del StepsBlock
-        return irBuilder.irBlock {
-            val call = irBuilder.irCall(stepFunction.symbol).apply {
-                // Obtener el contexto del StepsBlock (this.context)
+            
+            // Create direct call to the @Step function
+            val directCall = irBuilder.irCall(stepFunction.symbol).apply {
+                // Get the pipelineContext from StepsBlock (this.pipelineContext)
                 val contextCall = createStepsBlockContextCall(pluginContext, irBuilder, extensionFunction)
                 if (contextCall != null) {
-                    arguments[0] = contextCall  // Pasar contexto como primer argumento
+                    arguments[0] = contextCall  // Pass context as first argument
                 }
-                // Agregar los demás parámetros (sin incluir el context parameter)
+                
+                // Add the other parameters (excluding the context parameter)
                 val extensionRegularParams = extensionFunction.parameters.filter {
                     it.kind == IrParameterKind.Regular
                 }
@@ -224,9 +207,12 @@ class StepDslRegistryGenerator : IrGenerationExtension {
                     arguments[index + 1] = irBuilder.irGet(param)
                 }
             }
-            +irBuilder.irReturn(call)
+            
+            statements.add(irBuilder.irReturn(directCall))
         }
     }
+
+    // Removed createStepLambda - now using direct function calls
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun createStepsBlockContextCall(
@@ -239,7 +225,7 @@ class StepDslRegistryGenerator : IrGenerationExtension {
         if (stepsBlockSymbol != null) {
             val contextProperty = stepsBlockSymbol.owner.declarations
                 .filterIsInstance<IrProperty>()
-                .find { it.name.asString() == "context" }
+                .find { it.name.asString() == "pipelineContext" }
             if (contextProperty?.getter != null) {
                 // Obtener 'this' del StepsBlock (extension receiver)
                 val extensionReceiver = extensionFunction.parameters.firstOrNull { 
@@ -255,14 +241,7 @@ class StepDslRegistryGenerator : IrGenerationExtension {
         return null
     }
 
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun findStepMethod(pluginContext: IrPluginContext): IrSimpleFunctionSymbol? {
-        val stepsBlockSymbol = pluginContext.referenceClass(STEPS_BLOCK_CLASS_ID)
-        return stepsBlockSymbol?.owner?.declarations
-            ?.filterIsInstance<IrSimpleFunction>()
-            ?.find { it.name.asString() == "step" }
-            ?.symbol
-    }
+    // Removed findStepMethod - now using direct function calls
 
     private inner class StepFunctionCollector(
         private val stepFunctions: MutableList<IrSimpleFunction>

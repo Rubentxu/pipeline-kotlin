@@ -92,7 +92,7 @@ class MockLoggerManager(
         return removed
     }
     
-    override suspend fun getLogger(name: String): ILogger {
+    override fun getLogger(name: String): ILogger {
         return loggers.computeIfAbsent(name) { MockLogger(it, this) }
     }
     
@@ -200,15 +200,15 @@ class MockLogger(
 ) : ILogger {
     
     override fun info(message: String, data: Map<String, String>) {
-        log(LogLevel.INFO, message, data)
+        log(LogLevel.INFO, message, data, null)
     }
     
     override fun warn(message: String, data: Map<String, String>) {
-        log(LogLevel.WARN, message, data)
+        log(LogLevel.WARN, message, data, null)
     }
     
     override fun debug(message: String, data: Map<String, String>) {
-        log(LogLevel.DEBUG, message, data)
+        log(LogLevel.DEBUG, message, data, null)
     }
     
     override fun error(message: String, throwable: Throwable?, data: Map<String, String>) {
@@ -216,11 +216,11 @@ class MockLogger(
     }
     
     override fun trace(message: String, data: Map<String, String>) {
-        log(LogLevel.TRACE, message, data)
+        log(LogLevel.TRACE, message, data, null)
     }
     
     override fun critical(message: String, data: Map<String, String>) {
-        log(LogLevel.ERROR, message, data)
+        log(LogLevel.ERROR, message, data, null)
     }
     
     override fun system(message: String) {
@@ -228,26 +228,22 @@ class MockLogger(
     }
     
     override fun log(level: LogLevel, message: String, exception: Throwable?) {
-        kotlinx.coroutines.runBlocking {
-            val event = createLogEvent(level, message, exception)
-            manager.distributeEvent(event)
-        }
+        val event = createLogEvent(level, message, exception)
+        runBlocking { manager.distributeEvent(event) }
     }
     
     override fun log(level: LogLevel, message: String, contextData: Map<String, String>, exception: Throwable?) {
-        kotlinx.coroutines.runBlocking {
-            val event = createLogEvent(level, message, exception, contextData)
-            manager.distributeEvent(event)
-        }
+        val event = createLogEvent(level, message, exception, contextData)
+        runBlocking { manager.distributeEvent(event) }
     }
     
-    private suspend fun createLogEvent(
+    private fun createLogEvent(
         level: LogLevel,
         message: String,
         exception: Throwable? = null,
         contextData: Map<String, String> = emptyMap()
     ): LogEvent {
-        val context = LoggingContext.current()
+        val context = getCurrentLoggingContext()
         val allContextData = mutableMapOf<String, String>()
         
         // Add context data from LoggingContext
@@ -269,5 +265,30 @@ class MockLogger(
             contextData = allContextData,
             exception = exception
         )
+    }
+    
+    override fun <T> prettyPrint(level: LogLevel, obj: T) {
+        log(level, "PrettyPrint: $obj")
+    }
+    
+    override fun errorBanner(messages: List<String>) {
+        val bannerMessage = messages.joinToString("\n", prefix = "=== ERROR BANNER ===\n", postfix = "\n===================")
+        log(LogLevel.ERROR, bannerMessage)
+    }
+    
+    /**
+     * Safely attempts to get the current LoggingContext without requiring suspend context.
+     * Returns null if not in a coroutine context or if context is not available.
+     */
+    private fun getCurrentLoggingContext(): LoggingContext? {
+        return try {
+            // Try to get the context if we're in a coroutine environment
+            runBlocking {
+                LoggingContext.current()
+            }
+        } catch (_: Exception) {
+            // Not in coroutine context or context unavailable - return null
+            null
+        }
     }
 }

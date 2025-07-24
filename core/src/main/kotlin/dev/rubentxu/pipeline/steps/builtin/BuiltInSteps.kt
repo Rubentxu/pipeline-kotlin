@@ -16,8 +16,9 @@ import dev.rubentxu.pipeline.model.scm.Scm
  */
 
 /**
- * Executes a shell command within the pipeline pipelineContext.
+ * Executes a shell command within the pipeline context.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param command The shell command to execute
  * @param returnStdout Whether to return the stdout output
  * @return The command output if returnStdout is true, empty string otherwise
@@ -28,15 +29,12 @@ import dev.rubentxu.pipeline.model.scm.Scm
     category = StepCategory.BUILD,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun sh(command: String, returnStdout: Boolean = false): String {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun sh(context: PipelineContext, command: String, returnStdout: Boolean = false): String {
     require(command.isNotBlank()) { "Command cannot be blank" }
     
-    pipelineContext.logger.info("+ sh $command")
+    context.logger.info("+ sh $command")
     
-    val result = pipelineContext.executeShell(
+    val result = context.executeShell(
         command = command,
         options = ShellOptions(returnStdout = returnStdout)
     )
@@ -48,7 +46,7 @@ suspend fun sh(command: String, returnStdout: Boolean = false): String {
     return if (returnStdout) {
         result.stdout
     } else {
-        pipelineContext.logger.info(result.stdout)
+        context.logger.info(result.stdout)
         ""
     }
 }
@@ -56,6 +54,7 @@ suspend fun sh(command: String, returnStdout: Boolean = false): String {
 /**
  * Prints a message to the pipeline logs.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param message The message to log
  */
 @Step(
@@ -64,19 +63,17 @@ suspend fun sh(command: String, returnStdout: Boolean = false): String {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.TRUSTED
 )
-fun echo(message: String) {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+fun echo(context: PipelineContext, message: String) {
     require(message.isNotBlank()) { "Message cannot be blank" }
     
-    pipelineContext.logger.info("+ echo")
-    pipelineContext.logger.info(message)
+    context.logger.info("+ echo")
+    context.logger.info(message)
 }
 
 /**
  * Checks out source code from an SCM repository.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param scm The SCM configuration
  * @return The checkout result
  */
@@ -86,13 +83,10 @@ fun echo(message: String) {
     category = StepCategory.SCM,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun checkout(scm: Scm): String {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun checkout(context: PipelineContext, scm: Scm): String {
     // TODO: Integrate with existing CheckoutStep
     // For now, delegate to the existing implementation
-    pipelineContext.logger.info("Checking out SCM: ${scm}")
+    context.logger.info("Checking out SCM: ${scm}")
     
     // This will need to be implemented to work with the existing CheckoutStep
     return "mock-commit-id"
@@ -101,6 +95,7 @@ suspend fun checkout(scm: Scm): String {
 /**
  * Reads file content within the pipeline working directory.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param file The file path relative to working directory
  * @return The file content as string
  */
@@ -110,18 +105,16 @@ suspend fun checkout(scm: Scm): String {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun readFile(file: String): String {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun readFile(context: PipelineContext, file: String): String {
     require(file.isNotBlank()) { "File path cannot be blank" }
     
-    return pipelineContext.readFile(file)
+    return context.readFile(file)
 }
 
 /**
  * Writes content to a file within the pipeline working directory.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param file The file path relative to working directory
  * @param text The content to write
  */
@@ -131,18 +124,16 @@ suspend fun readFile(file: String): String {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun writeFile(file: String, text: String) {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun writeFile(context: PipelineContext, file: String, text: String) {
     require(file.isNotBlank()) { "File path cannot be blank" }
     
-    pipelineContext.writeFile(file, text)
+    context.writeFile(file, text)
 }
 
 /**
  * Checks if a file exists within the pipeline working directory.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param file The file path relative to working directory
  * @return True if file exists and is readable
  */
@@ -152,18 +143,16 @@ suspend fun writeFile(file: String, text: String) {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun fileExists(file: String): Boolean {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun fileExists(context: PipelineContext, file: String): Boolean {
     require(file.isNotBlank()) { "File path cannot be blank" }
     
-    return pipelineContext.fileExists(file)
+    return context.fileExists(file)
 }
 
 /**
  * Retries a block of code with exponential backoff.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param maxRetries Maximum number of retry attempts
  * @param block The code block to retry (must be a @Step function)
  * @return The result of the successful execution
@@ -174,10 +163,7 @@ suspend fun fileExists(file: String): Boolean {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.TRUSTED
 )
-suspend fun retry(maxRetries: Int, block: suspend () -> Any): Any {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun retry(context: PipelineContext, maxRetries: Int, block: suspend () -> Any): Any {
     require(maxRetries > 0) { "Max retries must be positive" }
     
     var currentRetry = 0
@@ -193,7 +179,7 @@ suspend fun retry(maxRetries: Int, block: suspend () -> Any): Any {
             if (currentRetry >= maxRetries) {
                 break
             }
-            pipelineContext.logger.info("Attempt $currentRetry/$maxRetries failed, retrying in ${backoffMs}ms...")
+            context.logger.info("Attempt $currentRetry/$maxRetries failed, retrying in ${backoffMs}ms...")
             kotlinx.coroutines.delay(backoffMs)
             backoffMs = (backoffMs * 1.5).toLong().coerceAtMost(30000L) // Cap at 30 seconds
         }
@@ -204,6 +190,7 @@ suspend fun retry(maxRetries: Int, block: suspend () -> Any): Any {
 /**
  * Delays execution for the specified time.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param timeMillis Delay time in milliseconds
  */
 @Step(
@@ -212,19 +199,17 @@ suspend fun retry(maxRetries: Int, block: suspend () -> Any): Any {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.TRUSTED
 )
-suspend fun sleep(timeMillis: Long) {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    
+suspend fun sleep(context: PipelineContext, timeMillis: Long) {
     require(timeMillis >= 0) { "Delay time must be non-negative" }
     
-    pipelineContext.logger.info("+ sleep ${timeMillis}ms")
+    context.logger.info("+ sleep ${timeMillis}ms")
     kotlinx.coroutines.delay(timeMillis)
 }
 
 /**
  * Executes a shell script from a file.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param scriptPath Path to the script file relative to workspace
  * @param args Arguments to pass to the script
  * @param returnStdout Whether to capture and return stdout
@@ -236,13 +221,12 @@ suspend fun sleep(timeMillis: Long) {
     category = StepCategory.BUILD,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun script(scriptPath: String, args: List<String> = emptyList(), returnStdout: Boolean = false): String {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
+suspend fun script(context: PipelineContext, scriptPath: String, args: List<String> = emptyList(), returnStdout: Boolean = false): String {
+    // Context parameter explicitly passed - no LocalPipelineContext.current needed
     
     require(scriptPath.isNotBlank()) { "Script path cannot be blank" }
     
-    val fullPath = pipelineContext.workingDirectory.resolve(scriptPath)
+    val fullPath = context.workingDirectory.resolve(scriptPath)
     
     if (!fullPath.toFile().exists()) {
         throw IllegalArgumentException("Script file not found: $scriptPath")
@@ -250,7 +234,7 @@ suspend fun script(scriptPath: String, args: List<String> = emptyList(), returnS
     
     if (!fullPath.toFile().canExecute()) {
         // Make script executable
-        sh("chmod +x ${fullPath.toAbsolutePath()}")
+        sh(context, "chmod +x ${fullPath.toAbsolutePath()}")
     }
     
     val command = if (args.isEmpty()) {
@@ -259,12 +243,13 @@ suspend fun script(scriptPath: String, args: List<String> = emptyList(), returnS
         "${fullPath.toAbsolutePath()} ${args.joinToString(" ")}"
     }
     
-    return sh(command, returnStdout)
+    return sh(context, command, returnStdout)
 }
 
 /**
  * Creates a directory and all parent directories if they don't exist.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param path Directory path relative to workspace
  */
 @Step(
@@ -273,21 +258,21 @@ suspend fun script(scriptPath: String, args: List<String> = emptyList(), returnS
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun mkdir(path: String) {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
+suspend fun mkdir(context: PipelineContext, path: String) {
+    // Context parameter explicitly passed - no LocalPipelineContext.current needed
     
     require(path.isNotBlank()) { "Path cannot be blank" }
     
-    pipelineContext.logger.info("+ mkdir: $path")
+    context.logger.info("+ mkdir: $path")
     
-    val fullPath = pipelineContext.workingDirectory.resolve(path)
+    val fullPath = context.workingDirectory.resolve(path)
     java.nio.file.Files.createDirectories(fullPath)
 }
 
 /**
  * Copies a file or directory to another location.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param source Source path relative to workspace
  * @param destination Destination path relative to workspace
  * @param recursive Whether to copy directories recursively (default: true)
@@ -298,17 +283,16 @@ suspend fun mkdir(path: String) {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun copyFile(source: String, destination: String, recursive: Boolean = true) {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
+suspend fun copyFile(context: PipelineContext, source: String, destination: String, recursive: Boolean = true) {
+    // Context parameter explicitly passed - no LocalPipelineContext.current needed
     
     require(source.isNotBlank()) { "Source path cannot be blank" }
     require(destination.isNotBlank()) { "Destination path cannot be blank" }
     
-    pipelineContext.logger.info("+ copyFile: $source -> $destination")
+    context.logger.info("+ copyFile: $source -> $destination")
     
-    val sourcePath = pipelineContext.workingDirectory.resolve(source)
-    val destPath = pipelineContext.workingDirectory.resolve(destination)
+    val sourcePath = context.workingDirectory.resolve(source)
+    val destPath = context.workingDirectory.resolve(destination)
     
     if (!sourcePath.toFile().exists()) {
         throw IllegalArgumentException("Source not found: $source")
@@ -330,6 +314,7 @@ suspend fun copyFile(source: String, destination: String, recursive: Boolean = t
 /**
  * Deletes a file or directory.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param path Path to delete relative to workspace
  * @param recursive Whether to delete directories recursively (default: true)
  */
@@ -339,18 +324,17 @@ suspend fun copyFile(source: String, destination: String, recursive: Boolean = t
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-suspend fun deleteFile(path: String, recursive: Boolean = true) {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
+suspend fun deleteFile(context: PipelineContext, path: String, recursive: Boolean = true) {
+    // Context parameter explicitly passed - no LocalPipelineContext.current needed
     
     require(path.isNotBlank()) { "Path cannot be blank" }
     
-    pipelineContext.logger.info("+ deleteFile: $path")
+    context.logger.info("+ deleteFile: $path")
     
-    val fullPath = pipelineContext.workingDirectory.resolve(path)
+    val fullPath = context.workingDirectory.resolve(path)
     
     if (!fullPath.toFile().exists()) {
-        pipelineContext.logger.warn("File not found (skipping): $path")
+        context.logger.warn("File not found (skipping): $path")
         return
     }
     
@@ -410,6 +394,7 @@ fun generateUUID(): String {
 /**
  * Gets an environment variable value.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param name Variable name
  * @param defaultValue Default value if variable is not set
  * @return Variable value or default
@@ -420,15 +405,15 @@ fun generateUUID(): String {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.TRUSTED
 )
-fun getEnv(name: String, defaultValue: String = ""): String {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
-    return pipelineContext.environment[name] ?: defaultValue
+fun getEnv(context: PipelineContext, name: String, defaultValue: String = ""): String {
+    // Context parameter explicitly passed - no LocalPipelineContext.current needed
+    return context.environment[name] ?: defaultValue
 }
 
 /**
  * Lists files and directories in a path.
  * 
+ * @param context The pipeline execution context (injected by compiler plugin)
  * @param path Directory path relative to workspace (default: ".")
  * @param recursive Whether to list recursively (default: false)
  * @param includeHidden Whether to include hidden files (default: false)
@@ -440,13 +425,12 @@ fun getEnv(name: String, defaultValue: String = ""): String {
     category = StepCategory.UTIL,
     securityLevel = SecurityLevel.RESTRICTED
 )
-fun listFiles(path: String = ".", recursive: Boolean = false, includeHidden: Boolean = false): List<String> {
-    // pipelineContext is automatically injected by the K2 compiler plugin
-    val pipelineContext = dev.rubentxu.pipeline.context.LocalPipelineContext.current
+fun listFiles(context: PipelineContext, path: String = ".", recursive: Boolean = false, includeHidden: Boolean = false): List<String> {
+    // Context parameter explicitly passed - no LocalPipelineContext.current needed
     
-    pipelineContext.logger.info("+ listFiles: $path (recursive=$recursive)")
+    context.logger.info("+ listFiles: $path (recursive=$recursive)")
     
-    val fullPath = pipelineContext.workingDirectory.resolve(path)
+    val fullPath = context.workingDirectory.resolve(path)
     
     if (!fullPath.toFile().exists()) {
         throw IllegalArgumentException("Directory not found: $path")

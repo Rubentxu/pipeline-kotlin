@@ -8,7 +8,7 @@ gradle
 gradlew
 gradlew.bat
 .kotlin/
-#docs/repomix.md
+docs/repomix.md
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

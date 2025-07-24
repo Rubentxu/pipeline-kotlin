@@ -21,11 +21,7 @@ import java.nio.file.Path
 class DockerImageBuilder(
     private val dockerClientProvider: DockerClientProvider,
 ) {
-    private val logger: ILogger = PipelineLogger(
-        "DockerImageBuilder",
-        LoggingContext(),
-        { event -> println("[${event.level}] ${event.loggerName}: ${event.message}") }
-    )
+    private val logger: ILogger = PipelineLogger.getLogger("DockerImageBuilder")
     private val dockerClient: DockerClient = dockerClientProvider.dockerClient
 
     companion object {

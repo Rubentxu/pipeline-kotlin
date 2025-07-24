@@ -78,12 +78,12 @@ interface ILoggerManager {
      * Creates a logger instance with a specific name.
      * 
      * This logger will publish events to the central high-performance queue
-     * managed by this LoggerManager. The method remains suspend to enable
-     * correlation ID capture from the current coroutine context.
+     * managed by this LoggerManager. Can be called from both suspend and non-suspend contexts.
+     * LoggingContext will be captured during actual logging calls when available.
      * 
      * Features:
      * - Logger instance pooling and caching
-     * - Automatic correlation ID capture
+     * - Automatic correlation ID capture when in coroutine context
      * - Zero-allocation logging when object pool has available instances
      * - Thread-safe concurrent access
      * 
@@ -95,7 +95,7 @@ interface ILoggerManager {
      * @param name The logger name, typically class or component name
      * @return A high-performance logger instance
      */
-    suspend fun getLogger(name: String): ILogger
+    fun getLogger(name: String): ILogger
 
     /**
      * Executes a block of code within a specific logging context.

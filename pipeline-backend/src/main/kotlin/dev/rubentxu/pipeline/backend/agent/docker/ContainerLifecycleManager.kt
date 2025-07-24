@@ -10,11 +10,7 @@ import java.util.*
 class ContainerLifecycleManager(
     private val dockerClientProvider: DockerClientProvider,
 ) {
-    private val logger: ILogger = PipelineLogger(
-        "ContainerLifecycleManager",
-        LoggingContext(),
-        { event -> println("[${event.level}] ${event.loggerName}: ${event.message}") }
-    )
+    private val logger: ILogger = PipelineLogger.getLogger("ContainerLifecycleManager")
     private val dockerClient: DockerClient = dockerClientProvider.dockerClient
     private val dockerLogManager: DockerLogManager = dockerClientProvider.dockerLogManager
     fun createAndStartContainer(environment: Map<String, String>): String {

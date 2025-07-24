@@ -233,7 +233,7 @@ class DefaultLoggerManager(
         return removed
     }
     
-    override suspend fun getLogger(name: String): ILogger {
+    override fun getLogger(name: String): ILogger {
         return loggers.computeIfAbsent(name) { loggerName ->
             DefaultLogger(loggerName, this, eventQueue, eventPool)
         }

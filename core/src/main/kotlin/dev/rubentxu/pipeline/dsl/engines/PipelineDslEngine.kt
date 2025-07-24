@@ -7,8 +7,7 @@ import dev.rubentxu.pipeline.logger.interfaces.ILogger
 import dev.rubentxu.pipeline.logger.PipelineLogger
 import dev.rubentxu.pipeline.model.config.IPipelineConfig
 import dev.rubentxu.pipeline.model.pipeline.Pipeline
-import dev.rubentxu.pipeline.model.pipeline.PipelineResult
-import dev.rubentxu.pipeline.model.pipeline.Status
+import dev.rubentxu.pipeline.model.pipeline.PipelineDefinition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -27,7 +26,7 @@ class PipelineDslEngine(
     private val pipelineConfig: IPipelineConfig,
     private val logger: ILogger = PipelineLogger.getLogger(),
     private val enableCaching: Boolean = true
-) : DslEngine<PipelineResult> {
+) : DslEngine<Pipeline> {
     
     override val engineId = "pipeline-dsl"
     override val engineName = "Kotlin Pipeline DSL Engine"
@@ -58,7 +57,7 @@ class PipelineDslEngine(
     override suspend fun compile(
         scriptFile: File,
         context: DslCompilationContext
-    ): DslCompilationResult<PipelineResult> = withContext(Dispatchers.IO) {
+    ): DslCompilationResult<Pipeline> = withContext(Dispatchers.IO) {
         val startTime = Instant.now()
         
         try {
@@ -107,7 +106,7 @@ class PipelineDslEngine(
         scriptContent: String,
         scriptName: String,
         context: DslCompilationContext
-    ): DslCompilationResult<PipelineResult> = withContext(Dispatchers.IO) {
+    ): DslCompilationResult<Pipeline> = withContext(Dispatchers.IO) {
         val startTime = Instant.now()
         
         try {
@@ -155,7 +154,7 @@ class PipelineDslEngine(
     override suspend fun execute(
         compiledScript: CompiledScript,
         context: DslExecutionContext
-    ): DslExecutionResult<PipelineResult> = withContext(Dispatchers.Default) {
+    ): DslExecutionResult<Pipeline> = withContext(Dispatchers.Default) {
         val startTime = Instant.now()
         
         try {
@@ -169,12 +168,11 @@ class PipelineDslEngine(
             
             when (executionResult) {
                 is ResultWithDiagnostics.Success -> {
-                    // The script execution should have created a pipeline
-                    // We need to extract the pipeline from the execution result
-                    val pipeline = extractPipelineFromResult(executionResult.value)
+                    // Extract the PipelineDefinition from the script execution result
+                    val pipelineDefinition = extractPipelineDefinitionFromResult(executionResult.value)
                     
-                    // Now execute the actual pipeline
-                    val pipelineResult = executePipeline(pipeline, context)
+                    // Build the Pipeline object from the definition
+                    val pipeline = pipelineDefinition.build(pipelineConfig)
                     
                     val executionTime = Instant.now().toEpochMilli() - startTime.toEpochMilli()
                     val metadata = DslExecutionMetadata(
@@ -184,7 +182,7 @@ class PipelineDslEngine(
                         eventsPublished = 0 // TODO: Count events
                     )
                     
-                    DslExecutionResult.Success(pipelineResult, metadata)
+                    DslExecutionResult.Success(pipeline, metadata)
                 }
                 
                 is ResultWithDiagnostics.Failure -> {
@@ -212,7 +210,7 @@ class PipelineDslEngine(
         scriptFile: File,
         compilationContext: DslCompilationContext,
         executionContext: DslExecutionContext
-    ): DslExecutionResult<PipelineResult> {
+    ): DslExecutionResult<Pipeline> {
         
         val compilationResult = compile(scriptFile, compilationContext)
         
@@ -360,27 +358,22 @@ class PipelineDslEngine(
         }
     }
     
-    private fun extractPipelineFromResult(evaluationResult: EvaluationResult): Pipeline {
-        // This is a simplified extraction - in a real implementation,
-        // you'd need to properly extract the pipeline from the script execution result
-        // For now, we'll create a basic pipeline
-        
-        // The script should have created a PipelineBlock and called build()
-        // We need to extract that result from the evaluation
-        
-        val pipelineBlock = PipelineBlock()
-        return pipelineBlock.build(pipelineConfig)
-    }
-    
-    private suspend fun executePipeline(pipeline: Pipeline, context: DslExecutionContext): PipelineResult {
-        // This would delegate to the existing pipeline execution logic
-        // For now, return a basic success result
-        return PipelineResult(
-            status = Status.SUCCESS,
-            stageResults = pipeline.stageResults,
-            env = pipeline.env,
-            logs = emptyList() // TODO: Get actual logs from pipeline execution
-        )
+    private fun extractPipelineDefinitionFromResult(evaluationResult: EvaluationResult): PipelineDefinition {
+        // Extract the PipelineDefinition from the script execution result
+        // The script should return a PipelineDefinition object
+        return when (val returnValue = evaluationResult.returnValue.scriptInstance) {
+            is PipelineDefinition -> returnValue
+            else -> {
+                // If the script didn't return a PipelineDefinition directly,
+                // we need to check if it created one through the DSL
+                // This is a fallback that assumes the DSL was used correctly
+                logger.warn("Script did not return PipelineDefinition directly, using fallback extraction")
+                
+                // Try to get the last evaluated result which should be the pipeline() call result
+                evaluationResult.returnValue.scriptInstance as? PipelineDefinition
+                    ?: throw IllegalStateException("Script execution did not produce a valid PipelineDefinition")
+            }
+        }
     }
     
     private fun convertToDslError(diagnostic: ScriptDiagnostic): DslError {
@@ -424,24 +417,3 @@ class PipelineDslEngine(
     }
 }
 
-/**
- * Marker annotation for pipeline scripts.
- */
-@Target(AnnotationTarget.FILE)
-@Retention(AnnotationRetention.RUNTIME)
-@kotlin.script.experimental.annotations.KotlinScript(
-    fileExtension = "pipeline.kts",
-    compilationConfiguration = PipelineScriptConfiguration::class
-)
-annotation class PipelineScript
-
-object PipelineScriptConfiguration : kotlin.script.experimental.api.ScriptCompilationConfiguration({
-    jvm {
-        dependenciesFromCurrentContext(wholeClasspath = true)
-    }
-    implicitReceivers(dev.rubentxu.pipeline.dsl.PipelineBlock::class)
-    defaultImports(
-        "dev.rubentxu.pipeline.dsl.*",
-        "dev.rubentxu.pipeline.model.pipeline.*"
-    )
-})

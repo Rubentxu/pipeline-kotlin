@@ -96,7 +96,7 @@ class SimpleRunCommand : CliktCommand(
             
             val startTime = System.currentTimeMillis()
             
-            PipelineScriptRunner.evalWithScriptEngineManager(scriptPath, configPath)
+            PipelineScriptRunner.evalWithDslManager(scriptPath, configPath)
             
             val duration = System.currentTimeMillis() - startTime
             terminal.println(green("✅ Pipeline completed successfully in ${duration}ms"))

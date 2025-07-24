@@ -44,21 +44,29 @@ class KoinIntegrationBehaviorTest : BehaviorSpec({
         private val logger: ILogger by lazy { runBlocking { loggerManager.getLogger("TestService") } }
         
         fun performOperation(operationId: String): String {
-            logger.info("Starting operation: $operationId")
+            runBlocking {
+                logger.info("Starting operation: $operationId")
+            }
             
             try {
                 // Simulate some work
                 Thread.sleep(10)
-                logger.debug("Operation $operationId in progress")
+                runBlocking {
+                    logger.debug("Operation $operationId in progress")
+                }
                 
                 val result = "Result for $operationId"
-                logger.info("Operation $operationId completed successfully", 
-                    mapOf("result" to result)
-                )
+                runBlocking {
+                    logger.info("Operation $operationId completed successfully", 
+                        mapOf("result" to result)
+                    )
+                }
                 return result
                 
             } catch (e: Exception) {
-                logger.error("Operation $operationId failed", e)
+                runBlocking {
+                    logger.error("Operation $operationId failed", e)
+                }
                 throw e
             }
         }
@@ -73,18 +81,24 @@ class KoinIntegrationBehaviorTest : BehaviorSpec({
         
         fun startup() {
             val logger = runBlocking { loggerManager.getLogger("TestApplication") }
-            logger.info("Application starting up")
-            
-            // Initialize components
-            logger.debug("Initializing services")
+            runBlocking {
+                logger.info("Application starting up")
+                
+                // Initialize components
+                logger.debug("Initializing services")
+            }
             testService.performOperation("init")
             
-            logger.info("Application startup completed")
+            runBlocking {
+                logger.info("Application startup completed")
+            }
         }
         
         fun shutdown() {
             val logger = runBlocking { loggerManager.getLogger("TestApplication") }
-            logger.info("Application shutting down")
+            runBlocking {
+                logger.info("Application shutting down")
+            }
             loggerManager.shutdown()
         }
     }

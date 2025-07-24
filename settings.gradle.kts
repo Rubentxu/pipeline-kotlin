@@ -22,6 +22,7 @@ include(":core")
 include(":pipeline-cli")
 include(":pipeline-config")
 include(":pipeline-backend")
+include(":pipeline-lsp-server")
 // include(":lib-examples") // Disabled due to DSL dependencies on excluded classes
 // Consolidated all phases into core - phase modules no longer needed
 // include(":phase1-validation") 

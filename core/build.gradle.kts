@@ -2,7 +2,8 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotest)
-    alias(libs.plugins.ksp)
+    // KSP pendiente de release para Kotlin 2.4.x — ver settings.gradle.kts.
+    // alias(libs.plugins.ksp)
 }
 
 group = "dev.rubentxu.pipeline.core"

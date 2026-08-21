@@ -36,7 +36,7 @@ dependencies {
     testImplementation(libs.kotest.property)
     testImplementation(libs.mockk)
     testImplementation(libs.mockito.kotlin)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${"1.11.0"}")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.kotlinx.coroutines.asProvider().get()}")
     testImplementation("org.eclipse.lsp4j:org.eclipse.lsp4j.jsonrpc.debug:0.21.0")
 }
 

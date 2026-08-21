@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.Flow
  * It has no knowledge of secrets.
  */
 interface IEnvironmentManager {
-    suspend fun get(name: String): String?
-    suspend fun get(name: String, defaultValue: String): String
+    suspend operator fun get(name: String): String?
+    suspend operator fun get(name: String, defaultValue: String): String
     fun set(name: String, value: String)
     fun inject(envVars: Map<String, String>)
     suspend fun getAll(): Map<String, String>

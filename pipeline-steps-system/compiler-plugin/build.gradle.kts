@@ -140,7 +140,7 @@ fun Test.configureCommonTestSettings() {
     
     // System properties for compiler plugin testing
     systemProperty("annotationsRuntime.classpath", annotationsRuntimeClasspath.asPath)
-    systemProperty("kotlin.compiler.version", "2.4.10")
+    systemProperty("kotlin.compiler.version", libs.versions.kotlin.asProvider().get())
     systemProperty("kotlin.test.supportsK2", "true")
     systemProperty("idea.ignore.disabled.plugins", "true")
     systemProperty("idea.home.path", rootDir)

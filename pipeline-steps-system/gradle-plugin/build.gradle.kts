@@ -59,7 +59,7 @@ tasks.test {
     
     // Configurar para tests de Gradle plugins
     systemProperty("gradle.version", gradle.gradleVersion)
-    systemProperty("kotlin.version", "2.4.10")
+    systemProperty("kotlin.version", libs.versions.kotlin.asProvider().get())
     
     testLogging {
         events("passed", "skipped", "failed")
@@ -80,7 +80,7 @@ tasks.jar {
             "Implementation-Title" to "Pipeline Steps Gradle Plugin",
             "Implementation-Version" to project.version,
             "Implementation-Vendor" to "dev.rubentxu.pipeline",
-            "Kotlin-Version" to "2.4.10",
+            "Kotlin-Version" to libs.versions.kotlin.asProvider().get(),
             "Gradle-API-Version" to gradle.gradleVersion,
             "Plugin-ID" to "dev.rubentxu.pipeline.steps"
         )
@@ -157,7 +157,7 @@ tasks.register("validatePluginConfiguration") {
         println("✅ Implementation: $implementationClass")
         println("✅ Version: $version")
         println("✅ Gradle API: ${gradle.gradleVersion}")
-        println("✅ Kotlin version: ${"2.4.10"}")
+        println("✅ Kotlin version: ${libs.versions.kotlin.asProvider().get()}")
         
         // Verificar que el compiler plugin esté disponible
         val compilerPluginProject = project(":pipeline-steps-system:compiler-plugin")

@@ -53,13 +53,13 @@ dependencies {
     compileOnly(libs.kotlin.compiler)
     
     // Logging (structured logging for plugin)
-    implementation("io.github.oshai:kotlin-logging-jvm:7.0.0")
-    implementation("ch.qos.logback:logback-classic:1.5.12")
-    
+    implementation(libs.kotlin.logging.jvm)
+    implementation(libs.logback.classic)
+
     // Bytecode analysis
-    implementation("org.ow2.asm:asm:9.6")
-    implementation("org.ow2.asm:asm-util:9.6")
-    implementation("org.ow2.asm:asm-commons:9.6")
+    implementation(libs.asm)
+    implementation(libs.asm.util)
+    implementation(libs.asm.commons)
     
     // Annotations for test classpath
     annotationsRuntimeClasspath(project(":core"))

@@ -42,6 +42,7 @@ lsp4j = "0.24.0"
 auto-service = "1.1.1"
 maven-resolver = "2.0.21"
 tooling-api = "8.4"             # coincide con toolingApiVersion=8.4 (gradle.properties)
+asm = "9.6"                     # ASM tree API used by compiler-plugin
 
 
 [libraries]
@@ -78,6 +79,12 @@ junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jun
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 logback-core = { module = "ch.qos.logback:logback-core", version.ref = "logback" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+kotlin-logging-jvm = { module = "io.github.oshai:kotlin-logging-jvm", version.ref = "kotlin-logging" }
+
+# ASM (compiler-plugin bytecode manipulation)
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
 
 # Datos / formatos
 snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }

@@ -19,8 +19,8 @@ dependencies {
     implementation(gradleKotlinDsl())
     
     // Kotlin Gradle Plugin API para integración con el compiler plugin
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin-api:${libs.versions.kotlin.get()}")
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin-api:${"2.4.10"}")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${"2.4.10"}")
     
     // Plugin annotations module for @Step and related annotations
     implementation(project(":pipeline-steps-system:plugin-annotations"))
@@ -59,7 +59,7 @@ tasks.test {
     
     // Configurar para tests de Gradle plugins
     systemProperty("gradle.version", gradle.gradleVersion)
-    systemProperty("kotlin.version", libs.versions.kotlin.get())
+    systemProperty("kotlin.version", "2.4.10")
     
     testLogging {
         events("passed", "skipped", "failed")
@@ -80,7 +80,7 @@ tasks.jar {
             "Implementation-Title" to "Pipeline Steps Gradle Plugin",
             "Implementation-Version" to project.version,
             "Implementation-Vendor" to "dev.rubentxu.pipeline",
-            "Kotlin-Version" to libs.versions.kotlin.get(),
+            "Kotlin-Version" to "2.4.10",
             "Gradle-API-Version" to gradle.gradleVersion,
             "Plugin-ID" to "dev.rubentxu.pipeline.steps"
         )
@@ -157,7 +157,7 @@ tasks.register("validatePluginConfiguration") {
         println("✅ Implementation: $implementationClass")
         println("✅ Version: $version")
         println("✅ Gradle API: ${gradle.gradleVersion}")
-        println("✅ Kotlin version: ${libs.versions.kotlin.get()}")
+        println("✅ Kotlin version: ${"2.4.10"}")
         
         // Verificar que el compiler plugin esté disponible
         val compilerPluginProject = project(":pipeline-steps-system:compiler-plugin")

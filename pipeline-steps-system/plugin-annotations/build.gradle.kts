@@ -27,7 +27,7 @@ tasks.jar {
             "Implementation-Title" to "Pipeline Steps Annotations",
             "Implementation-Version" to project.version,
             "Implementation-Vendor" to "dev.rubentxu.pipeline",
-            "Kotlin-Version" to libs.versions.kotlin.get()
+            "Kotlin-Version" to "2.4.10"
         )
     }
 }

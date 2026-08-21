@@ -140,7 +140,7 @@ fun Test.configureCommonTestSettings() {
     
     // System properties for compiler plugin testing
     systemProperty("annotationsRuntime.classpath", annotationsRuntimeClasspath.asPath)
-    systemProperty("kotlin.compiler.version", libs.versions.kotlin.get())
+    systemProperty("kotlin.compiler.version", "2.4.10")
     systemProperty("kotlin.test.supportsK2", "true")
     systemProperty("idea.ignore.disabled.plugins", "true")
     systemProperty("idea.home.path", rootDir)
@@ -212,7 +212,7 @@ tasks.jar {
             "Implementation-Title" to "Pipeline Steps Compiler Plugin",
             "Implementation-Version" to project.version,
             "Implementation-Vendor" to "dev.rubentxu.pipeline",
-            "Kotlin-Version" to libs.versions.kotlin.get(),
+            "Kotlin-Version" to libs.versions.kotlin.asProvider().get(),
             "Supports-K2" to "true",
             "Context-Parameters-Support" to "true"
         )

@@ -1,0 +1,162 @@
+[versions]
+# Toolchain Kotlin (alineado con .tool-versions y settings.gradle.kts)
+kotlin = "2.4.10"
+kotlinx-coroutines = "1.11.0"
+kotlinx-serialization = "1.11.0"
+
+# KSP: última versión con revisión API explícita.
+# KSP 2.3.x usa formato simplificado; KSP 2.4.x NO está publicado todavía.
+ksp = "2.2.0-2.0.2"
+
+# Frameworks de testing / DI / utilidades (verificadas en Maven Central)
+kotest = "6.2.4"
+kotest-datatest = "5.9.1"      # bloqueado en 5.x (datatest no migró a 6.x)
+koin = "4.2.2"
+junit-jupiter = "6.1.3"
+mockito-kotlin = "6.3.0"
+mockk = "1.14.11"
+
+# Plugins Gradle
+shadow = "9.6.1"
+dokka = "2.2.0"                # Dokka 2.4.x no publicado aún en Maven Central
+graalvm-native = "0.10.6"
+
+# Logging
+logback = "1.5.18"
+kotlin-logging = "8.0.4"
+slf4j = "2.0.18"
+
+# Datos / formatos
+snakeyaml = "2.4"
+gson = "2.14.0"
+freemarker = "2.3.34"
+kaml = "0.83.0"
+okio = "3.12.0"
+
+# Otros
+clikt = "2.8.0"
+mordant = "3.0.2"
+jgit = "7.3.0"
+jctools = "4.0.5"
+lsp4j = "0.24.0"
+auto-service = "1.1.1"
+maven-resolver = "2.0.21"
+tooling-api = "8.4"             # coincide con toolingApiVersion=8.4 (gradle.properties)
+
+
+[libraries]
+# Kotlin core
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-compiler = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlin" }
+kotlin-compiler-embeddable = { module = "org.jetbrains.kotlin:kotlin-compiler-embeddable", version.ref = "kotlin" }
+kotlin-serialization = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
+
+# Kotlinx
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# Gradle Tooling API
+gradle-tooling-api = { module = "org.gradle:gradle-tooling-api", version.ref = "tooling-api" }
+
+# Kotest
+kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { module = "io.kotest:kotest-property", version.ref = "kotest" }
+kotest-framework-datatest = { module = "io.kotest:kotest-framework-datatest", version.ref = "kotest-datatest" }
+system-stubs-jupiter = { module = "io.kotest.extensions:system-stubs-jupiter", version.ref = "kotest" }
+
+# Mocking
+mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockito-kotlin" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+
+# JUnit
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+
+# Logging
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+logback-core = { module = "ch.qos.logback:logback-core", version.ref = "logback" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+# Datos / formatos
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+freemarker = { module = "org.freemarker:freemarker", version.ref = "freemarker" }
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+
+# CLI / TUI
+clikt = { module = "com.github.ajalt:clikt", version.ref = "clikt" }
+mordant = { module = "com.github.ajalt.mordant:mordant", version.ref = "mordant" }
+
+# Otros
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+jctools-core = { module = "org.jctools:jctools-core", version.ref = "jctools" }
+lsp4j = { module = "org.eclipse.lsp4j:org.eclipse.lsp4j", version.ref = "lsp4j" }
+google-autoservice = { module = "com.google.auto.service:auto-service", version.ref = "auto-service" }
+
+# Koin (usado en bundles)
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-logger-slf4j = { module = "io.insert-koin:koin-logger-slf4j", version.ref = "koin" }
+koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
+koin-test-junit5 = { module = "io.insert-koin:koin-test-junit5", version.ref = "koin" }
+
+# Docker Java (bundles)
+docker-java-core = { module = "com.github.docker-java:docker-java-core", version = "3.5.1" }
+docker-java-transport = { module = "com.github.docker-java:docker-java-transport", version = "3.5.1" }
+docker-java-transport-zerodep = { module = "com.github.docker-java:docker-java-transport-zerodep", version = "3.5.1" }
+
+# GraalVM (bundles)
+graal-sdk = { module = "org.graalvm.sdk:graal-sdk", version.ref = "graalvm-native" }
+graaljs = { module = "org.graalvm.js:graaljs", version.ref = "graalvm-native" }
+polyglot-engine = { module = "org.graalvm.polyglot:polyglot", version.ref = "graalvm-native" }
+
+# Kotlin scripting (bundles)
+kotlin-scripting-jvm = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm", version.ref = "kotlin" }
+kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }
+kotlin-scripting-common = { module = "org.jetbrains.kotlin:kotlin-scripting-common", version.ref = "kotlin" }
+kotlin-scripting-compiler-embeddable = { module = "org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable", version.ref = "kotlin" }
+kotlin-scripting-compiler-impl-embeddable = { module = "org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable", version.ref = "kotlin" }
+
+# Maven Resolver (bundles)
+maven-resolver-api = { module = "org.apache.maven.resolver:maven-resolver-api", version.ref = "maven-resolver" }
+maven-resolver-impl = { module = "org.apache.maven.resolver:maven-resolver-impl", version.ref = "maven-resolver" }
+maven-resolver-util = { module = "org.apache.maven.resolver:maven-resolver-util", version.ref = "maven-resolver" }
+maven-resolver-transport-file = { module = "org.apache.maven.resolver:maven-resolver-transport-file", version.ref = "maven-resolver" }
+maven-resolver-transport-http = { module = "org.apache.maven.resolver:maven-resolver-transport-http", version.ref = "maven-resolver" }
+maven-resolver-connector-basic = { module = "org.apache.maven.resolver:maven-resolver-connector-basic", version.ref = "maven-resolver" }
+
+
+[bundles]
+# Docker
+docker = ["docker-java-core", "docker-java-transport"]
+docker-zerodep = ["docker-java-core", "docker-java-transport-zerodep"]
+
+# GraalVM
+graalvm = ["graal-sdk", "graaljs", "polyglot-engine"]
+
+# Koin (DI)
+koin = ["koin-core", "koin-logger-slf4j"]
+koin-test = ["koin-test", "koin-test-junit5"]
+
+# Kotest (bundles)
+kotest = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "kotest-framework-datatest"]
+kotest-extended = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property", "kotest-framework-datatest", "system-stubs-jupiter"]
+
+# Kotlin scripting (compiler-host, jvm-host, etc.)
+kotlin-scripting = ["kotlin-scripting-jvm", "kotlin-scripting-jvm-host", "kotlin-scripting-common", "kotlin-scripting-compiler-embeddable", "kotlin-scripting-compiler-impl-embeddable"]
+
+# Maven Resolver
+maven-resolver = ["maven-resolver-api", "maven-resolver-impl", "maven-resolver-util", "maven-resolver-transport-file", "maven-resolver-transport-http", "maven-resolver-connector-basic"]
+
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-scripting = { id = "org.jetbrains.kotlin.scripting", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotest = { id = "io.kotest", version.ref = "kotest" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }

@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.kotlin.scripting)
+    // alias(libs.plugins.kotlin.scripting)  // marker no publicado para Kotlin 2.4.10; el runtime se obtiene por libs.bundles.kotlin.scripting en cada módulo que lo necesita.
     alias(libs.plugins.dokka)
 }
 

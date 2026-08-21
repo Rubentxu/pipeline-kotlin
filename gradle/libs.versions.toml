@@ -40,7 +40,7 @@ jgit = "7.7.1.202607240634-r"
 jctools = "4.0.7"
 lsp4j = "0.24.0"
 auto-service = "1.1.1"
-maven-resolver = "2.0.21"
+maven-resolver = "1.9.27"  # 2.0.x exists only as alpha; 1.9.27 is last 1.x stable
 tooling-api = "8.4"             # coincide con toolingApiVersion=8.4 (gradle.properties)
 asm = "9.10.1"                  # ASM tree API used by compiler-plugin
 

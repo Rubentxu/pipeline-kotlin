@@ -22,12 +22,25 @@ repositories {
 subprojects {
     group = rootProject.group
     version = rootProject.version
-    
+
     repositories {
         mavenCentral()
         gradlePluginPortal()
     }
-    
+
+    // Align Java compile target with Kotlin compile target (both JVM 21).
+    // Without this, compileJava defaults to the running JDK, which conflicts
+    // with compileKotlin's explicit JVM_21 target — surfaced when E0-01
+    // attempted to remove the stale excludes in core/build.gradle.kts.
+    // JDK 21 LTS per docs/v2/03-specifications/SCRIPTING_COMPILER_SPEC.md
+    // (primera línea certificada: Kotlin 2.4.10, JVM target 21, JDK 21).
+    // JDK 25 está documentado como "tier-2 until promoted" — pendiente de
+    // validar via compatibility corpus (backlog E2-06 / ADR-0019).
+    tasks.withType<JavaCompile> {
+        sourceCompatibility = "21"
+        targetCompatibility = "21"
+    }
+
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         compilerOptions {
             languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)

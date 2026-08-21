@@ -40,7 +40,7 @@ tasks {
         }
         // Exclude files with missing dependencies from core
         exclude("**/agent/docker/DockerConfigManager.kt") // Missing DockerAgent and pipeline models
-        
+
         // Include refactored PipelineScriptRunner (now has clean implementation)
         include("**/PipelineScriptRunner.kt")
     }

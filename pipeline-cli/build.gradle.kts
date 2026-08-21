@@ -2,8 +2,8 @@ import java.time.Duration
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.shadow)
-//    alias(libs.plugins.graalvm.native)
+    // alias(libs.plugins.shadow)  // Shadow 9.6.1 usa API eliminada en Gradle 8.14.5; reactivar cuando salga versión compatible.
+    //    alias(libs.plugins.graalvm.native)
     application
 }
 
@@ -111,12 +111,12 @@ tasks {
         }
     }
     
-    shadowJar {
-        isZip64 = true
-        archiveBaseName.set("pipeline-cli")
-        archiveClassifier.set("")
-        archiveVersion.set("")
-    }
+    // shadowJar {  // desactivado: ver plugin shadow comentado arriba
+    //     isZip64 = true
+    //     archiveBaseName.set("pipeline-cli")
+    //     archiveClassifier.set("")
+    //     archiveVersion.set("")
+    // }
 }
 
 

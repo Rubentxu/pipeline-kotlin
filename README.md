@@ -1,11 +1,31 @@
 # Pipeline Kotlin
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/rubentxu/pipeline-kotlin)
-[![Test Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/rubentxu/pipeline-kotlin)
+[![Build Status](https://img.shields.io/badge/build-partial-yellow.svg)](https://github.com/rubentxu/pipeline-kotlin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.0.0-blue.svg)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.4.10-blue.svg)](https://kotlinlang.org)
+[![JDK](https://img.shields.io/badge/JDK-24-orange.svg)](https://openjdk.org)
+[![Gradle](https://img.shields.io/badge/Gradle-8.14.5-green.svg)](https://gradle.org)
 
 A modern, type-safe CI/CD engine built with Kotlin DSL, offering a powerful alternative to Jenkins/Groovy and YAML-based pipeline systems.
+
+> **⚠️ Project status: pre-alpha, M0 baseline in progress.**
+>
+> Verified capabilities (2026-08-21):
+> - `./gradlew help` passes — module graph + build scripts evaluate correctly
+> - Kotlin 2.4.10 + Gradle 8.14.5 + JDK 24 toolchain installed via `asdf`
+> - `gradle/libs.versions.toml` catalog: 56 libraries, 9 bundles, 8 plugins
+>
+> Unverified / pending:
+> - `./gradlew build` end-to-end compilation (54 source files excluded in
+>   `core/build.gradle.kts` — see `docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG.md`
+>   E0-01 for the unblock plan)
+> - KSP processor (2.4.x not published by JetBrains/Google; latest is 2.3.11)
+> - Shadow fat-jar (9.6.1 uses API removed in Gradle 8.14.5; plugin commented)
+> - LSP4J 0.21.0 (pipeline-lsp-server pinned; catalog has 0.24.0)
+>
+> Coverage, runtime behaviour, native-image, container execution, and DSL
+> end-to-end flow have NOT been validated in this baseline. The badges and
+> feature list below reflect the *design intent*, not the verified state.
 
 ## Table of Contents
 
@@ -36,21 +56,26 @@ A modern, type-safe CI/CD engine built with Kotlin DSL, offering a powerful alte
 
 ### Prerequisites
 
-- JDK 21 or higher
-- Gradle 8.4 or higher
+- JDK 24 (Temurin recommended; project uses 24.0.2+12)
+- Gradle 8.14.5 (the wrapper at `gradle/wrapper/gradle-wrapper.properties`
+  pins this version)
 - Docker (for container-based agents)
-- **GraalVM CE 21+ (recommended for native compilation)**
+- **GraalVM CE 24+** (recommended for native compilation; not yet validated
+  in this baseline)
 
-#### Installing GraalVM
+#### Installing via asdf
 
 ```bash
-# Using SDKMAN (recommended)
-sdk install java 21.0.2-graalce
-sdk use java 21.0.2-graalce
+asdf plugin add java https://github.com/halcyon/asdf-java.git
+asdf plugin add gradle https://github.com/rfrancis/asdf-gradle.git
+asdf install
+```
 
-# Verify installation
-java -version
-native-image --version
+The `.tool-versions` file pins:
+
+```
+java temurin-24.0.2+12
+gradle 8.14.5
 ```
 
 ### Building from Source
@@ -58,18 +83,23 @@ native-image --version
 ```bash
 git clone https://github.com/rubentxu/pipeline-kotlin.git
 cd pipeline-kotlin
-gradle build
+./gradlew help      # validate module graph + build script evaluation
+./gradlew :core:check  # compile + test only the `core` module (others have
+                       # known blockers — see Status block above)
 ```
+
+> `gradle build` is NOT a working command in this baseline. Use `./gradlew`
+> (the wrapper) and target specific modules until the E0-01 exclude cleanup
+> lands.
 
 ### Building the CLI
 
-To compile the CLI application:
-
-```bash
-gradle clean :pipeline-cli:shadowJar
-```
-
-This creates a fat JAR containing all dependencies at `pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar`.
+> ⚠️ The Shadow plugin (`com.gradleup.shadow`) is currently commented in
+> `pipeline-cli/build.gradle.kts` because version 9.6.1 uses
+> `addVariantsFromConfiguration(Provider, Action)` — removed in Gradle
+> 8.14.5. There is no published fix. The fat-JAR build is unavailable until
+> a Shadow release supports Gradle 8.14.5, or the project migrates to an
+> alternative packaging strategy.
 
 ## Quick Start
 

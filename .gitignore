@@ -9,6 +9,7 @@ gradle
 gradlew
 gradlew.bat
 .kotlin/
+.atl/
 docs/repomix.md
 
 ### IntelliJ IDEA ###

@@ -6,7 +6,7 @@ kotlinx-serialization = "1.11.0"
 
 # KSP: última versión con revisión API explícita.
 # KSP 2.3.x usa formato simplificado; KSP 2.4.x NO está publicado todavía.
-ksp = "2.2.0-2.0.2"
+ksp = "2.3.11"
 
 # Frameworks de testing / DI / utilidades (verificadas en Maven Central)
 kotest = "6.2.4"
@@ -22,27 +22,27 @@ dokka = "2.2.0"                # Dokka 2.4.x no publicado aún en Maven Central
 graalvm-native = "0.10.6"
 
 # Logging
-logback = "1.5.18"
+logback = "1.6.3"
 kotlin-logging = "8.0.4"
 slf4j = "2.0.18"
 
 # Datos / formatos
-snakeyaml = "2.4"
+snakeyaml = "2.6"
 gson = "2.14.0"
 freemarker = "2.3.34"
-kaml = "0.83.0"
-okio = "3.12.0"
+kaml = "0.104.0"
+okio = "3.18.1"
 
 # Otros
 clikt = "2.8.0"
 mordant = "3.0.2"
-jgit = "7.3.0"
-jctools = "4.0.5"
+jgit = "7.7.1.202607240634-r"
+jctools = "4.0.7"
 lsp4j = "0.24.0"
 auto-service = "1.1.1"
 maven-resolver = "2.0.21"
 tooling-api = "8.4"             # coincide con toolingApiVersion=8.4 (gradle.properties)
-asm = "9.6"                     # ASM tree API used by compiler-plugin
+asm = "9.10.1"                  # ASM tree API used by compiler-plugin
 
 
 [libraries]

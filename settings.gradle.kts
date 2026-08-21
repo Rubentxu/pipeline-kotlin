@@ -7,10 +7,12 @@ pluginManagement {
         }
     }
     plugins {
-        id("org.jetbrains.kotlin.multiplatform") version "2.2.0"
-        id("org.jetbrains.kotlin.plugin.serialization") version "2.2.0"
+        id("org.jetbrains.kotlin.multiplatform") version "2.4.10"
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
         id("io.kotest") version "0.4.11"
-        id("com.google.devtools.ksp") version "2.2.0-2.0.2"
+        // KSP para Kotlin 2.4.x aún no publicado (último KSP disponible: 2.3.11).
+        // Reactivar cuando JetBrains/Google liberen `2.4.10-2.0.x` (o el formato que apliquen).
+        // id("com.google.devtools.ksp") version "2.4.10-2.0.x"
     }
 }
 

@@ -1,0 +1,131 @@
+# UAT Scenarios
+
+## UAT-M0-001 — Baseline reproducible
+**Actor:** Developer  
+**Given:** checkout limpio y JDK soportado  
+**When:** ejecuta build/validate V2  
+**Then:** todos los módulos V2 compilan sin source excludes y sample hello valida.  
+**Critical:** sí
+
+## UAT-COMP-001 — Pipeline válido
+Compilar `.pipeline.kts` con `pipeline/stage/sh`; diagnostics vacíos; artifact/cache identity registrada.
+
+## UAT-COMP-002 — Error source-mapped
+Introducir parámetro/type incorrecto; mostrar fichero/línea/columna y símbolo útil.
+
+## UAT-COMP-006 — Upgrade Kotlin compatibility
+Ejecutar corpus contra versión candidata y generar semantic/diagnostic diff antes de promoverla.
+
+## UAT-DSL-001 — Jenkins familiarity
+Developer Jenkins sin documentación extensa reconoce estructura y puede modificar command/stage/agent.
+
+## UAT-DSL-002 — Dynamic scripted logic
+`sh(returnStdout=true)` decide un `if` dentro de `script {}` y produce branch correcto.
+
+## UAT-DSL-003 — Parallel
+Dos ramas corren independientemente, UI/event graph conserva nombres y join.
+
+## UAT-DSL-004 — Retry
+Failure infrastructure crea Attempt nuevo; build failure no retry si policy lo excluye.
+
+## UAT-DSL-005 — Timeout durable
+Timeout sigue siendo efectivo tras worker reconnect/recovery.
+
+## UAT-STEP-001 — Capability injection
+`sh` recibe ProcessExecutor mediante context capability; test no usa Service Locator.
+
+## UAT-STEP-004 — Sin FIR/IR
+Pipeline completo compila/ejecuta con compiler plugin custom deshabilitado.
+
+## UAT-EVT-001 — Rebuild
+Eliminar projection y reconstruir desde journal obteniendo mismo run state.
+
+## UAT-EVT-002 — Causal chain
+Desde RetryScheduled se puede navegar a AttemptLost y WorkerLost causante.
+
+## UAT-REC-001 — Worker crash después de Step
+Step `sh` produce marker externo controlado, worker muere después del completion event; recovery no vuelve a ejecutar el Step.
+
+## UAT-REC-002 — Crash antes de confirmation
+Worker muere durante durable process; reconciliation determina RUNNING/LOST y policy produce resultado consistente, no asume éxito.
+
+## UAT-REC-003 — Replay divergence
+Cambiar source digest/control flow y forzar replay; runtime falla closed y propone fork/migration.
+
+## UAT-REC-005 — Fencing split brain
+Worker A token 42 pierde lease, B obtiene 43; eventos tardíos A son rechazados y auditados.
+
+## UAT-PROT-001 — Reconnect/replay
+Cortar conexión, producir eventos, reconectar; tail llega exactamente como state transitions aunque el delivery sea at-least-once.
+
+## UAT-PROT-002 — Duplicate events
+Reenviar EventEnvelope; reducer no duplica Stage/Step state.
+
+## UAT-PROT-003 — Protocol mismatch
+Worker sin versión compatible es rechazado antes de recibir workload.
+
+## UAT-PROT-005 — Transport parity
+Mismo conformance suite sobre WebSocket y gRPC gateway cuando esté disponible.
+
+## UAT-K8S-001 — Ephemeral Pod
+Run solicita Pod, worker conecta, ejecuta y Pod termina según lifecycle.
+
+## UAT-K8S-002 — Pod eviction
+Eliminar Pod durante Step retryable; run clasifica InfrastructureFailure y continúa en nuevo worker según policy.
+
+## UAT-K8S-003 — Familiar Pod template
+`inheritFrom`, `yamlFile` y `defaultContainer` producen effective WorkerTemplate esperado.
+
+## UAT-CRED-001 — Jenkins credentials
+`credentialsId` resuelve y proyecta credencial sin aparecer en event/journal/log.
+
+## UAT-CRED-002 — Workload identity
+Worker accede a recurso mediante identity/CSI sin secret bytes atravesando controller.
+
+## UAT-SEC-001 — Secret redaction
+Imprimir accidentalmente token conocido; logs almacenados/transmitidos quedan redacted según contrato.
+
+## UAT-SEC-002 — Sandbox profile
+Pipeline no puede elevar privilegios ni escribir fuera de mounts permitidos en security profile baseline.
+
+## UAT-JENKINS-001 — New Pipeline type
+Crear “Kotlin Pipeline from SCM” y ejecutar desde Jenkins.
+
+## UAT-JENKINS-002 — FlowGraph projection
+Stages/Steps/failure aparecen en UI/history con nombres esperados.
+
+## UAT-JENKINS-003 — Lightweight controller
+Durante compile/build, evidencia confirma que Kotlin compile y shell workload ocurren en worker, no controller.
+
+## UAT-JENKINS-004 — Controller restart
+Reiniciar Jenkins durante run; FlowExecution rehidrata y continúa recibiendo/reproyectando eventos.
+
+## UAT-PLUGIN-001 — Install locked plugin
+Resolver plugin por version+digest, verificar descriptor y compilar DSL façade.
+
+## UAT-PLUGIN-002 — Incompatible plugin
+Plugin API/runtime range incompatible falla antes de workload.
+
+## UAT-E2E-001 — Reference Java pipeline
+checkout → Gradle build → junit → artifact → provenance con worker K8s y vista Jenkins.
+
+## UAT-GRAPH-001 — Execution query
+Desde failed Step obtener Attempts, Workers y causal chain.
+
+## UAT-GRAPH-002 — Fork/diff
+Fork seguro desde evento, cambiar worker/runtime config, ejecutar y comparar timings/results sin modificar parent.
+
+## UAT-SC-001 — Artifact provenance
+Dado artifact digest, navegar hasta commit, run, Step, worker image, plugin lock y SBOM.
+
+## UAT-SC-002 — Deployment policy
+Bloquear deployment a production si artifact carece de required SBOM/signature relation.
+
+## UAT-CHAOS-001 — Gateway restart
+Reiniciar gateway con runs activos; workers reconectan y replay sin corrupción.
+
+## UAT-CHAOS-002 — Burst duplicates/delay
+Introducir duplicates y reordering permitido; estado final consistente.
+
+## UAT-PERF-001 — Controller comparison
+Ejecutar carga equivalente Groovy/V2 y registrar CPU/heap/controller throughput.

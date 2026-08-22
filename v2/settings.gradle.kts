@@ -17,6 +17,7 @@ include(
     ":pipeline-domain",
     ":pipeline-application",
     ":pipeline-scripting-api",
+    ":pipeline-scripting-kotlin24",
     ":pipeline-testkit",
     ":pipeline-architecture-tests",
 )

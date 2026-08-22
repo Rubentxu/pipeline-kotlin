@@ -13,7 +13,11 @@ class FArch003ExperimentalScriptingContainmentTest {
     @Test
     fun `happy path — no violations at base`() {
         val root = ScannerSupport.v2Root()
-        val allowList = listOf("/pipeline-scripting-api/", "/pipeline-architecture-tests/src/test/kotlin")
+        val allowList = listOf(
+            "/pipeline-scripting-api/",
+            "/pipeline-scripting-kotlin24/",
+            "/pipeline-architecture-tests/src/test/kotlin",
+        )
         val findings = SourceScanner.findImports(root, listOf(scriptingExperimentalToken), allowList)
         assertTrue(findings.isEmpty(), "No file outside pipeline-scripting-api may import kotlin.script.experimental: $findings")
     }

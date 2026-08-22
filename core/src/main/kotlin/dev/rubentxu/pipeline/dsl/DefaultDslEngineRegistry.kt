@@ -246,11 +246,6 @@ data class EngineSummary(
 )
 
 /**
- * Exception thrown when DSL engine operations fail.
- */
-open class DslEngineException(message: String, cause: Throwable? = null) : Exception(message, cause)
-
-/**
  * Exception thrown when no suitable DSL engine is found.
  */
 class NoSuitableDslEngineException(

@@ -18,4 +18,5 @@ include(
     ":pipeline-application",
     ":pipeline-scripting-api",
     ":pipeline-testkit",
+    ":pipeline-architecture-tests",
 )

@@ -8,6 +8,11 @@ build/
 gradle
 gradlew
 gradlew.bat
+# V2 included build: keep its wrapper + catalog tracked
+!v2/gradle/
+!v2/gradle/**
+!v2/gradlew
+!v2/gradlew.bat
 .kotlin/
 .atl/
 docs/repomix.md

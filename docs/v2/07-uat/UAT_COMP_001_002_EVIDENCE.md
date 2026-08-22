@@ -17,26 +17,44 @@
 ./gradlew -p v2 :pipeline-architecture-tests:test
 ```
 
+## Last-Run Verification (M1-R1 fixup)
+
+- `./gradlew -p v2 :pipeline-scripting-kotlin24:test` → 5 tests, 0 failures, 0 ignored.
+- `./gradlew -p v2 clean check` → BUILD SUCCESSFUL across `pipeline-domain`,
+  `pipeline-application`, `pipeline-scripting-api`, `pipeline-testkit`,
+  `pipeline-architecture-tests`, `pipeline-scripting-kotlin24`.
+- FArch003 containment pass: `kotlin.script.experimental` only in
+  `pipeline-scripting-kotlin24` (adapter) + `pipeline-architecture-tests`
+  (test fixtures).
+- `grep -rn "wholeClasspath" v2/` → 3 comment-only matches in
+  `Kotlin24ScriptingHost.kt` design rationale. **No runtime `wholeClasspath = true`**
+  anywhere in the production path.
+
 ## Expected Outputs
 
 ### UatComp001 — Script Compiles
-- **Expected**: `result.isSuccess == true`, `result.diagnostics` is empty or only DEBUG/INFO
-- **Key assertion**: `assertTrue(result.isSuccess, "Expected successful compilation: ${result.diagnostics}")`
+- **Expected**: `result.isSuccess == true`, `result.diagnostics` is empty (DEBUG reports are filtered out at INFO threshold by the adapter to avoid noise — see `Kotlin24ScriptingHost.compile`).
+- **Key assertions**:
+  - `assertTrue(result.isSuccess, ...)`
+  - `assertTrue(result.diagnostics.isEmpty(), ...)`
+  - `assertNotNull(result.value)`
+  - `assertEquals(result1.cacheKey, result2.cacheKey)` — cache key stable across evaluations.
 
 ### UatComp002 — Error Source-Mapped
-- **Expected**: `result.isSuccess == false`, ERROR diagnostics with `line > 0` and `path` referencing the broken script
+- **Expected**: `result.isSuccess == false`, ERROR diagnostics with `line > 0` and `path` referencing `broken.pipeline.kts`.
 - **Key assertions**:
   - `assertFalse(result.isSuccess)`
-  - `assertTrue(errors.any { it.line > 0 })`
-  - `assertTrue(diags.any { it.path.contains("broken.kts") })`
+  - `assertTrue(errors.any { it.severity == ScriptDiagnosticSeverity.ERROR })`
+  - `assertTrue(diagnostics.any { it.line > 0 })`
+  - `assertTrue(diagnostics.any { it.path.contains("broken.pipeline.kts") })`
 
 ## PASS Criteria
 
-1. UatComp001 passes (script compiles successfully with empty diagnostics)
-2. UatComp002 passes (broken script produces ERROR diagnostics with line > 0 and path referencing broken.kts)
-3. Architecture test FArch003 passes (allowlist includes `/pipeline-scripting-kotlin24/`)
-4. `grep -rn "wholeClasspath" v2/pipeline-scripting-kotlin24/src/main/` returns only comment references
-5. `grep -rn "kotlin.script.experimental" v2/` returns matches only in `pipeline-scripting-kotlin24` (adapter module) and `pipeline-architecture-tests` (test constants)
+1. UatComp001 passes (script compiles successfully; diagnostics filtered of DEBUG noise).
+2. UatComp002 passes (broken script produces ERROR diagnostics with line > 0 and path referencing `broken.pipeline.kts`).
+3. Architecture test FArch003 passes (allowlist includes `/pipeline-scripting-kotlin24/`).
+4. `grep -rn "wholeClasspath" v2/` returns only comment references in `Kotlin24ScriptingHost.kt`.
+5. `grep -rn "kotlin.script.experimental" v2/` returns matches only in `pipeline-scripting-kotlin24` (adapter module) and `pipeline-architecture-tests` (test fixtures).
 
 ## Cache Key Formula
 
@@ -50,23 +68,69 @@ val cacheKey = sha256Hex(
 ```
 
 Where:
-- `scriptText`: raw content of the `.kts` file
-- `classpathFiles`: list of `File` objects from `ScriptDefinition.classpath`
-- `kotlinVersion`: `"2.4.10"` (fixed)
-- `hostVersion`: `"1.0.0"` (fixed)
+- `scriptText`: raw content of the `.pipeline.kts` file (read via `SourceCodeFactory`).
+- `classpathFiles`: list of `File` objects from `ScriptDefinition.classpath` (canonicalised so relative/absolute paths produce the same key).
+- `kotlinVersion`: `"2.4.10"` (fixed).
+- `hostVersion`: `"1.0.0"` (fixed).
 
-## Deviation Note
+## Adapter Pattern
 
-**API Signature Mismatch**: The design specifies `evalWithTemplate(source, cfg, evalCfg)` but the Kotlin 2.4.10 `BasicJvmScriptingHost.evalWithTemplate` method requires an explicit type parameter `<T>` that cannot be inferred. When specified explicitly, it triggers a `@KotlinScript` annotation lookup that fails with syntax errors on trivial scripts.
+The adapter uses the canonical Kotlin scripting pattern (same as V1's
+`GenericKotlinDslEngine`):
 
-**Resolution**: Used `BasicJvmScriptingHost.eval(source, cfg, evalCfg)` which takes configurations directly and is synchronous (non-suspend). This required creating `ScriptCompilationConfiguration` with `updateClasspath` builder rather than the `dependencies.append(JvmDependency(...))` pattern from the design.
+```kotlin
+val cfg = createJvmCompilationConfigurationFromTemplate<Any> {
+    jvm {
+        dependenciesFromCurrentContext()          // default wholeClasspath = false
+        if (classpathFiles.isNotEmpty()) {
+            updateClasspath(classpathFiles)        // explicit per-call jars
+        }
+    }
+}
+val rwd = BasicJvmScriptingHost().eval(source, cfg, ScriptEvaluationConfiguration {})
+```
 
-**Impact**: The adapter compiles and runs, but test UatComp001 fails because the script compilation produces syntax errors even for trivial scripts like `val definition = "hello"`. This suggests the Kotlin scripting host requires a proper `@KotlinScript` template configuration that provides implicit receivers, default imports, and other context that a bare configuration does not.
+- `createJvmCompilationConfigurationFromTemplate<Any>` resolves to the built-in
+  Kotlin script definition. The custom `.pipeline.kts` file extension is conveyed
+  via `FileScriptSource(file).name` (which the host maps to a script definition
+  through the standard resolver).
+- `dependenciesFromCurrentContext()` default `wholeClasspath = false` pulls the
+  current module's compilation context (kotlin-stdlib, kotlin-script-runtime,
+  kotlin-reflect, kotlin-scripting-jvm, kotlin-scripting-jvm-host) — exactly
+  what the spec allows.
+- Per-call jars supplied by `ScriptDefinition.classpath` are appended via
+  `updateClasspath(files)`, keeping the **explicit classpath** contract.
+
+## Bug-Fix Log (b81a171 → fixup)
+
+The initial implementation (`b81a171`) committed broken code that produced
+two distinct classes of error against the same trivial fixture
+`val definition = "hello"`. Both were resolved at the fixup commit:
+
+1. **`FileScriptSource(file, file.name)` is a constructor bug.**
+   The second parameter of `kotlin.script.experimental.host.FileScriptSource` is
+   `preloadedText: String?`, **not** `name: String`. Passing `file.name` made the
+   host compile the literal string `"hello.pipeline.kts"` as Kotlin source —
+   which produced "Unresolved reference 'hello'" because the string `"hello"`
+   was tokenised and `hello` interpreted as an identifier. Fix: use
+   `FileScriptSource(file)` (1-arg; the default `name = file.name` and the file
+   is actually read from disk).
+
+2. **Bare `ScriptCompilationConfiguration{}` parses non-trivially.**
+   The host's compiler requires the template-derived configuration to know the
+   script is being parsed in script mode (not file mode). Empty cfg produced
+   "Expecting an element" syntax errors at column 1 of the file. Fix: use
+   `createJvmCompilationConfigurationFromTemplate<Any>` which injects the
+   template's defaults (kotlin-stdlib, scripting runtime, etc.).
+
+After both fixes the adapter compiles `hello.pipeline.kts` and reports source-
+mapped diagnostics for `broken.pipeline.kts` (`val definition: Int = "hello"`
+→ type mismatch ERROR at line 1 column 1 referencing the fixture path).
 
 ## Verification Status
 
-- [ ] UatComp001 passes
-- [ ] UatComp002 passes (diagnostics captured but syntax errors prevent proper compilation)
-- [ ] FArch003 allowlist updated
-- [ ] wholeClasspath grep clean
-- [ ] kotlin.script.experimental grep shows only expected locations
+- [x] UatComp001 passes (script compiles, diagnostics filtered of DEBUG).
+- [x] UatComp002 passes (ERROR diagnostic, `line > 0`, `path` references `broken.pipeline.kts`).
+- [x] FArch003 allowlist includes `/pipeline-scripting-kotlin24/`.
+- [x] `wholeClasspath` grep clean in production path.
+- [x] `kotlin.script.experimental` containment as specified.

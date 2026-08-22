@@ -17,7 +17,7 @@ class UatComp002ErrorSourceMappedTest {
     @Test
     fun `broken script yields error diagnostics`() {
         val scriptPath = Paths.get(
-            javaClass.getResource("/broken.kts")!!.toURI()
+            javaClass.getResource("/broken.pipeline.kts")!!.toURI()
         )
         val definition = ScriptDefinition.file(scriptPath)
 
@@ -33,7 +33,7 @@ class UatComp002ErrorSourceMappedTest {
     @Test
     fun `diagnostic line is greater than zero`() {
         val scriptPath = Paths.get(
-            javaClass.getResource("/broken.kts")!!.toURI()
+            javaClass.getResource("/broken.pipeline.kts")!!.toURI()
         )
         val definition = ScriptDefinition.file(scriptPath)
 
@@ -46,7 +46,7 @@ class UatComp002ErrorSourceMappedTest {
     @Test
     fun `diagnostic path references the broken script`() {
         val scriptPath = Paths.get(
-            javaClass.getResource("/broken.kts")!!.toURI()
+            javaClass.getResource("/broken.pipeline.kts")!!.toURI()
         )
         val definition = ScriptDefinition.file(scriptPath)
         val scriptName = scriptPath.fileName.toString()

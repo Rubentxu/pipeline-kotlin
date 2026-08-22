@@ -1,8 +1,7 @@
 package com.pipeline.v2.testkit
 
-import com.pipeline.v2.testkit.HelloPipelineFixture
-import com.pipeline.v2.testkit.StepDescriptorAssertions
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -25,6 +24,7 @@ class UatM0001HelloPipelineTest {
         assertTrue(h.steps[1].configRef.isNotEmpty())
         assertTrue(StepDescriptorAssertions.hasStep(h.steps, "hello-echo", "echo"))
         assertTrue(StepDescriptorAssertions.hasStep(h.steps, "hello-sleep", "sleep"))
+        assertFalse(StepDescriptorAssertions.hasStep(h.steps, "nope", "nada"))
     }
 
     @Test

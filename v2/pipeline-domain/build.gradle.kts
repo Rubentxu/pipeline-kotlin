@@ -1,0 +1,14 @@
+plugins {
+    kotlin("jvm")
+}
+
+group = "com.pipeline.v2"
+version = "0.1.0-SNAPSHOT"
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_2)
+    }
+}

@@ -1,0 +1,32 @@
+name: V2 Baseline CI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: v2-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v2-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/wrapper-validation-action@v3
+      - run: ./gradlew -p v2 check
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-test-reports
+          path: v2/**/build/reports/tests/test/
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-test-results
+          path: v2/**/build/test-results/test/

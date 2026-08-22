@@ -36,10 +36,11 @@
 
 | Milestone | In/Out | Rationale |
 |---|---|---|
-| M0-R1 (architecture-baseline docs) | **In** | V2 lane requires minimal module skeleton before any code. |
-| M0-R2 (V2 module skeleton) | **Out** | V2 module skeleton (pipeline-domain/application/scripting-api/testkit, Kotlin 2.4.10, zero excludes) deferred to M0-R2. |
-| M0-R3 (architecture fitness functions) | **Out** | Fitness functions (F-ARCH-001/002/003/004/011) deferred to M0-R3. |
-| M0-R4 (CI + compatibility baseline) | **Out** | CI lane + no-excludes policy + V1/V2 compatibility matrix deferred to M0-R4. |
+| M0-R1 (architecture-baseline docs) | **In** | This cycle: V1 inventory + KEEP/ADAPT/REWRITE/RETIRE/SPIKE classification + QUARANTINE, V2 lane definition, forbidden edges, agent scope firewall. |
+| M0-R2 (V2 module skeleton) | **Out** | pipeline-domain/application/scripting-api/testkit with Kotlin 2.4.10/JVM 21 and zero compile excludes; owned by M0-R2. |
+| M0-R3 (architecture fitness functions) | **Out** | Executable tests F-ARCH-001/002/003/004/011; owned by M0-R3. |
+| M0-R4 (CI + compatibility baseline) | **Out** | V2 CI lane, no-excludes policy enforcement, Kotlin/JDK compatibility matrix; owned by M0-R4. |
+| M0-R5 (baseline UAT) | **Out** | UAT-M0-001: HelloPipeline fixture/V2 minimal API reproducible build — NOT Custom Scripting, which is M1's UAT-COMP-001; owned by M0-R5. |
 
 ## V2 Module Skeleton
 

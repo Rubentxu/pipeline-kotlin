@@ -231,3 +231,10 @@ Release estable con camino claro desde V1/Jenkins.
 - upgrade/rollback ensayado;
 - release candidate soak estable;
 - UAT business/developer sign-off.
+
+## UAT-M0-001 vs UAT-COMP-001 Disambiguation
+- **UAT-M0-001** (M0 exit): V2 minimal API + HelloPipeline fixture
+  reproduces the build greenly; no `.pipeline.kts` Custom Scripting involved.
+- **UAT-COMP-001** (M1 exit): first real `.pipeline.kts` with
+  `pipeline/stage/sh` compiled via Custom Scripting, diagnostics empty,
+  artifact/cache identity recorded. First M1 exit, not M0.

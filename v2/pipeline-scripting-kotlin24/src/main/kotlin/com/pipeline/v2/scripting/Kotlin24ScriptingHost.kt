@@ -1,26 +1,40 @@
 package com.pipeline.v2.scripting
 
+import java.io.File
 import kotlin.script.experimental.api.ResultWithDiagnostics
+import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptDiagnostic
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import kotlin.script.experimental.api.SourceCode
-import kotlin.script.experimental.api.EvaluationResult
-import kotlin.script.experimental.host.FileScriptSource
-import kotlin.script.experimental.host.StringScriptSource
+import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
+import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
-import kotlin.script.experimental.api.ScriptCompilationConfiguration
+import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
 
 /**
  * Kotlin 2.4.10 adapter that wraps [BasicJvmScriptingHost] and
  * exposes the [ScriptingHost] contract from `:pipeline-scripting-api`.
  *
- * Key design decisions:
- * - Uses [updateClasspath] for explicit classpath,
- *   NEVER `wholeClasspath = true`.
- * - Returns a stable [ScriptCompilationResult.cacheKey] computed from
- *   sha256(scriptText | sortedClasspath | kotlinVersion | hostVersion).
- * - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic].
+ * Design contract (see design.md §"Adapter shape"):
+ *  - Uses the canonical V1 pattern: `createJvmCompilationConfigurationFromTemplate<Any>`
+ *    which resolves to the built-in Kotlin script definition (no custom
+ *    `@KotlinScript` annotation needed — the file extension is conveyed
+ *    via [SourceCodeFactory] producing a [kotlin.script.experimental.host.FileScriptSource]
+ *    whose `name` is the file's basename; the host recognises the
+ *    `.pipeline.kts` extension through that).
+ *  - Builds the classpath via `jvm { dependenciesFromCurrentContext() }`
+ *    (default `wholeClasspath = false` — i.e. the current compilation
+ *    context classpath only: kotlin-stdlib, kotlin-script-runtime,
+ *    kotlin-reflect, the scripting-jvm-host artifacts on this module's
+ *    compile classpath). No `wholeClasspath = true` appears anywhere in
+ *    production.
+ *  - Per-call jars supplied via [ScriptDefinition.classpath] are appended
+ *    through `jvm { updateClasspath(files) }` inside the eval body.
+ *  - Returns a stable [ScriptCompilationResult.cacheKey] computed from
+ *    sha256(scriptText | sortedClasspath | kotlinVersion | hostVersion).
+ *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so the
+ *    editor/UAT harness can render source-mapped errors.
  */
 class Kotlin24ScriptingHost : ScriptingHost {
 
@@ -35,24 +49,38 @@ class Kotlin24ScriptingHost : ScriptingHost {
     override fun compile(definition: ScriptDefinition): ScriptCompilationResult {
         val source: SourceCode = SourceCodeFactory.toSourceCode(definition)
 
-        // Build explicit classpath from definition.classpath
-        val classpathFiles = definition.classpath.map { java.io.File(it) }
+        // Per-call classpath files from the script definition (may be empty).
+        // We resolve to absolute canonical paths so the cache key stays stable
+        // across relative/absolute invocations of the same logical script.
+        val classpathFiles = definition.classpath.map { File(it).canonicalFile }
 
-        // Use updateClasspath for explicit classpath — NEVER wholeClasspath
-        // Build configuration from scratch without a template
-        val cfg = ScriptCompilationConfiguration {
-            updateClasspath(classpathFiles)
-        }
+        // Base compilation configuration: template defaults (kotlin-stdlib,
+        // scripting runtime, reflect) plus the current context's classpath
+        // at `wholeClasspath = false` (the default). Per-call jars are
+        // appended via `updateClasspath` when present.
+        val compilationConfig: ScriptCompilationConfiguration =
+            createJvmCompilationConfigurationFromTemplate<Any>(
+                body = {
+                    jvm {
+                        dependenciesFromCurrentContext()
+                        if (classpathFiles.isNotEmpty()) {
+                            updateClasspath(classpathFiles)
+                        }
+                    }
+                }
+            )
 
-        val evalCfg = ScriptEvaluationConfiguration {}
+        val evaluationConfig: ScriptEvaluationConfiguration = ScriptEvaluationConfiguration {}
 
-        // Compile and evaluate in one step using eval (synchronous)
-        val rwd = host.eval(source, cfg, evalCfg)
+        val rwd: ResultWithDiagnostics<*> = host.eval(
+            source,
+            compilationConfig,
+            evaluationConfig
+        )
 
-        val diagnostics: List<ScriptingDiagnostic> = rwd.reports.map { diag ->
-            mapDiagnostic(diag)
-        }
-
+        val diagnostics = rwd.reports
+            .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
+            .map(::mapDiagnostic)
         val isSuccess = rwd is ResultWithDiagnostics.Success
 
         val scriptText = definition.sourceText
@@ -67,7 +95,9 @@ class Kotlin24ScriptingHost : ScriptingHost {
         )
 
         val value: Any? = if (rwd is ResultWithDiagnostics.Success) {
-            rwd.value.returnValue.scriptInstance
+            @Suppress("UNCHECKED_CAST")
+            val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
+            evalResult.returnValue.scriptInstance
         } else {
             null
         }
@@ -80,13 +110,13 @@ class Kotlin24ScriptingHost : ScriptingHost {
         )
     }
 
-    private fun mapDiagnostic(diag: kotlin.script.experimental.api.ScriptDiagnostic): ScriptingDiagnostic {
+    private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {
         val severity = when (diag.severity) {
-            kotlin.script.experimental.api.ScriptDiagnostic.Severity.DEBUG -> ScriptDiagnosticSeverity.DEBUG
-            kotlin.script.experimental.api.ScriptDiagnostic.Severity.INFO -> ScriptDiagnosticSeverity.INFO
-            kotlin.script.experimental.api.ScriptDiagnostic.Severity.WARNING -> ScriptDiagnosticSeverity.WARNING
-            kotlin.script.experimental.api.ScriptDiagnostic.Severity.ERROR -> ScriptDiagnosticSeverity.ERROR
-            kotlin.script.experimental.api.ScriptDiagnostic.Severity.FATAL -> ScriptDiagnosticSeverity.FATAL
+            ScriptDiagnostic.Severity.DEBUG -> ScriptDiagnosticSeverity.DEBUG
+            ScriptDiagnostic.Severity.INFO -> ScriptDiagnosticSeverity.INFO
+            ScriptDiagnostic.Severity.WARNING -> ScriptDiagnosticSeverity.WARNING
+            ScriptDiagnostic.Severity.ERROR -> ScriptDiagnosticSeverity.ERROR
+            ScriptDiagnostic.Severity.FATAL -> ScriptDiagnosticSeverity.FATAL
         }
 
         val location = diag.location

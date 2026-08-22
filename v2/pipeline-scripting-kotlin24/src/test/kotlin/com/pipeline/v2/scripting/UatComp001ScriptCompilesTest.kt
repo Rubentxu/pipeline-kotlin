@@ -16,7 +16,7 @@ class UatComp001ScriptCompilesTest {
     @Test
     fun `script compiles and returns success`() {
         val scriptPath = Paths.get(
-            javaClass.getResource("/hello.kts")!!.toURI()
+            javaClass.getResource("/hello.pipeline.kts")!!.toURI()
         )
         val definition = ScriptDefinition.file(scriptPath)
 
@@ -30,7 +30,7 @@ class UatComp001ScriptCompilesTest {
     @Test
     fun `cache key is stable across two evaluations`() {
         val scriptPath = Paths.get(
-            javaClass.getResource("/hello.kts")!!.toURI()
+            javaClass.getResource("/hello.pipeline.kts")!!.toURI()
         )
         val definition = ScriptDefinition.file(scriptPath)
 

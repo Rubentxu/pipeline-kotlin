@@ -15,10 +15,7 @@ object SourceCodeFactory {
         val sourceText: String? = definition.sourceText
         return when {
             sourcePath != null -> {
-                FileScriptSource(
-                    sourcePath.toFile(),
-                    sourcePath.toString()
-                )
+                FileScriptSource(sourcePath.toFile())
             }
             sourceText != null -> {
                 StringScriptSource(

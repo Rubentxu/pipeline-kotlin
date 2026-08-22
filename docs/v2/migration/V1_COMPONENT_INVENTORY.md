@@ -30,29 +30,28 @@
 | :pipeline-steps-system:compiler-plugin | FIR/IR plugin | diagnostics only, M2+ | **SPIKE** `**[QUARANTINE]**` (cites [[INC-005-compiler-plugin-k2-api-drift]]) | M2+ | **no** |
 | :lib-examples (root, disabled) | DSL samples | V2 fixtures | ADAPT | M1 | **no** |
 
+[^steps-system-note]: The bare container `:pipeline-steps-system` is not a build target; it is represented by its three children rows above (plugin-annotations, gradle-plugin, compiler-plugin).
+
 ## M0 Scope Manifest
 
 | Milestone | In/Out | Rationale |
 |---|---|---|
-| M0-R1 (V2 scaffold) | **In** | V2 lane requires minimal module skeleton before any code. |
-| M0-R2 (fitness tests) | **Out** | Fitness tests (F-ARCH-001..012) deferred to M0-R2. |
-| M0-R3 (CI lane) | **Out** | CI lane + no-excludes policy deferred to M0-R3. |
-| M0-R4 (compatibility matrix) | **Out** | V1/V2 compatibility matrix deferred to M0-R4. |
-| M0-R5 (V1 classification) | **Out** | KEEP/ADAPT/REWRITE/RETIRE classification is output of M0, not gate. |
+| M0-R1 (architecture-baseline docs) | **In** | V2 lane requires minimal module skeleton before any code. |
+| M0-R2 (V2 module skeleton) | **Out** | V2 module skeleton (pipeline-domain/application/scripting-api/testkit, Kotlin 2.4.10, zero excludes) deferred to M0-R2. |
+| M0-R3 (architecture fitness functions) | **Out** | Fitness functions (F-ARCH-001/002/003/004/011) deferred to M0-R3. |
+| M0-R4 (CI + compatibility baseline) | **Out** | CI lane + no-excludes policy + V1/V2 compatibility matrix deferred to M0-R4. |
 
 ## V2 Module Skeleton
 
-```
-                              pipeline-architecture-tests   (optional, tests only)
-                                          │
-                                          ▼
-   pipeline-testkit ──► pipeline-application ◄── pipeline-scripting-api
-                              ▲                       │
-                              │                       ▼
-                              └────────── pipeline-scripting-kotlin24
-                                          ▲
-                                          │
-                                    pipeline-domain    (pure Kotlin, F-ARCH-001)
+```mermaid
+graph LR
+    subgraph V2["pipeline-v2"]
+        K24["pipeline-scripting-kotlin24\n(Kotlin 2.4.10)"] -->|depends on| SA["pipeline-scripting-api"]
+        SA -->|depends on| D["pipeline-domain\n(pure Kotlin, F-ARCH-001)"]
+        A["pipeline-application"] -->|depends on| D
+        TK["pipeline-testkit"] -->|depends on| A
+        TK -->|depends on| D
+    end
 ```
 
 **Inward-edge invariant**: all arrows point toward `pipeline-domain`. No module depends on anything outside the inward-facing tree. This enforces F-ARCH-001 (framework-free domain).

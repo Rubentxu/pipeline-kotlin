@@ -26,15 +26,19 @@ object ScannerSupport {
 
     /** Recursively walk `root` and yield every regular file whose name ends with `.kt` or `.kts`. */
     fun walkKotlinFiles(root: Path): List<Path> {
-        return Files.walk(root).toList()
-            .filter { it.toFile().isFile && (it.fileName.toString().endsWith(".kt") || it.fileName.toString().endsWith(".kts")) }
+        return Files.walk(root).use { stream ->
+            stream.filter { it.toFile().isFile && (it.fileName.toString().endsWith(".kt") || it.fileName.toString().endsWith(".kts")) }
+                .toList()
+        }
     }
 
     /** Recursively walk `root` and yield every `build.gradle.kts` and `*.toml` file. */
     fun walkBuildFiles(root: Path): List<Path> {
-        return Files.walk(root).toList()
-            .filter { it.toFile().isFile &&
+        return Files.walk(root).use { stream ->
+            stream.filter { it.toFile().isFile &&
                 (it.fileName.toString() == "build.gradle.kts" || it.fileName.toString().endsWith(".toml")) }
+                .toList()
+        }
     }
 
     /**
@@ -129,17 +133,20 @@ object ScannerSupport {
      * Resolved runtime-classpath jar names for the four M0-R2 modules, as captured by
      * the cross-project `runtimeClasspathCapture` task.
      * Reads `v2/<module>/build/fitness/<module>-runtime-classpath.txt` for each module.
+     * Fails-closed: missing snapshot file indicates a miswired capture task and is an error.
      */
     fun loadRuntimeClasspathSnapshots(root: Path): Map<String, List<String>> {
         val modules = listOf("pipeline-domain", "pipeline-application", "pipeline-scripting-api", "pipeline-testkit")
         val result = mutableMapOf<String, List<String>>()
         for (module in modules) {
             val snapshotFile = root.resolve("$module/build/fitness/${module}-runtime-classpath.txt")
-            if (Files.exists(snapshotFile)) {
-                result[module] = Files.readAllLines(snapshotFile)
-            } else {
-                result[module] = emptyList()
+            if (!Files.exists(snapshotFile)) {
+                throw IllegalStateException(
+                    "Missing runtime-classpath snapshot for module '$module': $snapshotFile does not exist. " +
+                    "Verify that the runtimeClasspathCapture task ran for this module before the test."
+                )
             }
+            result[module] = Files.readAllLines(snapshotFile)
         }
         return result
     }

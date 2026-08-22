@@ -16,4 +16,10 @@ kotlin {
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-application"))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

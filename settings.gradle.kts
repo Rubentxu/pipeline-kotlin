@@ -44,3 +44,5 @@ include(":pipeline-steps-system")
 include(":pipeline-steps-system:plugin-annotations")
 include(":pipeline-steps-system:compiler-plugin")
 include(":pipeline-steps-system:gradle-plugin")
+
+includeBuild("v2")

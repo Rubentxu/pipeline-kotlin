@@ -67,6 +67,11 @@ tasks {
         // Exclude files with missing dependencies
         exclude("**/SimplePipelineCli.kt") // Depends on PipelineScriptRunner and normalizeAndAbsolutePath from pipeline-backend
         exclude("**/Main.kt") // Depends on SimplePipelineCli
+        // INC-006: AdvancedCommands.kt uses Context.terminal (Clikt 3.x) which does not exist in Clikt 2.8.0
+        // INC-007 (cli-activation-lifecycle) owns forward planning for re-inclusion or removal
+        // Exploration evidence: cycle-artifacts/explore/inc-006-cli-terminal-api-drift-amendment-3.md
+        // sha256: f15eed31ad088df7e5bfb25b4e5868c263063d38de76c0de6f46ff45168b201d
+        exclude("**/AdvancedCommands.kt")
     }
     compileTestKotlin {
         compilerOptions {

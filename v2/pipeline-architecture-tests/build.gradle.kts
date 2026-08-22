@@ -31,6 +31,7 @@ val v2Modules = listOf(
     "pipeline-domain",
     "pipeline-application",
     "pipeline-scripting-api",
+    "pipeline-scripting-kotlin24",
     "pipeline-testkit",
 )
 

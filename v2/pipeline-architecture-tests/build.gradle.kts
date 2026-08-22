@@ -36,8 +36,9 @@ val v2Modules = listOf(
 
 gradle.allprojects {
     if (name in v2Modules) {
+        val projName = name
         val capture = tasks.register("runtimeClasspathCapture", DefaultTask::class) {
-            val out = layout.buildDirectory.file("fitness/${name}-runtime-classpath.txt")
+            val out = layout.buildDirectory.file("fitness/${projName}-runtime-classpath.txt")
             outputs.file(out)
             doLast {
                 val cp = configurations.named("runtimeClasspath").get()
@@ -51,4 +52,10 @@ gradle.allprojects {
             dependsOn(capture)
         }
     }
+}
+
+// Ensure :pipeline-architecture-tests:test runs after all four capture tasks
+val captureTaskPaths = v2Modules.map { ":$it:runtimeClasspathCapture" }
+tasks.named("test") {
+    dependsOn(captureTaskPaths)
 }

@@ -549,7 +549,13 @@ private fun emitStepFinished(
 private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, DomainReplayPolicy> {
     return when (step) {
         is StepSpec.Echo -> Triple("echo", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
-        is StepSpec.Shell -> Triple("sh", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
+        is StepSpec.Shell -> if (step.isScriptBlock) {
+            // script {} block: use MEMOIZED + READ_ONLY so replay returns SKIP when
+            // journaled (C-022.1). Fingerprint catches mutations (C-022.2).
+            Triple("sh", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
+        } else {
+            Triple("sh", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
+        }
         is StepSpec.Sleep -> Triple("sleep", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         is StepSpec.Error -> Triple("error", setOf(Effect.ABORTS_PIPELINE), DomainReplayPolicy.NEVER)
         is StepSpec.Parallel -> Triple("parallel", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)

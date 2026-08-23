@@ -1,9 +1,18 @@
 package com.pipeline.v2.application
 
+import com.pipeline.v2.application.durable.PipelineOrchestrator
+import com.pipeline.v2.dsl.PipelineSpec
 import com.pipeline.v2.events.InMemoryEventStore
 import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.SqliteEventStore
+import com.pipeline.v2.domain.durable.DivergenceDetector
+import com.pipeline.v2.events.durable.OperationJournal
+import com.pipeline.v2.events.durable.ReplayCursorStore
+import com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import com.pipeline.v2.scripting.Kotlin24ScriptingHost
+import com.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Paths
+import java.security.MessageDigest
 
 /**
  * CLI entry point for the V2 pipeline runner.
@@ -15,11 +24,9 @@ import java.nio.file.Paths
  *
  * ## M3-R1 durable execution
  *
- * When `--db <path>` is provided, the runner uses [SqliteEventStore] which:
- * - Operates in WAL journal mode (durability + concurrent readers)
- * - Creates `operation_journal` and `replay_cursor` tables alongside `events`
- * - The full durable orchestration (fingerprint, replay, divergence detection)
- *   is wired into [PipelineRun] in M3-R2.
+ * When `--db <path>` is provided, the runner uses [PipelineOrchestrator] with
+ * [SqliteEventStore] which journals operations, computes fingerprints, gates
+ * step replay, and detects divergence fail-closed.
  */
 fun main(args: Array<String>) {
     if (args.size < 2) {
@@ -65,9 +72,61 @@ fun main(args: Array<String>) {
         return
     }
 
-    // Durable mode: SqliteEventStore with WAL, also creates operation_journal
-    // and replay_cursor tables. Full durable orchestration is wired in M3-R2.
+    // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
     val eventStore = SqliteEventStore(dbPath)
-    val events = execute(scriptPath, eventStore)
+
+    // Compile script → PipelineSpec (same approach as execute())
+    val scriptContent = scriptPath.toFile().readText()
+    val runId = deriveRunId(scriptPath.toString(), scriptContent)
+    val host = Kotlin24ScriptingHost(eventStore, runId)
+    val dslJar = ScriptDefinition.dslApiJar()
+    val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+    val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
+    val result = host.compile(definition)
+
+    val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
+        val scriptInstance = result.value
+        scriptInstance?.let { inst ->
+            try {
+                val resultMethod = inst.javaClass.getMethod("get\$\$result")
+                @Suppress("UNCHECKED_CAST")
+                resultMethod.invoke(inst) as? PipelineSpec
+            } catch (_: Exception) {
+                null
+            }
+        }
+    } else null
+
+    // Build orchestrator with all durable dependencies
+    val factory = eventStore.underlyingConnectionFactory()
+    val journal = OperationJournal(factory)
+    val cursorStore = ReplayCursorStore(factory)
+    val divergenceDetector = DivergenceDetector()
+    val effectPolicy = EffectReplayPolicy()
+    val orchestrator = PipelineOrchestrator(
+        journal = journal,
+        cursorStore = cursorStore,
+        divergenceDetector = divergenceDetector,
+        effectReplayPolicy = effectPolicy,
+        eventSink = eventStore,
+    )
+
+    // Run via orchestrator (fresh run, startFromCursor = false)
+    if (pipelineSpec != null) {
+        orchestrator.run(pipelineSpec, runId, startFromCursor = false)
+    }
+
+    val events = eventStore.eventsFor(runId).toList()
     println(JsonEventLog.encode(events))
+}
+
+/**
+ * Derives a deterministic runId from the script path and content.
+ * Two invocations of the same script produce the same runId.
+ */
+private fun deriveRunId(scriptPath: String, scriptContent: String): String {
+    val input = "$scriptPath|$scriptContent"
+    val digest = MessageDigest.getInstance("SHA-256")
+    val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
+    return hash.joinToString("") { "%02x".format(it) }.take(36)
 }

@@ -1,5 +1,6 @@
 package com.pipeline.v2.events
 
+import com.pipeline.v2.domain.FailureKind
 import com.pipeline.v2.scripting.CacheKey
 import com.pipeline.v2.scripting.ScriptingDiagnostic
 import com.pipeline.v2.scripting.ScriptDiagnosticSeverity
@@ -155,6 +156,24 @@ object JsonEventLog {
                 sb.append(event.stageIndex ?: -1)
                 sb.append(",\"stepIndex\":")
                 sb.append(event.stepIndex ?: -1)
+            }
+            is StepFailed -> {
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(jsonString(event.stepType))
+                sb.append(",\"failureKind\":")
+                sb.append(jsonString(event.failureKind.name))
+                sb.append(",\"message\":")
+                sb.append(jsonString(event.message))
+            }
+            is EchoOutputCaptured -> {
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"content\":")
+                sb.append(jsonString(event.content))
             }
         }
         sb.append("}")
@@ -398,6 +417,33 @@ object JsonEventLog {
                 stepType = stringField(s, "stepType")?.takeIf { it.isNotEmpty() },
                 stageIndex = intField(s, "stageIndex")?.takeIf { it != -1 },
                 stepIndex = intField(s, "stepIndex")?.takeIf { it != -1 },
+            )
+            "StepFailed" -> {
+                val failureKindStr = stringField(s, "failureKind") ?: "UNKNOWN"
+                val failureKind = try {
+                    FailureKind.valueOf(failureKindStr)
+                } catch (_: Exception) {
+                    FailureKind.UNKNOWN
+                }
+                StepFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stepIndex = intField(s, "stepIndex") ?: 0,
+                    stepName = stringField(s, "stepName") ?: "",
+                    stepType = stringField(s, "stepType") ?: "",
+                    failureKind = failureKind,
+                    message = stringField(s, "message") ?: "",
+                )
+            }
+            "EchoOutputCaptured" -> EchoOutputCaptured(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                stepIndex = intField(s, "stepIndex") ?: 0,
+                content = stringField(s, "content") ?: "",
             )
             else -> null
         }

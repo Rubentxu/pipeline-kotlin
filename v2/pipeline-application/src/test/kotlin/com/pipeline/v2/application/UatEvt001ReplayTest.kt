@@ -2,6 +2,7 @@ package com.pipeline.v2.application
 
 import com.pipeline.v2.events.CompilationFinished
 import com.pipeline.v2.events.DomainEvent
+import com.pipeline.v2.events.EchoOutputCaptured
 import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.RunFinished
 import com.pipeline.v2.events.RunStarted
@@ -77,24 +78,25 @@ class UatEvt001ReplayTest {
         val (stdout, events) = runAndDecode()
         // hello.pipeline.kts (DSL, 1 stage x 1 step):
         // RunStarted, CompilationStarted, CompilationFinished, StageStarted,
-        // StepStarted, StepFinished, StageFinished, RunFinished
-        assertEquals(8, events.size, "Expected 8 events for hello DSL pipeline: $stdout")
+        // StepStarted, EchoOutputCaptured, StepFinished, StageFinished, RunFinished
+        assertEquals(9, events.size, "Expected 9 events for hello DSL pipeline: $stdout")
 
         assertTrue(events[0] is RunStarted, "events[0] must be RunStarted")
         assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
         assertTrue(events[2] is CompilationFinished, "events[2] must be CompilationFinished")
         assertTrue(events[3] is StageStarted, "events[3] must be StageStarted (DSL evaluated)")
         assertTrue(events[4] is StepStarted, "events[4] must be StepStarted")
-        assertTrue(events[5] is StepFinished, "events[5] must be StepFinished")
-        assertTrue(events[6] is StageFinished, "events[6] must be StageFinished")
-        assertTrue(events[7] is RunFinished, "events[7] must be RunFinished")
+        assertTrue(events[5] is EchoOutputCaptured, "events[5] must be EchoOutputCaptured")
+        assertTrue(events[6] is StepFinished, "events[6] must be StepFinished")
+        assertTrue(events[7] is StageFinished, "events[7] must be StageFinished")
+        assertTrue(events[8] is RunFinished, "events[8] must be RunFinished")
 
         val cf = events[2] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         assertEquals(64, cf.cacheKey.value.length, "cacheKey.value must be 64-char hex")
         assertTrue(cf.diagnostics.isEmpty(), "CompilationFinished diagnostics must be empty for DSL: ${cf.diagnostics}")
 
-        val rf = events[7] as RunFinished
+        val rf = events[8] as RunFinished
         assertEquals("success", rf.outcome, "RunFinished outcome must be success")
         assertTrue(rf.diagnostics.isEmpty(), "RunFinished diagnostics must be empty: ${rf.diagnostics}")
 

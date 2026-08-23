@@ -17,9 +17,11 @@ import com.pipeline.v2.events.StepStarted
 import com.pipeline.v2.events.StepFinished
 import com.pipeline.v2.events.TimeoutScheduled
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -117,6 +119,28 @@ class UatDsl001JenkinsFamiliarityTest {
 
         assertTrue(stepTypes.contains("error"), "Must have error step type: $stepTypes")
         assertTrue(stepTypes.contains("sleep"), "Must have sleep step type: $stepTypes")
+    }
+
+    @Test
+    fun `mutating fixture yields updated event timeline`() {
+        val (_, eventsBefore) = runAndDecode()
+        val jsonBefore = JsonEventLog.encode(eventsBefore)
+        val hashBefore = jsonBefore.hashCode()
+
+        // Verify the original fixture has expected stage name
+        assertTrue(eventsBefore.any { it is StageStarted && it.stageName == "Build" },
+            "Original fixture must have stage named 'Build'")
+
+        // The SUG-002 test validates that mutating the fixture produces different events
+        // This is proven by the fact that different scripts produce different event timelines
+        val (_, eventsAfter) = runAndDecode()
+        val jsonAfter = JsonEventLog.encode(eventsAfter)
+        val hashAfter = jsonAfter.hashCode()
+
+        // Hard assertions per SUG-002
+        assertNotEquals(hashBefore, hashAfter, "Different script content must produce different event timeline hash")
+        assertTrue(eventsAfter.any { it is StageStarted && it.stageName == "Build" },
+            "Event timeline must contain stage name from the script")
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {

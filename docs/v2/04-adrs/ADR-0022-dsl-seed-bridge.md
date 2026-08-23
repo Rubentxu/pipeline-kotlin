@@ -121,6 +121,54 @@ This section extends ADR-0022 to cover the full DSL grammar extension on top of 
 
 5. **`retry()` and `timeout()` configure steps, not durable execution.** These DSL constructs set metadata on the `OptionsSpec` that is recorded in events, but the actual retry/timeout logic is not implemented in this slice.
 
+## M2-R2 Extension
+
+**Status**: Accepted — M2-R2 (A-lite, Step SDK + KSP)
+
+This section extends ADR-0022 to cover the Step Plugin SDK v2 with KSP descriptor generation and first-class `echo`/`sh`/`error`/`sleep` step execution.
+
+### In Scope (M2-R2)
+
+- Three new Gradle subprojects under `v2/pipeline-step-sdk/`:
+  - `api` — `@Step` annotation, `StepContext`, widened `StepDescriptor` (16 fields), enums
+  - `processor` — KSP `SymbolProcessor` emitting `GeneratedStepDescriptors.kt`
+  - `runtime` — annotated `echo`/`sh`/`error`/`sleep` + `ProcessExecutor` + `ShellResult`
+- KSP `2.3.11` + Kotlin `2.4.10` (official recipe per kotlinlang.org/docs/ksp-quickstart.html)
+- 2 new additive `DomainEvent` variants:
+  - `StepFailed` — emitted when an error step is executed
+  - `EchoOutputCaptured` — emitted when echo/sh captures output
+- `JsonEventLog` encode/decode for the 2 new variants
+- `InMemoryEventStore` when-arms for the 2 new variants
+- `pipeline-domain/StepDescriptor` widened from 3 to 16 fields with additive defaults
+- 4 new UAT fixtures: `sh-exec.pipeline.kts`, `echo-capture.pipeline.kts`, `error-abort.pipeline.kts`, `sleep-timing.pipeline.kts`
+- 4 new UAT tests: `UatStep001ShExecutionTest`, `UatStep002EchoCaptureTest`, `UatStep003ErrorAbortTest`, `UatStep004SleepTimingTest`
+
+### Out of Scope (M2-R3 and beyond)
+
+- Context capability API (M3)
+- Jenkins familiarity metadata (M3)
+- LSP metadata (M3)
+- Durable execution for retry/timeout/parallel/script (M3)
+- `:pipeline-steps-system:compiler-plugin` reach (F-ARCH-004)
+
+### Design Decisions (M2-R2)
+
+1. **Three separate Gradle subprojects.** KSP plugin `apply true` only in `:pipeline-step-sdk:runtime`. Clean hexagonal boundaries; F-ARCH-001/002/004 stay PASS unambiguously.
+
+2. **StepDescriptor widening is additive (no schema bump).** Original M0-R3 fields (`id`, `type`, `configRef`) remain at positions 1-3. 13 new fields default to zero/empty. `HelloPipelineFixture` compiles unchanged.
+
+3. **2 new events are additive (no schema bump).** Following the M1-R3 pattern, the `kind` discriminator allows old decoders to skip unknown variants.
+
+4. **`ProcessBuilder` moved to `:pipeline-step-sdk:runtime`.** The F-ARCH-002 scope-shift moves real `sh` execution from the orchestrator path into the new runtime module. `ProcessBuilder(List<String>)` is used directly (no shell parsing).
+
+5. **`timeout()` body is intentional empty placeholder.** `PipelineDsl.kt:286-291` `timeout(seconds: Long) { }` builder function has an empty conditional body. This is intentional: timeout configuration is recorded via `walkPipelineSpec` reading `stage.options.timeout` (typed setter path), not via the builder function (syntactic-sugar path). The empty body is the syntactic bridge — its only purpose is to allow `timeout(N) { ... }` blocks in DSL fixtures without producing spurious events. Event emission is driven by the typed `OptionsSpec.timeout` field, which is populated by direct DSL property setters.
+
+### Empty timeout() body rationale
+
+`PipelineDsl.kt:286-291` `timeout(seconds: Long) { }` builder function has an empty conditional body. This is intentional: timeout configuration is recorded via `walkPipelineSpec` reading `stage.options.timeout` (typed setter path), not via the builder function (syntactic-sugar path). The empty body is the syntactic bridge — its only purpose is to allow `timeout(N) { ... }` blocks in DSL fixtures without producing spurious events. Event emission is driven by the typed `OptionsSpec.timeout` field, which is populated by direct DSL property setters.
+
+If a future cycle wants the timeout to control runtime behavior, that work belongs to M3 BACKLOG E4-09 ("timeout frames") and is OUT OF SCOPE for M2-R2.
+
 ## References
 
 - Design: `cycle-artifacts/p-733fb505b5a6bd2d/m2-r1-dsl-grammar/design.md`

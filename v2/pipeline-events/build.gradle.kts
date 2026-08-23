@@ -15,6 +15,7 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlin.stdlib)
+    implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-scripting-api"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.sqlite.jdbc)

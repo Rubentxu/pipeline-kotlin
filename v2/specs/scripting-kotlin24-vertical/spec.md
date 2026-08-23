@@ -9,7 +9,9 @@ Observable contract for the V2 Kotlin 2.4.10 scripting adapter
 ## Domain Language
 
 - `ScriptDefinition`: source text/path + `List<String>` classpath + properties.
-- `ScriptCompilationResult`: success value or diagnostics, plus stable `cacheKey`.
+- `CacheKey`: versioned data class `CacheKey(value, version)`. Version `v1` is active;
+  `v2` is reserved. `sha256Hex(parts...)` joins parts with `|`, then SHA-256s UTF-8 bytes.
+- `ScriptCompilationResult`: success value or diagnostics, plus stable `CacheKey`.
 - `ScriptingDiagnostic`: severity, message, line, column, source path.
 
 ## Requirements
@@ -51,23 +53,43 @@ mentioning the fixture file when the fixture has a type error.
 - AND for each ERROR diagnostic: `line > 0` AND `path` mentions the fixture
 - AND `message` is non-empty
 
-### Requirement: Stable compiler cache key
+### Requirement: CacheKey versioned contract
 
-The system SHALL expose `cacheKey` in every `ScriptCompilationResult` —
-a SHA-256 hex digest over `(scriptText, sortedClasspath, kotlinVersion,
-hostVersion)`. Identical across two evaluations of the same input.
+`CacheKey` SHALL be a `data class CacheKey(value: String, version: String)` in
+`:pipeline-scripting-api`. Version tags are `V1 = "v1"` and `V2 = "v2"` as
+companion constants. `CacheKey.v2.compute(...)` throws
+`UnsupportedOperationException("v2 reserved — algorithm not introduced in M1-R2")`.
+
+#### Scenario: v1.compute returns CacheKey with version v1
+
+- GIVEN `CacheKey.v1.compute(scriptText, classpath, kotlinVersion, hostVersion)`
+- THEN the returned `CacheKey.value` is a 64-char hex string
+- AND `CacheKey.version == "v1"`
+
+#### Scenario: v2.compute throws
+
+- GIVEN `CacheKey.v2.compute(...)`
+- WHEN it is called
+- THEN it throws `UnsupportedOperationException` with message containing "v2 reserved"
+
+### Requirement: Stable compiler cache key (versioned contract)
+
+The system SHALL expose `cacheKey: CacheKey` in every `ScriptCompilationResult`.
+`CacheKey.v1.compute(...)` returns `CacheKey(sha256Hex(...), "v1")`.
+`sha256Hex(parts...)` joins parts with `|`, then SHA-256s UTF-8 bytes.
+Identical across two evaluations of the same input.
 
 #### Scenario: cache key stable across two evals
 
 - GIVEN the same `ScriptDefinition`
 - WHEN `compile(...)` runs twice
-- THEN both `cacheKey` values are equal
+- THEN both `cacheKey.value` are equal AND `cacheKey.version == "v1"`
 
 #### Scenario: cache key varies when classpath changes
 
 - GIVEN the same text but different `classpath`
 - WHEN the adapter runs each
-- THEN the `cacheKey` values differ
+- THEN the `cacheKey.value` values differ
 
 ### Requirement: No whole-classpath in production path
 
@@ -125,7 +147,7 @@ carry `path` equal to that path (or canonical form). When only
 ### Requirement: Result contract exposes diagnostics and cache key
 
 `ScriptCompilationResult` SHALL carry `isSuccess`, `value`,
-`diagnostics: List<ScriptingDiagnostic>`, `cacheKey: String`. No
+`diagnostics: List<ScriptingDiagnostic>`, `cacheKey: CacheKey`. No
 `kotlin.script.experimental` in the public type.
 
 #### Scenario: success shape
@@ -133,11 +155,13 @@ carry `path` equal to that path (or canonical form). When only
 - GIVEN a successful compile
 - WHEN the result is inspected
 - THEN `isSuccess == true` AND `value != null` AND
-  `diagnostics.isEmpty()` AND `cacheKey` is 64-char hex
+  `diagnostics.isEmpty()` AND `cacheKey.value` is 64-char hex AND
+  `cacheKey.version == "v1"`
 
 #### Scenario: failure shape
 
 - GIVEN a compile that fails
 - WHEN the result is inspected
 - THEN `isSuccess == false` AND `value == null` AND
-  `diagnostics.isNotEmpty()` AND `cacheKey` is 64-char hex
+  `diagnostics.isNotEmpty()` AND `cacheKey.value` is 64-char hex AND
+  `cacheKey.version == "v1"`

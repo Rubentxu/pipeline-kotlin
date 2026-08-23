@@ -33,6 +33,7 @@ val v2Modules = listOf(
     "pipeline-scripting-api",
     "pipeline-scripting-kotlin24",
     "pipeline-testkit",
+    "pipeline-events",
 )
 
 gradle.allprojects {

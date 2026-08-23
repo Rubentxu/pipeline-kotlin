@@ -20,4 +20,5 @@ include(
     ":pipeline-scripting-kotlin24",
     ":pipeline-testkit",
     ":pipeline-architecture-tests",
+    ":pipeline-events",
 )

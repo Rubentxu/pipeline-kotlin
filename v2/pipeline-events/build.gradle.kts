@@ -1,6 +1,5 @@
 plugins {
     kotlin("jvm")
-    application
 }
 
 group = "com.pipeline.v2"
@@ -14,18 +13,9 @@ kotlin {
     }
 }
 
-application {
-    mainClass.set("com.pipeline.v2.application.MainKt")
-}
-
 dependencies {
-    implementation(project(":pipeline-domain"))
-    implementation(project(":pipeline-events"))
-    implementation(project(":pipeline-scripting-kotlin24"))
+    implementation(libs.kotlin.stdlib)
     implementation(project(":pipeline-scripting-api"))
     testImplementation(libs.junit.jupiter)
-}
-
-tasks.test {
-    dependsOn(":pipeline-application:installDist")
+    testRuntimeOnly(libs.sqlite.jdbc)
 }

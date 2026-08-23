@@ -37,7 +37,9 @@ class UatComp001ScriptCompilesTest {
         val result1 = scriptingHost.compile(definition)
         val result2 = scriptingHost.compile(definition)
 
-        assertEquals(result1.cacheKey, result2.cacheKey,
+        assertEquals(result1.cacheKey.value, result2.cacheKey.value,
             "Cache key must be identical across evaluations")
+        assertEquals("v1", result1.cacheKey.version,
+            "Cache key version must be v1")
     }
 }

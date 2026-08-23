@@ -1,6 +1,13 @@
 package com.pipeline.v2.scripting
 
+import com.pipeline.v2.events.CompilationFinished
+import com.pipeline.v2.events.CompilationStarted
+import com.pipeline.v2.events.DomainEvent
+import com.pipeline.v2.events.EventSink
+import com.pipeline.v2.events.NullEventSink
 import java.io.File
+import java.time.Instant
+import java.util.UUID
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptDiagnostic
@@ -36,7 +43,10 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so the
  *    editor/UAT harness can render source-mapped errors.
  */
-class Kotlin24ScriptingHost : ScriptingHost {
+class Kotlin24ScriptingHost(
+    private val eventSink: EventSink = NullEventSink,
+    private val runId: String? = null,
+) : ScriptingHost {
 
     private val host = BasicJvmScriptingHost()
 
@@ -47,12 +57,27 @@ class Kotlin24ScriptingHost : ScriptingHost {
     private val hostVersion = "1.0.0"
 
     override fun compile(definition: ScriptDefinition): ScriptCompilationResult {
+        val effectiveRunId = runId ?: definition.sourcePath?.fileName?.toString() ?: UUID.randomUUID().toString()
+        val compilationStartedId = UUID.randomUUID().toString()
+        val compilationFinishedId = UUID.randomUUID().toString()
+        val compilationStartedAt = Instant.now()
+
+        eventSink.append(
+            CompilationStarted(
+                eventId = compilationStartedId,
+                runId = effectiveRunId,
+                sequence = 1L,
+                occurredAt = compilationStartedAt,
+            )
+        )
+
         val source: SourceCode = SourceCodeFactory.toSourceCode(definition)
 
         // Per-call classpath files from the script definition (may be empty).
         // We resolve to absolute canonical paths so the cache key stays stable
         // across relative/absolute invocations of the same logical script.
         val classpathFiles = definition.classpath.map { File(it).canonicalFile }
+        val sortedClasspath = classpathFiles.map { it.canonicalPath }.sorted().joinToString(",")
 
         // Base compilation configuration: template defaults (kotlin-stdlib,
         // scripting runtime, reflect) plus the current context's classpath
@@ -78,6 +103,8 @@ class Kotlin24ScriptingHost : ScriptingHost {
             evaluationConfig
         )
 
+        val compilationFinishedAt = Instant.now()
+
         val diagnostics = rwd.reports
             .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
             .map(::mapDiagnostic)
@@ -87,27 +114,34 @@ class Kotlin24ScriptingHost : ScriptingHost {
             ?: definition.sourcePath?.toFile()?.readText()
             ?: ""
 
-        val cacheKey = CacheKey.sha256Hex(
-            scriptText,
-            classpathFiles.map { it.canonicalPath }.sorted().joinToString(","),
-            kotlinVersion,
-            hostVersion
+        val cacheKey = CacheKey(
+            CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion),
+            CacheKey.V1,
         )
 
-        val value: Any? = if (rwd is ResultWithDiagnostics.Success) {
-            @Suppress("UNCHECKED_CAST")
-            val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
-            evalResult.returnValue.scriptInstance
-        } else {
-            null
-        }
-
-        return ScriptCompilationResult(
+        val result = ScriptCompilationResult(
             isSuccess = isSuccess,
-            value = value,
+            value = if (rwd is ResultWithDiagnostics.Success) {
+                @Suppress("UNCHECKED_CAST")
+                val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
+                evalResult.returnValue.scriptInstance
+            } else null,
             diagnostics = diagnostics,
-            cacheKey = cacheKey
+            cacheKey = cacheKey,
         )
+
+        eventSink.append(
+            CompilationFinished(
+                eventId = compilationFinishedId,
+                runId = effectiveRunId,
+                sequence = 2L,
+                occurredAt = compilationFinishedAt,
+                cacheKey = cacheKey,
+                diagnostics = diagnostics,
+            )
+        )
+
+        return result
     }
 
     private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {

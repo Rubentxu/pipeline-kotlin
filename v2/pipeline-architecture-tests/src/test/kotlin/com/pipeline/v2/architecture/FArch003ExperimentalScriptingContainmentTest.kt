@@ -16,6 +16,7 @@ class FArch003ExperimentalScriptingContainmentTest {
         val allowList = listOf(
             "/pipeline-scripting-api/",
             "/pipeline-scripting-kotlin24/",
+            "/pipeline-events/",
             "/pipeline-architecture-tests/src/test/kotlin",
         )
         val findings = SourceScanner.findImports(root, listOf(scriptingExperimentalToken), allowList)

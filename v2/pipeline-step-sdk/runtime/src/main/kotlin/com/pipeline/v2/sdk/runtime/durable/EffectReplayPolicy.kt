@@ -4,9 +4,11 @@ import com.pipeline.v2.sdk.Effect
 import com.pipeline.v2.sdk.ReplayPolicy
 
 /**
- * Effect-aware replay policy that decides whether to SKIP, RERUN, or ABORT
- * a durable operation based on the [ReplayPolicy], observed [Effect]s, and
- * journal state.
+ * Interface for effect-aware replay decisions.
+ *
+ * ## M3-R1 → M3-R2 Contract
+ *
+ * This interface is stable for M3-R2 consumption per [design.md §8].
  *
  * ## Decision matrix
  *
@@ -24,8 +26,7 @@ import com.pipeline.v2.sdk.ReplayPolicy
  *
  * @see <a href="design.md §E4-06">Design §E4-06</a>
  */
-class EffectReplayPolicy {
-
+interface EffectReplayPolicy {
     /**
      * Decides whether to skip, rerun, or abort a durable operation.
      *
@@ -37,6 +38,31 @@ class EffectReplayPolicy {
      * @return The [ReplayDecision].
      */
     fun decide(
+        replayPolicy: ReplayPolicy,
+        effects: Set<Effect>,
+        hasJournalEntry: Boolean,
+        journaledOutcome: com.pipeline.v2.domain.durable.OperationStatus?,
+    ): ReplayDecision
+}
+
+/**
+ * Default effect-aware replay policy implementation.
+ *
+ * @see <a href="design.md §E4-06">Design §E4-06</a>
+ */
+class DefaultEffectReplayPolicy : EffectReplayPolicy {
+
+    /**
+     * Decides whether to skip, rerun, or abort a durable operation.
+     *
+     * @param replayPolicy    The step's configured replay policy.
+     * @param effects         The observed effects of the step execution.
+     * @param hasJournalEntry Whether a journal entry exists for this operation.
+     * @param journaledOutcome The [com.pipeline.v2.domain.durable.OperationStatus] from the journal,
+     *                        or `null` if no entry exists.
+     * @return The [ReplayDecision].
+     */
+    override fun decide(
         replayPolicy: ReplayPolicy,
         effects: Set<Effect>,
         hasJournalEntry: Boolean,
@@ -69,10 +95,6 @@ class EffectReplayPolicy {
                 if (journaledOutcome == com.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED) {
                     return ReplayDecision.SKIP
                 }
-            }
-            // Failed journaled outcome → ABORT (check before non-SUCCEEDED).
-            if (journaledOutcome == com.pipeline.v2.domain.durable.OperationStatus.FAILED) {
-                return ReplayDecision.ABORT
             }
             // Any non-succeeded outcome → RERUN.
             if (journaledOutcome != com.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED) {

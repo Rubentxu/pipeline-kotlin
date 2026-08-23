@@ -23,7 +23,7 @@ class OperationJournalTest {
         // Use SqliteEventStore to create tables, then get underlying connection factory.
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal = OperationJournal(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
 
         val op = RerunOperation(
             id = "op-1",
@@ -45,7 +45,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal = OperationJournal(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
 
         val op = RerunOperation(
             id = "op-dup",
@@ -88,7 +88,7 @@ class OperationJournalTest {
         // First "process": write via SqliteEventStore.
         val eventStore1 = SqliteEventStore(dbPath)
         val factory1 = eventStore1.underlyingConnectionFactory()
-        val journal1 = OperationJournal(factory1)
+        val journal1: OperationJournal = SqliteOperationJournalImpl(factory1)
         journal1.append(
             RerunOperation(
                 id = "op-persist",
@@ -103,7 +103,7 @@ class OperationJournalTest {
         // Simulate restart: new SqliteEventStore pointing to same file.
         val eventStore2 = SqliteEventStore(dbPath)
         val factory2 = eventStore2.underlyingConnectionFactory()
-        val journal2 = OperationJournal(factory2)
+        val journal2: OperationJournal = SqliteOperationJournalImpl(factory2)
         val retrieved = journal2.get("op-persist")
         assertNotNull(retrieved)
         assertEquals("op-persist", retrieved!!.id)
@@ -114,7 +114,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal = OperationJournal(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
 
         val runId = "run-ordered"
         for (i in 1..3) {

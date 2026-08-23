@@ -16,13 +16,13 @@ class ReplayCursorTest {
         val dbPath = tempDir.resolve("cursor-test.db").toString()
         val eventStore1 = SqliteEventStore(dbPath)
         val factory1 = eventStore1.underlyingConnectionFactory()
-        val store1 = ReplayCursorStore(factory1)
+        val store1: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory1)
         store1.advance("run-1", "op-5", 2)
 
         // Simulate restart.
         val eventStore2 = SqliteEventStore(dbPath)
         val factory2 = eventStore2.underlyingConnectionFactory()
-        val store2 = ReplayCursorStore(factory2)
+        val store2: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory2)
         val cursor = store2.load("run-1")
 
         assertNotNull(cursor)
@@ -36,7 +36,7 @@ class ReplayCursorTest {
         val dbPath = tempDir.resolve("cursor-overwrite.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val store = ReplayCursorStore(factory)
+        val store: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
 
         store.advance("run-1", "op-first", 0)
         store.advance("run-1", "op-second", 1)
@@ -52,7 +52,7 @@ class ReplayCursorTest {
         val dbPath = tempDir.resolve("cursor-unknown.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val store = ReplayCursorStore(factory)
+        val store: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
 
         val cursor = store.load("nonexistent-run")
         assertNull(cursor)
@@ -63,7 +63,7 @@ class ReplayCursorTest {
         val dbPath = tempDir.resolve("cursor-negative.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val store = ReplayCursorStore(factory)
+        val store: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
 
         assertThrows(IllegalArgumentException::class.java) {
             store.advance("run-1", "op-1", -1)

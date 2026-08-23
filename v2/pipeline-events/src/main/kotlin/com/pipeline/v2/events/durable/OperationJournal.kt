@@ -14,7 +14,44 @@ import kotlinx.serialization.decodeFromString
 import java.sql.Connection
 
 /**
- * SQLite WAL-backed journal for durable operations.
+ * Interface for durable operation journaling.
+ *
+ * ## M3-R1 → M3-R2 Contract
+ *
+ * This interface is stable for M3-R2 consumption per [design.md §8].
+ * The concrete implementation [SqliteOperationJournalImpl] uses SQLite WAL mode.
+ *
+ * @see <a href="design.md §E4-03">Design §E4-03</a>
+ */
+interface OperationJournal {
+    /**
+     * Appends a durable operation to the journal.
+     *
+     * @param op The durable operation to journal.
+     * @throws IllegalStateException if [op.id] already exists in the journal
+     *         (PRIMARY KEY constraint).
+     */
+    fun append(op: DurableOperation)
+
+    /**
+     * Retrieves a journaled operation by its [opId].
+     *
+     * @param opId The operation identifier.
+     * @return The [DurableOperation] if found, or `null` if no entry exists.
+     */
+    fun get(opId: String): DurableOperation?
+
+    /**
+     * Lists all journaled operations for a given [runId], ordered by [created_at] ascending.
+     *
+     * @param runId The run identifier.
+     * @return A [List] of [DurableOperation] in execution order.
+     */
+    fun listForRun(runId: String): List<DurableOperation>
+}
+
+/**
+ * SQLite WAL-backed implementation of [OperationJournal].
  *
  * ## Concurrency
  *
@@ -37,13 +74,13 @@ import java.sql.Connection
  *
  * @see <a href="design.md §E4-03">Design §E4-03</a>
  */
-class OperationJournal(
+class SqliteOperationJournalImpl(
     private val connectionFactory: () -> Connection,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     },
-) {
+) : OperationJournal {
 
     /**
      * Appends a durable operation to the journal.
@@ -56,7 +93,7 @@ class OperationJournal(
      * @throws IllegalStateException if [op.id] already exists in the journal
      *         (PRIMARY KEY constraint).
      */
-    fun append(op: DurableOperation) {
+    override fun append(op: DurableOperation) {
         synchronized(this) {
             val conn = connectionFactory()
             try {
@@ -91,7 +128,7 @@ class OperationJournal(
      * @param opId The operation identifier.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
      */
-    fun get(opId: String): DurableOperation? {
+    override fun get(opId: String): DurableOperation? {
         val conn = connectionFactory()
         try {
             conn.prepareStatement(
@@ -118,7 +155,7 @@ class OperationJournal(
      * @param runId The run identifier.
      * @return A [List] of [DurableOperation] in execution order.
      */
-    fun listForRun(runId: String): List<DurableOperation> {
+    override fun listForRun(runId: String): List<DurableOperation> {
         val conn = connectionFactory()
         val results = mutableListOf<DurableOperation>()
         try {

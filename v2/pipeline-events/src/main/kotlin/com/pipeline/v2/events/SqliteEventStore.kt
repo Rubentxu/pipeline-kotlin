@@ -1,7 +1,8 @@
 package com.pipeline.v2.events
 
+import com.pipeline.v2.events.durable.OperationJournalSchema
+import com.pipeline.v2.events.durable.SqliteConnectionFactory
 import java.sql.Connection
-import java.sql.DriverManager
 
 /**
  * SQLite-backed event store using JDK 21 stdlib java.sql.
@@ -19,11 +20,16 @@ import java.sql.DriverManager
  *
  * New variants are decoded via the [JsonEventLog][com.pipeline.v2.events.JsonEventLog]
  * `kind` discriminator — no schema migration required.
+ *
+ * ## M3-R1 Extension
+ * This store also creates the [operation_journal][com.pipeline.v2.events.durable.OperationJournalSchema]
+ * and [replay_cursor][com.pipeline.v2.events.durable.OperationJournalSchema] tables
+ * via [SqliteConnectionFactory] with WAL mode enabled.
  */
 class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 
     private fun freshConnection(): Connection =
-        DriverManager.getConnection("jdbc:sqlite:$file")
+        SqliteConnectionFactory.open(file)
 
     private fun withConnection(block: (Connection) -> Unit) {
         val conn = freshConnection()
@@ -38,9 +44,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         val conn = freshConnection()
         try {
             conn.createStatement().use { stmt ->
-                // Use DELETE journal mode: committed writes go directly to the
-                // main db file and are immediately visible to other connections.
-                stmt.execute("PRAGMA journal_mode = DELETE")
+                stmt.execute("PRAGMA journal_mode = WAL")
                 stmt.execute(
                     """
                     CREATE TABLE IF NOT EXISTS events (
@@ -54,6 +58,8 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     """.trimIndent()
                 )
             }
+            // Create durable operation journal tables.
+            OperationJournalSchema.create(conn)
         } finally {
             conn.close()
         }
@@ -113,4 +119,13 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     override fun close() {
         // No-op: we use fresh connections per operation.
     }
+
+    /**
+     * Exposes the underlying connection factory for use by [OperationJournal]
+     * and [ReplayCursorStore].
+     *
+     * This is intentionally internal — it is only used within the durable
+     * execution subsystem that shares the same SQLite database file.
+     */
+    fun underlyingConnectionFactory(): () -> Connection = { freshConnection() }
 }

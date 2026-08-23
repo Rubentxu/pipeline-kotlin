@@ -58,6 +58,16 @@ interface OperationJournal {
      * @return A [List] of [DurableOperation] in execution order.
      */
     fun listForRun(runId: String): List<DurableOperation>
+
+    /**
+     * Retrieves the journaled deadline timestamp (epoch ms) for a given operation attempt.
+     * Returns null if no deadline was set (timeout = null), or if no journal entry exists.
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @return The deadline timestamp in milliseconds, or `null` if not set or not found.
+     */
+    fun getDeadlineMs(opId: String, attempt: Int): Long?
 }
 
 /**
@@ -250,6 +260,36 @@ class SqliteOperationJournalImpl(
             conn.close()
         }
         return results
+    }
+
+    /**
+     * Retrieves the journaled deadline timestamp (epoch ms) for a given operation attempt.
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @return The deadline timestamp in milliseconds, or `null` if not set or not found.
+     */
+    override fun getDeadlineMs(opId: String, attempt: Int): Long? {
+        val conn = connectionFactory()
+        try {
+            conn.prepareStatement(
+                """
+                SELECT deadline_ms
+                FROM operation_journal
+                WHERE op_id = ? AND attempt = ?
+                """.trimIndent()
+            ).use { ps ->
+                ps.setString(1, opId)
+                ps.setInt(2, attempt)
+                ps.executeQuery().use { rs ->
+                    if (!rs.next()) return null
+                    val value = rs.getLong(1)
+                    return if (rs.wasNull()) null else value
+                }
+            }
+        } finally {
+            conn.close()
+        }
     }
 
     private fun readOperation(rs: java.sql.ResultSet, opId: String): DurableOperation? {

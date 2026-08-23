@@ -4,7 +4,6 @@ import com.pipeline.v2.scripting.CacheKey
 import com.pipeline.v2.scripting.ScriptingDiagnostic
 import com.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import java.time.Instant
-import java.util.regex.Pattern
 
 /**
  * JSON wire format encoder/decoder for domain events.
@@ -43,7 +42,7 @@ object JsonEventLog {
             is CompilationStarted -> { /* no extra fields */ }
             is CompilationFinished -> {
                 sb.append(",\"cacheKey\":")
-                sb.append("{\"value\":\"").append(event.cacheKey.value).append("\",\"version\":\"").append(event.cacheKey.version).append("\"}")
+                sb.append(encodeCacheKey(event.cacheKey))
                 sb.append(",\"diagnostics\":")
                 sb.append(encodeDiagnostics(event.diagnostics))
             }
@@ -56,6 +55,10 @@ object JsonEventLog {
         }
         sb.append("}")
         return sb.toString()
+    }
+
+    private fun encodeCacheKey(ck: CacheKey): String {
+        return "{\"value\":\"" + ck.value + "\",\"version\":\"" + ck.version + "\"}"
     }
 
     private fun encodeDiagnostics(diagnostics: List<ScriptingDiagnostic>): String {
@@ -107,6 +110,10 @@ object JsonEventLog {
         return events
     }
 
+    /**
+     * Splits a JSON array content into individual event strings.
+     * Handles nested objects and strings correctly.
+     */
     private fun splitArray(s: String): List<String> {
         val result = mutableListOf<String>()
         var depth = 0
@@ -127,8 +134,8 @@ object JsonEventLog {
                     current.append(ch)
                     inString = !inString
                 }
-                ch == '{' && !inString -> depth++
-                ch == '}' && !inString -> depth--
+                ch == '{' && !inString -> { depth++; current.append(ch) }
+                ch == '}' && !inString -> { depth--; current.append(ch) }
                 ch == ',' && depth == 0 && !inString -> {
                     result.add(current.toString())
                     current.clear()
@@ -136,7 +143,9 @@ object JsonEventLog {
                 else -> current.append(ch)
             }
         }
-        if (current.isNotEmpty()) result.add(current.toString())
+        // Discard the trailing ']' that closes the JSON array.
+        val trailing = current.toString().trimEnd()
+        if (trailing.isNotEmpty() && trailing != "]") result.add(current.toString())
         return result
     }
 
@@ -163,10 +172,7 @@ object JsonEventLog {
                 occurredAt = occurredAt,
             )
             "CompilationFinished" -> {
-                val cacheKeyJson = stringField(s, "cacheKey") ?: return null
-                val value = stringField(cacheKeyJson, "value") ?: ""
-                val version = stringField(cacheKeyJson, "version") ?: ""
-                val cacheKey = CacheKey(value, version)
+                val cacheKey = parseCacheKey(s) ?: return null
                 val diagnostics = decodeDiagnostics(s)
                 CompilationFinished(
                     eventId = eventId,
@@ -193,64 +199,132 @@ object JsonEventLog {
         }
     }
 
+    /**
+     * Extracts a string field value from JSON by finding the field name
+     * and reading until the closing quote (handling escapes).
+     */
     private fun stringField(json: String, name: String): String? {
-        val pattern = Pattern.compile("\"$name\"\\s*:\\s*\"")
-        val m = pattern.matcher(json)
-        if (!m.find()) return null
-        val start = m.end()
-        var i = start
+        val nameStart = json.indexOf("\"$name\"") ?: return null
+        val colonPos = json.indexOf(':', nameStart) ?: return null
+        // Find the opening quote after the colon
+        var i = colonPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        if (i >= json.length || json[i] != '"') return null
+        // i is now at the opening quote of the value
+        var stringEnd = i + 1
         var inString = true
         var escape = false
-        while (i < json.length) {
-            val ch = json[i]
+        while (stringEnd < json.length && inString) {
             when {
-                escape -> { escape = false; i++ }
-                ch == '\\' && inString -> { escape = true; i++ }
-                ch == '"' && inString -> return json.substring(start, i)
-                ch == '"' -> { inString = false; i++ }
+                escape -> { escape = false; stringEnd++ }
+                json[stringEnd] == '\\' && inString -> { escape = true; stringEnd++ }
+                json[stringEnd] == '"' -> { inString = false }
+                else -> stringEnd++
+            }
+        }
+        // stringEnd is now at the closing quote (or end of string)
+        // We want the content between quotes: from i+1 to stringEnd-1
+        return if (stringEnd > i + 1) json.substring(i + 1, stringEnd) else ""
+    }
+
+    /**
+     * Extracts the cacheKey object value from the event JSON.
+     * Returns a CacheKey or null if parsing fails.
+     */
+    private fun parseCacheKey(json: String): CacheKey? {
+        val keyStart = json.indexOf("\"cacheKey\"") ?: return null
+        val bracePos = json.indexOf('{', keyStart) ?: return null
+        // Extract the cacheKey object by finding matching braces
+        var depth = 0
+        var i = bracePos
+        while (i < json.length) {
+            when (json[i]) {
+                '{' -> { depth++; i++ }
+                '}' -> { depth--; if (depth == 0) break; i++ }
+                '"' -> {
+                    // Skip over a quoted string
+                    i++
+                    while (i < json.length) {
+                        when {
+                            json[i] == '\\' -> i += 2
+                            json[i] == '"' -> { i++; break }
+                            else -> i++
+                        }
+                    }
+                }
                 else -> i++
             }
         }
-        return json.substring(start, i)
+        if (depth != 0) return null
+        val cacheKeyJson = json.substring(bracePos, i + 1)
+        val value = stringField(cacheKeyJson, "value") ?: ""
+        val version = stringField(cacheKeyJson, "version") ?: ""
+        return CacheKey(value, version)
     }
 
     private fun longField(json: String, name: String): Long? {
-        val pattern = Pattern.compile("\"$name\"\\s*:\\s*(-?\\d+)")
-        val m = pattern.matcher(json)
-        return if (m.find()) m.group(1)?.toLongOrNull() else null
+        val nameStart = json.indexOf("\"$name\"") ?: return null
+        val colonPos = json.indexOf(':', nameStart) ?: return null
+        var i = colonPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        var numEnd = i
+        while (numEnd < json.length && (json[numEnd].isDigit() || json[numEnd] == '-')) numEnd++
+        return if (numEnd > i) json.substring(i, numEnd).toLongOrNull() else null
     }
 
     private fun decodeDiagnostics(json: String): List<ScriptingDiagnostic> {
-        val diagnosticsPattern = Pattern.compile("\"diagnostics\"\\s*:\\s*\\[")
-        val m = diagnosticsPattern.matcher(json)
-        if (!m.find()) return emptyList()
-        val start = m.end()
-        var depth = 1
-        var i = start
-        while (i < json.length && depth > 0) {
-            when (json[i]) {
-                '[' -> depth++
-                ']' -> depth--
-            }
-            i++
-        }
-        val arrContent = json.substring(start, i - 1)
-        if (arrContent.isBlank()) return emptyList()
+        val arrStart = json.indexOf("\"diagnostics\"") ?: return emptyList()
+        val bracketPos = json.indexOf('[', arrStart) ?: return emptyList()
+        var i = bracketPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        if (i >= json.length || json[i] == ']') return emptyList()
+
+        // Parse the diagnostics array manually
         val results = mutableListOf<ScriptingDiagnostic>()
-        val items = splitArray(arrContent)
-        for (item in items) {
-            val trimmed = item.trim()
-            if (trimmed.isEmpty()) continue
-            val severityStr = stringField(trimmed, "severity")
-            val message = stringField(trimmed, "message") ?: ""
-            val line = stringField(trimmed, "line")?.toIntOrNull() ?: 0
-            val column = stringField(trimmed, "column")?.toIntOrNull() ?: 0
-            val path = stringField(trimmed, "path") ?: ""
-            val severity = severityStr?.let {
-                try { ScriptDiagnosticSeverity.valueOf(it) } catch (_: Exception) { ScriptDiagnosticSeverity.INFO }
-            } ?: ScriptDiagnosticSeverity.INFO
-            results.add(ScriptingDiagnostic(severity, message, line, column, path))
+        var depth = 0
+        var inString = false
+        var escape = false
+        val current = StringBuilder()
+        i = bracketPos + 1
+
+        while (i < json.length) {
+            val ch = json[i]
+            when {
+                escape -> { current.append(ch); escape = false; i++ }
+                ch == '\\' && inString -> { current.append(ch); escape = true; i++ }
+                ch == '"' -> { current.append(ch); inString = !inString; i++ }
+                ch == '{' && !inString -> { depth++; current.append(ch); i++ }
+                ch == '}' && !inString -> {
+                    depth--
+                    current.append(ch)
+                    if (depth == 0) {
+                        val diagStr = current.toString().trim()
+                        if (diagStr.isNotEmpty()) {
+                            parseDiagnostic(diagStr)?.let { results.add(it) }
+                        }
+                        current.clear()
+                    }
+                    i++
+                }
+                ch == ',' && depth == 0 && !inString -> {
+                    // end of current diagnostic
+                    i++
+                }
+                else -> { if (depth > 0) current.append(ch); i++ }
+            }
         }
         return results
+    }
+
+    private fun parseDiagnostic(s: String): ScriptingDiagnostic? {
+        val severityStr = stringField(s, "severity")
+        val message = stringField(s, "message") ?: ""
+        val line = stringField(s, "line")?.toIntOrNull() ?: 0
+        val column = stringField(s, "column")?.toIntOrNull() ?: 0
+        val path = stringField(s, "path") ?: ""
+        val severity = severityStr?.let {
+            try { ScriptDiagnosticSeverity.valueOf(it) } catch (_: Exception) { ScriptDiagnosticSeverity.INFO }
+        } ?: ScriptDiagnosticSeverity.INFO
+        return ScriptingDiagnostic(severity, message, line, column, path)
     }
 }

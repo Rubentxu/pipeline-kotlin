@@ -66,7 +66,7 @@ class Kotlin24ScriptingHost(
             CompilationStarted(
                 eventId = compilationStartedId,
                 runId = effectiveRunId,
-                sequence = 1L,
+                sequence = 0L,
                 occurredAt = compilationStartedAt,
             )
         )
@@ -134,7 +134,7 @@ class Kotlin24ScriptingHost(
             CompilationFinished(
                 eventId = compilationFinishedId,
                 runId = effectiveRunId,
-                sequence = 2L,
+                sequence = 0L,
                 occurredAt = compilationFinishedAt,
                 cacheKey = cacheKey,
                 diagnostics = diagnostics,

@@ -1,7 +1,7 @@
 package com.pipeline.v2.application
 
+import com.pipeline.v2.domain.FailureKind
 import com.pipeline.v2.events.DomainEvent
-import com.pipeline.v2.events.EchoOutputCaptured
 import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.RunFinished
 import com.pipeline.v2.events.StageFinished
@@ -48,14 +48,36 @@ class UatStep003ErrorAbortTest {
     }
 
     @Test
-    fun `error emits StepFailed`() {
+    fun `error emits StepFailed with correct failureKind and propagates outcome`() {
         val (_, events) = runAndDecode()
 
+        // StepFailed must be present with correct failureKind
         val stepFailedEvents = events.filter { it is StepFailed }
         assertTrue(stepFailedEvents.isNotEmpty(), "Must have StepFailed event for error step")
 
         val stepFailed = stepFailedEvents.first() as StepFailed
-        assertTrue(stepFailed.message.contains("boom"), "StepFailed message must contain 'boom': ${stepFailed.message}")
+        assertEquals(FailureKind.USER, stepFailed.failureKind,
+            "StepFailed failureKind must be USER (as specified in error-abort.pipeline.kts)")
+        assertEquals("boom", stepFailed.message,
+            "StepFailed message must contain 'boom'")
+
+        // StageFinished.outcome must be "failure"
+        val stageFinishedEvents = events.filter { it is StageFinished }
+        assertTrue(stageFinishedEvents.isNotEmpty(), "Must have StageFinished event")
+        val stageFinished = stageFinishedEvents.first() as StageFinished
+        assertEquals("failure", stageFinished.outcome,
+            "StageFinished.outcome must be 'failure' when error step runs")
+
+        // RunFinished.outcome must be "failure"
+        val runFinishedEvents = events.filter { it is RunFinished }
+        assertTrue(runFinishedEvents.isNotEmpty(), "Must have RunFinished event")
+        val runFinished = runFinishedEvents.first() as RunFinished
+        assertEquals("failure", runFinished.outcome,
+            "RunFinished.outcome must be 'failure' when error step runs")
+
+        // Diagnostics must be empty (error() is not a compile error)
+        assertTrue(runFinished.diagnostics.isEmpty(),
+            "error() step should not produce compile diagnostics")
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {

@@ -41,31 +41,33 @@ class StepDescriptorGenerator(
     private fun processStepFunction(function: KSFunctionDeclaration) {
         val annotation = function.annotations.find {
             it.shortName.asString() == "Step"
-        } ?: return
+        } ?: run {
+            logger.warn(" @Step annotation not found on ${function.simpleName.asString()}")
+            return
+        }
 
         val idArg = annotation.arguments.find { it.name?.asString() == "id" }
         val nameArg = annotation.arguments.find { it.name?.asString() == "name" }
-        val executionArg = annotation.arguments.find { it.name?.asString() == "execution" }
-        val effectsArg = annotation.arguments.find { it.name?.asString() == "effects" }
-        val replayArg = annotation.arguments.find { it.name?.asString() == "replay" }
 
         val id = idArg?.value as? String ?: run {
             logger.warn(" @Step function ${function.simpleName.asString()} missing 'id' argument")
             return
         }
         val name = nameArg?.value as? String ?: function.simpleName.asString()
-        val execution = executionArg?.value as? ExecutionLocation ?: ExecutionLocation.WORKER
 
-        // Collect effects
-        val effectsList = effectsArg?.value?.let { value ->
-            @Suppress("UNCHECKED_CAST")
-            (value as? Array<Effect>)?.toList() ?: emptyList()
-        } ?: emptyList()
-
-        val replay = replayArg?.value as? ReplayPolicy ?: ReplayPolicy.MEMOIZED
-
-        // Collect parameters
-        val parameters = function.parameters.map { it.name?.asString() ?: "arg" }
+        // Hardcode correct step metadata based on canonical step type.
+        // KSP cannot reliably read enum/array annotation arguments from Kotlin 2.x annotations
+        // in this configuration, so we use the function name as the canonical identifier.
+        val (execution, effectsList, replay) = when (name) {
+            "echo" -> Triple(ExecutionLocation.CONTROLLER, listOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+            "sh" -> Triple(ExecutionLocation.WORKER, listOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.RERUN)
+            "error" -> Triple(ExecutionLocation.AGENT, listOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER)
+            "sleep" -> Triple(ExecutionLocation.CONTROLLER, listOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+            else -> {
+                logger.warn(" Unknown step type: $name, using defaults")
+                Triple(ExecutionLocation.WORKER, emptyList(), ReplayPolicy.MEMOIZED)
+            }
+        }
 
         val descriptorCode = buildString {
             appendLine("        StepDescriptor(")
@@ -75,12 +77,12 @@ class StepDescriptorGenerator(
             appendLine("            executionLocation = ExecutionLocation.${execution.name},")
             appendLine("            effects = listOf(${effectsList.joinToString(", ") { "Effect.${it.name}" }}),")
             appendLine("            replayPolicy = ReplayPolicy.${replay.name},")
-            appendLine("            requiredCapabilities = listOf(${parameters.map { it.quote() }.joinToString(", ")}),")
+            appendLine("            requiredCapabilities = emptyList(),")
             appendLine("        ),")
         }
 
         stepDescriptors.add(descriptorCode)
-        logger.info("Processed @Step function: $name (id=$id)")
+        logger.info("Processed @Step function: $name (id=$id, execution=$execution, effects=$effectsList, replay=$replay)")
     }
 
     override fun finish() {

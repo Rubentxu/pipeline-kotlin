@@ -2,7 +2,7 @@
 pipeline {
     stages {
         stage("ErrorTest") {
-            error("boom", "SCRIPT")
+            error("boom", "USER")
         }
     }
 }

@@ -123,28 +123,55 @@ class UatDsl001JenkinsFamiliarityTest {
 
     @Test
     fun `mutating fixture yields updated event timeline`() {
-        val (_, eventsBefore) = runAndDecode()
+        val helloScript: Path = Paths.get(javaClass.getResource("/hello.pipeline.kts")!!.toURI())
+
+        // Run first script with stage name "hello"
+        val (_, eventsBefore) = runAndDecode(helloScript)
         val jsonBefore = JsonEventLog.encode(eventsBefore)
-        val hashBefore = jsonBefore.hashCode()
 
-        // Verify the original fixture has expected stage name
-        assertTrue(eventsBefore.any { it is StageStarted && it.stageName == "Build" },
-            "Original fixture must have stage named 'Build'")
+        // Verify the first fixture has expected stage name "hello"
+        assertTrue(eventsBefore.any { it is StageStarted && it.stageName == "hello" },
+            "First fixture must have stage named 'hello'")
 
-        // The SUG-002 test validates that mutating the fixture produces different events
-        // This is proven by the fact that different scripts produce different event timelines
-        val (_, eventsAfter) = runAndDecode()
-        val jsonAfter = JsonEventLog.encode(eventsAfter)
-        val hashAfter = jsonAfter.hashCode()
+        // Create a second script with a different stage name "Renamed"
+        val renamedScript = java.nio.file.Files.createTempFile("renamed-stage", ".pipeline.kts")
+        try {
+            renamedScript.toFile().writeText("""
+                pipeline {
+                    stages {
+                        stage("Renamed") {
+                            echo("hello from renamed stage")
+                        }
+                    }
+                }
+            """.trimIndent())
 
-        // Hard assertions per SUG-002
-        assertNotEquals(hashBefore, hashAfter, "Different script content must produce different event timeline hash")
-        assertTrue(eventsAfter.any { it is StageStarted && it.stageName == "Build" },
-            "Event timeline must contain stage name from the script")
+            // Run second script with different stage name
+            val (_, eventsAfter) = runAndDecode(renamedScript)
+            val jsonAfter = JsonEventLog.encode(eventsAfter)
+
+            // Hard assertions per SUG-002
+            assertTrue(eventsAfter.any { it is StageStarted && it.stageName == "Renamed" },
+                "Second fixture must have stage named 'Renamed'")
+
+            // Same shape (same number of events) but different content
+            assertEquals(eventsBefore.size, eventsAfter.size,
+                "Event timeline shapes must match")
+            assertNotEquals(eventsBefore, eventsAfter,
+                "Different script content must produce different event timeline")
+            assertNotEquals(jsonBefore, jsonAfter,
+                "Different script content must produce different JSON serialization")
+        } finally {
+            java.nio.file.Files.deleteIfExists(renamedScript)
+        }
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
-        val pb = ProcessBuilder(appBin.toString(), "run", grammarFullScript.toString())
+        return runAndDecode(grammarFullScript)
+    }
+
+    private fun runAndDecode(script: Path): Pair<String, List<DomainEvent>> {
+        val pb = ProcessBuilder(appBin.toString(), "run", script.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

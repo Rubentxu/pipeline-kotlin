@@ -6,8 +6,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.io.File
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 
 /**
@@ -17,25 +17,13 @@ import java.util.concurrent.TimeUnit
  */
 class UatCompat001CorpusSmokeRunTest {
 
-    private val compatibilityDir: Path by lazy {
-        val userDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
-        if (userDir.fileName?.toString() == "pipeline-application") {
-            userDir.resolve("v2").resolve("compatibility")
-        } else {
-            userDir.resolve("compatibility")
-        }
-    }
-
     private fun discoverFixtures(): List<Path> {
-        val dir = compatibilityDir.toFile()
-        if (!dir.exists()) {
-            return emptyList()
-        }
-        return dir.listFiles()
-            ?.filter { it.name.endsWith(".pipeline.kts") }
-            ?.sortedBy { it.name }
-            ?.map { it.toPath() }
-            ?: emptyList()
+        val userDir = File(System.getProperty("user.dir"))
+        val candidate = generateSequence(userDir) { it.parentFile }
+            .map { File(it, "v2/compatibility") }
+            .firstOrNull { it.isDirectory }
+            ?: error("Cannot locate v2/compatibility/ via directory walk from $userDir")
+        return candidate.listFiles { f -> f.name.endsWith(".pipeline.kts") }?.toList().orEmpty().sortedBy { it.name }.map { it.toPath() }
     }
 
     @Test
@@ -78,6 +66,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
+        assertEquals(6, fixtures.size, "Corpus must have 6 fixtures")
         val appBin = AppBinSupport.discover()
 
         fixtures.forEach { fixture ->

@@ -5,31 +5,18 @@ import com.pipeline.v2.events.JsonEventLog
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 import java.nio.file.Path
-import java.nio.file.Paths
 
 class CompatibilityCorpusTest {
 
-    private val compatibilityDir: Path by lazy {
-        val userDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
-        val dir = if (userDir.fileName?.toString() == "pipeline-application") {
-            userDir.resolve("v2").resolve("compatibility")
-        } else {
-            userDir.resolve("compatibility")
-        }
-        dir
-    }
-
     private fun discoverFixtures(): List<Path> {
-        val dir = compatibilityDir.toFile()
-        if (!dir.exists()) {
-            return emptyList()
-        }
-        return dir.listFiles()
-            ?.filter { it.name.endsWith(".pipeline.kts") }
-            ?.sortedBy { it.name }
-            ?.map { it.toPath() }
-            ?: emptyList()
+        val userDir = File(System.getProperty("user.dir"))
+        val candidate = generateSequence(userDir) { it.parentFile }
+            .map { File(it, "v2/compatibility") }
+            .firstOrNull { it.isDirectory }
+            ?: error("Cannot locate v2/compatibility/ via directory walk from $userDir")
+        return candidate.listFiles { f -> f.extension == "kts" }?.toList().orEmpty().sortedBy { it.name }.map { it.toPath() }
     }
 
     @Test

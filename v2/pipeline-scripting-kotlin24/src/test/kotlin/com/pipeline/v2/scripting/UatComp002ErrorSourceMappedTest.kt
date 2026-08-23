@@ -1,5 +1,6 @@
 package com.pipeline.v2.scripting
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -25,6 +26,8 @@ class UatComp002ErrorSourceMappedTest {
 
         assertFalse(result.isSuccess, "Expected compilation failure for broken script")
         assertTrue(result.diagnostics.isNotEmpty(), "Expected at least one diagnostic")
+        assertEquals("v1", result.cacheKey.version, "Cache key version must be v1")
+        assertEquals(64, result.cacheKey.value.length, "Cache key value must be 64-char hex")
 
         val errors = result.diagnostics.filter { it.severity == ScriptDiagnosticSeverity.ERROR }
         assertTrue(errors.isNotEmpty(), "Expected at least one ERROR diagnostic: ${result.diagnostics}")

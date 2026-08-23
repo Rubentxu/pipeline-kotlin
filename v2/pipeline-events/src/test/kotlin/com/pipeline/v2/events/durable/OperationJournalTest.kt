@@ -6,6 +6,7 @@ import com.pipeline.v2.domain.durable.OperationInput
 import com.pipeline.v2.domain.durable.OperationOutput
 import com.pipeline.v2.domain.durable.OperationStatus
 import com.pipeline.v2.domain.durable.RerunOperation
+import com.pipeline.v2.domain.durable.MemoizedOperation
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
@@ -132,5 +133,54 @@ class OperationJournalTest {
 
         val ops = journal.listForRun(runId)
         assertEquals(3, ops.size)
+    }
+
+    @Test
+    fun `RerunOperation roundtrip with kind=RERUN preserves attempt`() {
+        val dbPath = tempDir.resolve("test.db").toString()
+        val eventStore = SqliteEventStore(dbPath)
+        val factory = eventStore.underlyingConnectionFactory()
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+
+        val op = RerunOperation(
+            id = "op-rerun-kind",
+            fingerprint = Fingerprint("c".repeat(64)),
+            input = OperationInput("step", mapOf(), "run-kind", 3),
+            output = OperationOutput(JsonPrimitive("cached"), 200L, System.currentTimeMillis()),
+            status = OperationStatus.SUCCEEDED,
+            attempt = 3,
+        )
+        journal.append(op)
+        val retrieved = journal.get("op-rerun-kind")
+        assertNotNull(retrieved)
+        assertTrue(retrieved is RerunOperation, "Expected RerunOperation but got ${retrieved!!::class.simpleName}")
+        assertEquals(3, (retrieved as RerunOperation).attempt)
+        assertEquals(op.fingerprint.hex, retrieved.fingerprint.hex)
+    }
+
+    @Test
+    fun `MemoizedOperation roundtrip with kind=MEMOIZED reconstructs cachedOutput`() {
+        val dbPath = tempDir.resolve("test.db").toString()
+        val eventStore = SqliteEventStore(dbPath)
+        val factory = eventStore.underlyingConnectionFactory()
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+
+        val cachedOut = OperationOutput(JsonPrimitive("cached-result"), 150L, System.currentTimeMillis())
+        val op = MemoizedOperation(
+            id = "op-memo-kind",
+            fingerprint = Fingerprint("d".repeat(64)),
+            input = OperationInput("step", mapOf(), "run-memo", 2),
+            output = cachedOut,
+            status = OperationStatus.SUCCEEDED,
+            attempt = 2,
+            cachedOutput = cachedOut,
+        )
+        journal.append(op)
+        val retrieved = journal.get("op-memo-kind")
+        assertNotNull(retrieved)
+        assertTrue(retrieved is MemoizedOperation, "Expected MemoizedOperation but got ${retrieved!!::class.simpleName}")
+        val memo = retrieved as MemoizedOperation
+        assertEquals(2, memo.attempt)
+        assertEquals(cachedOut.result, memo.cachedOutput?.result)
     }
 }

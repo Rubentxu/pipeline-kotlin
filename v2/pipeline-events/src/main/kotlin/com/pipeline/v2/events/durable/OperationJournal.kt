@@ -99,21 +99,28 @@ class SqliteOperationJournalImpl(
             try {
                 val inputJson = json.encodeToString(op.input)
                 val outputJson = op.output?.let { json.encodeToString(it) }
+                val kind = when (op) {
+                    is RerunOperation -> "RERUN"
+                    is MemoizedOperation -> "MEMOIZED"
+                    is CompositeOperation -> "COMPOSITE"
+                }
 
                 conn.prepareStatement(
                     """
                     INSERT INTO operation_journal
-                        (op_id, fingerprint, status, input, output, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (op_id, fingerprint, status, kind, attempt, input, output, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent()
                 ).use { ps ->
                     ps.setString(1, op.id)
                     ps.setString(2, op.fingerprint.hex)
                     ps.setString(3, op.status.name)
-                    ps.setString(4, inputJson)
-                    ps.setString(5, outputJson)
-                    ps.setLong(6, System.currentTimeMillis())
-                    ps.setLong(7, System.currentTimeMillis())
+                    ps.setString(4, kind)
+                    ps.setInt(5, op.attempt)
+                    ps.setString(6, inputJson)
+                    ps.setString(7, outputJson)
+                    ps.setLong(8, System.currentTimeMillis())
+                    ps.setLong(9, System.currentTimeMillis())
                     ps.executeUpdate()
                 }
             } finally {
@@ -133,7 +140,7 @@ class SqliteOperationJournalImpl(
         try {
             conn.prepareStatement(
                 """
-                SELECT op_id, fingerprint, status, input, output
+                SELECT op_id, fingerprint, status, kind, attempt, input, output
                 FROM operation_journal
                 WHERE op_id = ?
                 """.trimIndent()
@@ -161,7 +168,7 @@ class SqliteOperationJournalImpl(
         try {
             conn.prepareStatement(
                 """
-                SELECT j.op_id, j.fingerprint, j.status, j.input, j.output
+                SELECT j.op_id, j.fingerprint, j.status, j.kind, j.attempt, j.input, j.output
                 FROM operation_journal j
                 WHERE j.input LIKE ?
                 ORDER BY j.created_at ASC
@@ -185,19 +192,49 @@ class SqliteOperationJournalImpl(
     private fun readOperation(rs: java.sql.ResultSet, opId: String): DurableOperation? {
         val fingerprint = Fingerprint(rs.getString(2))
         val status = OperationStatus.valueOf(rs.getString(3))
-        val inputJson = rs.getString(4)
-        val outputJson = rs.getString(5)
+        val kind = rs.getString(4)
+        val attempt = rs.getInt(5)
+        val inputJson = rs.getString(6)
+        val outputJson = rs.getString(7)
 
         val input = json.decodeFromString<OperationInput>(inputJson)
         val output = outputJson?.let { json.decodeFromString<OperationOutput>(it) }
 
-        return RerunOperation(
-            id = opId,
-            fingerprint = fingerprint,
-            input = input,
-            output = output,
-            status = status,
-            attempt = input.attempt,
-        )
+        return when (kind) {
+            "RERUN" -> RerunOperation(
+                id = opId,
+                fingerprint = fingerprint,
+                input = input,
+                output = output,
+                status = status,
+                attempt = attempt,
+            )
+            "MEMOIZED" -> MemoizedOperation(
+                id = opId,
+                fingerprint = fingerprint,
+                input = input,
+                output = output,
+                status = status,
+                attempt = attempt,
+                cachedOutput = output,
+            )
+            "COMPOSITE" -> CompositeOperation(
+                id = opId,
+                fingerprint = fingerprint,
+                input = input,
+                output = output,
+                status = status,
+                attempt = attempt,
+                subOperations = emptyList(),
+            )
+            else -> RerunOperation(
+                id = opId,
+                fingerprint = fingerprint,
+                input = input,
+                output = output,
+                status = status,
+                attempt = attempt,
+            )
+        }
     }
 }

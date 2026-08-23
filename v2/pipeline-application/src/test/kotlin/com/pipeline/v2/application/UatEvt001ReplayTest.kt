@@ -21,10 +21,16 @@ class UatEvt001ReplayTest {
 
     private val appBin: Path by lazy {
         // The binary is at v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application
-        // relative to the project root (current working directory).
-        val bin = Paths.get(System.getProperty("user.dir"))
-            .resolve("v2")
-            .resolve("pipeline-application")
+        // relative to the repo root, or at build/install/pipeline-application/bin/pipeline-application
+        // relative to the :pipeline-application module directory.
+        val userDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
+        // Detect whether user.dir is the module dir or the repo root.
+        val moduleDir = if (userDir.fileName?.toString() == "pipeline-application") {
+            userDir
+        } else {
+            userDir.resolve("v2").resolve("pipeline-application")
+        }
+        val bin = moduleDir
             .resolve("build")
             .resolve("install")
             .resolve("pipeline-application")

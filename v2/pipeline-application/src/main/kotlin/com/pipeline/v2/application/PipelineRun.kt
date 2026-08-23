@@ -1,22 +1,26 @@
 package com.pipeline.v2.application
 
 import com.pipeline.v2.events.CompilationFinished
+import com.pipeline.v2.events.DomainEvent
 import com.pipeline.v2.events.EventSink
 import com.pipeline.v2.events.EventStore
 import com.pipeline.v2.events.InMemoryEventStore
 import com.pipeline.v2.events.RunFinished
 import com.pipeline.v2.events.RunStarted
+import com.pipeline.v2.scripting.CacheKey
 import com.pipeline.v2.scripting.Kotlin24ScriptingHost
 import com.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Executes a pipeline script, emitting a complete event timeline.
  */
-fun execute(scriptPath: Path, store: EventStore): List<com.pipeline.v2.events.DomainEvent> {
-    val runId = UUID.randomUUID().toString()
+fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
+    val scriptContent = scriptPath.toFile().readText()
+    val runId = deriveRunId(scriptPath.toString(), scriptContent)
     val eventSink = store as? EventSink ?: InMemoryEventStore()
 
     val runStartedId = UUID.randomUUID().toString()
@@ -25,7 +29,7 @@ fun execute(scriptPath: Path, store: EventStore): List<com.pipeline.v2.events.Do
         RunStarted(
             eventId = runStartedId,
             runId = runId,
-            sequence = 1L,
+            sequence = 0L,
             occurredAt = runStartedAt,
             scriptPath = scriptPath.toString(),
         )
@@ -42,7 +46,7 @@ fun execute(scriptPath: Path, store: EventStore): List<com.pipeline.v2.events.Do
         RunFinished(
             eventId = runFinishedId,
             runId = runId,
-            sequence = 3L,
+            sequence = 0L,
             occurredAt = runFinishedAt,
             outcome = outcome,
             diagnostics = result.diagnostics,
@@ -50,4 +54,16 @@ fun execute(scriptPath: Path, store: EventStore): List<com.pipeline.v2.events.Do
     )
 
     return eventSink.eventsFor(runId).toList()
+}
+
+/**
+ * Derives a deterministic runId from the script path and content.
+ * Two invocations of the same script produce the same runId.
+ */
+private fun deriveRunId(scriptPath: String, scriptContent: String): String {
+    val input = "$scriptPath|$scriptContent"
+    val digest = MessageDigest.getInstance("SHA-256")
+    val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
+    // Use first 36 chars (UUID-compatible length) from hex string
+    return hash.joinToString("") { "%02x".format(it) }.take(36)
 }

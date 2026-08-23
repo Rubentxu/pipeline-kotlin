@@ -12,9 +12,27 @@ class InMemoryEventStore : EventSink {
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
 
     override fun append(event: DomainEvent) {
+        val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
+        val assignedSequence = if (event.sequence == 0L) {
+            counter.incrementAndGet()
+        } else {
+            // Enforce monotonic: if caller passes a non-zero sequence, use it but also
+            // advance the counter so the next auto-assigned sequence is still monotonic.
+            val current = counter.get()
+            if (event.sequence > current) {
+                counter.set(event.sequence)
+            }
+            event.sequence
+        }
+        val eventWithSequence = when (event) {
+            is RunStarted -> event.copy(sequence = assignedSequence)
+            is CompilationStarted -> event.copy(sequence = assignedSequence)
+            is CompilationFinished -> event.copy(sequence = assignedSequence)
+            is RunFinished -> event.copy(sequence = assignedSequence)
+        }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {
-                list.add(event)
+                list.add(eventWithSequence)
             }
         }
     }

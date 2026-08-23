@@ -7,6 +7,18 @@ import java.sql.DriverManager
  * SQLite-backed event store using JDK 21 stdlib java.sql.
  * Each operation opens a fresh connection that auto-commits and closes,
  * ensuring data is immediately visible to subsequent readers.
+ *
+ * ## M2-R1 Variants
+ * This store supports all M2-R1 event variants in addition to M1-R3 variants:
+ * - [AgentResolved][com.pipeline.v2.events.AgentResolved]
+ * - [ParallelBranchStarted][com.pipeline.v2.events.ParallelBranchStarted]
+ * - [ParallelBranchFinished][com.pipeline.v2.events.ParallelBranchFinished]
+ * - [RetryAttemptStarted][com.pipeline.v2.events.RetryAttemptStarted]
+ * - [RetryAttemptFinished][com.pipeline.v2.events.RetryAttemptFinished]
+ * - [TimeoutScheduled][com.pipeline.v2.events.TimeoutScheduled]
+ *
+ * New variants are decoded via the [JsonEventLog][com.pipeline.v2.events.JsonEventLog]
+ * `kind` discriminator — no schema migration required.
  */
 class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 

@@ -68,9 +68,62 @@ between the M1 substrate and the M2 grammar work.
 - The M2 grammar will likely replace the Kotlin builder DSL with a proper parser —
   this ADR establishes the event contract that the grammar must preserve.
 
+## M2-R1 Extension
+
+**Status**: Accepted — M2-R1 (A-lite, first M2 slice)
+
+This section extends ADR-0022 to cover the full DSL grammar extension on top of the M1-R3 bridge.
+
+### In Scope (M2-R1)
+
+- `PipelineDsl.kt` — extended with full Jenkins-familiar grammar:
+  - `StepSpec.Error` and `StepSpec.Sleep` step types (record-only)
+  - `AgentSpec`, `EnvironmentSpec`, `OptionsSpec`, `RetrySpec`, `TimeoutSpec`, `TimeoutAction`
+  - `PostConditionSpec`, `WhenCondition`, `ParallelBranchSpec`
+  - Builder functions: `agent()`, `environment {}`, `options {}`, `post {}`, `parallel {}`, `branch()`, `retry()`, `timeout()`, `whenCondition()`, `script {}`
+- `FailureKind` enum in `pipeline-domain` (`INFRASTRUCTURE`, `NETWORK`, `SCRIPT`, `USER`, `TIMEOUT`, `UNKNOWN`)
+- 6 new `DomainEvent` variants (additive, no schema bump):
+  - `AgentResolved` — agent label resolved for parallel execution
+  - `ParallelBranchStarted` / `ParallelBranchFinished` — parallel branch lifecycle
+  - `RetryAttemptStarted` / `RetryAttemptFinished` — retry attempt lifecycle
+  - `TimeoutScheduled` — timeout configuration recorded
+- `JsonEventLog` encode/decode for the 6 new variants (plus cleaned 8 Elvis dead-code sites)
+- `InMemoryEventStore` when-arms for the 6 new variants
+- `SqliteEventStore` KDoc records M2-R1 variants
+- `PipelineRun.kt` — extended `walkPipelineSpec()` with helper functions for new step types and events
+- `grammar-full.pipeline.kts` — full grammar fixture exercising all M2-R1 capabilities
+- `parallel.pipeline.kts` — parallel block fixture
+- `timeout-retry.pipeline.kts` — timeout + retry fixture
+- `UatDsl001JenkinsFamiliarityTest` — full grammar UAT
+- `UatDsl003ParallelTest` — parallel branch UAT
+- `UatDsl005TimeoutGrammarTest` — timeout + retry UAT
+
+### Out of Scope (M2-R2 and beyond)
+
+- `@Step` annotation (requires KSP)
+- KSP generator for step types
+- Context capability API
+- Jenkins familiarity metadata (M2-R3)
+- LSP metadata (M2-R3)
+- Real `sh` execution (M4 UAT-STEP-001)
+- Durable execution for retry/timeout/parallel/script (M3)
+- `:pipeline-steps-system:compiler-plugin` reach (F-ARCH-004)
+
+### Design Decisions (M2-R1)
+
+1. **DSL surface is grammar-only (no durable execution).** The new step types (`error`, `sleep`) and constructs (`parallel`, `retry`, `timeout`) record their intent in the event log but do not execute durably. Durable execution is deferred to M3.
+
+2. **6 new events are additive (no schema bump).** Following the M1-R3 pattern, the `kind` discriminator allows old decoders to skip unknown variants. `SqliteEventStore` KDoc is updated to document the new variants.
+
+3. **`FailureKind` lives in `pipeline-domain`.** This domain enum is imported by the DSL via the `pipeline-scripting-api` classpath, keeping domain concepts separate from the DSL layer.
+
+4. **`parallel {}` emits ParallelBranchStarted/Finished events.** The `BranchScope` collects steps that are flattened into the stage's step list, and parallel branch events are emitted around them.
+
+5. **`retry()` and `timeout()` configure steps, not durable execution.** These DSL constructs set metadata on the `OptionsSpec` that is recorded in events, but the actual retry/timeout logic is not implemented in this slice.
+
 ## References
 
-- Design: `cycle-artifacts/m1-r3-dsl-seed/design.md`
-- Specification: `cycle-artifacts/m1-r3-dsl-seed/specification.md`
+- Design: `cycle-artifacts/p-733fb505b5a6bd2d/m2-r1-dsl-grammar/design.md`
+- Specification: `cycle-artifacts/p-733fb505b5a6bd2d/m2-r1-dsl-grammar/specification.md`
 - F-ARCH-003: `kotlin.script.experimental` containment
 - F-ARCH-004: No `:pipeline-steps-system:compiler-plugin` reach

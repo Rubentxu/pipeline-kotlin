@@ -1,5 +1,14 @@
 # UAT_COMP_001_002 Evidence
 
+> **Supersession note (M2-R1 closure):** This evidence file was created during
+> M1-R3 (v0.6.0). M2-R1 (v0.7.0, `[[ADR-0022-dsl-seed-bridge]]` §M2-R1 Extension)
+> extends the DSL grammar but does NOT change the `UatComp001` / `UatComp002` /
+> `UatEvt001` / `UatEvt002` test assertions or fixture shapes. The evidence below
+> remains valid for M2-R1 verification purposes. New evidence for M2-R1 DSL
+> grammar capabilities (agent, parallel, retry, timeout) is captured in
+> `UatDsl001JenkinsFamiliarityTest`, `UatDsl003ParallelTest`, and
+> `UatDsl005TimeoutGrammarTest`.
+
 ## Test Commands
 
 ### Run UAT Comp Tests

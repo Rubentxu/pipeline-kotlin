@@ -37,6 +37,8 @@ class InMemoryEventStore : EventSink {
             is RetryAttemptStarted -> event.copy(sequence = assignedSequence)
             is RetryAttemptFinished -> event.copy(sequence = assignedSequence)
             is TimeoutScheduled -> event.copy(sequence = assignedSequence)
+            is StepFailed -> event.copy(sequence = assignedSequence)
+            is EchoOutputCaptured -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

@@ -6,7 +6,7 @@ M0 exit criterion is **NOT met**:
 
 - `./gradlew help` ✅ passes (module graph + build script evaluation)
 - `./gradlew check` ❌ **fails** (54 source excludes in `core/build.gradle.kts`)
-- `KSP` ❌ disabled (no 2.4.x release)
+- `KSP` ✅ enabled (KSP 2.3.11 + Kotlin 2.4.10 — official recipe)
 - `Shadow fat-jar` ❌ disabled (incompatible with Gradle 8.14.5)
 
 ## Audit of `core/build.gradle.kts` excludes

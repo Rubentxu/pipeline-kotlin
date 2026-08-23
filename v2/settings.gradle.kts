@@ -3,6 +3,9 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    plugins {
+        id("com.google.devtools.ksp") version "2.3.11"
+    }
 }
 
 dependencyResolutionManagement {
@@ -21,4 +24,7 @@ include(
     ":pipeline-testkit",
     ":pipeline-architecture-tests",
     ":pipeline-events",
+    ":pipeline-step-sdk:api",
+    ":pipeline-step-sdk:processor",
+    ":pipeline-step-sdk:runtime",
 )

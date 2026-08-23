@@ -23,6 +23,10 @@ import com.pipeline.v2.events.StepStarted
 import com.pipeline.v2.events.TimeoutScheduled
 import com.pipeline.v2.scripting.Kotlin24ScriptingHost
 import com.pipeline.v2.scripting.ScriptDefinition
+import com.pipeline.v2.sdk.runtime.echo
+import com.pipeline.v2.sdk.runtime.error as sdkError
+import com.pipeline.v2.sdk.runtime.sleep as sdkSleep
+import com.pipeline.v2.sdk.StepContext
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Instant
@@ -190,7 +194,7 @@ private fun emitStepEvents(
     val stepType = step.type
 
     when (step) {
-        is StepSpec.Echo, is StepSpec.Shell -> {
+        is StepSpec.Echo -> {
             eventSink.append(
                 StepStarted(
                     eventId = stepStartedId,
@@ -203,6 +207,39 @@ private fun emitStepEvents(
                     stepType = stepType,
                 )
             )
+            // Invoke SDK echo function
+            echo(StepContext(runId = runId), step.text, eventSink, stepIndex)
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = Instant.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+        is StepSpec.Shell -> {
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            // Invoke SDK sh function - split command into argv
+            val argv = step.command.split("\\s+".toRegex())
+            com.pipeline.v2.sdk.runtime.sh(StepContext(runId = runId), argv, eventSink, stepIndex)
             val stepFinishedId = UUID.randomUUID().toString()
             val stepFinishedAt = Instant.now()
             eventSink.append(
@@ -253,6 +290,17 @@ private fun emitErrorStepEvents(
             stepType = stepType,
         )
     )
+    // Invoke SDK error function - it throws after emitting StepFailed
+    try {
+        val failureKind = try {
+            FailureKind.valueOf(step.failureKind)
+        } catch (_: Exception) {
+            FailureKind.UNKNOWN
+        }
+        sdkError(StepContext(runId = runId), step.message, failureKind, eventSink, stepIndex)
+    } catch (_: Throwable) {
+        // Expected - error signals abort
+    }
     val stepFinishedId = UUID.randomUUID().toString()
     val stepFinishedAt = Instant.now()
     eventSink.append(
@@ -292,6 +340,8 @@ private fun emitSleepStepEvents(
             stepType = stepType,
         )
     )
+    // Invoke SDK sleep function
+    sdkSleep(StepContext(runId = runId), step.seconds, eventSink, stepIndex)
     val stepFinishedId = UUID.randomUUID().toString()
     val stepFinishedAt = Instant.now()
     eventSink.append(

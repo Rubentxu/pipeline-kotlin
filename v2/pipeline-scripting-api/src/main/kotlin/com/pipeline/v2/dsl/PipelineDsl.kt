@@ -23,13 +23,18 @@ data class StageSpec(
 sealed interface StepSpec {
     val name: String
     val type: String
+    /** Retry policy for this step, or null if no retry. */
+    val retry: com.pipeline.v2.domain.durable.RetryPolicy? get() = null
 
-    data class Echo(val text: String) : StepSpec {
+    data class Echo(
+        val text: String,
+        override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+    ) : StepSpec {
         override val name: String get() = "echo"
         override val type: String get() = "echo"
     }
 
-    data class Shell(val command: String, val isScriptBlock: Boolean = false) : StepSpec {
+    data class Shell(val command: String, val isScriptBlock: Boolean = false, override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null) : StepSpec {
         override val name: String get() = "sh"
         override val type: String get() = "sh"
     }
@@ -42,6 +47,7 @@ sealed interface StepSpec {
     data class Error(
         val message: String,
         val failureKind: String = "UNKNOWN",
+        override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
     ) : StepSpec {
         override val name: String get() = "error"
         override val type: String get() = "error"
@@ -51,7 +57,10 @@ sealed interface StepSpec {
      * Records a sleep/delay step. The delay is recorded in the event log
      * but no actual sleeping occurs (record-only semantics).
      */
-    data class Sleep(val seconds: Long) : StepSpec {
+    data class Sleep(
+        val seconds: Long,
+        override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+    ) : StepSpec {
         override val name: String get() = "sleep"
         override val type: String get() = "sleep"
     }
@@ -62,6 +71,7 @@ sealed interface StepSpec {
      */
     data class Parallel(
         val branches: List<BranchSpec>,
+        override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
     ) : StepSpec {
         override val name: String get() = "parallel"
         override val type: String get() = "parallel"
@@ -273,10 +283,20 @@ class StageScope(private val stageName: String) {
      * Retry configuration for a step.
      */
     fun retry(count: Int, delaySeconds: Long? = null) {
-        val currentStep = steps.lastOrNull() as? StepSpec.Shell
-        if (currentStep != null) {
-            val index = steps.indexOf(currentStep)
-            steps[index] = StepSpec.Shell(currentStep.command)
+        val currentStep = steps.lastOrNull() ?: return
+        val retryPolicy = com.pipeline.v2.domain.durable.RetryPolicy(
+            maxAttempts = count,
+            baseMs = (delaySeconds ?: 0L) * 1000L,
+            jitterMs = (delaySeconds ?: 0L) * 500L, // 50% jitter
+        )
+        val index = steps.indexOf(currentStep)
+        // Use copy() to set retry on the last step
+        steps[index] = when (currentStep) {
+            is StepSpec.Echo -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.Shell -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.Error -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.Sleep -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
         }
     }
 

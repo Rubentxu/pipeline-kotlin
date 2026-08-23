@@ -25,7 +25,7 @@ object OperationJournalSchema {
 
     const val CREATE_OPERATION_JOURNAL = """
         CREATE TABLE IF NOT EXISTS operation_journal (
-            op_id       TEXT    NOT NULL PRIMARY KEY,
+            op_id       TEXT    NOT NULL,
             fingerprint TEXT    NOT NULL,
             status      TEXT    NOT NULL,
             kind       TEXT    NOT NULL DEFAULT 'RERUN',
@@ -33,7 +33,8 @@ object OperationJournalSchema {
             input       TEXT    NOT NULL,
             output      TEXT,
             created_at  INTEGER NOT NULL,
-            updated_at  INTEGER NOT NULL
+            updated_at  INTEGER NOT NULL,
+            PRIMARY KEY (op_id, attempt)
         )
     """
 

@@ -33,6 +33,7 @@ import com.pipeline.v2.domain.durable.OperationInput
 import com.pipeline.v2.domain.durable.OperationOutput
 import com.pipeline.v2.domain.durable.OperationStatus
 import com.pipeline.v2.domain.durable.RerunOperation
+import com.pipeline.v2.domain.durable.RetryPolicy
 import com.pipeline.v2.domain.durable.ReplayPolicy as DomainReplayPolicy
 import com.pipeline.v2.events.durable.OperationJournal
 import com.pipeline.v2.events.durable.ReplayCursorStore
@@ -347,7 +348,7 @@ internal fun walkPipelineSpecDurable(
 }
 
 /**
- * Emits durable step events with full replay/diverge gating.
+ * Emits durable step events with full replay/diverge gating and retry support.
  *
  * @return The step outcome string.
  * @throws DivergenceException When ABORT decision is reached.
@@ -366,111 +367,149 @@ private fun emitDurableStepEvents(
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = "$runId-s$stageIndex-$stepIndex"
-    val attempt = 1 // M3-R1: single attempt; retry deferred to M3-R2
+    val retryPolicy = step.retry ?: RetryPolicy.NONE
+    val maxAttempts = retryPolicy.maxAttempts
 
-    // Build OperationInput
+    // Build OperationInput (attempt will vary per retry loop iteration)
     val params = stepToParams(step)
-    val input = OperationInput(
-        stepId = stepType,
-        params = params,
-        runId = runId,
-        attempt = attempt,
-    )
-
-    // Compute fingerprint
-    val fingerprint = Fingerprint.compute(input, stepType, domainPolicy, attempt)
-
-    // Look up journaled operation
-    val journaledOp = journal.get(opId)
-    val hasJournalEntry = journaledOp != null
-
-    // Build current operation for divergence check
-    val currentOp: DurableOperation = if (journaledOp is MemoizedOperation) {
-        MemoizedOperation(
-            id = opId,
-            fingerprint = fingerprint,
-            input = input,
-            output = journaledOp.output,
-            status = journaledOp.status,
-            attempt = attempt,
-            cachedOutput = journaledOp.cachedOutput,
-        )
-    } else {
-        RerunOperation(
-            id = opId,
-            fingerprint = fingerprint,
-            input = input,
-            output = null,
-            status = OperationStatus.PENDING,
-            attempt = attempt,
-        )
-    }
-
-    // Fail-closed divergence check
-    val divergenceResult = divergenceDetector.check(currentOp, journaledOp)
-    if (divergenceResult.isFailure) {
-        throw divergenceResult.exceptionOrNull() as DivergenceException
-    }
 
     // Map SDK ReplayPolicy to domain ReplayPolicy for the decision call
     val sdkPolicy = toSdkReplayPolicy(domainPolicy)
-    val journaledOutcome = journaledOp?.status
-    val decision = effectReplayPolicy.decide(sdkPolicy, effects, hasJournalEntry, journaledOutcome)
 
-    val stepStartedId = UUID.randomUUID().toString()
-    val stepStartedAt = Instant.now()
-
-    eventSink.append(
-        StepStarted(
-            eventId = stepStartedId,
+    for (attemptNum in 1..maxAttempts) {
+        // Build OperationInput for this attempt
+        val input = OperationInput(
+            stepId = stepType,
+            params = params,
             runId = runId,
-            sequence = 0L,
-            occurredAt = stepStartedAt,
-            stageIndex = stageIndex,
-            stepIndex = stepIndex,
-            stepName = step.name,
-            stepType = step.type,
+            attempt = attemptNum,
         )
-    )
 
-    return when (decision) {
-        com.pipeline.v2.sdk.runtime.durable.ReplayDecision.SKIP -> {
-            // Bypass executor; emit StepFinished with cached output
-            emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "success")
-            "success"
-        }
-        com.pipeline.v2.sdk.runtime.durable.ReplayDecision.RERUN -> {
-            // Execute step and journal
-            val stepOutcome = executeDurableStep(step, stageIndex, stepIndex, runId, eventSink, runOutcomeRef)
-            // Journal the operation
-            val outputOp = RerunOperation(
+        // Compute fingerprint for this attempt
+        val fingerprint = Fingerprint.compute(input, stepType, domainPolicy, attemptNum)
+
+        // Look up journaled operation for this specific attempt
+        val journaledOp = journal.get(opId, attemptNum)
+        val hasJournalEntry = journaledOp != null
+        val journaledOutcome = journaledOp?.status
+
+        // Divergence check: compare current fingerprint against journaled fingerprint for THIS attempt
+        val currentOp: DurableOperation = if (journaledOp is MemoizedOperation) {
+            MemoizedOperation(
+                id = opId,
+                fingerprint = fingerprint,
+                input = input,
+                output = journaledOp.output,
+                status = journaledOp.status,
+                attempt = attemptNum,
+                cachedOutput = journaledOp.cachedOutput,
+            )
+        } else {
+            RerunOperation(
                 id = opId,
                 fingerprint = fingerprint,
                 input = input,
                 output = null,
-                status = if (stepOutcome == "success") OperationStatus.SUCCEEDED else OperationStatus.FAILED,
-                attempt = attempt,
+                status = OperationStatus.PENDING,
+                attempt = attemptNum,
             )
-            journal.append(outputOp)
-            // Advance cursor after successful journal append (per R-C mitigation)
-            cursorStore.advance(runId, opId, stageIndex)
-            emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome)
-            stepOutcome
         }
-        com.pipeline.v2.sdk.runtime.durable.ReplayDecision.ABORT -> {
-            // Emit StepFailed and throw
-            emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure")
-            runOutcomeRef.set("failure")
-            val divEx = DivergenceException(
-                expected = fingerprint,
-                actual = fingerprint,
-                opId = opId,
+
+        // Fail-closed divergence check
+        val divergenceResult = divergenceDetector.check(currentOp, journaledOp)
+        if (divergenceResult.isFailure) {
+            throw divergenceResult.exceptionOrNull() as DivergenceException
+        }
+
+        // Determine replay decision
+        val decision = effectReplayPolicy.decide(sdkPolicy, effects, hasJournalEntry, journaledOutcome)
+
+        val stepStartedId = UUID.randomUUID().toString()
+        val stepStartedAt = Instant.now()
+
+        eventSink.append(
+            StepStarted(
+                eventId = stepStartedId,
                 runId = runId,
+                sequence = 0L,
+                occurredAt = stepStartedAt,
                 stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                stepName = step.name,
+                stepType = step.type,
             )
-            throw divEx
+        )
+
+        when (decision) {
+            com.pipeline.v2.sdk.runtime.durable.ReplayDecision.SKIP -> {
+                // Bypass executor; emit StepFinished with cached output
+                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "success")
+                return "success"
+            }
+            com.pipeline.v2.sdk.runtime.durable.ReplayDecision.RERUN -> {
+                // Execute step and journal
+                val stepOutcome = executeDurableStep(step, stageIndex, stepIndex, runId, eventSink, runOutcomeRef)
+
+                // Journal the operation (INSERT OR REPLACE for retry support)
+                val outputOp = RerunOperation(
+                    id = opId,
+                    fingerprint = fingerprint,
+                    input = input,
+                    output = null,
+                    status = if (stepOutcome == "success") OperationStatus.SUCCEEDED else OperationStatus.FAILED,
+                    attempt = attemptNum,
+                )
+                journal.append(outputOp)
+
+                if (stepOutcome == "failure") {
+                    // This attempt failed
+                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome)
+                    if (attemptNum < maxAttempts) {
+                        // Apply backoff before next attempt
+                        val delayMs = retryPolicy.backoffDelay(attemptNum + 1)
+                        if (delayMs > 0) {
+                            Thread.sleep(delayMs)
+                        }
+                        // Continue to next attempt
+                        continue
+                    } else {
+                        // Last attempt failed → ABORT
+                        runOutcomeRef.set("failure")
+                        val divEx = DivergenceException(
+                            expected = fingerprint,
+                            actual = fingerprint,
+                            opId = opId,
+                            runId = runId,
+                            stageIndex = stageIndex,
+                        )
+                        throw divEx
+                    }
+                } else {
+                    // Attempt succeeded
+                    // Advance cursor after successful journal append (per R-C mitigation)
+                    cursorStore.advance(runId, opId, stageIndex)
+                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome)
+                    return "success"
+                }
+            }
+            com.pipeline.v2.sdk.runtime.durable.ReplayDecision.ABORT -> {
+                // Emit StepFailed and throw
+                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure")
+                runOutcomeRef.set("failure")
+                val divEx = DivergenceException(
+                    expected = fingerprint,
+                    actual = fingerprint,
+                    opId = opId,
+                    runId = runId,
+                    stageIndex = stageIndex,
+                )
+                throw divEx
+            }
         }
     }
+
+    // Should not reach here, but return failure as fallback
+    return "failure"
 }
 
 /**

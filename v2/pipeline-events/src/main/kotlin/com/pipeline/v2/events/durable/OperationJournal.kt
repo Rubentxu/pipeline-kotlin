@@ -28,18 +28,26 @@ interface OperationJournal {
      * Appends a durable operation to the journal.
      *
      * @param op The durable operation to journal.
-     * @throws IllegalStateException if [op.id] already exists in the journal
-     *         (PRIMARY KEY constraint).
      */
     fun append(op: DurableOperation)
 
     /**
-     * Retrieves a journaled operation by its [opId].
+     * Retrieves the latest journaled operation by its [opId].
+     * Returns the entry with the highest attempt number.
      *
      * @param opId The operation identifier.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
      */
     fun get(opId: String): DurableOperation?
+
+    /**
+     * Retrieves a journaled operation by its [opId] and [attempt].
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @return The [DurableOperation] if found, or `null` if no entry exists.
+     */
+    fun get(opId: String, attempt: Int): DurableOperation?
 
     /**
      * Lists all journaled operations for a given [runId], ordered by [created_at] ascending.
@@ -97,6 +105,21 @@ class SqliteOperationJournalImpl(
         synchronized(this) {
             val conn = connectionFactory()
             try {
+                // Check if entry already exists for this (op_id, attempt)
+                conn.prepareStatement(
+                    "SELECT 1 FROM operation_journal WHERE op_id = ? AND attempt = ?"
+                ).use { ps ->
+                    ps.setString(1, op.id)
+                    ps.setInt(2, op.attempt)
+                    ps.executeQuery().use { rs ->
+                        if (rs.next()) {
+                            throw IllegalStateException(
+                                "Operation ${op.id} attempt ${op.attempt} already journaled"
+                            )
+                        }
+                    }
+                }
+
                 val inputJson = json.encodeToString(op.input)
                 val outputJson = op.output?.let { json.encodeToString(it) }
                 val kind = when (op) {
@@ -130,7 +153,8 @@ class SqliteOperationJournalImpl(
     }
 
     /**
-     * Retrieves a journaled operation by its [opId].
+     * Retrieves the latest journaled operation by its [opId].
+     * Returns the entry with the highest attempt number.
      *
      * @param opId The operation identifier.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
@@ -143,9 +167,40 @@ class SqliteOperationJournalImpl(
                 SELECT op_id, fingerprint, status, kind, attempt, input, output
                 FROM operation_journal
                 WHERE op_id = ?
+                ORDER BY attempt DESC
+                LIMIT 1
                 """.trimIndent()
             ).use { ps ->
                 ps.setString(1, opId)
+                ps.executeQuery().use { rs ->
+                    if (!rs.next()) return null
+                    return readOperation(rs, opId)
+                }
+            }
+        } finally {
+            conn.close()
+        }
+    }
+
+    /**
+     * Retrieves a journaled operation by its [opId] and [attempt].
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @return The [DurableOperation] if found, or `null` if no entry exists.
+     */
+    override fun get(opId: String, attempt: Int): DurableOperation? {
+        val conn = connectionFactory()
+        try {
+            conn.prepareStatement(
+                """
+                SELECT op_id, fingerprint, status, kind, attempt, input, output
+                FROM operation_journal
+                WHERE op_id = ? AND attempt = ?
+                """.trimIndent()
+            ).use { ps ->
+                ps.setString(1, opId)
+                ps.setInt(2, attempt)
                 ps.executeQuery().use { rs ->
                     if (!rs.next()) return null
                     return readOperation(rs, opId)

@@ -25,6 +25,7 @@ class StepDescriptorGenerator(
 ) : SymbolProcessor {
 
     private val stepDescriptors = mutableListOf<String>()
+    private val emittedMetadata = mutableListOf<Pair<String, String>>()
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
         val stepAnnotationName = Step::class.qualifiedName!!
@@ -69,6 +70,11 @@ class StepDescriptorGenerator(
             }
         }
 
+        val jenkinsSurfaceTriple = KnownJenkinsSurfaces.tripleFor(name)
+        if (jenkinsSurfaceTriple.isEmpty()) {
+            logger.warn(" Unknown step type: $name, jenkinsSurface defaults to \"\"")
+        }
+
         val descriptorCode = buildString {
             appendLine("        StepDescriptor(")
             appendLine("            stepId = ${id.quote()},")
@@ -77,12 +83,14 @@ class StepDescriptorGenerator(
             appendLine("            executionLocation = ExecutionLocation.${execution.name},")
             appendLine("            effects = listOf(${effectsList.joinToString(", ") { "Effect.${it.name}" }}),")
             appendLine("            replayPolicy = ReplayPolicy.${replay.name},")
+            appendLine("            jenkinsSurface = ${jenkinsSurfaceTriple.quote()},")
             appendLine("            requiredCapabilities = emptyList(),")
             appendLine("        ),")
         }
 
         stepDescriptors.add(descriptorCode)
-        logger.info("Processed @Step function: $name (id=$id, execution=$execution, effects=$effectsList, replay=$replay)")
+        emittedMetadata.add(id to jenkinsSurfaceTriple)
+        logger.info("Processed @Step function: $name (id=$id, execution=$execution, effects=$effectsList, replay=$replay, jenkinsSurface=$jenkinsSurfaceTriple)")
     }
 
     override fun finish() {
@@ -114,6 +122,73 @@ class StepDescriptorGenerator(
         }
 
         logger.info("Generated $fileName with ${stepDescriptors.size} step descriptors")
+
+        // Emit JSON resources for LSP metadata
+        emittedMetadata.forEach { (stepId, jenkinsSurfaceTriple) ->
+            val jsonContent = buildJsonMetadata(stepId, jenkinsSurfaceTriple)
+            codeGenerator.createNewFile(
+                packageName = "",
+                fileName = "META-INF/pipeline/step-metadata/$stepId.json",
+                extensionName = "json",
+                dependencies = Dependencies.ALL_FILES,
+            ).use { output ->
+                output.write(jsonContent.toByteArray())
+            }
+            logger.info("Emitted LSP metadata: META-INF/pipeline/step-metadata/$stepId.json")
+        }
+    }
+
+    private fun buildJsonMetadata(stepId: String, jenkinsSurfaceTriple: String): String {
+        // Parse step name from stepId (e.g., "core.echo" -> "echo")
+        val name = stepId.substringAfterLast(".", stepId)
+
+        // Determine location and replayPolicy from the step type
+        val (location, replayPolicy, failureKindBridge) = when {
+            jenkinsSurfaceTriple.startsWith("echo|") -> Triple("CONTROLLER", "MEMOIZED", "INFRASTRUCTURE")
+            jenkinsSurfaceTriple.startsWith("sh|") -> Triple("WORKER", "RERUN", "PROCESS")
+            jenkinsSurfaceTriple.startsWith("error|") -> Triple("AGENT", "NEVER", "USER")
+            jenkinsSurfaceTriple.startsWith("sleep|") -> Triple("CONTROLLER", "MEMOIZED", "INFRASTRUCTURE")
+            else -> Triple("WORKER", "MEMOIZED", "UNKNOWN")
+        }
+
+        val sb = StringBuilder()
+        sb.append("{")
+        sb.append(jsonField("schema", "pipeline.dev/lsp/v1"))
+        sb.append(",")
+        sb.append(jsonField("stepId", stepId))
+        sb.append(",")
+        sb.append(jsonField("name", name))
+        sb.append(",")
+        sb.append("\"parameters\":[],")
+        sb.append(jsonField("location", location))
+        sb.append(",")
+        sb.append(jsonField("replayPolicy", replayPolicy))
+        sb.append(",")
+        sb.append(jsonField("failureKindBridge", failureKindBridge))
+        sb.append(",")
+        sb.append(jsonField("jenkinsSurface", jenkinsSurfaceTriple))
+        sb.append("}")
+        return sb.toString()
+    }
+
+    private fun jsonField(key: String, value: String): String {
+        val escaped = jsonString(value)
+        return "\"$key\":$escaped"
+    }
+
+    private fun jsonString(s: String): String {
+        val sb = StringBuilder()
+        for (ch in s) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> sb.append(ch)
+            }
+        }
+        return "\"${sb}\""
     }
 
     private fun String.quote(): String = "\"$this\""

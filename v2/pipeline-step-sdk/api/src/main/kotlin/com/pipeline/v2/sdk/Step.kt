@@ -16,4 +16,5 @@ annotation class Step(
     val execution: ExecutionLocation = ExecutionLocation.WORKER,
     val effects: Array<Effect> = [Effect.READ_ONLY],
     val replay: ReplayPolicy = ReplayPolicy.MEMOIZED,
+    val plugin: String = "",
 )

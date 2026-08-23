@@ -39,7 +39,9 @@ object JsonEventLog {
                 sb.append(",\"scriptPath\":")
                 sb.append(jsonString(event.scriptPath))
             }
-            is CompilationStarted -> { /* no extra fields */ }
+            is CompilationStarted -> {
+                // no extra fields
+            }
             is CompilationFinished -> {
                 sb.append(",\"cacheKey\":")
                 sb.append(encodeCacheKey(event.cacheKey))
@@ -85,6 +87,74 @@ object JsonEventLog {
                 sb.append(jsonString(event.stepName))
                 sb.append(",\"stepType\":")
                 sb.append(jsonString(event.stepType))
+            }
+            is AgentResolved -> {
+                sb.append(",\"agentLabel\":")
+                sb.append(jsonString(event.agentLabel))
+                sb.append(",\"remoteUri\":")
+                sb.append(jsonString(event.remoteUri ?: ""))
+            }
+            is ParallelBranchStarted -> {
+                sb.append(",\"branchIndex\":")
+                sb.append(event.branchIndex)
+                sb.append(",\"branchName\":")
+                sb.append(jsonString(event.branchName))
+                sb.append(",\"parentStageIndex\":")
+                sb.append(event.parentStageIndex)
+            }
+            is ParallelBranchFinished -> {
+                sb.append(",\"branchIndex\":")
+                sb.append(event.branchIndex)
+                sb.append(",\"branchName\":")
+                sb.append(jsonString(event.branchName))
+                sb.append(",\"parentStageIndex\":")
+                sb.append(event.parentStageIndex)
+                sb.append(",\"outcome\":")
+                sb.append(jsonString(event.outcome))
+            }
+            is RetryAttemptStarted -> {
+                sb.append(",\"attemptNumber\":")
+                sb.append(event.attemptNumber)
+                sb.append(",\"maxAttempts\":")
+                sb.append(event.maxAttempts)
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(jsonString(event.stepType))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+            }
+            is RetryAttemptFinished -> {
+                sb.append(",\"attemptNumber\":")
+                sb.append(event.attemptNumber)
+                sb.append(",\"maxAttempts\":")
+                sb.append(event.maxAttempts)
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(jsonString(event.stepType))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"outcome\":")
+                sb.append(jsonString(event.outcome))
+            }
+            is TimeoutScheduled -> {
+                sb.append(",\"timeoutSeconds\":")
+                sb.append(event.timeoutSeconds)
+                sb.append(",\"timeoutAction\":")
+                sb.append(jsonString(event.timeoutAction))
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName ?: ""))
+                sb.append(",\"stepType\":")
+                sb.append(jsonString(event.stepType ?: ""))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex ?: -1)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex ?: -1)
             }
         }
         sb.append("}")
@@ -177,7 +247,6 @@ object JsonEventLog {
                 else -> current.append(ch)
             }
         }
-        // Discard the trailing ']' that closes the JSON array.
         val trailing = current.toString().trimEnd()
         if (trailing.isNotEmpty() && trailing != "]") result.add(current.toString())
         return result
@@ -266,6 +335,70 @@ object JsonEventLog {
                 stepName = stringField(s, "stepName") ?: "",
                 stepType = stringField(s, "stepType") ?: "",
             )
+            "AgentResolved" -> AgentResolved(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                agentLabel = stringField(s, "agentLabel") ?: "",
+                remoteUri = stringField(s, "remoteUri")?.takeIf { it.isNotEmpty() },
+            )
+            "ParallelBranchStarted" -> ParallelBranchStarted(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                branchIndex = intField(s, "branchIndex") ?: 0,
+                branchName = stringField(s, "branchName") ?: "",
+                parentStageIndex = intField(s, "parentStageIndex") ?: 0,
+            )
+            "ParallelBranchFinished" -> ParallelBranchFinished(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                branchIndex = intField(s, "branchIndex") ?: 0,
+                branchName = stringField(s, "branchName") ?: "",
+                parentStageIndex = intField(s, "parentStageIndex") ?: 0,
+                outcome = stringField(s, "outcome") ?: "unknown",
+            )
+            "RetryAttemptStarted" -> RetryAttemptStarted(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                attemptNumber = intField(s, "attemptNumber") ?: 1,
+                maxAttempts = intField(s, "maxAttempts") ?: 1,
+                stepName = stringField(s, "stepName") ?: "",
+                stepType = stringField(s, "stepType") ?: "",
+                stageIndex = intField(s, "stageIndex") ?: 0,
+                stepIndex = intField(s, "stepIndex") ?: 0,
+            )
+            "RetryAttemptFinished" -> RetryAttemptFinished(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                attemptNumber = intField(s, "attemptNumber") ?: 1,
+                maxAttempts = intField(s, "maxAttempts") ?: 1,
+                stepName = stringField(s, "stepName") ?: "",
+                stepType = stringField(s, "stepType") ?: "",
+                stageIndex = intField(s, "stageIndex") ?: 0,
+                stepIndex = intField(s, "stepIndex") ?: 0,
+                outcome = stringField(s, "outcome") ?: "unknown",
+            )
+            "TimeoutScheduled" -> TimeoutScheduled(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                timeoutSeconds = longField(s, "timeoutSeconds") ?: 0L,
+                timeoutAction = stringField(s, "timeoutAction") ?: "FAIL",
+                stepName = stringField(s, "stepName")?.takeIf { it.isNotEmpty() },
+                stepType = stringField(s, "stepType")?.takeIf { it.isNotEmpty() },
+                stageIndex = intField(s, "stageIndex")?.takeIf { it != -1 },
+                stepIndex = intField(s, "stepIndex")?.takeIf { it != -1 },
+            )
             else -> null
         }
     }
@@ -279,11 +412,9 @@ object JsonEventLog {
         if (nameStart == -1) return null
         val colonPos = json.indexOf(':', nameStart)
         if (colonPos == -1) return null
-        // Find the opening quote after the colon
         var i = colonPos + 1
         while (i < json.length && json[i].isWhitespace()) i++
         if (i >= json.length || json[i] != '"') return null
-        // i is now at the opening quote of the value
         var stringEnd = i + 1
         var inString = true
         var escape = false
@@ -295,8 +426,6 @@ object JsonEventLog {
                 else -> stringEnd++
             }
         }
-        // stringEnd is now at the closing quote (or end of string)
-        // We want the content between quotes: from i+1 to stringEnd-1
         return if (stringEnd > i + 1) json.substring(i + 1, stringEnd) else ""
     }
 
@@ -309,7 +438,6 @@ object JsonEventLog {
         if (keyStart == -1) return null
         val bracePos = json.indexOf('{', keyStart)
         if (bracePos == -1) return null
-        // Extract the cacheKey object by finding matching braces
         var depth = 0
         var i = bracePos
         while (i < json.length) {
@@ -317,7 +445,6 @@ object JsonEventLog {
                 '{' -> { depth++; i++ }
                 '}' -> { depth--; if (depth == 0) break; i++ }
                 '"' -> {
-                    // Skip over a quoted string
                     i++
                     while (i < json.length) {
                         when {
@@ -362,7 +489,6 @@ object JsonEventLog {
         while (i < json.length && json[i].isWhitespace()) i++
         if (i >= json.length || json[i] == ']') return emptyList()
 
-        // Parse the diagnostics array manually
         val results = mutableListOf<ScriptingDiagnostic>()
         var depth = 0
         var inString = false
@@ -390,7 +516,6 @@ object JsonEventLog {
                     i++
                 }
                 ch == ',' && depth == 0 && !inString -> {
-                    // end of current diagnostic
                     i++
                 }
                 else -> { if (depth > 0) current.append(ch); i++ }

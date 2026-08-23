@@ -16,8 +16,6 @@ class InMemoryEventStore : EventSink {
         val assignedSequence = if (event.sequence == 0L) {
             counter.incrementAndGet()
         } else {
-            // Enforce monotonic: if caller passes a non-zero sequence, use it but also
-            // advance the counter so the next auto-assigned sequence is still monotonic.
             val current = counter.get()
             if (event.sequence > current) {
                 counter.set(event.sequence)
@@ -33,6 +31,12 @@ class InMemoryEventStore : EventSink {
             is StageFinished -> event.copy(sequence = assignedSequence)
             is StepStarted -> event.copy(sequence = assignedSequence)
             is StepFinished -> event.copy(sequence = assignedSequence)
+            is AgentResolved -> event.copy(sequence = assignedSequence)
+            is ParallelBranchStarted -> event.copy(sequence = assignedSequence)
+            is ParallelBranchFinished -> event.copy(sequence = assignedSequence)
+            is RetryAttemptStarted -> event.copy(sequence = assignedSequence)
+            is RetryAttemptFinished -> event.copy(sequence = assignedSequence)
+            is TimeoutScheduled -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

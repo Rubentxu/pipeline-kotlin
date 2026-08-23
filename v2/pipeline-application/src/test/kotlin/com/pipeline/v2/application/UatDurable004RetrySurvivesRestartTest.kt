@@ -176,8 +176,9 @@ class UatDurable004RetrySurvivesRestartTest {
         """.trimIndent()
          .replace("PLACEHOLDER_counterFile", counterFile)
          .replace("PLACEHOLDER_succeedOnAttempt", succeedOnAttempt.toString())
-        // Wrap with bash -c so the full script is passed as a single argv to sh()
-        val command = "bash -c \"${scriptBody}\""
+        // Implementation now provides shell interpretation via bash -c;
+        // do NOT double-wrap with bash -c "..."
+        val command = scriptBody
 
         return PipelineSpec(
             stages = listOf(
@@ -213,8 +214,9 @@ class UatDurable004RetrySurvivesRestartTest {
         """.trimIndent()
          .replace("PLACEHOLDER_counterFile", counterFile)
          .replace("PLACEHOLDER_succeedOnAttempt", succeedOnAttempt.toString())
-        // Wrap with bash -c so the full script is passed as a single argv to sh()
-        val command = "bash -c \"${scriptBody}\""
+        // Implementation now provides shell interpretation via bash -c;
+        // do NOT double-wrap with bash -c "..."
+        val command = scriptBody
 
         return PipelineSpec(
             stages = listOf(

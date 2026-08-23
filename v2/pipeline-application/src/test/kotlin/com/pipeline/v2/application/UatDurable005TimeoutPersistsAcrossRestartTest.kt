@@ -123,7 +123,7 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
 
         // Resume: should throw DivergenceException due to deadline expiry
         val exceptionThrown = try {
-            runOrchestrated(dbPath, spec, runId, startFromCursor = true, clock = clock)
+            runOrchestratedExpectingDivergence(dbPath, spec, runId, startFromCursor = true, clock = clock)
             false
         } catch (ex: DivergenceException) {
             true
@@ -192,6 +192,37 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
         return result.getOrElse {
             fail<Nothing>("Orchestrator run failed: ${it.message}")
         }
+    }
+
+    /**
+     * Mirror of UatDurable003's pattern: propagates the original
+     * DivergenceException via getOrElse { throw it } so the caller
+     * can catch it directly rather than as an AssertionError.
+     */
+    private fun runOrchestratedExpectingDivergence(
+        dbPath: String,
+        spec: PipelineSpec,
+        runId: String,
+        startFromCursor: Boolean,
+        clock: MutableClock,
+    ): String {
+        val eventStore = SqliteEventStore(dbPath)
+        val factory = eventStore.underlyingConnectionFactory()
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
+        val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
+        val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
+        val orchestrator = PipelineOrchestrator(
+            journal = journal,
+            cursorStore = cursorStore,
+            divergenceDetector = divergenceDetector,
+            effectReplayPolicy = effectPolicy,
+            eventSink = eventStore,
+            clock = clock,
+        )
+
+        val result = orchestrator.run(spec, runId, startFromCursor)
+        return result.getOrElse { throw it }  // propagate original exception
     }
 
     private fun deriveRunId(spec: PipelineSpec): String {

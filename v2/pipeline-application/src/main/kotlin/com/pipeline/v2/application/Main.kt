@@ -7,6 +7,7 @@ import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.domain.durable.DivergenceDetector
 import com.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.events.durable.OperationJournal
 import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
 import com.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
@@ -107,12 +108,14 @@ fun main(args: Array<String>) {
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
+    val clock: Clock = SystemClock()
     val orchestrator = PipelineOrchestrator(
         journal = journal,
         cursorStore = cursorStore,
         divergenceDetector = divergenceDetector,
         effectReplayPolicy = effectPolicy,
         eventSink = eventStore,
+        clock = clock,
     )
 
     // Run via orchestrator (fresh run, startFromCursor = false)

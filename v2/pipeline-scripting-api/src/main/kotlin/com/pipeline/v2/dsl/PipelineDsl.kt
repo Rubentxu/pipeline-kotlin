@@ -25,16 +25,24 @@ sealed interface StepSpec {
     val type: String
     /** Retry policy for this step, or null if no retry. */
     val retry: com.pipeline.v2.domain.durable.RetryPolicy? get() = null
+    /** Timeout in milliseconds for this step, or null if no timeout. */
+    val timeoutMillis: Long? get() = null
 
     data class Echo(
         val text: String,
         override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "echo"
         override val type: String get() = "echo"
     }
 
-    data class Shell(val command: String, val isScriptBlock: Boolean = false, override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null) : StepSpec {
+    data class Shell(
+        val command: String,
+        val isScriptBlock: Boolean = false,
+        override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
         override val name: String get() = "sh"
         override val type: String get() = "sh"
     }
@@ -48,6 +56,7 @@ sealed interface StepSpec {
         val message: String,
         val failureKind: String = "UNKNOWN",
         override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "error"
         override val type: String get() = "error"
@@ -60,6 +69,7 @@ sealed interface StepSpec {
     data class Sleep(
         val seconds: Long,
         override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "sleep"
         override val type: String get() = "sleep"
@@ -72,6 +82,7 @@ sealed interface StepSpec {
     data class Parallel(
         val branches: List<BranchSpec>,
         override val retry: com.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "parallel"
         override val type: String get() = "parallel"
@@ -304,9 +315,16 @@ class StageScope(private val stageName: String) {
      * Timeout for a step.
      */
     fun timeout(seconds: Long, action: TimeoutAction = TimeoutAction.FAIL) {
-        val currentStep = steps.lastOrNull()
-        if (currentStep != null) {
-            // timeout is recorded in options, not modifying the step itself
+        val currentStep = steps.lastOrNull() ?: return
+        val timeoutMs = seconds * 1000L
+        val index = steps.indexOf(currentStep)
+        // Use copy() to set timeout on the last step
+        steps[index] = when (currentStep) {
+            is StepSpec.Echo -> currentStep.copy(timeoutMillis = timeoutMs)
+            is StepSpec.Shell -> currentStep.copy(timeoutMillis = timeoutMs)
+            is StepSpec.Error -> currentStep.copy(timeoutMillis = timeoutMs)
+            is StepSpec.Sleep -> currentStep.copy(timeoutMillis = timeoutMs)
+            is StepSpec.Parallel -> currentStep.copy(timeoutMillis = timeoutMs)
         }
     }
 

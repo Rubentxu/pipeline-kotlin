@@ -4,6 +4,7 @@ import com.pipeline.v2.application.durable.PipelineOrchestrator
 import com.pipeline.v2.domain.durable.DivergenceDetector
 import com.pipeline.v2.domain.durable.DivergenceException
 import com.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.events.durable.OperationJournal
 import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
@@ -99,12 +100,14 @@ class UatDurable002DivergenceFailsClosedTest {
         val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
+        val clock: Clock = SystemClock()
         val orchestrator = PipelineOrchestrator(
             journal = journal,
             cursorStore = cursorStore,
             divergenceDetector = divergenceDetector,
             effectReplayPolicy = effectPolicy,
             eventSink = eventStore,
+            clock = clock,
         )
 
         val result = orchestrator.run(spec, runId, startFromCursor)
@@ -125,12 +128,14 @@ class UatDurable002DivergenceFailsClosedTest {
         val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
+        val clock: Clock = SystemClock()
         val orchestrator = PipelineOrchestrator(
             journal = journal,
             cursorStore = cursorStore,
             divergenceDetector = divergenceDetector,
             effectReplayPolicy = effectPolicy,
             eventSink = eventStore,
+            clock = clock,
         )
 
         return orchestrator.run(spec, runId, startFromCursor)

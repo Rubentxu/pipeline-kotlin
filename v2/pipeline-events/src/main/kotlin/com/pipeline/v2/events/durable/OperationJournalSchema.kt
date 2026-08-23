@@ -34,6 +34,7 @@ object OperationJournalSchema {
             output      TEXT,
             created_at  INTEGER NOT NULL,
             updated_at  INTEGER NOT NULL,
+            deadline_ms INTEGER,
             PRIMARY KEY (op_id, attempt)
         )
     """

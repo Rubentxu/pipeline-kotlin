@@ -1,6 +1,7 @@
 package com.pipeline.v2.application.durable
 
 import com.pipeline.v2.application.walkPipelineSpecDurable
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.domain.durable.DivergenceDetector
 import com.pipeline.v2.domain.durable.DivergenceException
 import com.pipeline.v2.events.EventSink
@@ -40,6 +41,7 @@ class PipelineOrchestrator(
     private val divergenceDetector: DivergenceDetector,
     private val effectReplayPolicy: EffectReplayPolicy,
     private val eventSink: EventSink,
+    private val clock: Clock,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.
@@ -86,6 +88,7 @@ class PipelineOrchestrator(
                 cursorStore = cursorStore,
                 divergenceDetector = divergenceDetector,
                 effectReplayPolicy = effectReplayPolicy,
+                clock = clock,
                 startFromStageIndex = cursor?.stageIndex ?: 0,
                 startFromStepIndex = 0,
             )

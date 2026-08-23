@@ -24,6 +24,7 @@ import com.pipeline.v2.events.TimeoutScheduled
 import com.pipeline.v2.scripting.Kotlin24ScriptingHost
 import com.pipeline.v2.scripting.ScriptDefinition
 import com.pipeline.v2.application.durable.PipelineOrchestrator
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.domain.durable.DivergenceDetector
 import com.pipeline.v2.domain.durable.DivergenceException
 import com.pipeline.v2.domain.durable.DurableOperation
@@ -216,6 +217,7 @@ private fun walkPipelineSpec(
  * 5. On RERUN: executes the SDK step, appends [DurableOperation] to [journal], advances [cursorStore]
  * 6. On SKIP: emits StepStarted/StepFinished events but bypasses the executor
  * 7. On ABORT: throws [DivergenceException]
+ * 8. On resume: checks deadline against [Clock.now] — FAIL-CLOSED if deadline exceeded
  *
  * @param spec              The pipeline specification.
  * @param runId             The deterministic run identifier.
@@ -224,6 +226,7 @@ private fun walkPipelineSpec(
  * @param cursorStore       The replay cursor store for resume support.
  * @param divergenceDetector The divergence detector for fail-closed checks.
  * @param effectReplayPolicy The effect-aware replay policy.
+ * @param clock             The clock for deadline checking.
  * @param startFromStageIndex Stage index to resume from (0 for fresh run).
  * @param startFromStepIndex Step index to resume from (0 for fresh run).
  * @return The run outcome string ("success" or "failure").
@@ -237,6 +240,7 @@ internal fun walkPipelineSpecDurable(
     cursorStore: ReplayCursorStore,
     divergenceDetector: DivergenceDetector,
     effectReplayPolicy: com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
+    clock: Clock,
     startFromStageIndex: Int = 0,
     startFromStepIndex: Int = 0,
 ): String {
@@ -318,6 +322,7 @@ internal fun walkPipelineSpecDurable(
                 cursorStore = cursorStore,
                 divergenceDetector = divergenceDetector,
                 effectReplayPolicy = effectReplayPolicy,
+                clock = clock,
                 runOutcomeRef = runOutcomeRef,
             )
             if (stepOutcome == "failure") {
@@ -363,12 +368,21 @@ private fun emitDurableStepEvents(
     cursorStore: ReplayCursorStore,
     divergenceDetector: DivergenceDetector,
     effectReplayPolicy: com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
+    clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = "$runId-s$stageIndex-$stepIndex"
     val retryPolicy = step.retry ?: RetryPolicy.NONE
     val maxAttempts = retryPolicy.maxAttempts
+    val timeoutMillis = step.timeoutMillis
+
+    // Compute deadline for fresh execution if timeout is set
+    val deadlineMs: Long? = if (timeoutMillis != null && timeoutMillis > 0) {
+        clock.now().toEpochMilli() + timeoutMillis
+    } else {
+        null
+    }
 
     // Build OperationInput (attempt will vary per retry loop iteration)
     val params = stepToParams(step)
@@ -392,6 +406,23 @@ private fun emitDurableStepEvents(
         val journaledOp = journal.get(opId, attemptNum)
         val hasJournalEntry = journaledOp != null
         val journaledOutcome = journaledOp?.status
+
+        // FAIL-CLOSED deadline check on resume
+        // If deadline is set and we've exceeded it, throw DivergenceException
+        if (hasJournalEntry && deadlineMs != null) {
+            val nowMs = clock.now().toEpochMilli()
+            if (nowMs > deadlineMs) {
+                val divEx = DivergenceException(
+                    expected = fingerprint,
+                    actual = fingerprint,
+                    opId = opId,
+                    runId = runId,
+                    stageIndex = stageIndex,
+                )
+                runOutcomeRef.set("failure")
+                throw divEx
+            }
+        }
 
         // Divergence check: compare current fingerprint against journaled fingerprint for THIS attempt
         val currentOp: DurableOperation = if (journaledOp is MemoizedOperation) {
@@ -459,7 +490,7 @@ private fun emitDurableStepEvents(
                     status = if (stepOutcome == "success") OperationStatus.SUCCEEDED else OperationStatus.FAILED,
                     attempt = attemptNum,
                 )
-                journal.append(outputOp)
+                journal.append(outputOp, deadlineMs)
 
                 if (stepOutcome == "failure") {
                     // This attempt failed

@@ -28,8 +28,10 @@ interface OperationJournal {
      * Appends a durable operation to the journal.
      *
      * @param op The durable operation to journal.
+     * @param deadlineMs The deadline timestamp in milliseconds (epoch),
+     *                   or null if no timeout is set.
      */
-    fun append(op: DurableOperation)
+    fun append(op: DurableOperation, deadlineMs: Long? = null)
 
     /**
      * Retrieves the latest journaled operation by its [opId].
@@ -98,10 +100,11 @@ class SqliteOperationJournalImpl(
      * in practice the orchestrator is single-threaded per run).
      *
      * @param op The durable operation to journal.
+     * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
      * @throws IllegalStateException if [op.id] already exists in the journal
      *         (PRIMARY KEY constraint).
      */
-    override fun append(op: DurableOperation) {
+    override fun append(op: DurableOperation, deadlineMs: Long?) {
         synchronized(this) {
             val conn = connectionFactory()
             try {
@@ -131,8 +134,8 @@ class SqliteOperationJournalImpl(
                 conn.prepareStatement(
                     """
                     INSERT INTO operation_journal
-                        (op_id, fingerprint, status, kind, attempt, input, output, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (op_id, fingerprint, status, kind, attempt, input, output, created_at, updated_at, deadline_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent()
                 ).use { ps ->
                     ps.setString(1, op.id)
@@ -144,6 +147,11 @@ class SqliteOperationJournalImpl(
                     ps.setString(7, outputJson)
                     ps.setLong(8, System.currentTimeMillis())
                     ps.setLong(9, System.currentTimeMillis())
+                    if (deadlineMs != null) {
+                        ps.setLong(10, deadlineMs)
+                    } else {
+                        ps.setNull(10, java.sql.Types.BIGINT)
+                    }
                     ps.executeUpdate()
                 }
             } finally {

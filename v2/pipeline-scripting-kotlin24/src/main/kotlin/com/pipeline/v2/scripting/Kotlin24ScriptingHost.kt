@@ -83,6 +83,10 @@ class Kotlin24ScriptingHost(
         // scripting runtime, reflect) plus the current context's classpath
         // at `wholeClasspath = false` (the default). Per-call jars are
         // appended via `updateClasspath` when present.
+        // Base compilation configuration: template defaults (kotlin-stdlib,
+        // scripting runtime, reflect) plus the current context's classpath
+        // at `wholeClasspath = false` (the default). Per-call jars are
+        // appended via `updateClasspath` when present.
         val compilationConfig: ScriptCompilationConfiguration =
             createJvmCompilationConfigurationFromTemplate<Any>(
                 body = {

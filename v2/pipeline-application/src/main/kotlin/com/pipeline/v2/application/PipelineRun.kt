@@ -1,5 +1,8 @@
 package com.pipeline.v2.application
 
+import com.pipeline.v2.dsl.PipelineSpec
+import com.pipeline.v2.dsl.StageSpec
+import com.pipeline.v2.dsl.StepSpec
 import com.pipeline.v2.events.CompilationFinished
 import com.pipeline.v2.events.DomainEvent
 import com.pipeline.v2.events.EventSink
@@ -7,7 +10,10 @@ import com.pipeline.v2.events.EventStore
 import com.pipeline.v2.events.InMemoryEventStore
 import com.pipeline.v2.events.RunFinished
 import com.pipeline.v2.events.RunStarted
-import com.pipeline.v2.scripting.CacheKey
+import com.pipeline.v2.events.StageFinished
+import com.pipeline.v2.events.StageStarted
+import com.pipeline.v2.events.StepFinished
+import com.pipeline.v2.events.StepStarted
 import com.pipeline.v2.scripting.Kotlin24ScriptingHost
 import com.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
@@ -39,6 +45,13 @@ fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
     val definition = ScriptDefinition.file(scriptPath)
     val result = host.compile(definition)
 
+    if (result.isSuccess) {
+        val pipelineSpec = result.value as? PipelineSpec
+        if (pipelineSpec != null) {
+            walkPipelineSpec(pipelineSpec, runId, eventSink)
+        }
+    }
+
     val outcome = if (result.isSuccess) "success" else "failure"
     val runFinishedId = UUID.randomUUID().toString()
     val runFinishedAt = Instant.now()
@@ -54,6 +67,72 @@ fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
     )
 
     return eventSink.eventsFor(runId).toList()
+}
+
+/**
+ * Walks a [PipelineSpec] and emits Stage/Step lifecycle events.
+ * Steps are recorded but not executed (record-only sh).
+ */
+private fun walkPipelineSpec(
+    spec: PipelineSpec,
+    runId: String,
+    eventSink: EventSink,
+) {
+    for (stage in spec.stages) {
+        val stageStartedId = UUID.randomUUID().toString()
+        val stageStartedAt = Instant.now()
+        eventSink.append(
+            StageStarted(
+                eventId = stageStartedId,
+                runId = runId,
+                sequence = 0L,
+                occurredAt = stageStartedAt,
+                stageName = stage.name,
+            )
+        )
+
+        for (step in stage.steps) {
+            val stepStartedId = UUID.randomUUID().toString()
+            val stepStartedAt = Instant.now()
+            val stepName = step.name
+            val stepType = step.type
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = Instant.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+
+        val stageFinishedId = UUID.randomUUID().toString()
+        val stageFinishedAt = Instant.now()
+        eventSink.append(
+            StageFinished(
+                eventId = stageFinishedId,
+                runId = runId,
+                sequence = 0L,
+                occurredAt = stageFinishedAt,
+                stageName = stage.name,
+            )
+        )
+    }
 }
 
 /**

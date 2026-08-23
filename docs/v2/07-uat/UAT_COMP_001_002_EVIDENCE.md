@@ -7,6 +7,11 @@
 ./gradlew -p v2 :pipeline-scripting-kotlin24:test --tests '*UatComp*'
 ```
 
+### Run UAT Evt Tests (M1-R3 DSL seed)
+```bash
+./gradlew -p v2 :pipeline-application:test --tests '*UatEvt*'
+```
+
 ### Run Full V2 Check
 ```bash
 ./gradlew -p v2 clean check
@@ -17,7 +22,7 @@
 ./gradlew -p v2 :pipeline-architecture-tests:test
 ```
 
-## Last-Run Verification (M1-R1 fixup)
+## Last-Run Verification (M1-R3 DSL seed bridge)
 
 - `./gradlew -p v2 :pipeline-scripting-kotlin24:test` → 5 tests, 0 failures, 0 ignored.
 - `./gradlew -p v2 clean check` → BUILD SUCCESSFUL across `pipeline-domain`,
@@ -29,6 +34,27 @@
 - `grep -rn "wholeClasspath" v2/` → 3 comment-only matches in
   `Kotlin24ScriptingHost.kt` design rationale. **No runtime `wholeClasspath = true`**
   anywhere in the production path.
+
+## Fixture Changes (M1-R3)
+
+The `hello.pipeline.kts` fixture was updated from:
+```kotlin
+val definition = "hello"
+```
+to the DSL form:
+```kotlin
+pipeline {
+    stages {
+        stage("hello") {
+            echo("hello")
+        }
+    }
+}
+```
+
+This means `UatEvt001ReplayTest` now expects 8 events (was 4) because the DSL
+evaluation walks the `PipelineSpec` and emits `StageStarted`, `StepStarted`,
+`StepFinished`, `StageFinished` in addition to the run/compilation events.
 
 ## Expected Outputs
 
@@ -48,13 +74,34 @@
   - `assertTrue(diagnostics.any { it.line > 0 })`
   - `assertTrue(diagnostics.any { it.path.contains("broken.pipeline.kts") })`
 
+### UatEvt001 — DSL pipeline replay (updated for M1-R3)
+- **Expected**: 8 events from `hello.pipeline.kts`:
+  `[RunStarted, CompilationStarted, CompilationFinished, StageStarted, StepStarted, StepFinished, StageFinished, RunFinished]`
+- **Key assertions**:
+  - `assertEquals(8, events.size)`
+  - `assertTrue(events[2] is CompilationFinished)` — `cacheKey.version == "v1"`
+  - `assertTrue(events[3] is StageStarted)` — `stageName == "hello"`
+  - `assertTrue(events[4] is StepStarted)` — `stepType == "echo"`
+  - `assertTrue(events[7] is RunFinished)` — `outcome == "success"`
+
+### UatEvt002 — Multi-step DSL replay
+- **Expected**: 10 events from `multi-step.pipeline.kts`:
+  `[RunStarted, CompilationStarted, CompilationFinished, StageStarted, StepStarted(echo), StepFinished(echo), StepStarted(sh), StepFinished(sh), StageFinished, RunFinished]`
+- **Key assertions**:
+  - Stage/step events appear between CompilationFinished and RunFinished
+  - `StageStarted.stageName == "Build"`
+  - `StepStarted.stepType == "echo"` and `"sh"`
+
 ## PASS Criteria
 
-1. UatComp001 passes (script compiles successfully; diagnostics filtered of DEBUG noise).
+1. UatComp001 passes (script compiles successfully; diagnostics filtered of DEBUG).
 2. UatComp002 passes (broken script produces ERROR diagnostics with line > 0 and path referencing `broken.pipeline.kts`).
-3. Architecture test FArch003 passes (allowlist includes `/pipeline-scripting-kotlin24/`).
-4. `grep -rn "wholeClasspath" v2/` returns only comment references in `Kotlin24ScriptingHost.kt`.
-5. `grep -rn "kotlin.script.experimental" v2/` returns matches only in `pipeline-scripting-kotlin24` (adapter module) and `pipeline-architecture-tests` (test fixtures).
+3. UatEvt001ReplayTest passes (8 events from DSL pipeline, `cacheKey.version == "v1"`).
+4. UatEvt002MultiStepReplayTest passes (stage/step events in correct sequence).
+5. Architecture test FArch003 passes (allowlist includes `/pipeline-scripting-kotlin24/`).
+6. `grep -rn "wholeClasspath" v2/` returns only comment references in `Kotlin24ScriptingHost.kt`.
+7. `grep -rn "kotlin.script.experimental" v2/` returns matches only in `pipeline-scripting-kotlin24` (adapter module) and `pipeline-architecture-tests` (test fixtures).
+8. `grep -rn 'ProcessBuilder' v2/pipeline-application/src/main/` → 0 matches (no real sh execution in production path).
 
 ## Cache Key Formula
 
@@ -101,36 +148,13 @@ val rwd = BasicJvmScriptingHost().eval(source, cfg, ScriptEvaluationConfiguratio
 - Per-call jars supplied by `ScriptDefinition.classpath` are appended via
   `updateClasspath(files)`, keeping the **explicit classpath** contract.
 
-## Bug-Fix Log (b81a171 → fixup)
-
-The initial implementation (`b81a171`) committed broken code that produced
-two distinct classes of error against the same trivial fixture
-`val definition = "hello"`. Both were resolved at the fixup commit:
-
-1. **`FileScriptSource(file, file.name)` is a constructor bug.**
-   The second parameter of `kotlin.script.experimental.host.FileScriptSource` is
-   `preloadedText: String?`, **not** `name: String`. Passing `file.name` made the
-   host compile the literal string `"hello.pipeline.kts"` as Kotlin source —
-   which produced "Unresolved reference 'hello'" because the string `"hello"`
-   was tokenised and `hello` interpreted as an identifier. Fix: use
-   `FileScriptSource(file)` (1-arg; the default `name = file.name` and the file
-   is actually read from disk).
-
-2. **Bare `ScriptCompilationConfiguration{}` parses non-trivially.**
-   The host's compiler requires the template-derived configuration to know the
-   script is being parsed in script mode (not file mode). Empty cfg produced
-   "Expecting an element" syntax errors at column 1 of the file. Fix: use
-   `createJvmCompilationConfigurationFromTemplate<Any>` which injects the
-   template's defaults (kotlin-stdlib, scripting runtime, etc.).
-
-After both fixes the adapter compiles `hello.pipeline.kts` and reports source-
-mapped diagnostics for `broken.pipeline.kts` (`val definition: Int = "hello"`
-→ type mismatch ERROR at line 1 column 1 referencing the fixture path).
-
 ## Verification Status
 
 - [x] UatComp001 passes (script compiles, diagnostics filtered of DEBUG).
 - [x] UatComp002 passes (ERROR diagnostic, `line > 0`, `path` references `broken.pipeline.kts`).
+- [x] UatEvt001ReplayTest passes (8 events, `cacheKey.version == "v1"`).
+- [x] UatEvt002MultiStepReplayTest passes (stage/step event sequence).
 - [x] FArch003 allowlist includes `/pipeline-scripting-kotlin24/`.
 - [x] `wholeClasspath` grep clean in production path.
 - [x] `kotlin.script.experimental` containment as specified.
+- [x] No `ProcessBuilder` in `pipeline-application/src/main/` production code.

@@ -28,8 +28,10 @@ object OperationJournalSchema {
             op_id       TEXT    NOT NULL PRIMARY KEY,
             fingerprint TEXT    NOT NULL,
             status      TEXT    NOT NULL,
-            input       BLOB    NOT NULL,
-            output      BLOB,
+            kind       TEXT    NOT NULL DEFAULT 'RERUN',
+            attempt    INTEGER NOT NULL DEFAULT 1,
+            input       TEXT    NOT NULL,
+            output      TEXT,
             created_at  INTEGER NOT NULL,
             updated_at  INTEGER NOT NULL
         )

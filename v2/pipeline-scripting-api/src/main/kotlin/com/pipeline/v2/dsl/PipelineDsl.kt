@@ -29,7 +29,7 @@ sealed interface StepSpec {
         override val type: String get() = "echo"
     }
 
-    data class Shell(val command: String) : StepSpec {
+    data class Shell(val command: String, val isScriptBlock: Boolean = false) : StepSpec {
         override val name: String get() = "sh"
         override val type: String get() = "sh"
     }
@@ -310,7 +310,7 @@ class StageScope(private val stageName: String) {
         scope.block()
         val scriptContent = scope.commands.joinToString("\n")
         if (scriptContent.isNotEmpty()) {
-            steps.add(StepSpec.Shell(scriptContent))
+            steps.add(StepSpec.Shell(scriptContent, isScriptBlock = true))
         }
     }
 

@@ -562,7 +562,10 @@ private fun executeDurableStep(
                 "success"
             }
             is StepSpec.Shell -> {
-                val argv = step.command.split("\\s+".toRegex())
+                // Pass the entire command through `bash -c` so the shell interprets
+                // quoted multi-line scripts correctly. Previously split on whitespace
+                // which mangled argv for any command containing quotes (e.g. `bash -c "..."`).
+                val argv = listOf("bash", "-c", step.command)
                 val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
                 if (result.exitCode != 0) "failure" else "success"
             }

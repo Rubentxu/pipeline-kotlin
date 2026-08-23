@@ -1,1 +1,7 @@
-val definition = "hello"
+pipeline {
+    stages {
+        stage("hello") {
+            echo("hello")
+        }
+    }
+}

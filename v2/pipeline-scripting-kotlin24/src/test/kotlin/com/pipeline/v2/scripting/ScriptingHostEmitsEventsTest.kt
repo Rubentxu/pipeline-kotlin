@@ -37,10 +37,12 @@ class ScriptingHostEmitsEventsTest {
         val scriptPath = Paths.get(
             javaClass.getResource("/hello.pipeline.kts")!!.toURI()
         )
-        val definition = ScriptDefinition.file(scriptPath)
+        val dslJar = ScriptDefinition.dslApiJar()
+        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         val result = host.compile(definition)
 
-        assertTrue(result.isSuccess)
+        assertTrue(result.isSuccess, "Expected successful compilation: ${result.diagnostics}")
         assertEquals(2, sink.events.size)
 
         val startEvent = sink.events[0]

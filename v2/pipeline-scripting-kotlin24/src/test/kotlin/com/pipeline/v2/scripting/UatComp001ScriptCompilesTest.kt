@@ -18,7 +18,9 @@ class UatComp001ScriptCompilesTest {
         val scriptPath = Paths.get(
             javaClass.getResource("/hello.pipeline.kts")!!.toURI()
         )
-        val definition = ScriptDefinition.file(scriptPath)
+        val dslJar = ScriptDefinition.dslApiJar()
+        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
 
         val result = scriptingHost.compile(definition)
 
@@ -32,7 +34,9 @@ class UatComp001ScriptCompilesTest {
         val scriptPath = Paths.get(
             javaClass.getResource("/hello.pipeline.kts")!!.toURI()
         )
-        val definition = ScriptDefinition.file(scriptPath)
+        val dslJar = ScriptDefinition.dslApiJar()
+        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
 
         val result1 = scriptingHost.compile(definition)
         val result2 = scriptingHost.compile(definition)

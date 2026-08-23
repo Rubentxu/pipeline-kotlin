@@ -42,11 +42,24 @@ between the M1 substrate and the M2 grammar work.
    does not spawn a subprocess. The `StepSpec.Shell` records the command for future
    execution by the agent layer.
 
-3. **Schema evolution.** `JsonEventLog` schema bumped to `v1.1` to distinguish
-   stage/step events from the v1.0 run/compilation events.
+3. **Schema evolution is purely additive (no version bump).** The `JsonEventLog` wire
+   format is self-describing via the `kind` discriminator. New event variants
+   (`StageStarted`, `StageFinished`, `StepStarted`, `StepFinished`) are decoded by
+   old decoders as `null` and skipped — no breaking change. The cache-key `version`
+   remains `"v1"`; no `EVENT_SCHEMA_VERSION` constant is added. Schema is
+   unchanged at `v1`; only event *variants* are added (additive).
 
-4. **No new Gradle module.** All DSL types live in
-   `pipeline-application/src/main/kotlin/com/pipeline/v2/application/dsl/`.
+4. **DSL lives in `pipeline-scripting-api` (not `pipeline-application`).** The DSL
+   module (`pipeline-scripting-api`) is on the application runtime classpath but
+   *not* on the Kotlin script host's compile classpath. To make DSL functions
+   visible to script compilation, the `pipeline-scripting-api` JAR is explicitly
+   added via `ScriptDefinition.classpath` → `updateClasspath(classpathFiles)`
+   in `Kotlin24ScriptingHost.compile()`. This avoids `wholeClasspath=true`
+   (prohibited by M1 Exit constraints) while still making the DSL reachable.
+   See `ScriptDefinition.dslApiJar()` for the discovery mechanism.
+
+5. **No new Gradle module.** All DSL types live in
+   `pipeline-scripting-api/src/main/kotlin/com/pipeline/v2/dsl/`.
 
 ## Risks & Open Questions
 

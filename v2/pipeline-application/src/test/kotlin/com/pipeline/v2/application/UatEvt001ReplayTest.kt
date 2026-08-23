@@ -6,9 +6,14 @@ import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.RunFinished
 import com.pipeline.v2.events.RunStarted
 import com.pipeline.v2.events.CompilationStarted
+import com.pipeline.v2.events.StageStarted
+import com.pipeline.v2.events.StageFinished
+import com.pipeline.v2.events.StepStarted
+import com.pipeline.v2.events.StepFinished
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -70,16 +75,38 @@ class UatEvt001ReplayTest {
     @Test
     fun `re-parsed timeline equals original with correct kinds`() {
         val (stdout, events) = runAndDecode()
-        assertEquals(4, events.size, "Expected 4 events: $stdout")
+        // hello.pipeline.kts (DSL, 1 stage x 1 step):
+        // RunStarted, CompilationStarted, CompilationFinished, StageStarted,
+        // StepStarted, StepFinished, StageFinished, RunFinished
+        assertEquals(8, events.size, "Expected 8 events for hello DSL pipeline: $stdout")
 
         assertTrue(events[0] is RunStarted, "events[0] must be RunStarted")
         assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
         assertTrue(events[2] is CompilationFinished, "events[2] must be CompilationFinished")
-        assertTrue(events[3] is RunFinished, "events[3] must be RunFinished")
+        assertTrue(events[3] is StageStarted, "events[3] must be StageStarted (DSL evaluated)")
+        assertTrue(events[4] is StepStarted, "events[4] must be StepStarted")
+        assertTrue(events[5] is StepFinished, "events[5] must be StepFinished")
+        assertTrue(events[6] is StageFinished, "events[6] must be StageFinished")
+        assertTrue(events[7] is RunFinished, "events[7] must be RunFinished")
 
         val cf = events[2] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         assertEquals(64, cf.cacheKey.value.length, "cacheKey.value must be 64-char hex")
+        assertTrue(cf.diagnostics.isEmpty(), "CompilationFinished diagnostics must be empty for DSL: ${cf.diagnostics}")
+
+        val rf = events[7] as RunFinished
+        assertEquals("success", rf.outcome, "RunFinished outcome must be success")
+        assertTrue(rf.diagnostics.isEmpty(), "RunFinished diagnostics must be empty: ${rf.diagnostics}")
+
+        val ss = events[3] as StageStarted
+        assertEquals(0, ss.stageIndex, "stageIndex must be 0")
+        assertEquals("hello", ss.stageName, "stageName must be hello")
+
+        val stepStarted = events[4] as StepStarted
+        assertEquals(0, stepStarted.stageIndex, "step stageIndex must be 0")
+        assertEquals(0, stepStarted.stepIndex, "stepIndex must be 0")
+        assertEquals("echo", stepStarted.stepName, "stepName must be echo")
+        assertEquals("echo", stepStarted.stepType, "stepType must be echo")
     }
 
     @Test

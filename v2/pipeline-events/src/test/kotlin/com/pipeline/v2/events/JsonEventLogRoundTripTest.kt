@@ -90,6 +90,7 @@ class JsonEventLogRoundTripTest {
                 runId = runId,
                 sequence = 5L,
                 occurredAt = Instant.parse("2026-08-23T10:00:05Z"),
+                stageIndex = 0,
                 stageName = "Build",
             ),
             StepStarted(
@@ -97,6 +98,8 @@ class JsonEventLogRoundTripTest {
                 runId = runId,
                 sequence = 6L,
                 occurredAt = Instant.parse("2026-08-23T10:00:06Z"),
+                stageIndex = 0,
+                stepIndex = 0,
                 stepName = "echo",
                 stepType = "echo",
             ),
@@ -105,6 +108,8 @@ class JsonEventLogRoundTripTest {
                 runId = runId,
                 sequence = 7L,
                 occurredAt = Instant.parse("2026-08-23T10:00:07Z"),
+                stageIndex = 0,
+                stepIndex = 0,
                 stepName = "echo",
                 stepType = "echo",
             ),
@@ -113,7 +118,9 @@ class JsonEventLogRoundTripTest {
                 runId = runId,
                 sequence = 8L,
                 occurredAt = Instant.parse("2026-08-23T10:00:08Z"),
+                stageIndex = 0,
                 stageName = "Build",
+                outcome = "success",
             ),
         )
 
@@ -125,6 +132,7 @@ class JsonEventLogRoundTripTest {
         assertEquals("StageStarted", decoded[0].kind)
         val ss0 = decoded[0] as StageStarted
         assertEquals("Build", ss0.stageName)
+        assertEquals(0, ss0.stageIndex)
         assertEquals(runId, ss0.runId)
         assertEquals(5L, ss0.sequence)
 
@@ -132,17 +140,23 @@ class JsonEventLogRoundTripTest {
         val ss1 = decoded[1] as StepStarted
         assertEquals("echo", ss1.stepName)
         assertEquals("echo", ss1.stepType)
+        assertEquals(0, ss1.stageIndex)
+        assertEquals(0, ss1.stepIndex)
         assertEquals(6L, ss1.sequence)
 
         assertEquals("StepFinished", decoded[2].kind)
         val sf2 = decoded[2] as StepFinished
         assertEquals("echo", sf2.stepName)
         assertEquals("echo", sf2.stepType)
+        assertEquals(0, sf2.stageIndex)
+        assertEquals(0, sf2.stepIndex)
         assertEquals(7L, sf2.sequence)
 
         assertEquals("StageFinished", decoded[3].kind)
         val sf3 = decoded[3] as StageFinished
         assertEquals("Build", sf3.stageName)
+        assertEquals(0, sf3.stageIndex)
+        assertEquals("success", sf3.outcome)
         assertEquals(8L, sf3.sequence)
     }
 }

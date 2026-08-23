@@ -121,6 +121,14 @@ This section extends ADR-0022 to cover the full DSL grammar extension on top of 
 
 5. **`retry()` and `timeout()` configure steps, not durable execution.** These DSL constructs set metadata on the `OptionsSpec` that is recorded in events, but the actual retry/timeout logic is not implemented in this slice.
 
+6. **DSL shape divergence from DSL_SPEC §5-§8.** The M2-R1 DSL grammar implementation chose builder signatures that deviate from the canonical Jenkins DSL_SPEC.md §5-§8:
+   - `parallel { }` is implemented as a nested block, not as a flat list of stages
+   - `retry(N) { }` and `timeout(N) { }` are recorded via direct OptionsSpec setters, not via the typed builder functions
+   - `step("name") { }` sugar is not provided; only `echo()`/`sh()`/`error()`/`sleep()` step types are recognized
+   - `stage("name", id="...")` id decoration is not supported
+
+   These deviations are documented because the M2-R2 Step SDK makes the canonical step types first-class via KSP-generated descriptors. Future cycles (M2-R3+) may align the DSL surface with DSL_SPEC.md §5-§8 if JenkinsSurface metadata requires literal signature compatibility.
+
 ## M2-R2 Extension
 
 **Status**: Accepted — M2-R2 (A-lite, Step SDK + KSP)

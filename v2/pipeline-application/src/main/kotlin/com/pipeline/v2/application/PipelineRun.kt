@@ -31,6 +31,7 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Executes a pipeline script, emitting a complete event timeline.
@@ -52,6 +53,7 @@ fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
         )
     )
 
+    val runOutcome = AtomicReference("success")
     val host = Kotlin24ScriptingHost(eventSink, runId)
     val dslJar = ScriptDefinition.dslApiJar()
     val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
@@ -70,11 +72,15 @@ fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
             }
         }
         if (pipelineSpec != null) {
-            walkPipelineSpec(pipelineSpec, runId, eventSink)
+            walkPipelineSpec(pipelineSpec, runId, eventSink, runOutcome)
         }
     }
 
-    val outcome = if (result.isSuccess) "success" else "failure"
+    // If compilation failed, the run itself is a failure
+    if (!result.isSuccess) {
+        runOutcome.set("failure")
+    }
+    val outcome = runOutcome.get()
     val runFinishedId = UUID.randomUUID().toString()
     val runFinishedAt = Instant.now()
     eventSink.append(
@@ -99,6 +105,7 @@ private fun walkPipelineSpec(
     spec: PipelineSpec,
     runId: String,
     eventSink: EventSink,
+    runOutcome: AtomicReference<String>,
 ) {
     for ((stageIndex, stage) in spec.stages.withIndex()) {
         val stageStartedId = UUID.randomUUID().toString()
@@ -158,7 +165,7 @@ private fun walkPipelineSpec(
         }
 
         for ((stepIndex, step) in stage.steps.withIndex()) {
-            emitStepEvents(step, stageIndex, stepIndex, runId, eventSink)
+            emitStepEvents(step, stageIndex, stepIndex, runId, eventSink, runOutcome)
         }
 
         val stageFinishedId = UUID.randomUUID().toString()
@@ -171,7 +178,7 @@ private fun walkPipelineSpec(
                 occurredAt = stageFinishedAt,
                 stageIndex = stageIndex,
                 stageName = stage.name,
-                outcome = "success",
+                outcome = runOutcome.get(),
             )
         )
     }
@@ -187,6 +194,7 @@ private fun emitStepEvents(
     stepIndex: Int,
     runId: String,
     eventSink: EventSink,
+    runOutcome: AtomicReference<String>,
 ) {
     val stepStartedId = UUID.randomUUID().toString()
     val stepStartedAt = Instant.now()
@@ -256,7 +264,7 @@ private fun emitStepEvents(
             )
         }
         is StepSpec.Error -> {
-            emitErrorStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType)
+            emitErrorStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType, runOutcome)
         }
         is StepSpec.Sleep -> {
             emitSleepStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType)
@@ -277,6 +285,7 @@ private fun emitErrorStepEvents(
     stepStartedAt: Instant,
     stepName: String,
     stepType: String,
+    runOutcome: AtomicReference<String>,
 ) {
     eventSink.append(
         StepStarted(
@@ -299,7 +308,8 @@ private fun emitErrorStepEvents(
         }
         sdkError(StepContext(runId = runId), step.message, failureKind, eventSink, stepIndex)
     } catch (_: Throwable) {
-        // Expected - error signals abort
+        // Expected - error signals abort; mark run as failed
+        runOutcome.set("failure")
     }
     val stepFinishedId = UUID.randomUUID().toString()
     val stepFinishedAt = Instant.now()

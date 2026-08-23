@@ -18,7 +18,7 @@ import com.pipeline.v2.sdk.StepContext
 @Step(
     id = "core.echo",
     name = "echo",
-    execution = ExecutionLocation.WORKER,
+    execution = ExecutionLocation.CONTROLLER,
     effects = [Effect.READ_ONLY],
     replay = ReplayPolicy.MEMOIZED,
 )
@@ -80,7 +80,7 @@ fun error(context: StepContext, message: String, failureKind: FailureKind, sink:
 @Step(
     id = "core.sleep",
     name = "sleep",
-    execution = ExecutionLocation.WORKER,
+    execution = ExecutionLocation.CONTROLLER,
     effects = [Effect.READ_ONLY],
     replay = ReplayPolicy.MEMOIZED,
 )

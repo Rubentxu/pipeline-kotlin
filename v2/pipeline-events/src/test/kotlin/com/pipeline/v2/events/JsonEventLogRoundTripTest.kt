@@ -1,5 +1,6 @@
 package com.pipeline.v2.events
 
+import com.pipeline.v2.domain.FailureKind
 import com.pipeline.v2.events.AgentResolved
 import com.pipeline.v2.events.ParallelBranchFinished
 import com.pipeline.v2.events.ParallelBranchStarted
@@ -9,6 +10,8 @@ import com.pipeline.v2.events.StageStarted
 import com.pipeline.v2.events.StageFinished
 import com.pipeline.v2.events.StepStarted
 import com.pipeline.v2.events.StepFinished
+import com.pipeline.v2.events.StepFailed
+import com.pipeline.v2.events.EchoOutputCaptured
 import com.pipeline.v2.events.TimeoutScheduled
 import com.pipeline.v2.scripting.CacheKey
 import com.pipeline.v2.scripting.ScriptingDiagnostic
@@ -303,5 +306,63 @@ class JsonEventLogRoundTripTest {
         assertEquals(300L, ts.timeoutSeconds)
         assertEquals("FAIL", ts.timeoutAction)
         assertEquals("sh", ts.stepName)
+    }
+
+    @Test
+    fun `step failed event round-trips correctly`() {
+        val runId = "step-failed-run"
+        val events = listOf(
+            StepFailed(
+                eventId = "id-sf-1",
+                runId = runId,
+                sequence = 15L,
+                occurredAt = Instant.parse("2026-08-23T10:00:15Z"),
+                stepIndex = 2,
+                stepName = "error",
+                stepType = "error",
+                failureKind = FailureKind.USER,
+                message = "boom",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(1, decoded.size)
+        assertEquals("StepFailed", decoded[0].kind)
+        val sf = decoded[0] as StepFailed
+        assertEquals("error", sf.stepName)
+        assertEquals("error", sf.stepType)
+        assertEquals(2, sf.stepIndex)
+        assertEquals(FailureKind.USER, sf.failureKind)
+        assertEquals("boom", sf.message)
+        assertEquals(runId, sf.runId)
+        assertEquals(15L, sf.sequence)
+    }
+
+    @Test
+    fun `echo output captured event round-trips correctly`() {
+        val runId = "echo-output-run"
+        val events = listOf(
+            EchoOutputCaptured(
+                eventId = "id-eoc-1",
+                runId = runId,
+                sequence = 16L,
+                occurredAt = Instant.parse("2026-08-23T10:00:16Z"),
+                stepIndex = 0,
+                content = "hello world",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(1, decoded.size)
+        assertEquals("EchoOutputCaptured", decoded[0].kind)
+        val eoc = decoded[0] as EchoOutputCaptured
+        assertEquals(0, eoc.stepIndex)
+        assertEquals("hello world", eoc.content)
+        assertEquals(runId, eoc.runId)
+        assertEquals(16L, eoc.sequence)
     }
 }

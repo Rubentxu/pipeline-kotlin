@@ -6,9 +6,13 @@ import com.pipeline.v2.events.InMemoryEventStore
 import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.domain.durable.DivergenceDetector
+import com.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import com.pipeline.v2.events.durable.OperationJournal
+import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import com.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import com.pipeline.v2.events.durable.ReplayCursorStore
 import com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import com.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import com.pipeline.v2.scripting.Kotlin24ScriptingHost
 import com.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Paths
@@ -99,10 +103,10 @@ fun main(args: Array<String>) {
 
     // Build orchestrator with all durable dependencies
     val factory = eventStore.underlyingConnectionFactory()
-    val journal = OperationJournal(factory)
-    val cursorStore = ReplayCursorStore(factory)
-    val divergenceDetector = DivergenceDetector()
-    val effectPolicy = EffectReplayPolicy()
+    val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+    val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
+    val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
+    val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
     val orchestrator = PipelineOrchestrator(
         journal = journal,
         cursorStore = cursorStore,

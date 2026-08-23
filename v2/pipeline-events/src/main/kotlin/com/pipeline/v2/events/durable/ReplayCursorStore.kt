@@ -3,7 +3,43 @@ package com.pipeline.v2.events.durable
 import java.sql.Connection
 
 /**
- * Persistent store for replay cursors.
+ * Interface for persistent replay cursor storage.
+ *
+ * ## M3-R1 → M3-R2 Contract
+ *
+ * This interface is stable for M3-R2 consumption per [design.md §8].
+ *
+ * @see <a href="design.md §E4-04">Design §E4-04</a>
+ */
+interface ReplayCursorStore {
+    /**
+     * Loads the replay cursor for a given [runId].
+     *
+     * @param runId The run identifier.
+     * @return The [ReplayCursor] if found, or `null` if no cursor exists for this run.
+     */
+    fun load(runId: String): ReplayCursor?
+
+    /**
+     * Advances the replay cursor to the given [opId] and [stageIndex].
+     *
+     * This operation is idempotent: if the cursor already points to the same
+     * or a later position, the update is a no-op.
+     *
+     * ## R-C mitigation reminder
+     *
+     * This function MUST be called only AFTER [OperationJournal.append]
+     * has returned successfully. Do NOT call it before the append.
+     *
+     * @param runId      The run identifier.
+     * @param opId       The ID of the operation that was just successfully journaled.
+     * @param stageIndex The stage index at which execution should resume.
+     */
+    fun advance(runId: String, opId: String, stageIndex: Int)
+}
+
+/**
+ * SQLite-backed implementation of [ReplayCursorStore].
  *
  * ## Idempotency
  *
@@ -24,16 +60,16 @@ import java.sql.Connection
  *
  * @see <a href="design.md §E4-04">Design §E4-04</a>
  */
-class ReplayCursorStore(
+class SqliteReplayCursorStoreImpl(
     private val connectionFactory: () -> Connection,
-) {
+) : ReplayCursorStore {
     /**
      * Loads the replay cursor for a given [runId].
      *
      * @param runId The run identifier.
      * @return The [ReplayCursor] if found, or `null` if no cursor exists for this run.
      */
-    fun load(runId: String): ReplayCursor? {
+    override fun load(runId: String): ReplayCursor? {
         val conn = connectionFactory()
         try {
             conn.prepareStatement(
@@ -74,7 +110,7 @@ class ReplayCursorStore(
      * @param opId       The ID of the operation that was just successfully journaled.
      * @param stageIndex The stage index at which execution should resume.
      */
-    fun advance(runId: String, opId: String, stageIndex: Int) {
+    override fun advance(runId: String, opId: String, stageIndex: Int) {
         require(stageIndex >= 0) { "stageIndex must be >= 0, got $stageIndex" }
 
         val conn = connectionFactory()

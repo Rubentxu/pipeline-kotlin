@@ -1,10 +1,11 @@
 package com.pipeline.v2.domain.durable
 
 /**
- * Fail-closed divergence detector for durable operations.
+ * Interface for fail-closed divergence detection.
  *
- * Compares the [fingerprint] of the [current] operation against the [journaled]
- * operation (if any). If fingerprints differ, throws [DivergenceException].
+ * ## M3-R1 → M3-R2 Contract
+ *
+ * This interface is stable for M3-R2 consumption per [design.md §8].
  *
  * ## Fail-closed semantics
  *
@@ -15,7 +16,7 @@ package com.pipeline.v2.domain.durable
  *
  * @see <a href="design.md §E4-05">Design §E4-05</a>
  */
-class DivergenceDetector {
+interface DivergenceDetector {
     /**
      * Checks whether the current operation has diverged from the journaled state.
      *
@@ -24,7 +25,27 @@ class DivergenceDetector {
      * @return [Result.success] if no divergence, [Result.failure] with [DivergenceException]
      *         if fingerprints differ.
      */
-    fun check(current: DurableOperation, journaled: DurableOperation?): kotlin.Result<Unit> {
+    fun check(current: DurableOperation, journaled: DurableOperation?): kotlin.Result<Unit>
+}
+
+/**
+ * Strict fingerprint-based divergence detector.
+ *
+ * Compares the [fingerprint] of the [current] operation against the [journaled]
+ * operation (if any). If fingerprints differ, throws [DivergenceException].
+ *
+ * @see <a href="design.md §E4-05">Design §E4-05</a>
+ */
+class StrictFingerprintDivergenceDetector : DivergenceDetector {
+    /**
+     * Checks whether the current operation has diverged from the journaled state.
+     *
+     * @param current   The operation as currently configured.
+     * @param journaled The operation as recorded in the journal, or `null` if no entry exists.
+     * @return [Result.success] if no divergence, [Result.failure] with [DivergenceException]
+     *         if fingerprints differ.
+     */
+    override fun check(current: DurableOperation, journaled: DurableOperation?): kotlin.Result<Unit> {
         // First attempt — no divergence possible.
         if (journaled == null) {
             return kotlin.Result.success(Unit)

@@ -2,12 +2,16 @@ package com.pipeline.v2.application
 
 import com.pipeline.v2.application.durable.PipelineOrchestrator
 import com.pipeline.v2.domain.durable.DivergenceDetector
+import com.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import com.pipeline.v2.events.EchoOutputCaptured
 import com.pipeline.v2.events.EventSink
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.events.durable.OperationJournal
+import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import com.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import com.pipeline.v2.events.durable.ReplayCursorStore
 import com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import com.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import com.pipeline.v2.dsl.PipelineSpec
 import com.pipeline.v2.dsl.StageSpec
 import com.pipeline.v2.dsl.StepSpec
@@ -78,10 +82,10 @@ class UatDurable001ReplaySurvivesRestartTest {
     ): Pair<String, (Class<*>) -> Int> {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal = OperationJournal(factory)
-        val cursorStore = ReplayCursorStore(factory)
-        val divergenceDetector = DivergenceDetector()
-        val effectPolicy = EffectReplayPolicy()
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
+        val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
+        val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
         val orchestrator = PipelineOrchestrator(
             journal = journal,
             cursorStore = cursorStore,

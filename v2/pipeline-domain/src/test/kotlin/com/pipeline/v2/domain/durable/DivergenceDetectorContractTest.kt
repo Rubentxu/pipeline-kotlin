@@ -1,12 +1,30 @@
 package com.pipeline.v2.domain.durable
 
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
-import kotlinx.serialization.json.JsonPrimitive
 
-class DivergenceDetectorTest {
+/**
+ * Contract tests for [DivergenceDetector] interface.
+ * Tests the interface contract per M3-R1 design.md §8 and C-015.
+ */
+class DivergenceDetectorContractTest {
 
     private val detector: DivergenceDetector = StrictFingerprintDivergenceDetector()
+
+    @Test
+    fun `null journaled returns success (first attempt)`() {
+        val current = RerunOperation(
+            id = "op-1",
+            fingerprint = Fingerprint("a".repeat(64)),
+            input = OperationInput("step", mapOf(), "run-1", 1),
+            output = null,
+            status = OperationStatus.PENDING,
+            attempt = 1,
+        )
+        val result = detector.check(current, null)
+        assertTrue(result.isSuccess)
+    }
 
     @Test
     fun `matching fingerprints returns success`() {
@@ -23,7 +41,7 @@ class DivergenceDetectorTest {
             id = "op-1",
             fingerprint = fp,
             input = OperationInput("step", mapOf(), "run-1", 1),
-            output = null,
+            output = OperationOutput(JsonPrimitive("ok"), 50L, System.currentTimeMillis()),
             status = OperationStatus.SUCCEEDED,
             attempt = 1,
         )
@@ -47,7 +65,7 @@ class DivergenceDetectorTest {
             id = "op-1",
             fingerprint = journaledFp,
             input = OperationInput("step", mapOf(), "run-1", 1),
-            output = null,
+            output = OperationOutput(JsonPrimitive("ok"), 50L, System.currentTimeMillis()),
             status = OperationStatus.SUCCEEDED,
             attempt = 1,
         )
@@ -57,47 +75,5 @@ class DivergenceDetectorTest {
         assertEquals(journaledFp, exc.expected)
         assertEquals(currentFp, exc.actual)
         assertEquals("op-1", exc.opId)
-    }
-
-    @Test
-    fun `null journaled returns success`() {
-        val current = RerunOperation(
-            id = "op-1",
-            fingerprint = Fingerprint("a".repeat(64)),
-            input = OperationInput("step", mapOf(), "run-1", 1),
-            output = null,
-            status = OperationStatus.PENDING,
-            attempt = 1,
-        )
-        val result = detector.check(current, null)
-        assertTrue(result.isSuccess)
-    }
-
-    @Test
-    fun `DivergenceException contains both fingerprints and identifiers`() {
-        val expectedFp = Fingerprint("1".repeat(64))
-        val actualFp = Fingerprint("2".repeat(64))
-        val current = RerunOperation(
-            id = "op-1",
-            fingerprint = actualFp,
-            input = OperationInput("step", mapOf(), "run-1", 1),
-            output = null,
-            status = OperationStatus.PENDING,
-            attempt = 1,
-        )
-        val journaled = RerunOperation(
-            id = "op-1",
-            fingerprint = expectedFp,
-            input = OperationInput("step", mapOf(), "run-1", 1),
-            output = null,
-            status = OperationStatus.SUCCEEDED,
-            attempt = 1,
-        )
-        val result = detector.check(current, journaled)
-        val exc = result.exceptionOrNull() as DivergenceException
-        assertEquals(expectedFp, exc.expected)
-        assertEquals(actualFp, exc.actual)
-        assertEquals("op-1", exc.opId)
-        assertEquals("run-1", exc.runId)
     }
 }

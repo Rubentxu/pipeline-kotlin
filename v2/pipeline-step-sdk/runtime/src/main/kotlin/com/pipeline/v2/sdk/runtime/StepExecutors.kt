@@ -4,8 +4,10 @@ import com.pipeline.v2.domain.FailureKind
 import com.pipeline.v2.events.EchoOutputCaptured
 import com.pipeline.v2.events.EventSink
 import com.pipeline.v2.events.StepFailed
+import com.pipeline.v2.sdk.CompatibilityLevel
 import com.pipeline.v2.sdk.Effect
 import com.pipeline.v2.sdk.ExecutionLocation
+import com.pipeline.v2.sdk.JenkinsSurface
 import com.pipeline.v2.sdk.ReplayPolicy
 import com.pipeline.v2.sdk.Step
 import com.pipeline.v2.sdk.StepContext
@@ -15,6 +17,7 @@ import com.pipeline.v2.sdk.StepContext
  * These are called by the PipelineRun orchestrator at runtime.
  */
 
+@JenkinsSurface(step = "echo", plugin = "workflow-durable-task-step", compatibility = CompatibilityLevel.MIGRATION)
 @Step(
     id = "core.echo",
     name = "echo",
@@ -35,6 +38,7 @@ fun echo(context: StepContext, message: String, sink: EventSink, stepIndex: Int)
     return payload
 }
 
+@JenkinsSurface(step = "sh", plugin = "workflow-durable-task-step", compatibility = CompatibilityLevel.MIGRATION)
 @Step(
     id = "core.sh",
     name = "sh",
@@ -55,6 +59,7 @@ fun sh(context: StepContext, argv: List<String>, sink: EventSink, stepIndex: Int
     return result
 }
 
+@JenkinsSurface(step = "error", plugin = "workflow-step", compatibility = CompatibilityLevel.MIGRATION)
 @Step(
     id = "core.error",
     name = "error",
@@ -77,6 +82,7 @@ fun error(context: StepContext, message: String, failureKind: FailureKind, sink:
     error("Step SDK error: $message")
 }
 
+@JenkinsSurface(step = "sleep", plugin = "workflow-durable-task-step", compatibility = CompatibilityLevel.MIGRATION)
 @Step(
     id = "core.sleep",
     name = "sleep",

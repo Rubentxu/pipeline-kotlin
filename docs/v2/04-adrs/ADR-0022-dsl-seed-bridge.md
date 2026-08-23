@@ -177,6 +177,58 @@ This section extends ADR-0022 to cover the Step Plugin SDK v2 with KSP descripto
 
 If a future cycle wants the timeout to control runtime behavior, that work belongs to M3 BACKLOG E4-09 ("timeout frames") and is OUT OF SCOPE for M2-R2.
 
+## M2-R3 Extension
+
+**Status**: Accepted — M2-R3 (A-lite, final M2 slice)
+
+This section extends ADR-0022 to close the three remaining M2 deliverables: Jenkins Surface metadata (E3-10), LSP metadata (E3-08), and compatibility corpus (E2-06).
+
+### In Scope (M2-R3)
+
+- `@JenkinsSurface` annotation + `CompatibilityLevel{F0,F1,F2,F3}` enum in `:pipeline-step-sdk:api`
+- `jenkinsSurface: String` field on `StepDescriptor` populated via KSP-generated `GeneratedStepDescriptors.kt`
+- 4 JSON resource files at `META-INF/pipeline/step-metadata/{stepId}.json` (one per step type)
+- `LspMetadata` data class + `LspMetadataLoader` runtime API in `:pipeline-step-sdk:api`
+- 6 corpus fixtures under `v2/compatibility/`: 01-basic, 02-environment, 03-stages, 04-sh, 05-scripted-if, 06-loop
+- `CompatibilityCorpusTest` smoke runner + `CorpusNormalizer` + `CorpusSnapshotDiffer` + `baseline.json`
+- `UatCompat001CorpusSmokeRunTest` end-to-end UAT
+
+### Out of Scope (R3 carry-forwards and M3)
+
+- KSP enum/array extraction upgrade (R3 carry-forward, M3+)
+- Context capability API (R4 carry-forward, M3)
+- DSL shape alignment with `DSL_SPEC.md §5-§8` (R5 carry-forward, M3)
+- 9 deferred corpus fixtures: `retry`, `timeout`, `parallel`, `credentials`, `kubernetes-agent`, `plugin-imports`, `compilation-error`, `deprecated-api`, `source-mapping` (M3+)
+- Real LSP server implementation (M3+)
+- Protobuf migration of step metadata (M4/E5-01)
+
+### Design Decisions (M2-R3)
+
+1. **Single `jenkinsSurface: String` field (triple format).** The proposal suggested 4 new nullable fields (`jenkinsStep`, `jenkinsPlugin`, `jenkinsCompatibility`, `jenkinsSurfaceAnnotations`). The spec overrides this: single `jenkinsSurface: String` with format `"<step>|<plugin>|F<n>"`. Minimal additive footprint.
+
+2. **Hardcoded `name → JenkinsSurfaceMeta` map (R3 workaround).** KSP 2.3.11 cannot reliably extract `CompatibilityLevel` enum values from annotation arguments. The M2-R2 workaround (same pattern for `ExecutionLocation`/`effects`/`replay`) is extended to cover `@JenkinsSurface`. Documented as R3 partial close; KSP upgrade (M3+) will migrate to reflective extraction.
+
+3. **JSON resource at `META-INF/pipeline/step-metadata/{stepId}.json`.** ClassLoader-friendly, no third-party deps (uses `JsonEventLog.jsonString()` escape rules), decoupled from Kotlin source. Protobuf migration (M4/E5-01) is a drop-in replacement at the same path prefix.
+
+4. **Corpus uses M2-R1 DSL shape (not `DSL_SPEC.md §5-§8`).** Per R5 deferral, all 6 fixtures avoid `retry`/`timeout`/`parallel`/`credentials`. The `loop` fixture uses `script {}` with Kotlin stdlib `for`/`while` (F-ARCH-003 containment).
+
+### Carry-Forward Disposition (M2-R3)
+
+| Carry-forward | Disposition |
+|---|---|
+| **R2** (stale apply-progress) | **CLOSED.** `apply-progress.yaml` regenerated from real JUnit XML at canonical cycle-artifacts path. |
+| **R3** (KSP enum/array limitation) | **PARTIAL CLOSE.** Hardcoded map applied; R3 stays "KSP upgrade (M3+)" carry-forward. Documented in this section. |
+| **R4** (context capability API) | **NOT IN SCOPE.** Stays M3 BACKLOG per ADR-0003. |
+| **R5** (DSL shape divergence) | **NOT IN SCOPE.** Corpus fixtures use M2-R1 DSL shape (documented deviation); SUG-001 stays M3 candidate. |
+
+### Scope: 3 Deliverables
+
+| ID | Deliverable | Implementation |
+|---|---|---|
+| E3-10 | `@JenkinsSurface` annotation + `CompatibilityLevel` enum + KSP emission | `CompatibilityLevel.kt`, `JenkinsSurface.kt`, `KnownJenkinsSurfaces.kt`, extended `StepDescriptorGenerator`, annotated `StepExecutors.kt` |
+| E3-08 | Per-step JSON resource + `LspMetadataLoader` | `LspMetadata.kt`, `LspMetadataLoader.kt`, KSP JSON emission in `finish()` |
+| E2-06 | 6 corpus fixtures + corpus test harness | 6 fixtures under `v2/compatibility/`, `CompatibilityCorpusTest`, `CorpusNormalizer`, `CorpusSnapshotDiffer`, `baseline.json` |
+
 ## References
 
 - Design: `cycle-artifacts/p-733fb505b5a6bd2d/m2-r1-dsl-grammar/design.md`

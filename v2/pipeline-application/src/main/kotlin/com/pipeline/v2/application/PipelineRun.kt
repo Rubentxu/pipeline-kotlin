@@ -409,9 +409,10 @@ private fun emitDurableStepEvents(
 
         // FAIL-CLOSED deadline check on resume
         // If deadline is set and we've exceeded it, throw DivergenceException
-        if (hasJournalEntry && deadlineMs != null) {
+        if (hasJournalEntry && timeoutMillis != null) {
             val nowMs = clock.now().toEpochMilli()
-            if (nowMs > deadlineMs) {
+            val journaledDeadline = journal.getDeadlineMs(opId, attemptNum)
+            if (journaledDeadline != null && nowMs > journaledDeadline) {
                 val divEx = DivergenceException(
                     expected = fingerprint,
                     actual = fingerprint,
@@ -562,8 +563,8 @@ private fun executeDurableStep(
             }
             is StepSpec.Shell -> {
                 val argv = step.command.split("\\s+".toRegex())
-                sh(StepContext(runId = runId), argv, eventSink, stepIndex)
-                "success"
+                val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
+                if (result.exitCode != 0) "failure" else "success"
             }
             is StepSpec.Sleep -> {
                 sdkSleep(StepContext(runId = runId), step.seconds, eventSink, stepIndex)

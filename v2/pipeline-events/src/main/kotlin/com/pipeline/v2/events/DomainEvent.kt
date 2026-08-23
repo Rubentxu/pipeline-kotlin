@@ -67,3 +67,57 @@ data class RunFinished(
 ) : DomainEvent {
     override val kind: String get() = "RunFinished"
 }
+
+/**
+ * Emitted when a stage in the pipeline starts.
+ */
+data class StageStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+) : DomainEvent {
+    override val kind: String get() = "StageStarted"
+}
+
+/**
+ * Emitted when a stage in the pipeline finishes.
+ */
+data class StageFinished(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+) : DomainEvent {
+    override val kind: String get() = "StageFinished"
+}
+
+/**
+ * Emitted when a step within a stage starts.
+ */
+data class StepStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stepName: String,
+    val stepType: String,
+) : DomainEvent {
+    override val kind: String get() = "StepStarted"
+}
+
+/**
+ * Emitted when a step within a stage finishes.
+ */
+data class StepFinished(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stepName: String,
+    val stepType: String,
+) : DomainEvent {
+    override val kind: String get() = "StepFinished"
+}

@@ -87,8 +87,18 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         return results.asSequence()
     }
 
+    /**
+     * Closes this store.
+     *
+     * This is a no-op because each operation uses a fresh connection that
+     * auto-commits and closes immediately. Keeping a long-lived connection
+     * open would not improve performance for this use pattern.
+     *
+     * This class implements [AutoCloseable] to support use-with-resources
+     * (`use { }`) patterns, but callers do not need to invoke this method
+     * for correct operation.
+     */
     override fun close() {
         // No-op: we use fresh connections per operation.
-        // This class is AutoCloseable for use-with-resources patterns.
     }
 }

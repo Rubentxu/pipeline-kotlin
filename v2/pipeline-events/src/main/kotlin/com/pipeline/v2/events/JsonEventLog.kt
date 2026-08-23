@@ -52,6 +52,26 @@ object JsonEventLog {
                 sb.append(",\"diagnostics\":")
                 sb.append(encodeDiagnostics(event.diagnostics))
             }
+            is StageStarted -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+            }
+            is StageFinished -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+            }
+            is StepStarted -> {
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(jsonString(event.stepType))
+            }
+            is StepFinished -> {
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName))
+                sb.append(",\"stepType\":")
+                sb.append(jsonString(event.stepType))
+            }
         }
         sb.append("}")
         return sb.toString()
@@ -195,6 +215,36 @@ object JsonEventLog {
                     diagnostics = diagnostics,
                 )
             }
+            "StageStarted" -> StageStarted(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                stageName = stringField(s, "stageName") ?: "",
+            )
+            "StageFinished" -> StageFinished(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                stageName = stringField(s, "stageName") ?: "",
+            )
+            "StepStarted" -> StepStarted(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                stepName = stringField(s, "stepName") ?: "",
+                stepType = stringField(s, "stepType") ?: "",
+            )
+            "StepFinished" -> StepFinished(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+                stepName = stringField(s, "stepName") ?: "",
+                stepType = stringField(s, "stepType") ?: "",
+            )
             else -> null
         }
     }
@@ -204,8 +254,10 @@ object JsonEventLog {
      * and reading until the closing quote (handling escapes).
      */
     private fun stringField(json: String, name: String): String? {
-        val nameStart = json.indexOf("\"$name\"") ?: return null
-        val colonPos = json.indexOf(':', nameStart) ?: return null
+        val nameStart = json.indexOf("\"$name\"")
+        if (nameStart == -1) return null
+        val colonPos = json.indexOf(':', nameStart)
+        if (colonPos == -1) return null
         // Find the opening quote after the colon
         var i = colonPos + 1
         while (i < json.length && json[i].isWhitespace()) i++
@@ -232,8 +284,10 @@ object JsonEventLog {
      * Returns a CacheKey or null if parsing fails.
      */
     private fun parseCacheKey(json: String): CacheKey? {
-        val keyStart = json.indexOf("\"cacheKey\"") ?: return null
-        val bracePos = json.indexOf('{', keyStart) ?: return null
+        val keyStart = json.indexOf("\"cacheKey\"")
+        if (keyStart == -1) return null
+        val bracePos = json.indexOf('{', keyStart)
+        if (bracePos == -1) return null
         // Extract the cacheKey object by finding matching braces
         var depth = 0
         var i = bracePos
@@ -263,8 +317,10 @@ object JsonEventLog {
     }
 
     private fun longField(json: String, name: String): Long? {
-        val nameStart = json.indexOf("\"$name\"") ?: return null
-        val colonPos = json.indexOf(':', nameStart) ?: return null
+        val nameStart = json.indexOf("\"$name\"")
+        if (nameStart == -1) return null
+        val colonPos = json.indexOf(':', nameStart)
+        if (colonPos == -1) return null
         var i = colonPos + 1
         while (i < json.length && json[i].isWhitespace()) i++
         var numEnd = i
@@ -273,8 +329,10 @@ object JsonEventLog {
     }
 
     private fun decodeDiagnostics(json: String): List<ScriptingDiagnostic> {
-        val arrStart = json.indexOf("\"diagnostics\"") ?: return emptyList()
-        val bracketPos = json.indexOf('[', arrStart) ?: return emptyList()
+        val arrStart = json.indexOf("\"diagnostics\"")
+        if (arrStart == -1) return emptyList()
+        val bracketPos = json.indexOf('[', arrStart)
+        if (bracketPos == -1) return emptyList()
         var i = bracketPos + 1
         while (i < json.length && json[i].isWhitespace()) i++
         if (i >= json.length || json[i] == ']') return emptyList()

@@ -85,12 +85,16 @@ evaluation walks the `PipelineSpec` and emits `StageStarted`, `StepStarted`,
   - `assertTrue(events[7] is RunFinished)` — `outcome == "success"`
 
 ### UatEvt002 — Multi-step DSL replay
-- **Expected**: 10 events from `multi-step.pipeline.kts`:
-  `[RunStarted, CompilationStarted, CompilationFinished, StageStarted, StepStarted(echo), StepFinished(echo), StepStarted(sh), StepFinished(sh), StageFinished, RunFinished]`
+- **Expected**: 16 events from `multi-step.pipeline.kts` (2 stages × 2 steps):
+  `[RunStarted, CompilationStarted, CompilationFinished,
+   StageStarted(build), StepStarted(echo), StepFinished(echo), StepStarted(sh), StepFinished(sh), StageFinished(build),
+   StageStarted(test), StepStarted(echo), StepFinished(echo), StepStarted(sh), StepFinished(sh), StageFinished(test),
+   RunFinished]`
 - **Key assertions**:
-  - Stage/step events appear between CompilationFinished and RunFinished
-  - `StageStarted.stageName == "Build"`
-  - `StepStarted.stepType == "echo"` and `"sh"`
+  - Stage 0 (build): `stageIndex == 0`, `stageName == "build"`, 2 steps (echo, sh)
+  - Stage 1 (test): `stageIndex == 1`, `stageName == "test"`, 2 steps (echo, sh)
+  - All `StageFinished.outcome == "success"`
+  - `RunFinished.outcome == "success"`, diagnostics empty
 
 ## PASS Criteria
 

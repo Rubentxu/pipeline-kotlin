@@ -53,20 +53,34 @@ object JsonEventLog {
                 sb.append(encodeDiagnostics(event.diagnostics))
             }
             is StageStarted -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
                 sb.append(",\"stageName\":")
                 sb.append(jsonString(event.stageName))
             }
             is StageFinished -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
                 sb.append(",\"stageName\":")
                 sb.append(jsonString(event.stageName))
+                sb.append(",\"outcome\":")
+                sb.append(jsonString(event.outcome))
             }
             is StepStarted -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
                 sb.append(",\"stepName\":")
                 sb.append(jsonString(event.stepName))
                 sb.append(",\"stepType\":")
                 sb.append(jsonString(event.stepType))
             }
             is StepFinished -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
                 sb.append(",\"stepName\":")
                 sb.append(jsonString(event.stepName))
                 sb.append(",\"stepType\":")
@@ -220,6 +234,7 @@ object JsonEventLog {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
+                stageIndex = intField(s, "stageIndex") ?: 0,
                 stageName = stringField(s, "stageName") ?: "",
             )
             "StageFinished" -> StageFinished(
@@ -227,13 +242,17 @@ object JsonEventLog {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
+                stageIndex = intField(s, "stageIndex") ?: 0,
                 stageName = stringField(s, "stageName") ?: "",
+                outcome = stringField(s, "outcome") ?: "unknown",
             )
             "StepStarted" -> StepStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
+                stageIndex = intField(s, "stageIndex") ?: 0,
+                stepIndex = intField(s, "stepIndex") ?: 0,
                 stepName = stringField(s, "stepName") ?: "",
                 stepType = stringField(s, "stepType") ?: "",
             )
@@ -242,6 +261,8 @@ object JsonEventLog {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
+                stageIndex = intField(s, "stageIndex") ?: 0,
+                stepIndex = intField(s, "stepIndex") ?: 0,
                 stepName = stringField(s, "stepName") ?: "",
                 stepType = stringField(s, "stepType") ?: "",
             )
@@ -326,6 +347,10 @@ object JsonEventLog {
         var numEnd = i
         while (numEnd < json.length && (json[numEnd].isDigit() || json[numEnd] == '-')) numEnd++
         return if (numEnd > i) json.substring(i, numEnd).toLongOrNull() else null
+    }
+
+    private fun intField(json: String, name: String): Int? {
+        return longField(json, name)?.toInt()
     }
 
     private fun decodeDiagnostics(json: String): List<ScriptingDiagnostic> {

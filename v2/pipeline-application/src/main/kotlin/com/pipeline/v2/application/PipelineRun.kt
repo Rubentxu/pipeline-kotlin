@@ -42,11 +42,23 @@ fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
     )
 
     val host = Kotlin24ScriptingHost(eventSink, runId)
-    val definition = ScriptDefinition.file(scriptPath)
+    val dslJar = ScriptDefinition.dslApiJar()
+    val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+    val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
     val result = host.compile(definition)
 
     if (result.isSuccess) {
-        val pipelineSpec = result.value as? PipelineSpec
+        val scriptInstance = result.value
+        // Kotlin .kts scripts expose their return value via get$$result()
+        val pipelineSpec = scriptInstance?.let { inst ->
+            try {
+                val resultMethod = inst.javaClass.getMethod("get\$\$result")
+                @Suppress("UNCHECKED_CAST")
+                resultMethod.invoke(inst) as? PipelineSpec
+            } catch (_: Exception) {
+                null
+            }
+        }
         if (pipelineSpec != null) {
             walkPipelineSpec(pipelineSpec, runId, eventSink)
         }
@@ -78,7 +90,7 @@ private fun walkPipelineSpec(
     runId: String,
     eventSink: EventSink,
 ) {
-    for (stage in spec.stages) {
+    for ((stageIndex, stage) in spec.stages.withIndex()) {
         val stageStartedId = UUID.randomUUID().toString()
         val stageStartedAt = Instant.now()
         eventSink.append(
@@ -87,11 +99,12 @@ private fun walkPipelineSpec(
                 runId = runId,
                 sequence = 0L,
                 occurredAt = stageStartedAt,
+                stageIndex = stageIndex,
                 stageName = stage.name,
             )
         )
 
-        for (step in stage.steps) {
+        for ((stepIndex, step) in stage.steps.withIndex()) {
             val stepStartedId = UUID.randomUUID().toString()
             val stepStartedAt = Instant.now()
             val stepName = step.name
@@ -102,6 +115,8 @@ private fun walkPipelineSpec(
                     runId = runId,
                     sequence = 0L,
                     occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
                     stepName = stepName,
                     stepType = stepType,
                 )
@@ -115,6 +130,8 @@ private fun walkPipelineSpec(
                     runId = runId,
                     sequence = 0L,
                     occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
                     stepName = stepName,
                     stepType = stepType,
                 )
@@ -129,7 +146,9 @@ private fun walkPipelineSpec(
                 runId = runId,
                 sequence = 0L,
                 occurredAt = stageFinishedAt,
+                stageIndex = stageIndex,
                 stageName = stage.name,
+                outcome = "success",
             )
         )
     }

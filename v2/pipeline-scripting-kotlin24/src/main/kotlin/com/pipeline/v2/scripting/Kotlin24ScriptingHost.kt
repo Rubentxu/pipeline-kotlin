@@ -13,6 +13,7 @@ import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptDiagnostic
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import kotlin.script.experimental.api.SourceCode
+import kotlin.script.experimental.api.defaultImports
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
@@ -96,6 +97,20 @@ class Kotlin24ScriptingHost(
                             updateClasspath(classpathFiles)
                         }
                     }
+                    defaultImports(
+                        "com.pipeline.v2.dsl.pipeline",
+                        "com.pipeline.v2.dsl.stages",
+                        "com.pipeline.v2.dsl.stage",
+                        "com.pipeline.v2.dsl.echo",
+                        "com.pipeline.v2.dsl.sh",
+                        "com.pipeline.v2.dsl.PipelineSpec",
+                        "com.pipeline.v2.dsl.StageSpec",
+                        "com.pipeline.v2.dsl.StepSpec",
+                        "com.pipeline.v2.dsl.PipelineScope",
+                        "com.pipeline.v2.dsl.StagesScope",
+                        "com.pipeline.v2.dsl.StageScope",
+                        "com.pipeline.v2.dsl.StageBuilder"
+                    )
                 }
             )
 

@@ -76,6 +76,7 @@ data class StageStarted(
     override val runId: String,
     override val sequence: Long,
     override val occurredAt: Instant,
+    val stageIndex: Int,
     val stageName: String,
 ) : DomainEvent {
     override val kind: String get() = "StageStarted"
@@ -89,7 +90,9 @@ data class StageFinished(
     override val runId: String,
     override val sequence: Long,
     override val occurredAt: Instant,
+    val stageIndex: Int,
     val stageName: String,
+    val outcome: String,
 ) : DomainEvent {
     override val kind: String get() = "StageFinished"
 }
@@ -102,6 +105,8 @@ data class StepStarted(
     override val runId: String,
     override val sequence: Long,
     override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stepIndex: Int,
     val stepName: String,
     val stepType: String,
 ) : DomainEvent {
@@ -116,6 +121,8 @@ data class StepFinished(
     override val runId: String,
     override val sequence: Long,
     override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stepIndex: Int,
     val stepName: String,
     val stepType: String,
 ) : DomainEvent {

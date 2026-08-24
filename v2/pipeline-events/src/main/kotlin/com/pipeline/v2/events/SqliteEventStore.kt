@@ -89,6 +89,11 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             if (!existingColumns.contains("ended_at")) {
                 stmt.execute("ALTER TABLE operation_journal ADD COLUMN ended_at INTEGER")
             }
+            // M3-R4.1 C-032: add run_id column and index if absent
+            if (!existingColumns.contains("run_id")) {
+                stmt.execute("ALTER TABLE operation_journal ADD COLUMN run_id TEXT")
+                stmt.execute("CREATE INDEX IF NOT EXISTS operation_journal_run_id_idx ON operation_journal(run_id)")
+            }
         }
     }
 

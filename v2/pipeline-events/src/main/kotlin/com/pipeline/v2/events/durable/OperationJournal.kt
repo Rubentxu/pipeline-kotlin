@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import java.sql.Connection
+import kotlin.concurrent.withLock
 
 /**
  * Interface for durable operation journaling.
@@ -145,6 +146,7 @@ class SqliteOperationJournalImpl(
         ignoreUnknownKeys = true
         encodeDefaults = true
     },
+    private val dbPath: String,
 ) : OperationJournal {
 
     /**
@@ -161,7 +163,7 @@ class SqliteOperationJournalImpl(
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
      */
     override fun append(op: DurableOperation, deadlineMs: Long?) {
-        synchronized(this) {
+        DbLock.forPath(dbPath).withLock {
             val conn = connectionFactory()
             try {
                 val inputJson = json.encodeToString(op.input)
@@ -230,7 +232,7 @@ class SqliteOperationJournalImpl(
         inputJson: String,
         deadlineMs: Long?,
     ) {
-        synchronized(this) {
+        DbLock.forPath(dbPath).withLock {
             val conn = connectionFactory()
             try {
                 // Check for duplicate

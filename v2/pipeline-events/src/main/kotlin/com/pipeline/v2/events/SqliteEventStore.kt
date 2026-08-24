@@ -176,4 +176,10 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * execution subsystem that shares the same SQLite database file.
      */
     fun underlyingConnectionFactory(): () -> Connection = { freshConnection() }
+
+    /**
+     * Exposes the database file path for use by [SqliteOperationJournalImpl]
+     * to enable cross-instance [DbLock] synchronization.
+     */
+    fun databasePath(): String = file
 }

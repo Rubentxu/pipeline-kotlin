@@ -8,6 +8,7 @@ import com.pipeline.v2.domain.durable.OperationOutput
 import com.pipeline.v2.domain.durable.OperationStatus
 import com.pipeline.v2.domain.durable.RerunOperation
 import com.pipeline.v2.domain.durable.MemoizedOperation
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
@@ -29,7 +30,7 @@ class OperationJournalTest {
         // Use SqliteEventStore to create tables, then get underlying connection factory.
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
 
         val op = RerunOperation(
             id = "op-1",
@@ -51,7 +52,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
 
         val op = RerunOperation(
             id = "op-dup",
@@ -98,7 +99,7 @@ class OperationJournalTest {
         // First "process": write via SqliteEventStore.
         val eventStore1 = SqliteEventStore(dbPath)
         val factory1 = eventStore1.underlyingConnectionFactory()
-        val journal1: OperationJournal = SqliteOperationJournalImpl(factory1, systemClock)
+        val journal1: OperationJournal = SqliteOperationJournalImpl(factory1, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
         journal1.append(
             RerunOperation(
                 id = "op-persist",
@@ -113,7 +114,7 @@ class OperationJournalTest {
         // Simulate restart: new SqliteEventStore pointing to same file.
         val eventStore2 = SqliteEventStore(dbPath)
         val factory2 = eventStore2.underlyingConnectionFactory()
-        val journal2: OperationJournal = SqliteOperationJournalImpl(factory2, systemClock)
+        val journal2: OperationJournal = SqliteOperationJournalImpl(factory2, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
         val retrieved = journal2.get("op-persist")
         assertNotNull(retrieved)
         assertEquals("op-persist", retrieved!!.id)
@@ -124,7 +125,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
 
         val runId = "run-ordered"
         for (i in 1..3) {
@@ -149,7 +150,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
 
         val op = RerunOperation(
             id = "op-rerun-kind",
@@ -172,7 +173,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
 
         val cachedOut = OperationOutput(JsonPrimitive("cached-result"), 150L, System.currentTimeMillis())
         val op = MemoizedOperation(

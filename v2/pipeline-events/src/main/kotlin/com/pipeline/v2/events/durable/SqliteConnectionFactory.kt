@@ -39,6 +39,8 @@ object SqliteConnectionFactory {
                 // Enable WAL journal mode.
                 stmt.execute("PRAGMA journal_mode = WAL")
                 stmt.execute("PRAGMA synchronous = NORMAL")
+                // M3-R4.1 T-04: wait up to 5 seconds when SQLITE_BUSY encountered.
+                stmt.execute("PRAGMA busy_timeout = 5000")
 
                 // Verify WAL mode is actually active.
                 stmt.executeQuery("PRAGMA journal_mode").use { rs ->

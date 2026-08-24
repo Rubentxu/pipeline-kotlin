@@ -33,17 +33,31 @@ import java.security.MessageDigest
  * [SqliteEventStore] which journals operations, computes fingerprints, gates
  * step replay, and detects divergence fail-closed.
  */
-fun main(args: Array<String>) {
+/**
+ * Parsed CLI arguments for the pipeline runner.
+ */
+data class PipelineCliConfig(
+    val command: String,
+    val dbPath: String?,
+    val resumeFlag: Boolean,
+    val scriptPath: String?,
+)
+
+/**
+ * Parses CLI arguments for the pipeline runner.
+ *
+ * @param args The command-line arguments.
+ * @return The parsed configuration, or null if parsing failed.
+ */
+fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     if (args.size < 2) {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
-        System.exit(1)
+        return null
     }
 
     val command = args[0]
 
     if (command != "validate" && command != "run") {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
-        System.exit(1)
+        return null
     }
 
     // Parse --db and --resume flags.
@@ -55,8 +69,7 @@ fun main(args: Array<String>) {
         when (args[i]) {
             "--db" -> {
                 if (i + 1 >= args.size) {
-                    System.err.println("Error: --db requires a path argument")
-                    System.exit(1)
+                    return null
                 }
                 dbPath = args[i + 1]
                 i += 2
@@ -71,11 +84,29 @@ fun main(args: Array<String>) {
     scriptArgIndex = i
 
     if (args.size < scriptArgIndex + 1) {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
-        System.exit(1)
+        return null
     }
 
-    val scriptPath = Paths.get(args[scriptArgIndex])
+    val scriptPath = args[scriptArgIndex]
+
+    return PipelineCliConfig(
+        command = command,
+        dbPath = dbPath,
+        resumeFlag = resumeFlag,
+        scriptPath = scriptPath,
+    )
+}
+
+fun main(args: Array<String>) {
+    val config = parseCliArgs(args) ?: run {
+        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
+        System.exit(1)
+        return
+    }
+
+    val command = config.command
+
+    val scriptPath = Paths.get(config.scriptPath!!)
 
     if (command == "validate") {
         val store = InMemoryEventStore()
@@ -85,7 +116,7 @@ fun main(args: Array<String>) {
     }
 
     // "run" command.
-    if (dbPath == null) {
+    if (config.dbPath == null) {
         // Default: in-memory store for backwards compatibility (M2-R2 behavior).
         val store = InMemoryEventStore()
         val events = execute(scriptPath, store)
@@ -94,7 +125,7 @@ fun main(args: Array<String>) {
     }
 
     // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
-    val eventStore = SqliteEventStore(dbPath)
+    val eventStore = SqliteEventStore(config.dbPath)
 
     // Compile script → PipelineSpec (same approach as execute())
     val scriptContent = scriptPath.toFile().readText()
@@ -136,7 +167,7 @@ fun main(args: Array<String>) {
 
     // Run via orchestrator (fresh run or resume based on --resume flag)
     if (pipelineSpec != null) {
-        orchestrator.run(pipelineSpec, runId, startFromCursor = resumeFlag)
+        orchestrator.run(pipelineSpec, runId, startFromCursor = config.resumeFlag)
     }
 
     val events = eventStore.eventsFor(runId).toList()

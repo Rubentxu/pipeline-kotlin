@@ -288,13 +288,19 @@ private fun reconcileRunningOperations(
             throw divergenceResult.exceptionOrNull() as DivergenceException
         }
 
-        // Fingerprint matches and ended_at NOT NULL → mark SUCCEEDED with cached output
+        // Fingerprint matches and ended_at NOT NULL → mark terminal with cached output.
+        // Preserve FAILED status if the subprocess failed (don't overwrite to SUCCEEDED).
+        val reconciledStatus = if (op.status == OperationStatus.FAILED) {
+            OperationStatus.FAILED
+        } else {
+            OperationStatus.SUCCEEDED
+        }
         val reconciledOp = RerunOperation(
             id = op.id,
             fingerprint = op.fingerprint,
             input = op.input,
             output = op.output,
-            status = OperationStatus.SUCCEEDED,
+            status = reconciledStatus,
             attempt = op.attempt,
         )
         journal.append(reconciledOp, journaledDeadline)
@@ -588,9 +594,15 @@ private fun emitDurableStepEvents(
 
         when (decision) {
             com.pipeline.v2.sdk.runtime.durable.ReplayDecision.SKIP -> {
-                // Bypass executor; emit StepFinished with cached output
-                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "success")
-                return "success"
+                // Bypass executor; emit StepFinished with cached output.
+                // Return the journaled outcome (SUCCEEDED → "success", FAILED → "failure").
+                val skipOutcome = if (journaledOutcome == com.pipeline.v2.domain.durable.OperationStatus.FAILED) {
+                    "failure"
+                } else {
+                    "success"
+                }
+                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, skipOutcome)
+                return skipOutcome
             }
             com.pipeline.v2.sdk.runtime.durable.ReplayDecision.RERUN -> {
                 // Two-phase journal (M3-R3 C-026): write RUNNING before executing the step.
@@ -625,16 +637,10 @@ private fun emitDurableStepEvents(
                         // Continue to next attempt
                         continue
                     } else {
-                        // Last attempt failed → ABORT
+                        // Last attempt failed → return failure outcome (spec C-030.2)
                         runOutcomeRef.set("failure")
-                        val divEx = DivergenceException(
-                            expected = fingerprint,
-                            actual = fingerprint,
-                            opId = opId,
-                            runId = runId,
-                            stageIndex = stageIndex,
-                        )
-                        throw divEx
+                        emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure")
+                        return "failure"
                     }
                 } else {
                     // Attempt succeeded

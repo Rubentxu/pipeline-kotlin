@@ -104,6 +104,8 @@ interface OperationJournal {
      * @param fingerprint The SHA-256 fingerprint of the operation input.
      * @param inputJson JSON-serialized [OperationInput].
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
+     * @param branchIndex Optional branch index for parallel frame execution. When non-null,
+     *                    the branch index is appended to the opId as "-b$branchIndex".
      * @throws IllegalStateException if a row already exists for (opId, attempt).
      */
     fun beginOperation(
@@ -112,6 +114,7 @@ interface OperationJournal {
         fingerprint: String,
         inputJson: String,
         deadlineMs: Long? = null,
+        branchIndex: Int? = null,
     )
 }
 
@@ -234,7 +237,15 @@ class SqliteOperationJournalImpl(
         fingerprint: String,
         inputJson: String,
         deadlineMs: Long?,
+        branchIndex: Int? = null,
     ) {
+        // Embed branchIndex into opId string when present
+        val fullOpId = if (branchIndex != null) {
+            "$opId-b$branchIndex"
+        } else {
+            opId
+        }
+
         DbLock.forPath(dbPath).withLock {
             val conn = connectionFactory()
             try {
@@ -242,12 +253,12 @@ class SqliteOperationJournalImpl(
                 conn.prepareStatement(
                     "SELECT 1 FROM operation_journal WHERE op_id = ? AND attempt = ?"
                 ).use { ps ->
-                    ps.setString(1, opId)
+                    ps.setString(1, fullOpId)
                     ps.setInt(2, attempt)
                     ps.executeQuery().use { rs ->
                         if (rs.next()) {
                             throw IllegalStateException(
-                                "Operation $opId attempt $attempt already journaled"
+                                "Operation $fullOpId attempt $attempt already journaled"
                             )
                         }
                     }
@@ -261,7 +272,7 @@ class SqliteOperationJournalImpl(
                     VALUES (?, ?, 'RUNNING', 'RERUN', ?, ?, NULL, ?, ?, ?, ?)
                     """.trimIndent()
                 ).use { ps ->
-                    ps.setString(1, opId)
+                    ps.setString(1, fullOpId)
                     ps.setString(2, fingerprint)
                     ps.setInt(3, attempt)
                     ps.setString(4, inputJson)

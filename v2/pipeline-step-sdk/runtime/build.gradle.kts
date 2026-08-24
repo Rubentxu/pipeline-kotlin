@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-events"))
+    implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     ksp(project(":pipeline-step-sdk:processor"))
     testImplementation(libs.junit.jupiter)

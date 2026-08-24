@@ -6,6 +6,7 @@ import com.pipeline.v2.events.InMemoryEventStore
 import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.domain.durable.DivergenceDetector
+import kotlinx.serialization.json.Json
 import com.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.events.durable.OperationJournal
@@ -152,7 +153,7 @@ fun main(args: Array<String>) {
     // Build orchestrator with all durable dependencies
     val factory = eventStore.underlyingConnectionFactory()
     val clock: Clock = SystemClock()
-    val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+    val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, eventStore.databasePath())
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()

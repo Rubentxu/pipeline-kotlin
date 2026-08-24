@@ -9,6 +9,7 @@ import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.events.durable.OperationJournal
 import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import kotlinx.serialization.json.Json
 import com.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import com.pipeline.v2.events.durable.ReplayCursorStore
 import com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
@@ -243,7 +244,7 @@ class UatDurable004RetrySurvivesRestartTest {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
         val clock: Clock = SystemClock()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
         val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
@@ -277,7 +278,7 @@ class UatDurable004RetrySurvivesRestartTest {
 
     private fun queryJournalEntries(dbPath: String, runId: String): List<AttemptEntry> {
         val eventStore = SqliteEventStore(dbPath)
-        val journal: OperationJournal = SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), SystemClock())
+        val journal: OperationJournal = SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), SystemClock(), Json { ignoreUnknownKeys = true; encodeDefaults = true }, eventStore.databasePath())
 
         // The op_id for step 0 of stage 0 follows the pattern: runId-s0-0
         val opId = "$runId-s0-0"

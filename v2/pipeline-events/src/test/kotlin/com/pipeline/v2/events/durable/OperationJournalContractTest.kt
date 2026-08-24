@@ -2,6 +2,7 @@ package com.pipeline.v2.events.durable
 
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.domain.durable.Clock
+import kotlinx.serialization.json.Json
 import com.pipeline.v2.domain.durable.Fingerprint
 import com.pipeline.v2.domain.durable.OperationInput
 import com.pipeline.v2.domain.durable.OperationOutput
@@ -25,7 +26,7 @@ class OperationJournalContractTest {
     private fun freshJournal(clock: Clock): OperationJournal {
         val dbPath = tempDir.resolve("contract-test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
-        return SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), clock)
+        return SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, eventStore.databasePath())
     }
 
     private val systemClock: Clock = object : Clock {

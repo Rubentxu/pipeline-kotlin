@@ -8,6 +8,7 @@ import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.events.durable.OperationJournal
 import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import kotlinx.serialization.json.Json
 import com.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import com.pipeline.v2.events.durable.ReplayCursorStore
 import com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
@@ -100,6 +101,8 @@ class UatDurable007DivergenceMismatchTest {
         val journal: OperationJournal = SqliteOperationJournalImpl(
             eventStore.underlyingConnectionFactory(),
             clock,
+            Json { ignoreUnknownKeys = true; encodeDefaults = true },
+            eventStore.databasePath(),
         )
 
         val runId = deriveSharedRunId()
@@ -138,7 +141,7 @@ class UatDurable007DivergenceMismatchTest {
     ): String {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
         val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
@@ -166,7 +169,7 @@ class UatDurable007DivergenceMismatchTest {
     ): Result<String> {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
         val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()

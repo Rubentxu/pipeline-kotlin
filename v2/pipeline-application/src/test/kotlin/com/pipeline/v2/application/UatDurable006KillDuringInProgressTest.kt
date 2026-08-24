@@ -9,6 +9,7 @@ import com.pipeline.v2.events.EventSink
 import com.pipeline.v2.events.SqliteEventStore
 import com.pipeline.v2.events.durable.OperationJournal
 import com.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import kotlinx.serialization.json.Json
 import com.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import com.pipeline.v2.events.durable.ReplayCursorStore
 import com.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
@@ -144,6 +145,8 @@ class UatDurable006KillDuringInProgressTest {
         val journal: OperationJournal = SqliteOperationJournalImpl(
             eventStore.underlyingConnectionFactory(),
             clock,
+            Json { ignoreUnknownKeys = true; encodeDefaults = true },
+            eventStore.databasePath(),
         )
 
         // Find the opId for the sh step in stage 0, step 0
@@ -193,7 +196,7 @@ class UatDurable006KillDuringInProgressTest {
     ): Pair<String, (Class<*>) -> Int> {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPath)
         val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()

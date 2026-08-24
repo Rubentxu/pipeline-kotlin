@@ -55,6 +55,13 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-08** retry Attempts.
 - **E4-09** durable timeout.
 - **E4-10** parallel Frames/join. **(M3-R4.2 — ✅ CLOSED v0.13.2-rc1 via ADR-0033/0034/0035; 8 commits T-01..T-08, 210/210 tests + 12/12 archtests, 3 NEW domain types OpId.branchIndex + ParallelFrame + BranchSpec; EC-6 kill+resume BEHAVIORAL test deferred to M3-R4.3 — foundation-only per ADR-0035)**
+- **E4-19** `OperationJournal.beginOperation` double-suffix fix (HIGH P0 from M3-R4.2, DEBT coup-1/smell-1): when caller passes pre-formatted opId + branchIndex separately, the journal currently double-suffixes op_id and corrupts data. **(M3-R4.3 — ✅ CLOSED v0.13.3-rc1 via ADR-0037 Option A caller-passes-formatted + OpIdContractTest 11→16 cases)**
+- **E4-20** `BranchReconciler` real implementation (MEDIUM arch-1 from M3-R4.2): replace stub class with `reconcileRunningOperations()` that queries journal, fetches last durable checkpoint per branch, returns `ReconciledBranch(opId, lastStage, status, suggestedAction)`. **(M3-R4.3 — ✅ CLOSED v0.13.3-rc1 via ADR-0038 + BranchReconcilerTest 8 cases). **NOTE: BranchReconciler implementation present but NOT yet wired into PipelineOrchestrator.run() resume path. Integration deferred to M3-R4.4.****
+- **E4-21** `ParallelFrameExecutor` concurrent execution (MEDIUM arch-2 from M3-R4.2): replace no-op stub with `coroutineScope + async(Dispatchers.IO) { ... }.awaitAll()` for ALL_COMPLETE/FIRST_SUCCESS/ANY_COMPLETE join policies. **(M3-R4.3 — ✅ CLOSED v0.13.3-rc1 via ADR-0039 + ParallelFrameExecutorConcurrentTest 6 cases including timing). **NOTE: walkParallelFrame at PipelineRun.kt:1277 still uses sequential `forEachIndexed`. Wiring deferred to M3-R4.4.****
+- **E4-22** `executeDurableStep` refactor (MEDIUM arch-3 from M3-R4.2): collapse 11 positional params into a single `DurableWalkContext` data class (clock + opJournal + cursorStore + branchReconciler + opContext). **(M3-R4.3 — ✅ CLOSED v0.13.3-rc1 via DurableWalkContext + DurableWalkContextTest 3 cases)**
+- **E4-23** `advancePastParallelFrame` hardcoded strings (LOW smell-2 from M3-R4.2): replace `'parallel-frame'` / `'parallel-frame-completed'` literal cursor keys with runId-derived keys. **(M3-R4.3 — ✅ CLOSED v0.13.3-rc1 via ADR-0035/C-032)**
+- **E4-24** `kotlinx-coroutines-core` 1.11.0 dependency in `:pipeline-step-sdk:runtime` (ADR-0039 support dep for T-07). **(M3-R4.3 — ✅ CLOSED v0.13.3-rc1)**
+- **E4-25** `UatDurable009KillResumeBranchTest` behavioral test (EC-6, deferred from M3-R4.2): kill+resume test for parallel branches. **(M3-R4.3 — ⚠️ PARTIAL v0.13.3-rc1: 4 scenarios authored (BranchReconcilerTest + UatDurable009 4 cases) but no-replay invariant assertion deferred because BranchReconciler not yet wired into PipelineOrchestrator resume path. On resume all branches re-execute regardless of prior state. M3-R4.4 will wire the reconciler and re-author the no-replay assertion.)**
 - **E4-11** durable process task/reattach model. **(M3-R3 — closed v0.12.0-rc1)**
 - **E4-12** Replay cursor race fix (DEBT-2026-08-24-REPLAY-CURSOR-RACE, CRITICAL pre-existing M3-R1; WHERE clause on `saved_at` causes 60% flake in same-millisecond overwrite). **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via ADR-0030/CAS stage_index)**
 - **E4-13** Structured `OpId` data class (F01 HIGH, introduced M3-R3): replace hidden `$runId-s$stageIndex-$stepIndex` parsing in `PipelineRun.kt:234-238` with typed parse/format API or dedicated journal columns. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via C-031 OpId data class + parse/format)**
@@ -63,6 +70,17 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-16** Clock-port cohesion in `:pipeline-application` (coup-002 deferred from M3-R3): route the remaining 23 `Instant.now()` bypass sites through the Clock port to close the systemic debt identified by ADR-0028 §Decision. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via ADR-0031/C-020, 0 Instant.now() remaining)**
 - **E4-17** Reconciliation output-field inspection (DEBT-2026-08-24-UAT006-RECONCILE-OUTPUT-NULL, MEDIUM partial M3-R3): currently marks FAILED on terminal status but does not inspect `output` for failure indicators; closes partial fix. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via C-027.1 status-only reconciliation)**
 - **E4-18** Machine-derived test counts in `apply-progress.yaml` (DEBT-2026-08-24-APPLY-FABRICATED-COUNTS, MEDIUM acknowledged M3-R3): apply contract amendment to forbid manual counts; counts must come from `./gradlew` output. **(M3-R4.1 — ⚠️ PARTIAL: apply-progress.yaml is machine-derived (E4-18.1 ✅), but prompts/sddk/phases/{apply,verify}.md are external framework symlinks requiring framework-maintainer action (E4-18.2 ❌). Deferred.)**
+
+## Epic E5 — Protocol/Gateway
+## M3-R4.4 — branch reconciler wiring integration (next cycle, deferred from M3-R4.3)
+- **E4-26** Wire `BranchReconciler.reconcileRunningOperations()` into `PipelineOrchestrator.run()` resume path. Remove inline private `reconcileRunningOperations` at `PipelineRun.kt:229-317`. **(M3-R4.4 — ⏳ P0 follow-up, deferred from M3-R4.3 HIGH arch-4)**
+- **E4-27** Replace `walkParallelFrame` sequential `forEachIndexed` at `PipelineRun.kt:1277` with concurrency-driven branch dispatch via `ParallelFrameExecutor`. **(M3-R4.4 — ⏳ P0 follow-up, deferred from M3-R4.3 HIGH arch-7)**
+- **E4-28** `UatDurable009KillResumeBranchTest` no-replay assertion: assert that counter file for completed branches is NOT incremented on resume (EC-6(d) invariant). Currently deferred because branches re-execute due to integration gap. **(M3-R4.4 — ⏳ EC-6 completion, deferred from M3-R4.3)**
+- **E4-29** Resolve `dup-6` (two reconcileRunningOperations implementations) by deleting the inline private fun once the class is wired. **(M3-R4.4 — ⏳ MEDIUM follow-up)**
+- **E4-30** Tighten `beginOperation` API surface (coup-3): remove redundant `branchIndex` parameter once caller contract is enforced upstream. **(M3-R4.4 or later — ⏳ MEDIUM follow-up)**
+
+## M3-R5 — debt mop (next milestone sub-cycle, deferred from M3-R4.1/4.2/4.3)
+- 21 carry-forward findings (8 from M3-R4.2 still open + 13 from M3-R4.1 baseline: 4 duplication + 7 smells + 2 overeng). **(M3-R5 — ⏳ planned debt-mop cycle)**
 
 ## Epic E5 — Protocol/Gateway
 - **E5-01** `.proto` v1 repo layout/governance.

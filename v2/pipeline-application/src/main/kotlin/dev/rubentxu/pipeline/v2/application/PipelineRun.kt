@@ -233,6 +233,11 @@ private fun reconcileRunningOperations(
     startFromStageIndex: Int,
     startFromStepIndex: Int,
 ) {
+    // TODO[M3-R4.3]: replace with real branch reconciliation when durable semantics land.
+    // Branch-aware reconciliation should scope by (opId, branchIndex) via
+    // json_extract(input,'$.branchIndex') and handle parallel frame branches
+    // left RUNNING after a crash. The current implementation only reconciles
+    // sequential operations.
     val runningOps = journal.listForRun(runId).filter { it.status == OperationStatus.RUNNING }
     for (op in runningOps) {
         // Parse opId using typed OpId parser (replaces fragile substringAfter/split)

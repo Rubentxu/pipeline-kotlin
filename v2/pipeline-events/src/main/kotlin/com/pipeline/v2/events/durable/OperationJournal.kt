@@ -183,13 +183,14 @@ class SqliteOperationJournalImpl(
                 conn.prepareStatement(
                     """
                     INSERT INTO operation_journal
-                        (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, ended_at, deadline_ms)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, ended_at, deadline_ms, run_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(op_id, attempt) DO UPDATE SET
                         status = excluded.status,
                         output = excluded.output,
                         updated_at = excluded.updated_at,
-                        ended_at = excluded.ended_at
+                        ended_at = excluded.ended_at,
+                        run_id = excluded.run_id
                     """.trimIndent()
                 ).use { ps ->
                     ps.setString(1, op.id)
@@ -212,6 +213,8 @@ class SqliteOperationJournalImpl(
                     } else {
                         ps.setNull(12, java.sql.Types.BIGINT)
                     }
+                    // M3-R4.1 T-06: populate run_id column from op.input.runId
+                    ps.setString(13, op.input.runId)
                     ps.executeUpdate()
                 }
             } finally {
@@ -351,12 +354,12 @@ class SqliteOperationJournalImpl(
                 """
                 SELECT j.op_id, j.fingerprint, j.status, j.kind, j.attempt, j.input, j.output
                 FROM operation_journal j
-                WHERE j.input LIKE ?
+                WHERE j.run_id = ?
                 ORDER BY j.created_at ASC
                 """.trimIndent()
             ).use { ps ->
-                // Match by runId in the JSON input blob.
-                ps.setString(1, "%\"runId\":\"$runId\"%")
+                // M3-R4.1 T-06: use indexed run_id column instead of LIKE on JSON blob
+                ps.setString(1, runId)
                 ps.executeQuery().use { rs ->
                     while (rs.next()) {
                         val opId = rs.getString(1)

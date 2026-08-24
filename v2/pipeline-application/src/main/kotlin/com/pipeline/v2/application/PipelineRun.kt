@@ -24,6 +24,7 @@ import com.pipeline.v2.events.TimeoutScheduled
 import com.pipeline.v2.scripting.Kotlin24ScriptingHost
 import com.pipeline.v2.scripting.ScriptDefinition
 import com.pipeline.v2.application.durable.PipelineOrchestrator
+import com.pipeline.v2.application.durable.OpId
 import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.domain.durable.DivergenceDetector
 import com.pipeline.v2.domain.durable.DivergenceException
@@ -231,11 +232,10 @@ private fun reconcileRunningOperations(
 ) {
     val runningOps = journal.listForRun(runId).filter { it.status == OperationStatus.RUNNING }
     for (op in runningOps) {
-        // Extract stage and step indices from opId: format "$runId-s$stageIndex-$stepIndex"
-        val opIdParts = op.id.substringAfter("$runId-s").split("-", limit = 2)
-        if (opIdParts.size < 2) continue // malformed opId, skip
-        val opStageIndex = opIdParts[0].toIntOrNull() ?: continue
-        val opStepIndex = opIdParts[1].toIntOrNull() ?: continue
+        // Parse opId using typed OpId parser (replaces fragile substringAfter/split)
+        val parsedOpId = OpId.parse(op.id) ?: continue // malformed opId, skip
+        val opStageIndex = parsedOpId.stageIndex
+        val opStepIndex = parsedOpId.stepIndex
 
         // Skip operations that were already completed before the cursor position
         if (opStageIndex < startFromStageIndex) continue
@@ -490,7 +490,7 @@ private fun emitDurableStepEvents(
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
-    val opId = "$runId-s$stageIndex-$stepIndex"
+    val opId = OpId(runId, stageIndex, stepIndex).format()
     // Json encoder for serializing OperationInput for beginOperation
     val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     val retryPolicy = step.retry ?: RetryPolicy.NONE

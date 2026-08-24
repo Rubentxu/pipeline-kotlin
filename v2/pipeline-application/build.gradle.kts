@@ -27,6 +27,7 @@ dependencies {
     implementation(project(":pipeline-step-sdk:runtime"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sqlite.jdbc)
+    testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

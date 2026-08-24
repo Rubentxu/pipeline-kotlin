@@ -59,13 +59,13 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Executes a pipeline script, emitting a complete event timeline.
  */
-fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
+fun execute(scriptPath: Path, store: EventStore, clock: Clock = SystemClock()): List<DomainEvent> {
     val scriptContent = scriptPath.toFile().readText()
     val runId = deriveRunId(scriptPath.toString(), scriptContent)
     val eventSink = store as? EventSink ?: InMemoryEventStore()
 
     val runStartedId = UUID.randomUUID().toString()
-    val runStartedAt = Instant.now()
+    val runStartedAt = clock.now()
     eventSink.append(
         RunStarted(
             eventId = runStartedId,
@@ -105,7 +105,7 @@ fun execute(scriptPath: Path, store: EventStore): List<DomainEvent> {
     }
     val outcome = runOutcome.get()
     val runFinishedId = UUID.randomUUID().toString()
-    val runFinishedAt = Instant.now()
+    val runFinishedAt = clock.now()
     eventSink.append(
         RunFinished(
             eventId = runFinishedId,
@@ -129,10 +129,11 @@ private fun walkPipelineSpec(
     runId: String,
     eventSink: EventSink,
     runOutcome: AtomicReference<String>,
+    clock: Clock = SystemClock(),
 ) {
     for ((stageIndex, stage) in spec.stages.withIndex()) {
         val stageStartedId = UUID.randomUUID().toString()
-        val stageStartedAt = Instant.now()
+        val stageStartedAt = clock.now()
         eventSink.append(
             StageStarted(
                 eventId = stageStartedId,
@@ -151,6 +152,7 @@ private fun walkPipelineSpec(
                 remoteUri = agentSpec.remoteUri,
                 runId = runId,
                 eventSink = eventSink,
+                clock = clock,
             )
         }
 
@@ -184,15 +186,16 @@ private fun walkPipelineSpec(
                 stepIndex = null,
                 runId = runId,
                 eventSink = eventSink,
+                clock = clock,
             )
         }
 
         for ((stepIndex, step) in stage.steps.withIndex()) {
-            emitStepEvents(step, stageIndex, stepIndex, runId, eventSink, runOutcome)
+            emitStepEvents(step, stageIndex, stepIndex, runId, eventSink, runOutcome, clock)
         }
 
         val stageFinishedId = UUID.randomUUID().toString()
-        val stageFinishedAt = Instant.now()
+        val stageFinishedAt = clock.now()
         eventSink.append(
             StageFinished(
                 eventId = stageFinishedId,
@@ -370,7 +373,7 @@ internal fun walkPipelineSpecDurable(
         if (stageIndex < startFromStageIndex) continue
 
         val stageStartedId = UUID.randomUUID().toString()
-        val stageStartedAt = Instant.now()
+        val stageStartedAt = clock.now()
         eventSink.append(
             StageStarted(
                 eventId = stageStartedId,
@@ -388,6 +391,7 @@ internal fun walkPipelineSpecDurable(
                 remoteUri = agentSpec.remoteUri,
                 runId = runId,
                 eventSink = eventSink,
+                clock = clock,
             )
         }
 
@@ -418,6 +422,7 @@ internal fun walkPipelineSpecDurable(
                 stepIndex = null,
                 runId = runId,
                 eventSink = eventSink,
+                clock = clock,
             )
         }
 
@@ -449,7 +454,7 @@ internal fun walkPipelineSpecDurable(
         }
 
         val stageFinishedId = UUID.randomUUID().toString()
-        val stageFinishedAt = Instant.now()
+        val stageFinishedAt = clock.now()
         eventSink.append(
             StageFinished(
                 eventId = stageFinishedId,
@@ -577,7 +582,7 @@ private fun emitDurableStepEvents(
         val decision = effectReplayPolicy.decide(sdkPolicy, effects, hasJournalEntry, journaledOutcome)
 
         val stepStartedId = UUID.randomUUID().toString()
-        val stepStartedAt = Instant.now()
+        val stepStartedAt = clock.now()
 
         eventSink.append(
             StepStarted(
@@ -601,7 +606,7 @@ private fun emitDurableStepEvents(
                 } else {
                     "success"
                 }
-                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, skipOutcome)
+                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, skipOutcome, clock)
                 return skipOutcome
             }
             com.pipeline.v2.sdk.runtime.durable.ReplayDecision.RERUN -> {
@@ -612,7 +617,7 @@ private fun emitDurableStepEvents(
                     journal.beginOperation(opId, attemptNum, fingerprint.hex, inputJson, deadlineMs)
                 }
 
-                val stepOutcome = executeDurableStep(step, stageIndex, stepIndex, runId, eventSink, runOutcomeRef)
+                val stepOutcome = executeDurableStep(step, stageIndex, stepIndex, runId, eventSink, runOutcomeRef, clock)
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
                 val outputOp = RerunOperation(
@@ -627,7 +632,7 @@ private fun emitDurableStepEvents(
 
                 if (stepOutcome == "failure") {
                     // This attempt failed
-                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome)
+                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome, clock)
                     if (attemptNum < maxAttempts) {
                         // Apply backoff before next attempt
                         val delayMs = retryPolicy.backoffDelay(attemptNum + 1)
@@ -639,20 +644,20 @@ private fun emitDurableStepEvents(
                     } else {
                         // Last attempt failed → return failure outcome (spec C-030.2)
                         runOutcomeRef.set("failure")
-                        emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure")
+                        emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure", clock)
                         return "failure"
                     }
                 } else {
                     // Attempt succeeded
                     // Advance cursor after successful journal append (per R-C mitigation)
                     cursorStore.advance(runId, opId, stageIndex)
-                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome)
+                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome, clock)
                     return "success"
                 }
             }
             com.pipeline.v2.sdk.runtime.durable.ReplayDecision.ABORT -> {
                 // Emit StepFailed and throw
-                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure")
+                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure", clock)
                 runOutcomeRef.set("failure")
                 val divEx = DivergenceException(
                     expected = fingerprint,
@@ -680,6 +685,7 @@ private fun executeDurableStep(
     runId: String,
     eventSink: EventSink,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    clock: Clock = SystemClock(),
 ): String {
     return try {
         when (step) {
@@ -709,7 +715,7 @@ private fun executeDurableStep(
                 "success" // sdkError throws
             }
             is StepSpec.Parallel -> {
-                emitParallelStepEvents(step, stageIndex, stepIndex, runId, eventSink)
+                emitParallelStepEvents(step, stageIndex, stepIndex, runId, eventSink, clock)
                 "success"
             }
         }
@@ -726,9 +732,10 @@ private fun emitStepFinished(
     stepIndex: Int,
     runId: String,
     outcome: String,
+    clock: Clock = SystemClock(),
 ) {
     val stepFinishedId = UUID.randomUUID().toString()
-    val stepFinishedAt = Instant.now()
+    val stepFinishedAt = clock.now()
     eventSink.append(
         StepFinished(
             eventId = stepFinishedId,
@@ -800,9 +807,10 @@ private fun emitStepEvents(
     runId: String,
     eventSink: EventSink,
     runOutcome: AtomicReference<String>,
+    clock: Clock = SystemClock(),
 ) {
     val stepStartedId = UUID.randomUUID().toString()
-    val stepStartedAt = Instant.now()
+    val stepStartedAt = clock.now()
     val stepName = step.name
     val stepType = step.type
 
@@ -823,7 +831,7 @@ private fun emitStepEvents(
             // Invoke SDK echo function
             echo(StepContext(runId = runId), step.text, eventSink, stepIndex)
             val stepFinishedId = UUID.randomUUID().toString()
-            val stepFinishedAt = Instant.now()
+            val stepFinishedAt = clock.now()
             eventSink.append(
                 StepFinished(
                     eventId = stepFinishedId,
@@ -854,7 +862,7 @@ private fun emitStepEvents(
             val argv = step.command.split("\\s+".toRegex())
             com.pipeline.v2.sdk.runtime.sh(StepContext(runId = runId), argv, eventSink, stepIndex)
             val stepFinishedId = UUID.randomUUID().toString()
-            val stepFinishedAt = Instant.now()
+            val stepFinishedAt = clock.now()
             eventSink.append(
                 StepFinished(
                     eventId = stepFinishedId,
@@ -869,13 +877,13 @@ private fun emitStepEvents(
             )
         }
         is StepSpec.Error -> {
-            emitErrorStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType, runOutcome)
+            emitErrorStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType, runOutcome, clock)
         }
         is StepSpec.Sleep -> {
-            emitSleepStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType)
+            emitSleepStepEvents(step, stageIndex, stepIndex, runId, eventSink, stepStartedId, stepStartedAt, stepName, stepType, clock)
         }
         is StepSpec.Parallel -> {
-            emitParallelStepEvents(step, stageIndex, stepIndex, runId, eventSink)
+            emitParallelStepEvents(step, stageIndex, stepIndex, runId, eventSink, clock)
         }
     }
 }
@@ -891,6 +899,7 @@ private fun emitErrorStepEvents(
     stepName: String,
     stepType: String,
     runOutcome: AtomicReference<String>,
+    clock: Clock = SystemClock(),
 ) {
     eventSink.append(
         StepStarted(
@@ -917,7 +926,7 @@ private fun emitErrorStepEvents(
         runOutcome.set("failure")
     }
     val stepFinishedId = UUID.randomUUID().toString()
-    val stepFinishedAt = Instant.now()
+    val stepFinishedAt = clock.now()
     eventSink.append(
         StepFinished(
             eventId = stepFinishedId,
@@ -942,6 +951,7 @@ private fun emitSleepStepEvents(
     stepStartedAt: Instant,
     stepName: String,
     stepType: String,
+    clock: Clock = SystemClock(),
 ) {
     eventSink.append(
         StepStarted(
@@ -958,7 +968,7 @@ private fun emitSleepStepEvents(
     // Invoke SDK sleep function
     sdkSleep(StepContext(runId = runId), step.seconds, eventSink, stepIndex)
     val stepFinishedId = UUID.randomUUID().toString()
-    val stepFinishedAt = Instant.now()
+    val stepFinishedAt = clock.now()
     eventSink.append(
         StepFinished(
             eventId = stepFinishedId,
@@ -979,10 +989,11 @@ private fun emitParallelStepEvents(
     stepIndex: Int,
     runId: String,
     eventSink: EventSink,
+    clock: Clock = SystemClock(),
 ) {
     // Emit StepStarted for the parallel step itself
     val stepStartedId = UUID.randomUUID().toString()
-    val stepStartedAt = Instant.now()
+    val stepStartedAt = clock.now()
     eventSink.append(
         StepStarted(
             eventId = stepStartedId,
@@ -998,12 +1009,12 @@ private fun emitParallelStepEvents(
 
     // Emit ParallelBranchStarted/Finished for each branch
     step.branches.forEachIndexed { branchIndex, branch ->
-        emitParallelBranchEvents(branchIndex, branch.name, stageIndex, runId, eventSink)
+        emitParallelBranchEvents(branchIndex, branch.name, stageIndex, runId, eventSink, clock)
     }
 
     // Emit StepFinished for the parallel step itself
     val stepFinishedId = UUID.randomUUID().toString()
-    val stepFinishedAt = Instant.now()
+    val stepFinishedAt = clock.now()
     eventSink.append(
         StepFinished(
             eventId = stepFinishedId,
@@ -1023,9 +1034,10 @@ private fun emitAgentResolvedEvent(
     remoteUri: String?,
     runId: String,
     eventSink: EventSink,
+    clock: Clock = SystemClock(),
 ) {
     val eventId = UUID.randomUUID().toString()
-    val occurredAt = Instant.now()
+    val occurredAt = clock.now()
     eventSink.append(
         AgentResolved(
             eventId = eventId,
@@ -1044,9 +1056,10 @@ private fun emitParallelBranchEvents(
     parentStageIndex: Int,
     runId: String,
     eventSink: EventSink,
+    clock: Clock = SystemClock(),
 ) {
     val startedId = UUID.randomUUID().toString()
-    val startedAt = Instant.now()
+    val startedAt = clock.now()
     eventSink.append(
         ParallelBranchStarted(
             eventId = startedId,
@@ -1059,7 +1072,7 @@ private fun emitParallelBranchEvents(
         )
     )
     val finishedId = UUID.randomUUID().toString()
-    val finishedAt = Instant.now()
+    val finishedAt = clock.now()
     eventSink.append(
         ParallelBranchFinished(
             eventId = finishedId,
@@ -1084,9 +1097,10 @@ private fun emitRetryAttemptEvents(
     outcome: String,
     runId: String,
     eventSink: EventSink,
+    clock: Clock = SystemClock(),
 ) {
     val startedId = UUID.randomUUID().toString()
-    val startedAt = Instant.now()
+    val startedAt = clock.now()
     eventSink.append(
         RetryAttemptStarted(
             eventId = startedId,
@@ -1102,7 +1116,7 @@ private fun emitRetryAttemptEvents(
         )
     )
     val finishedId = UUID.randomUUID().toString()
-    val finishedAt = Instant.now()
+    val finishedAt = clock.now()
     eventSink.append(
         RetryAttemptFinished(
             eventId = finishedId,
@@ -1129,9 +1143,10 @@ private fun emitTimeoutScheduledEvent(
     stepIndex: Int?,
     runId: String,
     eventSink: EventSink,
+    clock: Clock = SystemClock(),
 ) {
     val eventId = UUID.randomUUID().toString()
-    val occurredAt = Instant.now()
+    val occurredAt = clock.now()
     eventSink.append(
         TimeoutScheduled(
             eventId = eventId,

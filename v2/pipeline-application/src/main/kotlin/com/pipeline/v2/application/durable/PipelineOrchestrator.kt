@@ -60,7 +60,7 @@ class PipelineOrchestrator(
         startFromCursor: Boolean,
     ): Result<String> {
         val runStartedId = UUID.randomUUID().toString()
-        val runStartedAt = Instant.now()
+        val runStartedAt = clock.now()
         eventSink.append(
             RunStarted(
                 eventId = runStartedId,
@@ -99,7 +99,7 @@ class PipelineOrchestrator(
 
         val runOutcomeValue = outcome.getOrElse { "failure" }
         val runFinishedId = UUID.randomUUID().toString()
-        val runFinishedAt = Instant.now()
+        val runFinishedAt = clock.now()
         eventSink.append(
             RunFinished(
                 eventId = runFinishedId,

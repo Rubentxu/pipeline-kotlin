@@ -26,6 +26,8 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.DurableWalkContext
+import dev.rubentxu.pipeline.v2.application.ReconciledBranch
+import dev.rubentxu.pipeline.v2.application.ReconciliationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceException
@@ -365,14 +367,11 @@ internal suspend fun walkPipelineSpecDurable(
     // M3-R3 C-027 reconciliation pass: journal-first reattach model.
     // Query RUNNING rows for this runId and reconcile them fail-closed.
     // Must run before any stage/step execution to detect divergence early.
-    reconcileRunningOperations(
-        runId = runId,
-        journal = journal,
-        divergenceDetector = divergenceDetector,
-        clock = clock,
-        startFromStageIndex = startFromStageIndex,
-        startFromStepIndex = startFromStepIndex,
-    )
+    // M3-R4.4: replaced inline impl with BranchReconciler
+    val branchReconciler = BranchReconciler(journal, cursorStore, clock)
+    val reconciledBranches: Map<Int, ReconciledBranch> = branchReconciler
+        .reconcileRunningOperations(runId)
+        .associateBy { OpId.parse(it.opId)?.branchIndex ?: -1 }
 
     for ((stageIndex, stage) in spec.stages.withIndex()) {
         // Resume gate: skip stages before the cursor position
@@ -453,6 +452,7 @@ internal suspend fun walkPipelineSpecDurable(
                 effectReplayPolicy = effectReplayPolicy,
                 clock = clock,
                 runOutcomeRef = runOutcomeRef,
+                reconciledBranches = reconciledBranches,
             )
             if (stepOutcome == "failure") {
                 runOutcomeRef.set("failure")
@@ -499,6 +499,7 @@ private suspend fun emitDurableStepEvents(
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -711,6 +712,7 @@ private suspend fun executeDurableStep(
     divergenceDetector: DivergenceDetector,
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -724,6 +726,7 @@ private suspend fun executeDurableStep(
         effectReplayPolicy = effectReplayPolicy,
         clock = ctx.clock,
         runOutcomeRef = runOutcomeRef,
+        reconciledBranches = reconciledBranches,
     )
 }
 
@@ -744,6 +747,7 @@ private suspend fun executeDurableStep(
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -757,6 +761,7 @@ private suspend fun executeDurableStep(
         effectReplayPolicy = effectReplayPolicy,
         clock = clock,
         runOutcomeRef = runOutcomeRef,
+        reconciledBranches = reconciledBranches,
     )
 }
 
@@ -776,6 +781,7 @@ private suspend fun executeDurableStepImpl(
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
     return try {
         when (step) {
@@ -829,6 +835,7 @@ private suspend fun executeDurableStepImpl(
                     cursorStore = cursorStore,
                     clock = clock,
                     runOutcomeRef = runOutcomeRef,
+                    reconciledBranches = reconciledBranches,
                 )
             }
         }
@@ -1228,6 +1235,7 @@ private suspend fun walkParallelFrame(
     cursorStore: ReplayCursorStore,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
     val parentOpId = OpId(runId, stageIndex, stepIndex)
 
@@ -1247,51 +1255,88 @@ private suspend fun walkParallelFrame(
         )
     )
 
-    // Emit ParallelBranchStarted for each branch and write journal entry
-    frame.branches.forEachIndexed { branchIndex, branch ->
-        val branchOpId = OpId.forBranch(runId, stageIndex, stepIndex, branchIndex)
-        emitParallelBranchStarted(branchIndex, branch.name, stageIndex, runId, eventSink, clock)
-        // Write journal entry for branch start
-        journal.beginOperation(
-            opId = branchOpId.format(),
-            attempt = 1,
-            fingerprint = Fingerprint.compute(
-                OperationInput(
-                    stepId = "parallel-branch",
-                    params = mapOf("branchName" to JsonPrimitive(branch.name)),
-                    runId = runId,
-                    attempt = 1,
-                ),
-                "parallel-branch",
-                dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
-                1,
-            ).hex,
-            inputJson = """{"branchName":"${branch.name}","branchIndex":$branchIndex,"parentOpId":"${parentOpId.format()}"}""",
-            deadlineMs = null,
-            branchIndex = branchIndex,
-        )
-    }
-
-    // Walk each branch sequentially (T-05 will add concurrency via ParallelFrameExecutor)
+    // M3-R4.4: BranchReconciler drives per-branch resume decisions.
+    // SUCCEEDED branches skip execution (retain journaled ParallelBranchStarted/Finished).
+    // NEEDS_REATTACH branches get fresh ParallelBranchStarted + walkBranchDurable.
+    // STUCK branches fail-closed.
     var overallOutcome = "success"
     frame.branches.forEachIndexed { branchIndex, branch ->
         val branchOpId = OpId.forBranch(runId, stageIndex, stepIndex, branchIndex)
-        val branchOutcome = walkBranchDurable(
-            branch = branch,
-            branchIndex = branchIndex,
-            parentOpId = parentOpId,
-            runId = runId,
-            eventSink = eventSink,
-            journal = journal,
-            cursorStore = cursorStore,
-            clock = clock,
-            runOutcomeRef = runOutcomeRef,
-        )
-        if (branchOutcome == "failure") {
-            overallOutcome = "failure"
+        val reconciled = reconciledBranches?.get(branchIndex)
+
+        when (reconciled?.status) {
+            ReconciliationStatus.SUCCESS -> {
+                // Branch completed normally — skip execution, retain journaled events.
+                // No ParallelBranchStarted/Fixed emitted here; they were journaled in the original run.
+            }
+            ReconciliationStatus.NEEDS_REATTACH, null -> {
+                // Fresh branch or needs re-attachment — emit ParallelBranchStarted + journal
+                emitParallelBranchStarted(branchIndex, branch.name, stageIndex, runId, eventSink, clock)
+                journal.beginOperation(
+                    opId = branchOpId.format(),
+                    attempt = 1,
+                    fingerprint = Fingerprint.compute(
+                        OperationInput(
+                            stepId = "parallel-branch",
+                            params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                            runId = runId,
+                            attempt = 1,
+                        ),
+                        "parallel-branch",
+                        dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                        1,
+                    ).hex,
+                    inputJson = """{"branchName":"${branch.name}","branchIndex":$branchIndex,"parentOpId":"${parentOpId.format()}"}""",
+                    deadlineMs = null,
+                    branchIndex = branchIndex,
+                )
+
+                val branchOutcome = walkBranchDurable(
+                    branch = branch,
+                    branchIndex = branchIndex,
+                    parentOpId = parentOpId,
+                    runId = runId,
+                    eventSink = eventSink,
+                    journal = journal,
+                    cursorStore = cursorStore,
+                    clock = clock,
+                    runOutcomeRef = runOutcomeRef,
+                )
+                if (branchOutcome == "failure") {
+                    overallOutcome = "failure"
+                }
+                emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
+            }
+            ReconciliationStatus.STUCK -> {
+                throw DivergenceException(
+                    expected = Fingerprint.compute(
+                        OperationInput(
+                            stepId = "parallel-branch",
+                            params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                            runId = runId,
+                            attempt = 1,
+                        ),
+                        "parallel-branch",
+                        dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                        1,
+                    ),
+                    actual = Fingerprint.compute(
+                        OperationInput(
+                            stepId = "parallel-branch",
+                            params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                            runId = runId,
+                            attempt = 1,
+                        ),
+                        "parallel-branch",
+                        dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                        1,
+                    ),
+                    opId = branchOpId.format(),
+                    runId = runId,
+                    stageIndex = stageIndex,
+                )
+            }
         }
-        // Emit ParallelBranchFinished for this branch with actual outcome
-        emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
     }
 
     // Emit StepFinished for the parallel frame

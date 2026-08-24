@@ -1,5 +1,6 @@
 package com.pipeline.v2.events.durable
 
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.domain.durable.DurableOperation
 import com.pipeline.v2.domain.durable.OperationOutput
 import com.pipeline.v2.domain.durable.OperationStatus
@@ -96,6 +97,7 @@ interface OperationJournal {
  */
 class SqliteOperationJournalImpl(
     private val connectionFactory: () -> Connection,
+    private val clock: Clock,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -155,8 +157,8 @@ class SqliteOperationJournalImpl(
                     ps.setInt(5, op.attempt)
                     ps.setString(6, inputJson)
                     ps.setString(7, outputJson)
-                    ps.setLong(8, System.currentTimeMillis())
-                    ps.setLong(9, System.currentTimeMillis())
+                    ps.setLong(8, clock.now().toEpochMilli())
+                    ps.setLong(9, clock.now().toEpochMilli())
                     if (deadlineMs != null) {
                         ps.setLong(10, deadlineMs)
                     } else {

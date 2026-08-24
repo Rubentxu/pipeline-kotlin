@@ -242,11 +242,11 @@ class UatDurable004RetrySurvivesRestartTest {
     ): String {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
-        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
+        val clock: Clock = SystemClock()
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
-        val clock: Clock = SystemClock()
         val orchestrator = PipelineOrchestrator(
             journal = journal,
             cursorStore = cursorStore,
@@ -277,7 +277,7 @@ class UatDurable004RetrySurvivesRestartTest {
 
     private fun queryJournalEntries(dbPath: String, runId: String): List<AttemptEntry> {
         val eventStore = SqliteEventStore(dbPath)
-        val journal: OperationJournal = SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory())
+        val journal: OperationJournal = SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), SystemClock())
 
         // The op_id for step 0 of stage 0 follows the pattern: runId-s0-0
         val opId = "$runId-s0-0"

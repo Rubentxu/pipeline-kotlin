@@ -1,6 +1,7 @@
 package com.pipeline.v2.events.durable
 
 import com.pipeline.v2.events.SqliteEventStore
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.domain.durable.Fingerprint
 import com.pipeline.v2.domain.durable.OperationInput
 import com.pipeline.v2.domain.durable.OperationOutput
@@ -21,15 +22,19 @@ class OperationJournalContractTest {
     @TempDir
     lateinit var tempDir: Path
 
-    private fun freshJournal(): OperationJournal {
+    private fun freshJournal(clock: Clock): OperationJournal {
         val dbPath = tempDir.resolve("contract-test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
-        return SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory())
+        return SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), clock)
+    }
+
+    private val systemClock: Clock = object : Clock {
+        override fun now() = java.time.Clock.systemUTC().instant()
     }
 
     @Test
     fun `append then get returns the same operation`() {
-        val journal = freshJournal()
+        val journal = freshJournal(systemClock)
         val op = RerunOperation(
             id = "op-contract-1",
             fingerprint = Fingerprint("a".repeat(64)),
@@ -48,7 +53,7 @@ class OperationJournalContractTest {
 
     @Test
     fun `listForRun returns all operations for that run in order`() {
-        val journal = freshJournal()
+        val journal = freshJournal(systemClock)
         val runId = "run-contract-list"
         for (i in 1..3) {
             journal.append(
@@ -71,13 +76,13 @@ class OperationJournalContractTest {
 
     @Test
     fun `get with non-existent opId returns null`() {
-        val journal = freshJournal()
+        val journal = freshJournal(systemClock)
         assertNull(journal.get("nonexistent-op"))
     }
 
     @Test
     fun `duplicate append throws exception preserving first entry`() {
-        val journal = freshJournal()
+        val journal = freshJournal(systemClock)
         val op = RerunOperation(
             id = "op-dup",
             fingerprint = Fingerprint("a".repeat(64)),

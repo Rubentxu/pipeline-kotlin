@@ -1,17 +1,35 @@
 package com.pipeline.v2.events
 
+import com.pipeline.v2.events.durable.OperationJournalSchema
+import com.pipeline.v2.events.durable.SqliteConnectionFactory
 import java.sql.Connection
-import java.sql.DriverManager
 
 /**
  * SQLite-backed event store using JDK 21 stdlib java.sql.
  * Each operation opens a fresh connection that auto-commits and closes,
  * ensuring data is immediately visible to subsequent readers.
+ *
+ * ## M2-R1 Variants
+ * This store supports all M2-R1 event variants in addition to M1-R3 variants:
+ * - [AgentResolved][com.pipeline.v2.events.AgentResolved]
+ * - [ParallelBranchStarted][com.pipeline.v2.events.ParallelBranchStarted]
+ * - [ParallelBranchFinished][com.pipeline.v2.events.ParallelBranchFinished]
+ * - [RetryAttemptStarted][com.pipeline.v2.events.RetryAttemptStarted]
+ * - [RetryAttemptFinished][com.pipeline.v2.events.RetryAttemptFinished]
+ * - [TimeoutScheduled][com.pipeline.v2.events.TimeoutScheduled]
+ *
+ * New variants are decoded via the [JsonEventLog][com.pipeline.v2.events.JsonEventLog]
+ * `kind` discriminator — no schema migration required.
+ *
+ * ## M3-R1 Extension
+ * This store also creates the [operation_journal][com.pipeline.v2.events.durable.OperationJournalSchema]
+ * and [replay_cursor][com.pipeline.v2.events.durable.OperationJournalSchema] tables
+ * via [SqliteConnectionFactory] with WAL mode enabled.
  */
 class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 
     private fun freshConnection(): Connection =
-        DriverManager.getConnection("jdbc:sqlite:$file")
+        SqliteConnectionFactory.open(file)
 
     private fun withConnection(block: (Connection) -> Unit) {
         val conn = freshConnection()
@@ -26,9 +44,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         val conn = freshConnection()
         try {
             conn.createStatement().use { stmt ->
-                // Use DELETE journal mode: committed writes go directly to the
-                // main db file and are immediately visible to other connections.
-                stmt.execute("PRAGMA journal_mode = DELETE")
+                stmt.execute("PRAGMA journal_mode = WAL")
                 stmt.execute(
                     """
                     CREATE TABLE IF NOT EXISTS events (
@@ -42,8 +58,58 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     """.trimIndent()
                 )
             }
+            // Create durable operation journal tables.
+            OperationJournalSchema.create(conn)
+            // Migrate operation_journal schema: add started_at + ended_at columns if absent.
+            // Idempotent: safe to run on pre-M3-R3 databases.
+            migrateOperationJournalSchema(conn)
+            // M3-R4.1 T-02: backfill run_id from input JSON for pre-existing rows.
+            // Idempotent: only updates rows where run_id IS NULL.
+            backfillRunId(conn)
         } finally {
             conn.close()
+        }
+    }
+
+    /**
+     * Idempotent schema migration for operation_journal.
+     * Adds started_at INTEGER and ended_at INTEGER columns if they do not already exist.
+     * Safe to call on databases created with the M3-R1 schema (before this migration).
+     */
+    private fun migrateOperationJournalSchema(conn: java.sql.Connection) {
+        conn.createStatement().use { stmt ->
+            // Check which columns exist in operation_journal
+            val existingColumns = mutableSetOf<String>()
+            stmt.executeQuery("PRAGMA table_info(operation_journal)").use { rs ->
+                while (rs.next()) {
+                    existingColumns.add(rs.getString("name"))
+                }
+            }
+            // Idempotent: only ALTER if column is absent
+            if (!existingColumns.contains("started_at")) {
+                stmt.execute("ALTER TABLE operation_journal ADD COLUMN started_at INTEGER")
+            }
+            if (!existingColumns.contains("ended_at")) {
+                stmt.execute("ALTER TABLE operation_journal ADD COLUMN ended_at INTEGER")
+            }
+            // M3-R4.1 C-032: add run_id column and index if absent
+            if (!existingColumns.contains("run_id")) {
+                stmt.execute("ALTER TABLE operation_journal ADD COLUMN run_id TEXT")
+                stmt.execute("CREATE INDEX IF NOT EXISTS operation_journal_run_id_idx ON operation_journal(run_id)")
+            }
+        }
+    }
+
+    /**
+     * Backfills run_id from the input JSON for pre-M3-R4.1 rows.
+     * Idempotent: only updates rows where run_id IS NULL.
+     * Uses json_extract to pull $.runId from the input JSON blob.
+     */
+    private fun backfillRunId(conn: java.sql.Connection) {
+        conn.createStatement().use { stmt ->
+            stmt.execute(
+                "UPDATE operation_journal SET run_id = json_extract(input, '\$.runId') WHERE run_id IS NULL"
+            )
         }
     }
 
@@ -101,4 +167,19 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     override fun close() {
         // No-op: we use fresh connections per operation.
     }
+
+    /**
+     * Exposes the underlying connection factory for use by [OperationJournal]
+     * and [ReplayCursorStore].
+     *
+     * This is intentionally internal — it is only used within the durable
+     * execution subsystem that shares the same SQLite database file.
+     */
+    fun underlyingConnectionFactory(): () -> Connection = { freshConnection() }
+
+    /**
+     * Exposes the database file path for use by [SqliteOperationJournalImpl]
+     * to enable cross-instance [DbLock] synchronization.
+     */
+    fun databasePath(): String = file
 }

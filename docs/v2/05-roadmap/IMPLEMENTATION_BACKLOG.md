@@ -54,8 +54,15 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-07** `script {}` bridge.
 - **E4-08** retry Attempts.
 - **E4-09** durable timeout.
-- **E4-10** parallel Frames/join.
-- **E4-11** durable process task/reattach model.
+- **E4-10** parallel Frames/join. **(M3-R4.2 — exit criterion blocker)**
+- **E4-11** durable process task/reattach model. **(M3-R3 — closed v0.12.0-rc1)**
+- **E4-12** Replay cursor race fix (DEBT-2026-08-24-REPLAY-CURSOR-RACE, CRITICAL pre-existing M3-R1; WHERE clause on `saved_at` causes 60% flake in same-millisecond overwrite). **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via ADR-0030/CAS stage_index)**
+- **E4-13** Structured `OpId` data class (F01 HIGH, introduced M3-R3): replace hidden `$runId-s$stageIndex-$stepIndex` parsing in `PipelineRun.kt:234-238` with typed parse/format API or dedicated journal columns. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via C-031 OpId data class + parse/format)**
+- **E4-14** Structured `run_id` column in `operation_journal` (F04 HIGH, pre-existing updated): replace `WHERE j.input LIKE '%"runId":"$runId"%'` substring match with indexable column. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via C-032 run_id column + index + backfill)**
+- **E4-15** `OperationJournal` single-instance / global-lock pattern (F13 HIGH, pre-existing updated): `synchronized(this)` per-instance fails under multi-instance construction (UatDurable006); needs database-level lock or single-instance contract. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via ADR-0032/C-033 DbLock + busy_timeout)**
+- **E4-16** Clock-port cohesion in `:pipeline-application` (coup-002 deferred from M3-R3): route the remaining 23 `Instant.now()` bypass sites through the Clock port to close the systemic debt identified by ADR-0028 §Decision. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via ADR-0031/C-020, 0 Instant.now() remaining)**
+- **E4-17** Reconciliation output-field inspection (DEBT-2026-08-24-UAT006-RECONCILE-OUTPUT-NULL, MEDIUM partial M3-R3): currently marks FAILED on terminal status but does not inspect `output` for failure indicators; closes partial fix. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via C-027.1 status-only reconciliation)**
+- **E4-18** Machine-derived test counts in `apply-progress.yaml` (DEBT-2026-08-24-APPLY-FABRICATED-COUNTS, MEDIUM acknowledged M3-R3): apply contract amendment to forbid manual counts; counts must come from `./gradlew` output. **(M3-R4.1 — ⚠️ PARTIAL: apply-progress.yaml is machine-derived (E4-18.1 ✅), but prompts/sddk/phases/{apply,verify}.md are external framework symlinks requiring framework-maintainer action (E4-18.2 ❌). Deferred.)**
 
 ## Epic E5 — Protocol/Gateway
 - **E5-01** `.proto` v1 repo layout/governance.

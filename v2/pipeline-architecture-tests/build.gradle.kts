@@ -34,10 +34,27 @@ val v2Modules = listOf(
     "pipeline-scripting-kotlin24",
     "pipeline-testkit",
     "pipeline-events",
+    "pipeline-step-sdk:api",
+    "pipeline-step-sdk:processor",
+    "pipeline-step-sdk:runtime",
+)
+
+// Map module names to project paths
+val v2ModulePaths = mapOf(
+    "pipeline-domain" to ":pipeline-domain",
+    "pipeline-application" to ":pipeline-application",
+    "pipeline-scripting-api" to ":pipeline-scripting-api",
+    "pipeline-scripting-kotlin24" to ":pipeline-scripting-kotlin24",
+    "pipeline-testkit" to ":pipeline-testkit",
+    "pipeline-events" to ":pipeline-events",
+    "pipeline-step-sdk:api" to ":pipeline-step-sdk:api",
+    "pipeline-step-sdk:processor" to ":pipeline-step-sdk:processor",
+    "pipeline-step-sdk:runtime" to ":pipeline-step-sdk:runtime",
 )
 
 gradle.allprojects {
-    if (name in v2Modules) {
+    val projPath = project.path
+    if (projPath in v2ModulePaths.values) {
         val projName = name
         val capture = tasks.register("runtimeClasspathCapture", DefaultTask::class) {
             val out = layout.buildDirectory.file("fitness/${projName}-runtime-classpath.txt")
@@ -56,8 +73,8 @@ gradle.allprojects {
     }
 }
 
-// Ensure :pipeline-architecture-tests:test runs after all four capture tasks
-val captureTaskPaths = v2Modules.map { ":$it:runtimeClasspathCapture" }
+// Ensure :pipeline-architecture-tests:test runs after all capture tasks
+val captureTaskPaths = v2ModulePaths.values.map { "$it:runtimeClasspathCapture" }
 tasks.named("test") {
     dependsOn(captureTaskPaths)
 }

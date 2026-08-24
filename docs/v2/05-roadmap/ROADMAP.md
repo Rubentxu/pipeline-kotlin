@@ -90,6 +90,40 @@ Demostrar la tesis diferencial: Kotlin dinámico durable sin CPS.
 - replay divergence fail-closed;
 - parallel/retry state reproducible.
 
+### Sub-cycles
+
+#### M3-R3 — durable process task/reattach model — **closed v0.12.0-rc1**
+Cubrió exit criterion puntos 1 y 2 (kill+recover sin replay; divergence fail-closed).
+9 commits atómicos + 1 remediación; 18/18 escenarios COMPLIANT; 129/130 tests pass.
+Debt cerrado: 4 entradas M3-R3; roll-forward 3 (E4-12, E4-17, E4-18).
+Releases: local-only per HANDOFF §10, gap_status RELEASED_WITH_GAPS.
+
+#### M3-R4 — cerrar M3 exit criterion y mopa de deuda
+**Objetivo**: cerrar el exit criterion completo de M3 (los 3 puntos) y resolver la
+deuda surgical de M3-R3 + el systemic debt de Clock-port cohesion.
+
+**Sub-ciclos** (uno por SDDK cycle):
+
+- **M3-R4.1 — debt-mop** (path A-lite): ✅ **CLOSED** (v0.13.0-rc1, 2026-08-24)
+  - E4-12 Replay cursor race fix (CRITICAL) — ✅ closed
+  - E4-13 OpId estructurado (F01 HIGH) — ✅ closed (via ADR-0030/C-031)
+  - E4-14 `run_id` column estructurado (F04 HIGH) — ✅ closed (via ADR-0030/C-032)
+  - E4-15 Single-instance / global-lock contract (F13 HIGH) — ✅ closed (via ADR-0032/C-033)
+  - E4-16 Clock-port cohesion en `:pipeline-application` (23 sitios, coup-002) — ✅ closed (via ADR-0031/C-020)
+  - E4-17 Reconciliation output inspection (cierra parcial) — ✅ closed (C-027.1)
+  - E4-18 Apply contract amendment (machine-derived counts, sin código) — ⚠️ PARTIAL (framework-side symlink deferred)
+  - 13 debt items rolled forward to M3-R5; M3-R4.2 deferred
+  - Exit/UAT: 197/197 tests pass (0 flake), 0 CRITICAL/HIGH open
+  - ADR-0030 (CAS), ADR-0031 (Clock), ADR-0032 (DbLock) authored
+  - Local tag: v0.13.0-rc1; gap_status=RELEASED_WITH_GAPS per HANDOFF §10
+
+- **M3-R4.2 — parallel Frames/join** (path A-full, exit criterion blocker):
+  - E4-10 parallel Frames/join (ROADMAP.md:88-91 punto 3).
+  - Exit/UAT: `parallel/retry state reproducible` verificado vía UAT;
+    no regresiones en single-frame execution.
+  - Este sub-ciclo sale de scope de M3-R4.1 por ser feature sustantiva
+    (cambia runtime shape), no deuda surgical.
+
 ## M4 — Protocol + Gateway
 
 ### Objetivo

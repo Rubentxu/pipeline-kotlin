@@ -1,6 +1,10 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.durable.BranchSpec
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.JoinPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StepFailed
@@ -93,3 +97,74 @@ fun error(context: StepContext, message: String, failureKind: FailureKind, sink:
 fun sleep(context: StepContext, seconds: Long, sink: EventSink, stepIndex: Int) {
     Thread.sleep(seconds * 1000L)
 }
+
+/**
+ * Executor for [ParallelFrame] that validates branch inputs and returns successful results.
+ *
+ * This is a no-op executor for M3-R4.2: it validates that the parallel frame has at least
+ * one branch and that each branch has at least one step, then returns successful results.
+ *
+ * Concurrent branch execution using structured concurrency ([coroutineScope]/[async]/[awaitAll])
+ * is planned for M3-R4.3 (per design.md C-PAR-003).
+ *
+ * @param clock The clock for timestamps.
+ */
+class ParallelFrameExecutor(
+    private val clock: Clock,
+) {
+    init {
+        // Validate preconditions: parallel frame must have at least one branch
+        // (actual validation happens in execute() using require)
+    }
+
+    /**
+     * Executes the given [ParallelFrame] by validating inputs and returning successful results.
+     *
+     * This is a no-op implementation for M3-R4.2. Concurrent execution via coroutines
+     * is deferred to M3-R4.3.
+     *
+     * @param frame The parallel frame to execute.
+     * @param context The step context (unused in no-op implementation).
+     * @return A list of successful [BranchResult] for each branch.
+     * @throws IllegalArgumentException if the frame has no branches or any branch has no steps.
+     */
+    fun execute(
+        frame: ParallelFrame,
+        context: StepContext,
+    ): List<BranchResult> {
+        // Validate: parallel frame must have at least one branch
+        require(frame.branches.isNotEmpty()) {
+            "ParallelFrame must have at least one branch"
+        }
+
+        // Validate: each branch must have at least one step
+        frame.branches.forEachIndexed { index, branch ->
+            require(branch.steps.isNotEmpty()) {
+                "Branch '${branch.name}' at index $index must have at least one step"
+            }
+        }
+
+        // Return successful results for each branch
+        // Concurrent execution via coroutines is deferred to M3-R4.3
+        return frame.branches.mapIndexed { branchIndex, branch ->
+            BranchResult(
+                branchIndex = branchIndex,
+                outcome = "success",
+                stageIndex = branchIndex, // Placeholder; actual stage index computed in PipelineRun
+            )
+        }
+    }
+}
+
+/**
+ * Result of a single branch execution within a parallel frame.
+ *
+ * @property branchIndex The index of the branch that was executed.
+ * @property outcome The outcome string ("success" or "failure").
+ * @property stageIndex The stage index after this branch completed.
+ */
+data class BranchResult(
+    val branchIndex: Int,
+    val outcome: String,
+    val stageIndex: Int,
+)

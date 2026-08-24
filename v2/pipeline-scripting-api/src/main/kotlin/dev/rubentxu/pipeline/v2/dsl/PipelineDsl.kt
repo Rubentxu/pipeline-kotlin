@@ -19,10 +19,14 @@ data class StageSpec(
 
 /**
  * Sealed hierarchy of steps that a stage can contain.
+ *
+ * This interface extends [dev.rubentxu.pipeline.v2.domain.durable.StepSpec] to enable
+ * the domain layer's [dev.rubentxu.pipeline.v2.domain.durable.BranchSpec] to reference
+ * DSL steps without creating a domain→DSL dependency (ADR-0033).
  */
-sealed interface StepSpec {
-    val name: String
-    val type: String
+sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
+    override val name: String
+    override val type: String
     /** Retry policy for this step, or null if no retry. */
     val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? get() = null
     /** Timeout in milliseconds for this step, or null if no timeout. */

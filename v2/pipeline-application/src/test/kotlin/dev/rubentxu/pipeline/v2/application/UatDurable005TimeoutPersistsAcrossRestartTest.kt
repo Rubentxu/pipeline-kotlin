@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import java.sql.Connection
+import kotlinx.coroutines.runBlocking
 import java.sql.DriverManager
 
 /**
@@ -189,7 +190,7 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
             clock = clock,
         )
 
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         return result.getOrElse {
             fail<Nothing>("Orchestrator run failed: ${it.message}")
         }
@@ -222,7 +223,7 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
             clock = clock,
         )
 
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         return result.getOrElse { throw it }  // propagate original exception
     }
 

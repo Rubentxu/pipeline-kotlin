@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import kotlinx.coroutines.runBlocking
 
 /**
  * UAT-DURABLE-002: Divergence fails closed
@@ -111,7 +112,7 @@ class UatDurable002DivergenceFailsClosedTest {
             clock = clock,
         )
 
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         return result.getOrElse {
             throw it
         }
@@ -139,7 +140,7 @@ class UatDurable002DivergenceFailsClosedTest {
             clock = clock,
         )
 
-        return orchestrator.run(spec, runId, startFromCursor)
+        return runBlocking { orchestrator.run(spec, runId, startFromCursor) }
     }
 
     private fun deriveSharedRunId(): String {

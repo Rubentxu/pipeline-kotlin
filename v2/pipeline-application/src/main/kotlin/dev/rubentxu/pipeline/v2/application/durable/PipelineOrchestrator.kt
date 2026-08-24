@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.runBlocking
 
 /**
  * Top-level orchestrator for a durable pipeline run.
@@ -54,76 +55,78 @@ class PipelineOrchestrator(
      * @return [Result.success] with the run outcome string on success,
      *         or [Result.failure] with [DivergenceException] if divergence was detected.
      */
-    fun run(
+    suspend fun run(
         spec: PipelineSpec,
         runId: String,
         startFromCursor: Boolean,
     ): Result<String> {
-        val runStartedId = UUID.randomUUID().toString()
-        val runStartedAt = clock.now()
-        eventSink.append(
-            RunStarted(
-                eventId = runStartedId,
-                runId = runId,
-                sequence = 0L,
-                occurredAt = runStartedAt,
-                scriptPath = "",
+        return runBlocking {
+            val runStartedId = UUID.randomUUID().toString()
+            val runStartedAt = clock.now()
+            eventSink.append(
+                RunStarted(
+                    eventId = runStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = runStartedAt,
+                    scriptPath = "",
+                )
             )
-        )
 
-        val outcome: Result<String> = try {
-            // Load cursor if resuming
-            val cursor = if (startFromCursor) {
-                cursorStore.load(runId)
-            } else {
-                null
+            val outcome: Result<String> = try {
+                // Load cursor if resuming
+                val cursor = if (startFromCursor) {
+                    cursorStore.load(runId)
+                } else {
+                    null
+                }
+
+                // Execute with durable walk
+                val runOutcome = walkPipelineSpecDurable(
+                    spec = spec,
+                    runId = runId,
+                    eventSink = eventSink,
+                    journal = journal,
+                    cursorStore = cursorStore,
+                    divergenceDetector = divergenceDetector,
+                    effectReplayPolicy = effectReplayPolicy,
+                    clock = clock,
+                    startFromStageIndex = cursor?.stageIndex ?: 0,
+                    startFromStepIndex = 0,
+                )
+                Result.success(runOutcome)
+            } catch (ex: DivergenceException) {
+                Result.failure(ex)
             }
 
-            // Execute with durable walk
-            val runOutcome = walkPipelineSpecDurable(
-                spec = spec,
-                runId = runId,
-                eventSink = eventSink,
-                journal = journal,
-                cursorStore = cursorStore,
-                divergenceDetector = divergenceDetector,
-                effectReplayPolicy = effectReplayPolicy,
-                clock = clock,
-                startFromStageIndex = cursor?.stageIndex ?: 0,
-                startFromStepIndex = 0,
-            )
-            Result.success(runOutcome)
-        } catch (ex: DivergenceException) {
-            Result.failure(ex)
-        }
-
-        val runOutcomeValue = outcome.getOrElse { "failure" }
-        val runFinishedId = UUID.randomUUID().toString()
-        val runFinishedAt = clock.now()
-        eventSink.append(
-            RunFinished(
-                eventId = runFinishedId,
-                runId = runId,
-                sequence = 0L,
-                occurredAt = runFinishedAt,
-                outcome = runOutcomeValue,
-                diagnostics = if (outcome.isFailure) {
-                    listOf(
-                        ScriptingDiagnostic(
-                            severity = dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR,
-                            message = outcome.exceptionOrNull()?.message ?: "Unknown error",
-                            line = 0,
-                            column = 0,
-                            path = "",
+            val runOutcomeValue = outcome.getOrElse { "failure" }
+            val runFinishedId = UUID.randomUUID().toString()
+            val runFinishedAt = clock.now()
+            eventSink.append(
+                RunFinished(
+                    eventId = runFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = runFinishedAt,
+                    outcome = runOutcomeValue,
+                    diagnostics = if (outcome.isFailure) {
+                        listOf(
+                            ScriptingDiagnostic(
+                                severity = dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR,
+                                message = outcome.exceptionOrNull()?.message ?: "Unknown error",
+                                line = 0,
+                                column = 0,
+                                path = "",
+                            )
                         )
-                    )
-                } else {
-                    emptyList()
-                },
+                    } else {
+                        emptyList()
+                    },
+                )
             )
-        )
 
-        return outcome
+            outcome
+        }
     }
 
     /**

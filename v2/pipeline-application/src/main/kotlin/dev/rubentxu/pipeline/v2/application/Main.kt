@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Paths
 import java.security.MessageDigest
+import kotlinx.coroutines.runBlocking
 
 /**
  * CLI entry point for the V2 pipeline runner.
@@ -168,7 +169,9 @@ fun main(args: Array<String>) {
 
     // Run via orchestrator (fresh run or resume based on --resume flag)
     if (pipelineSpec != null) {
-        orchestrator.run(pipelineSpec, runId, startFromCursor = config.resumeFlag)
+        runBlocking {
+            orchestrator.run(pipelineSpec, runId, startFromCursor = config.resumeFlag)
+        }
     }
 
     val events = eventStore.eventsFor(runId).toList()

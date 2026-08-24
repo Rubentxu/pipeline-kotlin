@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
 import kotlin.io.path.writeText
 
@@ -257,7 +258,7 @@ class UatDurable004RetrySurvivesRestartTest {
             clock = clock,
         )
 
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         return result.getOrElse {
             fail<Nothing>("Orchestrator run failed: ${it.message}")
         }

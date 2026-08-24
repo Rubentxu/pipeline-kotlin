@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import kotlinx.coroutines.runBlocking
 
 /**
  * UAT-DURABLE-009: Kill during parallel branch + resume with re-attach (C-036)
@@ -262,7 +263,7 @@ class UatDurable009KillResumeBranchTest {
         )
 
         val runId = deriveRunId(spec)
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         val outcome = result.getOrElse {
             fail<Nothing>("Orchestrator run failed: ${it.message}")
         }

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import kotlinx.coroutines.runBlocking
 
 /**
  * UAT-DURABLE-007: Reconciliation divergence detection (C-027.2)
@@ -154,7 +155,7 @@ class UatDurable007DivergenceMismatchTest {
             clock = clock,
         )
 
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         return result.getOrElse {
             throw it
         }
@@ -182,7 +183,7 @@ class UatDurable007DivergenceMismatchTest {
             clock = clock,
         )
 
-        return orchestrator.run(spec, runId, startFromCursor)
+        return runBlocking { orchestrator.run(spec, runId, startFromCursor) }
     }
 
     private fun deriveSharedRunId(): String {

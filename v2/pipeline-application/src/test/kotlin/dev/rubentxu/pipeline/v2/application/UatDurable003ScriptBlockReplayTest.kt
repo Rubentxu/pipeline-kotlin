@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
 
 /**
@@ -140,7 +141,7 @@ class UatDurable003ScriptBlockReplayTest {
         )
 
         val runId = deriveSharedRunId()
-        val result = orchestrator.run(spec, runId, startFromCursor)
+        val result = runBlocking { orchestrator.run(spec, runId, startFromCursor) }
         val outcome = result.getOrElse {
             fail<Nothing>("Orchestrator run failed: ${it.message}")
         }
@@ -176,7 +177,7 @@ class UatDurable003ScriptBlockReplayTest {
 
         val runId = deriveSharedRunId()
         // Unwrap Result; DivergenceException is wrapped in Result.failure by orchestrator
-        orchestrator.run(spec, runId, startFromCursor).getOrElse { throw it }
+        runBlocking { orchestrator.run(spec, runId, startFromCursor) }.getOrElse { throw it }
     }
 
     private fun deriveSharedRunId(): String {

@@ -347,7 +347,7 @@ private fun reconcileRunningOperations(
  * @return The run outcome string ("success" or "failure").
  * @throws DivergenceException When divergence is detected or ABORT decision is returned.
  */
-internal fun walkPipelineSpecDurable(
+internal suspend fun walkPipelineSpecDurable(
     spec: PipelineSpec,
     runId: String,
     eventSink: EventSink,
@@ -487,7 +487,7 @@ internal fun walkPipelineSpecDurable(
  * @return The step outcome string.
  * @throws DivergenceException When ABORT decision is reached.
  */
-private fun emitDurableStepEvents(
+private suspend fun emitDurableStepEvents(
     step: StepSpec,
     stageIndex: Int,
     stepIndex: Int,
@@ -702,7 +702,7 @@ private fun emitDurableStepEvents(
  * (clock, opJournal, cursorStore, branchReconciler, eventSink) into a single
  * parameter, making the call site more readable.
  */
-private fun executeDurableStep(
+private suspend fun executeDurableStep(
     ctx: DurableWalkContext,
     step: StepSpec,
     stageIndex: Int,
@@ -732,7 +732,7 @@ private fun executeDurableStep(
  *
  * Overload retained for backward compatibility with existing call sites.
  */
-private fun executeDurableStep(
+private suspend fun executeDurableStep(
     step: StepSpec,
     stageIndex: Int,
     stepIndex: Int,
@@ -764,7 +764,7 @@ private fun executeDurableStep(
  * Internal implementation of [executeDurableStep]. Both public overloads delegate here
  * to avoid code duplication.
  */
-private fun executeDurableStepImpl(
+private suspend fun executeDurableStepImpl(
     step: StepSpec,
     stageIndex: Int,
     stepIndex: Int,
@@ -1218,7 +1218,7 @@ private fun emitParallelBranchFinished(
  * @param runOutcomeRef Atomic reference for run outcome propagation.
  * @return The step outcome string ("success" or "failure").
  */
-private fun walkParallelFrame(
+private suspend fun walkParallelFrame(
     frame: dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame,
     stageIndex: Int,
     stepIndex: Int,
@@ -1335,7 +1335,7 @@ private fun walkParallelFrame(
  * @param runOutcomeRef Atomic reference for run outcome.
  * @return The branch outcome string.
  */
-private fun walkBranchDurable(
+private suspend fun walkBranchDurable(
     branch: dev.rubentxu.pipeline.v2.domain.durable.BranchSpec,
     branchIndex: Int,
     parentOpId: OpId,

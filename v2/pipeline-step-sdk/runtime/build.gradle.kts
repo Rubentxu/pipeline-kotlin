@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-events"))
+    implementation(libs.kotlinx.coroutines.core)
     ksp(project(":pipeline-step-sdk:processor"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

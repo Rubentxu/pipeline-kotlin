@@ -25,6 +25,7 @@ import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.application.durable.DurableWalkContext
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceException
@@ -694,8 +695,76 @@ private fun emitDurableStepEvents(
 
 /**
  * Executes a step and returns the outcome string.
+ *
+ * ## Overload with [DurableWalkContext]
+ *
+ * This overload accepts a [DurableWalkContext] which packages the shared parameters
+ * (clock, opJournal, cursorStore, branchReconciler, eventSink) into a single
+ * parameter, making the call site more readable.
  */
 private fun executeDurableStep(
+    ctx: DurableWalkContext,
+    step: StepSpec,
+    stageIndex: Int,
+    stepIndex: Int,
+    runId: String,
+    divergenceDetector: DivergenceDetector,
+    effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
+    runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+): String {
+    return executeDurableStepImpl(
+        step = step,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        runId = runId,
+        eventSink = ctx.eventSink,
+        journal = ctx.opJournal,
+        cursorStore = ctx.cursorStore,
+        divergenceDetector = divergenceDetector,
+        effectReplayPolicy = effectReplayPolicy,
+        clock = ctx.clock,
+        runOutcomeRef = runOutcomeRef,
+    )
+}
+
+/**
+ * Executes a step and returns the outcome string.
+ *
+ * Overload retained for backward compatibility with existing call sites.
+ */
+private fun executeDurableStep(
+    step: StepSpec,
+    stageIndex: Int,
+    stepIndex: Int,
+    runId: String,
+    eventSink: EventSink,
+    journal: OperationJournal,
+    cursorStore: ReplayCursorStore,
+    divergenceDetector: DivergenceDetector,
+    effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
+    clock: Clock,
+    runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+): String {
+    return executeDurableStepImpl(
+        step = step,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        runId = runId,
+        eventSink = eventSink,
+        journal = journal,
+        cursorStore = cursorStore,
+        divergenceDetector = divergenceDetector,
+        effectReplayPolicy = effectReplayPolicy,
+        clock = clock,
+        runOutcomeRef = runOutcomeRef,
+    )
+}
+
+/**
+ * Internal implementation of [executeDurableStep]. Both public overloads delegate here
+ * to avoid code duplication.
+ */
+private fun executeDurableStepImpl(
     step: StepSpec,
     stageIndex: Int,
     stepIndex: Int,

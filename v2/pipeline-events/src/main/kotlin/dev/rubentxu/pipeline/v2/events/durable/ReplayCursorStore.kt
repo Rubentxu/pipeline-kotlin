@@ -47,11 +47,20 @@ interface ReplayCursorStore {
      * `max(branchResults.map { it.stageIndex })` and atomically writes
      * the new cursor position using the same idempotent CAS semantics as [advance].
      *
+     * @param runId The run identifier, used to derive cursor keys.
      * @param frame The parallel frame that just completed.
      * @param branchResults The results of each branch, containing the stage index.
+     * @param explicitMaxStageIndex Optional explicit max stage index. When non-null,
+     *        overrides the computed max from branchResults. Use this when the caller
+     *        knows the stage index more accurately than branchResults can provide.
      * @return The new [StageIndex] after advancing.
      */
-    fun advancePastParallelFrame(frame: ParallelFrame, branchResults: List<BranchExecutionResult>): StageIndex
+    fun advancePastParallelFrame(
+        runId: String,
+        frame: ParallelFrame,
+        branchResults: List<BranchExecutionResult>,
+        explicitMaxStageIndex: Int? = null,
+    ): StageIndex
 }
 
 /**
@@ -193,19 +202,23 @@ class SqliteReplayCursorStoreImpl(
      * @return The new [StageIndex] after advancing.
      */
     override fun advancePastParallelFrame(
+        runId: String,
         frame: ParallelFrame,
         branchResults: List<BranchExecutionResult>,
+        explicitMaxStageIndex: Int?,
     ): StageIndex {
-        // Compute max stage index from all branch results (join barrier - ADR-0035)
-        val maxStageIndex = branchResults
-            .maxOfOrNull { it.stageIndex }
+        // Compute max stage index from branchResults, or use explicit value if provided
+        val maxStageIndex = explicitMaxStageIndex
+            ?: branchResults.maxOfOrNull { it.stageIndex }
             ?: 0
 
         val conn = connectionFactory()
         try {
-            // Use parent opId format: "runId-s{stageIndex}-{stepIndex}"
-            // For parallel frame, we use the parent frame's opId (without branch suffix)
-            val parentOpId = "parallel-frame"
+            // Derive cursor keys from runId per ADR-0035 §Decision:
+            // run_id for the join barrier is "$runId:parallel"
+            // last_op_id is "$runId:parallel-completed"
+            val parallelCursorKey = "$runId:parallel"
+            val parallelCompletedKey = "$runId:parallel-completed"
 
             conn.prepareStatement(
                 """
@@ -218,8 +231,8 @@ class SqliteReplayCursorStoreImpl(
                 WHERE excluded.stage_index >= replay_cursor.stage_index
                 """.trimIndent()
             ).use { ps ->
-                ps.setString(1, parentOpId)
-                ps.setString(2, "parallel-frame-completed")
+                ps.setString(1, parallelCursorKey)
+                ps.setString(2, parallelCompletedKey)
                 ps.setInt(3, maxStageIndex)
                 ps.setLong(4, clock.now().toEpochMilli())
                 ps.executeUpdate()

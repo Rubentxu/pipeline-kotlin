@@ -1313,7 +1313,7 @@ private fun walkParallelFrame(
     // Advance cursor past parallel frame (join barrier - ADR-0035)
     // Uses max stage index from all branches
     val maxBranchStageIndex = stageIndex + frame.branches.size
-    cursorStore.advance(runId, parentOpId.format(), maxBranchStageIndex)
+    cursorStore.advancePastParallelFrame(runId, frame, emptyList(), maxBranchStageIndex)
 
     return overallOutcome
 }

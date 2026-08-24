@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.application.durable.OpId
@@ -73,63 +74,80 @@ class BranchReconciler(
     private val reconciliationLock = Any()
 
     /**
-     * Scans for branches left RUNNING after a crash and returns reconciliation results.
+     * Scans for branches and returns reconciliation results for ALL branches found.
      *
-     * For each RUNNING operation with a branchIndex in its opId, this method:
-     * 1. Parses the opId to extract the runId and branchIndex
-     * 2. Looks up the last durable checkpoint from [cursorStore]
-     * 3. Determines if the branch is stuck (RUNNING for too long)
-     * 4. Returns a [ReconciledBranch] with the reconciliation findings
+     * For each branch operation found in the journal:
+     * - If it has a RUNNING row → NEEDS_REATTACH (unless stuck) or STUCK
+     * - If it has a terminal row (SUCCEEDED/FAILED) → SUCCESS
+     *
+     * This ensures walkParallelFrame can skip completed branches even when they
+     * have no RUNNING row (normal completion before kill).
      *
      * @param runId The pipeline run to reconcile.
-     * @return A list of [ReconciledBranch] results, one per RUNNING branch found.
+     * @return A list of [ReconciledBranch] results, one per branch found.
      */
     suspend fun reconcileRunningOperations(runId: String): List<ReconciledBranch> {
         return synchronized(reconciliationLock) {
-            val runningOps = opJournal.listForRun(runId)
-                .filter { it.status == dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.RUNNING }
+            val allOps = opJournal.listForRun(runId)
 
-            runningOps.mapNotNull { op ->
-                // Parse opId to check if this is a branch operation
-                val parsedOpId = OpId.parse(op.id) ?: return@mapNotNull null
+            // Collect all branch indices that have any journal entry
+            val allBranchIndices = allOps
+                .mapNotNull { op -> OpId.parse(op.id)?.branchIndex }
+                .toSet()
 
-                // Only process branch-scoped operations
-                val branchIndex = parsedOpId.branchIndex ?: return@mapNotNull null
+            allBranchIndices.mapNotNull { branchIndex ->
+                // Find the RUNNING operation for this branch (if any)
+                val runningOp = allOps.firstOrNull {
+                    OpId.parse(it.id)?.branchIndex == branchIndex &&
+                    it.status == OperationStatus.RUNNING
+                }
 
-                // Look up the last durable checkpoint for this branch's run
-                val cursor = cursorStore.load(runId)
-                val lastCheckpointStageIndex = cursor?.stageIndex ?: 0
+                if (runningOp != null) {
+                    // Branch is still RUNNING — check if stuck
+                    val cursor = cursorStore.load(runId)
+                    val lastCheckpointStageIndex = cursor?.stageIndex ?: 0
 
-                // Check if the branch has been RUNNING for too long (stuck detection)
-                val startedAt = opJournal.getStartedAt(op.id, op.attempt)
-                val isStuck = if (startedAt != null) {
-                    val elapsedMinutes = (clock.now().toEpochMilli() - startedAt) / 60_000L
-                    elapsedMinutes >= stuckThresholdMinutes
+                    val startedAt = opJournal.getStartedAt(runningOp.id, runningOp.attempt)
+                    val isStuck = if (startedAt != null) {
+                        val elapsedMinutes = (clock.now().toEpochMilli() - startedAt) / 60_000L
+                        elapsedMinutes >= stuckThresholdMinutes
+                    } else {
+                        false
+                    }
+
+                    val status = when {
+                        isStuck -> ReconciliationStatus.STUCK
+                        else -> ReconciliationStatus.NEEDS_REATTACH
+                    }
+
+                    val suggestedAction = when (status) {
+                        ReconciliationStatus.SUCCESS -> "No action needed."
+                        ReconciliationStatus.NEEDS_REATTACH ->
+                            "Re-attach branch $branchIndex at stage $lastCheckpointStageIndex. " +
+                            "Branch was left RUNNING but has a valid checkpoint."
+                        ReconciliationStatus.STUCK ->
+                            "Branch $branchIndex is stuck (RUNNING for more than $stuckThresholdMinutes minutes). " +
+                            "Manual intervention may be required."
+                    }
+
+                    ReconciledBranch(
+                        opId = runningOp.id,
+                        lastStage = lastCheckpointStageIndex,
+                        status = status,
+                        suggestedAction = suggestedAction,
+                    )
                 } else {
-                    false
+                    // No RUNNING row — branch completed normally (SUCCEEDED/FAILED)
+                    val terminalOp = allOps.firstOrNull {
+                        OpId.parse(it.id)?.branchIndex == branchIndex
+                    }
+                    ReconciledBranch(
+                        opId = terminalOp?.id ?: "unknown",
+                        lastStage = 0,
+                        status = ReconciliationStatus.SUCCESS,
+                        suggestedAction = "No action needed. Already completed.",
+                    )
                 }
-
-                val status = when {
-                    isStuck -> ReconciliationStatus.STUCK
-                    else -> ReconciliationStatus.NEEDS_REATTACH
-                }
-
-                val suggestedAction = when (status) {
-                    ReconciliationStatus.SUCCESS -> "No action needed."
-                    ReconciliationStatus.NEEDS_REATTACH ->
-                        "Re-attach branch $branchIndex at stage $lastCheckpointStageIndex. " +
-                        "Branch was left RUNNING but has a valid checkpoint."
-                    ReconciliationStatus.STUCK ->
-                        "Branch $branchIndex is stuck (RUNNING for more than $stuckThresholdMinutes minutes). " +
-                        "Manual intervention may be required."
-                }
-
-                ReconciledBranch(
-                    opId = op.id,
-                    lastStage = lastCheckpointStageIndex,
-                    status = status,
-                    suggestedAction = suggestedAction,
-                )
             }
         }
     }

@@ -73,12 +73,11 @@ class UatDurable009KillResumeBranchTest {
      * 1. Run 1: 3-branch parallel frame completes (all branches ok).
      *    Then: simulate kill by reverting branch-1 journal to RUNNING and
      *    deleting its ParallelBranchFinished event.
-     * 2. Run 2 (resume): system resumes from cursor; all branches re-execute.
-     *    BranchReconciler is NOT yet integrated into the execution path,
-     *    so completed branches ARE re-executed on resume.
-     * 3. Verify: counters show branches re-executed (current behavior).
-     *    Note: The T-08 acceptance criteria (d) "completed NOT re-executed"
-     *    requires BranchReconciler integration which is pending.
+     * 2. Run 2 (resume): system resumes from cursor; BranchReconciler
+     *    drives per-branch skip/re-attach decisions.
+     *    SUCCEEDED branches skip (counter stays "1").
+     *    NEEDS_REATTACH branch-1 re-attaches and completes.
+     * 3. Verify: EC-6(d) — completed branches NOT re-executed (counter == "1").
      */
     @Test
     fun `kill mid-branch resume completes successfully`() {
@@ -107,14 +106,15 @@ class UatDurable009KillResumeBranchTest {
         // Simulate kill: revert branch-1 journal entry to RUNNING state
         // and delete its ParallelBranchFinished event.
         // This simulates: branch-1 began, was running, then SIGKILL arrived.
-        simulateKillBranch1(dbPath, clock)
+        val runId1 = deriveRunId(threeBranchParallelSpec(counterFile0, counterFile1, counterFile2))
+        simulateKillBranch1(dbPath, clock, runId1)
 
         // Advance clock to simulate time passing (so stuck detection doesn't trigger)
         clock.advanceTo(java.time.Instant.parse("2026-08-24T12:05:00Z"))
 
-        // Run 2 (resume): system resumes from cursor. BranchReconciler is NOT yet
-        // integrated, so ALL branches re-execute. After the full kill+resume flow,
-        // the overall outcome must still be success.
+        // Run 2 (resume): BranchReconciler drives skip/re-attach.
+        // SUCCEEDED branches (0, 2) skip. NEEDS_REATTACH branch-1 re-attaches.
+        // EC-6(d): completed branches NOT re-executed (counter == "1").
         val (run2Outcome) = runOrchestrated(
             dbPath = dbPath,
             spec = threeBranchParallelSpec(counterFile0, counterFile1, counterFile2),
@@ -122,14 +122,18 @@ class UatDurable009KillResumeBranchTest {
             clock = clock,
         )
         assertEquals("success", run2Outcome, "Resume must succeed")
+
+        // EC-6(d): completed branches must NOT re-execute on resume
+        assertEquals("1", readCounter(counterFile0), "completed branch 0 must NOT re-execute on resume")
+        assertEquals("1", readCounter(counterFile2), "completed branch 2 must NOT re-execute on resume")
     }
 
     /**
      * Scenario: Branch-1 fails (exit 1) during parallel frame.
      * After kill simulation and resume with fixed spec, overall outcome is success.
      *
-     * Note: BranchReconciler is NOT integrated into the execution path yet.
-     * On resume, all branches re-execute regardless of their prior state.
+     * BranchReconciler drives skip/re-attach: SUCCEEDED branches skip,
+     * NEEDS_REATTACH re-attaches. EC-6(d) counter invariants apply.
      */
     @Test
     fun `resume after branch-1 failure completes with success`() {
@@ -150,7 +154,8 @@ class UatDurable009KillResumeBranchTest {
         // First run may have failed or succeeded depending on join policy
 
         // Simulate kill after failure: revert branch-1 to RUNNING state
-        simulateKillBranch1(dbPath, clock)
+        val failingRunId = deriveRunId(threeBranchParallelWithFailingBranch1(counterFile0, counterFile1, counterFile2))
+        simulateKillBranch1(dbPath, clock, failingRunId)
         clock.advanceTo(java.time.Instant.parse("2026-08-24T12:05:00Z"))
 
         // Run 2 (resume): resume with fixed spec - outcome must be success
@@ -161,6 +166,11 @@ class UatDurable009KillResumeBranchTest {
             clock = clock,
         )
         assertEquals("success", run2Outcome, "Resume with fixed spec must succeed")
+
+        // NOTE: EC-6(d) counter assertions are NOT verifiable in this scenario
+        // because run 1 (failing spec) and run 2 (working spec) have different runIds,
+        // so journal entries from run 1 are not found in run 2. All branches re-execute.
+        // This scenario validates outcome correctness (resume succeeds) rather than skip behavior.
     }
 
     /**
@@ -203,7 +213,8 @@ class UatDurable009KillResumeBranchTest {
         assertEquals("success", run1Outcome)
 
         // Simulate kill: revert branch-1 to RUNNING
-        simulateKillBranch1(dbPath, clock)
+        val runIdForKill = deriveRunId(threeBranchParallelSpec(counterFile0, counterFile1, counterFile2))
+        simulateKillBranch1(dbPath, clock, runIdForKill)
         clock.advanceTo(java.time.Instant.parse("2026-08-24T12:05:00Z"))
 
         // Now manually check that branch-1 is in RUNNING state via direct SQL
@@ -425,8 +436,12 @@ class UatDurable009KillResumeBranchTest {
      * - branch-0 and branch-2 are COMPLETED
      * - branch-1 is RUNNING (recoverable)
      * - On resume, BranchReconciler finds branch-1 RUNNING and re-attaches
+     *
+     * @param dbPath Database path
+     * @param clock Clock instance
+     * @param runId The runId to use — must match the spec used in the run being simulated as killed
      */
-    private fun simulateKillBranch1(dbPath: String, clock: MutableClock) {
+    private fun simulateKillBranch1(dbPath: String, clock: MutableClock, runId: String) {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
         val journal: OperationJournal = SqliteOperationJournalImpl(
@@ -436,12 +451,7 @@ class UatDurable009KillResumeBranchTest {
             dbPath,
         )
 
-        // Derive the runId and branch-1 opId
-        val counterFile0 = tempDir.resolve("counter-009-branch0.txt").toString()
-        val counterFile1 = tempDir.resolve("counter-009-branch1.txt").toString()
-        val counterFile2 = tempDir.resolve("counter-009-branch2.txt").toString()
-        val spec = threeBranchParallelSpec(counterFile0, counterFile1, counterFile2)
-        val runId = deriveRunId(spec)
+        // Branch-1 opId in this run
         val branch1OpId = "$runId-s0-0-b1"
 
         // Revert branch-1 journal entry to RUNNING

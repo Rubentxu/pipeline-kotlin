@@ -120,7 +120,7 @@ class BranchReconcilerIntegrationTest {
     }
 
     @Test
-    fun `reconciler returns empty list when no RUNNING branches`() {
+    fun `reconciler returns SUCCESS for completed branches when no RUNNING branches`() {
         val journal = FakeOperationJournal()
         val cursorStore = FakeReplayCursorStore()
         val clock = FakeClock()
@@ -136,7 +136,10 @@ class BranchReconcilerIntegrationTest {
             reconciler.reconcileRunningOperations(runId)
         }
 
-        assertTrue(reconciledBranches.isEmpty(), "No RUNNING branches should return empty list")
+        // M3-R4.4: Returns SUCCESS entries for ALL branches (not just RUNNING)
+        // This allows walkParallelFrame to skip SUCCEEDED branches instead of re-executing
+        assertEquals(1, reconciledBranches.size, "Should return SUCCESS entry for completed branch")
+        assertEquals(ReconciliationStatus.SUCCESS, reconciledBranches[0].status)
     }
 
     @Test
@@ -163,9 +166,16 @@ class BranchReconcilerIntegrationTest {
             reconciler.reconcileRunningOperations(runId)
         }
 
-        assertEquals(1, reconciledBranches.size, "Only RUNNING branches should be returned")
-        val branch1 = reconciledBranches[0]
-        assertEquals(branch1OpId, branch1.opId)
-        assertEquals(ReconciliationStatus.NEEDS_REATTACH, branch1.status)
+        // M3-R4.4: Returns entries for ALL branches (SUCCEEDED + RUNNING)
+        // SUCCEEDED branches have status SUCCESS, RUNNING has NEEDS_REATTACH
+        assertEquals(3, reconciledBranches.size, "Should return all 3 branches")
+
+        val byBranchIndex = reconciledBranches.associateBy {
+            OpId.parse(it.opId)?.branchIndex
+        }
+
+        assertEquals(ReconciliationStatus.SUCCESS, byBranchIndex[0]?.status, "branch-0 is SUCCEEDED")
+        assertEquals(ReconciliationStatus.NEEDS_REATTACH, byBranchIndex[1]?.status, "branch-1 is RUNNING")
+        assertEquals(ReconciliationStatus.SUCCESS, byBranchIndex[2]?.status, "branch-2 is SUCCEEDED")
     }
 }

@@ -3,7 +3,7 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
-group = "com.pipeline.v2"
+group = "dev.rubentxu.pipeline.v2"
 version = "0.1.0-SNAPSHOT"
 
 kotlin {

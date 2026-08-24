@@ -59,7 +59,7 @@ between the M1 substrate and the M2 grammar work.
    See `ScriptDefinition.dslApiJar()` for the discovery mechanism.
 
 5. **No new Gradle module.** All DSL types live in
-   `pipeline-scripting-api/src/main/kotlin/com/pipeline/v2/dsl/`.
+   `pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/`.
 
 ## Risks & Open Questions
 

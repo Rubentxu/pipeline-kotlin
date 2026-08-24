@@ -63,6 +63,9 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             // Migrate operation_journal schema: add started_at + ended_at columns if absent.
             // Idempotent: safe to run on pre-M3-R3 databases.
             migrateOperationJournalSchema(conn)
+            // M3-R4.1 T-02: backfill run_id from input JSON for pre-existing rows.
+            // Idempotent: only updates rows where run_id IS NULL.
+            backfillRunId(conn)
         } finally {
             conn.close()
         }
@@ -94,6 +97,19 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 stmt.execute("ALTER TABLE operation_journal ADD COLUMN run_id TEXT")
                 stmt.execute("CREATE INDEX IF NOT EXISTS operation_journal_run_id_idx ON operation_journal(run_id)")
             }
+        }
+    }
+
+    /**
+     * Backfills run_id from the input JSON for pre-M3-R4.1 rows.
+     * Idempotent: only updates rows where run_id IS NULL.
+     * Uses json_extract to pull $.runId from the input JSON blob.
+     */
+    private fun backfillRunId(conn: java.sql.Connection) {
+        conn.createStatement().use { stmt ->
+            stmt.execute(
+                "UPDATE operation_journal SET run_id = json_extract(input, '\$.runId') WHERE run_id IS NULL"
+            )
         }
     }
 

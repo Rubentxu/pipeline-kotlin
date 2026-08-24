@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
 import java.sql.Connection
 
 /**
@@ -37,7 +38,41 @@ interface ReplayCursorStore {
      * @param stageIndex The stage index at which execution should resume.
      */
     fun advance(runId: String, opId: String, stageIndex: Int)
+
+    /**
+     * Advances the replay cursor past a parallel frame, using the maximum
+     * stage index from all branch results as the next cursor position.
+     *
+     * This is the join barrier for parallel frames (ADR-0035). It computes
+     * `max(branchResults.map { it.stageIndex })` and atomically writes
+     * the new cursor position using the same idempotent CAS semantics as [advance].
+     *
+     * @param frame The parallel frame that just completed.
+     * @param branchResults The results of each branch, containing the stage index.
+     * @return The new [StageIndex] after advancing.
+     */
+    fun advancePastParallelFrame(frame: ParallelFrame, branchResults: List<BranchExecutionResult>): StageIndex
 }
+
+/**
+ * Result of a single branch execution, used by [ReplayCursorStore.advancePastParallelFrame].
+ *
+ * This is a minimal data class defined in the events module to avoid a dependency
+ * from events on the step-sdk runtime module (where [BranchResult] lives).
+ *
+ * @property branchIndex The index of the branch.
+ * @property stageIndex The stage index after this branch completed.
+ */
+data class BranchExecutionResult(
+    val branchIndex: Int,
+    val stageIndex: Int,
+)
+
+/**
+ * A wrapper around [Int] representing a stage index in the replay cursor.
+ */
+@JvmInline
+value class StageIndex(val value: Int)
 
 /**
  * SQLite-backed implementation of [ReplayCursorStore].
@@ -137,5 +172,61 @@ class SqliteReplayCursorStoreImpl(
         } finally {
             conn.close()
         }
+    }
+
+    /**
+     * Advances the replay cursor past a parallel frame.
+     *
+     * Computes `max(branchResults.map { it.stageIndex })` and atomically
+     * writes the new cursor position using the same idempotent CAS semantics
+     * as [advance].
+     *
+     * ## Concurrency note (ADR-0035)
+     *
+     * Full concurrency stress testing for this join barrier is deferred to M3-R4.3.
+     * The current implementation relies on SQLite's transaction isolation and the
+     * idempotent ON CONFLICT clause for safety, but production concurrency
+     * should be validated with UatDurable010 before promotion.
+     *
+     * @param frame The parallel frame that just completed.
+     * @param branchResults The results of each branch.
+     * @return The new [StageIndex] after advancing.
+     */
+    override fun advancePastParallelFrame(
+        frame: ParallelFrame,
+        branchResults: List<BranchExecutionResult>,
+    ): StageIndex {
+        // Compute max stage index from all branch results (join barrier - ADR-0035)
+        val maxStageIndex = branchResults
+            .maxOfOrNull { it.stageIndex }
+            ?: 0
+
+        val conn = connectionFactory()
+        try {
+            // Use parent opId format: "runId-s{stageIndex}-{stepIndex}"
+            // For parallel frame, we use the parent frame's opId (without branch suffix)
+            val parentOpId = "parallel-frame"
+
+            conn.prepareStatement(
+                """
+                INSERT INTO replay_cursor (run_id, last_op_id, stage_index, saved_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    last_op_id = excluded.last_op_id,
+                    stage_index = excluded.stage_index,
+                    saved_at = excluded.saved_at
+                WHERE excluded.stage_index >= replay_cursor.stage_index
+                """.trimIndent()
+            ).use { ps ->
+                ps.setString(1, parentOpId)
+                ps.setString(2, "parallel-frame-completed")
+                ps.setInt(3, maxStageIndex)
+                ps.setLong(4, clock.now().toEpochMilli())
+                ps.executeUpdate()
+            }
+        } finally {
+            conn.close()
+        }
+        return StageIndex(maxStageIndex)
     }
 }

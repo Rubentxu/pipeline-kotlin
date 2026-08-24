@@ -37,8 +37,13 @@ object OperationJournalSchema {
             created_at  INTEGER NOT NULL,
             updated_at  INTEGER NOT NULL,
             deadline_ms INTEGER,
+            run_id      TEXT,
             PRIMARY KEY (op_id, attempt)
         )
+    """
+
+    const val CREATE_OPERATION_JOURNAL_RUN_ID_IDX = """
+        CREATE INDEX IF NOT EXISTS operation_journal_run_id_idx ON operation_journal(run_id)
     """
 
     const val CREATE_REPLAY_CURSOR = """

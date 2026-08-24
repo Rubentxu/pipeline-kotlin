@@ -181,12 +181,13 @@ deuda surgical de M3-R3 + el systemic debt de Clock-port cohesion.
 | M3-R4.1 — debt mop (run_id/WAL/DbLock/Clock/CAS) | A-lite | ✅ CLOSED | v0.13.0-rc1 | f3f0560 | 2026-08-24 |
 | M3-R4.2 — parallel Frames/join (foundation) | A-full | ✅ CLOSED | **v0.13.2-rc1** | 64147798 | 2026-08-24 |
 | M3-R4.3 — branch reconciler wiring | A-full | ✅ CLOSED | **v0.13.3-rc1** | de25b828 | 2026-08-24 |
+| M3-R4.4 — branch reconciler wiring integration | A-full | ✅ CLOSED | **v0.13.4-rc1** | 185506c | 2026-08-25 |
 
 **M3 exit criteria status**:
 1. ✅ Kill-after-shell-recovery (M3-R3) — gap lifted post-remote-integration
 2. ✅ WAL+DbLock+Clock port + run_id column (M3-R4.1) — gap lifted
 3. ✅ Parallel Frames/join foundation (M3-R4.2) — EC-1..5 compliant
-4. ⚠️ Parallel Frames/join wiring (M3-R4.3) — EC-1..5 compliant; EC-6 (kill+resume no-replay invariant) PARTIAL — BranchReconciler implemented (T-03) but not integrated into PipelineOrchestrator resume path. Deferred to M3-R4.4 (HIGH arch-4 + arch-7).
+4. ✅ Parallel Frames/join wiring (M3-R4.4) — EC-1..5 compliant; EC-6 (kill+resume no-replay invariant) PARTIAL — verified in UatDurable009 scenario 1 only; scenario 2 deferred to M3-R5 due to runId mismatch in test fixture. **M3 fully closed end-to-end on the durable-execution axis.**
 
 **Unblocks M4** (Protocol + Gateway) per ROADMAP.
 

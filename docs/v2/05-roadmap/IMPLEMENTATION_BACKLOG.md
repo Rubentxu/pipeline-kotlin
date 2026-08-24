@@ -72,15 +72,26 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-18** Machine-derived test counts in `apply-progress.yaml` (DEBT-2026-08-24-APPLY-FABRICATED-COUNTS, MEDIUM acknowledged M3-R3): apply contract amendment to forbid manual counts; counts must come from `./gradlew` output. **(M3-R4.1 — ⚠️ PARTIAL: apply-progress.yaml is machine-derived (E4-18.1 ✅), but prompts/sddk/phases/{apply,verify}.md are external framework symlinks requiring framework-maintainer action (E4-18.2 ❌). Deferred.)**
 
 ## Epic E5 — Protocol/Gateway
-## M3-R4.4 — branch reconciler wiring integration (next cycle, deferred from M3-R4.3)
-- **E4-26** Wire `BranchReconciler.reconcileRunningOperations()` into `PipelineOrchestrator.run()` resume path. Remove inline private `reconcileRunningOperations` at `PipelineRun.kt:229-317`. **(M3-R4.4 — ⏳ P0 follow-up, deferred from M3-R4.3 HIGH arch-4)**
-- **E4-27** Replace `walkParallelFrame` sequential `forEachIndexed` at `PipelineRun.kt:1277` with concurrency-driven branch dispatch via `ParallelFrameExecutor`. **(M3-R4.4 — ⏳ P0 follow-up, deferred from M3-R4.3 HIGH arch-7)**
-- **E4-28** `UatDurable009KillResumeBranchTest` no-replay assertion: assert that counter file for completed branches is NOT incremented on resume (EC-6(d) invariant). Currently deferred because branches re-execute due to integration gap. **(M3-R4.4 — ⏳ EC-6 completion, deferred from M3-R4.3)**
-- **E4-29** Resolve `dup-6` (two reconcileRunningOperations implementations) by deleting the inline private fun once the class is wired. **(M3-R4.4 — ⏳ MEDIUM follow-up)**
-- **E4-30** Tighten `beginOperation` API surface (coup-3): remove redundant `branchIndex` parameter once caller contract is enforced upstream. **(M3-R4.4 or later — ⏳ MEDIUM follow-up)**
+## M3-R4.4 — branch reconciler wiring integration (CLOSED v0.13.4-rc1)
+- **E4-26** Wire `BranchReconciler.reconcileRunningOperations()` into resume path. **(M3-R4.4 — ✅ CLOSED: BranchReconciler IS wired into `walkPipelineSpecDurable`; uses LOCAL instance instead of `ctx.branchReconciler` per ADR-0040 design — functional behavior correct, structural deviation owned by M3-R5)**
+- **E4-27** Replace `walkParallelFrame` sequential `forEachIndexed` with concurrent dispatch. **(M3-R4.4 — ✅ CLOSED v0.13.4-rc1: `walkParallelFrame` now uses `coroutineScope { ... }.awaitAll()` via `walkBranchDurable` delegation per ADR-0041)**
+- **E4-28** `UatDurable009KillResumeBranchTest` no-replay assertion (EC-6(d)). **(M3-R4.4 — ⚠️ PARTIAL v0.13.4-rc1: counter assertions verified in scenario 1 only (counterFile0/counterFile2 == "1" after Run 2). Scenario 2 had different runIds across Run 1/Run 2 due to test fixture; deferred to M3-R5 with same-spec fixture)**
+- **E4-29** Resolve `dup-6` (two reconcileRunningOperations implementations). **(M3-R4.4 — ✅ CLOSED v0.13.4-rc1: inline deleted, `InlinedReconcileDeletedTest` grep assertion PASS)**
+- **E4-30** Tighten `beginOperation` API surface (coup-3, MEDIUM carry-forward from M3-R4.3). **(M3-R4.4 — ❌ NOT CLOSED: branchIndex parameter still redundant. Deferred to M3-R5)**
+- **NEW M3-R4.4 backlog (owned by M3-R5 debt-mop)**:
+  - **E4-31** Refactor `walkPipelineSpecDurable` to use `ctx.branchReconciler` instead of LOCAL `BranchReconciler` instance (closes FIND-coup-new-1 MEDIUM + overeng-3 LOW introduced by M3-R4.4).
+  - **E4-32** Add same-spec fixture to UatDurable009 scenario 2 to fully close EC-6(d) (counters + runId match).
 
-## M3-R5 — debt mop (next milestone sub-cycle, deferred from M3-R4.1/4.2/4.3)
-- 21 carry-forward findings (8 from M3-R4.2 still open + 13 from M3-R4.1 baseline: 4 duplication + 7 smells + 2 overeng). **(M3-R5 — ⏳ planned debt-mop cycle)**
+## M3-R5 — debt mop (next milestone sub-cycle, deferred from M3-R4.1/4.2/4.3/4.4)
+- **Carry-forwards owned by M3-R5** (per M3-R4.4 debt-report.json follow_up):
+  - 21 pre-existing carry-forwards (8 from M3-R4.2 still open + 13 from M3-R4.1 baseline: 4 duplication + 7 smells + 2 overeng).
+  - **INC-008 (NEW LOW P3)**: 12-param executeDurableStep legacy overload retained at PipelineRun.kt:637-651.
+  - **INC-009 (NEW LOW P3)**: overeng-3 confirmed OPEN — DurableWalkContext.branchReconciler field dead in production (only test references it). Verify correctly disproved apply agent's fabricated closure claim.
+  - **FIND-coup-new-1 (NEW MEDIUM)**: walkPipelineSpecDurable constructs LOCAL BranchReconciler instead of using `ctx.branchReconciler` per ADR-0040.
+  - **FIND-arch-design-dev (NEW MEDIUM)**: ADR-0040 architectural deviation; Matsumoto deletion-test fails for ctx.branchReconciler.
+  - **FIND-smell-8-partial (NEW LOW)**: 12-param legacy overload retention.
+  - 3 pre-existing from M3-R4.3: coup-3 (MEDIUM branchIndex redundancy), arch-5/6 + smell-9 (LOW).
+  - **(M3-R5 — ⏳ planned debt-mop cycle)**
 
 ## Epic E5 — Protocol/Gateway
 - **E5-01** `.proto` v1 repo layout/governance.

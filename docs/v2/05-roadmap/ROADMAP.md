@@ -90,6 +90,38 @@ Demostrar la tesis diferencial: Kotlin dinámico durable sin CPS.
 - replay divergence fail-closed;
 - parallel/retry state reproducible.
 
+### Sub-cycles
+
+#### M3-R3 — durable process task/reattach model — **closed v0.12.0-rc1**
+Cubrió exit criterion puntos 1 y 2 (kill+recover sin replay; divergence fail-closed).
+9 commits atómicos + 1 remediación; 18/18 escenarios COMPLIANT; 129/130 tests pass.
+Debt cerrado: 4 entradas M3-R3; roll-forward 3 (E4-12, E4-17, E4-18).
+Releases: local-only per HANDOFF §10, gap_status RELEASED_WITH_GAPS.
+
+#### M3-R4 — cerrar M3 exit criterion y mopa de deuda
+**Objetivo**: cerrar el exit criterion completo de M3 (los 3 puntos) y resolver la
+deuda surgical de M3-R3 + el systemic debt de Clock-port cohesion.
+
+**Sub-ciclos** (uno por SDDK cycle):
+
+- **M3-R4.1 — debt-mop** (path A-lite):
+  - E4-12 Replay cursor race fix (CRITICAL).
+  - E4-13 OpId estructurado (F01 HIGH).
+  - E4-14 `run_id` column estructurado (F04 HIGH).
+  - E4-15 Single-instance / global-lock contract (F13 HIGH).
+  - E4-16 Clock-port cohesion en `:pipeline-application` (23 sitios, coup-002).
+  - E4-17 Reconciliation output inspection (cierra parcial).
+  - E4-18 Apply contract amendment (machine-derived counts, sin código).
+  - Exit/UAT: 130/130 tests pass (0 flake), 0 debt-entry CRITICAL/HIGH abierta
+    del scope M3-R3, Clock port routing 100% en `:pipeline-application`.
+
+- **M3-R4.2 — parallel Frames/join** (path A-full, exit criterion blocker):
+  - E4-10 parallel Frames/join (ROADMAP.md:88-91 punto 3).
+  - Exit/UAT: `parallel/retry state reproducible` verificado vía UAT;
+    no regresiones en single-frame execution.
+  - Este sub-ciclo sale de scope de M3-R4.1 por ser feature sustantiva
+    (cambia runtime shape), no deuda surgical.
+
 ## M4 — Protocol + Gateway
 
 ### Objetivo

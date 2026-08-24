@@ -47,7 +47,7 @@ class OperationJournalTest {
     }
 
     @Test
-    fun `duplicate op_id rejected via PRIMARY KEY`() {
+    fun `duplicate append updates existing row (UPSERT)`() {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
@@ -62,9 +62,13 @@ class OperationJournalTest {
             attempt = 1,
         )
         journal.append(op)
-        assertThrows(Exception::class.java) {
-            journal.append(op.copy(status = OperationStatus.FAILED))
-        }
+        // Second append updates the existing row (UPSERT, not throw)
+        val secondOp = op.copy(status = OperationStatus.FAILED)
+        journal.append(secondOp)
+        // Row is updated to FAILED
+        val retrieved = journal.get("op-dup")
+        assertNotNull(retrieved)
+        assertEquals(OperationStatus.FAILED, retrieved!!.status)
     }
 
     @Test

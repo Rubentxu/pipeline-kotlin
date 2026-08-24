@@ -229,7 +229,20 @@ class SqliteOperationJournalImpl(
     /**
      * Begins a durable operation by writing a RUNNING row.
      *
-     * @throws IllegalStateException if a row already exists for (opId, attempt).
+     * ## ADR-0037 Option A: Caller-Passes-Formatted
+     *
+     * The caller is responsible for formatting the [opId] string. The [branchIndex]
+     * parameter is used only as a consistency check when both `opId` already contains
+     * a branch suffix and [branchIndex] is non-null.
+     *
+     * Consistency rules (ADR-0037 §Decision):
+     * - When `opId` already has a branch suffix AND `branchIndex != null` AND they differ → throw
+     * - When `opId` already has a branch suffix AND `branchIndex == null` → use `opId` as-is
+     * - When `opId` is root (no branch suffix) AND `branchIndex != null` → format with branchIndex
+     * - When both are null/root → root opId (existing behavior)
+     *
+     * @throws IllegalStateException if a row already exists for (opId, attempt), or if
+     *         the pre-formatted opId's branch index is inconsistent with the passed branchIndex.
      */
     override fun beginOperation(
         opId: String,
@@ -239,11 +252,34 @@ class SqliteOperationJournalImpl(
         deadlineMs: Long?,
         branchIndex: Int?,
     ) {
-        // Embed branchIndex into opId string when present
-        val fullOpId = if (branchIndex != null) {
-            "$opId-b$branchIndex"
-        } else {
-            opId
+        // ADR-0037 Option A: resolve the full opId string using string parsing.
+        // The opId format is "$runId-s$stageIndex-$stepIndex[-b$branchIndex]".
+        // We detect a branch suffix by checking for "-b{N}" at the end.
+        // This avoids a cross-module dependency on pipeline-application's OpId class.
+        val BRANCH_SUFFIX_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)(-b(\\d+))?$")
+        val branchMatch = BRANCH_SUFFIX_PATTERN.matchEntire(opId)
+        val opIdHasBranch = branchMatch?.groupValues?.get(4)?.isNotEmpty() == true
+        val embeddedBranchIndex = branchMatch?.groupValues?.get(5)?.toIntOrNull()
+
+        val fullOpId: String = when {
+            // Case: pre-formatted opId (has branch) + branchIndex provided → consistency check
+            opIdHasBranch && branchIndex != null -> {
+                if (embeddedBranchIndex != branchIndex) {
+                    throw IllegalStateException(
+                        "Inconsistent branchIndex: opId \"$opId\" already contains " +
+                        "branchIndex=$embeddedBranchIndex, but branchIndex=$branchIndex was also passed. " +
+                        "Either pass the root opId without branch suffix, or pass branchIndex=null " +
+                        "when the opId is already formatted."
+                    )
+                }
+                opId // use as-is, no double-suffix
+            }
+            // Case: pre-formatted opId (has branch) + branchIndex null → use as-is
+            opIdHasBranch && branchIndex == null -> opId
+            // Case: root opId (no branch) + branchIndex provided → format with branch
+            !opIdHasBranch && branchIndex != null -> "$opId-b$branchIndex"
+            // Case: both null/root → root opId (existing behavior)
+            else -> opId
         }
 
         DbLock.forPath(dbPath).withLock {

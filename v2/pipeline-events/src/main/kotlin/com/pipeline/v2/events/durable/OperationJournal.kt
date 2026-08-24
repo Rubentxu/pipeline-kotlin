@@ -81,6 +81,16 @@ interface OperationJournal {
     fun getEndedAt(opId: String, attempt: Int): Long?
 
     /**
+     * Retrieves the started_at timestamp (epoch ms) for a given operation attempt.
+     * Returns null if the row does not exist or started_at is NULL.
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @return The started_at timestamp in milliseconds, or `null` if not set or not found.
+     */
+    fun getStartedAt(opId: String, attempt: Int): Long?
+
+    /**
      * Begins a durable operation by writing a RUNNING row to the journal.
      *
      * This is the first half of the two-phase journal pattern (beginOperation + append).
@@ -401,6 +411,36 @@ class SqliteOperationJournalImpl(
             conn.prepareStatement(
                 """
                 SELECT ended_at
+                FROM operation_journal
+                WHERE op_id = ? AND attempt = ?
+                """.trimIndent()
+            ).use { ps ->
+                ps.setString(1, opId)
+                ps.setInt(2, attempt)
+                ps.executeQuery().use { rs ->
+                    if (!rs.next()) return null
+                    val value = rs.getLong(1)
+                    return if (rs.wasNull()) null else value
+                }
+            }
+        } finally {
+            conn.close()
+        }
+    }
+
+    /**
+     * Retrieves the started_at timestamp (epoch ms) for a given operation attempt.
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @return The started_at timestamp in milliseconds, or `null` if not set or not found.
+     */
+    override fun getStartedAt(opId: String, attempt: Int): Long? {
+        val conn = connectionFactory()
+        try {
+            conn.prepareStatement(
+                """
+                SELECT started_at
                 FROM operation_journal
                 WHERE op_id = ? AND attempt = ?
                 """.trimIndent()

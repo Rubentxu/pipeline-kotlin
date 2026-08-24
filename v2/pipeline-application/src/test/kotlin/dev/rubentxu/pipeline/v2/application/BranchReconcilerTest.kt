@@ -83,8 +83,10 @@ class BranchReconcilerTest {
             cursors[runId] = ReplayCursor(runId, opId, stageIndex, System.currentTimeMillis())
         }
         override fun advancePastParallelFrame(
+            runId: String,
             frame: ParallelFrame,
             branchResults: List<BranchExecutionResult>,
+            explicitMaxStageIndex: Int?,
         ): StageIndex {
             return StageIndex(branchResults.maxOfOrNull { it.stageIndex } ?: 0)
         }

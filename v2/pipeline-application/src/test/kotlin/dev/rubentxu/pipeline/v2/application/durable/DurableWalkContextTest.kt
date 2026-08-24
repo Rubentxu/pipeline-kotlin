@@ -57,8 +57,10 @@ class DurableWalkContextTest {
         override fun load(runId: String): dev.rubentxu.pipeline.v2.events.durable.ReplayCursor? = null
         override fun advance(runId: String, opId: String, stageIndex: Int) {}
         override fun advancePastParallelFrame(
+            runId: String,
             frame: dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame,
             branchResults: List<dev.rubentxu.pipeline.v2.events.durable.BranchExecutionResult>,
+            explicitMaxStageIndex: Int?,
         ): dev.rubentxu.pipeline.v2.events.durable.StageIndex =
             dev.rubentxu.pipeline.v2.events.durable.StageIndex(0)
         override fun equals(other: Any?) = this === other

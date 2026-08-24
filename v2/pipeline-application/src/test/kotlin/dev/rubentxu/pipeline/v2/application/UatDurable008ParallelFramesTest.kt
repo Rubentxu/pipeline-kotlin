@@ -15,6 +15,8 @@ import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.StageIndex
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.ParallelFrameExecutor
+import dev.rubentxu.pipeline.v2.sdk.runtime.ParallelFrameResult
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -61,14 +63,16 @@ class UatDurable008ParallelFramesTest {
         // When: ParallelFrameExecutor validates and processes the frame
         val executor = ParallelFrameExecutor(SystemClock())
         val context = StepContext(runId = "test-run-001")
-        val results = executor.execute(parallelFrame, context)
+        val result = runBlocking { executor.execute(parallelFrame, context) }
 
         // Then: both branches complete successfully
-        assertEquals(2, results.size, "Should have results for both branches")
-        assertEquals("success", results[0].outcome, "Branch 0 should succeed")
-        assertEquals("success", results[1].outcome, "Branch 1 should succeed")
-        assertEquals(0, results[0].branchIndex, "Branch 0 index should be 0")
-        assertEquals(1, results[1].branchIndex, "Branch 1 index should be 1")
+        assertTrue(result is ParallelFrameResult.Success, "Result should be Success")
+        val success = result as ParallelFrameResult.Success
+        assertEquals(2, success.branchResults.size, "Should have results for both branches")
+        assertEquals("success", success.branchResults[0].outcome, "Branch 0 should succeed")
+        assertEquals("success", success.branchResults[1].outcome, "Branch 1 should succeed")
+        assertEquals(0, success.branchResults[0].branchIndex, "Branch 0 index should be 0")
+        assertEquals(1, success.branchResults[1].branchIndex, "Branch 1 index should be 1")
     }
 
     /**
@@ -93,12 +97,17 @@ class UatDurable008ParallelFramesTest {
         // When: ParallelFrameExecutor processes the frame
         val executor = ParallelFrameExecutor(SystemClock())
         val context = StepContext(runId = "test-run-002")
-        val results = executor.execute(parallelFrame, context)
+        val result = runBlocking { executor.execute(parallelFrame, context) }
 
-        // Then: all branches report (in M3-R4.3, branch-1 would fail and propagate)
-        assertEquals(3, results.size, "Should have results for all three branches")
-        // M3-R4.2: no-op executor returns success for all
-        // M3-R4.3 will add actual failure propagation
+        // Then: all branches report (in M3-R4.3, branch-1 fails and overall is failure)
+        assertTrue(result is ParallelFrameResult.Failure, "Result should be Failure due to branch-1 error")
+        val failure = result as ParallelFrameResult.Failure
+        assertEquals(3, failure.branchResults.size, "Should have results for all three branches")
+        // Branch-1 error step causes branch-1 to fail
+        assertTrue(
+            failure.branchResults.any { it.outcome == "failure" },
+            "At least one branch should have failed"
+        )
     }
 
     /**
@@ -193,7 +202,7 @@ class UatDurable008ParallelFramesTest {
 
         // Then: validation error is thrown
         val exception = runCatching {
-            executor.execute(emptyFrame, context)
+            runBlocking { executor.execute(emptyFrame, context) }
         }.exceptionOrNull()
 
         assertNotNull(exception, "Should throw for empty branches")

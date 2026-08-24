@@ -175,8 +175,8 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
     ): String {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
-        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
         val orchestrator = PipelineOrchestrator(
@@ -208,8 +208,8 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
     ): String {
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
-        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock)
+        val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
         val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
         val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
         val orchestrator = PipelineOrchestrator(

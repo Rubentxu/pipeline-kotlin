@@ -1,6 +1,7 @@
 package com.pipeline.v2.events.durable
 
 import com.pipeline.v2.events.SqliteEventStore
+import com.pipeline.v2.domain.durable.Clock
 import com.pipeline.v2.domain.durable.Fingerprint
 import com.pipeline.v2.domain.durable.OperationInput
 import com.pipeline.v2.domain.durable.OperationOutput
@@ -18,13 +19,17 @@ class OperationJournalTest {
     @TempDir
     lateinit var tempDir: Path
 
+    private val systemClock: Clock = object : Clock {
+        override fun now() = java.time.Clock.systemUTC().instant()
+    }
+
     @Test
     fun `append and get round-trip`() {
         val dbPath = tempDir.resolve("test.db").toString()
         // Use SqliteEventStore to create tables, then get underlying connection factory.
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
 
         val op = RerunOperation(
             id = "op-1",
@@ -46,7 +51,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
 
         val op = RerunOperation(
             id = "op-dup",
@@ -89,7 +94,7 @@ class OperationJournalTest {
         // First "process": write via SqliteEventStore.
         val eventStore1 = SqliteEventStore(dbPath)
         val factory1 = eventStore1.underlyingConnectionFactory()
-        val journal1: OperationJournal = SqliteOperationJournalImpl(factory1)
+        val journal1: OperationJournal = SqliteOperationJournalImpl(factory1, systemClock)
         journal1.append(
             RerunOperation(
                 id = "op-persist",
@@ -104,7 +109,7 @@ class OperationJournalTest {
         // Simulate restart: new SqliteEventStore pointing to same file.
         val eventStore2 = SqliteEventStore(dbPath)
         val factory2 = eventStore2.underlyingConnectionFactory()
-        val journal2: OperationJournal = SqliteOperationJournalImpl(factory2)
+        val journal2: OperationJournal = SqliteOperationJournalImpl(factory2, systemClock)
         val retrieved = journal2.get("op-persist")
         assertNotNull(retrieved)
         assertEquals("op-persist", retrieved!!.id)
@@ -115,7 +120,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
 
         val runId = "run-ordered"
         for (i in 1..3) {
@@ -140,7 +145,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
 
         val op = RerunOperation(
             id = "op-rerun-kind",
@@ -163,7 +168,7 @@ class OperationJournalTest {
         val dbPath = tempDir.resolve("test.db").toString()
         val eventStore = SqliteEventStore(dbPath)
         val factory = eventStore.underlyingConnectionFactory()
-        val journal: OperationJournal = SqliteOperationJournalImpl(factory)
+        val journal: OperationJournal = SqliteOperationJournalImpl(factory, systemClock)
 
         val cachedOut = OperationOutput(JsonPrimitive("cached-result"), 150L, System.currentTimeMillis())
         val op = MemoizedOperation(

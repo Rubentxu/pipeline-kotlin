@@ -1,5 +1,6 @@
 package com.pipeline.v2.events.durable
 
+import com.pipeline.v2.domain.durable.Clock
 import java.sql.Connection
 
 /**
@@ -62,6 +63,7 @@ interface ReplayCursorStore {
  */
 class SqliteReplayCursorStoreImpl(
     private val connectionFactory: () -> Connection,
+    private val clock: Clock,
 ) : ReplayCursorStore {
     /**
      * Loads the replay cursor for a given [runId].
@@ -129,7 +131,7 @@ class SqliteReplayCursorStoreImpl(
                 ps.setString(1, runId)
                 ps.setString(2, opId)
                 ps.setInt(3, stageIndex)
-                ps.setLong(4, System.currentTimeMillis())
+                ps.setLong(4, clock.now().toEpochMilli())
                 ps.executeUpdate()
             }
         } finally {

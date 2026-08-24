@@ -35,27 +35,43 @@ import java.security.MessageDigest
  */
 fun main(args: Array<String>) {
     if (args.size < 2) {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] <script>")
+        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
         System.exit(1)
     }
 
     val command = args[0]
 
     if (command != "validate" && command != "run") {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] <script>")
+        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
         System.exit(1)
     }
 
-    // Parse --db flag.
+    // Parse --db and --resume flags.
     var dbPath: String? = null
+    var resumeFlag = false
     var scriptArgIndex = 1
-    if (args.size >= 3 && args[1] == "--db") {
-        dbPath = args[2]
-        scriptArgIndex = 3
+    var i = 1
+    while (i < args.size && args[i].startsWith("--")) {
+        when (args[i]) {
+            "--db" -> {
+                if (i + 1 >= args.size) {
+                    System.err.println("Error: --db requires a path argument")
+                    System.exit(1)
+                }
+                dbPath = args[i + 1]
+                i += 2
+            }
+            "--resume" -> {
+                resumeFlag = true
+                i++
+            }
+            else -> break
+        }
     }
+    scriptArgIndex = i
 
     if (args.size < scriptArgIndex + 1) {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] <script>")
+        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
         System.exit(1)
     }
 
@@ -118,9 +134,9 @@ fun main(args: Array<String>) {
         clock = clock,
     )
 
-    // Run via orchestrator (fresh run, startFromCursor = false)
+    // Run via orchestrator (fresh run or resume based on --resume flag)
     if (pipelineSpec != null) {
-        orchestrator.run(pipelineSpec, runId, startFromCursor = false)
+        orchestrator.run(pipelineSpec, runId, startFromCursor = resumeFlag)
     }
 
     val events = eventStore.eventsFor(runId).toList()

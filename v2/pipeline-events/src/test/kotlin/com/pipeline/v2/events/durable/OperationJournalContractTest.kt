@@ -102,4 +102,116 @@ class OperationJournalContractTest {
         // fingerprint preserved
         assertEquals(op.fingerprint.hex, retrieved.fingerprint.hex)
     }
+
+    // M3-R3 C-026 contract tests
+
+    @Test
+    fun `beginOperation writes RUNNING row with started_at`() {
+        val journal = freshJournal(systemClock)
+        val opId = "op-begin-1"
+        val attempt = 1
+        val fingerprint = "a".repeat(64)
+        val inputJson = """{"stepId":"sh","params":{},"runId":"run-1","attempt":1}"""
+
+        journal.beginOperation(opId, attempt, fingerprint, inputJson, null)
+
+        val retrieved = journal.get(opId, attempt)
+        assertNotNull(retrieved)
+        assertEquals(OperationStatus.RUNNING, retrieved!!.status)
+        assertEquals(fingerprint, retrieved.fingerprint.hex)
+        // started_at is set (not null)
+        val startedAt = journal.getStartedAt(opId, attempt)
+        assertNotNull(startedAt)
+    }
+
+    @Test
+    fun `beginOperation on duplicate throws IllegalStateException`() {
+        val journal = freshJournal(systemClock)
+        val opId = "op-begin-dup"
+        val attempt = 1
+        val fingerprint = "b".repeat(64)
+        val inputJson = """{"stepId":"sh","params":{},"runId":"run-1","attempt":1}"""
+
+        journal.beginOperation(opId, attempt, fingerprint, inputJson, null)
+
+        assertThrows(IllegalStateException::class.java) {
+            journal.beginOperation(opId, attempt, fingerprint, inputJson, null)
+        }
+    }
+
+    @Test
+    fun `append UPSERTs RUNNING to SUCCEEDED preserving started_at`() {
+        val journal = freshJournal(systemClock)
+        val opId = "op-upsert-succ"
+        val attempt = 1
+        val fingerprint = "c".repeat(64)
+        val inputJson = """{"stepId":"sh","params":{},"runId":"run-1","attempt":1}"""
+
+        // Phase 1: beginOperation writes RUNNING
+        journal.beginOperation(opId, attempt, fingerprint, inputJson, null)
+
+        // Capture started_at before append
+        val startedAtBefore = journal.getStartedAt(opId, attempt)
+        assertNotNull(startedAtBefore)
+
+        // Phase 2: append transitions RUNNING → SUCCEEDED
+        val terminalOp = RerunOperation(
+            id = opId,
+            fingerprint = Fingerprint(fingerprint),
+            input = OperationInput("sh", mapOf(), "run-1", attempt),
+            output = OperationOutput(JsonPrimitive("hello"), 50L, System.currentTimeMillis()),
+            status = OperationStatus.SUCCEEDED,
+            attempt = attempt,
+        )
+        journal.append(terminalOp, null)
+
+        // Verify status is SUCCEEDED
+        val retrieved = journal.get(opId, attempt)
+        assertNotNull(retrieved)
+        assertEquals(OperationStatus.SUCCEEDED, retrieved!!.status)
+        // started_at preserved (not overwritten by append)
+        val startedAtAfter = journal.getStartedAt(opId, attempt)
+        assertEquals(startedAtBefore, startedAtAfter)
+        // ended_at is set
+        val endedAt = journal.getEndedAt(opId, attempt)
+        assertNotNull(endedAt)
+    }
+
+    @Test
+    fun `append UPSERTs RUNNING to FAILED preserving started_at`() {
+        val journal = freshJournal(systemClock)
+        val opId = "op-upsert-fail"
+        val attempt = 1
+        val fingerprint = "d".repeat(64)
+        val inputJson = """{"stepId":"sh","params":{},"runId":"run-1","attempt":1}"""
+
+        // Phase 1: beginOperation writes RUNNING
+        journal.beginOperation(opId, attempt, fingerprint, inputJson, null)
+
+        // Capture started_at
+        val startedAtBefore = journal.getStartedAt(opId, attempt)
+        assertNotNull(startedAtBefore)
+
+        // Phase 2: append transitions RUNNING → FAILED
+        val terminalOp = RerunOperation(
+            id = opId,
+            fingerprint = Fingerprint(fingerprint),
+            input = OperationInput("sh", mapOf(), "run-1", attempt),
+            output = null,
+            status = OperationStatus.FAILED,
+            attempt = attempt,
+        )
+        journal.append(terminalOp, null)
+
+        // Verify status is FAILED
+        val retrieved = journal.get(opId, attempt)
+        assertNotNull(retrieved)
+        assertEquals(OperationStatus.FAILED, retrieved!!.status)
+        // started_at preserved
+        val startedAtAfter = journal.getStartedAt(opId, attempt)
+        assertEquals(startedAtBefore, startedAtAfter)
+        // ended_at is set
+        val endedAt = journal.getEndedAt(opId, attempt)
+        assertNotNull(endedAt)
+    }
 }

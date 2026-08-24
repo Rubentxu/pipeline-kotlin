@@ -60,8 +60,35 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             }
             // Create durable operation journal tables.
             OperationJournalSchema.create(conn)
+            // Migrate operation_journal schema: add started_at + ended_at columns if absent.
+            // Idempotent: safe to run on pre-M3-R3 databases.
+            migrateOperationJournalSchema(conn)
         } finally {
             conn.close()
+        }
+    }
+
+    /**
+     * Idempotent schema migration for operation_journal.
+     * Adds started_at INTEGER and ended_at INTEGER columns if they do not already exist.
+     * Safe to call on databases created with the M3-R1 schema (before this migration).
+     */
+    private fun migrateOperationJournalSchema(conn: java.sql.Connection) {
+        conn.createStatement().use { stmt ->
+            // Check which columns exist in operation_journal
+            val existingColumns = mutableSetOf<String>()
+            stmt.executeQuery("PRAGMA table_info(operation_journal)").use { rs ->
+                while (rs.next()) {
+                    existingColumns.add(rs.getString("name"))
+                }
+            }
+            // Idempotent: only ALTER if column is absent
+            if (!existingColumns.contains("started_at")) {
+                stmt.execute("ALTER TABLE operation_journal ADD COLUMN started_at INTEGER")
+            }
+            if (!existingColumns.contains("ended_at")) {
+                stmt.execute("ALTER TABLE operation_journal ADD COLUMN ended_at INTEGER")
+            }
         }
     }
 

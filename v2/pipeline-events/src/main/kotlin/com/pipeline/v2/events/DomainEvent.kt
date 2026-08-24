@@ -1,5 +1,6 @@
 package com.pipeline.v2.events
 
+import com.pipeline.v2.domain.FailureKind
 import com.pipeline.v2.scripting.CacheKey
 import com.pipeline.v2.scripting.ScriptingDiagnostic
 import java.time.Instant
@@ -127,4 +128,136 @@ data class StepFinished(
     val stepType: String,
 ) : DomainEvent {
     override val kind: String get() = "StepFinished"
+}
+
+/**
+ * Emitted when an agent is resolved for parallel execution.
+ * Records which agent label was selected and any associated metadata.
+ */
+data class AgentResolved(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val agentLabel: String,
+    val remoteUri: String?,
+) : DomainEvent {
+    override val kind: String get() = "AgentResolved"
+}
+
+/**
+ * Emitted when a parallel branch starts execution.
+ */
+data class ParallelBranchStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val branchIndex: Int,
+    val branchName: String,
+    val parentStageIndex: Int,
+) : DomainEvent {
+    override val kind: String get() = "ParallelBranchStarted"
+}
+
+/**
+ * Emitted when a parallel branch finishes execution.
+ */
+data class ParallelBranchFinished(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val branchIndex: Int,
+    val branchName: String,
+    val parentStageIndex: Int,
+    val outcome: String,
+) : DomainEvent {
+    override val kind: String get() = "ParallelBranchFinished"
+}
+
+/**
+ * Emitted when a retry attempt starts.
+ */
+data class RetryAttemptStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val attemptNumber: Int,
+    val maxAttempts: Int,
+    val stepName: String,
+    val stepType: String,
+    val stageIndex: Int,
+    val stepIndex: Int,
+) : DomainEvent {
+    override val kind: String get() = "RetryAttemptStarted"
+}
+
+/**
+ * Emitted when a retry attempt finishes.
+ */
+data class RetryAttemptFinished(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val attemptNumber: Int,
+    val maxAttempts: Int,
+    val stepName: String,
+    val stepType: String,
+    val stageIndex: Int,
+    val stepIndex: Int,
+    val outcome: String,
+) : DomainEvent {
+    override val kind: String get() = "RetryAttemptFinished"
+}
+
+/**
+ * Emitted when a timeout is scheduled for a step or stage.
+ */
+data class TimeoutScheduled(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val timeoutSeconds: Long,
+    val timeoutAction: String,
+    val stepName: String?,
+    val stepType: String?,
+    val stageIndex: Int?,
+    val stepIndex: Int?,
+) : DomainEvent {
+    override val kind: String get() = "TimeoutScheduled"
+}
+
+/**
+ * Emitted when a step fails (e.g., error step type).
+ */
+data class StepFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stepIndex: Int,
+    val stepName: String,
+    val stepType: String,
+    val failureKind: FailureKind,
+    val message: String,
+) : DomainEvent {
+    override val kind: String get() = "StepFailed"
+}
+
+/**
+ * Emitted when echo output is captured during step execution.
+ */
+data class EchoOutputCaptured(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stepIndex: Int,
+    val content: String,
+) : DomainEvent {
+    override val kind: String get() = "EchoOutputCaptured"
 }

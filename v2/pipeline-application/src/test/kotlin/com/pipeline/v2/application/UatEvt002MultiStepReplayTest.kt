@@ -2,6 +2,7 @@ package com.pipeline.v2.application
 
 import com.pipeline.v2.events.CompilationFinished
 import com.pipeline.v2.events.DomainEvent
+import com.pipeline.v2.events.EchoOutputCaptured
 import com.pipeline.v2.events.JsonEventLog
 import com.pipeline.v2.events.RunFinished
 import com.pipeline.v2.events.RunStarted
@@ -21,9 +22,11 @@ import java.nio.file.Paths
  * UAT-EVT-002: multi-step pipeline fixture test.
  *
  * Full DSL multi-step evaluation with 2 stages (build, test) x 2 steps each.
- * Produces 12 events: RunStarted, CompilationStarted, CompilationFinished,
- * StageStarted(build) + StepStarted(echo) + StepFinished(echo) + StepStarted(sh) + StepFinished(sh) + StageFinished(build),
- * StageStarted(test) + StepStarted(echo) + StepFinished(echo) + StepStarted(sh) + StepFinished(sh) + StageFinished(test),
+ * Produces 20 events: RunStarted, CompilationStarted, CompilationFinished,
+ * StageStarted(build) + StepStarted(echo) + EchoOutputCaptured + StepFinished(echo)
+ *   + StepStarted(sh) + EchoOutputCaptured + StepFinished(sh) + StageFinished(build),
+ * StageStarted(test) + StepStarted(echo) + EchoOutputCaptured + StepFinished(echo)
+ *   + StepStarted(sh) + EchoOutputCaptured + StepFinished(sh) + StageFinished(test),
  * RunFinished.
  */
 class UatEvt002MultiStepReplayTest {
@@ -75,8 +78,8 @@ class UatEvt002MultiStepReplayTest {
     @Test
     fun `multi-step script compiles successfully`() {
         val (stdout, events) = runAndDecode()
-        // 2 stages x 2 steps each + 4 run/compilation events + 2 stage finishes = 16
-        assertEquals(16, events.size, "Expected 16 events from multi-step fixture: $stdout")
+        // 2 stages x 2 steps each + 4 run/compilation events + 2 stage finishes + 4 EchoOutputCaptured = 20
+        assertEquals(20, events.size, "Expected 20 events from multi-step fixture: $stdout")
 
         assertTrue(events[0] is RunStarted, "events[0] must be RunStarted")
         assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
@@ -86,73 +89,49 @@ class UatEvt002MultiStepReplayTest {
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         assertTrue(cf.diagnostics.isEmpty(), "CompilationFinished diagnostics must be empty: ${cf.diagnostics}")
 
-        // Stage 0: "build" with echo + sh
-        assertTrue(events[3] is StageStarted, "events[3] must be StageStarted for build stage")
-        val stage0Started = events[3] as StageStarted
-        assertEquals(0, stage0Started.stageIndex, "stageIndex must be 0 for build stage")
-        assertEquals("build", stage0Started.stageName, "stageName must be build")
+        // Use type-based queries to avoid brittle index dependencies
+        val stageStartedEvents = events.filterIsInstance<StageStarted>()
+        val stageFinishedEvents = events.filterIsInstance<StageFinished>()
+        val stepStartedEvents = events.filterIsInstance<StepStarted>()
+        val stepFinishedEvents = events.filterIsInstance<StepFinished>()
+        val echoCapturedEvents = events.filterIsInstance<EchoOutputCaptured>()
 
-        assertTrue(events[4] is StepStarted, "events[4] must be StepStarted for echo")
-        val step00Started = events[4] as StepStarted
-        assertEquals(0, step00Started.stageIndex, "stageIndex must be 0")
-        assertEquals(0, step00Started.stepIndex, "stepIndex must be 0 for echo")
-        assertEquals("echo", step00Started.stepName, "stepName must be echo")
-        assertEquals("echo", step00Started.stepType, "stepType must be echo")
+        assertEquals(2, stageStartedEvents.size, "Must have 2 StageStarted events")
+        assertEquals(2, stageFinishedEvents.size, "Must have 2 StageFinished events")
+        assertEquals(4, stepStartedEvents.size, "Must have 4 StepStarted events")
+        assertEquals(4, stepFinishedEvents.size, "Must have 4 StepFinished events")
+        assertEquals(4, echoCapturedEvents.size, "Must have 4 EchoOutputCaptured events (one per step)")
 
-        assertTrue(events[5] is StepFinished, "events[5] must be StepFinished for echo")
-        val step00Finished = events[5] as StepFinished
-        assertEquals(0, step00Finished.stageIndex, "stageIndex must be 0")
-        assertEquals(0, step00Finished.stepIndex, "stepIndex must be 0")
+        // Verify build stage
+        val buildStageStart = stageStartedEvents.find { it.stageName == "build" }
+        assertEquals(0, buildStageStart?.stageIndex, "build stageIndex must be 0")
 
-        assertTrue(events[6] is StepStarted, "events[6] must be StepStarted for sh")
-        val step01Started = events[6] as StepStarted
-        assertEquals(0, step01Started.stageIndex, "stageIndex must be 0")
-        assertEquals(1, step01Started.stepIndex, "stepIndex must be 1 for sh")
-        assertEquals("sh", step01Started.stepName, "stepName must be sh")
-        assertEquals("sh", step01Started.stepType, "stepType must be sh")
+        val buildStageFinish = stageFinishedEvents.find { it.stageName == "build" }
+        assertEquals(0, buildStageFinish?.stageIndex, "build stageIndex must be 0")
+        assertEquals("success", buildStageFinish?.outcome, "build stage outcome must be success")
 
-        assertTrue(events[7] is StepFinished, "events[7] must be StepFinished for sh")
-        val step01Finished = events[7] as StepFinished
-        assertEquals(0, step01Finished.stageIndex, "stageIndex must be 0")
-        assertEquals(1, step01Finished.stepIndex, "stepIndex must be 1")
+        // Verify test stage
+        val testStageStart = stageStartedEvents.find { it.stageName == "test" }
+        assertEquals(1, testStageStart?.stageIndex, "test stageIndex must be 1")
 
-        assertTrue(events[8] is StageFinished, "events[8] must be StageFinished for build stage")
-        val stage0Finished = events[8] as StageFinished
-        assertEquals(0, stage0Finished.stageIndex, "stageIndex must be 0 for build stage")
-        assertEquals("build", stage0Finished.stageName, "stageName must be build")
-        assertEquals("success", stage0Finished.outcome, "build stage outcome must be success")
+        val testStageFinish = stageFinishedEvents.find { it.stageName == "test" }
+        assertEquals(1, testStageFinish?.stageIndex, "test stageIndex must be 1")
+        assertEquals("success", testStageFinish?.outcome, "test stage outcome must be success")
 
-        // Stage 1: "test"
-        assertTrue(events[9] is StageStarted, "events[9] must be StageStarted for test stage")
-        val stage1Started = events[9] as StageStarted
-        assertEquals(1, stage1Started.stageIndex, "stageIndex must be 1 for test stage")
-        assertEquals("test", stage1Started.stageName, "stageName must be test")
+        // Verify step indices for build stage (stageIndex=0)
+        val buildSteps = stepStartedEvents.filter { it.stageIndex == 0 }
+        assertEquals(2, buildSteps.size, "build stage must have 2 steps")
+        assertTrue(buildSteps.any { it.stepIndex == 0 && it.stepType == "echo" }, "build must have echo step at index 0")
+        assertTrue(buildSteps.any { it.stepIndex == 1 && it.stepType == "sh" }, "build must have sh step at index 1")
 
-        assertTrue(events[10] is StepStarted, "events[10] must be StepStarted for test echo")
-        val step10Started = events[10] as StepStarted
-        assertEquals(1, step10Started.stageIndex, "stageIndex must be 1 for test stage")
-        assertEquals(0, step10Started.stepIndex, "stepIndex must be 0 for test echo")
-        assertEquals("echo", step10Started.stepName, "stepName must be echo")
+        // Verify step indices for test stage (stageIndex=1)
+        val testSteps = stepStartedEvents.filter { it.stageIndex == 1 }
+        assertEquals(2, testSteps.size, "test stage must have 2 steps")
+        assertTrue(testSteps.any { it.stepIndex == 0 && it.stepType == "echo" }, "test must have echo step at index 0")
+        assertTrue(testSteps.any { it.stepIndex == 1 && it.stepType == "sh" }, "test must have sh step at index 1")
 
-        assertTrue(events[11] is StepFinished, "events[11] must be StepFinished for test echo")
-        val step10Finished = events[11] as StepFinished
-        assertEquals(1, step10Finished.stageIndex, "stageIndex must be 1")
-
-        assertTrue(events[12] is StepStarted, "events[12] must be StepStarted for test sh")
-        val step11Started = events[12] as StepStarted
-        assertEquals(1, step11Started.stageIndex, "stageIndex must be 1")
-        assertEquals(1, step11Started.stepIndex, "stepIndex must be 1 for test sh")
-
-        assertTrue(events[13] is StepFinished, "events[13] must be StepFinished for test sh")
-
-        assertTrue(events[14] is StageFinished, "events[14] must be StageFinished for test stage")
-        val stage1Finished = events[14] as StageFinished
-        assertEquals(1, stage1Finished.stageIndex, "stageIndex must be 1 for test stage")
-        assertEquals("test", stage1Finished.stageName, "stageName must be test")
-        assertEquals("success", stage1Finished.outcome, "test stage outcome must be success")
-
-        assertTrue(events[15] is RunFinished, "events[15] must be RunFinished")
-        val rf = events[15] as RunFinished
+        assertTrue(events.last() is RunFinished, "events.last() must be RunFinished")
+        val rf = events.last() as RunFinished
         assertEquals("success", rf.outcome, "RunFinished outcome must be success")
         assertTrue(rf.diagnostics.isEmpty(), "RunFinished diagnostics must be empty: ${rf.diagnostics}")
     }

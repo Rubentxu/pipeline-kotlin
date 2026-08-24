@@ -1,9 +1,18 @@
 package com.pipeline.v2.events
 
+import com.pipeline.v2.domain.FailureKind
+import com.pipeline.v2.events.AgentResolved
+import com.pipeline.v2.events.ParallelBranchFinished
+import com.pipeline.v2.events.ParallelBranchStarted
+import com.pipeline.v2.events.RetryAttemptFinished
+import com.pipeline.v2.events.RetryAttemptStarted
 import com.pipeline.v2.events.StageStarted
 import com.pipeline.v2.events.StageFinished
 import com.pipeline.v2.events.StepStarted
 import com.pipeline.v2.events.StepFinished
+import com.pipeline.v2.events.StepFailed
+import com.pipeline.v2.events.EchoOutputCaptured
+import com.pipeline.v2.events.TimeoutScheduled
 import com.pipeline.v2.scripting.CacheKey
 import com.pipeline.v2.scripting.ScriptingDiagnostic
 import com.pipeline.v2.scripting.ScriptDiagnosticSeverity
@@ -158,5 +167,202 @@ class JsonEventLogRoundTripTest {
         assertEquals(0, sf3.stageIndex)
         assertEquals("success", sf3.outcome)
         assertEquals(8L, sf3.sequence)
+    }
+
+    @Test
+    fun `agent resolved event round-trips correctly`() {
+        val runId = "agent-run"
+        val events = listOf(
+            AgentResolved(
+                eventId = "id-ar-1",
+                runId = runId,
+                sequence = 9L,
+                occurredAt = Instant.parse("2026-08-23T10:00:09Z"),
+                agentLabel = "linux-agent",
+                remoteUri = "grpc://agent.example.com:9090",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(1, decoded.size)
+        assertEquals("AgentResolved", decoded[0].kind)
+        val ar = decoded[0] as AgentResolved
+        assertEquals("linux-agent", ar.agentLabel)
+        assertEquals("grpc://agent.example.com:9090", ar.remoteUri)
+        assertEquals(9L, ar.sequence)
+    }
+
+    @Test
+    fun `parallel branch events round-trip correctly`() {
+        val runId = "parallel-run"
+        val events = listOf(
+            ParallelBranchStarted(
+                eventId = "id-pbs-1",
+                runId = runId,
+                sequence = 10L,
+                occurredAt = Instant.parse("2026-08-23T10:00:10Z"),
+                branchIndex = 0,
+                branchName = "branch-a",
+                parentStageIndex = 0,
+            ),
+            ParallelBranchFinished(
+                eventId = "id-pbf-1",
+                runId = runId,
+                sequence = 11L,
+                occurredAt = Instant.parse("2026-08-23T10:00:11Z"),
+                branchIndex = 0,
+                branchName = "branch-a",
+                parentStageIndex = 0,
+                outcome = "success",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(2, decoded.size)
+        assertEquals("ParallelBranchStarted", decoded[0].kind)
+        val pbs = decoded[0] as ParallelBranchStarted
+        assertEquals(0, pbs.branchIndex)
+        assertEquals("branch-a", pbs.branchName)
+        assertEquals(0, pbs.parentStageIndex)
+
+        assertEquals("ParallelBranchFinished", decoded[1].kind)
+        val pbf = decoded[1] as ParallelBranchFinished
+        assertEquals("success", pbf.outcome)
+    }
+
+    @Test
+    fun `retry attempt events round-trip correctly`() {
+        val runId = "retry-run"
+        val events = listOf(
+            RetryAttemptStarted(
+                eventId = "id-ras-1",
+                runId = runId,
+                sequence = 12L,
+                occurredAt = Instant.parse("2026-08-23T10:00:12Z"),
+                attemptNumber = 2,
+                maxAttempts = 3,
+                stepName = "sh",
+                stepType = "sh",
+                stageIndex = 0,
+                stepIndex = 1,
+            ),
+            RetryAttemptFinished(
+                eventId = "id-raf-1",
+                runId = runId,
+                sequence = 13L,
+                occurredAt = Instant.parse("2026-08-23T10:00:13Z"),
+                attemptNumber = 2,
+                maxAttempts = 3,
+                stepName = "sh",
+                stepType = "sh",
+                stageIndex = 0,
+                stepIndex = 1,
+                outcome = "success",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(2, decoded.size)
+        assertEquals("RetryAttemptStarted", decoded[0].kind)
+        val ras = decoded[0] as RetryAttemptStarted
+        assertEquals(2, ras.attemptNumber)
+        assertEquals(3, ras.maxAttempts)
+
+        assertEquals("RetryAttemptFinished", decoded[1].kind)
+        val raf = decoded[1] as RetryAttemptFinished
+        assertEquals("success", raf.outcome)
+    }
+
+    @Test
+    fun `timeout scheduled event round-trips correctly`() {
+        val runId = "timeout-run"
+        val events = listOf(
+            TimeoutScheduled(
+                eventId = "id-ts-1",
+                runId = runId,
+                sequence = 14L,
+                occurredAt = Instant.parse("2026-08-23T10:00:14Z"),
+                timeoutSeconds = 300L,
+                timeoutAction = "FAIL",
+                stepName = "sh",
+                stepType = "sh",
+                stageIndex = 0,
+                stepIndex = 1,
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(1, decoded.size)
+        assertEquals("TimeoutScheduled", decoded[0].kind)
+        val ts = decoded[0] as TimeoutScheduled
+        assertEquals(300L, ts.timeoutSeconds)
+        assertEquals("FAIL", ts.timeoutAction)
+        assertEquals("sh", ts.stepName)
+    }
+
+    @Test
+    fun `step failed event round-trips correctly`() {
+        val runId = "step-failed-run"
+        val events = listOf(
+            StepFailed(
+                eventId = "id-sf-1",
+                runId = runId,
+                sequence = 15L,
+                occurredAt = Instant.parse("2026-08-23T10:00:15Z"),
+                stepIndex = 2,
+                stepName = "error",
+                stepType = "error",
+                failureKind = FailureKind.USER,
+                message = "boom",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(1, decoded.size)
+        assertEquals("StepFailed", decoded[0].kind)
+        val sf = decoded[0] as StepFailed
+        assertEquals("error", sf.stepName)
+        assertEquals("error", sf.stepType)
+        assertEquals(2, sf.stepIndex)
+        assertEquals(FailureKind.USER, sf.failureKind)
+        assertEquals("boom", sf.message)
+        assertEquals(runId, sf.runId)
+        assertEquals(15L, sf.sequence)
+    }
+
+    @Test
+    fun `echo output captured event round-trips correctly`() {
+        val runId = "echo-output-run"
+        val events = listOf(
+            EchoOutputCaptured(
+                eventId = "id-eoc-1",
+                runId = runId,
+                sequence = 16L,
+                occurredAt = Instant.parse("2026-08-23T10:00:16Z"),
+                stepIndex = 0,
+                content = "hello world",
+            ),
+        )
+
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+
+        assertEquals(1, decoded.size)
+        assertEquals("EchoOutputCaptured", decoded[0].kind)
+        val eoc = decoded[0] as EchoOutputCaptured
+        assertEquals(0, eoc.stepIndex)
+        assertEquals("hello world", eoc.content)
+        assertEquals(runId, eoc.runId)
+        assertEquals(16L, eoc.sequence)
     }
 }

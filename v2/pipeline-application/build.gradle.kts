@@ -9,8 +9,8 @@ version = "0.1.0-SNAPSHOT"
 kotlin {
     jvmToolchain(21)
     compilerOptions {
-        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_4)
-        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_4)
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
     }
 }
 
@@ -23,6 +23,10 @@ dependencies {
     implementation(project(":pipeline-events"))
     implementation(project(":pipeline-scripting-kotlin24"))
     implementation(project(":pipeline-scripting-api"))
+    implementation(project(":pipeline-step-sdk:api"))
+    implementation(project(":pipeline-step-sdk:runtime"))
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.sqlite.jdbc)
     testImplementation(libs.junit.jupiter)
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

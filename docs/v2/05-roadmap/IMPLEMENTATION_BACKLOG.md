@@ -54,7 +54,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-07** `script {}` bridge.
 - **E4-08** retry Attempts.
 - **E4-09** durable timeout.
-- **E4-10** parallel Frames/join. **(M3-R4.2 — exit criterion blocker)**
+- **E4-10** parallel Frames/join. **(M3-R4.2 — ✅ CLOSED v0.13.2-rc1 via ADR-0033/0034/0035; 8 commits T-01..T-08, 210/210 tests + 12/12 archtests, 3 NEW domain types OpId.branchIndex + ParallelFrame + BranchSpec; EC-6 kill+resume BEHAVIORAL test deferred to M3-R4.3 — foundation-only per ADR-0035)**
 - **E4-11** durable process task/reattach model. **(M3-R3 — closed v0.12.0-rc1)**
 - **E4-12** Replay cursor race fix (DEBT-2026-08-24-REPLAY-CURSOR-RACE, CRITICAL pre-existing M3-R1; WHERE clause on `saved_at` causes 60% flake in same-millisecond overwrite). **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via ADR-0030/CAS stage_index)**
 - **E4-13** Structured `OpId` data class (F01 HIGH, introduced M3-R3): replace hidden `$runId-s$stageIndex-$stepIndex` parsing in `PipelineRun.kt:234-238` with typed parse/format API or dedicated journal columns. **(M3-R4.1 — ✅ CLOSED v0.13.0-rc1 via C-031 OpId data class + parse/format)**

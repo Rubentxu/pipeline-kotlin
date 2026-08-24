@@ -123,6 +123,39 @@ deuda surgical de M3-R3 + el systemic debt de Clock-port cohesion.
     no regresiones en single-frame execution.
   - Este sub-ciclo sale de scope de M3-R4.1 por ser feature sustantiva
     (cambia runtime shape), no deuda surgical.
+  - **✅ CLOSED 2026-08-24** (cycle `p-733fb505b5a6bd2d/m3-r4-2-parallel-frames`, A-full)
+  - 8 commits (T-01..T-08), 13 files changed, +1320/-18 LOC
+  - 210/210 tests pass + 12/12 archtests, V1 hygiene PASS, namespace `dev.rubentxu.pipeline.v2.*` compliant
+  - Local tag: **v0.13.2-rc1** (peels to `64147798b1546726501aa85d9e4c5ad7340a1052`, FF-merged to main)
+  - Remote: `origin/main` synced to 64147798, tag pushed
+  - 3 NEW ADRs (ADR-0033 ParallelFrame, ADR-0034 OpId branchIndex, ADR-0035 advancePastParallelFrame)
+  - 2 NEW domain types: `ParallelFrame`, `BranchSpec` (in `:pipeline-domain`)
+  - V2 capability deltas: 4 NEW (C-..) + 4 MODIFIED (per proposal.md)
+  - Debt: 27 findings (14 introduced + 13 carried forward). PASS_WITH_WARNINGS.
+  - EC-1..EC-5 COMPLIANT. **EC-6 (kill+resume behavioral test) DEFERRED to M3-R4.3** (foundation-only per ADR-0035).
+  - 14 introduced findings (HIGH beginOperation double-suffix P0; MEDIUM BranchReconciler stub P1; MEDIUM ParallelFrameExecutor stub P1; MEDIUM executeDurableStep 11-params P1; LOW advancePastParallelFrame hardcoded strings P1; 9 LOW cosmetic) → M3-R4.3 follow-up.
+  - 13 carry-forward (4 dupl + 7 smells + 2 overeng from M3-R4.1 baseline) → M3-R5 debt-mop follow-up.
+  - gap_status=CLOSED (released, archived, ledger 277 events valid)
+
+## M3 — Milestone Closure
+
+**M3 is now 100% COMPLETE** (2026-08-24):
+
+| Sub-cycle | Path | Status | Tag | Commit | Closure date |
+|---|---|---|---|---|---|
+| M3-R1 — durable foundation | A-lite | ✅ CLOSED | — | cf0eb55… | 2026-08-23 |
+| M3-R2 — script retry/timeout | A-lite | ✅ CLOSED | — | — | 2026-08-24 |
+| M3-R3 — kill-after-shell recovery | A-lite | ✅ CLOSED | v0.12.0-rc1 | bd06509e | 2026-08-24 |
+| M3-R4.0 — V2 namespace migration | A-lite | ✅ CLOSED | v0.13.1-rc1 | 6b816be | 2026-08-24 |
+| M3-R4.1 — debt mop (run_id/WAL/DbLock/Clock/CAS) | A-lite | ✅ CLOSED | v0.13.0-rc1 | f3f0560 | 2026-08-24 |
+| M3-R4.2 — parallel Frames/join (foundation) | A-full | ✅ CLOSED | **v0.13.2-rc1** | 64147798 | 2026-08-24 |
+
+**M3 exit criteria status**:
+1. ✅ Kill-after-shell-recovery (M3-R3) — gap lifted post-remote-integration
+2. ✅ WAL+DbLock+Clock port + run_id column (M3-R4.1) — gap lifted
+3. ✅ Parallel Frames/join foundation (M3-R4.2) — EC-1..5 compliant; EC-6 (kill+resume behavioral test) deferred to M3-R4.3 (foundation-only, ADR-0035 upgrade path)
+
+**Unblocks M4** (Protocol + Gateway) per ROADMAP.
 
 ## M4 — Protocol + Gateway
 

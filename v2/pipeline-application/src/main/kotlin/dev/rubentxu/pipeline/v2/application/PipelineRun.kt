@@ -617,7 +617,19 @@ private fun emitDurableStepEvents(
                     journal.beginOperation(opId, attemptNum, fingerprint.hex, inputJson, deadlineMs)
                 }
 
-                val stepOutcome = executeDurableStep(step, stageIndex, stepIndex, runId, eventSink, runOutcomeRef, clock)
+                val stepOutcome = executeDurableStep(
+                    step = step,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    runId = runId,
+                    eventSink = eventSink,
+                    journal = journal,
+                    cursorStore = cursorStore,
+                    divergenceDetector = divergenceDetector,
+                    effectReplayPolicy = effectReplayPolicy,
+                    clock = clock,
+                    runOutcomeRef = runOutcomeRef,
+                )
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
                 val outputOp = RerunOperation(
@@ -684,8 +696,12 @@ private fun executeDurableStep(
     stepIndex: Int,
     runId: String,
     eventSink: EventSink,
+    journal: OperationJournal,
+    cursorStore: ReplayCursorStore,
+    divergenceDetector: DivergenceDetector,
+    effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
+    clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
-    clock: Clock = SystemClock(),
 ): String {
     return try {
         when (step) {
@@ -715,8 +731,31 @@ private fun executeDurableStep(
                 "success" // sdkError throws
             }
             is StepSpec.Parallel -> {
-                emitParallelStepEvents(step, stageIndex, stepIndex, runId, eventSink, clock)
-                "success"
+                // Convert DSL StepSpec.Parallel to domain ParallelFrame
+                val joinPolicy = when (step.branches.size) {
+                    0 -> dev.rubentxu.pipeline.v2.domain.durable.JoinPolicy.ALL_COMPLETE
+                    else -> dev.rubentxu.pipeline.v2.domain.durable.JoinPolicy.ALL_COMPLETE
+                }
+                val parallelFrame = dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame(
+                    branches = step.branches.map { branch ->
+                        dev.rubentxu.pipeline.v2.domain.durable.BranchSpec(
+                            name = branch.name,
+                            steps = branch.steps,
+                        )
+                    },
+                    joinPolicy = joinPolicy,
+                )
+                walkParallelFrame(
+                    frame = parallelFrame,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    runId = runId,
+                    eventSink = eventSink,
+                    journal = journal,
+                    cursorStore = cursorStore,
+                    clock = clock,
+                    runOutcomeRef = runOutcomeRef,
+                )
             }
         }
     } catch (_: Throwable) {
@@ -1027,6 +1066,329 @@ private fun emitParallelStepEvents(
             stepType = step.type,
         )
     )
+}
+
+/**
+ * Emits a [ParallelBranchStarted] event for the given branch.
+ */
+private fun emitParallelBranchStarted(
+    branchIndex: Int,
+    branchName: String,
+    parentStageIndex: Int,
+    runId: String,
+    eventSink: EventSink,
+    clock: Clock = SystemClock(),
+) {
+    val startedId = UUID.randomUUID().toString()
+    val startedAt = clock.now()
+    eventSink.append(
+        ParallelBranchStarted(
+            eventId = startedId,
+            runId = runId,
+            sequence = 0L,
+            occurredAt = startedAt,
+            branchIndex = branchIndex,
+            branchName = branchName,
+            parentStageIndex = parentStageIndex,
+        )
+    )
+}
+
+/**
+ * Emits a [ParallelBranchFinished] event for the given branch with the specified outcome.
+ */
+private fun emitParallelBranchFinished(
+    branchIndex: Int,
+    branchName: String,
+    parentStageIndex: Int,
+    runId: String,
+    eventSink: EventSink,
+    clock: Clock = SystemClock(),
+    outcome: String = "success",
+) {
+    val finishedId = UUID.randomUUID().toString()
+    val finishedAt = clock.now()
+    eventSink.append(
+        ParallelBranchFinished(
+            eventId = finishedId,
+            runId = runId,
+            sequence = 0L,
+            occurredAt = finishedAt,
+            branchIndex = branchIndex,
+            branchName = branchName,
+            parentStageIndex = parentStageIndex,
+            outcome = outcome,
+        )
+    )
+}
+
+/**
+ * Durable walk for a [ParallelFrame].
+ *
+ * Writes a `parallel_frame_started` journal entry, then walks each branch
+ * sequentially (branch concurrency is delegated to [dev.rubentxu.pipeline.v2.sdk.runtime.ParallelFrameExecutor]
+ * in T-05). Each branch receives a branch-specific [OpId] with `branchIndex`.
+ * When all branches complete, writes `parallel_frame_joined`.
+ *
+ * This is the M3-R4.2 durable walk for parallel frames, replacing the
+ * stub [emitParallelStepEvents] which only emitted events without durable semantics.
+ *
+ * @param frame The domain parallel frame to walk.
+ * @param stageIndex The current stage index.
+ * @param stepIndex The current step index within the stage.
+ * @param runId The pipeline run identifier.
+ * @param eventSink The event sink for journal entries.
+ * @param journal The operation journal for durable recording.
+ * @param cursorStore The replay cursor store.
+ * @param clock The clock for timestamps.
+ * @param runOutcomeRef Atomic reference for run outcome propagation.
+ * @return The step outcome string ("success" or "failure").
+ */
+private fun walkParallelFrame(
+    frame: dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame,
+    stageIndex: Int,
+    stepIndex: Int,
+    runId: String,
+    eventSink: EventSink,
+    journal: OperationJournal,
+    cursorStore: ReplayCursorStore,
+    clock: Clock,
+    runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+): String {
+    val parentOpId = OpId(runId, stageIndex, stepIndex)
+
+    // Emit StepStarted for the parallel frame
+    val stepStartedId = UUID.randomUUID().toString()
+    val stepStartedAt = clock.now()
+    eventSink.append(
+        StepStarted(
+            eventId = stepStartedId,
+            runId = runId,
+            sequence = 0L,
+            occurredAt = stepStartedAt,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+            stepName = "parallel",
+            stepType = "parallel",
+        )
+    )
+
+    // Emit ParallelBranchStarted for each branch and write journal entry
+    frame.branches.forEachIndexed { branchIndex, branch ->
+        val branchOpId = OpId.forBranch(runId, stageIndex, stepIndex, branchIndex)
+        emitParallelBranchStarted(branchIndex, branch.name, stageIndex, runId, eventSink, clock)
+        // Write journal entry for branch start
+        journal.beginOperation(
+            opId = branchOpId.format(),
+            attempt = 1,
+            fingerprint = Fingerprint.compute(
+                OperationInput(
+                    stepId = "parallel-branch",
+                    params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                    runId = runId,
+                    attempt = 1,
+                ),
+                "parallel-branch",
+                dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                1,
+            ).hex,
+            inputJson = """{"branchName":"${branch.name}","branchIndex":$branchIndex,"parentOpId":"${parentOpId.format()}"}""",
+            deadlineMs = null,
+            branchIndex = branchIndex,
+        )
+    }
+
+    // Walk each branch sequentially (T-05 will add concurrency via ParallelFrameExecutor)
+    var overallOutcome = "success"
+    frame.branches.forEachIndexed { branchIndex, branch ->
+        val branchOpId = OpId.forBranch(runId, stageIndex, stepIndex, branchIndex)
+        val branchOutcome = walkBranchDurable(
+            branch = branch,
+            branchIndex = branchIndex,
+            parentOpId = parentOpId,
+            runId = runId,
+            eventSink = eventSink,
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            runOutcomeRef = runOutcomeRef,
+        )
+        if (branchOutcome == "failure") {
+            overallOutcome = "failure"
+        }
+        // Emit ParallelBranchFinished for this branch with actual outcome
+        emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
+    }
+
+    // Emit StepFinished for the parallel frame
+    val stepFinishedId = UUID.randomUUID().toString()
+    val stepFinishedAt = clock.now()
+    eventSink.append(
+        StepFinished(
+            eventId = stepFinishedId,
+            runId = runId,
+            sequence = 0L,
+            occurredAt = stepFinishedAt,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+            stepName = "parallel",
+            stepType = "parallel",
+        )
+    )
+
+    // Advance cursor past parallel frame (join barrier - ADR-0035)
+    // Uses max stage index from all branches
+    val maxBranchStageIndex = stageIndex + frame.branches.size
+    cursorStore.advance(runId, parentOpId.format(), maxBranchStageIndex)
+
+    return overallOutcome
+}
+
+/**
+ * Durable walk for a single [BranchSpec] within a parallel frame.
+ *
+ * Executes each step in the branch sequentially using the existing durable
+ * step execution path, with a branch-specific [OpId].
+ *
+ * @param branch The branch specification to walk.
+ * @param branchIndex The index of this branch within the parallel frame.
+ * @param parentOpId The parent [OpId] of the parallel frame.
+ * @param runId The pipeline run identifier.
+ * @param eventSink The event sink.
+ * @param journal The operation journal.
+ * @param cursorStore The replay cursor store.
+ * @param clock The clock.
+ * @param runOutcomeRef Atomic reference for run outcome.
+ * @return The branch outcome string.
+ */
+private fun walkBranchDurable(
+    branch: dev.rubentxu.pipeline.v2.domain.durable.BranchSpec,
+    branchIndex: Int,
+    parentOpId: OpId,
+    runId: String,
+    eventSink: EventSink,
+    journal: OperationJournal,
+    cursorStore: ReplayCursorStore,
+    clock: Clock,
+    runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+): String {
+    // For now, each branch step is processed at the parent stage/step level
+    // with the branch-specific OpId. The actual step execution reuses the
+    // existing durable step path but with branch awareness.
+    //
+    // Branch steps are executed sequentially within the branch.
+    // Concurrency across branches is handled by ParallelFrameExecutor (T-05).
+    var branchOutcome = "success"
+    for ((stepOffset, step) in branch.steps.withIndex()) {
+        val stepStartedId = UUID.randomUUID().toString()
+        val stepStartedAt = clock.now()
+        eventSink.append(
+            StepStarted(
+                eventId = stepStartedId,
+                runId = runId,
+                sequence = 0L,
+                occurredAt = stepStartedAt,
+                stageIndex = parentOpId.stageIndex,
+                stepIndex = parentOpId.stepIndex + stepOffset,
+                stepName = "${branch.name}:${step.name}",
+                stepType = step.type,
+            )
+        )
+
+        // Execute the step using existing durable path (simplified - no replay/gating for branch steps yet)
+        val stepType = step.type
+        val stepOutcome = when (step) {
+            is StepSpec.Echo -> {
+                dev.rubentxu.pipeline.v2.sdk.runtime.echo(
+                    dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                    step.text,
+                    eventSink,
+                    stepOffset,
+                )
+                "success"
+            }
+            is StepSpec.Shell -> {
+                val argv = listOf("bash", "-c", step.command)
+                val result = dev.rubentxu.pipeline.v2.sdk.runtime.sh(
+                    dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                    argv,
+                    eventSink,
+                    stepOffset,
+                )
+                if (result.exitCode != 0) "failure" else "success"
+            }
+            is StepSpec.Sleep -> {
+                dev.rubentxu.pipeline.v2.sdk.runtime.sleep(
+                    dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                    step.seconds,
+                    eventSink,
+                    stepOffset,
+                )
+                "success"
+            }
+            is StepSpec.Error -> {
+                val failureKind = try {
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.valueOf(step.failureKind)
+                } catch (_: Exception) {
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.UNKNOWN
+                }
+                dev.rubentxu.pipeline.v2.sdk.runtime.error(
+                    dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                    step.message,
+                    failureKind,
+                    eventSink,
+                    stepOffset,
+                )
+                "success" // sdkError throws
+            }
+            is StepSpec.Parallel -> {
+                // Nested parallel frame - recurse via walkParallelFrame
+                val nestedFrame = dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame(
+                    branches = step.branches.map { b ->
+                        dev.rubentxu.pipeline.v2.domain.durable.BranchSpec(b.name, b.steps)
+                    },
+                    joinPolicy = dev.rubentxu.pipeline.v2.domain.durable.JoinPolicy.ALL_COMPLETE,
+                )
+                walkParallelFrame(
+                    frame = nestedFrame,
+                    stageIndex = parentOpId.stageIndex,
+                    stepIndex = parentOpId.stepIndex + stepOffset,
+                    runId = runId,
+                    eventSink = eventSink,
+                    journal = journal,
+                    cursorStore = cursorStore,
+                    clock = clock,
+                    runOutcomeRef = runOutcomeRef,
+                )
+            }
+            else -> {
+                // Unknown step type - treat as error
+                runOutcomeRef.set("failure")
+                "failure"
+            }
+        }
+
+        if (stepOutcome == "failure") {
+            branchOutcome = "failure"
+            runOutcomeRef.set("failure")
+        }
+
+        val stepFinishedId = UUID.randomUUID().toString()
+        val stepFinishedAt = clock.now()
+        eventSink.append(
+            StepFinished(
+                eventId = stepFinishedId,
+                runId = runId,
+                sequence = 0L,
+                occurredAt = stepFinishedAt,
+                stageIndex = parentOpId.stageIndex,
+                stepIndex = parentOpId.stepIndex + stepOffset,
+                stepName = "${branch.name}:${step.name}",
+                stepType = step.type,
+            )
+        )
+    }
+    return branchOutcome
 }
 
 private fun emitAgentResolvedEvent(

@@ -237,7 +237,7 @@ class SqliteOperationJournalImpl(
         fingerprint: String,
         inputJson: String,
         deadlineMs: Long?,
-        branchIndex: Int? = null,
+        branchIndex: Int?,
     ) {
         // Embed branchIndex into opId string when present
         val fullOpId = if (branchIndex != null) {

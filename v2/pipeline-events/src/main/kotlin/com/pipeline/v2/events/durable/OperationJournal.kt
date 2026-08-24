@@ -130,34 +130,20 @@ class SqliteOperationJournalImpl(
     /**
      * Appends a durable operation to the journal.
      *
-     * The append is serialized via [synchronized] to avoid WAL contention
-     * when multiple threads attempt to journal concurrently (theoretical;
-     * in practice the orchestrator is single-threaded per run).
+     * Uses UPSERT semantics: if a row already exists for (op_id, attempt),
+     * the row is updated in place (RUNNING → terminal). This enables the
+     * two-phase journal pattern (beginOperation + append) where a RUNNING
+     * row is transitioned to SUCCEEDED/FAILED atomically.
+     *
+     * The append is serialized via [synchronized] to avoid WAL contention.
      *
      * @param op The durable operation to journal.
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
-     * @throws IllegalStateException if [op.id] already exists in the journal
-     *         (PRIMARY KEY constraint).
      */
     override fun append(op: DurableOperation, deadlineMs: Long?) {
         synchronized(this) {
             val conn = connectionFactory()
             try {
-                // Check if entry already exists for this (op_id, attempt)
-                conn.prepareStatement(
-                    "SELECT 1 FROM operation_journal WHERE op_id = ? AND attempt = ?"
-                ).use { ps ->
-                    ps.setString(1, op.id)
-                    ps.setInt(2, op.attempt)
-                    ps.executeQuery().use { rs ->
-                        if (rs.next()) {
-                            throw IllegalStateException(
-                                "Operation ${op.id} attempt ${op.attempt} already journaled"
-                            )
-                        }
-                    }
-                }
-
                 val inputJson = json.encodeToString(op.input)
                 val outputJson = op.output?.let { json.encodeToString(it) }
                 val kind = when (op) {
@@ -165,12 +151,23 @@ class SqliteOperationJournalImpl(
                     is MemoizedOperation -> "MEMOIZED"
                     is CompositeOperation -> "COMPOSITE"
                 }
+                val now = clock.now().toEpochMilli()
+                val isTerminal = op.status == OperationStatus.SUCCEEDED ||
+                    op.status == OperationStatus.FAILED ||
+                    op.status == OperationStatus.ABORTED ||
+                    op.status == OperationStatus.DIVERGENT
+                val endedAtVal: Long? = if (isTerminal) now else null
 
                 conn.prepareStatement(
                     """
                     INSERT INTO operation_journal
-                        (op_id, fingerprint, status, kind, attempt, input, output, created_at, updated_at, deadline_ms)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, ended_at, deadline_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(op_id, attempt) DO UPDATE SET
+                        status = excluded.status,
+                        output = excluded.output,
+                        updated_at = excluded.updated_at,
+                        ended_at = excluded.ended_at
                     """.trimIndent()
                 ).use { ps ->
                     ps.setString(1, op.id)
@@ -180,12 +177,18 @@ class SqliteOperationJournalImpl(
                     ps.setInt(5, op.attempt)
                     ps.setString(6, inputJson)
                     ps.setString(7, outputJson)
-                    ps.setLong(8, clock.now().toEpochMilli())
-                    ps.setLong(9, clock.now().toEpochMilli())
-                    if (deadlineMs != null) {
-                        ps.setLong(10, deadlineMs)
+                    ps.setLong(8, now)   // started_at — preserved on conflict by omission from UPDATE SET
+                    ps.setLong(9, now)   // created_at — preserved on conflict
+                    ps.setLong(10, now)  // updated_at
+                    if (endedAtVal != null) {
+                        ps.setLong(11, endedAtVal)
                     } else {
-                        ps.setNull(10, java.sql.Types.BIGINT)
+                        ps.setNull(11, java.sql.Types.BIGINT)
+                    }
+                    if (deadlineMs != null) {
+                        ps.setLong(12, deadlineMs)
+                    } else {
+                        ps.setNull(12, java.sql.Types.BIGINT)
                     }
                     ps.executeUpdate()
                 }

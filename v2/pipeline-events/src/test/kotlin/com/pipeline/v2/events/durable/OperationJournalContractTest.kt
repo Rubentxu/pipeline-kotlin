@@ -81,7 +81,7 @@ class OperationJournalContractTest {
     }
 
     @Test
-    fun `duplicate append throws exception preserving first entry`() {
+    fun `append on existing row updates status in place (UPSERT)`() {
         val journal = freshJournal(systemClock)
         val op = RerunOperation(
             id = "op-dup",
@@ -92,12 +92,14 @@ class OperationJournalContractTest {
             attempt = 1,
         )
         journal.append(op)
-        assertThrows(Exception::class.java) {
-            journal.append(op.copy(status = OperationStatus.FAILED))
-        }
-        // Original entry is still retrievable
+        // Second append updates the existing row (UPSERT, not throw)
+        val updatedOp = op.copy(status = OperationStatus.FAILED)
+        journal.append(updatedOp)
+        // Row is updated to FAILED
         val retrieved = journal.get("op-dup")
         assertNotNull(retrieved)
-        assertEquals(OperationStatus.SUCCEEDED, retrieved!!.status)
+        assertEquals(OperationStatus.FAILED, retrieved!!.status)
+        // fingerprint preserved
+        assertEquals(op.fingerprint.hex, retrieved.fingerprint.hex)
     }
 }

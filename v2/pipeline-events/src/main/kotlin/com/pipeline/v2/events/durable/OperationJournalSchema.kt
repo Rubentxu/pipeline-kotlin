@@ -32,6 +32,8 @@ object OperationJournalSchema {
             attempt    INTEGER NOT NULL DEFAULT 1,
             input       TEXT    NOT NULL,
             output      TEXT,
+            started_at  INTEGER,
+            ended_at    INTEGER,
             created_at  INTEGER NOT NULL,
             updated_at  INTEGER NOT NULL,
             deadline_ms INTEGER,

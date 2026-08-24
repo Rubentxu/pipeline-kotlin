@@ -50,6 +50,10 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.sleep as sdkSleep
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh
 import dev.rubentxu.pipeline.v2.sdk.runtime.ShellResult
 import dev.rubentxu.pipeline.v2.sdk.StepContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -1259,83 +1263,99 @@ private suspend fun walkParallelFrame(
     // SUCCEEDED branches skip execution (retain journaled ParallelBranchStarted/Finished).
     // NEEDS_REATTACH branches get fresh ParallelBranchStarted + walkBranchDurable.
     // STUCK branches fail-closed.
+    // Concurrent execution via coroutineScope: branches run in parallel, wall-clock ≈ slowest branch.
     var overallOutcome = "success"
-    frame.branches.forEachIndexed { branchIndex, branch ->
-        val branchOpId = OpId.forBranch(runId, stageIndex, stepIndex, branchIndex)
-        val reconciled = reconciledBranches?.get(branchIndex)
 
-        when (reconciled?.status) {
-            ReconciliationStatus.SUCCESS -> {
-                // Branch completed normally — skip execution, retain journaled events.
-                // No ParallelBranchStarted/Fixed emitted here; they were journaled in the original run.
-            }
-            ReconciliationStatus.NEEDS_REATTACH, null -> {
-                // Fresh branch or needs re-attachment — emit ParallelBranchStarted + journal
-                emitParallelBranchStarted(branchIndex, branch.name, stageIndex, runId, eventSink, clock)
-                journal.beginOperation(
-                    opId = branchOpId.format(),
-                    attempt = 1,
-                    fingerprint = Fingerprint.compute(
-                        OperationInput(
-                            stepId = "parallel-branch",
-                            params = mapOf("branchName" to JsonPrimitive(branch.name)),
-                            runId = runId,
-                            attempt = 1,
-                        ),
-                        "parallel-branch",
-                        dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
-                        1,
-                    ).hex,
-                    inputJson = """{"branchName":"${branch.name}","branchIndex":$branchIndex,"parentOpId":"${parentOpId.format()}"}""",
-                    deadlineMs = null,
-                    branchIndex = branchIndex,
-                )
+    // Phase 1: Sequential setup + concurrent dispatch for NEEDS_REATTACH/null branches
+    val branchResults: List<Pair<Int, String>> = coroutineScope {
+        val deferreds = mutableListOf<Pair<Int, kotlinx.coroutines.Deferred<String>>>()
 
-                val branchOutcome = walkBranchDurable(
-                    branch = branch,
-                    branchIndex = branchIndex,
-                    parentOpId = parentOpId,
-                    runId = runId,
-                    eventSink = eventSink,
-                    journal = journal,
-                    cursorStore = cursorStore,
-                    clock = clock,
-                    runOutcomeRef = runOutcomeRef,
-                )
-                if (branchOutcome == "failure") {
-                    overallOutcome = "failure"
+        frame.branches.forEachIndexed { branchIndex, branch ->
+            val branchOpId = OpId.forBranch(runId, stageIndex, stepIndex, branchIndex)
+            val reconciled = reconciledBranches?.get(branchIndex)
+
+            when (reconciled?.status) {
+                ReconciliationStatus.SUCCESS -> {
+                    // Branch completed — skip, retain journaled events
                 }
-                emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
-            }
-            ReconciliationStatus.STUCK -> {
-                throw DivergenceException(
-                    expected = Fingerprint.compute(
-                        OperationInput(
-                            stepId = "parallel-branch",
-                            params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                ReconciliationStatus.NEEDS_REATTACH, null -> {
+                    emitParallelBranchStarted(branchIndex, branch.name, stageIndex, runId, eventSink, clock)
+                    journal.beginOperation(
+                        opId = branchOpId.format(),
+                        attempt = 1,
+                        fingerprint = Fingerprint.compute(
+                            OperationInput(
+                                stepId = "parallel-branch",
+                                params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                                runId = runId,
+                                attempt = 1,
+                            ),
+                            "parallel-branch",
+                            dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                            1,
+                        ).hex,
+                        inputJson = """{"branchName":"${branch.name}","branchIndex":$branchIndex,"parentOpId":"${parentOpId.format()}"}""",
+                        deadlineMs = null,
+                        branchIndex = branchIndex,
+                    )
+
+                    val deferred = async(Dispatchers.IO) {
+                        val branchOutcome = walkBranchDurable(
+                            branch = branch,
+                            branchIndex = branchIndex,
+                            parentOpId = parentOpId,
                             runId = runId,
-                            attempt = 1,
+                            eventSink = eventSink,
+                            journal = journal,
+                            cursorStore = cursorStore,
+                            clock = clock,
+                            runOutcomeRef = runOutcomeRef,
+                        )
+                        emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
+                        branchOutcome
+                    }
+                    deferreds.add(branchIndex to deferred)
+                }
+                ReconciliationStatus.STUCK -> {
+                    throw DivergenceException(
+                        expected = Fingerprint.compute(
+                            OperationInput(
+                                stepId = "parallel-branch",
+                                params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                                runId = runId,
+                                attempt = 1,
+                            ),
+                            "parallel-branch",
+                            dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                            1,
                         ),
-                        "parallel-branch",
-                        dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
-                        1,
-                    ),
-                    actual = Fingerprint.compute(
-                        OperationInput(
-                            stepId = "parallel-branch",
-                            params = mapOf("branchName" to JsonPrimitive(branch.name)),
-                            runId = runId,
-                            attempt = 1,
+                        actual = Fingerprint.compute(
+                            OperationInput(
+                                stepId = "parallel-branch",
+                                params = mapOf("branchName" to JsonPrimitive(branch.name)),
+                                runId = runId,
+                                attempt = 1,
+                            ),
+                            "parallel-branch",
+                            dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                            1,
                         ),
-                        "parallel-branch",
-                        dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
-                        1,
-                    ),
-                    opId = branchOpId.format(),
-                    runId = runId,
-                    stageIndex = stageIndex,
-                )
+                        opId = branchOpId.format(),
+                        runId = runId,
+                        stageIndex = stageIndex,
+                    )
+                }
             }
+        }
+
+        // Await all concurrent branch executions
+        deferreds.map { (idx, deferred) -> idx to deferred.await() }
+    }
+
+    // Phase 2: Aggregate outcomes
+    for ((_, outcome) in branchResults) {
+        if (outcome == "failure") {
+            overallOutcome = "failure"
         }
     }
 

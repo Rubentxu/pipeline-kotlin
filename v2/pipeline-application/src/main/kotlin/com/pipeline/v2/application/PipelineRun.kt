@@ -485,6 +485,8 @@ private fun emitDurableStepEvents(
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = "$runId-s$stageIndex-$stepIndex"
+    // Json encoder for serializing OperationInput for beginOperation
+    val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     val retryPolicy = step.retry ?: RetryPolicy.NONE
     val maxAttempts = retryPolicy.maxAttempts
     val timeoutMillis = step.timeoutMillis
@@ -591,10 +593,16 @@ private fun emitDurableStepEvents(
                 return "success"
             }
             com.pipeline.v2.sdk.runtime.durable.ReplayDecision.RERUN -> {
-                // Execute step and journal
+                // Two-phase journal (M3-R3 C-026): write RUNNING before executing the step.
+                // This enables fail-closed reconciliation on restart.
+                if (!hasJournalEntry) {
+                    val inputJson = json.encodeToString(input)
+                    journal.beginOperation(opId, attemptNum, fingerprint.hex, inputJson, deadlineMs)
+                }
+
                 val stepOutcome = executeDurableStep(step, stageIndex, stepIndex, runId, eventSink, runOutcomeRef)
 
-                // Journal the operation (INSERT OR REPLACE for retry support)
+                // Journal the operation (UPSERT RUNNING → terminal, C-025)
                 val outputOp = RerunOperation(
                     id = opId,
                     fingerprint = fingerprint,

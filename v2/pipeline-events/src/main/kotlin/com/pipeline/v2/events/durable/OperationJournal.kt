@@ -69,6 +69,29 @@ interface OperationJournal {
      * @return The deadline timestamp in milliseconds, or `null` if not set or not found.
      */
     fun getDeadlineMs(opId: String, attempt: Int): Long?
+
+    /**
+     * Begins a durable operation by writing a RUNNING row to the journal.
+     *
+     * This is the first half of the two-phase journal pattern (beginOperation + append).
+     * Writing RUNNING before executing the step enables fail-closed reconciliation
+     * on restart: if a RUNNING row exists with no terminal status, the subprocess
+     * was killed mid-execution and must not be silently trusted.
+     *
+     * @param opId The operation identifier.
+     * @param attempt The 1-based attempt number.
+     * @param fingerprint The SHA-256 fingerprint of the operation input.
+     * @param inputJson JSON-serialized [OperationInput].
+     * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
+     * @throws IllegalStateException if a row already exists for (opId, attempt).
+     */
+    fun beginOperation(
+        opId: String,
+        attempt: Int,
+        fingerprint: String,
+        inputJson: String,
+        deadlineMs: Long? = null,
+    )
 }
 
 /**
@@ -163,6 +186,64 @@ class SqliteOperationJournalImpl(
                         ps.setLong(10, deadlineMs)
                     } else {
                         ps.setNull(10, java.sql.Types.BIGINT)
+                    }
+                    ps.executeUpdate()
+                }
+            } finally {
+                conn.close()
+            }
+        }
+    }
+
+    /**
+     * Begins a durable operation by writing a RUNNING row.
+     *
+     * @throws IllegalStateException if a row already exists for (opId, attempt).
+     */
+    override fun beginOperation(
+        opId: String,
+        attempt: Int,
+        fingerprint: String,
+        inputJson: String,
+        deadlineMs: Long?,
+    ) {
+        synchronized(this) {
+            val conn = connectionFactory()
+            try {
+                // Check for duplicate
+                conn.prepareStatement(
+                    "SELECT 1 FROM operation_journal WHERE op_id = ? AND attempt = ?"
+                ).use { ps ->
+                    ps.setString(1, opId)
+                    ps.setInt(2, attempt)
+                    ps.executeQuery().use { rs ->
+                        if (rs.next()) {
+                            throw IllegalStateException(
+                                "Operation $opId attempt $attempt already journaled"
+                            )
+                        }
+                    }
+                }
+
+                val now = clock.now().toEpochMilli()
+                conn.prepareStatement(
+                    """
+                    INSERT INTO operation_journal
+                        (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, deadline_ms)
+                    VALUES (?, ?, 'RUNNING', 'RERUN', ?, ?, NULL, ?, ?, ?, ?)
+                    """.trimIndent()
+                ).use { ps ->
+                    ps.setString(1, opId)
+                    ps.setString(2, fingerprint)
+                    ps.setInt(3, attempt)
+                    ps.setString(4, inputJson)
+                    ps.setLong(5, now)
+                    ps.setLong(6, now)
+                    ps.setLong(7, now)
+                    if (deadlineMs != null) {
+                        ps.setLong(8, deadlineMs)
+                    } else {
+                        ps.setNull(8, java.sql.Types.BIGINT)
                     }
                     ps.executeUpdate()
                 }

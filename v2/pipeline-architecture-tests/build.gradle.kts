@@ -2,7 +2,7 @@ plugins {
     kotlin("jvm")
 }
 
-group = "com.pipeline.v2.fitness"
+group = "dev.rubentxu.pipeline.v2.fitness"
 version = "0.1.0-SNAPSHOT"
 
 kotlin {

@@ -11,7 +11,7 @@ Run all five:
 Run a single rule:
 
     ./gradlew -p v2 :pipeline-architecture-tests:test \
-        --tests 'com.pipeline.v2.architecture.FArch001DomainFrameworkFreeTest'
+        --tests 'dev.rubentxu.pipeline.v2.architecture.FArch001DomainFrameworkFreeTest'
 
 Override the V2 root for local debugging:
 

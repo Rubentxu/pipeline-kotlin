@@ -3,7 +3,7 @@ plugins {
     application
 }
 
-group = "com.pipeline.v2"
+group = "dev.rubentxu.pipeline.v2"
 version = "0.1.0-SNAPSHOT"
 
 kotlin {
@@ -15,7 +15,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("com.pipeline.v2.application.MainKt")
+    mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
 }
 
 dependencies {

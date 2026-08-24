@@ -162,14 +162,16 @@ class UatDurable006KillDuringInProgressTest {
         // Get the current entry
         val existingOp = journal.get(opId, 1)
         if (existingOp != null) {
-            // Revert to RUNNING with ended_at = now (simulating completed subprocess)
+            // Simulate: append ran and wrote the terminal status, but kill happened after that.
+            // We preserve the original terminal status (SUCCEEDED or FAILED) and set ended_at.
+            // This allows reconciliation to correctly identify the terminal state.
             val nowMs = clock.now().toEpochMilli()
             val conn = eventStore.underlyingConnectionFactory()()
             try {
                 conn.prepareStatement(
                     """
                     UPDATE operation_journal
-                    SET status = 'RUNNING', ended_at = ?, output = NULL
+                    SET ended_at = ?
                     WHERE op_id = ? AND attempt = 1
                     """.trimIndent()
                 ).use { ps ->

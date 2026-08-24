@@ -68,8 +68,11 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
         hasJournalEntry: Boolean,
         journaledOutcome: com.pipeline.v2.domain.durable.OperationStatus?,
     ): ReplayDecision {
-        // RERUN policy always reruns.
+        // RERUN policy: if journaled outcome is SUCCEEDED, skip (reconciliation already marked it).
         if (replayPolicy == ReplayPolicy.RERUN) {
+            if (journaledOutcome == com.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED) {
+                return ReplayDecision.SKIP
+            }
             return ReplayDecision.RERUN
         }
 

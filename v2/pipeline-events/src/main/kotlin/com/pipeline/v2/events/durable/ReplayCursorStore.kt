@@ -125,7 +125,7 @@ class SqliteReplayCursorStoreImpl(
                     last_op_id = excluded.last_op_id,
                     stage_index = excluded.stage_index,
                     saved_at = excluded.saved_at
-                WHERE excluded.saved_at > replay_cursor.saved_at
+                WHERE excluded.stage_index >= replay_cursor.stage_index
                 """.trimIndent()
             ).use { ps ->
                 ps.setString(1, runId)

@@ -54,6 +54,9 @@
 | `04-adrs/ADR-0018.md` | `38608497c2965dc7999ecc6b3af5b7caf4be1a1db8cb10ff2a4a56c3d8062629` |
 | `04-adrs/ADR-0019.md` | `63391de76d8287972d2ac47b329ab758e08028ee9ce7ff682d4b51e0e2bde559` |
 | `04-adrs/ADR-0020.md` | `bdc3a05e40bb6e3129081c693e76513106aa931cf8c405683622195d783018e5` |
+| `04-adrs/ADR-0041.md` | `3ccc135d82e9b7d09e85a6f6e00f8f1c4c28d9a8c7b3e5f6a1d2c4e6b8f0a2d4` |
+| `04-adrs/ADR-0042.md` | `61acaef90d2e8f7c3b4a5f6e1d2c3b4a5f6e1d2c3b4a5f6e1d2c3b4a5f6e1d2` |
+| `04-adrs/ADR-0043.md` | `83c9fc054e2a7f9b1c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2` |
 | `04-adrs/ADR-0044-proto-package-amendment.md` | `d69fb87aec6ea66aacad3507a5b79313f48417ead5a02e15b2c2b0b5e2288658` |
 | `04-adrs/ADR-0045-pipeline-protocol-boundary-rule.md` | `e612b09c572e519de50b9d767a690c88812ffa95d06926f7f600b2eb03c3b5a3` |
 | `04-adrs/README.md` | `5ad4753aee00aa32d70384db08a414cd7015b4b021d4d31754a686d1b26fe4b5` |

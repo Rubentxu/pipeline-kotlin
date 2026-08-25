@@ -280,6 +280,13 @@ internal suspend fun walkPipelineSpecDurable(
         .reconcileRunningOperations(runId)
         .associateBy { OpId.parse(it.opId)?.branchIndex ?: -1 }
 
+    // ML-R1 C1: Step-level reconcile for durable shell.
+    // After branch reconciliation, reconcile RUNNING shell steps via StepReconcilerL1.
+    // This classifies each RUNNING sh step as COMPLETE/REATTACH/LOST based on
+    // result.txt + heartbeat, enabling the Shell branch to handle each case.
+    val stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> =
+        ctx.stepReconcilerL1?.reconcile(runId) ?: emptyMap()
+
     for ((stageIndex, stage) in spec.stages.withIndex()) {
         // Resume gate: skip stages before the cursor position
         if (stageIndex < startFromStageIndex) continue
@@ -357,6 +364,7 @@ internal suspend fun walkPipelineSpecDurable(
                 effectReplayPolicy = effectReplayPolicy,
                 runOutcomeRef = runOutcomeRef,
                 reconciledBranches = reconciledBranches,
+                stepClassifications = stepClassifications,
             )
             if (stepOutcome == "failure") {
                 runOutcomeRef.set("failure")
@@ -401,6 +409,7 @@ private suspend fun emitDurableStepEvents(
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
+    stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -538,6 +547,7 @@ private suspend fun emitDurableStepEvents(
                     clock = ctx.clock,
                     runOutcomeRef = runOutcomeRef,
                     controlDirRoot = ctx.controlDirRoot,
+                    stepClassifications = stepClassifications,
                 )
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
@@ -546,14 +556,23 @@ private suspend fun emitDurableStepEvents(
                     fingerprint = fingerprint,
                     input = input,
                     output = null,
-                    status = if (stepOutcome == "success") OperationStatus.SUCCEEDED else OperationStatus.FAILED,
+                    status = when {
+                        stepOutcome == "success" -> OperationStatus.SUCCEEDED
+                        stepOutcome == "lost" -> OperationStatus.LOST  // fail-closed per UAT-REC-002
+                        else -> OperationStatus.FAILED
+                    },
                     attempt = attemptNum,
                 )
                 ctx.opJournal.append(outputOp, deadlineMs)
 
-                if (stepOutcome == "failure") {
-                    // This attempt failed
+                if (stepOutcome == "failure" || stepOutcome == "lost") {
+                    // This attempt failed (or LOST which is also a terminal failure)
                     emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, stepOutcome, ctx.clock)
+                    if (stepOutcome == "lost") {
+                        // LOST is terminal - do not retry (fail-closed per UAT-REC-002)
+                        runOutcomeRef.set("failure")
+                        return "failure"
+                    }
                     if (attemptNum < maxAttempts) {
                         // Apply backoff before next attempt
                         val delayMs = retryPolicy.backoffDelay(attemptNum + 1)
@@ -622,6 +641,7 @@ private suspend fun executeDurableStep(
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
     controlDirRoot: Path? = null,
+    stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -637,6 +657,7 @@ private suspend fun executeDurableStep(
         runOutcomeRef = runOutcomeRef,
         reconciledBranches = reconciledBranches,
         controlDirRoot = controlDirRoot,
+        stepClassifications = stepClassifications,
     )
 }
 
@@ -756,6 +777,7 @@ private suspend fun executeDurableStepImpl(
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
     controlDirRoot: Path? = null,
+    stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
 ): String {
     // Build opId for durable shell control dir
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -767,9 +789,33 @@ private suspend fun executeDurableStepImpl(
                 "success"
             }
             is StepSpec.Shell -> {
-                // ML-R1 durable shell: use crash-safe execution with control dir
-                // Falls back to non-durable if controlDirRoot is null or LinuxRequiredException
-                runShStep(step.command, runId, opId, controlDirRoot, eventSink, stepIndex)
+                // ML-R1 C1: Check step-level classification from resume reconciliation
+                val classification = stepClassifications[opId]
+                when (classification) {
+                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Complete -> {
+                        // Step completed before JVM death; use cached exit code (no re-execution)
+                        if (classification.exitCode == 0) "success" else "failure"
+                    }
+                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Reattach -> {
+                        // Step may still be running; poll existing control-dir result (no relaunch)
+                        val config = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig.fromSystemProperties()
+                        val executor = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor()
+                        val exitCode = executor.pollResult(classification.controlDir, timeoutMs = 60_000) ?: -1
+                        if (exitCode == 0) "success" else "failure"
+                    }
+                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost,
+                    null -> {
+                        // LOST: return "lost" to signal to caller to journal LOST (not FAILED)
+                        // null: no pre-existing classification; proceed with normal durable execution
+                        val result = runShStep(step.command, runId, opId, controlDirRoot, eventSink, stepIndex)
+                        if (classification is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost) {
+                            // Override result to signal LOST to caller
+                            "lost"
+                        } else {
+                            result
+                        }
+                    }
+                }
             }
             is StepSpec.Sleep -> {
                 sdkSleep(StepContext(runId = runId), step.seconds, eventSink, stepIndex)

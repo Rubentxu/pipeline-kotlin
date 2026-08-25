@@ -182,10 +182,7 @@ class SqliteOperationJournalImpl(
                     is CompositeOperation -> "COMPOSITE"
                 }
                 val now = clock.now().toEpochMilli()
-                val isTerminal = op.status == OperationStatus.SUCCEEDED ||
-                    op.status == OperationStatus.FAILED ||
-                    op.status == OperationStatus.ABORTED ||
-                    op.status == OperationStatus.DIVERGENT
+                val isTerminal = op.status.isTerminal
                 val endedAtVal: Long? = if (isTerminal) now else null
 
                 conn.prepareStatement(

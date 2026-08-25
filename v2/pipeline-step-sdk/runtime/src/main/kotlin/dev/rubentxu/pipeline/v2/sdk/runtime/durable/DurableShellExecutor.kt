@@ -109,8 +109,12 @@ class DurableShellExecutor : DurableShellLaunching {
     ): ProcessHandle {
         checkLinuxOrThrow()
 
-        // P2 invariant check: verify script doesn't leak into argv via environment
-        verifyScriptNotInArgv(scriptContent, opId)
+        // P2 invariant: script content is written to filesystem (script.sh), NOT passed as argv.
+        // argv = ["sh", "-c", wrapper] where wrapper only contains paths, never script content.
+        // This is guaranteed by construction:
+        // 1. scriptContent -> Files.writeString(scriptFile)
+        // 2. wrapper uses '$PATH' for variables, single-quoted paths, never embeds script
+        // 3. script is invoked by path: '$scriptPathEscaped'
 
         // Create control directory structure
         Files.createDirectories(controlDir)
@@ -313,33 +317,6 @@ class DurableShellExecutor : DurableShellLaunching {
     private fun escapeForShell(path: String): String {
         // Escape single quotes for shell
         return path.replace("'", "'\\''")
-    }
-
-    /**
-     * P2 Self-Test: Verifies that script content never appears in any argv.
-     *
-     * This is a critical security check. If somehow the script content
-     * appeared in the ProcessBuilder argv, we would be in violation of P2.
-     *
-     * The check is simple: we verify that the script content doesn't contain
-     * characters that would cause shell expansion or injection when passed
-     * through `sh -c`.
-     *
-     * @throws IllegalStateException If script appears to be in argv (P2 violation).
-     */
-    private fun verifyScriptNotInArgv(scriptContent: String, opId: String) {
-        // If script content looks like it could be an argv fragment, be suspicious
-        // This is a heuristic; the real guarantee is the design (filesystem, not argv)
-        if (scriptContent.contains("'") && scriptContent.contains("$")) {
-            // Script has both quotes and dollar signs - potential injection risk
-            // But this is OK because we're writing to FILE, not passing as argv
-            // The wrapper uses single-quotes around the path, so no expansion occurs
-        }
-        // The actual P2 guarantee is structural:
-        // 1. scriptContent -> Files.writeString(scriptFile)
-        // 2. argv = ["sh", "-c", wrapper]
-        // 3. wrapper uses '$PATH' not $scriptContent
-        // So script is NEVER in argv by construction
     }
 
     private fun checkLinuxOrThrow() {

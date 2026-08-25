@@ -350,6 +350,24 @@ echo "large heredoc safe"
     }
 
     @Test
+    fun `adversarial exit-codes - exit 7 returns correctly`() {
+        assumeLinux()
+        val controlDir = createControlDir("test-exit-7")
+        val script = """exit 7"""
+
+        val process = executor.launch(controlDir, script, "exit-7-test", config)
+
+        try {
+            executor.detach(process, controlDir)
+            val exitCode = executor.pollResult(controlDir, 5000) ?: -1
+            assertEquals(7, exitCode, "exit 7 should return 7")
+        } finally {
+            executor.kill(process, controlDir)
+            executor.cleanup(controlDir, 0)
+        }
+    }
+
+    @Test
     fun `adversarial exit-codes - exit 255 returns correctly`() {
         assumeLinux()
         val controlDir = createControlDir("test-exit-255")

@@ -99,7 +99,7 @@ class PipelineOrchestrator(
 
                 // ML-R1: Construct StepReconcilerL1 for durable shell classification
                 val stepReconcilerL1 = if (controlDirRoot != null) {
-                    StepReconcilerL1(clock, controlDirRoot, DurableShConfig.fromSystemProperties())
+                    StepReconcilerL1(clock, controlDirRoot, DurableShConfig.fromSystemProperties(), journal)
                 } else {
                     null
                 }

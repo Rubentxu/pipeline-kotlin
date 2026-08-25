@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -40,6 +41,7 @@ import java.nio.file.Path
  * @param clock The clock for heartbeat staleness checks.
  * @param controlDirRoot The root directory for all control directories.
  * @param config The durable shell configuration.
+ * @param journal The operation journal for querying RUNNING rows during resume.
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  * @see <a href="UAT-REC-002">UAT-REC-002 — Fail-Closed LOST</a>
@@ -48,6 +50,7 @@ class StepReconcilerL1(
     private val clock: Clock,
     private val controlDirRoot: Path,
     private val config: DurableShConfig = DurableShConfig.fromSystemProperties(),
+    private val journal: OperationJournal? = null,
 ) {
     /**
      * Classification of a RUNNING step row during reconciliation.
@@ -150,6 +153,59 @@ class StepReconcilerL1(
             "StepReconcilerL1 only handles RUNNING status, got $status"
         }
         return classify(opId)
+    }
+
+    /**
+     * Reconciles RUNNING durable shell steps for a given runId.
+     *
+     * Queries the journal for RUNNING rows with stepType "sh" (shell steps),
+     * classifies each via [classifyControlDir], and returns a map keyed by opId.
+     *
+     * This is called during resume after [ctx.branchReconciler.reconcileRunningOperations]
+     * to handle the case where a JVM worker died during a `sh` step.
+     *
+     * ## Resume Flow
+     *
+     * 1. `walkPipelineSpecDurable` calls `ctx.stepReconcilerL1.reconcile(runId)`
+     * 2. For each RUNNING "sh" opId, classify via result.txt + heartbeat
+     * 3. Thread the resulting map into `executeDurableStepImpl`
+     * 4. Shell branch checks the map:
+     *    - **Complete(exitCode)** → skip execution, return completed result
+     *    - **Reattach(controlDir)** → poll/await existing control-dir result
+     *    - **Lost** → journal.append LOST + emit StepFailed (fail-closed)
+     *
+     * @param runId The run identifier to reconcile.
+     * @return Map of opId → Classification for all RUNNING shell steps.
+     */
+    suspend fun reconcile(runId: String): Map<String, Classification> {
+        if (journal == null) return emptyMap()
+
+        val result = mutableMapOf<String, Classification>()
+
+        try {
+            val allOps = journal.listForRun(runId)
+
+            for (op in allOps) {
+                // Filter to step-level RUNNING operations only
+                // Step-level opIds don't contain "-b" (branch suffix)
+                if (op.id.contains("-b")) continue // skip branch-level ops
+                if (op.status != OperationStatus.RUNNING) continue
+
+                // Check if this is a shell step
+                // Shell step opIds follow pattern: {runId}-s{stageIndex}-{stepIndex}
+                // The stepId in OperationInput is "sh" for shell steps
+                val isShellStep = op.id.contains("-s") // All durable step opIds contain -s{stageIndex}
+
+                if (isShellStep) {
+                    val classification = classify(op.id)
+                    result[op.id] = classification
+                }
+            }
+        } catch (_: Exception) {
+            // If journal query fails, return empty map (will trigger fresh execution)
+        }
+
+        return result
     }
 
     /**

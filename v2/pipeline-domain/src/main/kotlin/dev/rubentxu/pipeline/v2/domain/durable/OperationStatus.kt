@@ -57,6 +57,13 @@ enum class OperationStatus {
      */
     LOST;
 
+    /**
+     * Returns true if this status is terminal (final).
+     * Terminal states cannot transition to any other state.
+     */
+    val isTerminal: Boolean
+        get() = this in terminalStates
+
     companion object {
         private val terminalStates = setOf(SUCCEEDED, FAILED, ABORTED, DIVERGENT, LOST)
 

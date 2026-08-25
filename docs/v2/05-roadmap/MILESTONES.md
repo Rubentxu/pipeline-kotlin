@@ -7,6 +7,7 @@
 | M2 | Jenkins-like DSL | no FIR/IR required | DX/Step architecture |
 | M3 | kill+resume local | no side effect replay | viabilidad durability |
 | M4 | worker remoto | fencing/ACK | viabilidad distribuida |
+| ML | ecosistema local (sh durable, sandbox, creds, steps) | kill-durante-sh sin replay | usabilidad/ejecución real local |
 | M5 | Pod efímero | Pod loss recovery | K8s/credentials |
 | M6 | Jenkins UI | controller lightweight | integración producto |
 | M7 | pipeline real | plugin ecosystem | cobertura funcional |

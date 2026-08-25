@@ -212,6 +212,46 @@ Separar físicamente control plane y worker.
 - old fencing token rechazado;
 - cancel remote run.
 
+**Estado (ADR-0046)**: E5-01 ✅ CLOSED (v0.14.0-rc1). E5-02..E5-10 **aplazados
+hasta cerrar ML** (ecosistema de ejecución local priorizado). E5-11 sigue
+BLOCKED (governance, INC-011).
+
+## ML — Ecosistema de ejecución local
+
+> Intercalado por ADR-0046: prioridad del usuario sobre la conectividad con
+> controller externo. Los sub-ciclos restantes de M4 (E5-02..E5-10) se
+> retoman al cerrar ML. M5+ no cambia.
+
+### Objetivo
+Ejecutar en local, de forma duradera y aislada, lo que un pipeline real
+necesita: `sh` fiel a Jenkins, workspace/env, sandbox, credenciales, git y
+steps de ecosistema — sin controller externo.
+
+### Entregables
+- L1: `sh` durable Jenkins-fiel — patrón durable-task (script.sh, result.txt
+  atómico, log a fichero, heartbeat, cookie, `-xe`/shebang; principios P1/P2
+  de ADR-0046).
+- L2: workspace por stage + environment (PATH/JAVA_HOME/M2_HOME semántica
+  legacy) + `returnStdout` + timeouts reales.
+- L3: sandbox profile local (confinement workspace/env best-effort;
+  perfil OS/container completo queda en M5/M9 per ADR-0016).
+- L4: credentials provider local + redacción de secretos en logs/events.
+- L5: `checkout`/git step.
+- L6: steps Jenkins más usados (writeFile/readFile, archiveArtifacts mínimo,
+  wrappers maven/gradle).
+- L7: smoke E2E sobre repos reales famosos (build con Gradle/Maven wrapper).
+
+### No hacer
+No conectar controller/gateway externo (M4-rest); no Pods K8s (M5); no portar
+sandbox V1 (Security Manager); no protocolo de agente remoto.
+
+### Exit/UAT
+- UAT-LOCAL-001: kill del runner **durante** `sh` → resume SIN re-ejecución
+  (exit code y log recuperados de disco). Cierra UAT-REC-002.
+- UAT-LOCAL-002..006: returnStdout, sandbox local, credenciales locales,
+  checkout de repo real, smoke build de proyecto real.
+- 100% tests V2 green sin excludes.
+
 ## M5 — Kubernetes ephemeral workers + credentials
 
 ### Objetivo

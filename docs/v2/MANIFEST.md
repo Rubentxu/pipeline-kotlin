@@ -59,6 +59,7 @@
 | `04-adrs/ADR-0043.md` | `83c9fc054e2a7f9b1c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2` |
 | `04-adrs/ADR-0044-proto-package-amendment.md` | `d69fb87aec6ea66aacad3507a5b79313f48417ead5a02e15b2c2b0b5e2288658` |
 | `04-adrs/ADR-0045-pipeline-protocol-boundary-rule.md` | `e612b09c572e519de50b9d767a690c88812ffa95d06926f7f600b2eb03c3b5a3` |
+| `04-adrs/ADR-0046-local-ecosystem-first-reprioritization.md` | `b9bda241a2ed76040e45b3f9f336b45f6e3f679ab537eb124a451453c51f5aaf` |
 | `04-adrs/README.md` | `5ad4753aee00aa32d70384db08a414cd7015b4b021d4d31754a686d1b26fe4b5` |
 | `governance/PROTOBUF_GOVERNANCE.md` | `4e9651cbc8f074429df8b104826a00571095ca87103f200c9520618c7abe4232` |
 | `05-roadmap/DEVELOPMENT_STRATEGY.md` | `51870f68ec6a8fc882c974700ff394ae48c7ce824e3d60a249bdc7ce9d8fe7d0` |

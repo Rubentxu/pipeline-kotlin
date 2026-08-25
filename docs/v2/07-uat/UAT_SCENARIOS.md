@@ -129,3 +129,21 @@ Introducir duplicates y reordering permitido; estado final consistente.
 
 ## UAT-PERF-001 — Controller comparison
 Ejecutar carga equivalente Groovy/V2 y registrar CPU/heap/controller throughput.
+
+## UAT-LOCAL-001 — Kill durante sh (at-most-once) — ML/L1
+Matar el runner mientras `sh` está EN ejecución (subproceso vivo); al hacer `--resume`, el step NO se re-ejecuta: exit code y log se recuperan de `result.txt`/log de disco; sin result ni heartbeat → LOST declarado, nunca éxito asumido. **Cierra UAT-REC-002.**
+
+## UAT-LOCAL-002 — Workspace/env/returnStdout — ML/L2
+`sh(returnStdout=true)` devuelve stdout exacto vía output file (secreto en env nunca aparece en argv); cada stage tiene workspace propio; JAVA_HOME/M2_HOME propagan a PATH; timeout mata el subproceso de forma duradera.
+
+## UAT-LOCAL-003 — Sandbox local — ML/L3
+Pipeline con `sh` malicioso (escribir fuera del workspace, leer `$HOME/.ssh`) es bloqueado/reporteado por el perfil local best-effort. Perfil completo OS/container: M5/M9 (ADR-0016).
+
+## UAT-LOCAL-004 — Credenciales locales + redacción — ML/L4
+`credentialsId` resuelve desde store local; el secreto queda enmascarado en log/events/journal incluso imprimiéndolo. (Partial UAT-SEC-001.)
+
+## UAT-LOCAL-005 — Checkout repo real — ML/L5
+`checkout` clona un repositorio público real dentro del workspace aislado y expone commit/branch al resto del pipeline.
+
+## UAT-LOCAL-006 — Smoke build real — ML/L7
+Pipeline end-to-end sobre un proyecto open-source famoso (pequeño, con Gradle/Maven wrapper): checkout → build → test-report → artifact, ejecutado por steps V2 con runner local durable.

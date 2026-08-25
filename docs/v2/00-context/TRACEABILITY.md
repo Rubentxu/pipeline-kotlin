@@ -8,6 +8,7 @@
 | Reducir FIR/IR | `STEP_PLUGIN_SDK` | ADR-0004 | M2 | UAT-STEP-004 |
 | Runtime fuera controller | `RUNTIME_MODEL` | ADR-0001/0012 | M3/M6 | UAT-JENKINS-003 |
 | Durable replay | `RECOVERY_DURABILITY` | ADR-0006 | M3 | UAT-REC-* |
+| Durable sh (durable-task pattern) | `RECOVERY_DURABILITY` | ADR-0046 | ML | UAT-LOCAL-001, UAT-REC-002 |
 | Event source of truth | `EVENT_MODEL` | ADR-0007 | M1/M3 | UAT-EVT-* |
 | Graph-native | `GRAPH_MODEL` | ADR-0008 | M3/M8 | UAT-GRAPH-* |
 | Protobuf protocol | `WORKER_PROTOCOL` | ADR-0009/0043/0044 | M4 | UAT-PROT-* |

@@ -112,6 +112,18 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E5-10** protocol conformance suite.
 - **E5-11** Worker capability trust promotion via governed catalog process. **(BLOCKED — requires product/architecture decision on trust model; no governed catalog exists in E5-01 scope; documented in ADR-0045 §Blocker)**
 
+## Epic ML — Ecosistema de ejecución local (ADR-0046)
+> Priorizado sobre E5-02..E5-10 (aplazados). Ámbito local-only, sin controller externo.
+
+- **L-01** `sh` durable Jenkins-fiel: patrón durable-task (script.sh + result.txt atómico + log fichero + heartbeat + cookie + `-xe`/shebang). **Gate: UAT-LOCAL-001; cierra UAT-REC-002.**
+- **L-02** workspace por stage + environment (PATH/JAVA_HOME/M2_HOME) + `returnStdout` (output file) + timeouts reales. **Gate: UAT-LOCAL-002.**
+- **L-03** sandbox profile local: confinement workspace/env best-effort (ADR-0016). **Gate: UAT-LOCAL-003.**
+- **L-04** credentials provider local + redacción secretos en logs/events/journal. **Gate: UAT-LOCAL-004 (partial UAT-SEC-001).**
+- **L-05** `checkout`/git step. **Gate: UAT-LOCAL-005.**
+- **L-06** steps ecosistema: writeFile/readFile, archiveArtifacts mínimo, wrappers maven/gradle.
+- **L-07** smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.**
+- Carry-in: FIND-M4R1-016/022 (roll-forward de M4-R2) si aplican al tocar protocol/step-sdk.
+
 ## Epic E6 — Kubernetes/Credentials
 - **E6-01** WorkerProvisioner port.
 - **E6-02** WorkerTemplate/WorkerPool manifests.

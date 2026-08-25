@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.protocol.WorkerHello
 import dev.rubentxu.pipeline.v2.protocol.VersionRange
 
 object GoldenFixtureHarness {
+    private const val PINNED_EPOCH_MS = 1_700_000_000_000L
 
     fun createWorkerHello(
         workerId: String = "worker-001",
@@ -40,17 +41,17 @@ object GoldenFixtureHarness {
         .setCommandId(commandId)
         .setType(type)
         .setSequenceNumber(1)
-        .setTimestampEpochMs(System.currentTimeMillis())
+        .setTimestampEpochMs(PINNED_EPOCH_MS)
         .build()
 
     fun createPrepareRunCommand(
         pipelineId: String = "pipeline-001",
         runId: String = "run-001"
     ): Command = Command.newBuilder()
-        .setCommandId("cmd-prepare-${System.currentTimeMillis()}")
+        .setCommandId("cmd-prepare-${PINNED_EPOCH_MS}")
         .setType(CommandType.COMMAND_TYPE_PREPARE_RUN)
         .setSequenceNumber(1)
-        .setTimestampEpochMs(System.currentTimeMillis())
+        .setTimestampEpochMs(PINNED_EPOCH_MS)
         .setPrepareRun(
             PrepareRun.newBuilder()
                 .setPipelineId(pipelineId)
@@ -63,10 +64,10 @@ object GoldenFixtureHarness {
         pipelineId: String = "pipeline-001",
         runId: String = "run-001"
     ): Command = Command.newBuilder()
-        .setCommandId("cmd-start-${System.currentTimeMillis()}")
+        .setCommandId("cmd-start-${PINNED_EPOCH_MS}")
         .setType(CommandType.COMMAND_TYPE_START_RUN)
         .setSequenceNumber(2)
-        .setTimestampEpochMs(System.currentTimeMillis())
+        .setTimestampEpochMs(PINNED_EPOCH_MS)
         .setStartRun(
             StartRun.newBuilder()
                 .setPipelineId(pipelineId)
@@ -80,9 +81,9 @@ object GoldenFixtureHarness {
         runId: String = "run-001",
         sequence: Long = 1L
     ): EventEnvelope = EventEnvelope.newBuilder()
-        .setEventId("evt-started-${System.currentTimeMillis()}")
+        .setEventId("evt-started-${PINNED_EPOCH_MS}")
         .setSequenceNumber(sequence)
-        .setTimestampEpochMs(System.currentTimeMillis())
+        .setTimestampEpochMs(PINNED_EPOCH_MS)
         .setPipelineId(pipelineId)
         .setRunId(runId)
         .setType(EventType.EVENT_TYPE_PIPELINE_STARTED)
@@ -94,9 +95,9 @@ object GoldenFixtureHarness {
         stepId: String = "step-001",
         sequence: Long = 2L
     ): EventEnvelope = EventEnvelope.newBuilder()
-        .setEventId("evt-step-completed-${System.currentTimeMillis()}")
+        .setEventId("evt-step-completed-${PINNED_EPOCH_MS}")
         .setSequenceNumber(sequence)
-        .setTimestampEpochMs(System.currentTimeMillis())
+        .setTimestampEpochMs(PINNED_EPOCH_MS)
         .setPipelineId(pipelineId)
         .setRunId(runId)
         .setType(EventType.EVENT_TYPE_STEP_COMPLETED)
@@ -114,9 +115,9 @@ object GoldenFixtureHarness {
         runId: String = "run-001",
         sequence: Long = 3L
     ): EventEnvelope = EventEnvelope.newBuilder()
-        .setEventId("evt-completed-${System.currentTimeMillis()}")
+        .setEventId("evt-completed-${PINNED_EPOCH_MS}")
         .setSequenceNumber(sequence)
-        .setTimestampEpochMs(System.currentTimeMillis())
+        .setTimestampEpochMs(PINNED_EPOCH_MS)
         .setPipelineId(pipelineId)
         .setRunId(runId)
         .setType(EventType.EVENT_TYPE_PIPELINE_COMPLETED)

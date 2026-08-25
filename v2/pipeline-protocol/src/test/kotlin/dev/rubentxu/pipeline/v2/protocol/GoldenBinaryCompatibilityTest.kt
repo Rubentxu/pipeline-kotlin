@@ -37,63 +37,28 @@ class GoldenBinaryCompatibilityTest {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : com.google.protobuf.GeneratedMessageLite<T, B>, B : com.google.protobuf.GeneratedMessageLite.Builder<T, B>> roundTripFromGolden(
+        fixture: String,
+        parser: (ByteArray) -> T
+    ) {
+        val resource = javaClass.getResourceAsStream("/fixtures/$fixture")
+        assertNotNull(resource, "Fixture $fixture must exist in resources")
+        val bytes = resource.readBytes()
+        val parsed = parser(bytes)
+        val reserialized = parsed.toByteArray()
+        assertArrayEquals(bytes, reserialized, "$fixture: reserialized bytes must match fixture exactly")
+    }
+
     @Test
     fun `each fixture roundtrips through deserialize-serialize to exact bytes`() {
-        // worker_hello
-        val whResource = javaClass.getResourceAsStream("/fixtures/worker_hello.pb")
-        assertNotNull(whResource)
-        val whBytes = whResource.readBytes()
-        val whParsed = dev.rubentxu.pipeline.v2.protocol.WorkerHello.parseFrom(whBytes)
-        val whReserialized = whParsed.toByteArray()
-        assertArrayEquals(whBytes, whReserialized, "worker_hello.pb: reserialized bytes must match fixture exactly")
-
-        // negotiated_session
-        val nsResource = javaClass.getResourceAsStream("/fixtures/negotiated_session.pb")
-        assertNotNull(nsResource)
-        val nsBytes = nsResource.readBytes()
-        val nsParsed = dev.rubentxu.pipeline.v2.protocol.NegotiatedSession.parseFrom(nsBytes)
-        val nsReserialized = nsParsed.toByteArray()
-        assertArrayEquals(nsBytes, nsReserialized, "negotiated_session.pb: reserialized bytes must match fixture exactly")
-
-        // commands
-        val cmdResource = javaClass.getResourceAsStream("/fixtures/commands.pb")
-        assertNotNull(cmdResource)
-        val cmdBytes = cmdResource.readBytes()
-        val cmdParsed = dev.rubentxu.pipeline.v2.protocol.Command.parseFrom(cmdBytes)
-        val cmdReserialized = cmdParsed.toByteArray()
-        assertArrayEquals(cmdBytes, cmdReserialized, "commands.pb: reserialized bytes must match fixture exactly")
-
-        // events
-        val evtResource = javaClass.getResourceAsStream("/fixtures/events.pb")
-        assertNotNull(evtResource)
-        val evtBytes = evtResource.readBytes()
-        val evtParsed = dev.rubentxu.pipeline.v2.protocol.EventEnvelope.parseFrom(evtBytes)
-        val evtReserialized = evtParsed.toByteArray()
-        assertArrayEquals(evtBytes, evtReserialized, "events.pb: reserialized bytes must match fixture exactly")
-
-        // ack_replay
-        val arResource = javaClass.getResourceAsStream("/fixtures/ack_replay.pb")
-        assertNotNull(arResource)
-        val arBytes = arResource.readBytes()
-        val arParsed = dev.rubentxu.pipeline.v2.protocol.Ack.parseFrom(arBytes)
-        val arReserialized = arParsed.toByteArray()
-        assertArrayEquals(arBytes, arReserialized, "ack_replay.pb: reserialized bytes must match fixture exactly")
-
-        // leases
-        val lsResource = javaClass.getResourceAsStream("/fixtures/leases.pb")
-        assertNotNull(lsResource)
-        val lsBytes = lsResource.readBytes()
-        val lsParsed = dev.rubentxu.pipeline.v2.protocol.LeaseGrant.parseFrom(lsBytes)
-        val lsReserialized = lsParsed.toByteArray()
-        assertArrayEquals(lsBytes, lsReserialized, "leases.pb: reserialized bytes must match fixture exactly")
-
-        // heartbeat
-        val hbResource = javaClass.getResourceAsStream("/fixtures/heartbeat.pb")
-        assertNotNull(hbResource)
-        val hbBytes = hbResource.readBytes()
-        val hbParsed = dev.rubentxu.pipeline.v2.protocol.Heartbeat.parseFrom(hbBytes)
-        val hbReserialized = hbParsed.toByteArray()
-        assertArrayEquals(hbBytes, hbReserialized, "heartbeat.pb: reserialized bytes must match fixture exactly")
+        roundTripFromGolden("worker_hello.pb") { dev.rubentxu.pipeline.v2.protocol.WorkerHello.parseFrom(it) }
+        roundTripFromGolden("negotiated_session.pb") { dev.rubentxu.pipeline.v2.protocol.NegotiatedSession.parseFrom(it) }
+        roundTripFromGolden("commands.pb") { dev.rubentxu.pipeline.v2.protocol.Command.parseFrom(it) }
+        roundTripFromGolden("events.pb") { dev.rubentxu.pipeline.v2.protocol.EventEnvelope.parseFrom(it) }
+        roundTripFromGolden("ack_replay.pb") { dev.rubentxu.pipeline.v2.protocol.Ack.parseFrom(it) }
+        roundTripFromGolden("leases.pb") { dev.rubentxu.pipeline.v2.protocol.LeaseGrant.parseFrom(it) }
+        roundTripFromGolden("heartbeat.pb") { dev.rubentxu.pipeline.v2.protocol.Heartbeat.parseFrom(it) }
     }
 
     @Test

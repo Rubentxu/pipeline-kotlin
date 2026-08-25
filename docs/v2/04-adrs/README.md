@@ -20,3 +20,4 @@
 - [ADR-0018: Configuración resource-style inspirada en Kubernetes](ADR-0018.md)
 - [ADR-0019: Matriz certificada Kotlin/runtime/plugin API](ADR-0019.md)
 - [ADR-0020: BTA como adapter futuro, no dependencia V2.0](ADR-0020.md)
+- [ADR-0043: Proto-Governance for Worker Protocol Module](ADR-0043-proto-governance.md)

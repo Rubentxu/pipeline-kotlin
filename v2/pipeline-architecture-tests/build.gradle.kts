@@ -30,6 +30,7 @@ tasks.test {
 val v2Modules = listOf(
     "pipeline-domain",
     "pipeline-application",
+    "pipeline-protocol",
     "pipeline-scripting-api",
     "pipeline-scripting-kotlin24",
     "pipeline-testkit",
@@ -43,6 +44,7 @@ val v2Modules = listOf(
 val v2ModulePaths = mapOf(
     "pipeline-domain" to ":pipeline-domain",
     "pipeline-application" to ":pipeline-application",
+    "pipeline-protocol" to ":pipeline-protocol",
     "pipeline-scripting-api" to ":pipeline-scripting-api",
     "pipeline-scripting-kotlin24" to ":pipeline-scripting-kotlin24",
     "pipeline-testkit" to ":pipeline-testkit",

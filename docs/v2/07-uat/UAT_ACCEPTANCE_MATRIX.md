@@ -8,8 +8,9 @@
 | UAT-DSL-002..005 | M2/M3 | yes | yes | partial |
 | UAT-STEP-* | M2 | yes | yes | no |
 | UAT-EVT-* | M1/M3 | yes | yes | no |
-| UAT-REC-* | M3/M4 | yes | yes | operator review |
+| UAT-REC-* | M3/ML | yes | yes | operator review |
 | UAT-PROT-* | M4 | yes | yes | no |
+| UAT-LOCAL-* | ML | yes | yes | no |
 | UAT-K8S-* | M5 | yes | yes | platform review |
 | UAT-CRED-* | M5 | yes | partial | security review |
 | UAT-SEC-* | M5/M9 | yes | partial | security review |
@@ -27,10 +28,10 @@
 M0-M3 critical UAT pass.
 
 ### Beta
-M0-M7 critical UAT pass; known P2/P3 documented.
+M0-ML-M7 critical UAT pass; known P2/P3 documented. (ML incluido per ADR-0046: UAT-LOCAL-001..006 son críticos de ejecución local.)
 
 ### RC
-All critical M0-M9 pass; no P0/P1.
+All critical M0-ML-M9 pass; no P0/P1.
 
 ### GA
 RC + soak/migration UAT + release/rollback rehearsal.

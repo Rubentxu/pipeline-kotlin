@@ -24,7 +24,8 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * | `jenkins-log.txt` | stdout+stderr of script; touched by heartbeat |
  * | `result.txt` | Exit code written atomically: `echo $? > tmp && mv tmp result.txt` |
  * | `result.txt.tmp` | Temp file for atomic result.txt write |
- * | `output.txt` | Reserved for future `returnStdout` use; NEVER read in L1 |
+ * | `output.txt` | Captured stdout when returnStdout=true (tee-gated wrapper) |
+ * | `timeout.flag` | Written by watchdog before SIGKILL (TMO-S-005) |
  * | `.cookie` | Cookie file created by wrapper; existence means process is alive |
  *
  * ## Linux-Only
@@ -33,6 +34,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * On non-Linux platforms, [LinuxRequiredException] is thrown.
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
+ * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  */
 data class DurableShConfig(
     /** Heartbeat interval: how often the wrapper touches jenkins-log.txt (seconds). */
@@ -43,11 +45,25 @@ data class DurableShConfig(
 
     /** If true, retain control dir on failure for debugging. */
     val cleanupRetainOnFailure: Boolean = CLEANUP_RETAIN_ON_FAILURE_DEFAULT,
+
+    /**
+     * If true, capture stdout to output.txt via tee-gated wrapper.
+     * Default false (L1 behavior: output.txt is written but never read).
+     */
+    val returnStdout: Boolean = RETURN_STDOUT_DEFAULT,
+
+    /**
+     * Policy for output.txt retention after capture.
+     * Default READ_THEN_DELETE (single-flight read).
+     */
+    val captureRetainPolicy: CaptureRetainPolicy = CAPTURE_RETAIN_POLICY_DEFAULT,
 ) {
     companion object {
         const val HEARTBEAT_CHECK_INTERVAL_PROPERTY = "pipeline.durable.heartbeat.check.interval"
         const val HEARTBEAT_MINIMUM_DELTA_PROPERTY = "pipeline.durable.heartbeat.minimum.delta"
         const val CLEANUP_RETAIN_ON_FAILURE_PROPERTY = "pipeline.durable.cleanup.retain.on.failure"
+        const val RETURN_STDOUT_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.CAPTURE_STDOUT"
+        const val CAPTURE_RETAIN_POLICY_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.CAPTURE_RETAIN_POLICY"
 
         /** Default: 300 seconds (5 minutes) */
         const val HEARTBEAT_CHECK_INTERVAL_DEFAULT = 300L
@@ -57,6 +73,12 @@ data class DurableShConfig(
 
         /** Default: true */
         const val CLEANUP_RETAIN_ON_FAILURE_DEFAULT = true
+
+        /** Default: false (L1 guard - output.txt written but never read) */
+        const val RETURN_STDOUT_DEFAULT = false
+
+        /** Default: READ_THEN_DELETE (single-flight capture) */
+        val CAPTURE_RETAIN_POLICY_DEFAULT = CaptureRetainPolicy.READ_THEN_DELETE
 
         /**
          * Loads configuration from system properties with defaults.
@@ -78,6 +100,22 @@ data class DurableShConfig(
                     CLEANUP_RETAIN_ON_FAILURE_PROPERTY,
                     CLEANUP_RETAIN_ON_FAILURE_DEFAULT.toString()
                 ).toBooleanStrictOrNull() ?: CLEANUP_RETAIN_ON_FAILURE_DEFAULT,
+
+                returnStdout = System.getProperty(
+                    RETURN_STDOUT_PROPERTY,
+                    RETURN_STDOUT_DEFAULT.toString()
+                ).toBooleanStrictOrNull() ?: RETURN_STDOUT_DEFAULT,
+
+                captureRetainPolicy = System.getProperty(
+                    CAPTURE_RETAIN_POLICY_PROPERTY,
+                    CAPTURE_RETAIN_POLICY_DEFAULT.name
+                )?.let { name ->
+                    try {
+                        CaptureRetainPolicy.valueOf(name)
+                    } catch (_: Exception) {
+                        CAPTURE_RETAIN_POLICY_DEFAULT
+                    }
+                } ?: CAPTURE_RETAIN_POLICY_DEFAULT,
             )
         }
     }

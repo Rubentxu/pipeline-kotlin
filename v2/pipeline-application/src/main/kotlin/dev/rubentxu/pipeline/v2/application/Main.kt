@@ -44,6 +44,7 @@ data class PipelineCliConfig(
     val dbPath: String?,
     val resumeFlag: Boolean,
     val scriptPath: String?,
+    val controlRoot: String? = null,
 )
 
 /**
@@ -63,9 +64,10 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         return null
     }
 
-    // Parse --db and --resume flags.
+    // Parse --db, --resume, and --control-root flags.
     var dbPath: String? = null
     var resumeFlag = false
+    var controlRoot: String? = null
     var scriptArgIndex = 1
     var i = 1
     while (i < args.size && args[i].startsWith("--")) {
@@ -80,6 +82,13 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
             "--resume" -> {
                 resumeFlag = true
                 i++
+            }
+            "--control-root" -> {
+                if (i + 1 >= args.size) {
+                    return null
+                }
+                controlRoot = args[i + 1]
+                i += 2
             }
             else -> break
         }
@@ -97,12 +106,13 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         dbPath = dbPath,
         resumeFlag = resumeFlag,
         scriptPath = scriptPath,
+        controlRoot = controlRoot,
     )
 }
 
 fun main(args: Array<String>) {
     val config = parseCliArgs(args) ?: run {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] <script>")
+        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] [--control-root <path>] <script>")
         System.exit(1)
         return
     }
@@ -160,10 +170,15 @@ fun main(args: Array<String>) {
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
 
-    // ML-R1: controlDirRoot is the parent directory of the SQLite db file.
+    // ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
+    // Can be overridden via --control-root flag for testing.
     // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
     val dbPath = Paths.get(config.dbPath!!)
-    val controlDirRoot: Path = dbPath.parent.resolve("durable-shell")
+    val controlDirRoot: Path = if (config.controlRoot != null) {
+        Paths.get(config.controlRoot)
+    } else {
+        dbPath.parent.resolve("durable-shell")
+    }
 
     val orchestrator = PipelineOrchestrator(
         journal = journal,

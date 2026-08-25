@@ -747,17 +747,20 @@ private suspend fun executeDurableStepImpl(
                         // Build effective ShOptions from step configuration
                         val workspaceRoot = workspaceResolver?.resolve("stage-$stageIndex", stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
+                        val shellStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell
                         val effectiveShOptions = shOptions?.copy(
                             workspaceRoot = workspaceRoot,
-                            timeoutMs = step.timeoutMillis ?: shOptions.timeoutMs,
+                            captureStdout = shellStep.returnStdout,
+                            timeoutMs = shellStep.timeoutMillis ?: shOptions.timeoutMs,
+                            env = shellStep.env ?: shOptions.env ?: emptyMap(),
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                             workspaceRoot = workspaceRoot,
-                            captureStdout = false,
-                            timeoutMs = step.timeoutMillis,
-                            env = emptyMap(),
+                            captureStdout = shellStep.returnStdout,
+                            timeoutMs = shellStep.timeoutMillis,
+                            env = shellStep.env ?: emptyMap(),
                         )
                         val opIdObj = OpId(runId, stageIndex, stepIndex)
-                        val result = ShExecution.runShStep(step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions)
+                        val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions)
                         if (classification is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost) {
                             // Override result to signal LOST to caller
                             "lost"
@@ -1432,12 +1435,14 @@ private suspend fun walkBranchDurable(
                 // W8 fold: route through ShExecution.executeBranchStep for consistent durable semantics
                 val branchOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex)
                 val effectiveShOptions = shOptions?.copy(
+                    captureStdout = step.returnStdout,
                     timeoutMs = step.timeoutMillis ?: shOptions.timeoutMs,
+                    env = step.env ?: shOptions.env ?: emptyMap(),
                 ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                     workspaceRoot = java.nio.file.Files.createTempDirectory("shoptions"),
-                    captureStdout = false,
+                    captureStdout = step.returnStdout,
                     timeoutMs = step.timeoutMillis,
-                    env = emptyMap(),
+                    env = step.env ?: emptyMap(),
                 )
                 ShExecution.executeBranchStep(
                     stageIndex = parentOpId.stageIndex,

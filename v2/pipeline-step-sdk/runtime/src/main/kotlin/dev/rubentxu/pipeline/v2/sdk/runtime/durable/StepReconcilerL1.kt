@@ -12,6 +12,7 @@ import java.nio.file.Path
  * This reconciler classifies RUNNING step rows into:
  * - **COMPLETE**: result.txt exists and heartbeat is fresh → use cached exit code
  * - **REATTACH**: result.txt missing but heartbeat is fresh → re-run with same fingerprint
+ * - **TIMED_OUT**: timeout.flag present → watchdog killed the process (ML-R2)
  * - **LOST**: result.txt missing AND heartbeat is stale → fail-closed per UAT-REC-002
  *
  * ## UAT-REC-002 (Fail-Closed LOST)
@@ -27,6 +28,18 @@ import java.nio.file.Path
  * - Do NOT mark as SUCCEEDED
  * - Do NOT skip the step
  * - Schedule a new attempt with the SAME fingerprint
+ *
+ * ## ML-R2 TimedOut (ADR-0047)
+ *
+ * > "timeout.flag written BEFORE kill"
+ *
+ * If the watchdog timer fires:
+ * 1. timeout.flag is written to the control directory
+ * 2. SIGKILL is sent to the process tree
+ * 3. On resume, the reconciler detects timeout.flag → TIMED_OUT
+ *
+ * TIMED_OUT is distinct from LOST: we KNOW it was killed by deadline,
+ * whereas LOST means worker crash with unknown outcome.
  *
  * ## Fingerprint Check
  *
@@ -44,6 +57,7 @@ import java.nio.file.Path
  * @param journal The operation journal for querying RUNNING rows during resume.
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
+ * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  * @see <a href="UAT-REC-002">UAT-REC-002 — Fail-Closed LOST</a>
  */
 class StepReconcilerL1(
@@ -70,6 +84,18 @@ class StepReconcilerL1(
         data class Reattach(val controlDir: Path) : Classification()
 
         /**
+         * Step was killed by watchdog timeout (SIGKILL).
+         *
+         * The timeout.flag file was written before kill, signaling that
+         * the watchdog triggered. This is distinct from LOST (worker crash)
+         * because we KNOW the process was killed by deadline.
+         *
+         * TIMED_OUT is terminal: FAILED_TIMEOUT is journaled and the step
+         * will NOT be re-executed on resume per TMO-S-007 / DSE-S-025.
+         */
+        data class TimedOut(val controlDir: Path, val logPath: Path) : Classification()
+
+        /**
          * Step outcome is unknown. result.txt missing AND heartbeat is stale.
          * Fail-closed per UAT-REC-002: must not assume success.
          *
@@ -81,15 +107,22 @@ class StepReconcilerL1(
     /**
      * Classifies a RUNNING step's control directory.
      *
-     * Checks:
-     * 1. Is result.txt present? → COMPLETE
-     * 2. Is heartbeat fresh (log file touched within checkInterval + minimumDelta)? → REATTACH
-     * 3. Heartbeat is stale → LOST
+     * Checks (in order):
+     * 1. Is timeout.flag present? → TIMED_OUT (per TMO-S-005: flag written BEFORE kill)
+     * 2. Is result.txt present? → COMPLETE
+     * 3. Is heartbeat fresh (log file touched within checkInterval + minimumDelta)? → REATTACH
+     * 4. Heartbeat is stale → LOST
      *
      * ## Fail-Closed Invariant
      *
      * If we cannot determine the outcome with certainty, we classify as LOST.
      * This is the UAT-REC-002 contract: "must not assume success".
+     *
+     * ## Timeout Priority
+     *
+     * Per TMO-S-005: timeout.flag is written BEFORE kill, so we check it FIRST.
+     * This ensures that even if heartbeat is stale due to slow I/O, the presence
+     * of timeout.flag correctly identifies a timeout-killed process.
      *
      * @param opId The operation ID (used to find the control directory).
      * @return The classification of this step's current state.
@@ -108,6 +141,12 @@ class StepReconcilerL1(
     fun classifyControlDir(controlDir: Path): Classification {
         val resultFile = controlDir.resolve("result.txt")
         val logFile = controlDir.resolve("jenkins-log.txt")
+        val timeoutFlag = controlDir.resolve("timeout.flag")
+
+        // Check 0: Is timeout.flag present? (check BEFORE heartbeat per TMO-S-005)
+        if (Files.exists(timeoutFlag)) {
+            return Classification.TimedOut(controlDir, logFile)
+        }
 
         // Check 1: Is result.txt present?
         if (Files.exists(resultFile)) {
@@ -167,12 +206,13 @@ class StepReconcilerL1(
      * ## Resume Flow
      *
      * 1. `walkPipelineSpecDurable` calls `ctx.stepReconcilerL1.reconcile(runId)`
-     * 2. For each RUNNING "sh" opId, classify via result.txt + heartbeat
+     * 2. For each RUNNING "sh" opId, classify via result.txt + timeout.flag + heartbeat
      * 3. Thread the resulting map into `executeDurableStepImpl`
      * 4. Shell branch checks the map:
      *    - **Complete(exitCode)** → skip execution, return completed result
      *    - **Reattach(controlDir)** → poll/await existing control-dir result
-     *    - **Lost** → journal.append LOST + emit StepFailed (fail-closed)
+     *    - **TimedOut** → journal FAILED_TIMEOUT, emit StepFailed fail-closed
+     *    - **Lost** → journal LOST + emit StepFailed (fail-closed)
      *
      * @param runId The run identifier to reconcile.
      * @return Map of opId → Classification for all RUNNING shell steps.

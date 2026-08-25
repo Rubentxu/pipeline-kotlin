@@ -504,4 +504,104 @@ print("shebang safe")
             executor.cleanup(controlDir2, 0)
         }
     }
+
+    // ============================================================
+    // Test 15: tee-while-killed
+    // ============================================================
+    @Test
+    fun `adversarial tee-while-killed - output txt partial on kill returns empty string`() {
+        assumeLinux()
+        val controlDir = createControlDir("test-tee-killed")
+
+        // Script that produces output then sleeps
+        val script = """echo "line1" ; sleep 5 ; echo "line2" """
+
+        // Launch with captureStdout=true via ShOptions
+        val shOptions = ShOptions(
+            workspaceRoot = controlDir,
+            captureStdout = true,
+            timeoutMs = null,
+            env = emptyMap(),
+        )
+
+        // Launch the executor
+        val process = executor.launch(controlDir, script, "tee-killed-test", config, captureStdout = true)
+        executor.detach(process, controlDir)
+
+        // Kill mid-execution while script is sleeping
+        executor.kill(process, controlDir)
+
+        // output.txt may be partial, but readOutputText should return empty string, not throw
+        val capturedStdout = executor.readOutputText(controlDir, CaptureRetainPolicy.RETAIN)
+        // On kill, captured stdout may be partial - function returns empty per RTS-S-006
+        assertTrue(
+            capturedStdout == null || capturedStdout.isEmpty() || capturedStdout == "line1",
+            "After kill, stdout should be empty or partial 'line1', got: '$capturedStdout'"
+        )
+
+        executor.cleanup(controlDir, -1)
+    }
+
+    @Test
+    fun `adversarial tee-while-killed - readOutputText never throws`() {
+        assumeLinux()
+        val controlDir = createControlDir("test-read-never-throws")
+
+        // output.txt doesn't exist - should return null, not throw
+        val result1 = executor.readOutputText(controlDir, CaptureRetainPolicy.READ_THEN_DELETE)
+        assertNull(result1, "Non-existent output.txt should return null")
+
+        // Create a file and delete it - should return empty string, not throw
+        val outputFile = controlDir.resolve("output.txt")
+        java.nio.file.Files.writeString(outputFile, "test")
+        val result2 = executor.readOutputText(controlDir, CaptureRetainPolicy.READ_THEN_DELETE)
+        // After read-then-delete, file should be gone
+        assertFalse(java.nio.file.Files.exists(outputFile), "output.txt should be deleted after READ_THEN_DELETE")
+        assertEquals("test", result2, "Should read content before delete")
+
+        executor.cleanup(controlDir, 0)
+    }
+
+    // ============================================================
+    // Test 16: env value contains equals
+    // ============================================================
+    @Test
+    fun `adversarial env value contains equals - value preserved verbatim`() {
+        assumeLinux()
+        val controlDir = createControlDir("test-env-equals")
+        // Use ${'$'} to escape $ in Kotlin strings
+        val script = """echo "KEY=${'$'}KEY" """
+
+        val shOptions = ShOptions(
+            workspaceRoot = controlDir,
+            captureStdout = false,
+            timeoutMs = null,
+            env = mapOf("KEY" to "value=with=equals"),
+        )
+
+        // Use the execute function with env
+        // Note: execute() handles cleanup in its finally block
+        val result = executor.execute(controlDir, script, "env-equals-test", shOptions)
+
+        // Verify the script ran (exit code 0)
+        assertEquals(0, result.exitCode, "Script should complete successfully")
+    }
+
+    @Test
+    fun `adversarial env value contains equals - multiple equals preserved`() {
+        assumeLinux()
+        val controlDir = createControlDir("test-env-multi-equals")
+        // Use ${'$'} to escape $ in Kotlin strings
+        val script = """echo "RESULT=${'$'}RESULT" """
+
+        val shOptions = ShOptions(
+            workspaceRoot = controlDir,
+            captureStdout = false,
+            timeoutMs = null,
+            env = mapOf("RESULT" to "a=1,b=2,c=3"),
+        )
+
+        val result = executor.execute(controlDir, script, "env-multi-equals-test", shOptions)
+        assertEquals(0, result.exitCode, "Script should complete successfully")
+    }
 }

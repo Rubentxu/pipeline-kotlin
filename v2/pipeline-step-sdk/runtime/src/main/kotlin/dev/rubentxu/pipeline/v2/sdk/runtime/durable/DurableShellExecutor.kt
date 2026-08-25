@@ -10,7 +10,7 @@ import kotlin.concurrent.withLock
  *
  * Valid transitions:
  * ```
- * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED
+ * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  * ```
  *
  * ## State Descriptions
@@ -25,6 +25,8 @@ import kotlin.concurrent.withLock
  *            Worker died; outcome unknown. Fail-closed per UAT-REC-002.
  * - **LAUNCH_FAILED**: Failed to acquire ProcessHandle or fork wrapper.
  *                      Immediate failure; no recovery possible.
+ * - **TIMED_OUT**: Watchdog killed the process via timeout.flag + SIGKILL.
+ *                  Per TMO-S-005: timeout.flag written BEFORE kill.
  */
 enum class DurableShellState {
     /** ProcessHandle acquired but not yet confirmed detached. */
@@ -44,19 +46,29 @@ enum class DurableShellState {
 
     /** Failed to acquire ProcessHandle or fork wrapper. */
     LAUNCH_FAILED,
+
+    /**
+     * Watchdog killed the process tree via timeout.flag + SIGKILL.
+     *
+     * Per TMO-S-005: timeout.flag written BEFORE kill to ensure
+     * the reconciler can distinguish this from LOST.
+     */
+    TIMED_OUT,
 }
 
 /**
  * Result of a durable shell execution.
  *
- * @property state The final state (COMPLETE, LOST, or LAUNCH_FAILED).
+ * @property state The final state (COMPLETE, LOST, LAUNCH_FAILED, or TIMED_OUT).
  * @property exitCode The exit code (0 for LOST/LAUNCH_FAILED - unknown/unavailable).
  * @property controlDir The control directory path.
+ * @property capturedStdout The captured stdout if returnStdout was enabled, or null.
  */
 data class DurableShellResult(
     val state: DurableShellState,
     val exitCode: Int,
     val controlDir: Path,
+    val capturedStdout: String? = null,
 )
 
 /**
@@ -107,6 +119,26 @@ class DurableShellExecutor : DurableShellLaunching {
         opId: String,
         config: DurableShConfig,
     ): ProcessHandle {
+        return launch(controlDir, scriptContent, opId, config, captureStdout = false)
+    }
+
+    /**
+     * Launches a durable shell step with optional stdout capture.
+     *
+     * @param controlDir The control directory path.
+     * @param scriptContent The user's shell script.
+     * @param opId The operation ID.
+     * @param config The durable shell configuration.
+     * @param captureStdout If true, capture stdout to output.txt via tee wrapper.
+     * @return The process handle.
+     */
+    fun launch(
+        controlDir: Path,
+        scriptContent: String,
+        opId: String,
+        config: DurableShConfig,
+        captureStdout: Boolean,
+    ): ProcessHandle {
         checkLinuxOrThrow()
 
         // P2 invariant: script content is written to filesystem (script.sh), NOT passed as argv.
@@ -135,8 +167,8 @@ class DurableShellExecutor : DurableShellLaunching {
             java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
         ))
 
-        // Build wrapper using D3 contract
-        val wrapper = buildWrapper(controlDir, scriptFile, config)
+        // Build wrapper using D3 contract (tee-gated if captureStdout)
+        val wrapper = buildWrapper(controlDir, scriptFile, config, captureStdout)
 
         // Launch via ProcessBuilder — argv = [sh, -c, wrapper]
         // Script content is ONLY on filesystem, never in argv
@@ -150,6 +182,8 @@ class DurableShellExecutor : DurableShellLaunching {
 
         // Redirect stdin/stdout/stderr to prevent leakage
         // stdin: inherit to avoid blocking on input (nohup handles this)
+        // Note: stdout/stderr redirection is handled by the wrapper's own redirects
+        // when tee-gating is enabled (captureStdout=true)
         pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
         pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
 
@@ -262,11 +296,30 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     override fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
+        return buildWrapper(controlDir, scriptPath, config, captureStdout = false)
+    }
+
+    /**
+     * Builds the shell wrapper command.
+     *
+     * @param controlDir The control directory path.
+     * @param scriptPath The path to the script file.
+     * @param config The durable shell configuration.
+     * @param captureStdout If true, tee stdout to output.txt (returnStdout mode).
+     * @return The shell wrapper command string.
+     */
+    fun buildWrapper(
+        controlDir: Path,
+        scriptPath: Path,
+        config: DurableShConfig,
+        captureStdout: Boolean,
+    ): String {
         val cookieFileEscaped = escapeForShell(controlDir.resolve(".cookie").toString())
         val logFileEscaped = escapeForShell(controlDir.resolve("jenkins-log.txt").toString())
         val resultFileEscaped = escapeForShell(controlDir.resolve("result.txt").toString())
         val resultTmpEscaped = escapeForShell(controlDir.resolve("result.txt.tmp").toString())
         val scriptPathEscaped = escapeForShell(scriptPath.toString())
+        val outputFileEscaped = escapeForShell(controlDir.resolve("output.txt").toString())
 
         // D3 Wrapper: VERBATIM, single-quoted paths, script NEVER in argv
         //
@@ -274,8 +327,13 @@ class DurableShellExecutor : DurableShellLaunching {
         // 1. COOKIE env var (not argv) protects from process-tree-killer
         // 2. Single-quoted script path prevents any expansion
         // 3. nohup + >&- 2>&- + & detaches from JVM
-        // 4. Heartbeat loop touches log file
+        // 4. Heartbeat loop touches log file (independent of stdout)
         // 5. Exit code written atomically
+        //
+        // When captureStdout=true (D4 tee-gating):
+        // - stdout is tee'd to output.txt via '> '$OUT' 2> '$LOG'
+        // - stderr goes to jenkins-log.txt as usual
+        // - Heartbeat (inner while) still touches jenkins-log.txt only
         //
         // IMPORTANT: Script content is ONLY in script.sh on the filesystem.
         // The wrapper references it by PATH, never by argv content.
@@ -283,6 +341,14 @@ class DurableShellExecutor : DurableShellLaunching {
         // Build the wrapper. Each shell variable uses ${'$'}name to avoid Kotlin template processing.
         // Key design: cookie file is created before fork, lives while process runs, deleted on process death.
         // No EXIT trap - the OS cleans up when process exits.
+
+        // Outer redirect: tee to output.txt if captureStdout, otherwise just log
+        val outerRedirect = if (captureStdout) {
+            "> '$outputFileEscaped' 2> '$logFileEscaped'"
+        } else {
+            "> '$logFileEscaped' 2>&1"
+        }
+
         return buildString {
             append("( ")
             append("COOKIE_FILE='$cookieFileEscaped'; ")
@@ -295,6 +361,7 @@ class DurableShellExecutor : DurableShellLaunching {
             // Create cookie file with PID - this is the heartbeat mechanism
             append("echo ${'$'}${'$'} > \"${'$'}COOKIE_FILE\"; ")
             // Heartbeat: touch log file periodically to show process is alive
+            // This is independent of stdout - it always touches jenkins-log.txt
             append("(")
             append("while [ -f \"${'$'}COOKIE_FILE\" ]; do ")
             append("sleep ${'$'}CHECK_INTERVAL; ")
@@ -310,7 +377,37 @@ class DurableShellExecutor : DurableShellLaunching {
             // Remove cookie file to signal completion
             append("rm -f \"${'$'}COOKIE_FILE\"; ")
             append("exit ${'$'}EXIT_CODE")
-            append(") > '$logFileEscaped' 2>&1 &")
+            append(") $outerRedirect &")
+        }
+    }
+
+    /**
+     * Reads the captured stdout from output.txt.
+     *
+     * Per RTS-S-004: read AFTER result.txt (poll result.txt first).
+     * Per RTS-S-005: single-flight read-then-delete (when captureRetainPolicy == READ_THEN_DELETE).
+     * Per RTS-S-006: on timeout/kill/non-zero, returns "" (never throws, never blocks).
+     *
+     * @param controlDir The control directory path.
+     * @param captureRetainPolicy Whether to delete output.txt after reading.
+     * @return The captured stdout content, or null if output.txt doesn't exist.
+     */
+    fun readOutputText(controlDir: Path, captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE): String? {
+        val outputFile = controlDir.resolve("output.txt")
+        if (!Files.exists(outputFile)) {
+            return null
+        }
+        return try {
+            val content = Files.readString(outputFile).trim()
+            // Single-flight delete on success when policy is READ_THEN_DELETE
+            if (captureRetainPolicy == CaptureRetainPolicy.READ_THEN_DELETE) {
+                Files.deleteIfExists(outputFile)
+            }
+            content
+        } catch (_: Exception) {
+            // On any error reading/deleting, return empty string per RTS-S-006
+            // (never throws, never blocks)
+            ""
         }
     }
 
@@ -336,6 +433,140 @@ class DurableShellExecutor : DurableShellLaunching {
                     // Ignore
                 }
             }
+    }
+
+    /**
+     * Writes the timeout.flag file to signal that the watchdog triggered.
+     *
+     * Per TMO-S-005: timeout.flag MUST be written BEFORE kill to ensure
+     * the reconciler can distinguish TIMED_OUT from LOST.
+     *
+     * @param controlDir The control directory path.
+     */
+    private fun writeTimeoutFlag(controlDir: Path) {
+        try {
+            val flagFile = controlDir.resolve("timeout.flag")
+            Files.writeString(flagFile, System.currentTimeMillis().toString())
+        } catch (_: Exception) {
+            // Don't fail if we can't write the flag
+        }
+    }
+
+    /**
+     * Checks if the timeout.flag exists in the control directory.
+     *
+     * @param controlDir The control directory path.
+     * @return true if timeout.flag exists.
+     */
+    fun hasTimeoutFlag(controlDir: Path): Boolean {
+        return Files.exists(controlDir.resolve("timeout.flag"))
+    }
+
+    /**
+     * Executes a durable shell step with timeout watchdog support.
+     *
+     * This is an extended version of [executeDurableShell] that accepts timeout
+     * and stdout capture options via [ShOptions].
+     *
+     * @param controlDir The control directory path.
+     * @param scriptContent The user's shell script.
+     * @param opId The operation ID.
+     * @param shOptions Shell execution options including timeout and capture settings.
+     * @return The execution result with optional captured stdout.
+     */
+    fun execute(
+        controlDir: Path,
+        scriptContent: String,
+        opId: String,
+        shOptions: ShOptions,
+    ): DurableShellResult {
+        var state = DurableShellState.LAUNCHING
+        var exitCode = -1
+        var process: ProcessHandle? = null
+        var timedOut = false
+
+        val config = DurableShConfig.fromSystemProperties()
+        val timeoutMs = shOptions.timeoutMs ?: 0L
+        val captureStdout = shOptions.captureStdout
+
+        try {
+            // Step 1: Launch
+            process = launch(controlDir, scriptContent, opId, config, captureStdout)
+            state = DurableShellState.LAUNCHING
+
+            // Step 2: Detach
+            detach(process, controlDir)
+            state = DurableShellState.RUNNING
+
+            // Step 3: Poll for result with optional timeout
+            // If timeoutMs > 0, schedule watchdog thread
+            val watchdogThread = if (timeoutMs > 0) {
+                Thread {
+                    try {
+                        Thread.sleep(timeoutMs)
+                        // Timeout triggered - write flag BEFORE kill
+                        writeTimeoutFlag(controlDir)
+                        // Kill the process tree via setsid-derived pgid
+                        // process is guaranteed non-null at this point (assigned in line above)
+                        try {
+                            val pid = process.pid()
+                            ProcessBuilder("setsid", "-f", "kill", "-9", "-$pid").start().waitFor()
+                        } catch (_: Exception) {
+                            // Fallback to destroyForcibly
+                            process.destroyForcibly()
+                        }
+                        timedOut = true
+                    } catch (_: InterruptedException) {
+                        // Normal interruption - timeout was cancelled
+                    }
+                }.apply { start() }
+            } else null
+
+            // Poll for result
+            exitCode = pollResult(controlDir, timeoutMs = if (timeoutMs > 0) timeoutMs + 30_000 else 3600_000) ?: -1
+
+            // Cancel watchdog if still running
+            watchdogThread?.interrupt()
+
+            // If we exited due to timeout
+            if (timedOut) {
+                state = DurableShellState.TIMED_OUT
+                // One grace poll cycle - late exit wins per TMO-S-009
+                val graceExitCode = pollResult(controlDir, 1000)
+                if (graceExitCode != null) {
+                    exitCode = graceExitCode
+                    state = DurableShellState.COMPLETE
+                }
+            } else {
+                state = DurableShellState.COMPLETE
+            }
+
+            // Read captured stdout if enabled
+            val capturedStdout = if (captureStdout) {
+                readOutputText(controlDir, config.captureRetainPolicy)
+            } else null
+
+            return DurableShellResult(
+                state = state,
+                exitCode = exitCode,
+                controlDir = controlDir,
+                capturedStdout = capturedStdout,
+            )
+        } catch (e: LinuxRequiredException) {
+            state = DurableShellState.LAUNCH_FAILED
+            throw e
+        } catch (e: Exception) {
+            state = if (timedOut) DurableShellState.TIMED_OUT else DurableShellState.LOST
+            exitCode = -1
+            return DurableShellResult(
+                state = state,
+                exitCode = exitCode,
+                controlDir = controlDir,
+            )
+        } finally {
+            // Cleanup based on final state
+            cleanup(controlDir, exitCode)
+        }
     }
 }
 

@@ -146,6 +146,69 @@ class StepReconcilerL1Test {
         assertEquals(42, (classification as StepReconcilerL1.Classification.Complete).exitCode)
     }
 
+    @Test
+    fun `classify timedOut when timeout flag present beats heartbeat staleness`() {
+        assumeLinux()
+        // Clock set to now, log file is old, but timeout.flag exists
+        // Per TMO-S-005: timeout.flag written BEFORE kill, so it takes precedence
+        val now = Instant.now()
+        val staleTime = now.minusSeconds(config.heartbeatCheckInterval + config.heartbeatMinimumDelta + 10)
+        val clock = FakeClock(now)
+        val reconciler = StepReconcilerL1(clock, tempDir, config)
+
+        val controlDir = tempDir.resolve("test-timeout")
+        Files.createDirectories(controlDir)
+
+        // Create timeout.flag
+        val timeoutFlag = controlDir.resolve("timeout.flag")
+        Files.writeString(timeoutFlag, System.currentTimeMillis().toString())
+
+        // Create old log file
+        val logFile = controlDir.resolve("jenkins-log.txt")
+        Files.createFile(logFile)
+        Files.setLastModifiedTime(logFile, java.nio.file.attribute.FileTime.from(staleTime))
+
+        val classification = reconciler.classifyControlDir(controlDir)
+
+        // timeout.flag takes precedence over heartbeat staleness
+        assertTrue(classification is StepReconcilerL1.Classification.TimedOut,
+            "Expected TimedOut when timeout.flag present, got: $classification")
+        val timedOut = classification as StepReconcilerL1.Classification.TimedOut
+        assertEquals(controlDir, timedOut.controlDir)
+        assertEquals(logFile, timedOut.logPath)
+    }
+
+    @Test
+    fun `classify timedOut when timeout flag present beats result missing`() {
+        assumeLinux()
+        // Clock set to now, result.txt doesn't exist, but timeout.flag exists
+        // This is the scenario where watchdog killed the process before result was written
+        val now = Instant.now()
+        val clock = FakeClock(now)
+        val reconciler = StepReconcilerL1(clock, tempDir, config)
+
+        val controlDir = tempDir.resolve("test-timeout-no-result")
+        Files.createDirectories(controlDir)
+
+        // Create timeout.flag but no result.txt
+        val timeoutFlag = controlDir.resolve("timeout.flag")
+        Files.writeString(timeoutFlag, System.currentTimeMillis().toString())
+
+        val classification = reconciler.classifyControlDir(controlDir)
+
+        assertTrue(classification is StepReconcilerL1.Classification.TimedOut,
+            "Expected TimedOut when timeout.flag present, got: $classification")
+    }
+
+    @Test
+    fun `shouldRerun returns false for FAILED_TIMEOUT status`() {
+        val clock = FakeClock(Instant.now())
+        val reconciler = StepReconcilerL1(clock, tempDir, config)
+
+        // FAILED_TIMEOUT is terminal - should not re-run
+        assertFalse(reconciler.shouldRerun(dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.FAILED_TIMEOUT))
+    }
+
     /**
      * Fake clock for testing - allows controlling time.
      */

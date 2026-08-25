@@ -419,6 +419,36 @@ print("shebang safe")
     }
 
     // ============================================================
+    // Test 14a: No dollar-prefixed files created (regression for $LOG_FILE/$RESULT_FILE bug)
+    // Ensures wrapper escaping is correct and no shell variables leak as filenames.
+    // ============================================================
+    @Test
+    fun `adversarial dollar-prefixed-files - no literal dollar prefixed files created in cwd`() {
+        assumeLinux()
+        val controlDir = createControlDir("test-dollar-files")
+
+        // Track all files in the test directory before running
+        val filesBefore = Files.walk(controlDir).map { it.fileName.toString() }.toList()
+
+        val script = """echo "test" """
+        val process = executor.launch(controlDir, script, "dollar-files-test", config)
+
+        try {
+            executor.detach(process, controlDir)
+            val exitCode = executor.pollResult(controlDir, 5000) ?: -1
+            assertEquals(0, exitCode, "Script should complete successfully")
+        } finally {
+            executor.kill(process, controlDir)
+            executor.cleanup(controlDir, 0)
+        }
+
+        // Regression check: no files with $ prefix should exist in cwd or control dir
+        val cwdFiles = Files.list(controlDir.parent).map { it.fileName.toString() }.toList()
+        val dollarFiles = cwdFiles.filter { it.startsWith("$") }
+        assertTrue(dollarFiles.isEmpty(), "No dollar-prefixed files should be created in cwd. Found: $dollarFiles")
+    }
+
+    // ============================================================
     // Test 14: SIGKILL Resume
     // ============================================================
     @Test

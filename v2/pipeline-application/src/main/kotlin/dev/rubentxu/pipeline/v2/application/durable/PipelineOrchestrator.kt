@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
@@ -104,6 +105,25 @@ class PipelineOrchestrator(
                     null
                 }
 
+                // ML-R2 T4: Construct WorkspaceResolver for per-stage workspace management
+                val workspaceResolver = if (controlDirRoot != null) {
+                    WorkspaceResolver(controlDirRoot)
+                } else {
+                    null
+                }
+
+                // ML-R2 T4: Default ShOptions (stage/step options override via merge in walkPipelineSpecDurable)
+                val defaultShOptions = if (controlDirRoot != null) {
+                    ShOptions(
+                        workspaceRoot = controlDirRoot.resolve("workspace"),
+                        captureStdout = false,
+                        timeoutMs = null,
+                        env = emptyMap(),
+                    )
+                } else {
+                    null
+                }
+
                 val ctx = DurableWalkContext(
                     clock = clock,
                     opJournal = journal,
@@ -112,6 +132,8 @@ class PipelineOrchestrator(
                     eventSink = eventSink,
                     stepReconcilerL1 = stepReconcilerL1,
                     controlDirRoot = controlDirRoot,
+                    workspaceResolver = workspaceResolver,
+                    shOptions = defaultShOptions,
                 )
 
                 // Execute with durable walk — ctx carries branchReconciler for LIVE reconciliation

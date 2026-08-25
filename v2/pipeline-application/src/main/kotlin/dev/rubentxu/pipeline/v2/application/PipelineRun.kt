@@ -55,6 +55,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
+import dev.rubentxu.pipeline.v2.application.durable.ShExecution
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -547,6 +548,8 @@ private suspend fun emitDurableStepEvents(
                     clock = ctx.clock,
                     runOutcomeRef = runOutcomeRef,
                     controlDirRoot = ctx.controlDirRoot,
+                    workspaceResolver = ctx.workspaceResolver,
+                    shOptions = ctx.shOptions,
                     stepClassifications = stepClassifications,
                 )
 
@@ -641,6 +644,8 @@ private suspend fun executeDurableStep(
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
     controlDirRoot: Path? = null,
+    workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
+    shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
 ): String {
     return executeDurableStepImpl(
@@ -657,6 +662,8 @@ private suspend fun executeDurableStep(
         runOutcomeRef = runOutcomeRef,
         reconciledBranches = reconciledBranches,
         controlDirRoot = controlDirRoot,
+        workspaceResolver = workspaceResolver,
+        shOptions = shOptions,
         stepClassifications = stepClassifications,
     )
 }
@@ -680,84 +687,8 @@ private suspend fun executeDurableStep(
  * script.sh on the filesystem, and only the wrapper command (with paths)
  * is passed to `sh -c`.
  *
- * @param command The shell command to execute.
- * @param opId The operation ID (used for control directory naming).
- * @param controlDirRoot The root directory for control directories.
- * @param eventSink The event sink for emitting events (e.g., EchoOutputCaptured).
- * @param stepIndex The step index for event sequencing.
- * @return "success" if exit code is 0, "failure" otherwise.
+ * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
-private suspend fun runShStep(
-    command: String,
-    runId: String,
-    opId: String,
-    controlDirRoot: Path?,
-    eventSink: EventSink,
-    stepIndex: Int,
-): String {
-    if (controlDirRoot == null) {
-        // Fallback to non-durable execution if no control dir root
-        val argv = listOf("bash", "-c", command)
-        val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
-        return if (result.exitCode != 0) "failure" else "success"
-    }
-
-    val controlDir = controlDirRoot.resolve(opId)
-
-    return try {
-        val config = DurableShConfig.fromSystemProperties()
-        val result = executeDurableShell(controlDir, command, opId, config)
-
-        // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)
-        // L1 constraint: output.txt is never read; jenkins-log.txt is the captured output
-        try {
-            val logFile = controlDir.resolve("jenkins-log.txt")
-            if (java.nio.file.Files.exists(logFile)) {
-                val capturedOutput = java.nio.file.Files.readString(logFile)
-                eventSink.append(EchoOutputCaptured(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId,
-                    sequence = 0L,
-                    occurredAt = java.time.Instant.now(),
-                    stepIndex = stepIndex,
-                    content = capturedOutput,
-                ))
-            }
-        } catch (_: Exception) {
-            // Don't fail the step if we can't read the log
-        }
-
-        when (result.state) {
-            DurableShellState.COMPLETE -> {
-                if (result.exitCode != 0) "failure" else "success"
-            }
-            DurableShellState.LOST,
-            DurableShellState.LAUNCH_FAILED,
-            DurableShellState.LAUNCHING,
-            DurableShellState.RUNNING -> "failure"
-        }
-    } catch (e: LinuxRequiredException) {
-        // Fallback to non-durable on non-Linux
-        val argv = listOf("bash", "-c", command)
-        val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
-        if (result.exitCode != 0) "failure" else "success"
-    } catch (e: Exception) {
-        "failure"
-    }
-}
-
-/**
- * No-op event sink for shell execution where events are not persisted.
- */
-private object NoOpEventSink : EventSink {
-    override fun append(event: DomainEvent) {
-        // no-op
-    }
-
-    override fun eventsFor(runId: String): Sequence<DomainEvent> {
-        return emptySequence()
-    }
-}
 
 /**
  * Internal implementation of [executeDurableStep]. Both public overloads delegate here
@@ -777,6 +708,8 @@ private suspend fun executeDurableStepImpl(
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
     controlDirRoot: Path? = null,
+    workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
+    shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
 ): String {
     // Build opId for durable shell control dir
@@ -803,11 +736,28 @@ private suspend fun executeDurableStepImpl(
                         val exitCode = executor.pollResult(classification.controlDir, timeoutMs = 60_000) ?: -1
                         if (exitCode == 0) "success" else "failure"
                     }
+                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.TimedOut -> {
+                        // Timeout was triggered before JVM death; return failure (not lost)
+                        "failure"
+                    }
                     is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost,
                     null -> {
                         // LOST: return "lost" to signal to caller to journal LOST (not FAILED)
                         // null: no pre-existing classification; proceed with normal durable execution
-                        val result = runShStep(step.command, runId, opId, controlDirRoot, eventSink, stepIndex)
+                        // Build effective ShOptions from step configuration
+                        val workspaceRoot = workspaceResolver?.resolve("stage-$stageIndex", stageIndex)
+                            ?: java.nio.file.Files.createTempDirectory("shoptions")
+                        val effectiveShOptions = shOptions?.copy(
+                            workspaceRoot = workspaceRoot,
+                            timeoutMs = step.timeoutMillis ?: shOptions.timeoutMs,
+                        ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
+                            workspaceRoot = workspaceRoot,
+                            captureStdout = false,
+                            timeoutMs = step.timeoutMillis,
+                            env = emptyMap(),
+                        )
+                        val opIdObj = OpId(runId, stageIndex, stepIndex)
+                        val result = ShExecution.runShStep(step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions)
                         if (classification is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost) {
                             // Override result to signal LOST to caller
                             "lost"
@@ -855,6 +805,8 @@ private suspend fun executeDurableStepImpl(
                     cursorStore = cursorStore,
                     clock = clock,
                     runOutcomeRef = runOutcomeRef,
+                    workspaceResolver = workspaceResolver,
+                    shOptions = shOptions,
                     reconciledBranches = reconciledBranches,
                 )
             }
@@ -1243,6 +1195,9 @@ private fun emitParallelBranchFinished(
  * @param cursorStore The replay cursor store.
  * @param clock The clock for timestamps.
  * @param runOutcomeRef Atomic reference for run outcome propagation.
+ * @param workspaceResolver The workspace resolver for per-stage workspaces.
+ * @param shOptions Default shell execution options.
+ * @param reconciledBranches Map of reconciled branches from branch reconciliation.
  * @return The step outcome string ("success" or "failure").
  */
 private suspend fun walkParallelFrame(
@@ -1255,6 +1210,8 @@ private suspend fun walkParallelFrame(
     cursorStore: ReplayCursorStore,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
+    shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
     val parentOpId = OpId(runId, stageIndex, stepIndex)
@@ -1325,6 +1282,8 @@ private suspend fun walkParallelFrame(
                             cursorStore = cursorStore,
                             clock = clock,
                             runOutcomeRef = runOutcomeRef,
+                            workspaceResolver = workspaceResolver,
+                            shOptions = shOptions,
                         )
                         emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
                         branchOutcome
@@ -1404,15 +1363,20 @@ private suspend fun walkParallelFrame(
  * Executes each step in the branch sequentially using the existing durable
  * step execution path, with a branch-specific [OpId].
  *
+ * W8 fold: Shell steps in branches now route through ShExecution.executeBranchStep
+ * for consistent durable semantics with single-frame steps.
+ *
  * @param branch The branch specification to walk.
  * @param branchIndex The index of this branch within the parallel frame.
  * @param parentOpId The parent [OpId] of the parallel frame.
  * @param runId The pipeline run identifier.
- * @param eventSink The event sink.
+ * @param eventSink The event sink for journal entries.
  * @param journal The operation journal.
  * @param cursorStore The replay cursor store.
  * @param clock The clock.
  * @param runOutcomeRef Atomic reference for run outcome.
+ * @param workspaceResolver The workspace resolver.
+ * @param shOptions Default shell execution options.
  * @return The branch outcome string.
  */
 private suspend fun walkBranchDurable(
@@ -1425,7 +1389,10 @@ private suspend fun walkBranchDurable(
     cursorStore: ReplayCursorStore,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
+    shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
 ): String {
+
     // For now, each branch step is processed at the parent stage/step level
     // with the branch-specific OpId. The actual step execution reuses the
     // existing durable step path but with branch awareness.
@@ -1462,14 +1429,23 @@ private suspend fun walkBranchDurable(
                 "success"
             }
             is StepSpec.Shell -> {
-                val argv = listOf("bash", "-c", step.command)
-                val result = dev.rubentxu.pipeline.v2.sdk.runtime.sh(
-                    dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
-                    argv,
-                    eventSink,
-                    stepOffset,
+                // W8 fold: route through ShExecution.executeBranchStep for consistent durable semantics
+                val branchOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex)
+                val effectiveShOptions = shOptions?.copy(
+                    timeoutMs = step.timeoutMillis ?: shOptions.timeoutMs,
+                ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
+                    workspaceRoot = java.nio.file.Files.createTempDirectory("shoptions"),
+                    captureStdout = false,
+                    timeoutMs = step.timeoutMillis,
+                    env = emptyMap(),
                 )
-                if (result.exitCode != 0) "failure" else "success"
+                ShExecution.executeBranchStep(
+                    stageIndex = parentOpId.stageIndex,
+                    stepIndex = parentOpId.stepIndex + stepOffset,
+                    branchOpId = branchOpId,
+                    runId = runId,
+                    shOptions = effectiveShOptions,
+                )
             }
             is StepSpec.Sleep -> {
                 dev.rubentxu.pipeline.v2.sdk.runtime.sleep(
@@ -1513,6 +1489,8 @@ private suspend fun walkBranchDurable(
                     cursorStore = cursorStore,
                     clock = clock,
                     runOutcomeRef = runOutcomeRef,
+                    workspaceResolver = workspaceResolver,
+                    shOptions = shOptions,
                 )
             }
             else -> {

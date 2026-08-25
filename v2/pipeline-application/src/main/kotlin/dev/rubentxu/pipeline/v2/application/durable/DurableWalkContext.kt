@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.application.BranchReconciler
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import java.nio.file.Path
 
@@ -21,9 +22,13 @@ import java.nio.file.Path
  * @property branchReconciler The branch reconciler for kill+resume recovery.
  * @property eventSink The event sink for emitting domain events.
  * @property stepReconcilerL1 The L1 step reconciler for durable shell classification.
- *                          Used during resume to classify RUNNING rows as COMPLETE/REATTACH/LOST.
+ *                          Used during resume to classify RUNNING rows as COMPLETE/REATTACH/LOST/TIMED_OUT.
  * @property controlDirRoot The root directory for all control directories.
  *                         Set from --db parent in Main.kt.
+ * @property workspaceResolver Resolves per-stage workspace directories.
+ *                           Created from --workspace-root CLI flag (defaults to --db parent).
+ * @property shOptions Default shell execution options (workspaceRoot, captureStdout, timeoutMs, env).
+ *                   Threaded from stage/step configuration. Step-level env overrides stage-level.
  *
  * Designed to be constructed once per pipeline run and passed through
  * all step executions. Immutable after construction.
@@ -42,6 +47,7 @@ data class DurableWalkContext(
      * Used during resume to classify RUNNING rows:
      * - COMPLETE: result.txt exists + heartbeat fresh → use cached exit code
      * - REATTACH: result.txt missing + heartbeat fresh → re-run with same fingerprint
+     * - TIMED_OUT: timeout.flag present → watchdog killed the process (ML-R2)
      * - LOST: result.txt missing + heartbeat stale → fail-closed per UAT-REC-002
      */
     val stepReconcilerL1: StepReconcilerL1? = null,
@@ -64,4 +70,25 @@ data class DurableWalkContext(
      * ```
      */
     val controlDirRoot: Path? = null,
+    /**
+     * Resolves per-stage workspace directories.
+     *
+     * Created from --workspace-root CLI flag (defaults to --db parent).
+     * Each stage gets: `<controlDirRoot>/workspace/<stageName>-<stageIndex>/`
+     *
+     * @see WorkspaceResolver
+     */
+    val workspaceResolver: WorkspaceResolver? = null,
+    /**
+     * Default shell execution options for this pipeline run.
+     *
+     * These options are derived from stage/step configuration and include:
+     * - workspaceRoot: per-stage workspace directory
+     * - captureStdout: whether to capture stdout to output.txt
+     * - timeoutMs: execution timeout (null = no timeout)
+     * - env: environment variables to inject
+     *
+     * Step-level options override stage-level options via merge in PipelineOrchestrator.
+     */
+    val shOptions: ShOptions? = null,
 )

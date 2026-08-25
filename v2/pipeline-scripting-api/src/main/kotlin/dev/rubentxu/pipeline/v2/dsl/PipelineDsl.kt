@@ -15,6 +15,11 @@ data class StageSpec(
     val steps: List<StepSpec>,
     val options: OptionsSpec? = null,
     val agent: AgentSpec? = null,
+    /**
+     * Environment variables for this stage.
+     * Injected via ProcessBuilder.environment() into each step.
+     */
+    val environment: Map<String, String>? = null,
 )
 
 /**
@@ -46,6 +51,15 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val isScriptBlock: Boolean = false,
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
+        /**
+         * Whether to capture stdout to output.txt for return value access.
+         */
+        val returnStdout: Boolean = false,
+        /**
+         * Environment variables to inject via ProcessBuilder.environment().
+         * Step-level env overrides stage-level env.
+         */
+        val env: Map<String, String>? = null,
     ) : StepSpec {
         override val name: String get() = "sh"
         override val type: String get() = "sh"
@@ -233,6 +247,18 @@ class StageScope(private val stageName: String) {
 
     fun sh(command: String) {
         steps.add(StepSpec.Shell(command))
+    }
+
+    /**
+     * Shell step with full options.
+     *
+     * @param script The shell command to execute.
+     * @param returnStdout If true, capture stdout to output.txt for return value access.
+     * @param timeoutMs Timeout in milliseconds, or null for no timeout.
+     * @param env Environment variables to inject, or null for no override.
+     */
+    fun sh(script: String, returnStdout: Boolean = false, timeoutMs: Long? = null, env: Map<String, String>? = null) {
+        steps.add(StepSpec.Shell(command = script, returnStdout = returnStdout, timeoutMillis = timeoutMs, env = env))
     }
 
     /**

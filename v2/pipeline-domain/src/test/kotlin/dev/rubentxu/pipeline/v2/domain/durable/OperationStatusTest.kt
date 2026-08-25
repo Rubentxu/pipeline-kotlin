@@ -42,6 +42,12 @@ class OperationStatusTest {
     }
 
     @Test
+    fun `RUNNING to FAILED_TIMEOUT is valid`() {
+        val result = OperationStatus.transition(OperationStatus.RUNNING, OperationStatus.FAILED_TIMEOUT)
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
     fun `same state transition is valid`() {
         val result = OperationStatus.transition(OperationStatus.SUCCEEDED, OperationStatus.SUCCEEDED)
         assertTrue(result.isSuccess)
@@ -61,6 +67,7 @@ class OperationStatusTest {
             OperationStatus.ABORTED,
             OperationStatus.DIVERGENT,
             OperationStatus.LOST,
+            OperationStatus.FAILED_TIMEOUT,
         )
         for (from in terminalStates) {
             for (to in OperationStatus.entries) {
@@ -80,8 +87,26 @@ class OperationStatusTest {
     }
 
     @Test
+    fun `PENDING cannot transition directly to FAILED_TIMEOUT`() {
+        // FAILED_TIMEOUT is only valid from RUNNING (timeout killed mid-execution)
+        val result = OperationStatus.transition(OperationStatus.PENDING, OperationStatus.FAILED_TIMEOUT)
+        assertTrue(result.isFailure)
+    }
+
+    @Test
     fun `LOST is terminal - cannot transition to anything`() {
         val result = OperationStatus.transition(OperationStatus.LOST, OperationStatus.SUCCEEDED)
         assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `FAILED_TIMEOUT is terminal - cannot transition to anything`() {
+        val result = OperationStatus.transition(OperationStatus.FAILED_TIMEOUT, OperationStatus.SUCCEEDED)
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `FAILED_TIMEOUT isTerminal returns true`() {
+        assertTrue(OperationStatus.FAILED_TIMEOUT.isTerminal)
     }
 }

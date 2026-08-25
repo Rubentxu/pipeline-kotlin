@@ -1,0 +1,9 @@
+worker_id: "golden-worker-001"
+instance_id: "golden-instance-001"
+runtime_version: "1.0.0"
+protocol_version {
+  min_major: 1
+  min_minor: 0
+  max_major: 1
+  max_minor: 0
+}

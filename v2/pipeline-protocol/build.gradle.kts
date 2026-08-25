@@ -19,7 +19,7 @@ kotlin {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.5"
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
     }
     generateProtoTasks {
         all().forEach { task ->
@@ -39,9 +39,9 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(project(":pipeline-domain"))
     implementation(libs.kotlinx.serialization.json)
-    implementation("com.google.protobuf:protobuf-kotlin-lite:3.25.5")
+    implementation(libs.protobuf.kotlin.lite)
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {

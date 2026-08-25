@@ -53,14 +53,51 @@ across topics and is considered supporting infrastructure, not a protocol topic.
   or any scripting module beyond `pipeline-scripting-api`
 - This boundary ensures the protocol is portable across execution contexts
 
-### 4. Immutable Message Design
+### 4. Immutable Message Design (D3 Constraints)
 
-- All protocol messages use `proto3` syntax for forward compatibility
-- `java_package` set to `dev.rubentxu.pipeline.v2.protocol`
-- `java_multiple_files = true` to avoid monolithic generated classes
-- `java_outer_classname` set per-schema for IDE discoverability
+Every `.proto` file **must** declare the following (D3 design constraints):
 
-### 5. Governance Constraints
+```proto
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "<SchemaName>Protos";
+```
+
+| Option | Required Value | Rationale |
+|--------|---------------|-----------|
+| `java_package` | `"dev.rubentxu.pipeline.v2.protocol"` | Namespace alignment with Kotlin package |
+| `java_multiple_files` | `true` | Avoid monolithic generated classes |
+| `java_outer_classname` | Per-schema name (e.g., `CommandsProtos`) | IDE discoverability |
+
+**Forbidden:** Custom options outside `dev.rubentxu.pipeline.v2.protocol` namespace.
+
+### 5. Version Pinning
+
+All protobuf dependencies are pinned in `v2/gradle/libs.versions.toml`:
+
+```toml
+[versions]
+protobuf = "3.25.5"
+
+[libraries]
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
+
+[plugins]
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf" }
+```
+
+### 6. Binary Compatibility
+
+`GoldenBinaryCompatibilityTest` verifies round-trip serialization for all schemas:
+- Binary roundtrip preserves data
+- SHA-256 fingerprinting for deterministic verification
+- Size within `MAX_MESSAGE_SIZE_BYTES` governance limit
+
+### 7. Governance Constraints
 
 - `ProtocolGovernance` object provides infrastructure constants:
   - `MAX_MESSAGE_SIZE_BYTES = 10 * 1024 * 1024` (10MB)

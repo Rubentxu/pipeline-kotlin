@@ -1,0 +1,7 @@
+session_id: "golden-session-001"
+heartbeat_interval_seconds: 30
+max_message_size_bytes: 10485760
+negotiated_protocol {
+  major: 1
+  minor: 0
+}

@@ -36,6 +36,12 @@ class OperationStatusTest {
     }
 
     @Test
+    fun `RUNNING to LOST is valid`() {
+        val result = OperationStatus.transition(OperationStatus.RUNNING, OperationStatus.LOST)
+        assertTrue(result.isSuccess)
+    }
+
+    @Test
     fun `same state transition is valid`() {
         val result = OperationStatus.transition(OperationStatus.SUCCEEDED, OperationStatus.SUCCEEDED)
         assertTrue(result.isSuccess)
@@ -54,6 +60,7 @@ class OperationStatusTest {
             OperationStatus.FAILED,
             OperationStatus.ABORTED,
             OperationStatus.DIVERGENT,
+            OperationStatus.LOST,
         )
         for (from in terminalStates) {
             for (to in OperationStatus.entries) {
@@ -63,5 +70,18 @@ class OperationStatusTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `PENDING cannot transition directly to LOST`() {
+        // LOST is only valid from RUNNING (worker died mid-execution)
+        val result = OperationStatus.transition(OperationStatus.PENDING, OperationStatus.LOST)
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `LOST is terminal - cannot transition to anything`() {
+        val result = OperationStatus.transition(OperationStatus.LOST, OperationStatus.SUCCEEDED)
+        assertTrue(result.isFailure)
     }
 }

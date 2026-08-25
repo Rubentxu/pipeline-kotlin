@@ -15,16 +15,17 @@ class FArch012ProtocolModuleStructureTest {
         ":pipeline-testkit"
     )
 
-    private val requiredProtoFiles = listOf(
+    private val topicProtoFiles = listOf(
         "worker_hello.proto",
         "negotiated_session.proto",
         "commands.proto",
         "events.proto",
         "ack_replay.proto",
         "leases.proto",
-        "heartbeat.proto",
-        "common.proto"
+        "heartbeat.proto"
     )
+
+    private val requiredProtoFiles = topicProtoFiles + "common.proto"
 
     @Test
     fun `protocol module depends only on allowed modules`() {
@@ -87,6 +88,33 @@ class FArch012ProtocolModuleStructureTest {
         }
 
         assertTrue(violations.isEmpty(), "Proto files must have required package/options: $violations")
+    }
+
+    @Test
+    fun `each topic proto file has a corresponding golden fixture and test`() {
+        val root = ScannerSupport.v2Root()
+        val fixtureDir = root.resolve("pipeline-protocol/src/test/resources/fixtures")
+        val testDir = root.resolve("pipeline-protocol/src/test/kotlin/dev/rubentxu/pipeline/v2/protocol")
+
+        val missingCoverage = mutableListOf<String>()
+
+        for (protoFile in topicProtoFiles) {
+            val topicName = protoFile.removeSuffix(".proto")
+            val pbFixture = fixtureDir.resolve("$topicName.pb")
+            val pbtxtFixture = fixtureDir.resolve("$topicName.pbtxt")
+
+            if (!pbFixture.toFile().exists()) {
+                missingCoverage.add("$protoFile: missing $topicName.pb fixture")
+            }
+            if (!pbtxtFixture.toFile().exists()) {
+                missingCoverage.add("$protoFile: missing $topicName.pbtxt fixture")
+            }
+        }
+
+        assertTrue(
+            missingCoverage.isEmpty(),
+            "All topic proto files must have golden fixtures: $missingCoverage"
+        )
     }
 
     @Nested

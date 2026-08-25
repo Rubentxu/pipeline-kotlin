@@ -72,6 +72,8 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-18** Machine-derived test counts in `apply-progress.yaml` (DEBT-2026-08-24-APPLY-FABRICATED-COUNTS, MEDIUM acknowledged M3-R3): apply contract amendment to forbid manual counts; counts must come from `./gradlew` output. **(M3-R4.1 — ⚠️ PARTIAL: apply-progress.yaml is machine-derived (E4-18.1 ✅), but prompts/sddk/phases/{apply,verify}.md are external framework symlinks requiring framework-maintainer action (E4-18.2 ❌). Deferred.)**
 
 ## Epic E5 — Protocol/Gateway
+- **E5-01** `.proto` v1 repo layout/governance. **(M4-R1 — ✅ CLOSED via ADR-0043 + ADR-0044 + golden fixtures + FArch012 third leg; 7 topic .pb fixtures + checksum verification + test coverage scan; shared package approach documented in ADR-0044)**
+
 ## M3-R4.4 — branch reconciler wiring integration (CLOSED v0.13.4-rc1)
 - **E4-26** Wire `BranchReconciler.reconcileRunningOperations()` into resume path. **(M3-R4.4 — ✅ CLOSED: BranchReconciler IS wired into `walkPipelineSpecDurable`; uses LOCAL instance instead of `ctx.branchReconciler` per ADR-0040 design — functional behavior correct, structural deviation owned by M3-R5)**
 - **E4-27** Replace `walkParallelFrame` sequential `forEachIndexed` with concurrent dispatch. **(M3-R4.4 — ✅ CLOSED v0.13.4-rc1: `walkParallelFrame` now uses `coroutineScope { ... }.awaitAll()` via `walkBranchDurable` delegation per ADR-0041)**

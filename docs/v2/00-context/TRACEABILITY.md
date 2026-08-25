@@ -10,7 +10,7 @@
 | Durable replay | `RECOVERY_DURABILITY` | ADR-0006 | M3 | UAT-REC-* |
 | Event source of truth | `EVENT_MODEL` | ADR-0007 | M1/M3 | UAT-EVT-* |
 | Graph-native | `GRAPH_MODEL` | ADR-0008 | M3/M8 | UAT-GRAPH-* |
-| Protobuf protocol | `WORKER_PROTOCOL` | ADR-0009 | M4 | UAT-PROT-* |
+| Protobuf protocol | `WORKER_PROTOCOL` | ADR-0009/0043/0044 | M4 | UAT-PROT-* |
 | WS MVP / gRPC gateway | `WORKER_PROTOCOL` | ADR-0010 | M4/M8 | UAT-PROT-005 |
 | Leases/fencing | `WORKER_PROTOCOL` | ADR-0011 | M4 | UAT-REC-005 |
 | Workers Kubernetes | `KUBERNETES_WORKERS` | ADR-0013 | M5 | UAT-K8S-* |

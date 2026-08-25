@@ -156,8 +156,36 @@ class UatLocal002ResumeAfterKillTest {
         assertEquals(2, markerLines.size, "Marker should still have 2 lines (no re-exec). marker=$markerContent")
         assertEquals(listOf("started", "done"), markerLines)
 
-        // TODO: Verify journal has exactly 1 SUCCEEDED row using SqliteOperationJournalImpl
-        // This requires knowing the runId which is derived by the pipeline.
-        // For now, result.txt + marker verification proves the core resume behavior.
+        // ---- Verify journal: exactly 1 SUCCEEDED row, ended_at not null ----
+        // Use production SqliteOperationJournalImpl API to open the existing db read-only
+        val opId = actualOpIdDir!!.fileName.toString()
+        val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal =
+            dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl(
+                { java.sql.DriverManager.getConnection("jdbc:sqlite:${dbPath.toAbsolutePath()}") },
+                dev.rubentxu.pipeline.v2.application.SystemClock(),
+                kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true },
+                dbPath.toAbsolutePath().toString()
+            )
+
+        // (a) Exactly ONE operation row exists for this opId
+        val op = journal.get(opId)
+        assertNotNull(op, "Journal should have an entry for opId=$opId. controlDir=$actualOpIdDir")
+        val runId = opId.substringBeforeLast("-s")
+        val runOps = journal.listForRun(runId)
+        assertEquals(1, runOps.size, "Journal should have exactly 1 operation row for runId=$runId")
+        assertEquals(opId, runOps.first().id, "Operation id should match control dir name")
+
+        // (b) Status is SUCCEEDED (terminal)
+        assertEquals(
+            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED,
+            op!!.status,
+            "Operation status should be SUCCEEDED. got=${op.status}"
+        )
+        assertTrue(op.status.isTerminal, "SUCCEEDED must be terminal")
+
+        // (c) ended_at is NOT NULL
+        val endedAt = journal.getEndedAt(opId, op.attempt)
+        assertNotNull(endedAt, "ended_at should not be null for SUCCEEDED operation")
+        assertTrue(endedAt!! > 0, "ended_at should be a positive timestamp. got=$endedAt")
     }
 }

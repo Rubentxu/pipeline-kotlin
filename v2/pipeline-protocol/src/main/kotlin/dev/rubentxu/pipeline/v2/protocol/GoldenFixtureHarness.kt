@@ -4,8 +4,6 @@ import dev.rubentxu.pipeline.v2.protocol.Command
 import dev.rubentxu.pipeline.v2.protocol.PrepareRun
 import dev.rubentxu.pipeline.v2.protocol.StartRun
 import dev.rubentxu.pipeline.v2.protocol.EventEnvelope
-import dev.rubentxu.pipeline.v2.protocol.Heartbeat
-import dev.rubentxu.pipeline.v2.protocol.LeaseGrant
 import dev.rubentxu.pipeline.v2.protocol.NegotiatedSession
 import dev.rubentxu.pipeline.v2.protocol.WorkerHello
 import dev.rubentxu.pipeline.v2.protocol.VersionRange
@@ -33,26 +31,6 @@ object GoldenFixtureHarness {
         .setSessionId(sessionId)
         .setHeartbeatIntervalSeconds(30)
         .setMaxMessageSizeBytes(10 * 1024 * 1024)
-        .build()
-
-    fun createLeaseGrant(
-        leaseId: Long = 1L,
-        fencingToken: Long = 1L
-    ): LeaseGrant = LeaseGrant.newBuilder()
-        .setLeaseId(leaseId)
-        .setFencingToken(fencingToken)
-        .setGrantedUntilEpochMs(System.currentTimeMillis() + 300_000)
-        .setStatus(LeaseStatus.LEASE_STATUS_GRANTED)
-        .build()
-
-    fun createHeartbeat(
-        workerId: String = "worker-001",
-        sequence: Long = 1L
-    ): Heartbeat = Heartbeat.newBuilder()
-        .setWorkerId(workerId)
-        .setSequenceNumber(sequence)
-        .setTimestampEpochMs(System.currentTimeMillis())
-        .setStatus(WorkerStatus.WORKER_STATUS_IDLE)
         .build()
 
     fun createCommand(

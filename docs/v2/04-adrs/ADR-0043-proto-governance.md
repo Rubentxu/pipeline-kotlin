@@ -19,19 +19,25 @@ the immutable protocol package.
 
 We will implement the following decisions:
 
-### 1. Seven-Schema Module Structure
+### 1. Seven-Topic Schema Structure
 
-The `pipeline-protocol` module contains exactly seven protobuf schema files:
+The `pipeline-protocol` module contains **seven canonical topic schemas** plus
+one supporting infrastructure file:
 
-| Schema | Purpose |
-|--------|---------|
-| `worker_hello.proto` | Worker registration and capability exchange |
-| `negotiated_session.proto` | Session negotiation and configuration |
-| `commands.proto` | Controller-to-worker command messages |
-| `events.proto` | Worker-to-controller event messages |
-| `ack_replay.proto` | Acknowledgement and replay semantics |
-| `leases.proto` | Lease management and fencing tokens |
-| `heartbeat.proto` | Liveness detection and backpressure |
+| Schema | Purpose | Status |
+|--------|---------|--------|
+| `worker_hello.proto` | Worker registration and capability exchange | Topic |
+| `negotiated_session.proto` | Session negotiation and configuration | Topic |
+| `commands.proto` | Controller-to-worker command messages | Topic |
+| `events.proto` | Worker-to-controller event messages | Topic |
+| `ack_replay.proto` | Acknowledgement and replay semantics | Topic |
+| `leases.proto` | Lease management and fencing tokens | Topic |
+| `heartbeat.proto` | Liveness detection and backpressure | Topic |
+| `common.proto` | Shared types (LeaseContext, Capabilities, Version) | Infrastructure |
+
+**Note:** The "seven-schema" design refers to the seven canonical protocol topics.
+`common.proto` provides shared type definitions to avoid duplicate message declarations
+across topics and is considered supporting infrastructure, not a protocol topic.
 
 ### 2. Protobuf Code Generation
 
@@ -56,17 +62,22 @@ The `pipeline-protocol` module contains exactly seven protobuf schema files:
 
 ### 5. Governance Constraints
 
-- `ProtocolGovernance` object enforces:
+- `ProtocolGovernance` object provides infrastructure constants:
   - `MAX_MESSAGE_SIZE_BYTES = 10 * 1024 * 1024` (10MB)
   - `DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 30`
   - `MAX_RECONNECT_ATTEMPTS = 5`
   - `LEASE_TIMEOUT_SECONDS = 300`
+- These are parameter values for negotiation, not operational behavior
 
-### 6. Golden Fixture Harness
+### 6. Golden Fixture Harness (E5-01 Compliant Subset)
 
-- `GoldenFixtureHarness` object provides factory methods for all message types
-- Test resources contain canonical JSON fixtures for each schema
-- Fixtures are deterministic and version-controlled
+- `GoldenFixtureHarness` object provides factory methods for **schema declaration
+  verification only**
+- Factory methods create message builders with preset fields for testing schema structure
+- E5-08 operational factories (health aggregation, lease management) are excluded:
+  - `createHeartbeat()` — excluded (E5-08)
+  - `createLeaseGrant()` — excluded (E5-08)
+  - `ProtocolEvent.HeartbeatSent/LeaseGranted/etc.` — excluded (E5-08)
 
 ## Consequences
 
@@ -76,6 +87,7 @@ The `pipeline-protocol` module contains exactly seven protobuf schema files:
 - Protobuf code generation integrated into Gradle build
 - Architecture tests enforce module dependency rules
 - Golden fixtures enable reproducible test scenarios
+- Strict boundary between E5-01 schema declarations and E5-02..E5-10 operational semantics
 
 ### Negative
 
@@ -94,6 +106,9 @@ The following are explicitly excluded from this implementation:
 - E5-08: Worker health score aggregation (future phase)
 - E5-09: Dynamic protocol version upgrade (future phase)
 - E5-10: Cross-datacenter replication (future phase)
+
+**E5-01 Scope:** Schema declarations only. Any operational behavior
+(health aggregation, lease management, liveness detection) is E5-08 and excluded.
 
 ## References
 

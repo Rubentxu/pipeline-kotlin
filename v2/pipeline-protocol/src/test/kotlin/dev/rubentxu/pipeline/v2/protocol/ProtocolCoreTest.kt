@@ -28,25 +28,6 @@ class ProtocolCoreTest {
     }
 
     @Test
-    fun `lease grant golden fixture creates valid message`() {
-        val grant = GoldenFixtureHarness.createLeaseGrant()
-
-        assertNotNull(grant)
-        assertTrue(grant.leaseId == 1L)
-        assertTrue(grant.fencingToken == 1L)
-        assertTrue(grant.status == LeaseStatus.LEASE_STATUS_GRANTED)
-    }
-
-    @Test
-    fun `heartbeat golden fixture creates valid message`() {
-        val heartbeat = GoldenFixtureHarness.createHeartbeat()
-
-        assertNotNull(heartbeat)
-        assertEquals("worker-001", heartbeat.workerId)
-        assertTrue(heartbeat.status == WorkerStatus.WORKER_STATUS_IDLE)
-    }
-
-    @Test
     fun `prepare run command creates valid command`() {
         val cmd = GoldenFixtureHarness.createPrepareRunCommand()
 
@@ -56,11 +37,36 @@ class ProtocolCoreTest {
     }
 
     @Test
+    fun `start run command creates valid command`() {
+        val cmd = GoldenFixtureHarness.createStartRunCommand()
+
+        assertNotNull(cmd)
+        assertTrue(cmd.type == CommandType.COMMAND_TYPE_START_RUN)
+        assertTrue(cmd.hasStartRun())
+    }
+
+    @Test
     fun `pipeline started event creates valid event envelope`() {
         val evt = GoldenFixtureHarness.createPipelineStartedEvent()
 
         assertNotNull(evt)
         assertTrue(evt.type == EventType.EVENT_TYPE_PIPELINE_STARTED)
+    }
+
+    @Test
+    fun `step completed event creates valid event envelope`() {
+        val evt = GoldenFixtureHarness.createStepCompletedEvent()
+
+        assertNotNull(evt)
+        assertTrue(evt.type == EventType.EVENT_TYPE_STEP_COMPLETED)
+    }
+
+    @Test
+    fun `pipeline completed event creates valid event envelope`() {
+        val evt = GoldenFixtureHarness.createPipelineCompletedEvent()
+
+        assertNotNull(evt)
+        assertTrue(evt.type == EventType.EVENT_TYPE_PIPELINE_COMPLETED)
     }
 
     @Test

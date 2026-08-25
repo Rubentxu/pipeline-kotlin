@@ -52,8 +52,4 @@ data class SessionContext(
 sealed class ProtocolEvent {
     data class Incoming(val envelope: dev.rubentxu.pipeline.v2.protocol.EventEnvelope) : ProtocolEvent()
     data class Outgoing(val envelope: dev.rubentxu.pipeline.v2.protocol.EventEnvelope) : ProtocolEvent()
-    data class HeartbeatSent(val heartbeat: dev.rubentxu.pipeline.v2.protocol.Heartbeat) : ProtocolEvent()
-    data class HeartbeatAckReceived(val ack: dev.rubentxu.pipeline.v2.protocol.HeartbeatAck) : ProtocolEvent()
-    data class LeaseGranted(val grant: dev.rubentxu.pipeline.v2.protocol.LeaseGrant) : ProtocolEvent()
-    data class LeaseRevoked(val leaseId: Long) : ProtocolEvent()
 }

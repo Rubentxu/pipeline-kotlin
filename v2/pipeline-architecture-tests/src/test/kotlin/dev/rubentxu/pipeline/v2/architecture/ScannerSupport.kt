@@ -12,4 +12,5 @@ object ScannerSupport {
     fun findExcludeCalls(r: Path) = SourceScanner.findExcludeCalls(r)
     fun findUnallowedImplementation(b: Path, a: Set<String>) = SourceScanner.findUnallowedImplementation(b, a)
     fun loadRuntimeClasspathSnapshots(r: Path) = RuntimeClasspathSnapshots.load(r)
+    fun findForbiddenImportPrefixes(r: Path, prefixes: Collection<String>) = SourceScanner.findForbiddenImportPrefixes(r, prefixes)
 }

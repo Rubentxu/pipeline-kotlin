@@ -103,7 +103,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **gap_status=CLOSED**
 
 ## Epic E5 — Protocol/Gateway
-- **E5-01** `.proto` v1 repo layout/governance.
+- **E5-01** `.proto` v1 repo layout/governance. **(M4-R1 — ✅ CLOSED via ADR-0043 + ADR-0044 + F-ARCH-013 + golden fixtures; FArch012 third leg + prefix-matching scanner + 11-import effectiveness test)**
 - **E5-02** hello/negotiation.
 - **E5-03** commands/events mappings.
 - **E5-04** local outbox/ACK.
@@ -113,6 +113,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E5-08** WebSocket transport.
 - **E5-09** Gateway service.
 - **E5-10** protocol conformance suite.
+- **E5-11** Worker capability trust promotion via governed catalog process. **(BLOCKED — requires product/architecture decision on trust model; no governed catalog exists in E5-01 scope; documented in ADR-0045 §Blocker)**
 
 ## Epic E6 — Kubernetes/Credentials
 - **E6-01** WorkerProvisioner port.

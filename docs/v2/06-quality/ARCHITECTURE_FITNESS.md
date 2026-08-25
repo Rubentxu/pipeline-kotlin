@@ -35,3 +35,11 @@ No se permiten `compileKotlin.exclude` sobre sources V2. Un archivo inacabado vi
 
 ## F-ARCH-012 — Documentation examples compile
 Code snippets marcados como executable example se extraen/compilan en CI.
+
+## F-ARCH-013 — Protocol module transport neutrality
+Pipeline protocol module (`:pipeline-protocol`) must not import any network-transport
+class or package.  Scans `src/main/kotlin` AND `src/test/kotlin` using prefix-matching
+(`findForbiddenImportPrefixes`).  Forbidden prefixes: `java.net.Socket`,
+`java.net.ServerSocket`, `java.net.http`, `okhttp3`, `okhttp`, `io.ktor.client`,
+`io.ktor.server`, `io.grpc`, `javax.websocket`, `jakarta.websocket`,
+`org.java_websocket`, `org.springframework.web.socket`.  See ADR-0045.

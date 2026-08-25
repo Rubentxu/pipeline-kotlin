@@ -76,4 +76,45 @@ object SourceScanner {
         }
         return findings
     }
+
+    /**
+     * Scans Kotlin source files for imports matching the given FQCN prefixes.
+     * Matches an import line whose fully-qualified name equals the prefix OR starts with prefix + ".".
+     * Handles alias imports by matching the original FQCN before the `as` keyword.
+     * Skips comment lines (// and block /* */) as existing code does.
+     *
+     * Example: prefix "okhttp3" matches "import okhttp3.OkHttpClient" and "import okhttp3.ws.WebSocket"
+     * Example: prefix "java.net.http" matches "import java.net.http.WebSocket"
+     * Example: prefix "io.ktor.client" matches "import io.ktor.client.HttpClient"
+     */
+    fun findForbiddenImportPrefixes(root: Path, prefixes: Collection<String>): List<Finding> {
+        val findings = mutableListOf<Finding>()
+        // FQCN import pattern: captures everything between "import " and end-of-statement
+        val importLinePattern = Pattern.compile("^import\\s+(.+?)(?:\\s+as\\s+\\w+)?\\s*;?\\s*$")
+        for (file in FitnessPaths.walkKotlinFiles(root)) {
+            for ((lineIdx, line) in Files.readAllLines(file).withIndex()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue
+                // Skip block comments
+                if (trimmed.startsWith("/*")) continue
+
+                val importMatcher = importLinePattern.matcher(trimmed)
+                if (!importMatcher.matches()) continue
+
+                val fqcn = importMatcher.group(1) ?: continue
+
+                for (prefix in prefixes) {
+                    // Match if FQCN equals the prefix OR FQCN starts with prefix + "."
+                    // For versioned roots like "okhttp" catching "okhttp3.*", the prefix
+                    // "okhttp3" is listed explicitly so "okhttp3.OkHttpClient" matches "okhttp3"
+                    // exactly; "okhttp" as prefix catches unversioned "okhttp.*" imports.
+                    if (fqcn == prefix || fqcn.startsWith("$prefix.")) {
+                        findings.add(Finding(file, lineIdx + 1, prefix, line))
+                        break // one finding per line per prefix
+                    }
+                }
+            }
+        }
+        return findings
+    }
 }

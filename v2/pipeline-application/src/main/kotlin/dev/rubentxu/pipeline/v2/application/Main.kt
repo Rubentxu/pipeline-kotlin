@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
@@ -158,6 +159,12 @@ fun main(args: Array<String>) {
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
+
+    // ML-R1: controlDirRoot is the parent directory of the SQLite db file.
+    // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
+    val dbPath = Paths.get(config.dbPath!!)
+    val controlDirRoot: Path = dbPath.parent.resolve("durable-shell")
+
     val orchestrator = PipelineOrchestrator(
         journal = journal,
         cursorStore = cursorStore,
@@ -165,6 +172,7 @@ fun main(args: Array<String>) {
         effectReplayPolicy = effectPolicy,
         eventSink = eventStore,
         clock = clock,
+        controlDirRoot = controlDirRoot,
     )
 
     // Run via orchestrator (fresh run or resume based on --resume flag)

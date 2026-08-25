@@ -9,11 +9,14 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
@@ -44,6 +47,13 @@ class PipelineOrchestrator(
     private val effectReplayPolicy: EffectReplayPolicy,
     private val eventSink: EventSink,
     private val clock: Clock,
+    /**
+     * Root directory for durable shell control directories.
+     *
+     * Set from --db parent in Main.kt. Each step gets a subdirectory:
+     * $controlDirRoot/$opId/
+     */
+    private val controlDirRoot: Path? = null,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.
@@ -86,12 +96,22 @@ class PipelineOrchestrator(
                 // ADR-0040 Path A: reconciler is constructed here (not in walkPipelineSpecDurable)
                 // and passed through ctx.branchReconciler for the LIVE reconciliation pass.
                 val branchReconciler = BranchReconciler(journal, cursorStore, clock)
+
+                // ML-R1: Construct StepReconcilerL1 for durable shell classification
+                val stepReconcilerL1 = if (controlDirRoot != null) {
+                    StepReconcilerL1(clock, controlDirRoot, DurableShConfig.fromSystemProperties())
+                } else {
+                    null
+                }
+
                 val ctx = DurableWalkContext(
                     clock = clock,
                     opJournal = journal,
                     cursorStore = cursorStore,
                     branchReconciler = branchReconciler,
                     eventSink = eventSink,
+                    stepReconcilerL1 = stepReconcilerL1,
+                    controlDirRoot = controlDirRoot,
                 )
 
                 // Execute with durable walk — ctx carries branchReconciler for LIVE reconciliation

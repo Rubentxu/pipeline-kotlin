@@ -36,20 +36,9 @@ object ProtocolGovernance {
     }
 }
 
-data class WorkerIdentity(
-    val workerId: String,
-    val instanceId: String,
-    val runtimeVersion: String
-)
-
-data class SessionContext(
-    val sessionId: String,
-    val leaseId: Long,
-    val fencingToken: Long,
-    val heartbeatIntervalSeconds: Int
-)
-
-sealed class ProtocolEvent {
-    data class Incoming(val envelope: dev.rubentxu.pipeline.v2.protocol.EventEnvelope) : ProtocolEvent()
-    data class Outgoing(val envelope: dev.rubentxu.pipeline.v2.protocol.EventEnvelope) : ProtocolEvent()
-}
+/**
+ * Domain trio removed in M4-R2: WorkerIdentity, SessionContext, ProtocolEvent.
+ * Zero consumers confirmed via `grep -rnE 'WorkerIdentity|SessionContext|ProtocolEvent' v2/`.
+ * These speculative declarations were never wired into the protocol runtime.
+ * Kept: ProtocolModules, ProtocolVersion, ProtocolGovernance.
+ */

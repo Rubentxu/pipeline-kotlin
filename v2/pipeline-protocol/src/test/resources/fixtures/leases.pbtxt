@@ -1,0 +1,4 @@
+lease_id: 1
+fencing_token: 1
+granted_until_epoch_ms: 1000000
+status: LEASE_STATUS_GRANTED

@@ -29,11 +29,14 @@ option java_package = "dev.rubentxu.pipeline.v2.protocol";
 option java_multiple_files = true;
 ```
 
+**Note:** Per ADR-0044, E5-01 uses a **shared package** approach where all schemas
+use the same `java_package`. Future phases (E5-02..E5-10) may adopt per-topic packages.
+
 ### Option Rules
 
 | Option | Required Value | Rationale |
 |--------|---------------|-----------|
-| `java_package` | `"dev.rubentxu.pipeline.v2.protocol"` | Namespace alignment with Kotlin package |
+| `java_package` | `"dev.rubentxu.pipeline.v2.protocol"` | Shared namespace (ADR-0044) |
 | `java_multiple_files` | `true` | Avoid monolithic generated classes |
 | `java_outer_classname` | Per-schema name (e.g., `CommandsProtos`) | IDE discoverability |
 
@@ -91,4 +94,5 @@ All schema changes require:
 ## References
 
 - [ADR-0043: Proto-Governance](../04-adrs/ADR-0043-proto-governance.md)
+- [ADR-0044: Proto Package Structure Amendment](../04-adrs/ADR-0044-proto-package-amendment.md)
 - [WORKER_PROTOCOL.md](../03-specifications/WORKER_PROTOCOL.md)

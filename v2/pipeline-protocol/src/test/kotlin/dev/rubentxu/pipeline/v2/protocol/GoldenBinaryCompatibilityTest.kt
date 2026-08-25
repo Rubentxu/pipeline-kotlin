@@ -16,6 +16,27 @@ class GoldenBinaryCompatibilityTest {
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
+    private val fixtures = mapOf(
+        "worker_hello.pb" to "8c4d575a4623a39a7a7ec4a57c580b30b2c45cfd8b89b7b8699613a6551896ab",
+        "negotiated_session.pb" to "a31b2386853f2fd8c2951698a5e27f3bb9bec0e8c102338a408ce4861d6ade41",
+        "commands.pb" to "b474a6b568028ecdcefbeeb87d67176269668d645ed9ae6951bedfdca918d96a",
+        "events.pb" to "4b7ad17ae87d45756721506a53a24f301b69dfd62ff79d4374c983f20afbde7b",
+        "ack_replay.pb" to "6e03e3d8760fa72cfcf3aaea02e2040916f303db565e45764ad81c217a4242c3",
+        "leases.pb" to "bd4386d1ccedfb1b3494f8e869600d1836b4a159ab3473ddc1af87c8f877e7b2",
+        "heartbeat.pb" to "d4a4908d5ef0176b386ce22acab0b53f4a3adef24f9018fbdc52df5dff27c699"
+    )
+
+    @Test
+    fun `all seven topic fixtures have valid checksums`() {
+        for ((fixture, expectedSha) in fixtures) {
+            val resource = javaClass.getResourceAsStream("/fixtures/$fixture")
+            assertNotNull(resource, "Fixture $fixture must exist in resources")
+            val bytes = resource.readBytes()
+            val sha = sha256(bytes)
+            assertEquals(expectedSha, sha, "SHA-256 mismatch for $fixture")
+        }
+    }
+
     @Test
     fun `worker hello binary roundtrip preserves data`() {
         val hello = GoldenFixtureHarness.createWorkerHello()
@@ -117,5 +138,60 @@ class GoldenBinaryCompatibilityTest {
         assertEquals(evt.eventId, parsed.eventId)
         assertEquals(evt.type, parsed.type)
         assertTrue(parsed.hasStepCompleted())
+    }
+
+    @Test
+    fun `commands fixture loads and parses correctly`() {
+        val resource = javaClass.getResourceAsStream("/fixtures/commands.pb")
+        assertNotNull(resource, "commands.pb fixture must exist")
+        val bytes = resource.readBytes()
+        assertTrue(bytes.isNotEmpty())
+
+        val parsed = dev.rubentxu.pipeline.v2.protocol.Command.parseFrom(bytes)
+        assertTrue(parsed.hasPrepareRun())
+    }
+
+    @Test
+    fun `events fixture loads and parses correctly`() {
+        val resource = javaClass.getResourceAsStream("/fixtures/events.pb")
+        assertNotNull(resource, "events.pb fixture must exist")
+        val bytes = resource.readBytes()
+        assertTrue(bytes.isNotEmpty())
+
+        val parsed = dev.rubentxu.pipeline.v2.protocol.EventEnvelope.parseFrom(bytes)
+        assertTrue(parsed.hasPipelineStarted())
+    }
+
+    @Test
+    fun `ack replay fixture loads and parses correctly`() {
+        val resource = javaClass.getResourceAsStream("/fixtures/ack_replay.pb")
+        assertNotNull(resource, "ack_replay.pb fixture must exist")
+        val bytes = resource.readBytes()
+        assertTrue(bytes.isNotEmpty())
+
+        val parsed = dev.rubentxu.pipeline.v2.protocol.Ack.parseFrom(bytes)
+        assertEquals("evt-001", parsed.eventId)
+    }
+
+    @Test
+    fun `leases fixture loads and parses correctly`() {
+        val resource = javaClass.getResourceAsStream("/fixtures/leases.pb")
+        assertNotNull(resource, "leases.pb fixture must exist")
+        val bytes = resource.readBytes()
+        assertTrue(bytes.isNotEmpty())
+
+        val parsed = dev.rubentxu.pipeline.v2.protocol.LeaseGrant.parseFrom(bytes)
+        assertTrue(parsed.leaseId == 1L)
+    }
+
+    @Test
+    fun `heartbeat fixture loads and parses correctly`() {
+        val resource = javaClass.getResourceAsStream("/fixtures/heartbeat.pb")
+        assertNotNull(resource, "heartbeat.pb fixture must exist")
+        val bytes = resource.readBytes()
+        assertTrue(bytes.isNotEmpty())
+
+        val parsed = dev.rubentxu.pipeline.v2.protocol.Heartbeat.parseFrom(bytes)
+        assertEquals("test-worker-001", parsed.workerId)
     }
 }

@@ -1,0 +1,10 @@
+event_id: "evt-001"
+sequence_number: 1
+timestamp_epoch_ms: 1000000
+pipeline_id: "test-pipeline-001"
+run_id: "test-run-001"
+type: EVENT_TYPE_PIPELINE_STARTED
+pipeline_started {
+  pipeline_name: "test-pipeline"
+  entry_point: "main"
+}

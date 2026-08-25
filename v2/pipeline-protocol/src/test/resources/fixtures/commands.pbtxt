@@ -1,0 +1,13 @@
+command_id: "cmd-001"
+type: COMMAND_TYPE_PREPARE_RUN
+sequence_number: 1
+timestamp_epoch_ms: 1000000
+prepare_run {
+  pipeline_id: "test-pipeline-001"
+  run_id: "test-run-001"
+  definition {
+    definition_id: "def-001"
+    definition_payload: "dummy"
+    definition_format: "KOTLIN_DSL"
+  }
+}

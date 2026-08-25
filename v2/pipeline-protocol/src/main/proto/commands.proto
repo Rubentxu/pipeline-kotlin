@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "CommandsProtos";
+
+import "common.proto";
+
+message Command {
+  string command_id = 1;
+  CommandType type = 2;
+  uint64 sequence_number = 3;
+  uint64 timestamp_epoch_ms = 4;
+  LeaseContext lease = 5;
+  oneof payload {
+    PrepareRun prepare_run = 10;
+    CompilePipeline compile_pipeline = 11;
+    StartRun start_run = 12;
+    CancelRun cancel_run = 13;
+    ExecuteControlReply execute_control_reply = 14;
+    GrantCredentialProjection grant_credential_projection = 15;
+    DrainWorker drain_worker = 16;
+    Reconcile reconcile = 17;
+  }
+}
+
+enum CommandType {
+  COMMAND_TYPE_UNSPECIFIED = 0;
+  COMMAND_TYPE_PREPARE_RUN = 1;
+  COMMAND_TYPE_COMPILE_PIPELINE = 2;
+  COMMAND_TYPE_START_RUN = 3;
+  COMMAND_TYPE_CANCEL_RUN = 4;
+  COMMAND_TYPE_EXECUTE_CONTROL_REPLY = 5;
+  COMMAND_TYPE_GRANT_CREDENTIAL_PROJECTION = 6;
+  COMMAND_TYPE_DRAIN_WORKER = 7;
+  COMMAND_TYPE_RECONCILE = 8;
+}
+
+message PrepareRun {
+  string pipeline_id = 1;
+  string run_id = 2;
+  PipelineDefinition definition = 3;
+  map<string, string> environment = 4;
+}
+
+message PipelineDefinition {
+  string definition_id = 1;
+  bytes definition_payload = 2;
+  string definition_format = 3;
+}
+
+message CompilePipeline {
+  string pipeline_id = 1;
+  string run_id = 2;
+  PipelineDefinition definition = 3;
+  bool skip_scripts = 4;
+}
+
+message StartRun {
+  string pipeline_id = 1;
+  string run_id = 2;
+  map<string, string> initial_environment = 3;
+}
+
+message CancelRun {
+  string pipeline_id = 1;
+  string run_id = 2;
+  string reason = 3;
+}
+
+message ExecuteControlReply {
+  string pipeline_id = 1;
+  string run_id = 2;
+  string reply_payload = 3;
+}
+
+message GrantCredentialProjection {
+  string credential_id = 1;
+  string target_service = 2;
+  uint64 valid_until_epoch_ms = 3;
+}
+
+message DrainWorker {
+  bool graceful = 1;
+  uint32 drain_timeout_seconds = 2;
+}
+
+message Reconcile {
+  uint64 last_acked_sequence = 1;
+  string worker_id = 2;
+}

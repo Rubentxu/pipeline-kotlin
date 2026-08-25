@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "LeasesProtos";
+
+message LeaseRequest {
+  string worker_id = 1;
+  string pipeline_id = 2;
+  string run_id = 3;
+  LeasePriority priority = 4;
+  uint64 requested_duration_seconds = 5;
+}
+
+enum LeasePriority {
+  LEASE_PRIORITY_UNSPECIFIED = 0;
+  LEASE_PRIORITY_LOW = 1;
+  LEASE_PRIORITY_NORMAL = 2;
+  LEASE_PRIORITY_HIGH = 3;
+  LEASE_PRIORITY_CRITICAL = 4;
+}
+
+message LeaseGrant {
+  uint64 lease_id = 1;
+  uint64 fencing_token = 2;
+  uint64 granted_until_epoch_ms = 3;
+  LeaseStatus status = 4;
+}
+
+enum LeaseStatus {
+  LEASE_STATUS_UNSPECIFIED = 0;
+  LEASE_STATUS_GRANTED = 1;
+  LEASE_STATUS_DENIED = 2;
+  LEASE_STATUS_REVOKED = 3;
+  LEASE_STATUS_EXPIRED = 4;
+}
+
+message LeaseRenewal {
+  uint64 lease_id = 1;
+  uint64 current_fencing_token = 2;
+  uint64 requested_extension_seconds = 3;
+}
+
+message LeaseRevocation {
+  uint64 lease_id = 1;
+  uint64 fencing_token = 2;
+  RevocationReason reason = 3;
+}
+
+enum RevocationReason {
+  REVOCATION_REASON_UNSPECIFIED = 0;
+  REVOCATION_REASON_WORKER_LOST = 1;
+  REVOCATION_REASON_TIMEOUT = 2;
+  REVOCATION_REASON_MANUAL = 3;
+  REVOCATION_REASON_PREEMPTED = 4;
+  REVOCATION_REASON_PROTOCOL_VIOLATION = 5;
+}
+
+message FencingToken {
+  uint64 token = 1;
+  uint64 lease_id = 2;
+  uint64 issued_at_epoch_ms = 3;
+  uint64 expires_at_epoch_ms = 4;
+}

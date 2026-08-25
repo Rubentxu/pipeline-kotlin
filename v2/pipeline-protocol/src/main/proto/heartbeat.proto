@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "HeartbeatProtos";
+
+message Heartbeat {
+  string worker_id = 1;
+  uint64 sequence_number = 2;
+  uint64 timestamp_epoch_ms = 3;
+  WorkerStatus status = 4;
+  ResourceUsage resource_usage = 5;
+  uint64 last_event_sequence = 6;
+}
+
+enum WorkerStatus {
+  WORKER_STATUS_UNSPECIFIED = 0;
+  WORKER_STATUS_IDLE = 1;
+  WORKER_STATUS_BUSY = 2;
+  WORKER_STATUS_DRAINING = 3;
+  WORKER_STATUS_SHUTTING_DOWN = 4;
+}
+
+message ResourceUsage {
+  uint64 used_heap_mb = 1;
+  uint64 total_heap_mb = 2;
+  uint32 active_steps = 3;
+  uint32 queued_events = 4;
+  double cpu_usage_percent = 5;
+}
+
+message HeartbeatAck {
+  uint64 heartbeat_sequence = 1;
+  uint64 timestamp_epoch_ms = 2;
+  GatewayStatus gateway_status = 3;
+}
+
+enum GatewayStatus {
+  GATEWAY_STATUS_UNSPECIFIED = 0;
+  GATEWAY_STATUS_HEALTHY = 1;
+  GATEWAY_STATUS_DEGRADED = 2;
+  GATEWAY_STATUS_OVERLOADED = 3;
+}
+
+message BackpressureNotification {
+  string worker_id = 1;
+  QueueMetrics outbound_queue = 2;
+  bool control_messages_blocked = 3;
+  bool state_events_blocked = 4;
+}
+
+message QueueMetrics {
+  string queue_name = 1;
+  uint64 current_depth = 2;
+  uint64 max_capacity = 3;
+  double fill_ratio = 4;
+}
+
+message SlowConsumerWarning {
+  string worker_id = 1;
+  uint64 last_processed_sequence = 2;
+  uint64 current_sequence = 3;
+  uint64 lag_events = 4;
+}

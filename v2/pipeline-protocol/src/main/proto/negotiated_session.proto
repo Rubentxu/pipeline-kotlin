@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "NegotiatedSessionProtos";
+
+import "common.proto";
+
+message NegotiatedSession {
+  Version negotiated_protocol = 1;
+  uint32 heartbeat_interval_seconds = 2;
+  uint32 max_message_size_bytes = 3;
+  Capabilities accepted_capabilities = 4;
+  string session_id = 5;
+  TimeSkewInfo time_skew_info = 6;
+  SessionPolicy session_policy = 7;
+}
+
+message TimeSkewInfo {
+  int64 skew_ms = 1;
+  uint64 server_time_epoch_ms = 2;
+  uint64 client_time_epoch_ms = 3;
+}
+
+message SessionPolicy {
+  uint32 max_reconnect_attempts = 1;
+  uint32 reconnect_backoff_max_seconds = 2;
+  uint64 session_timeout_seconds = 3;
+  uint64 event_buffer_size = 4;
+  PriorityPolicy priority_policy = 5;
+}
+
+message PriorityPolicy {
+  bool control_messages_high_priority = 1;
+  bool state_events_above_logs = 2;
+  bool logs_can_spill = 3;
+}

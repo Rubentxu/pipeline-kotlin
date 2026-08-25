@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "AckReplayProtos";
+
+import "events.proto";
+
+message Ack {
+  string event_id = 1;
+  uint64 sequence_number = 2;
+  uint64 timestamp_epoch_ms = 3;
+  AckStatus status = 4;
+  string message = 5;
+}
+
+enum AckStatus {
+  ACK_STATUS_UNSPECIFIED = 0;
+  ACK_STATUS_ACCEPTED = 1;
+  ACK_STATUS_DUPLICATE = 2;
+  ACK_STATUS_REJECTED = 3;
+  ACK_STATUS_OUT_OF_ORDER = 4;
+}
+
+message ReplayRequest {
+  string worker_id = 1;
+  uint64 last_local_sequence = 2;
+}
+
+message ReplayResponse {
+  uint64 last_accepted_sequence = 1;
+  repeated EventEnvelope events_to_replay = 2;
+  uint64 replay_start_sequence = 3;
+}
+
+message WorkerEvent {
+  string event_id = 1;
+  uint64 local_sequence = 2;
+  uint64 timestamp_epoch_ms = 3;
+  EventEnvelope event = 4;
+  bool awaiting_ack = 5;
+}
+
+message ReplayTail {
+  string worker_id = 1;
+  uint64 from_sequence = 2;
+  repeated WorkerEvent events = 3;
+}

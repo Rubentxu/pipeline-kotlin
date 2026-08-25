@@ -1,0 +1,152 @@
+package dev.rubentxu.pipeline.v2.protocol
+
+import dev.rubentxu.pipeline.v2.protocol.Command
+import dev.rubentxu.pipeline.v2.protocol.PrepareRun
+import dev.rubentxu.pipeline.v2.protocol.StartRun
+import dev.rubentxu.pipeline.v2.protocol.EventEnvelope
+import dev.rubentxu.pipeline.v2.protocol.Heartbeat
+import dev.rubentxu.pipeline.v2.protocol.LeaseGrant
+import dev.rubentxu.pipeline.v2.protocol.NegotiatedSession
+import dev.rubentxu.pipeline.v2.protocol.WorkerHello
+import dev.rubentxu.pipeline.v2.protocol.VersionRange
+
+object GoldenFixtureHarness {
+
+    fun createWorkerHello(
+        workerId: String = "worker-001",
+        instanceId: String = "instance-001"
+    ): WorkerHello = WorkerHello.newBuilder()
+        .setWorkerId(workerId)
+        .setInstanceId(instanceId)
+        .setRuntimeVersion("1.0.0")
+        .setProtocolVersion(
+            VersionRange.newBuilder()
+                .setMinMajor(1)
+                .setMinMinor(0)
+                .setMaxMajor(1)
+                .setMaxMinor(0)
+                .build()
+        )
+        .build()
+
+    fun createNegotiatedSession(sessionId: String = "session-001"): NegotiatedSession = NegotiatedSession.newBuilder()
+        .setSessionId(sessionId)
+        .setHeartbeatIntervalSeconds(30)
+        .setMaxMessageSizeBytes(10 * 1024 * 1024)
+        .build()
+
+    fun createLeaseGrant(
+        leaseId: Long = 1L,
+        fencingToken: Long = 1L
+    ): LeaseGrant = LeaseGrant.newBuilder()
+        .setLeaseId(leaseId)
+        .setFencingToken(fencingToken)
+        .setGrantedUntilEpochMs(System.currentTimeMillis() + 300_000)
+        .setStatus(LeaseStatus.LEASE_STATUS_GRANTED)
+        .build()
+
+    fun createHeartbeat(
+        workerId: String = "worker-001",
+        sequence: Long = 1L
+    ): Heartbeat = Heartbeat.newBuilder()
+        .setWorkerId(workerId)
+        .setSequenceNumber(sequence)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .setStatus(WorkerStatus.WORKER_STATUS_IDLE)
+        .build()
+
+    fun createCommand(
+        commandId: String = "cmd-001",
+        type: CommandType = CommandType.COMMAND_TYPE_PREPARE_RUN
+    ): Command = Command.newBuilder()
+        .setCommandId(commandId)
+        .setType(type)
+        .setSequenceNumber(1)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .build()
+
+    fun createPrepareRunCommand(
+        pipelineId: String = "pipeline-001",
+        runId: String = "run-001"
+    ): Command = Command.newBuilder()
+        .setCommandId("cmd-prepare-${System.currentTimeMillis()}")
+        .setType(CommandType.COMMAND_TYPE_PREPARE_RUN)
+        .setSequenceNumber(1)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .setPrepareRun(
+            PrepareRun.newBuilder()
+                .setPipelineId(pipelineId)
+                .setRunId(runId)
+                .build()
+        )
+        .build()
+
+    fun createStartRunCommand(
+        pipelineId: String = "pipeline-001",
+        runId: String = "run-001"
+    ): Command = Command.newBuilder()
+        .setCommandId("cmd-start-${System.currentTimeMillis()}")
+        .setType(CommandType.COMMAND_TYPE_START_RUN)
+        .setSequenceNumber(2)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .setStartRun(
+            StartRun.newBuilder()
+                .setPipelineId(pipelineId)
+                .setRunId(runId)
+                .build()
+        )
+        .build()
+
+    fun createPipelineStartedEvent(
+        pipelineId: String = "pipeline-001",
+        runId: String = "run-001",
+        sequence: Long = 1L
+    ): EventEnvelope = EventEnvelope.newBuilder()
+        .setEventId("evt-started-${System.currentTimeMillis()}")
+        .setSequenceNumber(sequence)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .setPipelineId(pipelineId)
+        .setRunId(runId)
+        .setType(EventType.EVENT_TYPE_PIPELINE_STARTED)
+        .build()
+
+    fun createStepCompletedEvent(
+        pipelineId: String = "pipeline-001",
+        runId: String = "run-001",
+        stepId: String = "step-001",
+        sequence: Long = 2L
+    ): EventEnvelope = EventEnvelope.newBuilder()
+        .setEventId("evt-step-completed-${System.currentTimeMillis()}")
+        .setSequenceNumber(sequence)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .setPipelineId(pipelineId)
+        .setRunId(runId)
+        .setType(EventType.EVENT_TYPE_STEP_COMPLETED)
+        .setStepCompleted(
+            StepCompleted.newBuilder()
+                .setStepId(stepId)
+                .setExitCode(0)
+                .setDurationMs(100)
+                .build()
+        )
+        .build()
+
+    fun createPipelineCompletedEvent(
+        pipelineId: String = "pipeline-001",
+        runId: String = "run-001",
+        sequence: Long = 3L
+    ): EventEnvelope = EventEnvelope.newBuilder()
+        .setEventId("evt-completed-${System.currentTimeMillis()}")
+        .setSequenceNumber(sequence)
+        .setTimestampEpochMs(System.currentTimeMillis())
+        .setPipelineId(pipelineId)
+        .setRunId(runId)
+        .setType(EventType.EVENT_TYPE_PIPELINE_COMPLETED)
+        .setPipelineCompleted(
+            PipelineCompleted.newBuilder()
+                .setFinalExitCode(0)
+                .setTotalDurationMs(1000)
+                .build()
+        )
+        .build()
+}

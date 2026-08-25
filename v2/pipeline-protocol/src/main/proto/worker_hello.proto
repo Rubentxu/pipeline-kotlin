@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "WorkerHelloProtos";
+
+import "common.proto";
+
+message WorkerHello {
+  string worker_id = 1;
+  string instance_id = 2;
+  string runtime_version = 3;
+  VersionRange protocol_version = 4;
+  WorkerCapabilities capabilities = 5;
+  SystemInfo system_info = 6;
+  ExecutionCapabilities execution_capabilities = 7;
+  repeated PluginCacheDigest plugin_cache_digests = 8;
+  SecurityInfo security_info = 9;
+  AuthAttestation auth_attestation = 10;
+}
+
+message VersionRange {
+  uint32 min_major = 1;
+  uint32 min_minor = 2;
+  uint32 max_major = 3;
+  uint32 max_minor = 4;
+}
+
+message WorkerCapabilities {
+  bool kotlin_compiler_available = 1;
+  repeated string supported_language_versions = 2;
+  uint32 max_concurrent_steps = 3;
+  uint64 max_heap_mb = 4;
+  bool supports_parallel_frames = 5;
+}
+
+message SystemInfo {
+  string os_name = 1;
+  string os_version = 2;
+  string os_arch = 3;
+  uint32 cpu_cores = 4;
+  uint64 total_memory_mb = 5;
+}
+
+message ExecutionCapabilities {
+  bool supports_cancel = 1;
+  bool supports_kill = 2;
+  bool supports_checkpoint = 3;
+  bool supports_script_isolation = 4;
+}
+
+message PluginCacheDigest {
+  string plugin_name = 1;
+  string digest_sha256 = 2;
+  uint64 cached_at_epoch_ms = 3;
+}
+
+message SecurityInfo {
+  bool supports_sandbox = 1;
+  bool supports_mtls = 2;
+  repeated string allowed_network_ranges = 3;
+}
+
+message AuthAttestation {
+  string attestation_type = 1;
+  string attestation_token = 2;
+  uint64 issued_at_epoch_ms = 3;
+  uint64 expires_at_epoch_ms = 4;
+}

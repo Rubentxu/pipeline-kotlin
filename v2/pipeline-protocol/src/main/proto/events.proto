@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "EventsProtos";
+
+import "common.proto";
+
+message EventEnvelope {
+  string event_id = 1;
+  uint64 sequence_number = 2;
+  uint64 timestamp_epoch_ms = 3;
+  string pipeline_id = 4;
+  string run_id = 5;
+  EventType type = 6;
+  LeaseContext lease = 7;
+  oneof payload {
+    PipelineStarted pipeline_started = 10;
+    StepStarted step_started = 11;
+    StepCompleted step_completed = 12;
+    StepFailed step_failed = 13;
+    PipelineCompleted pipeline_completed = 14;
+    PipelineFailed pipeline_failed = 15;
+    LogChunk log_chunk = 16;
+    WorkerLost worker_lost = 17;
+    WorkerReconnected worker_reconnected = 18;
+    BackpressureWarning backpressure_warning = 19;
+  }
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_PIPELINE_STARTED = 1;
+  EVENT_TYPE_STEP_STARTED = 2;
+  EVENT_TYPE_STEP_COMPLETED = 3;
+  EVENT_TYPE_STEP_FAILED = 4;
+  EVENT_TYPE_PIPELINE_COMPLETED = 5;
+  EVENT_TYPE_PIPELINE_FAILED = 6;
+  EVENT_TYPE_LOG_CHUNK = 7;
+  EVENT_TYPE_WORKER_LOST = 8;
+  EVENT_TYPE_WORKER_RECONNECTED = 9;
+  EVENT_TYPE_BACKPRESSURE_WARNING = 10;
+}
+
+message PipelineStarted {
+  string pipeline_name = 1;
+  string entry_point = 2;
+}
+
+message StepStarted {
+  string step_id = 1;
+  string step_name = 2;
+  uint32 attempt = 3;
+}
+
+message StepCompleted {
+  string step_id = 1;
+  uint32 exit_code = 2;
+  uint64 duration_ms = 3;
+}
+
+message StepFailed {
+  string step_id = 1;
+  string reason = 2;
+  string error_message = 3;
+}
+
+message PipelineCompleted {
+  uint32 final_exit_code = 1;
+  uint64 total_duration_ms = 2;
+}
+
+message PipelineFailed {
+  string reason = 1;
+  string error_details = 2;
+}
+
+message LogChunk {
+  string step_id = 1;
+  bytes content = 2;
+  uint32 sequence = 3;
+  bool is_stderr = 4;
+}
+
+message WorkerLost {
+  string worker_id = 1;
+  uint64 last_known_sequence = 2;
+  string reason = 3;
+}
+
+message WorkerReconnected {
+  string worker_id = 1;
+  uint64 reconnect_sequence = 2;
+}
+
+message BackpressureWarning {
+  string queue_name = 1;
+  uint64 queue_depth = 2;
+  uint64 max_capacity = 3;
+}

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package dev.rubentxu.pipeline.v2.protocol;
+
+option java_package = "dev.rubentxu.pipeline.v2.protocol";
+option java_multiple_files = true;
+option java_outer_classname = "CommonProtos";
+
+message LeaseContext {
+  uint64 lease_id = 1;
+  uint64 fencing_token = 2;
+}
+
+message Capabilities {
+  bool cancel_supported = 1;
+  bool kill_supported = 2;
+  bool checkpoint_supported = 3;
+  bool script_isolation_supported = 4;
+  uint32 max_concurrent_steps = 5;
+  uint32 max_message_size_bytes = 6;
+}
+
+message Version {
+  uint32 major = 1;
+  uint32 minor = 2;
+}

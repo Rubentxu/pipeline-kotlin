@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.EventStore
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
@@ -49,6 +50,11 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.error as sdkError
 import dev.rubentxu.pipeline.v2.sdk.runtime.sleep as sdkSleep
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh
 import dev.rubentxu.pipeline.v2.sdk.runtime.ShellResult
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -531,6 +537,7 @@ private suspend fun emitDurableStepEvents(
                     effectReplayPolicy = effectReplayPolicy,
                     clock = ctx.clock,
                     runOutcomeRef = runOutcomeRef,
+                    controlDirRoot = ctx.controlDirRoot,
                 )
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
@@ -614,6 +621,7 @@ private suspend fun executeDurableStep(
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
+    controlDirRoot: Path? = null,
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -628,7 +636,106 @@ private suspend fun executeDurableStep(
         clock = clock,
         runOutcomeRef = runOutcomeRef,
         reconciledBranches = reconciledBranches,
+        controlDirRoot = controlDirRoot,
     )
+}
+
+/**
+ * Crash-safe shell step execution using durable shell pattern (ML-R1 / ADR-0046).
+ *
+ * ## Execution Order
+ *
+ * The crash-safe order is:
+ * 1. **begin** → journal RUNNING row (done by caller)
+ * 2. **create** → control dir + script.sh
+ * 3. **launch** → ProcessHandle acquired, wrapper forked
+ * 4. **poll** → wait for result.txt (100ms polling)
+ * 5. **append** → journal COMPLETE/LOST (done by caller)
+ * 6. **cleanup** → delete control dir (unless retainOnFailure)
+ *
+ * ## P2 Invariant
+ *
+ * User script content NEVER appears in any argv. The script is written to
+ * script.sh on the filesystem, and only the wrapper command (with paths)
+ * is passed to `sh -c`.
+ *
+ * @param command The shell command to execute.
+ * @param opId The operation ID (used for control directory naming).
+ * @param controlDirRoot The root directory for control directories.
+ * @param eventSink The event sink for emitting events (e.g., EchoOutputCaptured).
+ * @param stepIndex The step index for event sequencing.
+ * @return "success" if exit code is 0, "failure" otherwise.
+ */
+private suspend fun runShStep(
+    command: String,
+    runId: String,
+    opId: String,
+    controlDirRoot: Path?,
+    eventSink: EventSink,
+    stepIndex: Int,
+): String {
+    if (controlDirRoot == null) {
+        // Fallback to non-durable execution if no control dir root
+        val argv = listOf("bash", "-c", command)
+        val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
+        return if (result.exitCode != 0) "failure" else "success"
+    }
+
+    val controlDir = controlDirRoot.resolve(opId)
+
+    return try {
+        val config = DurableShConfig.fromSystemProperties()
+        val result = executeDurableShell(controlDir, command, opId, config)
+
+        // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)
+        // L1 constraint: output.txt is never read; jenkins-log.txt is the captured output
+        try {
+            val logFile = controlDir.resolve("jenkins-log.txt")
+            if (java.nio.file.Files.exists(logFile)) {
+                val capturedOutput = java.nio.file.Files.readString(logFile)
+                eventSink.append(EchoOutputCaptured(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = java.time.Instant.now(),
+                    stepIndex = stepIndex,
+                    content = capturedOutput,
+                ))
+            }
+        } catch (_: Exception) {
+            // Don't fail the step if we can't read the log
+        }
+
+        when (result.state) {
+            DurableShellState.COMPLETE -> {
+                if (result.exitCode != 0) "failure" else "success"
+            }
+            DurableShellState.LOST,
+            DurableShellState.LAUNCH_FAILED,
+            DurableShellState.LAUNCHING,
+            DurableShellState.RUNNING -> "failure"
+        }
+    } catch (e: LinuxRequiredException) {
+        // Fallback to non-durable on non-Linux
+        val argv = listOf("bash", "-c", command)
+        val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
+        if (result.exitCode != 0) "failure" else "success"
+    } catch (e: Exception) {
+        "failure"
+    }
+}
+
+/**
+ * No-op event sink for shell execution where events are not persisted.
+ */
+private object NoOpEventSink : EventSink {
+    override fun append(event: DomainEvent) {
+        // no-op
+    }
+
+    override fun eventsFor(runId: String): Sequence<DomainEvent> {
+        return emptySequence()
+    }
 }
 
 /**
@@ -648,7 +755,11 @@ private suspend fun executeDurableStepImpl(
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
+    controlDirRoot: Path? = null,
 ): String {
+    // Build opId for durable shell control dir
+    val opId = OpId(runId, stageIndex, stepIndex).format()
+
     return try {
         when (step) {
             is StepSpec.Echo -> {
@@ -656,12 +767,9 @@ private suspend fun executeDurableStepImpl(
                 "success"
             }
             is StepSpec.Shell -> {
-                // Pass the entire command through `bash -c` so the shell interprets
-                // quoted multi-line scripts correctly. Previously split on whitespace
-                // which mangled argv for any command containing quotes (e.g. `bash -c "..."`).
-                val argv = listOf("bash", "-c", step.command)
-                val result = sh(StepContext(runId = runId), argv, eventSink, stepIndex)
-                if (result.exitCode != 0) "failure" else "success"
+                // ML-R1 durable shell: use crash-safe execution with control dir
+                // Falls back to non-durable if controlDirRoot is null or LinuxRequiredException
+                runShStep(step.command, runId, opId, controlDirRoot, eventSink, stepIndex)
             }
             is StepSpec.Sleep -> {
                 sdkSleep(StepContext(runId = runId), step.seconds, eventSink, stepIndex)

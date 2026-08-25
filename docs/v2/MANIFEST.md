@@ -1,6 +1,6 @@
 # Package Manifest
 
-- Markdown files: **77**
+- Markdown files: **79**
 - Total bytes: **141122**
 
 | File | SHA-256 |
@@ -55,7 +55,9 @@
 | `04-adrs/ADR-0019.md` | `63391de76d8287972d2ac47b329ab758e08028ee9ce7ff682d4b51e0e2bde559` |
 | `04-adrs/ADR-0020.md` | `bdc3a05e40bb6e3129081c693e76513106aa931cf8c405683622195d783018e5` |
 | `04-adrs/ADR-0044-proto-package-amendment.md` | `d69fb87aec6ea66aacad3507a5b79313f48417ead5a02e15b2c2b0b5e2288658` |
-| `04-adrs/README.md` | `d7a7440a5b836a9674c37272f07b371981618ac5c2c3944203455d49c6e1d373` |
+| `04-adrs/ADR-0045-farch012-namingclarification.md` | `641f5e6aad42d2762ecded70fe1f97d3d2cb121f96aeb0f0b9658fbff12e3bd4` |
+| `04-adrs/BLOCKER-E501-capability-trust.md` | `d278c5145eb76d3bda99593a908035655e48cff1669f7f303776ad67f7664c19` |
+| `04-adrs/README.md` | `d17e5576ca0394dbc4ab4eb00f2d085eebde9abf620d9413fdbadffbb3616f3f` |
 | `governance/PROTOBUF_GOVERNANCE.md` | `4e9651cbc8f074429df8b104826a00571095ca87103f200c9520618c7abe4232` |
 | `05-roadmap/DEVELOPMENT_STRATEGY.md` | `51870f68ec6a8fc882c974700ff394ae48c7ce824e3d60a249bdc7ce9d8fe7d0` |
 | `05-roadmap/IMPLEMENTATION_BACKLOG.md` | `4ab3aa5bb40c1d3e9b4f4dd8a3f364de4339916fba7d34e61db7c24bf4a3e178` |

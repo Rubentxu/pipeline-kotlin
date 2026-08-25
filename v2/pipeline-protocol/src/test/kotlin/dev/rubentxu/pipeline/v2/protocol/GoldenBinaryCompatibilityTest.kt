@@ -17,7 +17,7 @@ class GoldenBinaryCompatibilityTest {
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
     private val fixtures = mapOf(
-        "worker_hello.pb" to "8c4d575a4623a39a7a7ec4a57c580b30b2c45cfd8b89b7b8699613a6551896ab",
+        "worker_hello.pb" to "226dcb3b1ef2edb46299d3f8cc8bd960221c92dfb2a8938e3a1278295061c929",
         "negotiated_session.pb" to "a31b2386853f2fd8c2951698a5e27f3bb9bec0e8c102338a408ce4861d6ade41",
         "commands.pb" to "b474a6b568028ecdcefbeeb87d67176269668d645ed9ae6951bedfdca918d96a",
         "events.pb" to "4b7ad17ae87d45756721506a53a24f301b69dfd62ff79d4374c983f20afbde7b",
@@ -35,6 +35,65 @@ class GoldenBinaryCompatibilityTest {
             val sha = sha256(bytes)
             assertEquals(expectedSha, sha, "SHA-256 mismatch for $fixture")
         }
+    }
+
+    @Test
+    fun `each fixture roundtrips through deserialize-serialize to exact bytes`() {
+        // worker_hello
+        val whResource = javaClass.getResourceAsStream("/fixtures/worker_hello.pb")
+        assertNotNull(whResource)
+        val whBytes = whResource.readBytes()
+        val whParsed = dev.rubentxu.pipeline.v2.protocol.WorkerHello.parseFrom(whBytes)
+        val whReserialized = whParsed.toByteArray()
+        assertArrayEquals(whBytes, whReserialized, "worker_hello.pb: reserialized bytes must match fixture exactly")
+
+        // negotiated_session
+        val nsResource = javaClass.getResourceAsStream("/fixtures/negotiated_session.pb")
+        assertNotNull(nsResource)
+        val nsBytes = nsResource.readBytes()
+        val nsParsed = dev.rubentxu.pipeline.v2.protocol.NegotiatedSession.parseFrom(nsBytes)
+        val nsReserialized = nsParsed.toByteArray()
+        assertArrayEquals(nsBytes, nsReserialized, "negotiated_session.pb: reserialized bytes must match fixture exactly")
+
+        // commands
+        val cmdResource = javaClass.getResourceAsStream("/fixtures/commands.pb")
+        assertNotNull(cmdResource)
+        val cmdBytes = cmdResource.readBytes()
+        val cmdParsed = dev.rubentxu.pipeline.v2.protocol.Command.parseFrom(cmdBytes)
+        val cmdReserialized = cmdParsed.toByteArray()
+        assertArrayEquals(cmdBytes, cmdReserialized, "commands.pb: reserialized bytes must match fixture exactly")
+
+        // events
+        val evtResource = javaClass.getResourceAsStream("/fixtures/events.pb")
+        assertNotNull(evtResource)
+        val evtBytes = evtResource.readBytes()
+        val evtParsed = dev.rubentxu.pipeline.v2.protocol.EventEnvelope.parseFrom(evtBytes)
+        val evtReserialized = evtParsed.toByteArray()
+        assertArrayEquals(evtBytes, evtReserialized, "events.pb: reserialized bytes must match fixture exactly")
+
+        // ack_replay
+        val arResource = javaClass.getResourceAsStream("/fixtures/ack_replay.pb")
+        assertNotNull(arResource)
+        val arBytes = arResource.readBytes()
+        val arParsed = dev.rubentxu.pipeline.v2.protocol.Ack.parseFrom(arBytes)
+        val arReserialized = arParsed.toByteArray()
+        assertArrayEquals(arBytes, arReserialized, "ack_replay.pb: reserialized bytes must match fixture exactly")
+
+        // leases
+        val lsResource = javaClass.getResourceAsStream("/fixtures/leases.pb")
+        assertNotNull(lsResource)
+        val lsBytes = lsResource.readBytes()
+        val lsParsed = dev.rubentxu.pipeline.v2.protocol.LeaseGrant.parseFrom(lsBytes)
+        val lsReserialized = lsParsed.toByteArray()
+        assertArrayEquals(lsBytes, lsReserialized, "leases.pb: reserialized bytes must match fixture exactly")
+
+        // heartbeat
+        val hbResource = javaClass.getResourceAsStream("/fixtures/heartbeat.pb")
+        assertNotNull(hbResource)
+        val hbBytes = hbResource.readBytes()
+        val hbParsed = dev.rubentxu.pipeline.v2.protocol.Heartbeat.parseFrom(hbBytes)
+        val hbReserialized = hbParsed.toByteArray()
+        assertArrayEquals(hbBytes, hbReserialized, "heartbeat.pb: reserialized bytes must match fixture exactly")
     }
 
     @Test

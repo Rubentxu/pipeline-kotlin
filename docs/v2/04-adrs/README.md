@@ -22,3 +22,4 @@
 - [ADR-0020: BTA como adapter futuro, no dependencia V2.0](ADR-0020.md)
 - [ADR-0043: Proto-Governance for Worker Protocol Module](ADR-0043-proto-governance.md)
 - [ADR-0044: Proto Package Structure Amendment](ADR-0044-proto-package-amendment.md)
+- [ADR-0045: FArch012 Test Naming Clarification](ADR-0045-farch012-namingclarification.md)

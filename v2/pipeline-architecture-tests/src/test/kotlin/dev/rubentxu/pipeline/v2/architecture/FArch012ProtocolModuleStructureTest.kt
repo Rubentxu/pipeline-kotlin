@@ -27,6 +27,14 @@ class FArch012ProtocolModuleStructureTest {
 
     private val requiredProtoFiles = topicProtoFiles + "common.proto"
 
+    private val forbiddenTestImports = listOf(
+        "java.net.Socket",
+        "java.net.ServerSocket",
+        "java.net.WebSocket",
+        "okhttp",
+        "io.ktor.client"
+    )
+
     @Test
     fun `protocol module depends only on allowed modules`() {
         val root = ScannerSupport.v2Root()
@@ -115,6 +123,48 @@ class FArch012ProtocolModuleStructureTest {
             missingCoverage.isEmpty(),
             "All topic proto files must have golden fixtures: $missingCoverage"
         )
+    }
+
+    @Test
+    fun `no forbidden network imports in protocol test sources`() {
+        val root = ScannerSupport.v2Root()
+        val protocolTestDir = root.resolve("pipeline-protocol/src/test/kotlin")
+
+        val findings = if (protocolTestDir.toFile().exists()) {
+            ScannerSupport.findImports(protocolTestDir, forbiddenTestImports)
+        } else {
+            emptyList()
+        }
+
+        assertTrue(findings.isEmpty(), "Protocol test sources must not import forbidden network classes: $findings")
+    }
+
+    @Nested
+    inner class ImportViolationFixture {
+        @TempDir
+        lateinit var tempDir: Path
+
+        @Test
+        fun `scanner rejects forbidden import in fixture`() {
+            val fixture = tempDir.resolve("ForbiddenImportTest.kt")
+            fixture.toFile().writeText("""
+                package test.fixture
+
+                import java.net.Socket
+                import okhttp3.OkHttpClient
+
+                class Example {
+                    val socket = Socket()
+                }
+            """.trimIndent())
+
+            val root = tempDir
+            val findings = ScannerSupport.findImports(root, forbiddenTestImports)
+
+            assertTrue(findings.isNotEmpty(), "Scanner must detect forbidden imports in fixture")
+            val firstFinding = findings.first()
+            assertTrue(firstFinding.token == "java.net.Socket" || firstFinding.token == "okhttp")
+        }
     }
 
     @Nested

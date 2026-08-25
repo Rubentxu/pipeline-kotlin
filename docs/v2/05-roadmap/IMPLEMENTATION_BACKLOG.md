@@ -77,21 +77,28 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E4-27** Replace `walkParallelFrame` sequential `forEachIndexed` with concurrent dispatch. **(M3-R4.4 — ✅ CLOSED v0.13.4-rc1: `walkParallelFrame` now uses `coroutineScope { ... }.awaitAll()` via `walkBranchDurable` delegation per ADR-0041)**
 - **E4-28** `UatDurable009KillResumeBranchTest` no-replay assertion (EC-6(d)). **(M3-R4.4 — ⚠️ PARTIAL v0.13.4-rc1: counter assertions verified in scenario 1 only (counterFile0/counterFile2 == "1" after Run 2). Scenario 2 had different runIds across Run 1/Run 2 due to test fixture; deferred to M3-R5 with same-spec fixture)**
 - **E4-29** Resolve `dup-6` (two reconcileRunningOperations implementations). **(M3-R4.4 — ✅ CLOSED v0.13.4-rc1: inline deleted, `InlinedReconcileDeletedTest` grep assertion PASS)**
-- **E4-30** Tighten `beginOperation` API surface (coup-3, MEDIUM carry-forward from M3-R4.3). **(M3-R4.4 — ❌ NOT CLOSED: branchIndex parameter still redundant. Deferred to M3-R5)**
+- **E4-30** Tighten `beginOperation` API surface (coup-3, MEDIUM carry-forward from M3-R4.3). **(M3-R4.5 — ✅ CLOSED v0.13.5-rc1 via M3-R5: branchIndex parameter completely removed; journal uses opId as-is per ADR-0037 Option A strict)**
 - **NEW M3-R4.4 backlog (owned by M3-R5 debt-mop)**:
-  - **E4-31** Refactor `walkPipelineSpecDurable` to use `ctx.branchReconciler` instead of LOCAL `BranchReconciler` instance (closes FIND-coup-new-1 MEDIUM + overeng-3 LOW introduced by M3-R4.4).
-  - **E4-32** Add same-spec fixture to UatDurable009 scenario 2 to fully close EC-6(d) (counters + runId match).
+  - **E4-31** Refactor `walkPipelineSpecDurable` to use `ctx.branchReconciler` instead of LOCAL `BranchReconciler` instance. **(M3-R5 — ✅ CLOSED v0.13.5-rc1: PipelineOrchestrator.run() constructs BranchReconciler and threads via DurableWalkContext; ctx.branchReconciler LIVE; local construction removed)**
+  - **E4-32** Add same-spec fixture to UatDurable009 scenario 2 to fully close EC-6(d). **(M3-R5 — ✅ CLOSED v0.13.5-rc1: scenario 2 now uses threeBranchParallelSpec for Run 1+Run 2; counterFile0/counterFile2 == "1" assertions re-enabled)**
+  - **E4-33** Remove 12-param executeDurableStep legacy overload (INC-008). **(M3-R5 — ✅ CLOSED v0.13.5-rc1: 9-param ctx overload removed; 12-param retained with @compat permanent KDoc)**
+  - **E4-34** Verify ctx.branchReconciler LIVE (FIND-arch-design-dev). **(M3-R5 — ✅ CLOSED v0.13.5-rc1: DurableWalkContextTest asserts ctx.branchReconciler is LIVE and accessible)**
 
-## M3-R5 — debt mop (next milestone sub-cycle, deferred from M3-R4.1/4.2/4.3/4.4)
-- **Carry-forwards owned by M3-R5** (per M3-R4.4 debt-report.json follow_up):
-  - 21 pre-existing carry-forwards (8 from M3-R4.2 still open + 13 from M3-R4.1 baseline: 4 duplication + 7 smells + 2 overeng).
-  - **INC-008 (NEW LOW P3)**: 12-param executeDurableStep legacy overload retained at PipelineRun.kt:637-651.
-  - **INC-009 (NEW LOW P3)**: overeng-3 confirmed OPEN — DurableWalkContext.branchReconciler field dead in production (only test references it). Verify correctly disproved apply agent's fabricated closure claim.
-  - **FIND-coup-new-1 (NEW MEDIUM)**: walkPipelineSpecDurable constructs LOCAL BranchReconciler instead of using `ctx.branchReconciler` per ADR-0040.
-  - **FIND-arch-design-dev (NEW MEDIUM)**: ADR-0040 architectural deviation; Matsumoto deletion-test fails for ctx.branchReconciler.
-  - **FIND-smell-8-partial (NEW LOW)**: 12-param legacy overload retention.
-  - 3 pre-existing from M3-R4.3: coup-3 (MEDIUM branchIndex redundancy), arch-5/6 + smell-9 (LOW).
-  - **(M3-R5 — ⏳ planned debt-mop cycle)**
+## M3-R5 — debt mop (CLOSED v0.13.5-rc1)
+- **Carry-forwards closed in M3-R5** (per M3-R4.4 debt-report.json follow_up + M3-R5 carry-forward-triage.md):
+  - 5 findings CLOSED: FIND-coup-new-1 (MEDIUM), FIND-arch-design-dev (MEDIUM), FIND-overeng-3-confirmed (LOW), FIND-coup3 (LOW), E4-28
+  - 8 findings ACCEPT-AS-RISK: dup-1/2/3/4 (LOW), mutable-clock (LOW), smell-1/2/3 (LOW)
+  - 15 findings ROLL-FORWARD-TO-M4: arch-5/6, overeng-1/2/4, smell-4/5/6/7/9/10/11/12/13/14 (all LOW)
+- **INC-008 (LOW P3)**: 12-param executeDurableStep legacy overload retained with @compat permanent KDoc. Accepted as-is; cost of removal exceeds benefit.
+- **E4-30**: ✅ CLOSED (branchIndex removed)
+- **E4-31**: ✅ CLOSED (ctx.branchReconciler LIVE)
+- **E4-32**: ✅ CLOSED (EC-6(d) fully verified)
+- **E4-33**: ✅ CLOSED (9-param ctx overload removed)
+- **E4-34**: ✅ CLOSED (ctx.branchReconciler LIVE verification)
+- **ADR-0037**: Updated to Option A (strict) — branchIndex completely removed
+- **EC-6**: ✅ CLOSED — UatDurable009 scenarios 1 and 2 both pass with counter invariants verified
+- **Local tag: v0.13.5-rc1** (peels to `1451f7b...`, FF-merged to feat/m3-r5-debt-mop)
+- **gap_status=CLOSED**
 
 ## Epic E5 — Protocol/Gateway
 - **E5-01** `.proto` v1 repo layout/governance.

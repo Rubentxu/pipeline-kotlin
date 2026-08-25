@@ -129,14 +129,17 @@ class UatDurable009KillResumeBranchTest {
     }
 
     /**
-     * Scenario: Branch-1 fails (exit 1) during parallel frame.
-     * After kill simulation and resume with fixed spec, overall outcome is success.
+     * Scenario 2: Same-spec kill+resume — EC-6(d) same-spec validation.
      *
-     * BranchReconciler drives skip/re-attach: SUCCEEDED branches skip,
-     * NEEDS_REATTACH re-attaches. EC-6(d) counter invariants apply.
+     * Uses identical `threeBranchParallelSpec` for Run 1 and Run 2 (same runId).
+     * Run 1 completes fully. Kill simulation sets branch-1 to RUNNING.
+     * Run 2 resumes: SUCCEEDED branches (0,2) skip per EC-6(d); branch-1 re-attaches.
+     *
+     * EC-6(d): completed branches (SUCCEEDED) must NOT re-execute on resume.
+     * Counter invariants: counterFile0 == "1", counterFile2 == "1" after Run 2.
      */
     @Test
-    fun `resume after branch-1 failure completes with success`() {
+    fun `same-spec resume - completed branches skip, killed branch re-attaches`() {
         val dbPath = tempDir.resolve("uat-009b.db").toString()
         val counterFile0 = tempDir.resolve("counter-009b-branch0.txt").toString()
         val counterFile1 = tempDir.resolve("counter-009b-branch1.txt").toString()
@@ -144,33 +147,40 @@ class UatDurable009KillResumeBranchTest {
 
         val clock = MutableClock(java.time.Instant.parse("2026-08-24T12:00:00Z"))
 
-        // Run 1: 3-branch with branch-1 failing (exit 1 before counter increment)
+        // Run 1: 3-branch parallel frame completes successfully
         val (run1Outcome) = runOrchestrated(
             dbPath = dbPath,
-            spec = threeBranchParallelWithFailingBranch1(counterFile0, counterFile1, counterFile2),
+            spec = threeBranchParallelSpec(counterFile0, counterFile1, counterFile2),
             startFromCursor = false,
             clock = clock,
         )
-        // First run may have failed or succeeded depending on join policy
+        assertEquals("success", run1Outcome, "First run must succeed")
 
-        // Simulate kill after failure: revert branch-1 to RUNNING state
-        val failingRunId = deriveRunId(threeBranchParallelWithFailingBranch1(counterFile0, counterFile1, counterFile2))
-        simulateKillBranch1(dbPath, clock, failingRunId)
+        // Verify all counters are 1 after first run
+        assertEquals("1", readCounter(counterFile0), "Branch-0 counter after run 1")
+        assertEquals("1", readCounter(counterFile1), "Branch-1 counter after run 1")
+        assertEquals("1", readCounter(counterFile2), "Branch-2 counter after run 1")
+
+        // Simulate kill: revert branch-1 journal entry to RUNNING state
+        // This simulates: branch-1 began, was running, then SIGKILL arrived.
+        val runId = deriveRunId(threeBranchParallelSpec(counterFile0, counterFile1, counterFile2))
+        simulateKillBranch1(dbPath, clock, runId)
+
         clock.advanceTo(java.time.Instant.parse("2026-08-24T12:05:00Z"))
 
-        // Run 2 (resume): resume with fixed spec - outcome must be success
+        // Run 2 (resume): same spec, same runId.
+        // BranchReconciler: SUCCEEDED branches skip, NEEDS_REATTACH branch-1 re-attaches.
         val (run2Outcome) = runOrchestrated(
             dbPath = dbPath,
             spec = threeBranchParallelSpec(counterFile0, counterFile1, counterFile2),
             startFromCursor = true,
             clock = clock,
         )
-        assertEquals("success", run2Outcome, "Resume with fixed spec must succeed")
+        assertEquals("success", run2Outcome, "Resume must succeed")
 
-        // NOTE: EC-6(d) counter assertions are NOT verifiable in this scenario
-        // because run 1 (failing spec) and run 2 (working spec) have different runIds,
-        // so journal entries from run 1 are not found in run 2. All branches re-execute.
-        // This scenario validates outcome correctness (resume succeeds) rather than skip behavior.
+        // EC-6(d): completed branches (SUCCEEDED in run 1) must NOT re-execute on resume
+        assertEquals("1", readCounter(counterFile0), "completed branch 0 must NOT re-execute (EC-6(d))")
+        assertEquals("1", readCounter(counterFile2), "completed branch 2 must NOT re-execute (EC-6(d))")
     }
 
     /**

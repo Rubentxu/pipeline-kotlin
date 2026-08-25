@@ -187,7 +187,7 @@ deuda surgical de M3-R3 + el systemic debt de Clock-port cohesion.
 1. ✅ Kill-after-shell-recovery (M3-R3) — gap lifted post-remote-integration
 2. ✅ WAL+DbLock+Clock port + run_id column (M3-R4.1) — gap lifted
 3. ✅ Parallel Frames/join foundation (M3-R4.2) — EC-1..5 compliant
-4. ✅ Parallel Frames/join wiring (M3-R4.4) — EC-1..5 compliant; EC-6 (kill+resume no-replay invariant) PARTIAL — verified in UatDurable009 scenario 1 only; scenario 2 deferred to M3-R5 due to runId mismatch in test fixture. **M3 fully closed end-to-end on the durable-execution axis.**
+4. ✅ Parallel Frames/join wiring (M3-R4.4) — EC-1..5 compliant; **EC-6 CLOSED** — UatDurable009 scenario 1 + 2 both pass; same-spec fixture validates no-replay invariant (counterFile0/counterFile2 == "1" after resume). **M3 fully closed end-to-end on the durable-execution axis.**
 
 **Unblocks M4** (Protocol + Gateway) per ROADMAP.
 

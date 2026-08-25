@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.BranchReconciler
 import dev.rubentxu.pipeline.v2.application.walkPipelineSpecDurable
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
@@ -81,16 +82,25 @@ class PipelineOrchestrator(
                     null
                 }
 
-                // Execute with durable walk
+                // M3-R5 B1: Construct BranchReconciler once and thread via DurableWalkContext.
+                // ADR-0040 Path A: reconciler is constructed here (not in walkPipelineSpecDurable)
+                // and passed through ctx.branchReconciler for the LIVE reconciliation pass.
+                val branchReconciler = BranchReconciler(journal, cursorStore, clock)
+                val ctx = DurableWalkContext(
+                    clock = clock,
+                    opJournal = journal,
+                    cursorStore = cursorStore,
+                    branchReconciler = branchReconciler,
+                    eventSink = eventSink,
+                )
+
+                // Execute with durable walk — ctx carries branchReconciler for LIVE reconciliation
                 val runOutcome = walkPipelineSpecDurable(
                     spec = spec,
                     runId = runId,
-                    eventSink = eventSink,
-                    journal = journal,
-                    cursorStore = cursorStore,
+                    ctx = ctx,
                     divergenceDetector = divergenceDetector,
                     effectReplayPolicy = effectReplayPolicy,
-                    clock = clock,
                     startFromStageIndex = cursor?.stageIndex ?: 0,
                     startFromStepIndex = 0,
                 )

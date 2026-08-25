@@ -46,7 +46,6 @@ class DurableWalkContextTest {
             fingerprint: String,
             inputJson: String,
             deadlineMs: Long?,
-            branchIndex: Int?,
         ) {}
         override fun equals(other: Any?) = this === other
         override fun hashCode() = System.identityHashCode(this)

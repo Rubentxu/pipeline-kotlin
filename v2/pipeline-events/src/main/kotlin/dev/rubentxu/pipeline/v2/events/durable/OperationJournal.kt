@@ -99,13 +99,19 @@ interface OperationJournal {
      * on restart: if a RUNNING row exists with no terminal status, the subprocess
      * was killed mid-execution and must not be silently trusted.
      *
-     * @param opId The operation identifier.
+     * ## ADR-0037 Option A: Caller MUST pre-format opId
+     *
+     * The caller is responsible for formatting the opId with any branch index using
+     * [OpId.format()]. The journal MUST NOT derive or append a branch suffix.
+     * This ensures the journal is never responsible for formatting operation IDs,
+     * per C-013/C-026.
+     *
+     * @param opId The operation identifier. MUST be pre-formatted by the caller
+     *              using [OpId.format()] if it includes a branch index.
      * @param attempt The 1-based attempt number.
      * @param fingerprint The SHA-256 fingerprint of the operation input.
      * @param inputJson JSON-serialized [OperationInput].
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
-     * @param branchIndex Optional branch index for parallel frame execution. When non-null,
-     *                    the branch index is appended to the opId as "-b$branchIndex".
      * @throws IllegalStateException if a row already exists for (opId, attempt).
      */
     fun beginOperation(
@@ -114,7 +120,6 @@ interface OperationJournal {
         fingerprint: String,
         inputJson: String,
         deadlineMs: Long? = null,
-        branchIndex: Int? = null,
     )
 }
 
@@ -231,18 +236,11 @@ class SqliteOperationJournalImpl(
      *
      * ## ADR-0037 Option A: Caller-Passes-Formatted
      *
-     * The caller is responsible for formatting the [opId] string. The [branchIndex]
-     * parameter is used only as a consistency check when both `opId` already contains
-     * a branch suffix and [branchIndex] is non-null.
+     * The caller is responsible for formatting the [opId] string before calling this method.
+     * The journal uses [opId] exactly as provided — no derivation, no suffix appending.
+     * This ensures the journal is never responsible for formatting operation IDs (C-013/C-026).
      *
-     * Consistency rules (ADR-0037 §Decision):
-     * - When `opId` already has a branch suffix AND `branchIndex != null` AND they differ → throw
-     * - When `opId` already has a branch suffix AND `branchIndex == null` → use `opId` as-is
-     * - When `opId` is root (no branch suffix) AND `branchIndex != null` → format with branchIndex
-     * - When both are null/root → root opId (existing behavior)
-     *
-     * @throws IllegalStateException if a row already exists for (opId, attempt), or if
-     *         the pre-formatted opId's branch index is inconsistent with the passed branchIndex.
+     * @throws IllegalStateException if a row already exists for (opId, attempt).
      */
     override fun beginOperation(
         opId: String,
@@ -250,38 +248,7 @@ class SqliteOperationJournalImpl(
         fingerprint: String,
         inputJson: String,
         deadlineMs: Long?,
-        branchIndex: Int?,
     ) {
-        // ADR-0037 Option A: resolve the full opId string using string parsing.
-        // The opId format is "$runId-s$stageIndex-$stepIndex[-b$branchIndex]".
-        // We detect a branch suffix by checking for "-b{N}" at the end.
-        // This avoids a cross-module dependency on pipeline-application's OpId class.
-        val BRANCH_SUFFIX_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)(-b(\\d+))?$")
-        val branchMatch = BRANCH_SUFFIX_PATTERN.matchEntire(opId)
-        val opIdHasBranch = branchMatch?.groupValues?.get(4)?.isNotEmpty() == true
-        val embeddedBranchIndex = branchMatch?.groupValues?.get(5)?.toIntOrNull()
-
-        val fullOpId: String = when {
-            // Case: pre-formatted opId (has branch) + branchIndex provided → consistency check
-            opIdHasBranch && branchIndex != null -> {
-                if (embeddedBranchIndex != branchIndex) {
-                    throw IllegalStateException(
-                        "Inconsistent branchIndex: opId \"$opId\" already contains " +
-                        "branchIndex=$embeddedBranchIndex, but branchIndex=$branchIndex was also passed. " +
-                        "Either pass the root opId without branch suffix, or pass branchIndex=null " +
-                        "when the opId is already formatted."
-                    )
-                }
-                opId // use as-is, no double-suffix
-            }
-            // Case: pre-formatted opId (has branch) + branchIndex null → use as-is
-            opIdHasBranch && branchIndex == null -> opId
-            // Case: root opId (no branch) + branchIndex provided → format with branch
-            !opIdHasBranch && branchIndex != null -> "$opId-b$branchIndex"
-            // Case: both null/root → root opId (existing behavior)
-            else -> opId
-        }
-
         DbLock.forPath(dbPath).withLock {
             val conn = connectionFactory()
             try {
@@ -289,12 +256,12 @@ class SqliteOperationJournalImpl(
                 conn.prepareStatement(
                     "SELECT 1 FROM operation_journal WHERE op_id = ? AND attempt = ?"
                 ).use { ps ->
-                    ps.setString(1, fullOpId)
+                    ps.setString(1, opId)
                     ps.setInt(2, attempt)
                     ps.executeQuery().use { rs ->
                         if (rs.next()) {
                             throw IllegalStateException(
-                                "Operation $fullOpId attempt $attempt already journaled"
+                                "Operation $opId attempt $attempt already journaled"
                             )
                         }
                     }
@@ -308,7 +275,7 @@ class SqliteOperationJournalImpl(
                     VALUES (?, ?, 'RUNNING', 'RERUN', ?, ?, NULL, ?, ?, ?, ?)
                     """.trimIndent()
                 ).use { ps ->
-                    ps.setString(1, fullOpId)
+                    ps.setString(1, opId)
                     ps.setString(2, fingerprint)
                     ps.setInt(3, attempt)
                     ps.setString(4, inputJson)

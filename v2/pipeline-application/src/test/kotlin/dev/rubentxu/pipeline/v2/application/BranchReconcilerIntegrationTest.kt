@@ -57,7 +57,6 @@ class BranchReconcilerIntegrationTest {
             fingerprint: String,
             inputJson: String,
             deadlineMs: Long?,
-            branchIndex: Int?,
         ) {}
     }
 

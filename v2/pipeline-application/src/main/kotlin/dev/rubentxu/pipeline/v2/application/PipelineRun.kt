@@ -235,14 +235,19 @@ private fun walkPipelineSpec(
  * 7. On ABORT: throws [DivergenceException]
  * 8. On resume: checks deadline against [Clock.now] — FAIL-CLOSED if deadline exceeded
  *
+ * ## Reconciliation
+ *
+ * M3-R5 B1 (ADR-0040 Path A): The [BranchReconciler] is constructed once in
+ * [PipelineOrchestrator.run] and threaded via [DurableWalkContext.branchReconciler].
+ * This function receives the LIVE reconciler through `ctx` and calls it at the start
+ * of the walk to drive per-branch resume decisions (C-027).
+ *
  * @param spec              The pipeline specification.
  * @param runId             The deterministic run identifier.
- * @param eventSink         Event sink for the event timeline.
- * @param journal           The operation journal for durable persistence.
- * @param cursorStore       The replay cursor store for resume support.
+ * @param ctx               The [DurableWalkContext] carrying clock, journal, cursorStore,
+ *                          branchReconciler, and eventSink for this run.
  * @param divergenceDetector The divergence detector for fail-closed checks.
  * @param effectReplayPolicy The effect-aware replay policy.
- * @param clock             The clock for deadline checking.
  * @param startFromStageIndex Stage index to resume from (0 for fresh run).
  * @param startFromStepIndex Step index to resume from (0 for fresh run).
  * @return The run outcome string ("success" or "failure").
@@ -251,24 +256,21 @@ private fun walkPipelineSpec(
 internal suspend fun walkPipelineSpecDurable(
     spec: PipelineSpec,
     runId: String,
-    eventSink: EventSink,
-    journal: OperationJournal,
-    cursorStore: ReplayCursorStore,
+    ctx: DurableWalkContext,
     divergenceDetector: DivergenceDetector,
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
-    clock: Clock,
     startFromStageIndex: Int = 0,
     startFromStepIndex: Int = 0,
 ): String {
     var runOutcome = "success"
     val runOutcomeRef = java.util.concurrent.atomic.AtomicReference(runOutcome)
 
-    // M3-R3 C-027 reconciliation pass: journal-first reattach model.
+    // M3-R5 B1 (ADR-0040 Path A): Use the LIVE BranchReconciler from ctx.
+    // Constructed once in PipelineOrchestrator.run() and threaded here.
+    // M3-R3 C-027: reconciliation pass — journal-first reattach model.
     // Query RUNNING rows for this runId and reconcile them fail-closed.
     // Must run before any stage/step execution to detect divergence early.
-    // M3-R4.4: replaced inline impl with BranchReconciler
-    val branchReconciler = BranchReconciler(journal, cursorStore, clock)
-    val reconciledBranches: Map<Int, ReconciledBranch> = branchReconciler
+    val reconciledBranches: Map<Int, ReconciledBranch> = ctx.branchReconciler
         .reconcileRunningOperations(runId)
         .associateBy { OpId.parse(it.opId)?.branchIndex ?: -1 }
 
@@ -277,8 +279,8 @@ internal suspend fun walkPipelineSpecDurable(
         if (stageIndex < startFromStageIndex) continue
 
         val stageStartedId = UUID.randomUUID().toString()
-        val stageStartedAt = clock.now()
-        eventSink.append(
+        val stageStartedAt = ctx.clock.now()
+        ctx.eventSink.append(
             StageStarted(
                 eventId = stageStartedId,
                 runId = runId,
@@ -294,8 +296,8 @@ internal suspend fun walkPipelineSpecDurable(
                 agentLabel = agentSpec.label,
                 remoteUri = agentSpec.remoteUri,
                 runId = runId,
-                eventSink = eventSink,
-                clock = clock,
+                eventSink = ctx.eventSink,
+                clock = ctx.clock,
             )
         }
 
@@ -311,7 +313,7 @@ internal suspend fun walkPipelineSpecDurable(
                     stepIndex = 0,
                     outcome = "success",
                     runId = runId,
-                    eventSink = eventSink,
+                    eventSink = ctx.eventSink,
                 )
             }
         }
@@ -325,8 +327,8 @@ internal suspend fun walkPipelineSpecDurable(
                 stageIndex = stageIndex,
                 stepIndex = null,
                 runId = runId,
-                eventSink = eventSink,
-                clock = clock,
+                eventSink = ctx.eventSink,
+                clock = ctx.clock,
             )
         }
 
@@ -344,12 +346,9 @@ internal suspend fun walkPipelineSpecDurable(
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
                 runId = runId,
-                eventSink = eventSink,
-                journal = journal,
-                cursorStore = cursorStore,
+                ctx = ctx,
                 divergenceDetector = divergenceDetector,
                 effectReplayPolicy = effectReplayPolicy,
-                clock = clock,
                 runOutcomeRef = runOutcomeRef,
                 reconciledBranches = reconciledBranches,
             )
@@ -359,8 +358,8 @@ internal suspend fun walkPipelineSpecDurable(
         }
 
         val stageFinishedId = UUID.randomUUID().toString()
-        val stageFinishedAt = clock.now()
-        eventSink.append(
+        val stageFinishedAt = ctx.clock.now()
+        ctx.eventSink.append(
             StageFinished(
                 eventId = stageFinishedId,
                 runId = runId,
@@ -391,12 +390,9 @@ private suspend fun emitDurableStepEvents(
     stageIndex: Int,
     stepIndex: Int,
     runId: String,
-    eventSink: EventSink,
-    journal: OperationJournal,
-    cursorStore: ReplayCursorStore,
+    ctx: DurableWalkContext,
     divergenceDetector: DivergenceDetector,
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
-    clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
 ): String {
@@ -410,7 +406,7 @@ private suspend fun emitDurableStepEvents(
 
     // Compute deadline for fresh execution if timeout is set
     val deadlineMs: Long? = if (timeoutMillis != null && timeoutMillis > 0) {
-        clock.now().toEpochMilli() + timeoutMillis
+        ctx.clock.now().toEpochMilli() + timeoutMillis
     } else {
         null
     }
@@ -434,15 +430,15 @@ private suspend fun emitDurableStepEvents(
         val fingerprint = Fingerprint.compute(input, stepType, domainPolicy, attemptNum)
 
         // Look up journaled operation for this specific attempt
-        val journaledOp = journal.get(opId, attemptNum)
+        val journaledOp = ctx.opJournal.get(opId, attemptNum)
         val hasJournalEntry = journaledOp != null
         val journaledOutcome = journaledOp?.status
 
         // FAIL-CLOSED deadline check on resume
         // If deadline is set and we've exceeded it, throw DivergenceException
         if (hasJournalEntry && timeoutMillis != null) {
-            val nowMs = clock.now().toEpochMilli()
-            val journaledDeadline = journal.getDeadlineMs(opId, attemptNum)
+            val nowMs = ctx.clock.now().toEpochMilli()
+            val journaledDeadline = ctx.opJournal.getDeadlineMs(opId, attemptNum)
             if (journaledDeadline != null && nowMs > journaledDeadline) {
                 val divEx = DivergenceException(
                     expected = fingerprint,
@@ -488,9 +484,9 @@ private suspend fun emitDurableStepEvents(
         val decision = effectReplayPolicy.decide(sdkPolicy, effects, hasJournalEntry, journaledOutcome)
 
         val stepStartedId = UUID.randomUUID().toString()
-        val stepStartedAt = clock.now()
+        val stepStartedAt = ctx.clock.now()
 
-        eventSink.append(
+        ctx.eventSink.append(
             StepStarted(
                 eventId = stepStartedId,
                 runId = runId,
@@ -512,7 +508,7 @@ private suspend fun emitDurableStepEvents(
                 } else {
                     "success"
                 }
-                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, skipOutcome, clock)
+                emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, skipOutcome, ctx.clock)
                 return skipOutcome
             }
             dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision.RERUN -> {
@@ -520,7 +516,7 @@ private suspend fun emitDurableStepEvents(
                 // This enables fail-closed reconciliation on restart.
                 if (!hasJournalEntry) {
                     val inputJson = json.encodeToString(input)
-                    journal.beginOperation(opId, attemptNum, fingerprint.hex, inputJson, deadlineMs)
+                    ctx.opJournal.beginOperation(opId, attemptNum, fingerprint.hex, inputJson, deadlineMs)
                 }
 
                 val stepOutcome = executeDurableStep(
@@ -528,12 +524,12 @@ private suspend fun emitDurableStepEvents(
                     stageIndex = stageIndex,
                     stepIndex = stepIndex,
                     runId = runId,
-                    eventSink = eventSink,
-                    journal = journal,
-                    cursorStore = cursorStore,
+                    eventSink = ctx.eventSink,
+                    journal = ctx.opJournal,
+                    cursorStore = ctx.cursorStore,
                     divergenceDetector = divergenceDetector,
                     effectReplayPolicy = effectReplayPolicy,
-                    clock = clock,
+                    clock = ctx.clock,
                     runOutcomeRef = runOutcomeRef,
                 )
 
@@ -546,11 +542,11 @@ private suspend fun emitDurableStepEvents(
                     status = if (stepOutcome == "success") OperationStatus.SUCCEEDED else OperationStatus.FAILED,
                     attempt = attemptNum,
                 )
-                journal.append(outputOp, deadlineMs)
+                ctx.opJournal.append(outputOp, deadlineMs)
 
                 if (stepOutcome == "failure") {
                     // This attempt failed
-                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome, clock)
+                    emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, stepOutcome, ctx.clock)
                     if (attemptNum < maxAttempts) {
                         // Apply backoff before next attempt
                         val delayMs = retryPolicy.backoffDelay(attemptNum + 1)
@@ -562,20 +558,20 @@ private suspend fun emitDurableStepEvents(
                     } else {
                         // Last attempt failed → return failure outcome (spec C-030.2)
                         runOutcomeRef.set("failure")
-                        emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure", clock)
+                        emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, "failure", ctx.clock)
                         return "failure"
                     }
                 } else {
                     // Attempt succeeded
                     // Advance cursor after successful journal append (per R-C mitigation)
-                    cursorStore.advance(runId, opId, stageIndex)
-                    emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, stepOutcome, clock)
+                    ctx.cursorStore.advance(runId, opId, stageIndex)
+                    emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, stepOutcome, ctx.clock)
                     return "success"
                 }
             }
             dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision.ABORT -> {
                 // Emit StepFailed and throw
-                emitStepFinished(eventSink, step, stageIndex, stepIndex, runId, "failure", clock)
+                emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, "failure", ctx.clock)
                 runOutcomeRef.set("failure")
                 val divEx = DivergenceException(
                     expected = fingerprint,
@@ -596,43 +592,14 @@ private suspend fun emitDurableStepEvents(
 /**
  * Executes a step and returns the outcome string.
  *
- * ## Overload with [DurableWalkContext]
+ * ## @compat permanent
  *
- * This overload accepts a [DurableWalkContext] which packages the shared parameters
- * (clock, opJournal, cursorStore, branchReconciler, eventSink) into a single
- * parameter, making the call site more readable.
- */
-private suspend fun executeDurableStep(
-    ctx: DurableWalkContext,
-    step: StepSpec,
-    stageIndex: Int,
-    stepIndex: Int,
-    runId: String,
-    divergenceDetector: DivergenceDetector,
-    effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
-    runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
-    reconciledBranches: Map<Int, ReconciledBranch>? = null,
-): String {
-    return executeDurableStepImpl(
-        step = step,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        runId = runId,
-        eventSink = ctx.eventSink,
-        journal = ctx.opJournal,
-        cursorStore = ctx.cursorStore,
-        divergenceDetector = divergenceDetector,
-        effectReplayPolicy = effectReplayPolicy,
-        clock = ctx.clock,
-        runOutcomeRef = runOutcomeRef,
-        reconciledBranches = reconciledBranches,
-    )
-}
-
-/**
- * Executes a step and returns the outcome string.
+ * This overload is retained for backward compatibility with existing call sites
+ * that pass individual parameters. New code should prefer [DurableWalkContext] to
+ * reduce parameter sprawl. This overload delegates to [executeDurableStepImpl] and
+ * is guaranteed to remain stable per the compatibility policy.
  *
- * Overload retained for backward compatibility with existing call sites.
+ * @see executeDurableStepImpl for the internal implementation.
  */
 private suspend fun executeDurableStep(
     step: StepSpec,
@@ -1191,7 +1158,6 @@ private suspend fun walkParallelFrame(
                         ).hex,
                         inputJson = """{"branchName":"${branch.name}","branchIndex":$branchIndex,"parentOpId":"${parentOpId.format()}"}""",
                         deadlineMs = null,
-                        branchIndex = branchIndex,
                     )
 
                     val deferred = async(Dispatchers.IO) {

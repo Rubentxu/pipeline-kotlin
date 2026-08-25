@@ -64,7 +64,6 @@ class BranchReconcilerTest {
             fingerprint: String,
             inputJson: String,
             deadlineMs: Long?,
-            branchIndex: Int?,
         ) {}
     }
 

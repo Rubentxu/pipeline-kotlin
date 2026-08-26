@@ -31,16 +31,22 @@ object EnvModel {
     fun apply(env: Map<String, String>): Map<String, String> {
         val out = env.toMutableMap()
 
+        // Capture original PATH before any modifications so each prepend starts from the base.
+        // When the user env carries no PATH, seed from the current process environment
+        // (Jenkins withEnv semantics: PATH+X prepends onto the EXISTING PATH). Without this
+        // seed, putAll would REPLACE the ProcessBuilder PATH with only JAVA_HOME/bin and
+        // setsid/bash would become unresolvable (observed: setsid "failed to execute bash").
+        val originalPath = out["PATH"] ?: System.getenv("PATH") ?: ""
+
         // JAVA_HOME/bin prepend to PATH
         env["JAVA_HOME"]?.let { javaHome ->
-            val currentPath = out["PATH"] ?: ""
-            out["PATH"] = "${javaHome}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
+            out["PATH"] = "${javaHome}/bin${if (originalPath.isNotEmpty()) ":$originalPath" else ""}"
         }
 
-        // M2_HOME/bin prepend to PATH
+        // M2_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
         env["M2_HOME"]?.let { m2Home ->
-            val currentPath = out["PATH"] ?: ""
-            out["PATH"] = "${m2Home}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
+            val basePath = out["PATH"] ?: originalPath
+            out["PATH"] = "${m2Home}/bin${if (basePath.isNotEmpty()) ":$basePath" else ""}"
         }
 
         return out

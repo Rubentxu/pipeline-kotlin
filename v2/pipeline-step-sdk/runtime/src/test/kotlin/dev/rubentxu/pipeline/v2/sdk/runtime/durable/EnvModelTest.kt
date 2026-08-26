@@ -60,7 +60,8 @@ class EnvModelTest {
             "JAVA_HOME" to "/usr/lib/jvm/java-11"
         )
         val result = EnvModel.apply(input)
-        assertEquals("/usr/lib/jvm/java-11/bin", result["PATH"])
+        // No PATH in user env: base is the inherited process PATH (Jenkins withEnv semantics)
+        assertEquals("/usr/lib/jvm/java-11/bin:${System.getenv("PATH")}", result["PATH"])
     }
 
     @Test
@@ -69,7 +70,8 @@ class EnvModelTest {
             "M2_HOME" to "/opt/maven"
         )
         val result = EnvModel.apply(input)
-        assertEquals("/opt/maven/bin", result["PATH"])
+        // No PATH in user env: base is the inherited process PATH (Jenkins withEnv semantics)
+        assertEquals("/opt/maven/bin:${System.getenv("PATH")}", result["PATH"])
     }
 
     @Test

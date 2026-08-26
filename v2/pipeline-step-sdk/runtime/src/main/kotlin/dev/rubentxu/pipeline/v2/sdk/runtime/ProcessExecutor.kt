@@ -10,7 +10,7 @@ class ProcessExecutor {
 
     fun execute(
         argv: List<String>,
-        timeoutMs: Long = 60_000L,
+        timeoutMs: Long = 60_000L,  // 60s default; 0L = no timeout per TMO-S-013
         cwd: Path? = null,
         env: Map<String, String> = emptyMap(),
     ): ShellResult {

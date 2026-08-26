@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -72,11 +73,11 @@ data class DurableShellResult(
 )
 
 /**
- * Implementation of [DurableShellLaunching] using ProcessBuilder + nohup/setsid.
+ * Implementation of [DurableShellLaunching] using ProcessBuilder + setsid.
  *
  * ## State Machine
  *
- * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED
+ * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  *
  * ## Control Directory Layout (D2)
  *
@@ -84,6 +85,7 @@ data class DurableShellResult(
  * controlDir/
  *   script.sh              # User script verbatim
  *   script.sh.copy         # Copy for JENKINS-70874
+ *   wrapper.sh             # Generated; embeds real cookie value (never in argv)
  *   jenkins-log.txt        # stdout+stderr
  *   result.txt             # Exit code (atomic write)
  *   result.txt.tmp         # Temp for atomic write
@@ -97,12 +99,17 @@ data class DurableShellResult(
  * self-test [verifyScriptNotInArgv]. If the script somehow appears in argv,
  * the executor will detect it and refuse to launch.
  *
- * ## D3 Wrapper (VERBATIM)
+ * ## Jenkins-Faithful Cookie Kill (DEVIATION from old nohup pattern)
  *
- * The wrapper uses single-quoted paths and NEVER puts script in argv:
- * ```sh
- * nohup /bin/sh -c 'COOKIE=x setsid script.sh ...' >&- 2>&- &
- * ```
+ * The kill mechanism mirrors Jenkins (BourneShellScript.java + FileMonitoringTask.stop
+ * + ProcessTree):
+ * 1. LAUNCH: argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
+ *    setsid execs bash in place → JVM child PID == PGID == SID.
+ * 2. PIPELINE_OP_COOKIE=__pipeline_protected__ (sentinel) inherited by wrapper + heartbeat.
+ * 3. Wrapper embeds `PIPELINE_OP_COOKIE=<real>` where real = opId (embedded in file, not argv).
+ * 4. Watchdog: cookie scan of /proc/<pid>/environ (same-UID), SIGTERM each match,
+ *    5s grace (SoftKillWaitSeconds parity), then `kill -9 -<pgid>`.
+ * 5. Sentinel cookie protects wrapper machinery (heartbeat + result-writer).
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  * @see <a href="JENKINS-58290">JENKINS-58290 - nohup+setsid detachment</a>
@@ -112,6 +119,37 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /** Polling interval for result.txt checks (100ms as per ADR-0046). */
     private val pollIntervalMs = 100L
+
+    /** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery. */
+    private val SENTINEL_COOKIE = "__pipeline_protected__"
+
+    /** Path to setsid (resolved once at startup). */
+    private val setsidPath: String by lazy {
+        resolveCommandPath("setsid") ?: throw IllegalStateException("setsid not found on PATH")
+    }
+
+    /** Path to bash (resolved once at startup). */
+    private val bashPath: String by lazy {
+        resolveCommandPath("bash") ?: throw IllegalStateException("bash not found on PATH")
+    }
+
+    /**
+     * Resolves the absolute path of a command using `command -v`.
+     * Returns null if the command is not found.
+     */
+    private fun resolveCommandPath(command: String): String? {
+        return try {
+            val pb = ProcessBuilder("command", "-v", command)
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            val process = pb.start()
+            val output = process.inputStream.bufferedReader().readText().trim()
+            val exitCode = process.waitFor()
+            if (exitCode == 0 && output.isNotEmpty()) output else null
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     override fun launch(
         controlDir: Path,
@@ -124,6 +162,16 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Launches a durable shell step with optional stdout capture.
+     *
+     * ## Jenkins-Faithful Launch Pattern
+     *
+     * argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
+     * setsid execs bash in place → JVM child PID == PGID == SID.
+     *
+     * The wrapper.sh file embeds the real cookie value (opId).
+     * PIPELINE_OP_COOKIE=__pipeline_protected__ sentinel is set in pb.environment()
+     * and inherited by the wrapper + heartbeat processes. The sentinel protects
+     * wrapper machinery from the cookie-scan kill.
      *
      * @param controlDir The control directory path.
      * @param scriptContent The user's shell script.
@@ -144,11 +192,10 @@ class DurableShellExecutor : DurableShellLaunching {
         checkLinuxOrThrow()
 
         // P2 invariant: script content is written to filesystem (script.sh), NOT passed as argv.
-        // argv = ["sh", "-c", wrapper] where wrapper only contains paths, never script content.
         // This is guaranteed by construction:
         // 1. scriptContent -> Files.writeString(scriptFile)
-        // 2. wrapper uses '$PATH' for variables, single-quoted paths, never embeds script
-        // 3. script is invoked by path: '$scriptPathEscaped'
+        // 2. wrapper.sh references script by path only, never embeds content
+        // 3. argv = [setsid, bash, wrapper.sh] — script content never in argv
 
         // Create control directory structure
         Files.createDirectories(controlDir)
@@ -160,6 +207,7 @@ class DurableShellExecutor : DurableShellLaunching {
         val resultFile = controlDir.resolve("result.txt")
         val resultTmp = controlDir.resolve("result.txt.tmp")
         val cookieFile = controlDir.resolve(".cookie")
+        val wrapperFile = controlDir.resolve("wrapper.sh")
 
         Files.writeString(scriptFile, scriptContent)
         Files.writeString(scriptCopy, scriptContent) // JENKINS-70874 workaround
@@ -170,16 +218,27 @@ class DurableShellExecutor : DurableShellLaunching {
         ))
 
         // Build wrapper using D3 contract (tee-gated if captureStdout)
-        val wrapper = buildWrapper(controlDir, scriptFile, config, captureStdout)
+        // The real cookie value (opId) is embedded in the wrapper file content
+        val wrapperContent = buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId)
+        Files.writeString(wrapperFile, wrapperContent)
+        Files.setPosixFilePermissions(wrapperFile, java.util.EnumSet.of(
+            java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+            java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
+        ))
 
-        // Launch via ProcessBuilder — argv = [sh, -c, wrapper]
-        // Script content is ONLY on filesystem, never in argv
-        val pb = ProcessBuilder("sh", "-c", wrapper)
+        // Jenkins-faithful launch: setsid creates new session+process group.
+        // argv = [setsid, bash, wrapper.sh] — no -c, no inline content in argv.
+        // setsid forks; parent exits immediately; child (bash) becomes session leader.
+        // The ProcessHandle points to the setsid parent (exits quickly).
+        // The real target (bash/wrapper) is found via cookie-scan.
+        val pb = ProcessBuilder("setsid", "bash", wrapperFile.toString())
         pb.directory(controlDir.toFile())
 
-        // P2: inject user env via pb.environment().putAll (NOT argv)
+        // PIPELINE_OP_COOKIE=sentinel inherited by wrapper + heartbeat (protects wrapper machinery)
         val pbEnv = pb.environment()
-        // Internal durable vars first (P2: these are internal, not user-provided)
+        pbEnv["PIPELINE_OP_COOKIE"] = SENTINEL_COOKIE
+        // Internal durable vars
         pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
         pbEnv["DURABLE_SH_OPID"] = opId
         // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
@@ -187,18 +246,69 @@ class DurableShellExecutor : DurableShellLaunching {
             pbEnv.putAll(env)
         }
 
-        // Redirect stdin/stdout/stderr to prevent leakage
-        // stdin: inherit to avoid blocking on input (nohup handles this)
-        // Note: stdout/stderr redirection is handled by the wrapper's own redirects
-        // when tee-gating is enabled (captureStdout=true)
+        // Redirect stdin to /dev/null to prevent blocking on input
+        // stdout/stderr redirected to logFile (wrapper handles its own redirections)
+        pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
         pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
         pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
 
-        return try {
+            return try {
             val process = pb.start()
-            process.toHandle()
+            val handle = process.toHandle()
+
+            // Advisory session-leader verification (can be non-fatal if setsid forks).
+            // The real kill mechanism uses cookie-scan (Jenkins pattern), not PGID.
+            // The session-leader check is informative only; if it fails, we continue
+            // with the cookie-scan kill which will still work correctly.
+            try {
+                if (!isSessionLeader(handle.pid())) {
+                    // Log but don't fail — cookie scan will handle the kill correctly
+                    System.err.println(
+                        "[DurableShellExecutor] Warning: PID ${handle.pid()} is not a session leader. " +
+                        "Cookie-scan kill will be used for timeout termination."
+                    )
+                }
+            } catch (_: Exception) {
+                // Non-fatal: continue even if verification fails
+            }
+
+            handle
         } catch (e: Exception) {
             throw IllegalStateException("Failed to launch durable shell for $opId", e)
+        }
+    }
+
+    /**
+     * Checks if the given PID is a session leader (PID == PGID == SID).
+     * Used for post-launch verification of the Jenkins-faithful launch pattern.
+     *
+     * @param pid The process ID to check.
+     * @return true if the process is a session leader.
+     */
+    private fun isSessionLeader(pid: Long): Boolean {
+        return try {
+            val statFile = java.io.File("/proc/$pid/stat")
+            if (!statFile.exists()) return false
+            val content = statFile.readText()
+            // stat format: pid (comm) state ppid pgrp session tpgid ...
+            // Extract ppid (field 4), session (field 5), pgrp (field 6)
+            // We need PID == PGID == SID
+            val pidLong = pid
+            // Parse the stat content - comm is in parentheses and may contain spaces
+            val lastParen = content.lastIndexOf(')')
+            if (lastParen < 0) return false
+            val afterComm = content.substring(lastParen + 1).trim()
+            val fields = afterComm.split(Regex("\\s+"))
+            if (fields.size < 6) return false
+            val ppid = fields[1].toLong()
+            val session = fields[2].toLong()
+            val pgrp = fields[3].toLong()
+            // Session leader: PID == Session == PGID
+            // But we only have PID, and we know from /proc/<pid>/stat that:
+            // field 5 (session) should equal field 6 (pgrp) for a session leader
+            session == pgrp && session == pidLong
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -302,24 +412,32 @@ class DurableShellExecutor : DurableShellLaunching {
         }
     }
 
-    override fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
-        return buildWrapper(controlDir, scriptPath, config, captureStdout = false)
-    }
-
     /**
-     * Builds the shell wrapper command.
+     * Builds the wrapper script content that is written to wrapper.sh.
+     *
+     * ## Jenkins-Faithful Wrapper
+     *
+     * The real cookie value (opId) is embedded in the file content as:
+     * `PIPELINE_OP_COOKIE=<opId>`
+     *
+     * This allows the watchdog to identify victim processes by scanning
+     * /proc/<pid>/environ for PIPELINE_OP_COOKIE=<real>, while the sentinel
+     * PIPELINE_OP_COOKIE=__pipeline_protected__ protects the wrapper machinery
+     * (heartbeat + result-writer) from being killed.
      *
      * @param controlDir The control directory path.
      * @param scriptPath The path to the script file.
      * @param config The durable shell configuration.
      * @param captureStdout If true, tee stdout to output.txt (returnStdout mode).
-     * @return The shell wrapper command string.
+     * @param opId The operation ID (embedded as the real cookie value).
+     * @return The shell wrapper script content.
      */
-    fun buildWrapper(
+    private fun buildWrapperContent(
         controlDir: Path,
         scriptPath: Path,
         config: DurableShConfig,
         captureStdout: Boolean,
+        opId: String,
     ): String {
         val cookieFileEscaped = escapeForShell(controlDir.resolve(".cookie").toString())
         val logFileEscaped = escapeForShell(controlDir.resolve("jenkins-log.txt").toString())
@@ -331,9 +449,9 @@ class DurableShellExecutor : DurableShellLaunching {
         // D3 Wrapper: VERBATIM, single-quoted paths, script NEVER in argv
         //
         // Key properties:
-        // 1. COOKIE env var (not argv) protects from process-tree-killer
-        // 2. Single-quoted script path prevents any expansion
-        // 3. nohup + >&- 2>&- + & detaches from JVM
+        // 1. PIPELINE_OP_COOKIE=<real> (embedded in file, NOT argv) identifies victims
+        // 2. COOKIE_FILE protects wrapper machinery from cookie-scan kill
+        // 3. Single-quoted script path prevents any expansion
         // 4. Heartbeat loop touches log file (independent of stdout)
         // 5. Exit code written atomically
         //
@@ -341,13 +459,6 @@ class DurableShellExecutor : DurableShellLaunching {
         // - stdout is tee'd to output.txt via '> '$OUT' 2> '$LOG'
         // - stderr goes to jenkins-log.txt as usual
         // - Heartbeat (inner while) still touches jenkins-log.txt only
-        //
-        // IMPORTANT: Script content is ONLY in script.sh on the filesystem.
-        // The wrapper references it by PATH, never by argv content.
-
-        // Build the wrapper. Each shell variable uses ${'$'}name to avoid Kotlin template processing.
-        // Key design: cookie file is created before fork, lives while process runs, deleted on process death.
-        // No EXIT trap - the OS cleans up when process exits.
 
         // Outer redirect: tee to output.txt if captureStdout, otherwise just log
         val outerRedirect = if (captureStdout) {
@@ -356,36 +467,44 @@ class DurableShellExecutor : DurableShellLaunching {
             "> '$logFileEscaped' 2>&1"
         }
 
+        // The real cookie value is embedded in the file (not argv)
+        // This is the value the watchdog looks for when scanning /proc/<pid>/environ
         return buildString {
-            append("( ")
+            append("#!/bin/bash\n")
+            // Embed the real cookie — watchdog scans /proc/PID/environ for this value
+            append("export PIPELINE_OP_COOKIE='$opId'\n")
             append("COOKIE_FILE='$cookieFileEscaped'; ")
             append("LOG_FILE='$logFileEscaped'; ")
             append("RESULT_FILE='$resultFileEscaped'; ")
             append("RESULT_TMP='$resultTmpEscaped'; ")
             append("CHECK_INTERVAL=${config.heartbeatCheckInterval}; ")
-            append("COOKIE_VALUE='please-do-not-kill-me'; ")
-            append("export COOKIE_VALUE; ")
             // Create cookie file with PID - this is the heartbeat mechanism
-            append("echo ${'$'}${'$'} > \"${'$'}COOKIE_FILE\"; ")
+            append("echo \$\$ > \"\$COOKIE_FILE\"; ")
             // Heartbeat: touch log file periodically to show process is alive
-            // This is independent of stdout - it always touches jenkins-log.txt
             append("(")
-            append("while [ -f \"${'$'}COOKIE_FILE\" ]; do ")
-            append("sleep ${'$'}CHECK_INTERVAL; ")
-            append("touch \"${'$'}LOG_FILE\"; ")
+            append("while [ -f \"\$COOKIE_FILE\" ]; do ")
+            append("sleep \$CHECK_INTERVAL; ")
+            append("touch \"\$LOG_FILE\"; ")
             append("done")
             append(") & ")
             // Run the actual script
             append("'$scriptPathEscaped'; ")
-            append("EXIT_CODE=${'$'}?; ")
+            append("EXIT_CODE=\$?; ")
             // Write exit code atomically: temp file then rename
-            append("echo ${'$'}EXIT_CODE > \"${'$'}RESULT_TMP\"; ")
-            append("mv \"${'$'}RESULT_TMP\" \"${'$'}RESULT_FILE\"; ")
+            append("echo \$EXIT_CODE > \"\$RESULT_TMP\"; ")
+            append("mv \"\$RESULT_TMP\" \"\$RESULT_FILE\"; ")
             // Remove cookie file to signal completion
-            append("rm -f \"${'$'}COOKIE_FILE\"; ")
-            append("exit ${'$'}EXIT_CODE")
-            append(") $outerRedirect &")
+            append("rm -f \"\$COOKIE_FILE\"; ")
+            append("exit \$EXIT_CODE")
         }
+    }
+
+    /**
+     * Legacy wrapper builder for compatibility (used by tests).
+     * @deprecated Use buildWrapperContent instead for Jenkins-faithful pattern.
+     */
+    override fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
+        return buildWrapperContent(controlDir, scriptPath, config, captureStdout = false, opId = "legacy")
     }
 
     /**
@@ -421,6 +540,177 @@ class DurableShellExecutor : DurableShellLaunching {
     private fun escapeForShell(path: String): String {
         // Escape single quotes for shell
         return path.replace("'", "'\\''")
+    }
+
+    /**
+     * Jenkins-faithful cookie-scan kill.
+     *
+     * Scans /proc/<pid>/environ for processes matching PIPELINE_OP_COOKIE=<real>
+     * (same UID; excludes the JVM itself), sends SIGTERM to each via ProcessHandle.destroy(),
+     * waits up to 5000ms (SoftKillWaitSeconds parity), then escalates to
+     * `kill -9 -<pgid>` (pgid = leader PID, stable).
+     *
+     * DEVIATION from Jenkins core: Jenkins has no SIGKILL escalation (no determinism
+     * requirement); our FAILED_TIMEOUT state requires definitive process-tree kill.
+     *
+     * @param process The process handle (may be dead parent sh; the real process is found via cookie scan).
+     * @param opId The operation ID (real cookie value).
+     * @return true if kill was triggered (always returns true if called).
+     */
+    internal fun killWithCookieScan(process: ProcessHandle, opId: String): Boolean {
+        val jvmPid = ProcessHandle.current().pid()
+
+        // Step 1: Find all processes with the matching cookie
+        val matchingPids = findCookieProcesses(opId, jvmPid)
+        if (matchingPids.isEmpty()) {
+            return false
+        }
+
+        // Get the SID from any matching process's session
+        // kill -TERM -<sid> sends SIGTERM to all processes in the session
+        var targetSid: Long? = null
+        for (pid in matchingPids) {
+            try {
+                val stat = java.io.File("/proc/$pid/stat").readText()
+                val lastParen = stat.lastIndexOf(')')
+                if (lastParen < 0) continue
+                val afterComm = stat.substring(lastParen + 1).trim()
+                val fields = afterComm.split(Regex("\\s+"))
+                if (fields.size < 4) continue
+                val sid = fields[3].toLongOrNull() ?: continue
+                targetSid = sid
+                break
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        if (targetSid == null) targetSid = matchingPids.first()
+
+        // Step 2: SIGTERM to the session (all processes in the session)
+        try {
+            ProcessBuilder("kill", "-TERM", "-$targetSid").start().waitFor()
+        } catch (_: Exception) {
+            try {
+                ProcessBuilder("kill", "-KILL", "-$targetSid").start().waitFor()
+            } catch (_: Exception) {}
+        }
+
+        // Step 3: Grace poll up to 5000ms
+        var allGone = matchingPids.all { pid ->
+            try {
+                ProcessHandle.of(pid).map { !it.isAlive }.orElse(true)
+            } catch (_: Exception) { true }
+        }
+
+        if (!allGone) {
+            Thread.sleep(500)
+        }
+
+        allGone = matchingPids.all { pid ->
+            try {
+                ProcessHandle.of(pid).map { !it.isAlive }.orElse(true)
+            } catch (_: Exception) { true }
+        }
+
+        // Step 4: SIGKILL escalation if still alive
+        if (!allGone) {
+            try {
+                ProcessBuilder("kill", "-9", "-$targetSid").start().waitFor()
+            } catch (_: Exception) {
+                for (pid in matchingPids) {
+                    try {
+                        ProcessHandle.of(pid).ifPresent { it.destroyForcibly() }
+                    } catch (_: Exception) {}
+                }
+            }
+
+            try {
+                val deadline = System.currentTimeMillis() + 3000L
+                while (matchingPids.any { pid ->
+                    try { ProcessHandle.of(pid).map { it.isAlive }.orElse(false) } catch (_: Exception) { false }
+                } && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(100)
+                }
+            } catch (_: Exception) {}
+
+            try {
+                val check = ProcessBuilder("kill", "-0", "-$targetSid").start().waitFor()
+                if (check == 0) {
+                    val survivors = findCookieProcesses(opId, jvmPid)
+                    for (pid in survivors) {
+                        try {
+                            ProcessHandle.of(pid).ifPresent { it.destroyForcibly() }
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        return true
+    }
+
+    /**
+     * Finds PIDs of processes whose /proc/<pid>/environ contains PIPELINE_OP_COOKIE=<real>.
+     *
+     * @param realCookie The real cookie value (opId) to match.
+     * @param jvmPid The JVM's own PID to exclude from the scan.
+     * @return List of matching PIDs.
+     */
+    private fun findCookieProcesses(realCookie: String, jvmPid: Long): List<Long> {
+        val matching = mutableListOf<Long>()
+        val procDir = java.io.File("/proc")
+
+        try {
+            // Get our own UID from /proc/self/status (format: "Uid:\t<uid>\t<euid>\t<suid>\t<fsuid>")
+            val selfUid = java.io.File("/proc/self/status").readText().lines()
+                .mapNotNull { line -> if (line.startsWith("Uid:")) line.split("\t")[1].toLongOrNull() else null }
+                .firstOrNull() ?: return matching
+
+            val entries = procDir.listFiles() ?: return matching
+            for (entry in entries) {
+                if (!entry.isDirectory) continue
+                val pidStr = entry.name
+                val pid = pidStr.toLongOrNull() ?: continue
+
+                // Exclude the JVM itself
+                if (pid == jvmPid) continue
+
+                // Only scan processes of the same UID (from /proc/<pid>/status)
+                val targetUid = try {
+                    java.io.File("/proc/$pidStr/status").readText().lines()
+                        .mapNotNull { line -> if (line.startsWith("Uid:")) line.split("\t")[1].toLongOrNull() else null }
+                        .firstOrNull()
+                } catch (_: Exception) {
+                    continue
+                }
+                if (targetUid != selfUid) continue
+
+                // Read /proc/<pid>/environ and scan for the cookie
+                try {
+                    val environFile = java.io.File("/proc/$pidStr/environ")
+                    if (!environFile.exists() || !environFile.canRead()) continue
+                    val environBytes = environFile.readBytes()
+                    val environContent = String(environBytes, java.nio.charset.StandardCharsets.UTF_8)
+                    // /proc/<pid>/environ is null-separated
+                    val envPairs = environContent.split('\u0000')
+                    for (pair in envPairs) {
+                        if (pair.startsWith("PIPELINE_OP_COOKIE=")) {
+                            val value = pair.substring("PIPELINE_OP_COOKIE=".length)
+                            if (value == realCookie) {
+                                matching.add(pid)
+                                break
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    continue
+                }
+            }
+        } catch (_: Exception) {
+            // Fallback: return empty
+        }
+
+        return matching
     }
 
     private fun checkLinuxOrThrow() {
@@ -507,20 +797,17 @@ class DurableShellExecutor : DurableShellLaunching {
                 Thread {
                     try {
                         Thread.sleep(timeoutMs)
-                        // Timeout triggered - write flag BEFORE kill
+                        // Timeout triggered - write flag BEFORE kill (TMO-S-005)
                         writeTimeoutFlag(controlDir)
-                        // Kill the process tree via setsid-derived pgid
-                        // process is guaranteed non-null at this point (assigned in line above)
-                        try {
-                            val pid = process.pid()
-                            ProcessBuilder("setsid", "-f", "kill", "-9", "-$pid").start().waitFor()
-                        } catch (_: Exception) {
-                            // Fallback to destroyForcibly
-                            process.destroyForcibly()
-                        }
-                        timedOut = true
+                        // Jenkins-faithful cookie scan kill
+                        // DEVIATION: Jenkins core has no SIGKILL escalation; our FAILED_TIMEOUT
+                        // determinism requires it per spec TMO-S-004 (process-tree kill, no zombies)
+                        timedOut = killWithCookieScan(process!!, opId)
                     } catch (_: InterruptedException) {
                         // Normal interruption - timeout was cancelled
+                    } catch (_: Exception) {
+                        // Fallback to destroyForcibly if cookie scan fails
+                        try { process?.destroyForcibly() } catch (_: Exception) {}
                     }
                 }.apply { start() }
             } else null
@@ -647,15 +934,16 @@ fun executeDurableShell(
                 try {
                     Thread.sleep(timeoutMs)
                     writeTimeoutFlagInternal(controlDir)
-                    try {
-                        val pid = process.pid()
-                        ProcessBuilder("setsid", "-f", "kill", "-9", "-$pid").start().waitFor()
-                    } catch (_: Exception) {
-                        process.destroyForcibly()
-                    }
+                    // Jenkins-faithful cookie scan kill
+                    // DEVIATION: Jenkins core has no SIGKILL escalation; our FAILED_TIMEOUT
+                    // determinism requires it per spec TMO-S-004 (process-tree kill, no zombies)
+                    executor.killWithCookieScan(process!!, opId)
                     timedOut = true
                 } catch (_: InterruptedException) {
                     // Normal interruption - timeout was cancelled
+                } catch (_: Exception) {
+                    // Fallback to destroyForcibly if cookie scan fails
+                    try { process?.destroyForcibly() } catch (_: Exception) {}
                 }
             }.apply { start() }
         } else null

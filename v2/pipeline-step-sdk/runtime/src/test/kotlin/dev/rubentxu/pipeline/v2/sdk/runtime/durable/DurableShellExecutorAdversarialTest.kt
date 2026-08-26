@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.concurrent.withLock
@@ -37,6 +38,7 @@ import kotlin.concurrent.withLock
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
+@Timeout(120)
 class DurableShellExecutorAdversarialTest {
 
     @TempDir

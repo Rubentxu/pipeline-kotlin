@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh as sdkSh
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Instant
 import java.util.UUID
 
@@ -65,11 +66,9 @@ object ShExecution {
         // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
         // we fall back to direct bash -c which works without filesystem privileges)
         if (controlDirRoot == null) {
-            // Non-durable fallback: env goes via argv for this path only (P2: env in argv
-            // is acceptable here because this is NOT a durable-path launch)
-            val argv = listOf("bash", "-c", step.command)
-            val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
-            return if (result.exitCode != 0) "failure" else "success"
+            // Non-durable fallback: script written to temp file; argv = [bash, <path>]
+            // P2: env injected via pb.environment().putAll (WS-S-005)
+            return executeNonDurable(step.command, shOptions.env, eventSink, stepIndex, runId)
         }
 
         val workspaceResolver = WorkspaceResolver(controlDirRoot)
@@ -127,12 +126,9 @@ object ShExecution {
                 DurableShellState.RUNNING -> "failure"
             }
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
-            // Non-durable fallback for non-Linux platforms (P2: env NOT propagated on this path
-            // since the fallback is a best-effort non-durable shell — env injection via pb.environment
-            // only applies to the durable execution path below)
-            val argv = listOf("bash", "-c", step.command)
-            val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
-            if (result.exitCode != 0) "failure" else "success"
+            // Non-durable fallback for non-Linux platforms
+            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
+            return executeNonDurable(step.command, shOptions.env, eventSink, stepIndex, runId)
         } catch (e: Exception) {
             "failure"
         }
@@ -165,10 +161,9 @@ object ShExecution {
         eventSink: EventSink,
     ): String {
         if (controlDirRoot == null) {
-            // Non-durable fallback for branch steps (W6 fold: bash -c on non-durable path is acceptable)
-            val argv = listOf("bash", "-c", command)
-            val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
-            return if (result.exitCode != 0) "failure" else "success"
+            // Non-durable fallback for branch steps
+            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
+            return executeNonDurable(command, shOptions.env, eventSink, stepIndex, runId)
         }
 
         val workspaceResolver = WorkspaceResolver(controlDirRoot)
@@ -203,12 +198,9 @@ object ShExecution {
                 DurableShellState.RUNNING -> "failure"
             }
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
-            // Non-durable fallback for non-Linux: use bash -c with the actual command
-            // (W6 fold: bash -c on non-durable fallback is acceptable; the durable path
-            // threw LinuxRequiredException so this is the explicit non-durable alternative)
-            val argv = listOf("bash", "-c", command)
-            val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
-            if (result.exitCode != 0) "failure" else "success"
+            // Non-durable fallback for non-Linux platforms
+            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
+            return executeNonDurable(command, shOptions.env, eventSink, stepIndex, runId)
         } catch (e: Exception) {
             "failure"
         }
@@ -224,6 +216,73 @@ object ShExecution {
 
         override fun eventsFor(runId: String): Sequence<dev.rubentxu.pipeline.v2.events.DomainEvent> {
             return emptySequence()
+        }
+    }
+
+    /**
+     * Executes a script via a temporary script file (P2-compliant).
+     *
+     * Script content is written to a temp file; argv contains only the file path.
+     * Env is injected via [ProcessBuilder.environment] (P2: env via env map, NOT argv).
+     * Best-effort temp file cleanup after execution.
+     *
+     * @param scriptContent The shell script content.
+     * @param env Environment variables to inject via pb.environment().putAll.
+     * @param eventSink Event sink for EchoOutputCaptured emission.
+     * @param stepIndex The step index for event sequencing.
+     * @param runId The run identifier.
+     * @return "success" if exit code is 0, "failure" otherwise.
+     */
+    private fun executeNonDurable(
+        scriptContent: String,
+        env: Map<String, String>,
+        eventSink: EventSink,
+        stepIndex: Int,
+        runId: String,
+    ): String {
+        val scriptPath: Path = try {
+            Files.createTempFile("pipeline-sh-", ".sh")
+        } catch (_: Exception) {
+            // Fallback: cannot create temp file → fail
+            return "failure"
+        }
+        try {
+            // Write script content to temp file
+            Files.writeString(scriptPath, scriptContent)
+            // Set executable permissions (owner read+write+execute)
+            Files.setPosixFilePermissions(
+                scriptPath,
+                PosixFilePermissions.fromString("rwx------")
+            )
+            // Execute: bash <script-path>
+            val pb = ProcessBuilder("bash", scriptPath.toString())
+            // P2: env injected via pb.environment().putAll (WS-S-005)
+            if (env.isNotEmpty()) {
+                pb.environment().putAll(env)
+            }
+            val process = pb.start()
+            // Read stdout from the process's input stream
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            val exitCode = process.waitFor()
+            // Emit EchoOutputCaptured (matching durable path behavior)
+            eventSink.append(EchoOutputCaptured(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stepIndex = stepIndex,
+                content = output,
+            ))
+            return if (exitCode != 0) "failure" else "success"
+        } catch (_: Exception) {
+            return "failure"
+        } finally {
+            // Best-effort cleanup
+            try {
+                Files.deleteIfExists(scriptPath)
+            } catch (_: Exception) {
+                // Ignore cleanup failures
+            }
         }
     }
 }

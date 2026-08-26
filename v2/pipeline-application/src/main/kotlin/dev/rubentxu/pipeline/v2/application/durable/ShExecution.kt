@@ -91,11 +91,12 @@ object ShExecution {
             // Execute with tee-gated wrapper if captureStdout is enabled
             // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
             // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
+            // workspaceRoot threaded via effectiveOptions.workspaceRoot (DEC-1 cwd flip)
             val result: DurableShellResult = if (envOptions.captureStdout) {
                 val executor = DurableShellExecutor()
                 executor.execute(controlDir, step.command, opId.format(), envOptions)
             } else {
-                executeDurableShell(controlDir, step.command, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env)
+                executeDurableShell(controlDir, step.command, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env, effectiveOptions.sandbox, effectiveOptions.workspaceRoot)
             }
 
             // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)

@@ -918,6 +918,8 @@ private fun writeTimeoutFlagInternal(controlDir: Path) {
  * @param config The durable shell configuration.
  * @param timeoutMs Timeout in milliseconds (0 = no timeout, per TMO-S-013).
  * @param env Environment variables to inject via pb.environment().putAll (P2: env via env map, NOT argv).
+ * @param sandbox Sandbox profile for cwd flip and env filtering.
+ * @param workspaceRoot Root directory for the stage workspace (DEC-1 cwd flip). If null, defaults to controlDir.
  * @return The execution result.
  */
 fun executeDurableShell(
@@ -928,6 +930,7 @@ fun executeDurableShell(
     timeoutMs: Long = 0L,
     env: Map<String, String> = emptyMap(),
     sandbox: SandboxConfig = SandboxConfig.NONE,
+    workspaceRoot: Path? = null,
 ): DurableShellResult {
     val executor = DurableShellExecutor()
     var state = DurableShellState.LAUNCHING
@@ -937,7 +940,7 @@ fun executeDurableShell(
 
     try {
         // Step 1: Launch (P2: env injected via pb.environment().putAll in launch())
-        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env, sandbox = sandbox)
+        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot)
         state = DurableShellState.LAUNCHING
 
         // Step 2: Detach

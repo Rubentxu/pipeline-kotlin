@@ -760,7 +760,7 @@ private suspend fun executeDurableStepImpl(
                             env = shellStep.env ?: emptyMap(),
                         )
                         val opIdObj = OpId(runId, stageIndex, stepIndex)
-                        val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions)
+                        val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions, eventSink)
                         if (classification is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost) {
                             // Override result to signal LOST to caller
                             "lost"
@@ -808,6 +808,7 @@ private suspend fun executeDurableStepImpl(
                     cursorStore = cursorStore,
                     clock = clock,
                     runOutcomeRef = runOutcomeRef,
+                    controlDirRoot = controlDirRoot,
                     workspaceResolver = workspaceResolver,
                     shOptions = shOptions,
                     reconciledBranches = reconciledBranches,
@@ -1213,6 +1214,7 @@ private suspend fun walkParallelFrame(
     cursorStore: ReplayCursorStore,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    controlDirRoot: java.nio.file.Path? = null,
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
@@ -1285,6 +1287,7 @@ private suspend fun walkParallelFrame(
                             cursorStore = cursorStore,
                             clock = clock,
                             runOutcomeRef = runOutcomeRef,
+                            controlDirRoot = controlDirRoot,
                             workspaceResolver = workspaceResolver,
                             shOptions = shOptions,
                         )
@@ -1392,6 +1395,7 @@ private suspend fun walkBranchDurable(
     cursorStore: ReplayCursorStore,
     clock: Clock,
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
+    controlDirRoot: java.nio.file.Path? = null,
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
 ): String {
@@ -1449,7 +1453,10 @@ private suspend fun walkBranchDurable(
                     stepIndex = parentOpId.stepIndex + stepOffset,
                     branchOpId = branchOpId,
                     runId = runId,
+                    command = step.command,
                     shOptions = effectiveShOptions,
+                    controlDirRoot = controlDirRoot,
+                    eventSink = eventSink,
                 )
             }
             is StepSpec.Sleep -> {
@@ -1494,6 +1501,7 @@ private suspend fun walkBranchDurable(
                     cursorStore = cursorStore,
                     clock = clock,
                     runOutcomeRef = runOutcomeRef,
+                    controlDirRoot = controlDirRoot,
                     workspaceResolver = workspaceResolver,
                     shOptions = shOptions,
                 )

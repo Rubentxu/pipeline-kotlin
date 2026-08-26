@@ -110,11 +110,15 @@ class UatLocal002ResumeAfterKillTest {
         val allDirNames = allDirs.map { it.fileName.toString() }
         println("DEBUG: controlRoot=$controlRoot, allDirs=$allDirNames")
 
-        // Find any dir (for now, just take first)
-        val actualOpIdDir = allDirs.firstOrNull()
-        assertTrue(actualOpIdDir != null, "Should find a control dir. controlRoot=$controlRoot, dirs=$allDirNames")
+        // Find the control dir by searching for result.txt recursively
+        // Control dir structure: {controlRoot}/workspace/stage-N/{opId}/result.txt
+        val resultFile = Files.find(controlRoot, 5,
+            { path, attrs -> path.fileName.toString() == "result.txt" }
+        ).findFirst().orElse(null)
+        val actualOpIdDir = resultFile?.parent
 
-        val resultFile = actualOpIdDir!!.resolve("result.txt")
+        assertTrue(actualOpIdDir != null, "Should find a control dir containing result.txt. controlRoot=$controlRoot, dirs=$allDirNames")
+
         val resultExists = Files.exists(resultFile)
         println("DEBUG: resultFile=$resultFile, exists=$resultExists")
         if (resultExists) {

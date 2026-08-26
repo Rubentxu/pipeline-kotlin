@@ -47,6 +47,7 @@ object ShExecution {
      * @param stageIndex The stage index for workspace naming.
      * @param stepIndex The step index for event sequencing.
      * @param shOptions Shell execution options (workspaceRoot, captureStdout, timeoutMs, env).
+     * @param eventSink The event sink for emitting EchoOutputCaptured events.
      * @return "success" if exit code is 0, "failure" otherwise.
      */
     suspend fun runShStep(
@@ -56,24 +57,27 @@ object ShExecution {
         stageIndex: Int,
         stepIndex: Int,
         shOptions: ShOptions,
+        eventSink: EventSink,
     ): String {
-        val controlDirRoot = shOptions.workspaceRoot.parent?.parent // workspaceRoot is <controlRoot>/workspace/<stage>/...
-        val eventSink: EventSink = NoOpEventSink // Will be passed differently in future
-
-        if (controlDirRoot == null) {
+        // Derive controlDirRoot from shOptions.workspaceRoot:
+        // workspaceRoot is <controlRoot>/workspace/<stageName>-<stageIndex>/...
+        // parent = <controlRoot>/workspace/, parent.parent = <controlRoot>
+        val derivedControlDirRoot = shOptions.workspaceRoot.parent?.parent
+        if (derivedControlDirRoot == null) {
             // Fallback to non-durable execution if no control dir root
             val argv = listOf("bash", "-c", step.command)
             val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
             return if (result.exitCode != 0) "failure" else "success"
         }
 
-        val workspaceResolver = WorkspaceResolver(controlDirRoot)
+        val workspaceResolver = WorkspaceResolver(derivedControlDirRoot)
         val workspacePath = workspaceResolver.ensureCreated(
             workspaceResolver.resolve("stage-$stageIndex", stageIndex)
         )
 
         val effectiveOptions = shOptions.copy(workspaceRoot = workspacePath)
-        val controlDir = controlDirRoot.resolve(opId.format())
+        // controlDir is sibling to workspace: {controlDirRoot}/{opId}
+        val controlDir = derivedControlDirRoot.resolve(opId.format())
 
         return try {
             val config = DurableShConfig.fromSystemProperties()
@@ -138,7 +142,10 @@ object ShExecution {
      * @param stepIndex The step index for event sequencing.
      * @param branchOpId The operation ID for this branch step.
      * @param runId The run identifier.
+     * @param command The shell command to execute.
      * @param shOptions Shell execution options.
+     * @param controlDirRoot The control directory root (explicit, not derived).
+     * @param eventSink The event sink for emitting EchoOutputCaptured events.
      * @return "success" if exit code is 0, "failure" otherwise.
      */
     suspend fun executeBranchStep(
@@ -146,14 +153,14 @@ object ShExecution {
         stepIndex: Int,
         branchOpId: OpId,
         runId: String,
+        command: String,
         shOptions: ShOptions,
+        controlDirRoot: java.nio.file.Path?,
+        eventSink: EventSink,
     ): String {
-        val controlDirRoot = shOptions.workspaceRoot.parent?.parent
-        val eventSink: EventSink = NoOpEventSink
-
         if (controlDirRoot == null) {
             // Non-durable fallback for branch steps
-            val argv = listOf("bash", "-c", "")
+            val argv = listOf("bash", "-c", command)
             val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
             return if (result.exitCode != 0) "failure" else "success"
         }
@@ -165,6 +172,7 @@ object ShExecution {
         )
 
         val effectiveOptions = shOptions.copy(workspaceRoot = workspacePath)
+        // controlDir is sibling to workspace: {controlDirRoot}/{branchOpId}
         val controlDir = controlDirRoot.resolve(branchOpId.format())
 
         return try {
@@ -172,9 +180,9 @@ object ShExecution {
 
             val result: DurableShellResult = if (effectiveOptions.captureStdout) {
                 val executor = DurableShellExecutor()
-                executor.execute(controlDir, "", branchOpId.format(), effectiveOptions)
+                executor.execute(controlDir, command, branchOpId.format(), effectiveOptions)
             } else {
-                executeDurableShell(controlDir, "", branchOpId.format(), config)
+                executeDurableShell(controlDir, command, branchOpId.format(), config)
             }
 
             when (result.state) {

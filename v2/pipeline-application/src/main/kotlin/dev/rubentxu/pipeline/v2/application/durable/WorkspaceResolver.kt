@@ -25,6 +25,11 @@ import java.nio.file.Path
 class WorkspaceResolver(private val controlDirRoot: Path) {
 
     /**
+     * The root directory for all control directories.
+     */
+    val root: Path = controlDirRoot
+
+    /**
      * Resolves the workspace path for a given stage.
      *
      * @param stageName The name of the stage.

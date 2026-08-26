@@ -54,6 +54,9 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
 import dev.rubentxu.pipeline.v2.application.durable.ShExecution
 import dev.rubentxu.pipeline.v2.sdk.StepContext
@@ -442,7 +445,13 @@ private suspend fun emitDurableStepEvents(
     }
 
     // Build OperationInput (attempt will vary per retry loop iteration)
-    val params = stepToParams(step)
+    val baseParams = stepToParams(step)
+    // ML-R3: Add sandboxProfile to params for LOCAL profile (NONE is byte-identical to ML-R2)
+    val params = if (ctx.sandboxProfile != SandboxProfile.NONE) {
+        baseParams + ("sandboxProfile" to JsonPrimitive(ctx.sandboxProfile.name))
+    } else {
+        baseParams
+    }
 
     // Map SDK ReplayPolicy to domain ReplayPolicy for the decision call
     val sdkPolicy = toSdkReplayPolicy(domainPolicy)
@@ -567,6 +576,7 @@ private suspend fun emitDurableStepEvents(
                     stepClassifications = stepClassifications,
                     stageTimeout = stageTimeout,
                     stageEnvironment = stageEnvironment,
+                    sandboxProfile = ctx.sandboxProfile,
                 )
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
@@ -666,6 +676,7 @@ private suspend fun executeDurableStep(
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
     stageTimeout: Long? = null,
     stageEnvironment: Map<String, String>? = null,
+    sandboxProfile: SandboxProfile = SandboxProfile.NONE,
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -686,6 +697,7 @@ private suspend fun executeDurableStep(
         stepClassifications = stepClassifications,
         stageTimeout = stageTimeout,
         stageEnvironment = stageEnvironment,
+        sandboxProfile = sandboxProfile,
     )
 }
 
@@ -736,6 +748,8 @@ private suspend fun executeDurableStepImpl(
     stageTimeout: Long? = null,
     // Stage-level environment: StageSpec.environment merged at stage entry (WS-S-005).
     stageEnvironment: Map<String, String>? = null,
+    // ML-R3: Sandbox profile for this step.
+    sandboxProfile: SandboxProfile = SandboxProfile.NONE,
 ): String {
     // Build opId for durable shell control dir
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -773,6 +787,16 @@ private suspend fun executeDurableStepImpl(
                         val workspaceRoot = workspaceResolver?.resolve("stage-$stageIndex", stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
                         val shellStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell
+
+                        // ML-R3: Resolve sandbox config from sysprops/env vars (controller JVM)
+                        val sandboxConfig = SandboxConfigResolver.resolve(
+                            syspropAllowExtra = System.getProperty("pipeline.sandbox.allow.extra"),
+                            syspropPathKeep = System.getProperty("pipeline.sandbox.path.keep"),
+                            envAllowExtra = System.getenv("PIPELINE_SANDBOX_ALLOW_EXTRA"),
+                            envPathKeep = System.getenv("PIPELINE_SANDBOX_PATH_KEEP"),
+                            baseProfile = sandboxProfile,
+                        )
+
                         // WS-S-005: env via StageSpec.environment — stageEnvironment is the env source
                         // TMO-S-002: stage-level timeout via options{} — stageTimeout is the timeout source
                         val effectiveShOptions = shOptions?.copy(
@@ -780,11 +804,13 @@ private suspend fun executeDurableStepImpl(
                             captureStdout = shellStep.returnStdout,
                             timeoutMs = shOptions.timeoutMs ?: stageTimeout,
                             env = stageEnvironment ?: shOptions.env ?: emptyMap(),
+                            sandbox = sandboxConfig,
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                             workspaceRoot = workspaceRoot,
                             captureStdout = shellStep.returnStdout,
                             timeoutMs = stageTimeout,
                             env = stageEnvironment ?: emptyMap(),
+                            sandbox = sandboxConfig,
                         )
                         val opIdObj = OpId(runId, stageIndex, stepIndex)
                         val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions, controlDirRoot, eventSink)

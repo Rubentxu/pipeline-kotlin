@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
@@ -55,6 +56,14 @@ class PipelineOrchestrator(
      * $controlDirRoot/$opId/
      */
     private val controlDirRoot: Path? = null,
+    /**
+     * Sandbox profile for this pipeline run (ML-R3).
+     *
+     * NONE: no sandbox (backward compatible)
+     * LOCAL: apply deny-list + PATH normalization
+     * OS: container-based sandbox (not implemented in L3 — throws at CLI)
+     */
+    private val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.
@@ -134,6 +143,7 @@ class PipelineOrchestrator(
                     controlDirRoot = controlDirRoot,
                     workspaceResolver = workspaceResolver,
                     shOptions = defaultShOptions,
+                    sandboxProfile = sandboxProfile,
                 )
 
                 // Execute with durable walk — ctx carries branchReconciler for LIVE reconciliation

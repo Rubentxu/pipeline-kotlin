@@ -22,6 +22,7 @@ data class ShOptions(
     val captureStdout: Boolean,
     val timeoutMs: Long?,
     val env: Map<String, String>,
+    val sandbox: SandboxConfig = SandboxConfig.NONE,
 ) {
     companion object {
         /**
@@ -33,6 +34,7 @@ data class ShOptions(
             captureStdout = false,
             timeoutMs = null,
             env = emptyMap(),
+            sandbox = SandboxConfig.NONE,
         )
     }
 }

@@ -15,6 +15,8 @@ import dev.rubentxu.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfileUnsupportedException
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
@@ -45,6 +47,7 @@ data class PipelineCliConfig(
     val resumeFlag: Boolean,
     val scriptPath: String?,
     val controlRoot: String? = null,
+    val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
 )
 
 /**
@@ -64,10 +67,11 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         return null
     }
 
-    // Parse --db, --resume, and --control-root flags.
+    // Parse --db, --resume, --control-root, and --sandbox-profile flags.
     var dbPath: String? = null
     var resumeFlag = false
     var controlRoot: String? = null
+    var sandboxProfile: SandboxProfile = SandboxProfile.NONE
     var scriptArgIndex = 1
     var i = 1
     while (i < args.size && args[i].startsWith("--")) {
@@ -90,6 +94,23 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
                 controlRoot = args[i + 1]
                 i += 2
             }
+            "--sandbox-profile" -> {
+                if (i + 1 >= args.size) {
+                    return null
+                }
+                val profileValue = args[i + 1]
+                sandboxProfile = when (profileValue) {
+                    "none" -> SandboxProfile.NONE
+                    "local" -> SandboxProfile.LOCAL
+                    "os" -> throw SandboxProfileUnsupportedException(
+                        "sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. Accepted: {none, local}. Got: 'os'."
+                    )
+                    else -> throw SandboxProfileUnsupportedException(
+                        "sandbox-profile '$profileValue' invalid. Accepted: {none, local}."
+                    )
+                }
+                i += 2
+            }
             else -> break
         }
     }
@@ -107,6 +128,7 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         resumeFlag = resumeFlag,
         scriptPath = scriptPath,
         controlRoot = controlRoot,
+        sandboxProfile = sandboxProfile,
     )
 }
 
@@ -188,6 +210,7 @@ fun main(args: Array<String>) {
         eventSink = eventStore,
         clock = clock,
         controlDirRoot = controlDirRoot,
+        sandboxProfile = config.sandboxProfile,
     )
 
     // Run via orchestrator (fresh run or resume based on --resume flag)

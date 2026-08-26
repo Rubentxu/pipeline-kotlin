@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.application.BranchReconciler
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import java.nio.file.Path
@@ -87,8 +88,17 @@ data class DurableWalkContext(
      * - captureStdout: whether to capture stdout to output.txt
      * - timeoutMs: execution timeout (null = no timeout)
      * - env: environment variables to inject
+     * - sandbox: sandbox profile (NONE, LOCAL, OS)
      *
      * Step-level options override stage-level options via merge in PipelineOrchestrator.
      */
     val shOptions: ShOptions? = null,
+    /**
+     * Sandbox profile for this pipeline run (ML-R3).
+     *
+     * NONE: no sandbox (backward compatible)
+     * LOCAL: apply deny-list + PATH normalization
+     * OS: container-based sandbox (not implemented in L3 — throws at CLI)
+     */
+    val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
 )

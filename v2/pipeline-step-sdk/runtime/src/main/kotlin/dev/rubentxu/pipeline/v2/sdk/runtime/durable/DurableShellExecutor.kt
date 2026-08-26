@@ -191,6 +191,7 @@ class DurableShellExecutor : DurableShellLaunching {
         captureStdout: Boolean,
         env: Map<String, String> = emptyMap(),
         workspaceRoot: Path? = null,
+        sandbox: SandboxConfig = SandboxConfig.NONE,
     ): ProcessHandle {
         checkLinuxOrThrow()
 
@@ -244,6 +245,18 @@ class DurableShellExecutor : DurableShellLaunching {
         // Internal durable vars
         pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
         pbEnv["DURABLE_SH_OPID"] = opId
+
+        // ML-R3: Sandbox profile integration (DEC-1 cwd + DEC-2 deny-list + DEC-3 PATH normalize)
+        // Profile branch: LOCAL applies deny-list + PATH normalize; NONE is pass-through.
+        // OS would throw at factory (CLI rejects it), so reaching here means NONE or LOCAL.
+        if (sandbox.profile == SandboxProfile.LOCAL) {
+            val pbEnvFiltered = pbEnv.applyDenyList(sandbox.allowExtra)
+            val javaHome = pbEnvFiltered["JAVA_HOME"]
+            val m2Home = pbEnvFiltered["M2_HOME"]
+            pbEnv.clear()
+            pbEnv.putAll(pbEnvFiltered.normalizePath(sandbox.pathKeep, javaHome, m2Home))
+        }
+
         // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
         if (env.isNotEmpty()) {
             pbEnv.putAll(env)
@@ -787,7 +800,7 @@ class DurableShellExecutor : DurableShellLaunching {
         try {
             // Step 1: Launch
             // P2: shOptions.env is injected via pb.environment().putAll in launch()
-            process = launch(controlDir, scriptContent, opId, config, captureStdout, shOptions.env, shOptions.workspaceRoot)
+            process = launch(controlDir, scriptContent, opId, config, captureStdout, shOptions.env, shOptions.workspaceRoot, shOptions.sandbox)
             state = DurableShellState.LAUNCHING
 
             // Step 2: Detach
@@ -914,6 +927,7 @@ fun executeDurableShell(
     config: DurableShConfig = DurableShConfig.fromSystemProperties(),
     timeoutMs: Long = 0L,
     env: Map<String, String> = emptyMap(),
+    sandbox: SandboxConfig = SandboxConfig.NONE,
 ): DurableShellResult {
     val executor = DurableShellExecutor()
     var state = DurableShellState.LAUNCHING
@@ -923,7 +937,7 @@ fun executeDurableShell(
 
     try {
         // Step 1: Launch (P2: env injected via pb.environment().putAll in launch())
-        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env)
+        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env, sandbox = sandbox)
         state = DurableShellState.LAUNCHING
 
         // Step 2: Detach

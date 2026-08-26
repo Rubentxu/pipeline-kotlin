@@ -106,10 +106,12 @@ data class DurableShellResult(
  * 1. LAUNCH: argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
  *    setsid execs bash in place → JVM child PID == PGID == SID.
  * 2. PIPELINE_OP_COOKIE=__pipeline_protected__ (sentinel) inherited by wrapper + heartbeat.
- * 3. Wrapper embeds `PIPELINE_OP_COOKIE=<real>` where real = opId (embedded in file, not argv).
+ * 3. Wrapper OVERWRITES the sentinel with `PIPELINE_OP_COOKIE=<real>` where real = opId
+ *    (embedded in file, not argv). The cookie-scan kill uses the REAL cookie, not the sentinel.
  * 4. Watchdog: cookie scan of /proc/<pid>/environ (same-UID), SIGTERM each match,
- *    5s grace (SoftKillWaitSeconds parity), then `kill -9 -<pgid>`.
- * 5. Sentinel cookie protects wrapper machinery (heartbeat + result-writer).
+ *    5s grace (SoftKillWaitSeconds parity), then `kill -9 -<sid>`.
+ * 5. Sentinel cookie initially protects wrapper machinery (heartbeat + result-writer);
+ *    the wrapper overwrites it before the watchdog scans.
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  * @see <a href="JENKINS-58290">JENKINS-58290 - nohup+setsid detachment</a>
@@ -188,6 +190,7 @@ class DurableShellExecutor : DurableShellLaunching {
         config: DurableShConfig,
         captureStdout: Boolean,
         env: Map<String, String> = emptyMap(),
+        workspaceRoot: Path? = null,
     ): ProcessHandle {
         checkLinuxOrThrow()
 
@@ -233,7 +236,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // The ProcessHandle points to the setsid parent (exits quickly).
         // The real target (bash/wrapper) is found via cookie-scan.
         val pb = ProcessBuilder("setsid", "bash", wrapperFile.toString())
-        pb.directory(controlDir.toFile())
+        pb.directory((workspaceRoot ?: controlDir).toFile())
 
         // PIPELINE_OP_COOKIE=sentinel inherited by wrapper + heartbeat (protects wrapper machinery)
         val pbEnv = pb.environment()
@@ -548,7 +551,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * Scans /proc/<pid>/environ for processes matching PIPELINE_OP_COOKIE=<real>
      * (same UID; excludes the JVM itself), sends SIGTERM to each via ProcessHandle.destroy(),
      * waits up to 5000ms (SoftKillWaitSeconds parity), then escalates to
-     * `kill -9 -<pgid>` (pgid = leader PID, stable).
+     * `kill -9 -<sid>` (sid = session ID, stable).
      *
      * DEVIATION from Jenkins core: Jenkins has no SIGKILL escalation (no determinism
      * requirement); our FAILED_TIMEOUT state requires definitive process-tree kill.
@@ -784,7 +787,7 @@ class DurableShellExecutor : DurableShellLaunching {
         try {
             // Step 1: Launch
             // P2: shOptions.env is injected via pb.environment().putAll in launch()
-            process = launch(controlDir, scriptContent, opId, config, captureStdout, shOptions.env)
+            process = launch(controlDir, scriptContent, opId, config, captureStdout, shOptions.env, shOptions.workspaceRoot)
             state = DurableShellState.LAUNCHING
 
             // Step 2: Detach

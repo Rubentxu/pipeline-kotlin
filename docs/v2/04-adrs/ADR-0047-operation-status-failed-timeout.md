@@ -13,7 +13,7 @@ ML-R1 (ADR-0046) established the durable `sh` pattern with 6 terminal states for
 ML-R2 introduces **real timeouts** (W5 fold): a watchdog thread kills the process tree when `deadlineMs` is exceeded. This creates a distinct terminal outcome:
 
 - **FAILED**: subprocess exited with non-zero exit code
-- **FAILED_TIMEOUT**: subprocess was **killed by deadline** (SIGKILL via `setsid pgid kill -9`)
+- **FAILED_TIMEOUT**: subprocess was **killed by deadline** (SIGKILL via `setsid session-level kill -9`)
 
 The distinction matters for replay semantics:
 - `FAILED`: the script **ran to completion** but returned non-zero — idempotent, safe to skip on resume

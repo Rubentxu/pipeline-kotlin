@@ -72,6 +72,10 @@ suspend fun sh(...): ShellResult
 
 ### DEV-001 — `sh(timeoutMs, env)` (2026-08-26, ciclo ML-R2)
 
+**REVERSED 2026-08-26 (cycle=ml-r3-sandbox-profile-local)** — actual signatures
+preserved; cite `3742ce1`. Los parámetros `timeoutMs` y `env` en `sh` fueron
+revertidos a sus formas originales tras la revisión de la especificación.
+
 **Firma Jenkins real** (workflow-durable-task-step, catálogo §3):
 `sh(script, encoding, label, returnStatus, returnStdout)` — **exactamente
 5 parámetros**; no existen `timeout` ni `env`.

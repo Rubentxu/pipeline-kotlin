@@ -55,11 +55,6 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
          * Whether to capture stdout to output.txt for return value access.
          */
         val returnStdout: Boolean = false,
-        /**
-         * Environment variables to inject via ProcessBuilder.environment().
-         * Step-level env overrides stage-level env.
-         */
-        val env: Map<String, String>? = null,
     ) : StepSpec {
         override val name: String get() = "sh"
         override val type: String get() = "sh"
@@ -254,11 +249,9 @@ class StageScope(private val stageName: String) {
      *
      * @param script The shell command to execute.
      * @param returnStdout If true, capture stdout to output.txt for return value access.
-     * @param timeoutMs Timeout in milliseconds, or null for no timeout.
-     * @param env Environment variables to inject, or null for no override.
      */
-    fun sh(script: String, returnStdout: Boolean = false, timeoutMs: Long? = null, env: Map<String, String>? = null) {
-        steps.add(StepSpec.Shell(command = script, returnStdout = returnStdout, timeoutMillis = timeoutMs, env = env))
+    fun sh(script: String, returnStdout: Boolean = false) {
+        steps.add(StepSpec.Shell(command = script, returnStdout = returnStdout))
     }
 
     /**
@@ -342,23 +335,6 @@ class StageScope(private val stageName: String) {
     }
 
     /**
-     * Timeout for a step.
-     */
-    fun timeout(seconds: Long, action: TimeoutAction = TimeoutAction.FAIL) {
-        val currentStep = steps.lastOrNull() ?: return
-        val timeoutMs = seconds * 1000L
-        val index = steps.indexOf(currentStep)
-        // Use copy() to set timeout on the last step
-        steps[index] = when (currentStep) {
-            is StepSpec.Echo -> currentStep.copy(timeoutMillis = timeoutMs)
-            is StepSpec.Shell -> currentStep.copy(timeoutMillis = timeoutMs)
-            is StepSpec.Error -> currentStep.copy(timeoutMillis = timeoutMs)
-            is StepSpec.Sleep -> currentStep.copy(timeoutMillis = timeoutMs)
-            is StepSpec.Parallel -> currentStep.copy(timeoutMillis = timeoutMs)
-        }
-    }
-
-    /**
      * Conditional execution using a when clause.
      */
     fun whenCondition(expression: String, block: StageScope.() -> Unit) {
@@ -382,7 +358,7 @@ class StageScope(private val stageName: String) {
         }
     }
 
-    fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent)
+    fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)
 }
 
 /**
@@ -526,13 +502,14 @@ class ScriptScope {
 }
 
 /**
- * Builder for a stage, capturing its name, steps, options, and agent.
+ * Builder for a stage, capturing its name, steps, options, agent, and environment.
  */
 class StageBuilder(
     private val name: String,
     private val steps: List<StepSpec>,
     private val options: OptionsSpec? = null,
     private val agent: AgentSpec? = null,
+    private val environment: Map<String, String>? = null,
 ) {
-    fun build(): StageSpec = StageSpec(name, steps, options, agent)
+    fun build(): StageSpec = StageSpec(name, steps, options, agent, environment)
 }

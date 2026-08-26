@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -33,6 +34,7 @@ import java.nio.file.Paths
  * This test validates that the full DSL grammar produces a parseable
  * event stream with all M2-R1 event kinds.
  */
+@Timeout(120)
 class UatDsl001JenkinsFamiliarityTest {
 
     private val appBin: Path by lazy {

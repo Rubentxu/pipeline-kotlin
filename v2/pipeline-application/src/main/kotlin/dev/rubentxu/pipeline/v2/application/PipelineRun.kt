@@ -332,6 +332,10 @@ internal suspend fun walkPipelineSpecDurable(
             }
         }
 
+        // TMO-S-002: Thread stage-level timeout into shOptions for steps that don't set step-level timeout.
+        // stage.options.timeout is in seconds; convert to milliseconds for execution.
+        val stageTimeoutMs = stage.options?.timeout?.times(1000L)
+
         stage.options?.timeout?.let { timeoutSeconds ->
             emitTimeoutScheduledEvent(
                 timeoutSeconds = timeoutSeconds,
@@ -366,6 +370,8 @@ internal suspend fun walkPipelineSpecDurable(
                 runOutcomeRef = runOutcomeRef,
                 reconciledBranches = reconciledBranches,
                 stepClassifications = stepClassifications,
+                stageTimeout = stageTimeoutMs,
+                stageEnvironment = stage.environment,
             )
             if (stepOutcome == "failure") {
                 runOutcomeRef.set("failure")
@@ -411,6 +417,10 @@ private suspend fun emitDurableStepEvents(
     runOutcomeRef: java.util.concurrent.atomic.AtomicReference<String>,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
+    // TMO-S-002: Stage-level timeout (milliseconds) — stage options { timeout } is the source.
+    stageTimeout: Long? = null,
+    // Stage-level environment: StageSpec.environment merged at stage entry (WS-S-005).
+    stageEnvironment: Map<String, String>? = null,
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -418,7 +428,11 @@ private suspend fun emitDurableStepEvents(
     val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     val retryPolicy = step.retry ?: RetryPolicy.NONE
     val maxAttempts = retryPolicy.maxAttempts
-    val timeoutMillis = step.timeoutMillis
+    // TMO-S-002: timeout precedence = step-level timeoutMillis (internal; populated
+    // programmatically or by a future timeout{} wrapper) ?: stage-level options{timeout}.
+    // The sh KEYWORD does not expose timeout (Jenkins-faithful); StepSpec field remains
+    // the internal carrier (UatDurable005 C-024 journals deadline_ms from it).
+    val timeoutMillis = step.timeoutMillis ?: stageTimeout
 
     // Compute deadline for fresh execution if timeout is set
     val deadlineMs: Long? = if (timeoutMillis != null && timeoutMillis > 0) {
@@ -551,6 +565,8 @@ private suspend fun emitDurableStepEvents(
                     workspaceResolver = ctx.workspaceResolver,
                     shOptions = ctx.shOptions,
                     stepClassifications = stepClassifications,
+                    stageTimeout = stageTimeout,
+                    stageEnvironment = stageEnvironment,
                 )
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
@@ -562,17 +578,18 @@ private suspend fun emitDurableStepEvents(
                     status = when {
                         stepOutcome == "success" -> OperationStatus.SUCCEEDED
                         stepOutcome == "lost" -> OperationStatus.LOST  // fail-closed per UAT-REC-002
+                        stepOutcome == "timeout" -> OperationStatus.FAILED_TIMEOUT  // TMO-S-001: watchdog killed the process
                         else -> OperationStatus.FAILED
                     },
                     attempt = attemptNum,
                 )
                 ctx.opJournal.append(outputOp, deadlineMs)
 
-                if (stepOutcome == "failure" || stepOutcome == "lost") {
-                    // This attempt failed (or LOST which is also a terminal failure)
+                if (stepOutcome == "failure" || stepOutcome == "lost" || stepOutcome == "timeout") {
+                    // This attempt failed (or LOST/TIMEOUT which are also terminal failures)
                     emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, stepOutcome, ctx.clock)
-                    if (stepOutcome == "lost") {
-                        // LOST is terminal - do not retry (fail-closed per UAT-REC-002)
+                    if (stepOutcome == "lost" || stepOutcome == "timeout") {
+                        // LOST and TIMEOUT are terminal - do not retry (fail-closed per UAT-REC-002, TMO-S-001)
                         runOutcomeRef.set("failure")
                         return "failure"
                     }
@@ -647,6 +664,8 @@ private suspend fun executeDurableStep(
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
+    stageTimeout: Long? = null,
+    stageEnvironment: Map<String, String>? = null,
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -665,6 +684,8 @@ private suspend fun executeDurableStep(
         workspaceResolver = workspaceResolver,
         shOptions = shOptions,
         stepClassifications = stepClassifications,
+        stageTimeout = stageTimeout,
+        stageEnvironment = stageEnvironment,
     )
 }
 
@@ -711,6 +732,10 @@ private suspend fun executeDurableStepImpl(
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
+    // TMO-S-002: Stage-level timeout via options{} — stageTimeout is the canonical source.
+    stageTimeout: Long? = null,
+    // Stage-level environment: StageSpec.environment merged at stage entry (WS-S-005).
+    stageEnvironment: Map<String, String>? = null,
 ): String {
     // Build opId for durable shell control dir
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -748,16 +773,18 @@ private suspend fun executeDurableStepImpl(
                         val workspaceRoot = workspaceResolver?.resolve("stage-$stageIndex", stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
                         val shellStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell
+                        // WS-S-005: env via StageSpec.environment — stageEnvironment is the env source
+                        // TMO-S-002: stage-level timeout via options{} — stageTimeout is the timeout source
                         val effectiveShOptions = shOptions?.copy(
                             workspaceRoot = workspaceRoot,
                             captureStdout = shellStep.returnStdout,
-                            timeoutMs = shellStep.timeoutMillis ?: shOptions.timeoutMs,
-                            env = shellStep.env ?: shOptions.env ?: emptyMap(),
+                            timeoutMs = shOptions.timeoutMs ?: stageTimeout,
+                            env = stageEnvironment ?: shOptions.env ?: emptyMap(),
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                             workspaceRoot = workspaceRoot,
                             captureStdout = shellStep.returnStdout,
-                            timeoutMs = shellStep.timeoutMillis,
-                            env = shellStep.env ?: emptyMap(),
+                            timeoutMs = stageTimeout,
+                            env = stageEnvironment ?: emptyMap(),
                         )
                         val opIdObj = OpId(runId, stageIndex, stepIndex)
                         val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions, controlDirRoot, eventSink)
@@ -812,6 +839,7 @@ private suspend fun executeDurableStepImpl(
                     workspaceResolver = workspaceResolver,
                     shOptions = shOptions,
                     reconciledBranches = reconciledBranches,
+                    stageEnvironment = stageEnvironment,
                 )
             }
         }
@@ -1218,6 +1246,8 @@ private suspend fun walkParallelFrame(
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     reconciledBranches: Map<Int, ReconciledBranch>? = null,
+    // WS-S-005: Stage-level environment from StageSpec.environment
+    stageEnvironment: Map<String, String>? = null,
 ): String {
     val parentOpId = OpId(runId, stageIndex, stepIndex)
 
@@ -1290,6 +1320,7 @@ private suspend fun walkParallelFrame(
                             controlDirRoot = controlDirRoot,
                             workspaceResolver = workspaceResolver,
                             shOptions = shOptions,
+                            stageEnvironment = stageEnvironment,
                         )
                         emitParallelBranchFinished(branchIndex, branch.name, stageIndex, runId, eventSink, clock, branchOutcome)
                         branchOutcome
@@ -1398,6 +1429,8 @@ private suspend fun walkBranchDurable(
     controlDirRoot: java.nio.file.Path? = null,
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
+    // WS-S-005: Stage-level environment from StageSpec.environment
+    stageEnvironment: Map<String, String>? = null,
 ): String {
 
     // For now, each branch step is processed at the parent stage/step level
@@ -1438,15 +1471,16 @@ private suspend fun walkBranchDurable(
             is StepSpec.Shell -> {
                 // W8 fold: route through ShExecution.executeBranchStep for consistent durable semantics
                 val branchOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex)
+                // WS-S-005: env via StageSpec.environment; TMO-S-002: timeout via options{}
                 val effectiveShOptions = shOptions?.copy(
                     captureStdout = step.returnStdout,
-                    timeoutMs = step.timeoutMillis ?: shOptions.timeoutMs,
-                    env = step.env ?: shOptions.env ?: emptyMap(),
+                    timeoutMs = shOptions.timeoutMs,
+                    env = stageEnvironment ?: shOptions.env ?: emptyMap(),
                 ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                     workspaceRoot = java.nio.file.Files.createTempDirectory("shoptions"),
                     captureStdout = step.returnStdout,
-                    timeoutMs = step.timeoutMillis,
-                    env = step.env ?: emptyMap(),
+                    timeoutMs = null,
+                    env = stageEnvironment ?: emptyMap(),
                 )
                 ShExecution.executeBranchStep(
                     stageIndex = parentOpId.stageIndex,
@@ -1504,6 +1538,7 @@ private suspend fun walkBranchDurable(
                     controlDirRoot = controlDirRoot,
                     workspaceResolver = workspaceResolver,
                     shOptions = shOptions,
+                    stageEnvironment = stageEnvironment,
                 )
             }
             else -> {

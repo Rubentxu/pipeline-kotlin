@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -27,6 +28,7 @@ import java.nio.file.Paths
  * and validates that RetryAttemptStarted/RetryAttemptFinished and
  * TimeoutScheduled events are emitted.
  */
+@Timeout(120)
 class UatDsl005TimeoutGrammarTest {
 
     private val appBin: Path by lazy {

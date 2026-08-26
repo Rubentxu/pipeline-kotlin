@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.sql.Connection
 import kotlinx.coroutines.runBlocking
@@ -43,6 +44,7 @@ import java.sql.DriverManager
  * Pattern: mirrors UatDurable001ReplaySurvivesRestartTest setup style
  * (in-memory SqliteEventStore + PipelineOrchestrator wired with all durable deps).
  */
+@Timeout(120)
 class UatDurable005TimeoutPersistsAcrossRestartTest {
 
     @TempDir
@@ -290,6 +292,7 @@ class UatDurable005TimeoutPersistsAcrossRestartTest {
      *
      * NOT thread-safe. Not for production use.
      */
+@Timeout(120)
     class MutableClock(private var currentInstant: java.time.Instant) : Clock {
         override fun now(): java.time.Instant = currentInstant
 

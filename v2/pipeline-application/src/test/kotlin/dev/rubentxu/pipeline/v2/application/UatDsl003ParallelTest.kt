@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -26,6 +27,7 @@ import java.nio.file.Paths
  * and validates that ParallelBranchStarted/ParallelBranchFinished events
  * are emitted for each branch.
  */
+@Timeout(120)
 class UatDsl003ParallelTest {
 
     private val appBin: Path by lazy {

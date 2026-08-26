@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellResult
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
 import dev.rubentxu.pipeline.v2.sdk.StepContext
@@ -68,7 +69,8 @@ object ShExecution {
         if (controlDirRoot == null) {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // P2: env injected via pb.environment().putAll (WS-S-005)
-            return executeNonDurable(step.command, shOptions.env, eventSink, stepIndex, runId)
+            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            return executeNonDurable(step.command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId)
         }
 
         val workspaceResolver = WorkspaceResolver(controlDirRoot)
@@ -83,14 +85,17 @@ object ShExecution {
         return try {
             val config = DurableShConfig.fromSystemProperties()
 
+            // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH) (WS-S-006/WS-S-007)
+            val envOptions = effectiveOptions.copy(env = EnvModel.apply(effectiveOptions.env))
+
             // Execute with tee-gated wrapper if captureStdout is enabled
             // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
             // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
-            val result: DurableShellResult = if (effectiveOptions.captureStdout) {
+            val result: DurableShellResult = if (envOptions.captureStdout) {
                 val executor = DurableShellExecutor()
-                executor.execute(controlDir, step.command, opId.format(), effectiveOptions)
+                executor.execute(controlDir, step.command, opId.format(), envOptions)
             } else {
-                executeDurableShell(controlDir, step.command, opId.format(), config, effectiveOptions.timeoutMs ?: 0L, effectiveOptions.env)
+                executeDurableShell(controlDir, step.command, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env)
             }
 
             // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)
@@ -117,8 +122,8 @@ object ShExecution {
                     if (result.exitCode != 0) "failure" else "success"
                 }
                 DurableShellState.TIMED_OUT -> {
-                    // Timeout is terminal - return "failure"
-                    "failure"
+                    // TMO-S-001: timeout is terminal - distinct from plain failure
+                    "timeout"
                 }
                 DurableShellState.LOST,
                 DurableShellState.LAUNCH_FAILED,
@@ -128,7 +133,8 @@ object ShExecution {
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            return executeNonDurable(step.command, shOptions.env, eventSink, stepIndex, runId)
+            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            return executeNonDurable(step.command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId)
         } catch (e: Exception) {
             "failure"
         }
@@ -163,7 +169,8 @@ object ShExecution {
         if (controlDirRoot == null) {
             // Non-durable fallback for branch steps
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            return executeNonDurable(command, shOptions.env, eventSink, stepIndex, runId)
+            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            return executeNonDurable(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId)
         }
 
         val workspaceResolver = WorkspaceResolver(controlDirRoot)
@@ -179,12 +186,15 @@ object ShExecution {
         return try {
             val config = DurableShConfig.fromSystemProperties()
 
-            val result: DurableShellResult = if (effectiveOptions.captureStdout) {
+            // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH) (WS-S-006/WS-S-007)
+            val envOptions = effectiveOptions.copy(env = EnvModel.apply(effectiveOptions.env))
+
+            val result: DurableShellResult = if (envOptions.captureStdout) {
                 val executor = DurableShellExecutor()
-                executor.execute(controlDir, command, branchOpId.format(), effectiveOptions)
+                executor.execute(controlDir, command, branchOpId.format(), envOptions)
             } else {
                 // P2: env via pb.environment().putAll; timeout via timeoutMs parameter
-                executeDurableShell(controlDir, command, branchOpId.format(), config, effectiveOptions.timeoutMs ?: 0L, effectiveOptions.env)
+                executeDurableShell(controlDir, command, branchOpId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env)
             }
 
             when (result.state) {
@@ -200,7 +210,8 @@ object ShExecution {
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            return executeNonDurable(command, shOptions.env, eventSink, stepIndex, runId)
+            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            return executeNonDurable(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId)
         } catch (e: Exception) {
             "failure"
         }

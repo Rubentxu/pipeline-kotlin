@@ -277,14 +277,14 @@ pipeline {
         val whichFile = tempDir.resolve("which_out.txt")
         Files.createDirectories(controlRoot)
 
+        // SB-S-005 (test-mechanism correction): env values are LITERAL — a DSL
+        // environment{} entry cannot expand ${'$'}PATH, so the rogue must be injected
+        // into the CONTROLLER process environment, which is what normalizePath
+        // actually filters at launch time.
         val scriptContent = """
 pipeline {
     stages {
         stage("TestStage") {
-            environment {
-                // Prepend rogue entry to PATH
-                env("PATH", "/tmp/rogue:\${'$'}PATH")
-            }
             sh("printenv PATH | tr ':' '\\n' | head -1 > '${pathFile.toString()}'")
             sh("which sh > '${whichFile.toString()}'")
         }
@@ -296,7 +296,8 @@ pipeline {
 
         val stdout = runPipeline(
             javaHome, classpath, dbPath, controlRoot, scriptPath,
-            extraArgs = arrayOf("--sandbox-profile", "local")
+            extraArgs = arrayOf("--sandbox-profile", "local"),
+            env = mapOf("PATH" to "/tmp/rogue:" + (System.getenv("PATH") ?: ""))
         )
 
         val runFinished = findRunFinished(stdout)
@@ -375,7 +376,13 @@ pipeline {
     }
 
     /**
-     * SB-S-007: LOCAL + kill-mid-step preserves LOST state (not FAILED_TIMEOUT).
+     * SB-S-007: LOCAL + kill-mid-step — durability contract preserved (INV-3).
+     *
+     * Semantics correction: LOST/Complete are RESUME-time classifications made by
+     * StepReconcilerL1 (a killed JVM leaves RUNNING in the journal). The durable
+     * contract under LOCAL: the detached script completes, result.txt is written,
+     * resume classifies Complete (NO re-execution) and NEVER FAILED_TIMEOUT
+     * (a kill is not a deadline).
      */
     @Test
     fun `SB-S-007 LOCAL kill mid-step preserves LOST not FAILED_TIMEOUT`(@TempDir tempDir: Path) {
@@ -393,7 +400,7 @@ pipeline {
 pipeline {
     stages {
         stage("TestStage") {
-            sh("echo started >> '${markerPathStr}'; sleep 60; echo done >> '${markerPathStr}'")
+            sh("echo started >> '${markerPathStr}'; sleep 8; echo done >> '${markerPathStr}'")
         }
     }
 }
@@ -418,7 +425,7 @@ pipeline {
             .start()
         processes.add(jvm1)
 
-        // Wait for "started" marker
+        // Wait for "started" marker (state positioning — rule 10)
         val startedDeadline = System.currentTimeMillis() + 60_000
         while (System.currentTimeMillis() < startedDeadline) {
             if (Files.exists(markerPath) && Files.readString(markerPath).contains("started")) {
@@ -432,10 +439,10 @@ pipeline {
             "Marker should contain 'started' within 60s"
         )
 
-        // Kill JVM1 mid-step (during sleep 60)
+        // Kill JVM1 mid-step (during sleep 8)
         jvm1.destroyForcibly().waitFor()
 
-        // Wait for detached script to complete alone
+        // Wait for the DETACHED script to complete (durable pattern: script survives JVM kill)
         val doneDeadline = System.currentTimeMillis() + 30_000
         while (System.currentTimeMillis() < doneDeadline) {
             if (Files.exists(markerPath) && Files.readString(markerPath).contains("done")) {
@@ -443,28 +450,53 @@ pipeline {
             }
             Thread.sleep(500)
         }
+        assertTrue(
+            Files.exists(markerPath) && Files.readString(markerPath).contains("done"),
+            "Detached script should complete after JVM kill (durability)"
+        )
 
-        // Find the opId from the journal
+        // JVM2: resume with the SAME profile — classification happens HERE
+        val jvm2 = ProcessBuilder(
+            javaHome + "/bin/java",
+            "-cp", classpath,
+            "dev.rubentxu.pipeline.v2.application.MainKt",
+            "run",
+            "--db", dbPath.toString(),
+            "--control-root", controlRoot.toString(),
+            "--sandbox-profile", "local",
+            "--resume",
+            scriptPath.toString()
+        )
+            .directory(tempDir.toFile())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+            .start()
+        processes.add(jvm2)
+        val jvm2Out = jvm2.inputStream.bufferedReader().readText()
+        jvm2.waitFor()
+
+        val runFinished = findRunFinished(jvm2Out)
+        assertEquals("success", runFinished, "Resume under LOCAL should re-attach and succeed. stdout=$jvm2Out")
+
+        // NO re-execution: 'done' appears exactly once
+        val doneCount = Files.readString(markerPath).split("done").size - 1
+        assertEquals(1, doneCount, "Resume must NOT re-execute the completed step. marker=" + Files.readString(markerPath))
+
+        // INV-3: a kill is NOT a deadline — final status must never be FAILED_TIMEOUT
         val opId = findOpId(controlRoot)
         assertNotNull(opId, "Should find an opId in journal")
-
-        // Read journal status
         val journal = SqliteOperationJournalImpl(
-            { java.sql.DriverManager.getConnection("jdbc:sqlite:${dbPath.toAbsolutePath()}") },
+            { java.sql.DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath()) },
             SystemClock(),
             Json { ignoreUnknownKeys = true; encodeDefaults = true },
             dbPath.toAbsolutePath().toString()
         )
-
         val op = journal.get(opId!!)
         assertNotNull(op, "Journal should have entry for opId=$opId")
-
-        // SB-S-007: under LOCAL, kill-mid-step should produce LOST (not FAILED_TIMEOUT)
-        // The watchdog times out, but under LOCAL the step is LOST, not FAILED_TIMEOUT
-        assertEquals(
-            OperationStatus.LOST,
+        assertNotEquals(
+            OperationStatus.FAILED_TIMEOUT,
             op!!.status,
-            "Kill-mid-step under LOCAL should produce LOST status, got=${op.status} (SB-S-007 / INV-3)"
+            "Kill-mid-step under LOCAL must NEVER classify FAILED_TIMEOUT (INV-3). got=$op"
         )
     }
 
@@ -605,7 +637,7 @@ pipeline {
 pipeline {
     stages {
         stage("TestStage") {
-            sh("echo started >> '${markerPathStr}'; sleep 60; echo done >> '${markerPathStr}'")
+            sh("echo started >> '${markerPathStr}'; sleep 8; echo done >> '${markerPathStr}'")
         }
     }
 }
@@ -677,18 +709,21 @@ pipeline {
         val jvm2Out = jvm2.inputStream.bufferedReader().readText()
         jvm2.waitFor()
 
-        // SB-S-010: resume with profile change should re-attach (not re-execute)
-        // If it re-attaches, "done" should appear only once (not twice from re-execution)
-        val markerContent = Files.readString(markerPath)
-        val doneCount = markerContent.lines().count { it == "done" }
+        // SB-S-010 (semantics corrected per D4): LOCAL enters the operation fingerprint,
+        // so a resume with a CHANGED profile must FAIL CLOSED (DivergenceException) —
+        // it must NOT silently re-attach under different confinement semantics, and it
+        // must NOT re-execute the step.
+        val jvm2Finished = findRunFinished(jvm2Out)
         assertEquals(
-            1,
-            doneCount,
-            "Resume with profile change should not re-execute (done should appear exactly once). marker: ${markerContent}, jvm2Out: $jvm2Out (SB-S-010)"
+            "failure", jvm2Finished,
+            "Resume with profile change (none->local) must fail closed per D4 fingerprint. stdout=$jvm2Out"
+        )
+        val doneCount = Files.readString(markerPath).split("done").size - 1
+        assertEquals(
+            1, doneCount,
+            "Failed-closed resume must NOT re-execute (done exactly once, from the detached original). marker=" + Files.readString(markerPath)
         )
     }
-
-    // ─── UAT-L7-TC Scenarios ────────────────────────────────────────────────────
 
     /**
      * UAT-L7-TC-001: class-level @Timeout(value = 120, unit = TimeUnit.SECONDS) declared.
@@ -739,6 +774,7 @@ pipeline {
         controlRoot: Path,
         scriptPath: Path,
         extraArgs: Array<String> = emptyArray(),
+        env: Map<String, String> = emptyMap(),
     ): String {
         val args = mutableListOf(
             javaHome + "/bin/java",
@@ -755,6 +791,9 @@ pipeline {
             .directory(scriptPath.parent.toFile())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
+        if (env.isNotEmpty()) {
+            pb.environment().putAll(env)
+        }
 
         val process = pb.start()
         processes.add(process)

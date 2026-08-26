@@ -11,6 +11,7 @@
 | [`00-context/VISION.md`](00-context/VISION.md) | Visión V2 |
 | [`01-product/DEVELOPER_EXPERIENCE.md`](01-product/DEVELOPER_EXPERIENCE.md) | Developer Experience |
 | [`01-product/JENKINS_FAMILIARITY.md`](01-product/JENKINS_FAMILIARITY.md) | Jenkins Familiarity Contract |
+| [`01-product/JENKINS_FAMILIARITY_CATALOG.md`](01-product/JENKINS_FAMILIARITY_CATALOG.md) | Canonical Jenkins step-signature catalog (source-verified) |
 | [`01-product/PRD_V2.md`](01-product/PRD_V2.md) | PRD — Pipeline Kotlin V2 |
 | [`02-architecture/ARCHITECTURE.md`](02-architecture/ARCHITECTURE.md) | Arquitectura V2 |
 | [`02-architecture/C4.md`](02-architecture/C4.md) | C4 Model |

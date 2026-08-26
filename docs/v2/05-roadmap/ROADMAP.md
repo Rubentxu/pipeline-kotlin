@@ -238,7 +238,9 @@ steps de ecosistema — sin controller externo.
 - L4: credentials provider local + redacción de secretos en logs/events.
 - L5: `checkout`/git step.
 - L6: steps Jenkins más usados (writeFile/readFile, archiveArtifacts mínimo,
-  wrappers maven/gradle).
+  wrappers maven/gradle). Selección y firmas según
+  [`../01-product/JENKINS_FAMILIARITY_CATALOG.md`](../01-product/JENKINS_FAMILIARITY_CATALOG.md)
+  (top-25 verificado; ver ADR-0005 amendment).
 - L7: smoke E2E sobre repos reales famosos (build con Gradle/Maven wrapper).
 
 ### No hacer

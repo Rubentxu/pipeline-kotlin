@@ -760,7 +760,7 @@ private suspend fun executeDurableStepImpl(
                             env = shellStep.env ?: emptyMap(),
                         )
                         val opIdObj = OpId(runId, stageIndex, stepIndex)
-                        val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions, eventSink)
+                        val result = ShExecution.runShStep(shellStep, opIdObj, runId, stageIndex, stepIndex, effectiveShOptions, controlDirRoot, eventSink)
                         if (classification is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost) {
                             // Override result to signal LOST to caller
                             "lost"

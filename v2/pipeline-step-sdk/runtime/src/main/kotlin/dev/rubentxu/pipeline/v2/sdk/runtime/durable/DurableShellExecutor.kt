@@ -130,6 +130,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * @param opId The operation ID.
      * @param config The durable shell configuration.
      * @param captureStdout If true, capture stdout to output.txt via tee wrapper.
+     * @param env Environment variables to inject via pb.environment().putAll (P2: env via env map, NOT argv).
      * @return The process handle.
      */
     fun launch(
@@ -138,6 +139,7 @@ class DurableShellExecutor : DurableShellLaunching {
         opId: String,
         config: DurableShConfig,
         captureStdout: Boolean,
+        env: Map<String, String> = emptyMap(),
     ): ProcessHandle {
         checkLinuxOrThrow()
 
@@ -175,10 +177,15 @@ class DurableShellExecutor : DurableShellLaunching {
         val pb = ProcessBuilder("sh", "-c", wrapper)
         pb.directory(controlDir.toFile())
 
-        // Pass cookie via environment (NOT argv — this is critical for P2)
-        val env = pb.environment()
-        env["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
-        env["DURABLE_SH_OPID"] = opId
+        // P2: inject user env via pb.environment().putAll (NOT argv)
+        val pbEnv = pb.environment()
+        // Internal durable vars first (P2: these are internal, not user-provided)
+        pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
+        pbEnv["DURABLE_SH_OPID"] = opId
+        // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
+        if (env.isNotEmpty()) {
+            pbEnv.putAll(env)
+        }
 
         // Redirect stdin/stdout/stderr to prevent leakage
         // stdin: inherit to avoid blocking on input (nohup handles this)
@@ -444,12 +451,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * @param controlDir The control directory path.
      */
     private fun writeTimeoutFlag(controlDir: Path) {
-        try {
-            val flagFile = controlDir.resolve("timeout.flag")
-            Files.writeString(flagFile, System.currentTimeMillis().toString())
-        } catch (_: Exception) {
-            // Don't fail if we can't write the flag
-        }
+        writeTimeoutFlagInternal(controlDir)
     }
 
     /**
@@ -491,7 +493,8 @@ class DurableShellExecutor : DurableShellLaunching {
 
         try {
             // Step 1: Launch
-            process = launch(controlDir, scriptContent, opId, config, captureStdout)
+            // P2: shOptions.env is injected via pb.environment().putAll in launch()
+            process = launch(controlDir, scriptContent, opId, config, captureStdout, shOptions.env)
             state = DurableShellState.LAUNCHING
 
             // Step 2: Detach
@@ -571,6 +574,24 @@ class DurableShellExecutor : DurableShellLaunching {
 }
 
 /**
+ * Writes the timeout.flag file to signal that the watchdog triggered.
+ * Top-level to be accessible from both DurableShellExecutor members and executeDurableShell.
+ *
+ * Per TMO-S-005: timeout.flag MUST be written BEFORE kill to ensure
+ * the reconciler can distinguish TIMED_OUT from LOST.
+ *
+ * @param controlDir The control directory path.
+ */
+private fun writeTimeoutFlagInternal(controlDir: Path) {
+    try {
+        val flagFile = controlDir.resolve("timeout.flag")
+        Files.writeString(flagFile, System.currentTimeMillis().toString())
+    } catch (_: Exception) {
+        // Don't fail if we can't write the flag
+    }
+}
+
+/**
  * Executes a durable shell step with full state machine.
  *
  * ## Crash-Safe Order (C5)
@@ -592,6 +613,8 @@ class DurableShellExecutor : DurableShellLaunching {
  * @param scriptContent The user's shell script.
  * @param opId The operation ID.
  * @param config The durable shell configuration.
+ * @param timeoutMs Timeout in milliseconds (0 = no timeout, per TMO-S-013).
+ * @param env Environment variables to inject via pb.environment().putAll (P2: env via env map, NOT argv).
  * @return The execution result.
  */
 fun executeDurableShell(
@@ -599,25 +622,62 @@ fun executeDurableShell(
     scriptContent: String,
     opId: String,
     config: DurableShConfig = DurableShConfig.fromSystemProperties(),
+    timeoutMs: Long = 0L,
+    env: Map<String, String> = emptyMap(),
 ): DurableShellResult {
     val executor = DurableShellExecutor()
     var state = DurableShellState.LAUNCHING
     var exitCode = -1
     var process: ProcessHandle? = null
+    var timedOut = false
 
     try {
-        // Step 1: Launch
-        process = executor.launch(controlDir, scriptContent, opId, config)
+        // Step 1: Launch (P2: env injected via pb.environment().putAll in launch())
+        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env)
         state = DurableShellState.LAUNCHING
 
         // Step 2: Detach
         executor.detach(process, controlDir)
         state = DurableShellState.RUNNING
 
-        // Step 3: Poll for result (with reasonable timeout)
-        exitCode = executor.pollResult(controlDir, timeoutMs = 3600_000) ?: -1
-        // If we got here, result.txt exists
-        state = DurableShellState.COMPLETE
+        // Step 3: Poll for result with optional timeout
+        // If timeoutMs > 0, schedule watchdog thread (per TMO-S-005: flag BEFORE kill)
+        val watchdogThread = if (timeoutMs > 0) {
+            Thread {
+                try {
+                    Thread.sleep(timeoutMs)
+                    writeTimeoutFlagInternal(controlDir)
+                    try {
+                        val pid = process.pid()
+                        ProcessBuilder("setsid", "-f", "kill", "-9", "-$pid").start().waitFor()
+                    } catch (_: Exception) {
+                        process.destroyForcibly()
+                    }
+                    timedOut = true
+                } catch (_: InterruptedException) {
+                    // Normal interruption - timeout was cancelled
+                }
+            }.apply { start() }
+        } else null
+
+        // Poll for result
+        exitCode = executor.pollResult(controlDir, timeoutMs = if (timeoutMs > 0) timeoutMs + 30_000 else 3600_000) ?: -1
+
+        // Cancel watchdog if still running
+        watchdogThread?.interrupt()
+
+        // If we exited due to timeout
+        if (timedOut) {
+            state = DurableShellState.TIMED_OUT
+            // One grace poll cycle - late exit wins per TMO-S-009
+            val graceExitCode = executor.pollResult(controlDir, 1000)
+            if (graceExitCode != null) {
+                exitCode = graceExitCode
+                state = DurableShellState.COMPLETE
+            }
+        } else {
+            state = DurableShellState.COMPLETE
+        }
 
         return DurableShellResult(
             state = state,
@@ -629,7 +689,7 @@ fun executeDurableShell(
         throw e
     } catch (e: Exception) {
         // Unexpected error during launch/detach/poll
-        state = DurableShellState.LOST
+        state = if (timedOut) DurableShellState.TIMED_OUT else DurableShellState.LOST
         exitCode = -1
         return DurableShellResult(
             state = state,

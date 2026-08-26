@@ -47,6 +47,7 @@ object ShExecution {
      * @param stageIndex The stage index for workspace naming.
      * @param stepIndex The step index for event sequencing.
      * @param shOptions Shell execution options (workspaceRoot, captureStdout, timeoutMs, env).
+     * @param controlDirRoot The explicit control directory root (null = non-durable fallback).
      * @param eventSink The event sink for emitting EchoOutputCaptured events.
      * @return "success" if exit code is 0, "failure" otherwise.
      */
@@ -57,37 +58,40 @@ object ShExecution {
         stageIndex: Int,
         stepIndex: Int,
         shOptions: ShOptions,
+        controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
     ): String {
-        // Derive controlDirRoot from shOptions.workspaceRoot:
-        // workspaceRoot is <controlRoot>/workspace/<stageName>-<stageIndex>/...
-        // parent = <controlRoot>/workspace/, parent.parent = <controlRoot>
-        val derivedControlDirRoot = shOptions.workspaceRoot.parent?.parent
-        if (derivedControlDirRoot == null) {
-            // Fallback to non-durable execution if no control dir root
+        // Use explicit controlDirRoot if provided; null means non-durable fallback
+        // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
+        // we fall back to direct bash -c which works without filesystem privileges)
+        if (controlDirRoot == null) {
+            // Non-durable fallback: env goes via argv for this path only (P2: env in argv
+            // is acceptable here because this is NOT a durable-path launch)
             val argv = listOf("bash", "-c", step.command)
             val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
             return if (result.exitCode != 0) "failure" else "success"
         }
 
-        val workspaceResolver = WorkspaceResolver(derivedControlDirRoot)
+        val workspaceResolver = WorkspaceResolver(controlDirRoot)
         val workspacePath = workspaceResolver.ensureCreated(
             workspaceResolver.resolve("stage-$stageIndex", stageIndex)
         )
 
         val effectiveOptions = shOptions.copy(workspaceRoot = workspacePath)
         // controlDir is sibling to workspace: {controlDirRoot}/{opId}
-        val controlDir = derivedControlDirRoot.resolve(opId.format())
+        val controlDir = controlDirRoot.resolve(opId.format())
 
         return try {
             val config = DurableShConfig.fromSystemProperties()
 
             // Execute with tee-gated wrapper if captureStdout is enabled
+            // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
+            // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
             val result: DurableShellResult = if (effectiveOptions.captureStdout) {
                 val executor = DurableShellExecutor()
                 executor.execute(controlDir, step.command, opId.format(), effectiveOptions)
             } else {
-                executeDurableShell(controlDir, step.command, opId.format(), config)
+                executeDurableShell(controlDir, step.command, opId.format(), config, effectiveOptions.timeoutMs ?: 0L, effectiveOptions.env)
             }
 
             // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)
@@ -123,7 +127,9 @@ object ShExecution {
                 DurableShellState.RUNNING -> "failure"
             }
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
-            // Fallback to non-durable on non-Linux
+            // Non-durable fallback for non-Linux platforms (P2: env NOT propagated on this path
+            // since the fallback is a best-effort non-durable shell — env injection via pb.environment
+            // only applies to the durable execution path below)
             val argv = listOf("bash", "-c", step.command)
             val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
             if (result.exitCode != 0) "failure" else "success"
@@ -159,7 +165,7 @@ object ShExecution {
         eventSink: EventSink,
     ): String {
         if (controlDirRoot == null) {
-            // Non-durable fallback for branch steps
+            // Non-durable fallback for branch steps (W6 fold: bash -c on non-durable path is acceptable)
             val argv = listOf("bash", "-c", command)
             val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
             return if (result.exitCode != 0) "failure" else "success"
@@ -182,7 +188,8 @@ object ShExecution {
                 val executor = DurableShellExecutor()
                 executor.execute(controlDir, command, branchOpId.format(), effectiveOptions)
             } else {
-                executeDurableShell(controlDir, command, branchOpId.format(), config)
+                // P2: env via pb.environment().putAll; timeout via timeoutMs parameter
+                executeDurableShell(controlDir, command, branchOpId.format(), config, effectiveOptions.timeoutMs ?: 0L, effectiveOptions.env)
             }
 
             when (result.state) {
@@ -196,7 +203,10 @@ object ShExecution {
                 DurableShellState.RUNNING -> "failure"
             }
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
-            val argv = listOf("bash", "-c", "")
+            // Non-durable fallback for non-Linux: use bash -c with the actual command
+            // (W6 fold: bash -c on non-durable fallback is acceptable; the durable path
+            // threw LinuxRequiredException so this is the explicit non-durable alternative)
+            val argv = listOf("bash", "-c", command)
             val result = sdkSh(StepContext(runId = runId), argv, eventSink, stepIndex)
             if (result.exitCode != 0) "failure" else "success"
         } catch (e: Exception) {

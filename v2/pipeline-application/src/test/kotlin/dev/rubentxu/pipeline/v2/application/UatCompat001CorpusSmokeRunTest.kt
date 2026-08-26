@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
  * Verifies that all 6 corpus fixtures compile and run successfully.
  * Closes E2-06 + M2 exit criterion.
  */
+@Timeout(120)
 class UatCompat001CorpusSmokeRunTest {
 
     private fun discoverFixtures(): List<Path> {

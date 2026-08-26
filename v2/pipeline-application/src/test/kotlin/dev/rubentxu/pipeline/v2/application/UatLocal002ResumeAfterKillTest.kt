@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -17,6 +18,7 @@ import java.nio.file.Path
  *
  * Uses: MainKt run + run --resume (full orchestration, not MinMainKt)
  */
+@Timeout(120)
 class UatLocal002ResumeAfterKillTest {
 
     @Test

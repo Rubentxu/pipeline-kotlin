@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -20,6 +21,7 @@ import java.nio.file.Path
  *
  * This is the W5 fold: stale heartbeat detection.
  */
+@Timeout(120)
 class UatLocal006LostHeartbeatTest {
 
     @Test

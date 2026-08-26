@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
 
@@ -35,6 +36,7 @@ import java.nio.file.Path
  *
  * Uses StepSpec.Shell with isScriptBlock=true to represent script {} DSL.
  */
+@Timeout(120)
 class UatDurable003ScriptBlockReplayTest {
 
     @TempDir

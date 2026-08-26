@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 
@@ -43,6 +44,7 @@ import kotlinx.coroutines.runBlocking
  *   re-attaches and completes it. Branches 0 and 2 are NOT re-executed.
  *   Counter files prove each branch ran exactly once.
  */
+@Timeout(120)
 class UatDurable009KillResumeBranchTest {
 
     @TempDir
@@ -55,6 +57,7 @@ class UatDurable009KillResumeBranchTest {
      *
      * NOT thread-safe. Not for production use.
      */
+@Timeout(120)
     class MutableClock(private var currentInstant: java.time.Instant) : Clock {
         override fun now(): java.time.Instant = currentInstant
 

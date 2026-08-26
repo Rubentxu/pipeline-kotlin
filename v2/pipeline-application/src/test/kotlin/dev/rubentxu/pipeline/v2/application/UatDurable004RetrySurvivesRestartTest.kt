@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Path
@@ -44,6 +45,7 @@ import kotlin.io.path.writeText
  * Pattern: mirrors UatDurable001ReplaySurvivesRestartTest setup style
  * (in-memory SqliteEventStore + PipelineOrchestrator wired with all durable deps).
  */
+@Timeout(120)
 class UatDurable004RetrySurvivesRestartTest {
 
     @TempDir

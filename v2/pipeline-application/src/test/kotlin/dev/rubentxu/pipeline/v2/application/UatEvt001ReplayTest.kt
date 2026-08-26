@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -23,6 +24,7 @@ import java.nio.file.Paths
  * UAT-EVT-001: CLI invocation produces a JSON event log that can be re-parsed
  * and yields the same timeline across two invocations.
  */
+@Timeout(120)
 class UatEvt001ReplayTest {
 
     private val appBin: Path by lazy {

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 
@@ -44,6 +45,7 @@ import kotlinx.coroutines.runBlocking
  * 2. Run 2 (resume): reconciliation finds RUNNING row with ended_at NOT NULL and matching
  *    fingerprint → marks SUCCEEDED with cached output. No re-execution occurs.
  */
+@Timeout(120)
 class UatDurable006KillDuringInProgressTest {
 
     @TempDir
@@ -56,6 +58,7 @@ class UatDurable006KillDuringInProgressTest {
      *
      * NOT thread-safe. Not for production use.
      */
+@Timeout(120)
     class MutableClock(private var currentInstant: java.time.Instant) : Clock {
         override fun now(): java.time.Instant = currentInstant
 

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 
 /**
@@ -38,6 +39,7 @@ import java.nio.file.Path
  * Uses in-memory fakes for OperationJournal, ReplayCursorStore, Clock
  * as specified in the task requirements.
  */
+@Timeout(120)
 class UatDurable008ParallelFramesTest {
 
     @TempDir

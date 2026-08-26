@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -20,6 +21,7 @@ import java.nio.file.Path
  * Note: DSL keyword returnStdout=true may not yet expose captured stdout as
  * Kotlin return value — tests execution contract (output.txt written), not DSL return.
  */
+@Timeout(120)
 class UatLocal003ReturnStdoutTest {
 
     @Test

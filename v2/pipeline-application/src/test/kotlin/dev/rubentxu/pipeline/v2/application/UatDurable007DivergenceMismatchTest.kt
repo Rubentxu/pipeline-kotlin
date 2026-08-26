@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 
@@ -36,6 +37,7 @@ import kotlinx.coroutines.runBlocking
  * 3. Second run attempts with SAME runId but DIFFERENT command (fingerprint B)
  * 4. Reconciliation detects fingerprint mismatch → DivergenceException
  */
+@Timeout(120)
 class UatDurable007DivergenceMismatchTest {
 
     @TempDir
@@ -48,6 +50,7 @@ class UatDurable007DivergenceMismatchTest {
      *
      * NOT thread-safe. Not for production use.
      */
+@Timeout(120)
     class MutableClock(private var currentInstant: java.time.Instant) : Clock {
         override fun now(): java.time.Instant = currentInstant
 

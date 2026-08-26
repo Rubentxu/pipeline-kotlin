@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -13,6 +14,7 @@ import java.nio.file.Paths
  * UAT-STEP-004: sleep timing
  * Tests that sleep blocks for at least N seconds and emits timing.
  */
+@Timeout(120)
 class UatStep004SleepTimingTest {
 
     private val appBin: Path by lazy {

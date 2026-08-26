@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -16,6 +17,7 @@ import java.nio.file.Paths
  * UAT-STEP-002: echo capture
  * Tests that echo emits EchoOutputCaptured event and preserves newlines.
  */
+@Timeout(120)
 class UatStep002EchoCaptureTest {
 
     private val appBin: Path by lazy {

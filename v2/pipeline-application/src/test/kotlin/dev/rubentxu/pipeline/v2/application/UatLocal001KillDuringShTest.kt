@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -25,6 +26,7 @@ import java.nio.file.Path
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
 @Tag("uat-local")
+@Timeout(120)
 class UatLocal001KillDuringShTest {
 
     @TempDir

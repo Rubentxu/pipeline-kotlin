@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 
@@ -37,6 +38,7 @@ import kotlinx.coroutines.runBlocking
  *
  * @see <a href="design.md §4.6">Design §4.6 Step 15</a>
  */
+@Timeout(120)
 class UatDurable001ReplaySurvivesRestartTest {
 
     @TempDir

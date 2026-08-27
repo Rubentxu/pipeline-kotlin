@@ -163,6 +163,10 @@ fun main(args: Array<String>) {
     // The canary value GHS6_CANARY_7f3a9c2e1b4d5e6f is never used in any real credential.
     secretPatternRegistry.addSecret(SecretHandle.plain("GHS6_CANARY_7f3a9c2e1b4d5e6f"))
 
+    // CR-RD-021 ssh canary: synthetic secret for SSH channel round-gate verification.
+    // The canary value SSH_CANARY_9a8b7c6d5e4f3a2b is never used in any real SSH credential.
+    secretPatternRegistry.addSecret(SecretHandle.plain("SSH_CANARY_9a8b7c6d5e4f3a2b"))
+
     val scriptPath = Paths.get(config.scriptPath!!)
 
     if (command == "validate") {

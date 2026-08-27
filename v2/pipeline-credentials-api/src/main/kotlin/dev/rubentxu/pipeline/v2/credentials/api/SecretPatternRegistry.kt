@@ -130,12 +130,41 @@ class SecretPatternRegistry {
      */
     fun size(): Int = registeredSecrets.size
 
+    /**
+     * Scrubs all registered secret patterns from a string.
+     *
+     * This is a standalone scrub for use cases like [GitCheckoutFailed.reason]
+     * where the error message may contain embedded credentials that need to be
+     * redacted before the event is emitted.
+     *
+     * INV-L6-CR-013: `GitCheckoutFailed.reason` must be scrubbed via this method
+     * before construction of the event.
+     *
+     * @param input The string to scrub
+     * @return The scrubbed string with all registered secrets replaced by "****"
+     */
+    fun scrub(input: String): String {
+        val patterns = buildActivePatterns()
+        if (patterns.isEmpty()) return input
+
+        var result = input
+        for (pattern in patterns) {
+            result = pattern.replace(result, SCRUB_MARKER)
+        }
+        return result
+    }
+
     companion object {
         /**
          * GitLab minimum maskable secret length.
          * Secrets below this threshold are NOT registered for masking.
          */
         const val MIN_MASKABLE_LENGTH = 8
+
+        /**
+         * Marker used to replace scrubbed secret values.
+         */
+        const val SCRUB_MARKER = "****"
 
         /**
          * URL-encodes a string for the common special chars in secrets.

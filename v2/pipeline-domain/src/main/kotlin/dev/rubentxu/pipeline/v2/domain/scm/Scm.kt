@@ -46,16 +46,21 @@ data class SecretHandleRef(
 )
 
 /**
- * Git credentials — two-channel auth.
+ * Git credentials — three-channel auth.
  * INV-L5-CR-005: typed carriers only, no Map<String,String>.
  * INV-L5-CR-004: credentials NEVER enter argv — temp files + GIT_CONFIG_GLOBAL only.
+ * INV-L6-CR-011: git credential scope decided by git itself — no host literals.
  *
  * @param string SecretHandleRef for API token (string channel)
  * @param user SecretHandleRef for username (usernamePassword channel)
  * @param pass SecretHandleRef for password (usernamePassword channel)
+ * @param sshKey SecretHandleRef for SSH private key (SSH channel)
+ * @param sshPassphrase Optional SecretHandleRef for SSH key passphrase (SSH channel)
  */
 data class GitCredentials(
     val string: SecretHandleRef? = null,
     val user: SecretHandleRef? = null,
     val pass: SecretHandleRef? = null,
+    val sshKey: SecretHandleRef? = null,
+    val sshPassphrase: SecretHandleRef? = null,
 )

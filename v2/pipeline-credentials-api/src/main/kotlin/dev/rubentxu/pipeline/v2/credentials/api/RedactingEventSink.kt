@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFailed
 
@@ -31,6 +32,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
  * - [StepFailed.message]
  * - [CompilationFinished.diagnostics][*].message
  * - [RunFinished.diagnostics][*].message
+ * - [GitCheckoutFailed.reason] — INV-L6-CR-013 (scrubbed to prevent credential leakage)
  *
  * ## Performance
  *
@@ -84,6 +86,11 @@ class RedactingEventSink(
                 diagnostics = event.diagnostics.map { diag ->
                     diag.copy(message = scrubString(diag.message, patterns))
                 }
+            )
+            // INV-L6-CR-013: GitCheckoutFailed.reason may contain embedded credentials in URLs.
+            // Scrub the reason field to prevent credential leakage in CI logs.
+            is GitCheckoutFailed -> event.copy(
+                reason = scrubString(event.reason, patterns)
             )
             // Other event types pass through unchanged
             else -> event

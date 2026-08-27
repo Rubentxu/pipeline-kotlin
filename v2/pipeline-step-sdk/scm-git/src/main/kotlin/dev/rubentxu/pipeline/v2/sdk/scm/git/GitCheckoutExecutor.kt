@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.MismatchedSecretException
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
@@ -39,6 +41,7 @@ import java.util.concurrent.TimeUnit
  * @param credentialsApplier GitCredentialsApplier for temp file auth
  * @param clock Clock for event timestamps
  * @param secretStore SecretStore for credential resolution (may be null in test paths)
+ * @param secretPatternRegistry SecretPatternRegistry for scrubbing GitCheckoutFailed.reason (INV-L6-CR-013)
  */
 class GitCheckoutExecutor(
     private val poll: GitPollExecutor,
@@ -46,6 +49,7 @@ class GitCheckoutExecutor(
     private val credentialsApplier: GitCredentialsApplier,
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: SecretStore? = null,
+    private val secretPatternRegistry: SecretPatternRegistry = SecretPatternRegistry(),
 ) : AutoCloseable {
 
     companion object {
@@ -96,6 +100,8 @@ class GitCheckoutExecutor(
             val stringCred = gitCreds.string
             val userCred = gitCreds.user
             val passCred = gitCreds.pass
+            val sshKeyCred = gitCreds.sshKey
+            val sshPassphraseCred = gitCreds.sshPassphrase
             when {
                 stringCred != null -> {
                     credentialsApplier.apply(stringCred)
@@ -105,6 +111,9 @@ class GitCheckoutExecutor(
                     credentialsApplier.apply(userCred, passCred)
                     gitConfigFilePath = credentialsApplier.gitConfigFilePath()
                 }
+                sshKeyCred != null -> {
+                    credentialsApplier.applySsh(sshKeyCred, sshPassphraseCred)
+                }
             }
         }
 
@@ -113,6 +122,10 @@ class GitCheckoutExecutor(
                 .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
+            // INV-L6-CR-013: GitCheckoutFailed.reason must be scrubbed before emission.
+            // Scrub removes registered secret patterns (canaries + real credentials).
+            val rawReason = e.message?.take(256) ?: "Unknown error"
+            val scrubbedReason = secretPatternRegistry.scrub(rawReason)
             emitEvent(req, GitCheckoutFailed(
                 eventId = newEventId(),
                 runId = req.runId,
@@ -120,7 +133,7 @@ class GitCheckoutExecutor(
                 occurredAt = Instant.now(clock),
                 url = spec.url,
                 branch = spec.branch,
-                reason = e.message?.take(256) ?: "Unknown error",
+                reason = scrubbedReason,
                 exitCode = -1
             ))
             Result.failure(e)
@@ -151,7 +164,7 @@ class GitCheckoutExecutor(
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
-                reason = errorMsg.take(256),
+                reason = scrubReason(errorMsg.take(256)),
                 exitCode = 128
             ))
             return Result.failure(remoteShaResult.exceptionOrNull() ?: IllegalStateException(errorMsg))
@@ -204,7 +217,7 @@ class GitCheckoutExecutor(
                     occurredAt = Instant.now(clock),
                     url = url,
                     branch = branch,
-                    reason = "Fetch failed: ${fetchResult.exceptionOrNull()?.message}".take(256),
+                    reason = scrubReason("Fetch failed: ${fetchResult.exceptionOrNull()?.message}".take(256)),
                     exitCode = 128
                 ))
                 return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
@@ -220,7 +233,7 @@ class GitCheckoutExecutor(
                     occurredAt = Instant.now(clock),
                     url = url,
                     branch = branch,
-                    reason = "Reset failed: ${resetResult.exceptionOrNull()?.message}".take(256),
+                    reason = scrubReason("Reset failed: ${resetResult.exceptionOrNull()?.message}".take(256)),
                     exitCode = 128
                 ))
                 return Result.failure(resetResult.exceptionOrNull() ?: IllegalStateException("Reset failed"))
@@ -258,7 +271,7 @@ class GitCheckoutExecutor(
                 occurredAt = Instant.now(clock),
                 url = url,
                 branch = branch,
-                reason = "Clone failed: ${cloneResult.exceptionOrNull()?.message}".take(256),
+                reason = scrubReason("Clone failed: ${cloneResult.exceptionOrNull()?.message}".take(256)),
                 exitCode = 128
             ))
             return Result.failure(cloneResult.exceptionOrNull() ?: IllegalStateException("Clone failed"))
@@ -292,7 +305,8 @@ class GitCheckoutExecutor(
         // This preserves backward compatibility with tests that construct GitCredentials directly.
         // However, apply() needs secretStore to resolve the actual secret bytes.
         val applierCreds = credentialsApplier.credentials
-        if (applierCreds.string != null || applierCreds.user != null || applierCreds.pass != null) {
+        if (applierCreds.string != null || applierCreds.user != null || applierCreds.pass != null ||
+            applierCreds.sshKey != null) {
             // Ensure secretStore is available — apply() will need it to resolve secret bytes
             if (secretStore == null && req.secretStore == null) {
                 throw IllegalStateException(
@@ -303,28 +317,53 @@ class GitCheckoutExecutor(
             return applierCreds
         }
         // Production path: resolve from SecretStore using credentialsId
+        // INV-L6-CR-001: kind is DECLARED, never inferred from byte content.
+        // INV-L6-CR-004: typed Credential hierarchy is the kind system.
         val credentialsId = spec.credentialsId ?: return null
         val store = secretStore ?: req.secretStore ?: return null
         return try {
-            val handle = store.getAsSecretHandle(credentialsId)
-            handle.use { bytes ->
-                // Infer credential kind: if bytes contain a colon, treat as usernamePassword,
-                // otherwise treat as string (API token). This heuristic covers the common cases.
-                val asStr = String(bytes, Charsets.UTF_8)
-                if (asStr.contains(":")) {
-                    // usernamePassword: split on first colon
-                    val colonIdx = asStr.indexOf(':')
-                    GitCredentials(
-                        string = null,
-                        user = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
-                        pass = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
-                    )
-                } else {
-                    // string (API token)
+            val credential = store.get(credentialsId)
+            // Pattern-match on DECLARED kind (INV-L6-CR-001)
+            when (credential) {
+                is dev.rubentxu.pipeline.v2.domain.credentials.SecretText -> {
+                    // String channel: API token via credential helper
                     GitCredentials(
                         string = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
                         user = null,
                         pass = null,
+                        sshKey = null,
+                        sshPassphrase = null,
+                    )
+                }
+                is dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword -> {
+                    // usernamePassword channel: basic auth via per-host config
+                    GitCredentials(
+                        string = null,
+                        user = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
+                        pass = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
+                        sshKey = null,
+                        sshPassphrase = null,
+                    )
+                }
+                is dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey -> {
+                    // SSH channel: private key via GIT_SSH_COMMAND
+                    GitCredentials(
+                        string = null,
+                        user = null,
+                        pass = null,
+                        sshKey = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
+                        sshPassphrase = credential.passphraseRef?.let {
+                            dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(it.credentialsId)
+                        },
+                    )
+                }
+                else -> {
+                    // Unsupported credential kind for git checkout
+                    // INV-L6-CR-010: MismatchedSecretException verbatim wording
+                    throw dev.rubentxu.pipeline.v2.domain.MismatchedSecretException(
+                        credentialId = credentialsId,
+                        expectedKind = "SecretText|UsernamePassword|SshPrivateKey",
+                        actualKind = credential::class.simpleName ?: "Unknown"
                     )
                 }
             }
@@ -435,6 +474,14 @@ class GitCheckoutExecutor(
         } catch (e: Exception) {
             System.err.println("Warning: failed to emit event ${event.kind}: ${e.message}")
         }
+    }
+
+    /**
+     * Scrubs a reason string using the secret pattern registry.
+     * INV-L6-CR-013: GitCheckoutFailed.reason must be scrubbed before emission.
+     */
+    private fun scrubReason(reason: String): String {
+        return secretPatternRegistry.scrub(reason)
     }
 
     private fun newEventId(): String = java.util.UUID.randomUUID().toString()

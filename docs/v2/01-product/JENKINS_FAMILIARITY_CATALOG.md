@@ -106,6 +106,13 @@ Source: `…/steps/credentials-binding/`
 
 **No `mask` binding exists.** Masking of bound variables in build logs is automatic behavior of the plugin; there is no `mask` parameter on any core binding.
 
+**v2 implementation (ML-R4 — L4):**
+- `withCredentials(id: String, purpose: BoundPurpose, block: () -> T)` — DSL entry point
+- Supported bindings at L4: `string` (→ `API_KEY` purpose), `usernamePassword` (→ `USERNAME_PASSWORD` purpose)
+- Deferred to ML-R4.1: `sshUserPrivateKey`, `file`, `certificate`, `zip`, and all plugin-contributed bindings
+- Error messages match Jenkins verbatim: missing ID → `"Could not find credentials entry with ID 'xxx'"`; type mismatch → `"Credentials 'xxx' is of type 'SshCredentials' where 'StringCredentials' was expected."`
+- See [[ADR-0049-credentials-local]] §D6
+
 ### 1.7 junit — v1424.vc64a_edde7777 (199k installs)
 Source: `…/steps/junit/`
 

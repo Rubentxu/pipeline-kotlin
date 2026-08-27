@@ -235,7 +235,7 @@ steps de ecosistema — sin controller externo.
   legacy) + `returnStdout` + timeouts reales.
 - L3: sandbox profile local (confinement workspace/env best-effort;
   perfil OS/container completo queda en M5/M9 per ADR-0016).
-- L4: credentials provider local + redacción de secretos en logs/events.
+- L4: credentials provider local + redacción de secretos en logs/events. ✅ **CLOSED (ML-R4, 2026-08-27)**
 - L5: `checkout`/git step.
 - L6: steps Jenkins más usados (writeFile/readFile, archiveArtifacts mínimo,
   wrappers maven/gradle). Selección y firmas según
@@ -246,6 +246,21 @@ steps de ecosistema — sin controller externo.
 ### No hacer
 No conectar controller/gateway externo (M4-rest); no Pods K8s (M5); no portar
 sandbox V1 (Security Manager); no protocolo de agente remoto.
+
+### ML exit criteria status
+
+| Sub-cycle | Status | Tag | Commit | Closure date |
+|---|---|---|---|---|
+| ML-R4 — L4 credentials local + secret redaction | ✅ CLOSED | — | 7abb609… | 2026-08-27 |
+
+**ML exit criteria status:**
+1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)
+2. ✅ L2 — workspace + environment + returnStdout + timeouts (ML-R2/R3)
+3. ✅ L3 — sandbox profile local (ML-R3, ADR-0048)
+4. ✅ L4 — credentials provider local + secret redaction (ML-R4, ADR-0049)
+5. ⬜ L5 — `checkout`/git step (deferred)
+6. ⬜ L6 — Jenkins top steps (deferred)
+7. ⬜ L7 — smoke E2E (deferred)
 
 ### Exit/UAT
 - UAT-LOCAL-001: kill del runner **durante** `sh` → resume SIN re-ejecución

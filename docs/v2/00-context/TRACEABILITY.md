@@ -24,3 +24,4 @@
 | Compat Kotlin | `SCRIPTING_COMPILER_SPEC` | ADR-0019 | M0+ | UAT-COMP-006 |
 | BTA futuro | `SCRIPTING_COMPILER_SPEC` | ADR-0020 | spike | SPIKE-007 |
 | Sandbox local | `EXECUTION_SANDBOX` | [[ADR-0048-sandbox-profile-local]] | ML | UAT-LOCAL-003 + UAT-LOCAL-007 |
+| Credentials local + secret redaction | `CREDENTIALS_PROVIDERS` | [[ADR-0049-credentials-local]] | ML-R4 | UAT-LOCAL-008 |

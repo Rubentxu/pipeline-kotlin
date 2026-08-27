@@ -50,7 +50,7 @@ class EnvModelTest {
 
     @Test
     fun `empty env returns empty map`() {
-        val result = EnvModel.apply(emptyMap())
+        val result: Map<String, String> = EnvModel.apply(emptyMap<String, String>())
         assertTrue(result.isEmpty())
     }
 

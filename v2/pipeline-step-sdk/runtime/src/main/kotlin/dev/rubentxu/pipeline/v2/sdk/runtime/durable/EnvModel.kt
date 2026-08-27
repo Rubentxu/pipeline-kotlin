@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+
 /**
  * Environment variable model for shell step execution.
  *
@@ -10,24 +12,83 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * This preserves V1 semantics where Maven/Gradle wrappers would work
  * with the expected PATH ordering.
  *
+ * ## ML-R4 Typed Env Channel
+ *
+ * The [apply] function is overloaded to handle both:
+ * - Legacy `Map<String, String>` (back-compat via [ShOptions.from])
+ * - Typed `Map<String, SecretHandle>` for ML-R4 secret redaction
+ *
+ * When using the typed form, masked entries (PATH manipulation) are skipped
+ * because the PATH prepend logic operates on the path string, not secret data.
+ *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
 object EnvModel {
 
     /**
-     * Applies environment variable transformations.
+     * Applies environment variable transformations for typed SecretHandle env.
      *
-     * Given the user-provided env map, this function:
-     * 1. Copies all entries to the output map
-     * 2. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH
+     * Given the user-provided typed env map, this function:
+     * 1. Copies all non-masked entries to the output map
+     * 2. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH (masked entries skipped)
      * 3. If M2_HOME is set, prepends `${M2_HOME}/bin` to PATH
      *
-     * The PATH prepend order is: JAVA_HOME/bin first, then M2_HOME/bin,
-     * matching V1 legacy semantics from `core/.../Shell.kt:80-95`.
+     * Masked entries (used for PATH manipulation) are skipped during transformation
+     * because PATH prepend logic operates on path strings, not secret data.
      *
-     * @param env The user-provided environment variables.
+     * @param env The typed user-provided environment variables.
      * @return The transformed environment with PATH adjustments.
      */
+    @JvmName("applyTyped")
+    fun apply(env: Map<String, SecretHandle>): Map<String, SecretHandle> {
+        // For the typed form, we need to:
+        // 1. Skip masked entries (PATH manipulation doesn't need secrets)
+        // 2. Apply PATH prepend logic using the materialized path values
+        // 3. Wrap transformed plain values back in SecretHandle.plain()
+        
+        // Get the PATH value before transformation (from a non-masked entry)
+        val pathHandle = env["PATH"]
+        val originalPath = pathHandle?.materialize() ?: System.getenv("PATH") ?: ""
+        
+        val out = mutableMapOf<String, SecretHandle>()
+        
+        // Copy all entries, skipping masked ones (they're PATH/etc, not secrets)
+        for ((key, handle) in env) {
+            if (!handle.isMasked) {
+                out[key] = handle
+            }
+        }
+        
+        // JAVA_HOME/bin prepend to PATH
+        val javaHomeHandle = env["JAVA_HOME"]
+        if (javaHomeHandle != null) {
+            val javaHome = javaHomeHandle.materialize()
+            val newPath = "${javaHome}/bin${if (originalPath.isNotEmpty()) ":$originalPath" else ""}"
+            out["PATH"] = SecretHandle.plain(newPath)
+        }
+        
+        // M2_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
+        val m2HomeHandle = env["M2_HOME"]
+        if (m2HomeHandle != null) {
+            val m2Home = m2HomeHandle.materialize()
+            val basePath = out["PATH"]?.materialize() ?: originalPath
+            val newPath = "${m2Home}/bin${if (basePath.isNotEmpty()) ":$basePath" else ""}"
+            out["PATH"] = SecretHandle.plain(newPath)
+        }
+        
+        return out
+    }
+
+    /**
+     * Applies environment variable transformations for legacy String env.
+     *
+     * This is a convenience wrapper that delegates to the typed form
+     * via [ShOptions.from] for back-compat with legacy callers.
+     *
+     * @param env The legacy user-provided environment variables.
+     * @return The transformed environment with PATH adjustments.
+     */
+    @JvmName("applyLegacy")
     fun apply(env: Map<String, String>): Map<String, String> {
         val out = env.toMutableMap()
 

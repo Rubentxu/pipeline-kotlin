@@ -63,6 +63,14 @@ class SecretHandle private constructor(
     internal constructor(bytes: ByteArray) : this(bytes, false)
 
     /**
+     * Returns true if this handle is masked (used for PATH, not secret).
+     * Masked handles are used for environment variables that should not be
+     * subject to secret redaction (e.g., PATH, JAVA_HOME).
+     */
+    val isMasked: Boolean
+        get() = masked
+
+    /**
      * Executes a block with access to the secret bytes.
      *
      * After the block completes, the handle is closed and the

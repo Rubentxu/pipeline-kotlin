@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -189,7 +190,7 @@ class DurableShellExecutor : DurableShellLaunching {
         opId: String,
         config: DurableShConfig,
         captureStdout: Boolean,
-        env: Map<String, String> = emptyMap(),
+        env: Map<String, SecretHandle> = emptyMap(),
         workspaceRoot: Path? = null,
         sandbox: SandboxConfig = SandboxConfig.NONE,
     ): ProcessHandle {
@@ -258,8 +259,21 @@ class DurableShellExecutor : DurableShellLaunching {
         }
 
         // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
+        // WS-S-022: coerce SecretHandle to String at pb.environment() putAll
         if (env.isNotEmpty()) {
-            pbEnv.putAll(env)
+            // Coerce SecretHandle to String at the single choke point
+            val coercedEnv: Map<String, String> = env.mapValues { entry -> entry.value.materialize() }
+            pbEnv.putAll(coercedEnv)
+            // WS-S-023: wipe handles after putAll
+            // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
+            for (handle in env.values) {
+                try {
+                    handle.close()
+                } catch (wipeError: Exception) {
+                    // Log but don't fail - wipe failure is non-fatal
+                    System.err.println("[DurableShellExecutor] Wipe warning: ${wipeError.message}")
+                }
+            }
         }
 
         // Redirect stdin to /dev/null to prevent blocking on input
@@ -938,9 +952,13 @@ fun executeDurableShell(
     var process: ProcessHandle? = null
     var timedOut = false
 
+    // Convert legacy Map<String, String> to typed Map<String, SecretHandle>
+    // This is the back-compat path for callers using the old API
+    val typedEnv: Map<String, SecretHandle> = env.mapValues { SecretHandle.plain(it.value) }
+
     try {
         // Step 1: Launch (P2: env injected via pb.environment().putAll in launch())
-        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot)
+        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = typedEnv, sandbox = sandbox, workspaceRoot = workspaceRoot)
         state = DurableShellState.LAUNCHING
 
         // Step 2: Detach

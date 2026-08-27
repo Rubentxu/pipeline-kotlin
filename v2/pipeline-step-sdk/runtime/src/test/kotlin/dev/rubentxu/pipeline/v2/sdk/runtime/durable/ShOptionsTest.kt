@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
@@ -16,18 +17,39 @@ class ShOptionsTest {
     }
 
     @Test
-    fun `ShOptions can be constructed with all values`() {
+    fun `ShOptions can be constructed with typed env`() {
         val tempDir = Files.createTempDirectory("test")
         val options = ShOptions(
             workspaceRoot = tempDir,
             captureStdout = true,
             timeoutMs = 60000L,
-            env = mapOf("FOO" to "bar"),
+            env = mapOf("FOO" to SecretHandle.plain("bar")),
         )
         assertEquals(tempDir, options.workspaceRoot)
         assertTrue(options.captureStdout)
         assertEquals(60000L, options.timeoutMs)
-        assertEquals("bar", options.env["FOO"])
+        assertEquals("bar", options.env["FOO"]?.materialize())
+    }
+
+    @Test
+    fun `ShOptions from factory converts Map String String to typed env`() {
+        val tempDir = Files.createTempDirectory("test")
+        val options = ShOptions.from(
+            env = mapOf("FOO" to "bar", "BAZ" to "qux")
+        ).copy(
+            workspaceRoot = tempDir,
+            captureStdout = false,
+            timeoutMs = null,
+        )
+        
+        // Verify the env contains SecretHandle instances
+        assertEquals(2, options.env.size)
+        assertTrue(options.env.containsKey("FOO"))
+        assertTrue(options.env.containsKey("BAZ"))
+        
+        // Verify the values are correct when materialized
+        assertEquals("bar", options.env["FOO"]?.materialize())
+        assertEquals("qux", options.env["BAZ"]?.materialize())
     }
 
     @Test
@@ -73,12 +95,12 @@ class ShOptionsTest {
             workspaceRoot = tempDir,
             captureStdout = true,
             timeoutMs = 30000L,
-            env = mapOf("KEY" to "value"),
+            env = mapOf("KEY" to SecretHandle.plain("value")),
         )
         val copy = original.copy()
         assertEquals(original.workspaceRoot, copy.workspaceRoot)
         assertEquals(original.captureStdout, copy.captureStdout)
         assertEquals(original.timeoutMs, copy.timeoutMs)
-        assertEquals(original.env, copy.env)
+        assertEquals(original.env["KEY"]?.materialize(), copy.env["KEY"]?.materialize())
     }
 }

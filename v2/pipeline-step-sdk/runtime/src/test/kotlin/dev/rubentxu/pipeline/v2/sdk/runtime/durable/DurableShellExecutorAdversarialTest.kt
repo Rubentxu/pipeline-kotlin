@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
@@ -578,7 +579,7 @@ print("shebang safe")
             workspaceRoot = controlDir,
             captureStdout = false,
             timeoutMs = null,
-            env = mapOf("KEY" to "value=with=equals"),
+            env = mapOf("KEY" to SecretHandle.plain("value=with=equals")),
         )
 
         // Use the execute function with env
@@ -600,7 +601,7 @@ print("shebang safe")
             workspaceRoot = controlDir,
             captureStdout = false,
             timeoutMs = null,
-            env = mapOf("RESULT" to "a=1,b=2,c=3"),
+            env = mapOf("RESULT" to SecretHandle.plain("a=1,b=2,c=3")),
         )
 
         val result = executor.execute(controlDir, script, "env-multi-equals-test", shOptions)
@@ -663,7 +664,7 @@ print("shebang safe")
             workspaceRoot = controlDir,
             captureStdout = false,
             timeoutMs = null,
-            env = mapOf("LD_PRELOAD" to "/tmp/evil.so"),
+            env = mapOf("LD_PRELOAD" to SecretHandle.plain("/tmp/evil.so")),
             sandbox = SandboxConfig.LOCAL,
         )
 
@@ -701,7 +702,7 @@ print("shebang safe")
             workspaceRoot = controlDir,
             captureStdout = false,
             timeoutMs = null,
-            env = mapOf("LD_PRELOAD" to "/tmp/keep.so"),
+            env = mapOf("LD_PRELOAD" to SecretHandle.plain("/tmp/keep.so")),
             sandbox = SandboxConfig.NONE,
         )
 

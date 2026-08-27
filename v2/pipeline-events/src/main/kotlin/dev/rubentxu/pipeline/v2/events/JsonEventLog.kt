@@ -512,8 +512,8 @@ object JsonEventLog {
                 content = stringField(s, "content") ?: "",
             )
             "CredentialBound" -> {
-                val purposeStr = stringField(s, "purpose") ?: "ENV"
-                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.ENV }
+                val purposeStr = stringField(s, "purpose") ?: "API_KEY"
+                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
                 val credIdStr = stringField(s, "credentialsId") ?: ""
                 CredentialBound(
                     eventId = eventId,
@@ -525,8 +525,8 @@ object JsonEventLog {
                 )
             }
             "CredentialUsed" -> {
-                val purposeStr = stringField(s, "purpose") ?: "ENV"
-                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.ENV }
+                val purposeStr = stringField(s, "purpose") ?: "API_KEY"
+                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
                 val credIdStr = stringField(s, "credentialsId") ?: ""
                 CredentialUsed(
                     eventId = eventId,

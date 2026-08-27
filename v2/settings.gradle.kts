@@ -32,4 +32,5 @@ include(
     ":pipeline-step-sdk:scm-git",
     ":pipeline-credentials-api",
     ":pipeline-credentials-local",
+    ":pipeline-credentials-multipart",
 )

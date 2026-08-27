@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.events
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.CredentialsRef
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
@@ -194,6 +195,51 @@ object JsonEventLog {
             is CredentialUnbound -> {
                 sb.append(",\"credentialsId\":")
                 sb.append(jsonString(event.credentialsId.value))
+            }
+            // L5 SCM Events
+            is GitCheckoutStarted -> {
+                sb.append(",\"url\":")
+                sb.append(jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(jsonString(event.branch))
+                if (event.credentialsRef != null) {
+                    sb.append(",\"credentialsRef\":")
+                    sb.append(jsonString(event.credentialsRef.id.value))
+                }
+            }
+            is GitCheckoutCompleted -> {
+                sb.append(",\"url\":")
+                sb.append(jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(jsonString(event.branch))
+                sb.append(",\"sha\":")
+                sb.append(jsonString(event.sha))
+                sb.append(",\"changelogPath\":")
+                sb.append(jsonString(event.changelogPath))
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs)
+            }
+            is GitCheckoutFailed -> {
+                sb.append(",\"url\":")
+                sb.append(jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(jsonString(event.branch))
+                sb.append(",\"reason\":")
+                sb.append(jsonString(event.reason))
+                sb.append(",\"exitCode\":")
+                sb.append(event.exitCode)
+            }
+            is GitPollChanged -> {
+                sb.append(",\"url\":")
+                sb.append(jsonString(event.url))
+                sb.append(",\"branch\":")
+                sb.append(jsonString(event.branch))
+                if (event.previousSha != null) {
+                    sb.append(",\"previousSha\":")
+                    sb.append(jsonString(event.previousSha))
+                }
+                sb.append(",\"newSha\":")
+                sb.append(jsonString(event.newSha))
             }
         }
         sb.append("}")
@@ -500,6 +546,71 @@ object JsonEventLog {
                     sequence = sequence,
                     occurredAt = occurredAt,
                     credentialsId = CredentialsId(credIdStr),
+                )
+            }
+            // L5 SCM Events
+            "GitCheckoutStarted" -> {
+                val url = stringField(s, "url") ?: ""
+                val branch = stringField(s, "branch") ?: ""
+                val credIdStr = stringField(s, "credentialsRef")
+                GitCheckoutStarted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = url,
+                    branch = branch,
+                    credentialsRef = credIdStr?.let { CredentialsRef(CredentialsId(it)) },
+                )
+            }
+            "GitCheckoutCompleted" -> {
+                val url = stringField(s, "url") ?: ""
+                val branch = stringField(s, "branch") ?: ""
+                val sha = stringField(s, "sha") ?: ""
+                val changelogPath = stringField(s, "changelogPath") ?: ""
+                val durationMs = longField(s, "durationMs") ?: 0L
+                GitCheckoutCompleted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = url,
+                    branch = branch,
+                    sha = sha,
+                    changelogPath = changelogPath,
+                    durationMs = durationMs,
+                )
+            }
+            "GitCheckoutFailed" -> {
+                val url = stringField(s, "url") ?: ""
+                val branch = stringField(s, "branch") ?: ""
+                val reason = stringField(s, "reason") ?: ""
+                val exitCode = intField(s, "exitCode") ?: 0
+                GitCheckoutFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = url,
+                    branch = branch,
+                    reason = reason,
+                    exitCode = exitCode,
+                )
+            }
+            "GitPollChanged" -> {
+                val url = stringField(s, "url") ?: ""
+                val branch = stringField(s, "branch") ?: ""
+                val previousSha = stringField(s, "previousSha")
+                val newSha = stringField(s, "newSha") ?: ""
+                GitPollChanged(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    url = url,
+                    branch = branch,
+                    previousSha = previousSha,
+                    newSha = newSha,
                 )
             }
             else -> null

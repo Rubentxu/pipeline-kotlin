@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.events
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.CredentialsRef
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
@@ -321,4 +322,106 @@ data class CredentialUnbound(
     val credentialsId: CredentialsId,
 ) : DomainEvent {
     override val kind: String get() = "CredentialUnbound"
+}
+
+// =============================================================================
+// L5 SCM Events (ML-R5)
+// =============================================================================
+
+/**
+ * Emitted when a git checkout step starts.
+ *
+ * BEFORE git ls-remote / clone / fetch — credentials are resolved but NOT yet used.
+ * Carries typed [credentialsRef] which is a CredentialsRef, NOT secret bytes.
+ * INV-CR-CR4: no secret material in event fields.
+ *
+ * @param url Repository URL
+ * @param branch Branch being checked out
+ * @param credentialsRef Typed carrier for credentials (not secret bytes)
+ */
+data class GitCheckoutStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val branch: String,
+    val credentialsRef: CredentialsRef?,
+) : DomainEvent {
+    override val kind: String get() = "GitCheckoutStarted"
+}
+
+/**
+ * Emitted when a git checkout completes successfully.
+ *
+ * After SHA-equality no-op OR fetch+reset --hard.
+ * INV-CR-CR4: no secret material.
+ *
+ * @param url Repository URL
+ * @param branch Branch that was checked out
+ * @param sha Final SHA at HEAD after checkout
+ * @param changelogPath Path to changelog.txt (empty string if changelog=false)
+ * @param durationMs Time taken in milliseconds
+ */
+data class GitCheckoutCompleted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val branch: String,
+    val sha: String,
+    val changelogPath: String,
+    val durationMs: Long,
+) : DomainEvent {
+    override val kind: String get() = "GitCheckoutCompleted"
+}
+
+/**
+ * Emitted when a git checkout fails.
+ *
+ * After non-zero exit from clone/fetch/reset.
+ * INV-CR-CR4: reason field is stderr first 256 chars (non-ASCII stripped),
+ * not secret material.
+ *
+ * @param url Repository URL
+ * @param branch Branch that failed
+ * @param reason stderr first 256 chars, non-ASCII stripped
+ * @param exitCode git exit code
+ */
+data class GitCheckoutFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val branch: String,
+    val reason: String,
+    val exitCode: Int,
+) : DomainEvent {
+    override val kind: String get() = "GitCheckoutFailed"
+}
+
+/**
+ * Emitted when git ls-remote detects the remote SHA has changed.
+ *
+ * Synchronous poll (no daemon) — emitted before fetch decision.
+ * INV-CR-CR4: no secret material.
+ *
+ * @param url Repository URL
+ * @param branch Branch being polled
+ * @param previousSha SHA from last poll (null for first poll)
+ * @param newSha Current remote SHA
+ */
+data class GitPollChanged(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val url: String,
+    val branch: String,
+    val previousSha: String?,
+    val newSha: String,
+) : DomainEvent {
+    override val kind: String get() = "GitPollChanged"
 }

@@ -42,6 +42,11 @@ class InMemoryEventStore : EventSink {
             is CredentialBound -> event.copy(sequence = assignedSequence)
             is CredentialUsed -> event.copy(sequence = assignedSequence)
             is CredentialUnbound -> event.copy(sequence = assignedSequence)
+            // L5 SCM Events
+            is GitCheckoutStarted -> event.copy(sequence = assignedSequence)
+            is GitCheckoutCompleted -> event.copy(sequence = assignedSequence)
+            is GitCheckoutFailed -> event.copy(sequence = assignedSequence)
+            is GitPollChanged -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

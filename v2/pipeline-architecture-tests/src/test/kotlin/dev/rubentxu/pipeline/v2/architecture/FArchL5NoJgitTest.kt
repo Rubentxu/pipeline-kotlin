@@ -14,6 +14,8 @@ import java.util.regex.Pattern
  * 1. Zero `org.eclipse.jgit.*` imports in `v2/pipeline-step-sdk/scm-git/src/main/kotlin`
  * 2. No `ProcessBuilder` argv containing `extraHeader` or `Authorization` literals
  *    (defense-in-depth for INV-L5-CR-004: credentials never enter argv)
+ * 3. F-ARCH-L6-001 extension: No URL-embedded credentials `https?://[^/]*:[^/]*@` in argv
+ *    (prevents credential leakage via URL auth in process args)
  *
  * This is a skeleton at T-01 — the scm-git module is populated at T-03.
  * The test passes on an empty directory (T-01 GREEN minimal scope).
@@ -97,5 +99,42 @@ class FArchL5NoJgitTest {
         val findings = ScannerSupport.findBuildSubstring(buildFile, "jgit")
         assertTrue(findings.isEmpty(),
             "scm-git build must NOT depend on jgit: $findings")
+    }
+
+    /**
+     * F-ARCH-L6-001: Scans scm-git source for URL-embedded credentials in argv.
+     * Pattern: `https?://[^/]*:[^/]*@` matches user:pass@host URL fragments.
+     *
+     * This is a grep-gate: any argv literal with embedded credentials is a fail-closed violation.
+     * Covers INV-L6-CR-011 (git credential scope decided by git — no host literals)
+     * and INV-CR-CR3 (P2 argv cleanliness).
+     */
+    @Test
+    fun `no url embedded credentials in scm-git argv`() {
+        val root = ScannerSupport.v2Root()
+        val scmGitSrc = root.resolve("pipeline-step-sdk/scm-git/src/main/kotlin")
+
+        if (!scmGitSrc.toFile().exists()) {
+            // Module doesn't exist yet - skeleton passes
+            return
+        }
+
+        val findings = mutableListOf<Finding>()
+        // Matches URLs with embedded credentials: https://user:pass@host or http://user:pass@host
+        val urlCredentialPattern = Pattern.compile("https?://[^/]*:[^/]*@")
+
+        for (file in FitnessPaths.walkKotlinFiles(scmGitSrc)) {
+            for ((lineIdx, line) in Files.readAllLines(file).withIndex()) {
+                val trimmed = line.trim()
+                if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue
+
+                if (urlCredentialPattern.matcher(trimmed).find()) {
+                    findings.add(Finding(file, lineIdx + 1, "url-credential-in-argv", line))
+                }
+            }
+        }
+
+        assertTrue(findings.isEmpty(),
+            "scm-git argv must NOT contain URL-embedded credentials (https?://[^/]*:[^/]*@): $findings")
     }
 }

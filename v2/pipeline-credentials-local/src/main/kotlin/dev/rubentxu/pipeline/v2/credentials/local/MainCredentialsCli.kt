@@ -118,7 +118,7 @@ object MainCredentialsCli {
         return try {
             val passphrase = PassphraseResolver.resolve()
             val store = LocalSecretStore(STORE_FILE, passphrase)
-            store.rotate(CredentialsId.from(id), String(secret).toByteArray())
+            store.rotateBytes(CredentialsId.from(id), String(secret).toByteArray())
             println("Credential '$id' rotated successfully.")
             0
         } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {

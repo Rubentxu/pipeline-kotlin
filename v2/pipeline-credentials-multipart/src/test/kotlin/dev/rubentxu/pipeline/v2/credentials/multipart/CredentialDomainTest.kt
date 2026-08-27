@@ -2,6 +2,16 @@ package dev.rubentxu.pipeline.v2.credentials.multipart
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
+import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
+import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
+import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.DisplayName

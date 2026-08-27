@@ -1,9 +1,7 @@
-package dev.rubentxu.pipeline.v2.credentials.multipart
+package dev.rubentxu.pipeline.v2.domain.credentials
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.MismatchedSecretException
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
 
 /**
  * Scope of a credential — determines where it can be used.

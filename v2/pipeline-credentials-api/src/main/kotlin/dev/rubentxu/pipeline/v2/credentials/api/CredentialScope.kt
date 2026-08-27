@@ -62,7 +62,7 @@ class CredentialScope(
      */
     fun env(id: CredentialsId): SecretHandle {
         return activeHandles.getOrPut(id) {
-            val handle = store.get(id)
+            val handle = store.getAsSecretHandle(id)
             // TODO: emit CredentialBound and CredentialUsed events
             handle
         }

@@ -1,12 +1,16 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
-import dev.rubentxu.pipeline.v2.credentials.api.CredentialsBinding
 import dev.rubentxu.pipeline.v2.credentials.api.CredentialScope
+import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceNotFoundException
+import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreTamperException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import org.bouncycastle.crypto.engines.AESWrapEngine
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
@@ -232,13 +236,28 @@ class LocalSecretStore(
     }
 
     /**
-     * Retrieves a credential.
-     *
-     * @param id The credential ID
-     * @return SecretHandle wrapping the bytes
-     * @throws SecretStoreTamperException if integrity check fails
+     * Stores a typed credential (ML-R6).
+     * Stub - full implementation in T-05.
      */
-    override fun get(id: CredentialsId): SecretHandle {
+    override fun add(id: CredentialsId, credential: Credential) {
+        // TODO(ML-R6): Implement in T-05
+        throw NotImplementedError("LocalSecretStore.add - implementation in T-05")
+    }
+
+    /**
+     * Retrieves a typed credential (ML-R6).
+     * Stub - full implementation in T-05.
+     */
+    override fun get(id: CredentialsId): Credential {
+        // TODO(ML-R6): Implement in T-05
+        throw NotImplementedError("LocalSecretStore.get - implementation in T-05")
+    }
+
+    /**
+     * Retrieves a credential as SecretHandle (v1 compatibility).
+     * Full implementation - same as ML-R4 behavior.
+     */
+    override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
         if (!Files.exists(file)) {
             throw SecretStoreTamperException("Store file does not exist")
         }
@@ -263,6 +282,15 @@ class LocalSecretStore(
         }
 
         return SecretHandle.secret(plaintext)
+    }
+
+    /**
+     * Retrieves a specific part of a multipart credential as a SecretHandle.
+     * Stub - full implementation in T-05.
+     */
+    override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
+        // TODO(ML-R6): Implement in T-05
+        throw NotImplementedError("LocalSecretStore.getAsHandle - implementation in T-05")
     }
 
     /**
@@ -302,12 +330,19 @@ class LocalSecretStore(
     }
 
     /**
-     * Rotates a credential's secret bytes, preserving the DEK.
-     *
-     * @param id The credential ID
-     * @param newBytes The new secret bytes
+     * Rotates a credential with new bytes, preserving the DEK.
+     * Stub - full implementation in T-05.
      */
-    override fun rotate(id: CredentialsId, newBytes: ByteArray) {
+    override fun rotate(id: CredentialsId, credential: Credential) {
+        // TODO(ML-R6): Implement in T-05
+        throw NotImplementedError("LocalSecretStore.rotate - implementation in T-05")
+    }
+
+    /**
+     * Rotates a credential with new bytes, preserving the DEK (v1 compatibility).
+     * Full implementation - same as ML-R4 behavior.
+     */
+    override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()
         if (!Files.exists(file)) {
             put(id, newBytes)

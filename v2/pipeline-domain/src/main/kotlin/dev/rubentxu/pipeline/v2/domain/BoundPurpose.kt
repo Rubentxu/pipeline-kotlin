@@ -10,38 +10,56 @@ package dev.rubentxu.pipeline.v2.domain
  * [CredentialUsed][dev.rubentxu.pipeline.v2.events.CredentialUsed] events.
  * The purpose is informational only - it does not affect security.
  *
- * ## Variants
+ * ## Variants (ML-R6)
  *
- * - [ENV]: Credential injected via environment variable (pb.environment().putAll).
- *   This is the L4 canonical binding mode.
- * - [FILE]: Credential written to a temp file and path injected via env.
- *   Reserved for ML-R4.1 `file` binding support.
- * - [VALUE]: Credential returned via returnStdout pipeline step result.
- *   Reserved for DEC-Q3 `returnStdout` interplay.
+ * Maps to Jenkins credentials-binding kinds per JENKINS_FAMILIARITY_CATALOG.md §1.6:
+ * - [API_KEY]: Secret text credential — `string` binding → env variable
+ * - [USERNAME_PASSWORD]: Username/password pair — `usernamePassword` binding
+ * - [SSH_KEY]: SSH private key with optional passphrase — `sshUserPrivateKey` binding
+ * - [FILE]: Secret file credential — `file` binding
+ * - [CERTIFICATE]: Keystore certificate — `certificate` binding
+ * - [ZIP]: ZIP archive credential — `zip` binding
+ * - [USERNAME_COLON_PASSWORD]: Colon-joined credentials — `usernameColonPassword` binding
  *
- * ## L4 Scope
+ * ## Deprecation aliases
  *
- * L4 (this cycle) implements only [ENV] mode.
- * [FILE] and [VALUE] are reserved for future cycles.
+ * [ENV] is deprecated — renamed to [API_KEY] (semantically equivalent for L4 callers).
+ * [VALUE] is deprecated — no direct replacement in ML-R6; reserved for future `returnStdout` interplay.
  */
 enum class BoundPurpose {
     /**
-     * Credential injected via environment variable.
-     * This is the primary L4 binding mechanism.
+     * Secret text credential — maps to `string` binding.
+     * Injects via environment variable (pb.environment().putAll).
      */
-    ENV,
+    API_KEY,
 
     /**
-     * Credential bound to a temporary file.
-     * Reserved for ML-R4.1 `file` binding (sshUserPrivateKey, certificate).
-     * NOT implemented in L4.
+     * Username/password pair — maps to `usernamePassword` binding.
+     */
+    USERNAME_PASSWORD,
+
+    /**
+     * SSH private key with optional passphrase — maps to `sshUserPrivateKey` binding.
+     */
+    SSH_KEY,
+
+    /**
+     * Secret file credential — maps to `file` binding.
      */
     FILE,
 
     /**
-     * Credential returned as pipeline step value (returnStdout).
-     * Reserved for DEC-Q3 interplay with `returnStdout` step.
-     * NOT implemented in L4.
+     * Certificate keystore — maps to `certificate` binding.
      */
-    VALUE,
+    CERTIFICATE,
+
+    /**
+     * ZIP archive credential — maps to `zip` binding.
+     */
+    ZIP,
+
+    /**
+     * Colon-joined credentials (user:pass) — maps to `usernameColonPassword` binding.
+     */
+    USERNAME_COLON_PASSWORD,
 }

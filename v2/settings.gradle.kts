@@ -29,4 +29,6 @@ include(
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:processor",
     ":pipeline-step-sdk:runtime",
+    ":pipeline-credentials-api",
+    ":pipeline-credentials-local",
 )

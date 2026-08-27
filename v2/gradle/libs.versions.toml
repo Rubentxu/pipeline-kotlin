@@ -6,6 +6,9 @@ junit = "5.11.4"
 junitLauncher = "1.11.4"
 protobuf = "3.25.5"
 protobufPlugin = "0.9.4"
+# BouncyCastle (credentials-local module only - ADR-0049 D2)
+# NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
+bouncycastle = "1.80.2"
 
 [libraries]
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
@@ -19,6 +22,10 @@ kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jv
 kotlin-scripting-jvm = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm", version.ref = "kotlin" }
 protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf" }
 protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+# BouncyCastle (credentials-local module only - ADR-0049 D2)
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }
+bouncycastle-bcutil = { module = "org.bouncycastle:bcutil-jdk18on", version.ref = "bouncycastle" }
 
 [bundles]
 

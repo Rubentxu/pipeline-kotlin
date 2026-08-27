@@ -111,6 +111,16 @@ class SecretHandle private constructor(
         get() = bytes.size
 
     /**
+     * Returns the raw secret bytes.
+     *
+     * This is intended ONLY for testing and credential store implementations.
+     * Most callers should use [use] for scoped access.
+     *
+     * @return A copy of the secret bytes
+     */
+    fun unwrap(): ByteArray = bytes.copyOf()
+
+    /**
      * Returns a string representation that does NOT expose the secret.
      * Shows only the size in bytes.
      */

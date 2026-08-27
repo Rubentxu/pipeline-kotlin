@@ -16,6 +16,7 @@ kotlin {
 
 dependencies {
     implementation(libs.kotlin.stdlib)
+    implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-credentials-api"))
     implementation(libs.bouncycastle.bcprov)
     implementation(libs.bouncycastle.bcpkix)

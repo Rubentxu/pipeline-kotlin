@@ -1,6 +1,9 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
+import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
 /**
  * Specification of a pipeline as built by the DSL.
@@ -190,6 +193,22 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val name: String get() = "withCredentials"
         override val type: String get() = "withCredentials"
     }
+
+    /**
+     * Git checkout step using Jenkins parity checkout/scmGit/git DSL.
+     *
+     * Wraps [CheckoutSpec] from the domain layer.
+     *
+     * @param scm The SCM specification (must be [GitScm] at L5)
+     */
+    data class Checkout(
+        val scm: Scm,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "checkout"
+        override val type: String get() = "checkout"
+    }
 }
 
 /**
@@ -351,6 +370,62 @@ class StageScope(private val stageName: String) {
     }
 
     /**
+     * Git checkout using an existing [CheckoutSpec].
+     *
+     * @param scm The SCM specification (e.g., created via [scmGit])
+     */
+    fun checkout(scm: Scm) {
+        steps.add(StepSpec.Checkout(scm))
+    }
+
+    /**
+     * Git checkout with explicit SCM parameters.
+     *
+     * Jenkins parity: 6-param dominant constructor.
+     *
+     * @param url Repository URL (https or file)
+     * @param branch Branch to checkout (default master)
+     * @param credentialsId Optional credentials ID for private repos
+     * @param changelog Whether to append to changelog.txt (default true)
+     * @param poll Whether to poll for changes (default true) — synchronous ls-remote
+     * @param relativeTargetDir Workspace-relative checkout directory (default ".")
+     */
+    fun scmGit(
+        url: String,
+        branch: String = "master",
+        credentialsId: CredentialsId? = null,
+        changelog: Boolean = true,
+        poll: Boolean = true,
+        relativeTargetDir: String = ".",
+    ): CheckoutSpec {
+        val spec = CheckoutSpec(GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir))
+        steps.add(StepSpec.Checkout(spec.scm))
+        return spec
+    }
+
+    /**
+     * Git checkout shorthand (5-param).
+     *
+     * Desugars to `checkout(scmGit(url, branch, credentialsId, changelog, poll, "."))`.
+     *
+     * @param url Repository URL
+     * @param branch Branch (default master)
+     * @param credentialsId Optional credentials ID
+     * @param changelog Whether to append changelog (default true)
+     * @param poll Whether to poll (default true)
+     */
+    fun git(
+        url: String,
+        branch: String = "master",
+        credentialsId: CredentialsId? = null,
+        changelog: Boolean = true,
+        poll: Boolean = true,
+    ) {
+        val spec = scmGit(url, branch, credentialsId, changelog, poll, ".")
+        checkout(spec.scm)
+    }
+
+    /**
      * Agent specification for this stage.
      */
     fun agent(label: String, remoteUri: String? = null) {
@@ -470,6 +545,7 @@ class StageScope(private val stageName: String) {
             is StepSpec.Sleep -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
             is StepSpec.WithCredentialsBlock -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.Checkout -> currentStep.copy(retry = retryPolicy)
         }
     }
 

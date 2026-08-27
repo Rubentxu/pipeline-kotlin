@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.credentials.api
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import dev.rubentxu.pipeline.v2.events.EventSink
 import java.time.Clock
 
@@ -136,5 +138,29 @@ data class CredentialsBinding(
             usernameVariable: String,
             passwordVariable: String,
         ) = CredentialsBinding(Kind.USERNAME_PASSWORD, credentialsId)
+    }
+}
+
+/**
+ * Converts a [CredentialsBinding] to [GitCredentials] for use by git checkout steps.
+ *
+ * @return GitCredentials with typed carriers for the credential
+ * @throws IllegalArgumentException if the binding kind is not STRING or USERNAME_PASSWORD
+ */
+fun CredentialsBinding.asGitCredentials(): GitCredentials {
+    return when (kind) {
+        CredentialsBinding.Kind.STRING -> GitCredentials(
+            string = SecretHandleRef(credentialsId),
+            user = null,
+            pass = null,
+        )
+        CredentialsBinding.Kind.USERNAME_PASSWORD -> GitCredentials(
+            string = null,
+            user = SecretHandleRef(credentialsId),
+            pass = SecretHandleRef(credentialsId),
+        )
+        else -> throw IllegalArgumentException(
+            "Credentials '${credentialsId.value}' is of type '${kind.name.lowercase()}' where 'string' or 'usernamePassword' was expected."
+        )
     }
 }

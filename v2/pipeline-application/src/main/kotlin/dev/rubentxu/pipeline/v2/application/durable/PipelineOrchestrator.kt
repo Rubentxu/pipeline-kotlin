@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.BranchReconciler
 import dev.rubentxu.pipeline.v2.application.walkPipelineSpecDurable
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceException
@@ -70,10 +71,8 @@ class PipelineOrchestrator(
      * When non-null, the [EventSink] passed to step execution is replaced
      * with this redaction decorator. Registered patterns are dropped on
      * [CredentialScope] close (CR-RD-011).
-     *
-     * TODO (T6): Replace `Any?` with `RedactingEventSink` after T6 implementation.
      */
-    private val redactingEventSink: Any? = null,
+    private val redactingEventSink: RedactingEventSink? = null,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.

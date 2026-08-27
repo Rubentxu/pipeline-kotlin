@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
@@ -149,10 +151,16 @@ fun main(args: Array<String>) {
 
     val command = config.command
 
+    // Shared secret pattern registry for redaction (T6)
+    // Both InMemoryEventStore and SqliteEventStore are wrapped at construction time
+    // so all downstream consumers receive already-sanitized events.
+    val secretPatternRegistry = SecretPatternRegistry()
+
     val scriptPath = Paths.get(config.scriptPath!!)
 
     if (command == "validate") {
-        val store = InMemoryEventStore()
+        val rawStore = InMemoryEventStore()
+        val store = RedactingEventSink(rawStore, secretPatternRegistry)
         val events = execute(scriptPath, store)
         println(JsonEventLog.encode(events))
         return
@@ -161,14 +169,20 @@ fun main(args: Array<String>) {
     // "run" command.
     if (config.dbPath == null) {
         // Default: in-memory store for backwards compatibility (M2-R2 behavior).
-        val store = InMemoryEventStore()
+        val rawStore = InMemoryEventStore()
+        val store = RedactingEventSink(rawStore, secretPatternRegistry)
         val events = execute(scriptPath, store)
         println(JsonEventLog.encode(events))
         return
     }
 
     // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
-    val eventStore = SqliteEventStore(config.dbPath)
+    // Both stores are wrapped with RedactingEventSink at construction time (design §Data Flow).
+    val rawEventStore = SqliteEventStore(config.dbPath)
+    // Call raw methods BEFORE wrapping — RedactingEventSink delegates these to the inner store
+    val factory = rawEventStore.underlyingConnectionFactory()
+    val dbPathStr = rawEventStore.databasePath()
+    val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
 
     // Compile script → PipelineSpec (same approach as execute())
     val scriptContent = scriptPath.toFile().readText()
@@ -193,9 +207,8 @@ fun main(args: Array<String>) {
     } else null
 
     // Build orchestrator with all durable dependencies
-    val factory = eventStore.underlyingConnectionFactory()
     val clock: Clock = SystemClock()
-    val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, eventStore.databasePath())
+    val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPathStr)
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
@@ -219,6 +232,7 @@ fun main(args: Array<String>) {
         clock = clock,
         controlDirRoot = controlDirRoot,
         sandboxProfile = config.sandboxProfile,
+        redactingEventSink = eventStore,
     )
 
     // Run via orchestrator (fresh run or resume based on --resume flag)

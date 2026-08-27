@@ -81,7 +81,7 @@ class CredentialsStoreListAtomicTest {
         assertEquals(1, ids.size)
         assertTrue(ids.contains(CredentialsId("keep-me")))
         assertThrows(LocalSecretStore.SecretStoreTamperException::class.java) {
-            store.get(CredentialsId("remove-me"))
+            store.getAsSecretHandle(CredentialsId("remove-me"))
         }
     }
 }

@@ -46,7 +46,7 @@ class CredentialsStoreTest {
 
         // When we add and read back
         store.put(id, secretBytes)
-        val readBack = store.get(id)
+        val readBack = store.getAsSecretHandle(id)
 
         // Then the bytes are identical
         val readBytes = readBack.unwrap()
@@ -133,16 +133,16 @@ class CredentialsStoreTest {
         store.put(CredentialsId("id-c"), "secret-c".toByteArray())
 
         // When we rotate id-b
-        store.rotate(CredentialsId("id-b"), "new-secret-b".toByteArray())
+        store.rotateBytes(CredentialsId("id-b"), "new-secret-b".toByteArray())
 
         // Then id-a and id-c are unchanged
-        val readA = store.get(CredentialsId("id-a")).unwrap()
-        val readC = store.get(CredentialsId("id-c")).unwrap()
+        val readA = store.getAsSecretHandle(CredentialsId("id-a")).unwrap()
+        val readC = store.getAsSecretHandle(CredentialsId("id-c")).unwrap()
         assertArrayEquals("secret-a".toByteArray(), readA)
         assertArrayEquals("secret-c".toByteArray(), readC)
 
         // And id-b has new value
-        val readB = store.get(CredentialsId("id-b")).unwrap()
+        val readB = store.getAsSecretHandle(CredentialsId("id-b")).unwrap()
         assertArrayEquals("new-secret-b".toByteArray(), readB)
     }
 
@@ -179,7 +179,7 @@ class CredentialsStoreTest {
 
         store.put(CredentialsId("test-id"), "updated".toByteArray())
 
-        val readBack = store.get(CredentialsId("test-id")).unwrap()
+        val readBack = store.getAsSecretHandle(CredentialsId("test-id")).unwrap()
         assertArrayEquals("updated".toByteArray(), readBack)
     }
 

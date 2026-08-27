@@ -40,8 +40,8 @@ class SecretStoreInterfaceTest {
         store.put(CredentialsId("github-token"), "secret-value".toByteArray())
 
         // CredentialScope requires: store + bindings + eventSink + clock
-        // For this test, we verify the store provides the raw get()
-        val handle = store.get(CredentialsId("github-token"))
+        // For this test, we verify the store provides the raw getAsSecretHandle()
+        val handle = store.getAsSecretHandle(CredentialsId("github-token"))
         assertEquals("secret-value", String(handle.unwrap()))
     }
 

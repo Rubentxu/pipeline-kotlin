@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.application.BranchReconciler
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import java.nio.file.Path
 
 /**
@@ -101,4 +102,11 @@ data class DurableWalkContext(
      * OS: container-based sandbox (not implemented in L3 — throws at CLI)
      */
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
+    /**
+     * Secret store for credential resolution in withCredentials blocks (T11).
+     *
+     * When non-null, credentials can be resolved and injected into step execution.
+     * When null, withCredentials blocks execute inner steps without credential injection.
+     */
+    val secretStore: SecretStore? = null,
 )

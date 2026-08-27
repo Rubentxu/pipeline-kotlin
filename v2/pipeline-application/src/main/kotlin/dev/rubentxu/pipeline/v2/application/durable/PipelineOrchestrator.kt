@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.BranchReconciler
 import dev.rubentxu.pipeline.v2.application.walkPipelineSpecDurable
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceException
@@ -73,6 +74,13 @@ class PipelineOrchestrator(
      * [CredentialScope] close (CR-RD-011).
      */
     private val redactingEventSink: RedactingEventSink? = null,
+    /**
+     * Secret store for credential resolution in withCredentials blocks (T11).
+     *
+     * When non-null, credentials can be resolved and injected into step execution.
+     * When null, withCredentials blocks will execute inner steps without credential injection.
+     */
+    private val secretStore: SecretStore? = null,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.
@@ -153,6 +161,7 @@ class PipelineOrchestrator(
                     workspaceResolver = workspaceResolver,
                     shOptions = defaultShOptions,
                     sandboxProfile = sandboxProfile,
+                    secretStore = secretStore,
                 )
 
                 // Execute with durable walk — ctx carries branchReconciler for LIVE reconciliation

@@ -1,0 +1,3 @@
+# ContributedBindingFactory SPI registration
+# Add your implementation class name here, one per line
+# Example: com.example.MyBindingFactory

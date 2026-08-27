@@ -33,4 +33,5 @@ include(
     ":pipeline-credentials-api",
     ":pipeline-credentials-local",
     ":pipeline-credentials-multipart",
+    ":pipeline-binding-factory",
 )

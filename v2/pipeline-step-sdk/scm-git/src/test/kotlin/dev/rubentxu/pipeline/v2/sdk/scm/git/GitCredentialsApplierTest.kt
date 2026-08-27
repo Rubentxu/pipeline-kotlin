@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -12,6 +14,21 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
+
+/**
+ * In-memory mock SecretStore for testing — returns deterministic fake secrets.
+ */
+class MockSecretStore(private val secrets: Map<CredentialsId, ByteArray>) : SecretStore {
+    override fun get(id: CredentialsId): SecretHandle {
+        val bytes = secrets[id] ?: throw IllegalStateException("Mock secret not found: ${id.value}")
+        return SecretHandle.secret(bytes)
+    }
+    override fun put(id: CredentialsId, bytes: ByteArray) {}
+    override fun list(): List<CredentialsId> = secrets.keys.toList()
+    override fun remove(id: CredentialsId) {}
+    override fun rotate(id: CredentialsId, newBytes: ByteArray) {}
+    override fun close() {}
+}
 
 /**
  * Tests for GitCredentialsApplier.
@@ -31,8 +48,9 @@ class GitCredentialsApplierTest {
     fun `apply string channel creates git-credentials and gitconfig with 0600`() {
         val tokenHandle = SecretHandleRef(CredentialsId("api-token"), "string")
         val credentials = GitCredentials(string = tokenHandle)
+        val secretStore = MockSecretStore(mapOf(CredentialsId("api-token") to "fake-token".toByteArray()))
 
-        val applier = GitCredentialsApplier(tempDir, credentials)
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore)
         applier.apply(tokenHandle)  // Apply the string channel
         applier.use {
             // Verify .git-credentials exists
@@ -57,8 +75,9 @@ class GitCredentialsApplierTest {
     fun `close wipes both git-credentials and gitconfig`() {
         val tokenHandle = SecretHandleRef(CredentialsId("api-token"), "string")
         val credentials = GitCredentials(string = tokenHandle)
+        val secretStore = MockSecretStore(mapOf(CredentialsId("api-token") to "fake-token".toByteArray()))
 
-        val applier = GitCredentialsApplier(tempDir, credentials)
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore)
         applier.apply(tokenHandle)  // Apply first
         applier.use {
             // Files exist inside the block
@@ -75,8 +94,9 @@ class GitCredentialsApplierTest {
     fun `exception in use block still wipes files`() {
         val tokenHandle = SecretHandleRef(CredentialsId("api-token"), "string")
         val credentials = GitCredentials(string = tokenHandle)
+        val secretStore = MockSecretStore(mapOf(CredentialsId("api-token") to "fake-token".toByteArray()))
 
-        val applier = GitCredentialsApplier(tempDir, credentials)
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore)
         applier.apply(tokenHandle)  // Apply first
 
         try {
@@ -138,8 +158,12 @@ class GitCredentialsApplierTest {
         val userHandle = SecretHandleRef(CredentialsId("user-creds"), "usernamePassword")
         val passHandle = SecretHandleRef(CredentialsId("pass-creds"), "usernamePassword")
         val credentials = GitCredentials(user = userHandle, pass = passHandle)
+        val secretStore = MockSecretStore(mapOf(
+            CredentialsId("user-creds") to "fakeuser".toByteArray(),
+            CredentialsId("pass-creds") to "fakepass".toByteArray()
+        ))
 
-        val applier = GitCredentialsApplier(tempDir, credentials)
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore)
         applier.apply(userHandle, passHandle)  // Apply the usernamePassword channel
         applier.use {
             val gitConfig = tempDir.resolve(".gitconfig")

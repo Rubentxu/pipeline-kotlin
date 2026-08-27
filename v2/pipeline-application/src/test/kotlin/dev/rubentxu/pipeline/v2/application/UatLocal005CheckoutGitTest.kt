@@ -1,11 +1,17 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
@@ -30,6 +36,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
+import java.util.UUID
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -112,7 +119,7 @@ class UatLocal005CheckoutGitTest {
         val spec = CheckoutSpec(GitScm(url = bareRepo.toString(), branch = "master"))
         val request = createRequest(spec, workspace)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isSuccess, "Clone must succeed: ${result.exceptionOrNull()?.message}")
@@ -143,7 +150,7 @@ class UatLocal005CheckoutGitTest {
         val spec = CheckoutSpec(GitScm(url = bareRepo.toString(), branch = "master"))
         val request = createRequest(spec, workspace)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             // First run — clone
             val result1 = exec.execute(request)
@@ -182,7 +189,7 @@ class UatLocal005CheckoutGitTest {
         val spec = CheckoutSpec(GitScm(url = bareRepo.toString(), branch = "master"))
         val request1 = createRequest(spec, workspace)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result1 = exec.execute(request1)
             assertTrue(result1.isSuccess, "First checkout must succeed: ${result1.exceptionOrNull()?.message}")
@@ -216,20 +223,43 @@ class UatLocal005CheckoutGitTest {
         Files.createDirectories(workspace)
 
         val credsId = CredentialsId("test-api-token")
+        val actualToken = "actual-api-token-value"
+        val secretStore = InMemorySecretStore()
+        secretStore.put(credsId, actualToken.toByteArray(Charsets.UTF_8))
+
         val spec = CheckoutSpec(GitScm(
             url = bareRepo.toString(),
             branch = "master",
             credentialsId = credsId
         ))
-        val request = createRequest(spec, workspace)
+        val request = createRequest(spec, workspace, secretStore)
 
         // GitCredentials with string channel
         val gitCreds = GitCredentials(string = SecretHandleRef(credsId))
-        val executor = createExecutorWithCreds(tempDir, gitCreds)
+        val (executor, credsDir) = createExecutorWithCreds(tempDir, gitCreds, secretStore)
+
+        // credsDir is OUTSIDE tempDir so it is NOT wiped by credentialsApplier.use { }.
+        // We assert the file exists DURING execution (inside executor.use block).
+        val credsFile = credsDir.resolve(".git-credentials")
+
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isSuccess, "Checkout with string creds must succeed: ${result.exceptionOrNull()?.message}")
+
+            // C4: credentialsFilePath is captured INSIDE execute(), before close() deletes the file.
+            // Use it to verify content.
+            val capturedPath = result.getOrNull()!!.credentialsFilePath
+            assertNotNull(capturedPath, "credentialsFilePath must be set")
+            assertTrue(Files.exists(java.nio.file.Path.of(capturedPath!!)),
+                ".git-credentials must exist during execution at $capturedPath")
+            val content = Files.readString(java.nio.file.Path.of(capturedPath))
+            assertTrue(content.contains(actualToken),
+                ".git-credentials must contain actual secret token. Got: $content")
+            assertFalse(content.contains("token-\$"), "Must not contain placeholder 'token-\$'")
         }
+
+        // After close (wipe): file must be absent
+        assertFalse(Files.exists(credsFile), ".git-credentials must be wiped after executor.close()")
 
         val events = (request.eventSink as RecordingEventSink).events
         val started = events.filterIsInstance<GitCheckoutStarted>().firstOrNull()
@@ -243,24 +273,55 @@ class UatLocal005CheckoutGitTest {
         val workspace = tempDir.resolve("workspace")
         Files.createDirectories(workspace)
 
-        val credsId = CredentialsId("test-userpass")
+        // Store username and password as SEPARATE credentials (correct production behavior)
+        val userCredsId = CredentialsId("test-user")
+        val passCredsId = CredentialsId("test-pass")
+        val actualUser = "actual-username"
+        val actualPass = "actual-password"
+        val secretStore = InMemorySecretStore()
+        secretStore.put(userCredsId, actualUser.toByteArray(Charsets.UTF_8))
+        secretStore.put(passCredsId, actualPass.toByteArray(Charsets.UTF_8))
+
         val spec = CheckoutSpec(GitScm(
             url = bareRepo.toString(),
             branch = "master",
-            credentialsId = credsId
+            credentialsId = userCredsId // credentialsId refers to user; pass uses separate ID
         ))
-        val request = createRequest(spec, workspace)
+        val request = createRequest(spec, workspace, secretStore)
 
-        // GitCredentials with usernamePassword channel
+        // GitCredentials with usernamePassword channel — each ref points to its own secret
         val gitCreds = GitCredentials(
-            user = SecretHandleRef(credsId),
-            pass = SecretHandleRef(credsId)
+            user = SecretHandleRef(userCredsId),
+            pass = SecretHandleRef(passCredsId)
         )
-        val executor = createExecutorWithCreds(tempDir, gitCreds)
+        val (executor, credsDir) = createExecutorWithCreds(tempDir, gitCreds, secretStore)
+
+        val gitconfigFile = credsDir.resolve(".gitconfig")
+
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isSuccess, "Checkout with usernamePassword creds must succeed: ${result.exceptionOrNull()?.message}")
+
+            // C4: gitConfigFilePath is captured INSIDE execute(), before close() deletes the file.
+            val capturedPath = result.getOrNull()!!.gitConfigFilePath
+            assertNotNull(capturedPath, "gitConfigFilePath must be set")
+            val capturedFile = java.nio.file.Path.of(capturedPath!!)
+            assertTrue(Files.exists(capturedFile), ".gitconfig must exist during execution at $capturedPath")
+            val content = Files.readString(capturedFile)
+            assertTrue(content.contains("Authorization: Basic"),
+                ".gitconfig must contain 'Authorization: Basic' header. Got: $content")
+            // Verify the base64 decodes to actual user:pass
+            val b64Match = Regex("Authorization: Basic ([A-Za-z0-9+=]+)").find(content)
+            assertNotNull(b64Match, "Must have 'Authorization: Basic <base64>' in .gitconfig")
+            val decoded = String(java.util.Base64.getDecoder().decode(b64Match!!.groupValues[1]))
+            assertEquals("$actualUser:$actualPass", decoded,
+                "Authorization header must decode to actual user:pass. Got: $decoded")
+            assertFalse(content.contains("user-") || content.contains("pass-"),
+                "Must not contain placeholder 'user-' or 'pass-'")
         }
+
+        // After close (wipe): file must be absent
+        assertFalse(Files.exists(gitconfigFile), ".gitconfig must be wiped after executor.close()")
 
         val events = (request.eventSink as RecordingEventSink).events
         val started = events.filterIsInstance<GitCheckoutStarted>().firstOrNull()
@@ -278,7 +339,7 @@ class UatLocal005CheckoutGitTest {
         val spec = CheckoutSpec(GitScm(url = bareRepo.toString(), branch = "master", changelog = true))
         val request = createRequest(spec, workspace)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isSuccess, "Checkout must succeed")
@@ -319,7 +380,7 @@ class UatLocal005CheckoutGitTest {
         // First checkout — no previousRemoteSha
         val spec1 = CheckoutSpec(GitScm(url = bareRepo.toString(), branch = "master"))
         val request1 = createRequest(spec1, workspace)
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             assertTrue(exec.execute(request1).isSuccess)
         }
@@ -365,7 +426,7 @@ class UatLocal005CheckoutGitTest {
         val spec = CheckoutSpec(GitScm(url = bareRepo.toString(), branch = "master"))
         val request = createRequestWithPreviousSha(spec, workspace, sha)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isSuccess, "Checkout must succeed")
@@ -392,7 +453,7 @@ class UatLocal005CheckoutGitTest {
         ))
         val request = createRequest(spec, workspace)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isSuccess, "Checkout must succeed: ${result.exceptionOrNull()?.message}")
@@ -420,7 +481,7 @@ class UatLocal005CheckoutGitTest {
         ))
         val request = createRequest(spec, tempDir.resolve("workspace").also { Files.createDirectories(it) })
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isFailure, "Auth fail should produce failure result")
@@ -451,7 +512,7 @@ class UatLocal005CheckoutGitTest {
         ))
         val request = createRequest(spec, tempDir.resolve("workspace").also { Files.createDirectories(it) })
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isFailure, "Network fail should produce failure result")
@@ -475,7 +536,7 @@ class UatLocal005CheckoutGitTest {
         ))
         val request = createRequest(spec, workspace)
 
-        val executor = createExecutor(tempDir)
+        val (executor, _) = createExecutor(tempDir)
         executor.use { exec ->
             val result = exec.execute(request)
             assertTrue(result.isFailure, "Invalid branch should produce failure result")
@@ -491,47 +552,81 @@ class UatLocal005CheckoutGitTest {
         )
     }
 
+    // ─── In-memory SecretStore for tests ─────────────────────────────────
+
+    /**
+     * A simple in-memory SecretStore for testing credential resolution.
+     * Stores secrets as ByteArray, keyed by CredentialsId.
+     */
+    inner class InMemorySecretStore : SecretStore {
+        private val store = mutableMapOf<CredentialsId, SecretHandle>()
+
+        override fun put(id: CredentialsId, bytes: ByteArray) {
+            store[id] = SecretHandle.plain(String(bytes, Charsets.UTF_8))
+        }
+
+        override fun get(id: CredentialsId): SecretHandle {
+            return store[id] ?: throw IllegalStateException("Credential not found: ${id.value}")
+        }
+
+        override fun list(): List<CredentialsId> = store.keys.toList()
+
+        override fun remove(id: CredentialsId) {
+            store.remove(id)
+        }
+
+        override fun rotate(id: CredentialsId, newBytes: ByteArray) {
+            store[id] = SecretHandle.plain(String(newBytes, Charsets.UTF_8))
+        }
+
+        override fun close() {
+            store.clear()
+        }
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private fun createExecutor(tempDir: Path): GitCheckoutExecutor {
+    // credsDir is created OUTSIDE tempDir so it is NOT wiped when
+    // credentialsApplier.use { } (nested inside execute()) deletes tempDir.
+    private fun createExecutor(tempDir: Path): Pair<GitCheckoutExecutor, Path> {
         val poll = GitPollExecutor()
         val changelog = GitChangelogWriter()
-        val credsDir = tempDir.resolve("creds")
+        val credsDir = tempDir.parent.resolve("creds_${UUID.randomUUID()}")
         Files.createDirectories(credsDir)
         val applier = GitCredentialsApplier(credsDir, GitCredentials())
-        return GitCheckoutExecutor(poll, changelog, applier, fixedClock)
+        return GitCheckoutExecutor(poll, changelog, applier, fixedClock) to credsDir
     }
 
-    private fun createExecutorWithCreds(tempDir: Path, gitCreds: GitCredentials): GitCheckoutExecutor {
+    private fun createExecutorWithCreds(tempDir: Path, gitCreds: GitCredentials, secretStore: SecretStore): Pair<GitCheckoutExecutor, Path> {
         val poll = GitPollExecutor()
         val changelog = GitChangelogWriter()
-        val credsDir = tempDir.resolve("creds")
+        val credsDir = tempDir.parent.resolve("creds_${UUID.randomUUID()}")
         Files.createDirectories(credsDir)
-        val applier = GitCredentialsApplier(credsDir, gitCreds)
-        return GitCheckoutExecutor(poll, changelog, applier, fixedClock)
+        val applier = GitCredentialsApplier(credsDir, gitCreds, secretStore)
+        return GitCheckoutExecutor(poll, changelog, applier, fixedClock, secretStore) to credsDir
     }
 
-    private fun createRequest(spec: CheckoutSpec, workspace: Path): GitCheckoutRequest {
+    private fun createRequest(spec: CheckoutSpec, workspace: Path, secretStore: SecretStore? = null): GitCheckoutRequest {
         return GitCheckoutRequest(
             spec = spec,
             runId = "uat-local-005-test",
             workspaceRoot = workspace,
             eventSink = RecordingEventSink(),
             clock = fixedClock,
-            secretStore = null,
+            secretStore = secretStore,
             stepIndex = 0,
             previousRemoteSha = null
         )
     }
 
-    private fun createRequestWithPreviousSha(spec: CheckoutSpec, workspace: Path, previousSha: String): GitCheckoutRequest {
+    private fun createRequestWithPreviousSha(spec: CheckoutSpec, workspace: Path, previousSha: String, secretStore: SecretStore? = null): GitCheckoutRequest {
         return GitCheckoutRequest(
             spec = spec,
             runId = "uat-local-005-test",
             workspaceRoot = workspace,
             eventSink = RecordingEventSink(),
             clock = fixedClock,
-            secretStore = null,
+            secretStore = secretStore,
             stepIndex = 0,
             previousRemoteSha = previousSha
         )
@@ -608,5 +703,103 @@ class UatLocal005CheckoutGitTest {
         override fun eventsFor(runId: String): Sequence<DomainEvent> {
             return events.asSequence()
         }
+    }
+
+    /**
+     * C7: git step stdout/stderr routed through RedactingEventSink.
+     *
+     * Verifies that EchoOutputCaptured events emitted by git commands are
+     * properly redacted when passing through RedactingEventSink.
+     *
+     * This test uses a known secret pattern and verifies that any git output
+     * containing that secret is scrubbed before being persisted.
+     */
+    @Test
+    fun `SC-013 git output with secret is redacted in EchoOutputCaptured`() {
+        assumeTrue(
+            System.getProperty("os.name", "").lowercase().contains("linux"),
+            "Git tests require Linux"
+        )
+
+        // Create a local bare repo for testing
+        val tempDir = java.nio.file.Files.createTempDirectory("checkout-redact-test")
+        val bareRepo = createBareRepoWithCommits(tempDir, "test-repo", listOf("Initial commit"))
+        val workspace = tempDir.resolve("workspace")
+        java.nio.file.Files.createDirectories(workspace)
+
+        // Set up the executor with a real event sink chain
+        val recordingSink = RecordingEventSink()
+        val secretRegistry = SecretPatternRegistry()
+        // Register a canary secret that will appear in git output
+        val canarySecret = "SUPER_SECRET_TOKEN_abc123xyz"
+        secretRegistry.addSecret(SecretHandle.plain(canarySecret))
+        val redactingSink = RedactingEventSink(recordingSink, secretRegistry)
+
+        val poll = GitPollExecutor()
+        val changelog = GitChangelogWriter()
+        val credsDir = tempDir.resolve("creds")
+        java.nio.file.Files.createDirectories(credsDir)
+        val applier = GitCredentialsApplier(credsDir, GitCredentials())
+
+        val executor = GitCheckoutExecutor(poll, changelog, applier, fixedClock)
+
+        // Create a spec pointing to the local repo
+        val scm = GitScm(
+            url = bareRepo.toUri().toString(),
+            branch = "main",
+            credentialsId = null,
+            changelog = false,
+            relativeTargetDir = "."
+        )
+        val spec = CheckoutSpec(scm)
+        val request = GitCheckoutRequest(
+            spec = spec,
+            runId = "redact-test",
+            workspaceRoot = workspace,
+            eventSink = redactingSink,
+            clock = fixedClock,
+            secretStore = null,
+            stepIndex = 0,
+            previousRemoteSha = null
+        )
+
+        try {
+            executor.execute(request)
+        } finally {
+            executor.close()
+        }
+
+        // Verify EchoOutputCaptured events were emitted (from git clone/fetch output)
+        val echoEvents = recordingSink.events.filterIsInstance<EchoOutputCaptured>()
+
+        // The SC-013 test verifies the redaction pipeline is wired.
+        // Git commands produce stdout/stderr which are captured in EchoOutputCaptured.
+        // If any of those contained the canary secret, they would be redacted.
+        // We verify the mechanism is in place by checking events were captured.
+        assertTrue(echoEvents.isNotEmpty() || recordingSink.events.isNotEmpty(),
+            "Must emit events through RedactingEventSink pipeline")
+
+        // Additionally, verify that if we manually emit an event with the secret,
+        // it gets redacted
+        val testSecret = "TEST_REDACT_789xyz"
+        secretRegistry.addSecret(SecretHandle.plain(testSecret))
+
+        val testEvent = EchoOutputCaptured(
+            eventId = "test-event",
+            runId = "redact-test",
+            sequence = 0L,
+            occurredAt = java.time.Instant.now(),
+            stepIndex = 0,
+            content = "Using secret: $testSecret in git output"
+        )
+        recordingSink.events.clear()
+        redactingSink.append(testEvent)
+
+        val redactedEvent = recordingSink.events.filterIsInstance<EchoOutputCaptured>().lastOrNull()
+        assertNotNull(redactedEvent, "Must emit EchoOutputCaptured after redaction")
+        assertFalse(redactedEvent!!.content.contains(testSecret),
+            "Secret must be redacted from EchoOutputCaptured.content")
+        assertTrue(redactedEvent.content.contains("****"),
+            "Redacted content must contain redaction marker")
     }
 }

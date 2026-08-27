@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import java.nio.file.Files
@@ -24,11 +26,13 @@ import java.util.Base64
  *
  * @param tempDir Parent temp directory for credential files
  * @param credentials GitCredentials carrying typed SecretHandleRef carriers
+ * @param secretStore SecretStore for resolving SecretHandleRef to actual secret bytes
  */
 class GitCredentialsApplier(
     private val tempDir: Path,
-    private val credentials: GitCredentials,
-) : AutoCloseable {
+    val credentials: GitCredentials,
+    private val secretStore: SecretStore? = null,
+    ) : AutoCloseable {
 
     private val gitCredentialsFile: Path = tempDir.resolve(".git-credentials")
     private val gitConfigFile: Path = tempDir.resolve(".gitconfig")
@@ -44,6 +48,19 @@ class GitCredentialsApplier(
     }
 
     /**
+     * Exposes the credentials file path (.git-credentials) for test verification.
+     * Called by GitCheckoutExecutor.execute() to capture the path before
+     * close() deletes the file.
+     */
+    fun credentialsFilePath(): String = gitCredentialsFile.toString()
+
+    /**
+     * Exposes the gitconfig file path (.gitconfig) for test verification.
+     * Used for usernamePassword channel.
+     */
+    fun gitConfigFilePath(): String = gitConfigFile.toString()
+
+    /**
      * Applies credentials for the string channel (API token).
      * Writes `.git-credentials` and `.gitconfig` with `helper = store`.
      */
@@ -51,10 +68,17 @@ class GitCredentialsApplier(
         check(!isClosed) { "GitCredentialsApplier already closed" }
         guardProcessBuilderArgs(listOf("git", "credential", "store"))
 
+        // Resolve actual secret bytes from SecretStore
+        // SecretHandle.use() wipes the internal buffer after the lambda.
+        // MUST copy the bytes inside the lambda — do NOT return the handle's
+        // internal array directly (it will be zeroed after use {} returns).
+        val tokenBytes = secretStore?.get(tokenSecret.id)?.use { it.copyOf() }
+            ?: throw IllegalStateException("SecretStore not available for credential resolution: ${tokenSecret.id.value}")
+
         // Write .git-credentials with token
         // Format: https://x-access-token:<token>@<host>
         val host = extractHost(credentials.string?.id?.value ?: "")
-        val tokenValue = "token-${tokenSecret.id.value}" // Placeholder - actual secret resolution happens in SecretStore
+        val tokenValue = String(tokenBytes, Charsets.UTF_8)
         val credsLine = "https://x-access-token:${tokenValue}@${host}"
         Files.writeString(gitCredentialsFile, credsLine)
         Files.setPosixFilePermissions(gitCredentialsFile, setOf(
@@ -83,10 +107,18 @@ class GitCredentialsApplier(
         check(!isClosed) { "GitCredentialsApplier already closed" }
         guardProcessBuilderArgs(listOf("git", "config"))
 
-        // base64 encode user:pass — NEVER in argv
-        val userValue = "user-${usernameSecret.id.value}"
-        val passValue = "pass-${passwordSecret.id.value}"
-        val encoded = Base64.getEncoder().encodeToString("$userValue:$passValue".toByteArray())
+        // Resolve actual secret bytes from SecretStore.
+        // SecretHandle.use() wipes the internal buffer after the lambda completes.
+        // Do ALL byte operations (toString, base64 encode) INSIDE the use {} lambda
+        // to ensure we work with the real bytes before they are zeroed.
+        val encoded = secretStore?.get(usernameSecret.id)?.use { userBytes ->
+            secretStore?.get(passwordSecret.id)?.use { passBytes ->
+                // At this point both byte arrays are still valid (not yet wiped)
+                val userValue = String(userBytes, Charsets.UTF_8)
+                val passValue = String(passBytes, Charsets.UTF_8)
+                Base64.getEncoder().encodeToString("$userValue:$passValue".toByteArray(Charsets.UTF_8))
+            } ?: throw IllegalStateException("SecretStore not available for credential resolution: ${passwordSecret.id.value}")
+        } ?: throw IllegalStateException("SecretStore not available for credential resolution: ${usernameSecret.id.value}")
 
         val gitConfig = "[http \"https://github.com\"]\n    extraHeader = Authorization: Basic $encoded"
         Files.writeString(gitConfigFile, gitConfig)

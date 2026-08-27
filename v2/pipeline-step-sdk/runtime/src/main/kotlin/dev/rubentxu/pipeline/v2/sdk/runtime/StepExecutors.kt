@@ -375,18 +375,13 @@ class ParallelFrameExecutor(
                         }
                     }
                     is StepSpec.Checkout -> {
-                        // Checkout in parallel branch context — emit to no-op sink
-                        // Full durable checkout execution happens in PipelineRun
-                        val scm = step.scm
-                        when (scm) {
-                            is dev.rubentxu.pipeline.v2.domain.scm.GitScm -> {
-                                // Emit checkout started event (sink is NoOpEventSink so this is a no-op in parallel branches)
-                                System.err.println("Checkout step in parallel branch: ${scm.url} branch=${scm.branch}")
-                            }
-                            else -> {
-                                System.err.println("Checkout step with unsupported SCM type in parallel branch")
-                            }
-                        }
+                        // C1 (P1): Checkout in parallel branch is a no-op.
+                        // The durable execution path (PipelineRun.executeDurableStepImpl) handles
+                        // the actual checkout. Parallel branch execution is lightweight and
+                        // does not re-execute checkout steps — this avoids duplicate execution
+                        // and event duplication. The branch workspace is isolated from the
+                        // durable workspace in the parallel context.
+                        // (No-op: silently succeed — same as PipelineRun durable path)
                     }
                 }
             } catch (e: Exception) {

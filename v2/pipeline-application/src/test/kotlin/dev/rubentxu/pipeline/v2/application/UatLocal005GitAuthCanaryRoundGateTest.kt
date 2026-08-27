@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
@@ -126,6 +128,9 @@ class UatLocal005GitAuthCanaryRoundGateTest {
         // Test each encoding form through the git credential path
         for (canary in allCanaryForms) {
             val credsId = CredentialsId("canary-test-creds")
+            val secretStore = InMemorySecretStore()
+            secretStore.put(credsId, canary.toByteArray(Charsets.UTF_8))
+
             val spec = CheckoutSpec(GitScm(
                 url = bareRepo.toString(),
                 branch = "master",
@@ -138,7 +143,7 @@ class UatLocal005GitAuthCanaryRoundGateTest {
             )
 
             val request = createRequest(spec, workspace)
-            val executor = createExecutorWithCreds(tempDir, gitCreds)
+            val executor = createExecutorWithCreds(tempDir, gitCreds, secretStore)
             executor.use { exec ->
                 val result = exec.execute(request)
                 // Auth may succeed or fail depending on whether the canary value
@@ -221,13 +226,13 @@ class UatLocal005GitAuthCanaryRoundGateTest {
         return GitCheckoutExecutor(poll, changelog, applier)
     }
 
-    private fun createExecutorWithCreds(tempDir: Path, gitCreds: GitCredentials): GitCheckoutExecutor {
+    private fun createExecutorWithCreds(tempDir: Path, gitCreds: GitCredentials, secretStore: SecretStore): GitCheckoutExecutor {
         val poll = GitPollExecutor()
         val changelog = GitChangelogWriter()
         val credsDir = tempDir.resolve("canary-creds")
         Files.createDirectories(credsDir)
-        val applier = GitCredentialsApplier(credsDir, gitCreds)
-        return GitCheckoutExecutor(poll, changelog, applier)
+        val applier = GitCredentialsApplier(credsDir, gitCreds, secretStore)
+        return GitCheckoutExecutor(poll, changelog, applier, java.time.Clock.systemUTC(), secretStore)
     }
 
     private fun createRequest(spec: CheckoutSpec, workspace: Path): GitCheckoutRequest {
@@ -292,6 +297,35 @@ class UatLocal005GitAuthCanaryRoundGateTest {
 
         override fun eventsFor(runId: String): Sequence<DomainEvent> {
             return events.asSequence()
+        }
+    }
+
+    /**
+     * A simple in-memory SecretStore for testing credential resolution.
+     */
+    inner class InMemorySecretStore : SecretStore {
+        private val store = mutableMapOf<CredentialsId, SecretHandle>()
+
+        override fun put(id: CredentialsId, bytes: ByteArray) {
+            store[id] = SecretHandle.plain(String(bytes, Charsets.UTF_8))
+        }
+
+        override fun get(id: CredentialsId): SecretHandle {
+            return store[id] ?: throw IllegalStateException("Credential not found: ${id.value}")
+        }
+
+        override fun list(): List<CredentialsId> = store.keys.toList()
+
+        override fun remove(id: CredentialsId) {
+            store.remove(id)
+        }
+
+        override fun rotate(id: CredentialsId, newBytes: ByteArray) {
+            store[id] = SecretHandle.plain(String(newBytes, Charsets.UTF_8))
+        }
+
+        override fun close() {
+            store.clear()
         }
     }
 }

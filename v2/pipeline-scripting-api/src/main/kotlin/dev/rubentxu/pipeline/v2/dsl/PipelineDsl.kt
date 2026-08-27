@@ -398,6 +398,10 @@ class StageScope(private val stageName: String) {
         poll: Boolean = true,
         relativeTargetDir: String = ".",
     ): CheckoutSpec {
+        // C6: Validate URL non-blank (Jenkins-verbatim error)
+        if (url.isBlank()) {
+            throw IllegalArgumentException("Missing required parameter: url")
+        }
         val spec = CheckoutSpec(GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir))
         steps.add(StepSpec.Checkout(spec.scm))
         return spec

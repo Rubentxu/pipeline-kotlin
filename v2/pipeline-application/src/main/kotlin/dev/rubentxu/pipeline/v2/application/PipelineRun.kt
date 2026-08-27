@@ -2,6 +2,10 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
+import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.domain.scm.GitScm
+import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StageSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
@@ -28,6 +32,11 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.DurableWalkContext
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitChangelogWriter
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutExecutor
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCheckoutRequest
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitCredentialsApplier
+import dev.rubentxu.pipeline.v2.sdk.scm.git.GitPollExecutor
 import dev.rubentxu.pipeline.v2.application.ReconciledBranch
 import dev.rubentxu.pipeline.v2.application.ReconciliationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -70,7 +79,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
@@ -1008,10 +1019,53 @@ private suspend fun executeDurableStepImpl(
                 }
             }
             is StepSpec.Checkout -> {
-                // ML-R5: Checkout step execution
-                // For now, return success. Full durable execution with GitCheckoutExecutor
-                // and credential resolution is wired via executeDurableStep path.
-                "success"
+                // ML-R5: Wire real checkout execution via GitCheckoutExecutor.
+                // C1 (P1): Full durable execution with credential resolution.
+                val scm = step.scm as? GitScm
+                    ?: return "failure"
+                // C6: Validate URL is non-blank (Jenkins-verbatim error)
+                if (scm.url.isBlank()) {
+                    throw IllegalArgumentException("Missing required parameter: url")
+                }
+                // Resolve workspace root
+                val workspaceRoot = workspaceResolver?.resolve("stage-${stageIndex}", stageIndex)
+                    ?: Files.createTempDirectory("checkout-workspace")
+                Files.createDirectories(workspaceRoot)
+                // Create credentials temp dir with 0700 perms
+                val credsDir = Files.createTempDirectory("git-creds")
+                credsDir.let { dir ->
+                    Files.setPosixFilePermissions(dir, setOf(
+                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
+                    ))
+                }
+                // Build GitCheckoutRequest
+                val checkoutSpec = CheckoutSpec(scm)
+                val javaClock = java.time.Clock.systemUTC()
+                val checkoutRequest = GitCheckoutRequest(
+                    spec = checkoutSpec,
+                    runId = runId,
+                    workspaceRoot = workspaceRoot,
+                    eventSink = eventSink,
+                    clock = javaClock,
+                    secretStore = secretStore,
+                    stepIndex = stepIndex,
+                    previousRemoteSha = null,
+                )
+                // Execute checkout via GitCheckoutExecutor
+                val pollExecutor = GitPollExecutor()
+                val changelogWriter = GitChangelogWriter()
+                val credentialsApplier = GitCredentialsApplier(credsDir, GitCredentials(), secretStore)
+                val checkoutExecutor = GitCheckoutExecutor(pollExecutor, changelogWriter, credentialsApplier, javaClock, secretStore)
+                try {
+                    val result = checkoutExecutor.execute(checkoutRequest)
+                    if (result.isSuccess) "success" else "failure"
+                } catch (e: Exception) {
+                    "failure"
+                } finally {
+                    checkoutExecutor.close()
+                }
             }
         }
     } catch (_: Throwable) {
@@ -1245,9 +1299,41 @@ private fun emitStepEvents(
         }
         is StepSpec.Checkout -> {
             // ML-R5: Checkout step execution via GitCheckoutExecutor
-            // Note: Full durable execution with credential resolution and workspace management
-            // is handled in the durable step execution path (executeDurableStep).
-            // This path handles the simple case for non-durable execution contexts.
+            // C1 (P1): Events fire from REAL execution lifecycle, not emitted unconditionally.
+            val scm = step.scm as? GitScm
+            if (scm == null) {
+                eventSink.append(
+                    StepStarted(
+                        eventId = stepStartedId,
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = stepStartedAt,
+                        stageIndex = stageIndex,
+                        stepIndex = stepIndex,
+                        stepName = stepName,
+                        stepType = stepType,
+                    )
+                )
+                val stepFinishedId = UUID.randomUUID().toString()
+                val stepFinishedAt = clock.now()
+                eventSink.append(
+                    StepFinished(
+                        eventId = stepFinishedId,
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = stepFinishedAt,
+                        stageIndex = stageIndex,
+                        stepIndex = stepIndex,
+                        stepName = stepName,
+                        stepType = stepType,
+                    )
+                )
+                return
+            }
+            // C6: Validate URL non-blank (Jenkins-verbatim error)
+            if (scm.url.isBlank()) {
+                throw IllegalArgumentException("Missing required parameter: url")
+            }
             eventSink.append(
                 StepStarted(
                     eventId = stepStartedId,
@@ -1260,12 +1346,40 @@ private fun emitStepEvents(
                     stepType = stepType,
                 )
             )
-
-            // Execute checkout using GitCheckoutExecutor from scm-git module
-            // Note: workspaceRoot resolved from durable execution context, not here
-            val spec = step.scm
-
-            // Emit StepFinished (success) - actual durable execution happens elsewhere
+            // Non-durable execution: use temp workspace (no durable context available)
+            val workspace = Files.createTempDirectory("checkout-workspace")
+            val credsDir = Files.createTempDirectory("git-creds")
+            credsDir.let { dir ->
+                Files.setPosixFilePermissions(dir, setOf(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE
+                ))
+            }
+            val checkoutSpec = CheckoutSpec(scm)
+            val checkoutRequest = GitCheckoutRequest(
+                spec = checkoutSpec,
+                runId = runId,
+                workspaceRoot = workspace,
+                eventSink = eventSink,
+                clock = java.time.Clock.systemUTC(),
+                secretStore = null,
+                stepIndex = stepIndex,
+                previousRemoteSha = null,
+            )
+            val pollExecutor = GitPollExecutor()
+            val changelogWriter = GitChangelogWriter()
+            val credentialsApplier = GitCredentialsApplier(credsDir, GitCredentials())
+            val checkoutExecutor = GitCheckoutExecutor(pollExecutor, changelogWriter, credentialsApplier, java.time.Clock.systemUTC(), null)
+            val stepOutcome = try {
+                val result = checkoutExecutor.execute(checkoutRequest)
+                if (result.isSuccess) "success" else "failure"
+            } catch (e: Exception) {
+                "failure"
+            } finally {
+                checkoutExecutor.close()
+            }
+            runOutcome.set(stepOutcome)
             val stepFinishedId = UUID.randomUUID().toString()
             val stepFinishedAt = clock.now()
             eventSink.append(

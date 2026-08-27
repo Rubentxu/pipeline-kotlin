@@ -1,7 +1,10 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
@@ -35,12 +38,14 @@ import java.util.concurrent.TimeUnit
  * @param changelog GitChangelogWriter for changelog.txt
  * @param credentialsApplier GitCredentialsApplier for temp file auth
  * @param clock Clock for event timestamps
+ * @param secretStore SecretStore for credential resolution (may be null in test paths)
  */
 class GitCheckoutExecutor(
     private val poll: GitPollExecutor,
     private val changelog: GitChangelogWriter,
     private val credentialsApplier: GitCredentialsApplier,
     private val clock: Clock = Clock.systemUTC(),
+    private val secretStore: SecretStore? = null,
 ) : AutoCloseable {
 
     companion object {
@@ -79,35 +84,46 @@ class GitCheckoutExecutor(
 
         val startMs = System.currentTimeMillis()
 
-        return credentialsApplier.use {
-            // Apply credentials if needed
-            val gitCreds = resolveGitCredentials(req, spec)
-            if (gitCreds != null) {
-                val stringCred = gitCreds.string
-                val userCred = gitCreds.user
-                val passCred = gitCreds.pass
-                when {
-                    stringCred != null -> credentialsApplier.apply(stringCred)
-                    userCred != null && passCred != null -> credentialsApplier.apply(userCred, passCred)
+        // Apply credentials if needed; capture the credentials file path
+        // so tests can verify it was written with real secrets.
+        // NOTE: close() is NOT called here — it is deferred to GitCheckoutExecutor.close()
+        // so the file persists for the duration of execute() and is available
+        // for verification by the caller AFTER execute() returns.
+        var credentialsFilePath: String? = null
+        var gitConfigFilePath: String? = null
+        val gitCreds = resolveGitCredentials(req, spec)
+        if (gitCreds != null) {
+            val stringCred = gitCreds.string
+            val userCred = gitCreds.user
+            val passCred = gitCreds.pass
+            when {
+                stringCred != null -> {
+                    credentialsApplier.apply(stringCred)
+                    credentialsFilePath = credentialsApplier.credentialsFilePath()
+                }
+                userCred != null && passCred != null -> {
+                    credentialsApplier.apply(userCred, passCred)
+                    gitConfigFilePath = credentialsApplier.gitConfigFilePath()
                 }
             }
+        }
 
-            try {
-                executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha)
-            } catch (e: Exception) {
-                val durationMs = System.currentTimeMillis() - startMs
-                emitEvent(req, GitCheckoutFailed(
-                    eventId = newEventId(),
-                    runId = req.runId,
-                    sequence = req.stepIndex.toLong(),
-                    occurredAt = Instant.now(clock),
-                    url = spec.url,
-                    branch = spec.branch,
-                    reason = e.message?.take(256) ?: "Unknown error",
-                    exitCode = -1
-                ))
-                Result.failure(e)
-            }
+        return try {
+            executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha)
+                .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
+        } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - startMs
+            emitEvent(req, GitCheckoutFailed(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = req.stepIndex.toLong(),
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                reason = e.message?.take(256) ?: "Unknown error",
+                exitCode = -1
+            ))
+            Result.failure(e)
         }
     }
 
@@ -159,7 +175,7 @@ class GitCheckoutExecutor(
         // Step 1: Check if .git exists
         if (Files.exists(gitDir)) {
             // Existing checkout - check SHA equality
-            val currentSha = revParse(workspace, "HEAD")
+            val currentSha = revParse(req, workspace, "HEAD")
             if (currentSha != null && currentSha == remoteSha) {
                 // SHA equal - no-op
                 val durationMs = System.currentTimeMillis() - startMs
@@ -178,7 +194,7 @@ class GitCheckoutExecutor(
             }
 
             // SHA different - fetch and reset
-            val fetchResult = gitFetch(workspace)
+            val fetchResult = gitFetch(req, workspace)
             if (fetchResult.isFailure) {
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
@@ -194,7 +210,7 @@ class GitCheckoutExecutor(
                 return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
             }
 
-            val resetResult = gitResetHard(workspace, remoteSha)
+            val resetResult = gitResetHard(req, workspace, remoteSha)
             if (resetResult.isFailure) {
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
@@ -232,7 +248,7 @@ class GitCheckoutExecutor(
 
         // No .git - clone
         Files.createDirectories(workspace)
-        val cloneResult = gitClone(url, branch, workspace)
+        val cloneResult = gitClone(req, url, branch, workspace)
         if (cloneResult.isFailure) {
             val durationMs = System.currentTimeMillis() - startMs
             emitEvent(req, GitCheckoutFailed(
@@ -249,7 +265,7 @@ class GitCheckoutExecutor(
         }
 
         // Get cloned SHA
-        val sha = revParse(workspace, "HEAD") ?: remoteSha
+        val sha = revParse(req, workspace, "HEAD") ?: remoteSha
 
         // Append changelog
         if (spec.changelog) {
@@ -272,58 +288,144 @@ class GitCheckoutExecutor(
     }
 
     private fun resolveGitCredentials(req: GitCheckoutRequest, spec: dev.rubentxu.pipeline.v2.domain.scm.GitScm): GitCredentials? {
-        // In real implementation, would resolve from SecretStore
-        // For now, return null if no credentialsId
-        if (spec.credentialsId == null) return null
-        // Placeholder - actual resolution would happen via SecretStore
-        return null
+        // If the applier has built-in credentials (test path), return them directly.
+        // This preserves backward compatibility with tests that construct GitCredentials directly.
+        // However, apply() needs secretStore to resolve the actual secret bytes.
+        val applierCreds = credentialsApplier.credentials
+        if (applierCreds.string != null || applierCreds.user != null || applierCreds.pass != null) {
+            // Ensure secretStore is available — apply() will need it to resolve secret bytes
+            if (secretStore == null && req.secretStore == null) {
+                throw IllegalStateException(
+                    "SecretStore is required when credentials are configured on GitCredentialsApplier, " +
+                    "but none was provided. Pass SecretStore to GitCheckoutExecutor or include it in GitCheckoutRequest."
+                )
+            }
+            return applierCreds
+        }
+        // Production path: resolve from SecretStore using credentialsId
+        val credentialsId = spec.credentialsId ?: return null
+        val store = secretStore ?: req.secretStore ?: return null
+        return try {
+            val handle = store.get(credentialsId)
+            handle.use { bytes ->
+                // Infer credential kind: if bytes contain a colon, treat as usernamePassword,
+                // otherwise treat as string (API token). This heuristic covers the common cases.
+                val asStr = String(bytes, Charsets.UTF_8)
+                if (asStr.contains(":")) {
+                    // usernamePassword: split on first colon
+                    val colonIdx = asStr.indexOf(':')
+                    GitCredentials(
+                        string = null,
+                        user = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
+                        pass = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
+                    )
+                } else {
+                    // string (API token)
+                    GitCredentials(
+                        string = dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef(credentialsId),
+                        user = null,
+                        pass = null,
+                    )
+                }
+            }
+        } catch (e: dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException) {
+            throw IllegalArgumentException("Could not find credentials entry with ID '${credentialsId.value}'", e)
+        }
     }
 
-    private fun revParse(workspace: Path, ref: String): String? {
+    private fun revParse(req: GitCheckoutRequest, workspace: Path, ref: String): String? {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "rev-parse", ref)
             val process = ProcessBuilder(args).start()
             val output = process.inputStream.bufferedReader().readText().trim()
+            val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            if (stderr.isNotBlank()) {
+                emitEcho(req, "git rev-parse stderr: $stderr")
+            }
             if (exitCode && process.exitValue() == 0) output else null
         } catch (e: Exception) {
             null
         }
     }
 
-    private fun gitFetch(workspace: Path): Result<Unit> {
+    private fun gitFetch(req: GitCheckoutRequest, workspace: Path): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "fetch")
             val process = ProcessBuilder(args).start()
+            val stdout = process.inputStream.bufferedReader().readText()
+            val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            if (stdout.isNotBlank()) {
+                emitEcho(req, stdout)
+            }
+            if (stderr.isNotBlank()) {
+                emitEcho(req, "git fetch stderr: $stderr")
+            }
             if (exitCode && process.exitValue() == 0) Result.success(Unit)
-            else Result.failure(IllegalStateException("git fetch failed"))
+            else Result.failure(IllegalStateException("git fetch failed${stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private fun gitResetHard(workspace: Path, sha: String): Result<Unit> {
+    private fun gitResetHard(req: GitCheckoutRequest, workspace: Path, sha: String): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "reset", "--hard", sha)
             val process = ProcessBuilder(args).start()
+            val stdout = process.inputStream.bufferedReader().readText()
+            val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            if (stdout.isNotBlank()) {
+                emitEcho(req, stdout)
+            }
+            if (stderr.isNotBlank()) {
+                emitEcho(req, "git reset --hard stderr: $stderr")
+            }
             if (exitCode && process.exitValue() == 0) Result.success(Unit)
-            else Result.failure(IllegalStateException("git reset --hard failed"))
+            else Result.failure(IllegalStateException("git reset --hard failed${stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private fun gitClone(url: String, branch: String, workspace: Path): Result<Unit> {
+    private fun gitClone(req: GitCheckoutRequest, url: String, branch: String, workspace: Path): Result<Unit> {
         return try {
             val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
             val process = ProcessBuilder(args).start()
+            val stdout = process.inputStream.bufferedReader().readText()
+            val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS * 2, TimeUnit.SECONDS)
+            if (stdout.isNotBlank()) {
+                emitEcho(req, stdout)
+            }
+            if (stderr.isNotBlank()) {
+                emitEcho(req, "git clone stderr: $stderr")
+            }
             if (exitCode && process.exitValue() == 0) Result.success(Unit)
-            else Result.failure(IllegalStateException("git clone failed"))
+            else Result.failure(IllegalStateException("git clone failed${stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Emits git command stdout/stderr through EchoOutputCaptured events.
+     * The RedactingEventSink will redact any secret patterns before persisting.
+     */
+    private fun emitEcho(req: GitCheckoutRequest, content: String) {
+        if (content.isBlank()) return
+        try {
+            req.eventSink.append(EchoOutputCaptured(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = req.stepIndex.toLong(),
+                occurredAt = Instant.now(clock),
+                stepIndex = req.stepIndex,
+                content = content,
+            ))
+        } catch (e: Exception) {
+            System.err.println("Warning: failed to emit EchoOutputCaptured: ${e.message}")
         }
     }
 
@@ -338,7 +440,10 @@ class GitCheckoutExecutor(
     private fun newEventId(): String = java.util.UUID.randomUUID().toString()
 
     override fun close() {
-        // GitCredentialsApplier handles its own cleanup
+        // Wipe credentials files AFTER execute() completes.
+        // This ensures the credentials file persists through execute() and
+        // is available for verification by callers after execute() returns.
+        credentialsApplier.close()
     }
 }
 
@@ -363,4 +468,14 @@ data class GitCheckoutResult(
     val sha: String,
     val durationMs: Long,
     val classification: String, // "no-op", "fetch+reset", "clone"
+    /**
+     * Path to the .git-credentials file (string channel).
+     * Non-null when string credentials were applied.
+     */
+    val credentialsFilePath: String? = null,
+    /**
+     * Path to the .gitconfig file (usernamePassword channel).
+     * Non-null when usernamePassword credentials were applied.
+     */
+    val gitConfigFilePath: String? = null,
 )

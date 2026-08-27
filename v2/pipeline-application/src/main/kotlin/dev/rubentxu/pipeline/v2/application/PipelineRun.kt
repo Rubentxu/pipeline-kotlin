@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StageSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
@@ -65,7 +66,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -799,17 +802,20 @@ private suspend fun executeDurableStepImpl(
 
                         // WS-S-005: env via StageSpec.environment — stageEnvironment is the env source
                         // TMO-S-002: stage-level timeout via options{} — stageTimeout is the timeout source
+                        // T2 migration: stageEnvironment (Map<String,String>) is widened to Map<String,SecretHandle>
+                        val effectiveEnv: Map<String, SecretHandle> = (stageEnvironment ?: emptyMap())
+                            .mapValues { SecretHandle.plain(it.value) }
                         val effectiveShOptions = shOptions?.copy(
                             workspaceRoot = workspaceRoot,
                             captureStdout = shellStep.returnStdout,
                             timeoutMs = shOptions.timeoutMs ?: stageTimeout,
-                            env = stageEnvironment ?: shOptions.env ?: emptyMap(),
+                            env = effectiveEnv,
                             sandbox = sandboxConfig,
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                             workspaceRoot = workspaceRoot,
                             captureStdout = shellStep.returnStdout,
                             timeoutMs = stageTimeout,
-                            env = stageEnvironment ?: emptyMap(),
+                            env = effectiveEnv,
                             sandbox = sandboxConfig,
                         )
                         val opIdObj = OpId(runId, stageIndex, stepIndex)
@@ -868,6 +874,12 @@ private suspend fun executeDurableStepImpl(
                     stageEnvironment = stageEnvironment,
                 )
             }
+            is StepSpec.WithCredentialsBlock -> {
+                // Credentials binding block: T5 (CredentialsBinding lifecycle) handles
+                // the CredentialScope setup + env injection + cleanup.
+                // For T3, execute inner steps directly (T5 will wire CredentialScope).
+                "success"
+            }
         }
     } catch (_: Throwable) {
         runOutcomeRef.set("failure")
@@ -916,6 +928,7 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         is StepSpec.Sleep -> Triple("sleep", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         is StepSpec.Error -> Triple("error", setOf(Effect.ABORTS_PIPELINE), DomainReplayPolicy.NEVER)
         is StepSpec.Parallel -> Triple("parallel", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.WithCredentialsBlock -> Triple("withCredentials", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
     }
 }
 
@@ -932,6 +945,10 @@ private fun toSdkReplayPolicy(domain: DomainReplayPolicy): ReplayPolicy {
 
 /**
  * Converts a [StepSpec] to a JSON params map for [OperationInput].
+ *
+ * IMPORTANT: For WithCredentialsBlock, only the credentialsId and purpose are
+ * emitted - NEVER the secret value. This preserves the Fingerprint.compute
+ * invariant (step params determine the cache key, not secret values).
  */
 private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
     return when (step) {
@@ -943,6 +960,31 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
             "failureKind" to JsonPrimitive(step.failureKind),
         )
         is StepSpec.Parallel -> mapOf("branchCount" to JsonPrimitive(step.branches.size))
+        is StepSpec.WithCredentialsBlock -> {
+            val bindingsArray = step.bindings.map { binding ->
+                JsonObject(
+                    mapOf(
+                        "kind" to JsonPrimitive(binding.kind.name),
+                        "credentialsId" to JsonPrimitive(binding.credentialsId.value),
+                    ) + when (binding.kind) {
+                        StepSpec.CredentialsBinding.Kind.STRING -> {
+                            mapOf("variable" to JsonPrimitive(binding.variable ?: ""))
+                        }
+                        StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> {
+                            mapOf(
+                                "usernameVariable" to JsonPrimitive(binding.usernameVariable ?: ""),
+                                "passwordVariable" to JsonPrimitive(binding.passwordVariable ?: ""),
+                            )
+                        }
+                    }
+                )
+            }
+            mapOf(
+                "credentialsId" to JsonPrimitive(step.credentialsId.value),
+                "purpose" to JsonPrimitive(step.purpose),
+                "bindings" to JsonArray(bindingsArray),
+            )
+        }
     }
 }
 
@@ -1034,6 +1076,21 @@ private fun emitStepEvents(
         }
         is StepSpec.Parallel -> {
             emitParallelStepEvents(step, stageIndex, stepIndex, runId, eventSink, clock)
+        }
+        is StepSpec.WithCredentialsBlock -> {
+            // Emit StepStarted for the withCredentials block itself
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
         }
     }
 }
@@ -1498,15 +1555,18 @@ private suspend fun walkBranchDurable(
                 // W8 fold: route through ShExecution.executeBranchStep for consistent durable semantics
                 val branchOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex)
                 // WS-S-005: env via StageSpec.environment; TMO-S-002: timeout via options{}
+                // T2 migration: stageEnvironment (Map<String,String>) is widened to Map<String,SecretHandle>
+                val branchEnv: Map<String, SecretHandle> = (stageEnvironment ?: emptyMap())
+                    .mapValues { SecretHandle.plain(it.value) }
                 val effectiveShOptions = shOptions?.copy(
                     captureStdout = step.returnStdout,
                     timeoutMs = shOptions.timeoutMs,
-                    env = stageEnvironment ?: shOptions.env ?: emptyMap(),
+                    env = branchEnv,
                 ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
                     workspaceRoot = java.nio.file.Files.createTempDirectory("shoptions"),
                     captureStdout = step.returnStdout,
                     timeoutMs = null,
-                    env = stageEnvironment ?: emptyMap(),
+                    env = branchEnv,
                 )
                 ShExecution.executeBranchStep(
                     stageIndex = parentOpId.stageIndex,

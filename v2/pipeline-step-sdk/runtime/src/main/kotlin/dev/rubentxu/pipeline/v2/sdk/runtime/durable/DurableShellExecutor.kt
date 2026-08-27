@@ -942,7 +942,7 @@ fun executeDurableShell(
     opId: String,
     config: DurableShConfig = DurableShConfig.fromSystemProperties(),
     timeoutMs: Long = 0L,
-    env: Map<String, String> = emptyMap(),
+    env: Map<String, SecretHandle> = emptyMap(),
     sandbox: SandboxConfig = SandboxConfig.NONE,
     workspaceRoot: Path? = null,
 ): DurableShellResult {
@@ -952,13 +952,10 @@ fun executeDurableShell(
     var process: ProcessHandle? = null
     var timedOut = false
 
-    // Convert legacy Map<String, String> to typed Map<String, SecretHandle>
-    // This is the back-compat path for callers using the old API
-    val typedEnv: Map<String, SecretHandle> = env.mapValues { SecretHandle.plain(it.value) }
-
+    // T2 migration: env is now typed Map<String, SecretHandle>
     try {
         // Step 1: Launch (P2: env injected via pb.environment().putAll in launch())
-        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = typedEnv, sandbox = sandbox, workspaceRoot = workspaceRoot)
+        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot)
         state = DurableShellState.LAUNCHING
 
         // Step 2: Detach

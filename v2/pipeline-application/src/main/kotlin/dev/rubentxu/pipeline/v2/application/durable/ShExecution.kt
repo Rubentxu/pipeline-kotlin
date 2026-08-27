@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -247,7 +248,7 @@ object ShExecution {
      */
     private fun executeNonDurable(
         scriptContent: String,
-        env: Map<String, String>,
+        env: Map<String, SecretHandle>,
         eventSink: EventSink,
         stepIndex: Int,
         runId: String,
@@ -269,8 +270,10 @@ object ShExecution {
             // Execute: bash <script-path>
             val pb = ProcessBuilder("bash", scriptPath.toString())
             // P2: env injected via pb.environment().putAll (WS-S-005)
+            // T2: env is Map<String, SecretHandle>; coerce at pb.environment() choke
             if (env.isNotEmpty()) {
-                pb.environment().putAll(env)
+                val coercedEnv: Map<String, String> = env.mapValues { it.value.materialize() }
+                pb.environment().putAll(coercedEnv)
             }
             val process = pb.start()
             // Read stdout from the process's input stream

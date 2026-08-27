@@ -15,4 +15,10 @@ kotlin {
 
 dependencies {
     implementation(project(":pipeline-domain"))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

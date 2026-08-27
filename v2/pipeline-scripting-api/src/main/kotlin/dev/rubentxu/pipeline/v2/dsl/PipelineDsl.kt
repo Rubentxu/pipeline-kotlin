@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+
 /**
  * Specification of a pipeline as built by the DSL.
  */
@@ -108,6 +110,86 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val name: String,
         val steps: List<StepSpec>,
     )
+
+    /**
+     * Credentials binding for the withCredentials DSL block.
+     *
+     * Two binding kinds are supported:
+     * - [Kind.STRING]: injects a plaintext value as an environment variable
+     * - [Kind.USERNAME_PASSWORD]: injects two env vars (username and password)
+     *
+     * @see WithCredentialsBlock
+     */
+    data class CredentialsBinding(
+        val kind: Kind,
+        val credentialsId: CredentialsId,
+        val variable: String? = null,
+        val usernameVariable: String? = null,
+        val passwordVariable: String? = null,
+    ) {
+        enum class Kind {
+            STRING,
+            USERNAME_PASSWORD
+        }
+
+        companion object {
+            /**
+             * Creates a STRING binding: the secret value is injected as a single env var.
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param variable The environment variable name
+             */
+            fun string(credentialsId: CredentialsId, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.STRING, credentialsId, variable = variable)
+            }
+
+            /**
+             * Creates a USERNAME_PASSWORD binding: two env vars are injected.
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param usernameVariable The username environment variable name
+             * @param passwordVariable The password environment variable name
+             */
+            fun usernamePassword(
+                credentialsId: CredentialsId,
+                usernameVariable: String,
+                passwordVariable: String,
+            ): CredentialsBinding {
+                return CredentialsBinding(
+                    Kind.USERNAME_PASSWORD,
+                    credentialsId,
+                    usernameVariable = usernameVariable,
+                    passwordVariable = passwordVariable,
+                )
+            }
+        }
+    }
+
+    /**
+     * Represents a withCredentials block that binds credentials to environment variables.
+     *
+     * The block desugars at runtime to emit [CredentialBound] events at scope entry,
+     * [CredentialUsed] events at each injection, and [CredentialUnbound] at scope exit.
+     * Secret values are NEVER included in the params map (preserves Fingerprint.compute invariant).
+     *
+     * @param credentialsId The primary credentials ID for this block
+     * @param purpose The purpose/label for the binding (e.g., variable name)
+     * @param bindings The list of credentials bindings
+     * @param steps The steps to execute with the credentials bound
+     * @param retry Retry policy for this step, or null if no retry.
+     * @param timeoutMillis Timeout in milliseconds for this step, or null for no timeout.
+     */
+    data class WithCredentialsBlock(
+        val credentialsId: CredentialsId,
+        val purpose: String,
+        val bindings: List<CredentialsBinding>,
+        val steps: List<StepSpec>,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "withCredentials"
+        override val type: String get() = "withCredentials"
+    }
 }
 
 /**
@@ -314,6 +396,62 @@ class StageScope(private val stageName: String) {
     }
 
     /**
+     * Binds credentials to environment variables for the duration of the block.
+     *
+     * Mirrors Jenkins `withCredentials { }` DSL. Two binding kinds:
+     * - [CredentialsBinding.string] injects the secret as a single env var
+     * - [CredentialsBinding.usernamePassword] injects username and password as two env vars
+     *
+     * Example:
+     * ```
+     * withCredentials(CredentialsBinding.string(CredentialsId("github"), "API_KEY")) {
+     *     sh("curl -H 'Authorization: token $API_KEY' https://api.github.com")
+     * }
+     * ```
+     *
+     * @param bindings The credentials bindings to activate
+     * @param block The steps to execute with the credentials bound
+     * @see CredentialsBinding
+     */
+    fun withCredentials(bindings: List<StepSpec.CredentialsBinding>, block: StageScope.() -> Unit) {
+        val innerScope = StageScope(stageName)
+        innerScope.block()
+        // The primary credentialsId is the first binding's ID
+        val primaryId = bindings.firstOrNull()?.credentialsId ?: CredentialsId("")
+        val purpose = bindings.firstOrNull()?.variable
+            ?: bindings.firstOrNull()?.usernameVariable
+            ?: ""
+        steps.add(
+            StepSpec.WithCredentialsBlock(
+                credentialsId = primaryId,
+                purpose = purpose,
+                bindings = bindings,
+                steps = innerScope.steps.toList(),
+            )
+        )
+    }
+
+    /**
+     * Binds a single credential to an environment variable.
+     *
+     * This is a convenience desugar that calls [withCredentials] internally.
+     *
+     * Example:
+     * ```
+     * environment(CredentialsId("github"), "API_KEY") {
+     *     sh("curl -H 'Authorization: token $API_KEY' https://api.github.com")
+     * }
+     * ```
+     *
+     * @param credentialsId The credentials ID in the store
+     * @param variable The environment variable name to inject
+     * @param block The steps to execute with the credential bound
+     */
+    fun environment(credentialsId: CredentialsId, variable: String, block: StageScope.() -> Unit) {
+        withCredentials(listOf(StepSpec.CredentialsBinding.string(credentialsId, variable)), block)
+    }
+
+    /**
      * Retry configuration for a step.
      */
     fun retry(count: Int, delaySeconds: Long? = null) {
@@ -331,6 +469,7 @@ class StageScope(private val stageName: String) {
             is StepSpec.Error -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Sleep -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.WithCredentialsBlock -> currentStep.copy(retry = retryPolicy)
         }
     }
 

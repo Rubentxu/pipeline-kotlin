@@ -44,6 +44,14 @@ data class OperationInput(
         )
 
         /**
+         * Allowlist of keys that look like secrets but are intentionally allowed.
+         * These keys do NOT contain actual secret values, only identifiers.
+         */
+        private val ALLOWED_KEYS = setOf(
+            "credentialsId",
+        )
+
+        /**
          * Validates that the parameter map satisfies safety constraints:
          * - No secret keys
          * - No unbounded string values (> 64 KiB when serialized)
@@ -52,6 +60,10 @@ data class OperationInput(
         fun validate(params: Map<String, JsonElement>) {
             for ((key, value) in params) {
                 val lowerKey = key.lowercase()
+                // Allowlisted keys bypass secret pattern check
+                if (ALLOWED_KEYS.contains(key)) {
+                    continue
+                }
                 require(!SECRET_PATTERNS.any { lowerKey.contains(it) }) {
                     "Parameter key '$key' looks like a secret and is not allowed in durable inputs"
                 }

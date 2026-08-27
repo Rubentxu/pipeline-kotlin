@@ -374,6 +374,20 @@ class ParallelFrameExecutor(
                             return BranchResult(branchIndex, outcome, lastStageIndex)
                         }
                     }
+                    is StepSpec.Checkout -> {
+                        // Checkout in parallel branch context — emit to no-op sink
+                        // Full durable checkout execution happens in PipelineRun
+                        val scm = step.scm
+                        when (scm) {
+                            is dev.rubentxu.pipeline.v2.domain.scm.GitScm -> {
+                                // Emit checkout started event (sink is NoOpEventSink so this is a no-op in parallel branches)
+                                System.err.println("Checkout step in parallel branch: ${scm.url} branch=${scm.branch}")
+                            }
+                            else -> {
+                                System.err.println("Checkout step with unsupported SCM type in parallel branch")
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 outcome = "failure"

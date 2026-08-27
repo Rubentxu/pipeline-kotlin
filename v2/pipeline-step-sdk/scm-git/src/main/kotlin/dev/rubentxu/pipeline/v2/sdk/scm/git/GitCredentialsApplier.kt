@@ -112,8 +112,19 @@ class GitCredentialsApplier(
                         "Found in: $arg"
                     )
                 }
+                // Detect embedded credentials in URLs: https://user:pass@host/path
+                if ((lower.contains("://") || lower.contains("@")) &&
+                    URL_CREDENTIALS_PATTERN.containsMatchIn(arg)) {
+                    throw IllegalArgumentException(
+                        "Forbidden: URL with embedded credentials detected. " +
+                        "Credentials must not appear in process arguments (argv) — " +
+                        "use GIT_ASKPASS or credential helper instead. Found in: $arg"
+                    )
+                }
             }
         }
+
+        private val URL_CREDENTIALS_PATTERN = Regex("https?://[^/]+:[^/]+@")
 
         private fun extractHost(url: String): String {
             return try {

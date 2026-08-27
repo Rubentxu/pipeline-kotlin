@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
+    testImplementation(project(":pipeline-step-sdk:scm-git"))
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

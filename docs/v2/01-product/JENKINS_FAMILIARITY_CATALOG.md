@@ -89,6 +89,17 @@ Sources: `…/steps/git/`, `…/steps/workflow-scm-step/`
 | `git` | `git(url: String, branch: String = 'master', changelog: boolean = true, credentialsId: String = <empty>, poll: boolean = true)` | exactly 5 params, no more — advanced checkouts require `checkout`. branch must be local name (no `origin/`, tags, SHAs). F1 (url, branch, credentialsId), F2 (changelog, poll) |
 | `checkout` | `checkout(scm: SCM)` | one required param; `scm` is a nested choice over every installed SCM (`scmGit(...)`, `git`, `svn`, `github`, plus branch-source SCMs). The dominant real-world form is `checkout(scm)` inside multibranch pipelines (implicit `scm` variable). F1 |
 
+**v2 implementation (ML-R5 — L5):**
+- `GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir)` — DSL entry point
+- Supported auth at L5: `string` (→ `API_KEY` purpose via `GitCredentials.string`), `usernamePassword` (→ `GitCredentials.user/pass`)
+- Deferred to ML-R5.1: `sshUserPrivateKey`, `depth`, `shallowClone`, Subversion/Mercurial SCMs
+- Implementation: `GitCheckoutExecutor` (CLI-git, not JGit — F-ARCH-L5-001); `GitPollExecutor` for sync ls-remote; `GitChangelogWriter` for plain-text changelog
+- SHA-equality idempotency: <2s no-op when remote SHA equals local HEAD
+- Credentials never enter argv — temp `.git-credentials` (0600) + `.gitconfig` (0600) via `GitCredentialsApplier`, wiped in `finally`
+- Argv guard fail-closed: rejects `extraHeader`/`Authorization` substrings in process args
+- Events: `GitCheckoutStarted`, `GitPollChanged`, `GitCheckoutCompleted`, `GitCheckoutFailed`
+- See [[ADR-0050-checkout-git-step]] §Jenkins Mapping Table
+
 ### 1.6 credentials-binding — v728.v902a_273b_8947 (198k installs)
 Source: `…/steps/credentials-binding/`
 

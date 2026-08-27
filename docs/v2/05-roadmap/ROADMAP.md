@@ -236,7 +236,7 @@ steps de ecosistema — sin controller externo.
 - L3: sandbox profile local (confinement workspace/env best-effort;
   perfil OS/container completo queda en M5/M9 per ADR-0016).
 - L4: credentials provider local + redacción de secretos en logs/events. ✅ **CLOSED (ML-R4, 2026-08-27)**
-- L5: `checkout`/git step.
+- L5: `checkout`/git step. ✅ **CLOSED (ML-R5, 2026-08-27)**
 - L6: steps Jenkins más usados (writeFile/readFile, archiveArtifacts mínimo,
   wrappers maven/gradle). Selección y firmas según
   [`../01-product/JENKINS_FAMILIARITY_CATALOG.md`](../01-product/JENKINS_FAMILIARITY_CATALOG.md)
@@ -251,14 +251,15 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 
 | Sub-cycle | Status | Tag | Commit | Closure date |
 |---|---|---|---|---|
-| ML-R4 — L4 credentials local + secret redaction | ✅ CLOSED | — | 7abb609… | 2026-08-27 |
+| ML-R4 — L4 credentials local + secret redaction | ✅ CLOSED | **v0.18.0** | 9a27823… | 2026-08-27 |
+| ML-R5 — L5 checkout/git step | ✅ CLOSED | **v0.19.0** | 24dd2cb… | 2026-08-27 |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)
 2. ✅ L2 — workspace + environment + returnStdout + timeouts (ML-R2/R3)
 3. ✅ L3 — sandbox profile local (ML-R3, ADR-0048)
 4. ✅ L4 — credentials provider local + secret redaction (ML-R4, ADR-0049)
-5. ⬜ L5 — `checkout`/git step (deferred)
+5. ✅ L5 — `checkout`/git step (ML-R5, ADR-0050)
 6. ⬜ L6 — Jenkins top steps (deferred)
 7. ⬜ L7 — smoke E2E (deferred)
 

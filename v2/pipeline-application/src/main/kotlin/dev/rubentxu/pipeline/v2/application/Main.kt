@@ -4,7 +4,9 @@ import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
+import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
@@ -228,6 +230,49 @@ fun main(args: Array<String>) {
         dbPath.parent.resolve("durable-shell")
     }
 
+    // T12: Resolve SecretStore for credential injection in withCredentials blocks.
+    //
+    // Design: Option A — env var PIPELINE_CREDENTIALS_STORE for store path,
+    // PIPELINE_STORE_PASSPHRASE for passphrase.  Default path is
+    // <controlDirRoot>/../credentials.bin (sibling to the journal db).
+    //
+    // Behavior:
+    // - Store file does not exist → pass null (user runs `pipeline credentials add`
+    //   first to create it; no error at startup)
+    // - Store file exists + passphrase available → inject credentials
+    // - Store file exists + passphrase wrong/missing → fail fast with actionable error
+    val credentialsStorePath: Path = System.getenv("PIPELINE_CREDENTIALS_STORE")?.let { Paths.get(it) }
+        ?: controlDirRoot.parent.resolve("credentials.bin")
+
+    val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? =
+        if (!credentialsStorePath.toFile().exists()) {
+            // File doesn't exist yet — user must create it via `pipeline credentials add`
+            null
+        } else {
+            // File exists — resolve passphrase and open the store
+            try {
+                val passphraseChars = PassphraseResolver.resolve()
+                val store = LocalSecretStore(credentialsStorePath, passphraseChars)
+                // Immediately wipe the passphrase from memory after use
+                passphraseChars.fill('\u0000')
+                store
+            } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
+                System.err.println("Error: ${e.message}")
+                System.err.println("Hint: set PIPELINE_STORE_PASSPHRASE env var, or run interactively in a TTY.")
+                System.exit(3)
+                null // unreachable
+            } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
+                System.err.println("Error: $e.message")
+                System.err.println("Hint: the passphrase does not match. Check PIPELINE_STORE_PASSPHRASE.")
+                System.exit(3)
+                null // unreachable
+            } catch (e: LocalSecretStore.SecretStoreTamperException) {
+                System.err.println("Error: credentials store tampered: ${e.message}")
+                System.exit(4)
+                null // unreachable
+            }
+        }
+
     val orchestrator = PipelineOrchestrator(
         journal = journal,
         cursorStore = cursorStore,
@@ -238,6 +283,7 @@ fun main(args: Array<String>) {
         controlDirRoot = controlDirRoot,
         sandboxProfile = config.sandboxProfile,
         redactingEventSink = eventStore,
+        secretStore = secretStore,
     )
 
     // Run via orchestrator (fresh run or resume based on --resume flag)

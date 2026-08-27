@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
@@ -260,4 +262,63 @@ data class EchoOutputCaptured(
     val content: String,
 ) : DomainEvent {
     override val kind: String get() = "EchoOutputCaptured"
+}
+
+/**
+ * Emitted when a credential scope is entered and a credential is bound (T6).
+ *
+ * Audit trail: documents that a credential was bound to the execution environment.
+ * No secret value, secret bytes, or secret field names cross the DSL/event boundary.
+ *
+ * @param credentialsId The bound credential ID (L1 structural carrier)
+ * @param purpose How the credential is injected (ENV / FILE / VALUE)
+ */
+data class CredentialBound(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val credentialsId: CredentialsId,
+    val purpose: BoundPurpose,
+) : DomainEvent {
+    override val kind: String get() = "CredentialBound"
+}
+
+/**
+ * Emitted when a bound credential is used — env injection or returnStdout delivery (T6).
+ *
+ * Audit trail: documents each use of a bound credential.
+ *
+ * @param credentialsId The credential ID used
+ * @param purpose How the credential was injected
+ * @param stepIndex The step that triggered the use
+ */
+data class CredentialUsed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val credentialsId: CredentialsId,
+    val purpose: BoundPurpose,
+    val stepIndex: Int,
+) : DomainEvent {
+    override val kind: String get() = "CredentialUsed"
+}
+
+/**
+ * Emitted when a credential scope exits and all bound credentials are released (T6).
+ *
+ * Audit trail: documents that credentials were unbound and handles wiped.
+ * Emitted exactly once per withCredentials block on scope exit (success/failure/interrupt).
+ *
+ * @param credentialsId The unbound credential ID
+ */
+data class CredentialUnbound(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val credentialsId: CredentialsId,
+) : DomainEvent {
+    override val kind: String get() = "CredentialUnbound"
 }

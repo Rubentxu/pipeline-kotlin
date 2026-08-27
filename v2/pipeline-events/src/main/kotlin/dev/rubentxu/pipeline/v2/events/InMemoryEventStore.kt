@@ -39,6 +39,9 @@ class InMemoryEventStore : EventSink {
             is TimeoutScheduled -> event.copy(sequence = assignedSequence)
             is StepFailed -> event.copy(sequence = assignedSequence)
             is EchoOutputCaptured -> event.copy(sequence = assignedSequence)
+            is CredentialBound -> event.copy(sequence = assignedSequence)
+            is CredentialUsed -> event.copy(sequence = assignedSequence)
+            is CredentialUnbound -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

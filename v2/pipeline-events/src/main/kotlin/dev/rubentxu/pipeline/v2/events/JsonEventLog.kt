@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
@@ -174,6 +176,24 @@ object JsonEventLog {
                 sb.append(event.stepIndex)
                 sb.append(",\"content\":")
                 sb.append(jsonString(event.content))
+            }
+            is CredentialBound -> {
+                sb.append(",\"credentialsId\":")
+                sb.append(jsonString(event.credentialsId.value))
+                sb.append(",\"purpose\":")
+                sb.append(jsonString(event.purpose.name))
+            }
+            is CredentialUsed -> {
+                sb.append(",\"credentialsId\":")
+                sb.append(jsonString(event.credentialsId.value))
+                sb.append(",\"purpose\":")
+                sb.append(jsonString(event.purpose.name))
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+            }
+            is CredentialUnbound -> {
+                sb.append(",\"credentialsId\":")
+                sb.append(jsonString(event.credentialsId.value))
             }
         }
         sb.append("}")
@@ -445,6 +465,43 @@ object JsonEventLog {
                 stepIndex = intField(s, "stepIndex") ?: 0,
                 content = stringField(s, "content") ?: "",
             )
+            "CredentialBound" -> {
+                val purposeStr = stringField(s, "purpose") ?: "ENV"
+                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.ENV }
+                val credIdStr = stringField(s, "credentialsId") ?: ""
+                CredentialBound(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    credentialsId = CredentialsId(credIdStr),
+                    purpose = purpose,
+                )
+            }
+            "CredentialUsed" -> {
+                val purposeStr = stringField(s, "purpose") ?: "ENV"
+                val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.ENV }
+                val credIdStr = stringField(s, "credentialsId") ?: ""
+                CredentialUsed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    credentialsId = CredentialsId(credIdStr),
+                    purpose = purpose,
+                    stepIndex = intField(s, "stepIndex") ?: 0,
+                )
+            }
+            "CredentialUnbound" -> {
+                val credIdStr = stringField(s, "credentialsId") ?: ""
+                CredentialUnbound(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    credentialsId = CredentialsId(credIdStr),
+                )
+            }
             else -> null
         }
     }

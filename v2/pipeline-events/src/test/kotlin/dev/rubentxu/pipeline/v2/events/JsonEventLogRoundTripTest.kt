@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.events
 
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
@@ -17,6 +19,8 @@ import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
@@ -364,5 +368,104 @@ class JsonEventLogRoundTripTest {
         assertEquals("hello world", eoc.content)
         assertEquals(runId, eoc.runId)
         assertEquals(16L, eoc.sequence)
+    }
+
+    // === T7: Credential audit events ===
+
+    @Test
+    fun `EVT-CR-001 CredentialBound roundtrips correctly`() {
+        val event = CredentialBound(
+            eventId = "cred-bound-1",
+            runId = "credential-run",
+            sequence = 20L,
+            occurredAt = Instant.parse("2026-08-27T10:00:00Z"),
+            credentialsId = CredentialsId("github-token"),
+            purpose = BoundPurpose.ENV,
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as CredentialBound
+        assertEquals(event.credentialsId, restored.credentialsId)
+        assertEquals(event.purpose, restored.purpose)
+        assertEquals(event.eventId, restored.eventId)
+        assertEquals(event.runId, restored.runId)
+        assertEquals(event.sequence, restored.sequence)
+    }
+
+    @Test
+    fun `EVT-CR-002 CredentialUsed roundtrips with stepIndex`() {
+        val event = CredentialUsed(
+            eventId = "cred-used-1",
+            runId = "credential-run",
+            sequence = 21L,
+            occurredAt = Instant.parse("2026-08-27T10:00:01Z"),
+            credentialsId = CredentialsId("deploy-key"),
+            purpose = BoundPurpose.ENV,
+            stepIndex = 3,
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as CredentialUsed
+        assertEquals(event.credentialsId, restored.credentialsId)
+        assertEquals(event.purpose, restored.purpose)
+        assertEquals(event.stepIndex, restored.stepIndex)
+    }
+
+    @Test
+    fun `EVT-CR-003 CredentialUnbound roundtrips correctly`() {
+        val event = CredentialUnbound(
+            eventId = "cred-unbound-1",
+            runId = "credential-run",
+            sequence = 25L,
+            occurredAt = Instant.parse("2026-08-27T10:00:05Z"),
+            credentialsId = CredentialsId("api-key"),
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as CredentialUnbound
+        assertEquals(event.credentialsId, restored.credentialsId)
+    }
+
+    @Test
+    fun `EVT-CR-004 new variants carry no secret field`() {
+        val events = listOf(
+            CredentialBound("cb-1", "cr", 1L, Instant.now(), CredentialsId("id"), BoundPurpose.ENV),
+            CredentialUsed("cu-1", "cr", 2L, Instant.now(), CredentialsId("id"), BoundPurpose.ENV, 0),
+            CredentialUnbound("cun-1", "cr", 3L, Instant.now(), CredentialsId("id")),
+        )
+        val encoded = JsonEventLog.encode(events)
+        assertFalse(encoded.contains("\"secret\""), "JSON should not contain 'secret' field")
+        assertFalse(encoded.contains("\"value\""), "JSON should not contain 'value' field")
+        assertFalse(encoded.contains("\"bytes\""), "JSON should not contain 'bytes' field")
+    }
+
+    @Test
+    fun `EVT-CR-005 mixed event roundtrip preserves all 3 new variants`() {
+        val events = listOf(
+            RunStarted("rs-1", "mixed-run", 1L, Instant.now(), "/path/to/script.kts"),
+            CredentialBound("cb-1", "mixed-run", 2L, Instant.now(), CredentialsId("github"), BoundPurpose.ENV),
+            CredentialUsed("cu-1", "mixed-run", 3L, Instant.now(), CredentialsId("github"), BoundPurpose.ENV, 0),
+            StepFinished("sf-1", "mixed-run", 4L, Instant.now(), 0, 0, "build", "sh"),
+            CredentialUnbound("cun-1", "mixed-run", 5L, Instant.now(), CredentialsId("github")),
+            RunFinished("rf-1", "mixed-run", 6L, Instant.now(), "SUCCESS", emptyList()),
+        )
+        val encoded = JsonEventLog.encode(events)
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(6, decoded.size)
+        assertTrue(decoded[1] is CredentialBound, "Event at index 1 should be CredentialBound")
+        assertTrue(decoded[2] is CredentialUsed, "Event at index 2 should be CredentialUsed")
+        assertTrue(decoded[4] is CredentialUnbound, "Event at index 4 should be CredentialUnbound")
+    }
+
+    @Test
+    fun `EVT-CR-008 forward compat - unknown kind returns null in decode`() {
+        // New kinds should be skipped gracefully (forward compat)
+        val encoded = """[{"eventId":"e1","runId":"r1","sequence":1,"kind":"CredentialBound","occurredAt":"2026-08-27T10:00:00Z","credentialsId":"github","purpose":"ENV"},{"eventId":"e2","runId":"r1","sequence":2,"kind":"FutureEventKind","occurredAt":"2026-08-27T10:00:00Z","extra":"data"}]"""
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        assertTrue(decoded[0] is CredentialBound)
     }
 }

@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
+import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
@@ -133,6 +134,13 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
 }
 
 fun main(args: Array<String>) {
+    // Credentials subcommand — delegated to MainCredentialsCli
+    if (args.firstOrNull() == "credentials") {
+        val exitCode = MainCredentialsCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
     val config = parseCliArgs(args) ?: run {
         System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] [--control-root <path>] <script>")
         System.exit(1)

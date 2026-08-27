@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialsBinding
+import dev.rubentxu.pipeline.v2.credentials.api.CredentialScope
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreTamperException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import org.bouncycastle.crypto.engines.AESWrapEngine
@@ -47,7 +52,7 @@ import java.security.SecureRandom
 class LocalSecretStore(
     private val file: Path,
     private val passphrase: CharArray,
-) {
+) : SecretStore {
     private val secureRandom = SecureRandom()
 
     /**
@@ -135,29 +140,36 @@ class LocalSecretStore(
     /**
      * Exception thrown when the store file is corrupted or tampered.
      */
-    class SecretStoreTamperException(message: String, cause: Throwable? = null) : Exception(message, cause)
+    class SecretStoreTamperException(message: String, cause: Throwable? = null) :
+        dev.rubentxu.pipeline.v2.credentials.api.SecretStoreTamperException(message, cause)
 
     /**
      * Exception thrown when the passphrase is incorrect.
      */
     class SecretStorePassphraseMismatchException :
-        Exception("Passphrase required: set PIPELINE_STORE_PASSPHRASE or run interactively in a TTY")
+        dev.rubentxu.pipeline.v2.credentials.api.SecretStorePassphraseMismatchException(
+            "Passphrase required: set PIPELINE_STORE_PASSPHRASE or run interactively in a TTY"
+        )
 
     /**
      * Exception thrown when no passphrase is available.
      */
-    class CredentialsStorePassphraseUnavailableException(message: String) : Exception(message)
+    class CredentialsStorePassphraseUnavailableException(message: String) :
+        dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePassphraseUnavailableException(message)
 
     /**
      * Exception thrown when a secret is empty.
      */
     class CredentialsStoreEmptySecretException :
-        Exception("Cannot store empty secret")
+        dev.rubentxu.pipeline.v2.credentials.api.CredentialsStoreEmptySecretException(
+            "Cannot store empty secret"
+        )
 
     /**
      * Exception thrown when POSIX permissions cannot be enforced.
      */
-    class CredentialsStorePosixPermissionsUnsupportedException(message: String) : Exception(message)
+    class CredentialsStorePosixPermissionsException(message: String) :
+        dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePosixPermissionsException(message)
 
     init {
         Files.createDirectories(file.parent)
@@ -171,7 +183,7 @@ class LocalSecretStore(
      * @param bytes The secret bytes
      * @throws CredentialsStoreEmptySecretException if bytes is empty
      */
-    fun put(id: CredentialsId, bytes: ByteArray) {
+    override fun put(id: CredentialsId, bytes: ByteArray) {
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
         val hdr = loadOrCreateHeader()
@@ -226,7 +238,7 @@ class LocalSecretStore(
      * @return SecretHandle wrapping the bytes
      * @throws SecretStoreTamperException if integrity check fails
      */
-    fun get(id: CredentialsId): SecretHandle {
+    override fun get(id: CredentialsId): SecretHandle {
         if (!Files.exists(file)) {
             throw SecretStoreTamperException("Store file does not exist")
         }
@@ -258,7 +270,7 @@ class LocalSecretStore(
      *
      * @return List of credential IDs (never returns values)
      */
-    fun list(): List<CredentialsId> {
+    override fun list(): List<CredentialsId> {
         if (!Files.exists(file) || Files.size(file) == 0L) return emptyList()
         val fileBytes = Files.readAllBytes(file)
         val entries = readEntries(fileBytes)
@@ -270,7 +282,7 @@ class LocalSecretStore(
      *
      * @param id The credential ID to remove
      */
-    fun remove(id: CredentialsId) {
+    override fun remove(id: CredentialsId) {
         if (!Files.exists(file)) return
         val fileBytes = Files.readAllBytes(file)
         val hdr = readHeader(fileBytes)
@@ -295,7 +307,7 @@ class LocalSecretStore(
      * @param id The credential ID
      * @param newBytes The new secret bytes
      */
-    fun rotate(id: CredentialsId, newBytes: ByteArray) {
+    override fun rotate(id: CredentialsId, newBytes: ByteArray) {
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()
         if (!Files.exists(file)) {
             put(id, newBytes)
@@ -332,7 +344,7 @@ class LocalSecretStore(
     /**
      * Closes the store, wiping the passphrase and cached keys from memory.
      */
-    fun close() {
+    override fun close() {
         passphrase.fill('\u0000')
         cachedKek?.fill(0)
         cachedKek = null
@@ -349,7 +361,7 @@ class LocalSecretStore(
                 CredentialsStorePosix.enforce(file, dir)
             }
         } catch (e: Exception) {
-            throw CredentialsStorePosixPermissionsUnsupportedException(
+            throw CredentialsStorePosixPermissionsException(
                 "Cannot enforce POSIX permissions: ${e.message}")
         }
     }

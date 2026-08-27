@@ -64,6 +64,16 @@ class PipelineOrchestrator(
      * OS: container-based sandbox (not implemented in L3 — throws at CLI)
      */
     private val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
+    /**
+     * Redacting event sink for secret redaction (T6).
+     *
+     * When non-null, the [EventSink] passed to step execution is replaced
+     * with this redaction decorator. Registered patterns are dropped on
+     * [CredentialScope] close (CR-RD-011).
+     *
+     * TODO (T6): Replace `Any?` with `RedactingEventSink` after T6 implementation.
+     */
+    private val redactingEventSink: Any? = null,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.

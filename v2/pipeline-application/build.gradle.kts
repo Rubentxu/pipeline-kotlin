@@ -25,6 +25,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-step-sdk:runtime"))
+    implementation(project(":pipeline-credentials-local"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlinx.coroutines.core)

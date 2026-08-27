@@ -34,7 +34,7 @@ object CredentialsStorePosix {
     /**
      * Asserts that the filesystem supports POSIX permissions.
      *
-     * @throws LocalSecretStore.CredentialsStorePosixPermissionsUnsupportedException
+     * @throws LocalSecretStore.CredentialsStorePosixPermissionsException
      * if POSIX is not supported
      */
     fun assertSupported(fileSystem: java.nio.file.FileSystem) {

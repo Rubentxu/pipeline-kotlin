@@ -168,10 +168,8 @@ pipeline {
     }
 
     // ─── CR-RD-008 — canary round gate ────────────────────────────────────
-    // REQUIRES: canary registered in SecretPatternRegistry at Main.kt startup.
-    // This is part of ADR-0049 implementation wiring (T9), not T8 scope.
+    // Synthetic canary registered in SecretPatternRegistry at Main.kt startup.
     // T6 unit tests (RedactingEventSinkTest) verify the redaction engine in isolation.
-    @Disabled("CR-RD-008 requires canary wiring in Main.kt (ADR-0049 T9 scope)")
     @Test
     fun `CR-RD-008 canary round gate — synthetic secret zero occurrences in output`(@TempDir tempDir: Path) {
         // A synthetic canary secret (not in any real credential) is registered in

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
@@ -155,6 +156,10 @@ fun main(args: Array<String>) {
     // Both InMemoryEventStore and SqliteEventStore are wrapped at construction time
     // so all downstream consumers receive already-sanitized events.
     val secretPatternRegistry = SecretPatternRegistry()
+
+    // CR-RD-008 canary: synthetic secret registered at engine startup for round-gate verification.
+    // The canary value GHS6_CANARY_7f3a9c2e1b4d5e6f is never used in any real credential.
+    secretPatternRegistry.addSecret(SecretHandle.plain("GHS6_CANARY_7f3a9c2e1b4d5e6f"))
 
     val scriptPath = Paths.get(config.scriptPath!!)
 

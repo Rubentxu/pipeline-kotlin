@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.scm.git
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -19,14 +20,23 @@ import java.nio.file.attribute.PosixFilePermission
  * In-memory mock SecretStore for testing — returns deterministic fake secrets.
  */
 class MockSecretStore(private val secrets: Map<CredentialsId, ByteArray>) : SecretStore {
-    override fun get(id: CredentialsId): SecretHandle {
+    override fun get(id: CredentialsId): Credential {
+        val bytes = secrets[id] ?: throw IllegalStateException("Mock secret not found: ${id.value}")
+        return dev.rubentxu.pipeline.v2.domain.credentials.SecretText(id, dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, bytes)
+    }
+    override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
         val bytes = secrets[id] ?: throw IllegalStateException("Mock secret not found: ${id.value}")
         return SecretHandle.secret(bytes)
     }
+    override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
+        return getAsSecretHandle(id)
+    }
     override fun put(id: CredentialsId, bytes: ByteArray) {}
+    override fun add(id: CredentialsId, credential: Credential) {}
     override fun list(): List<CredentialsId> = secrets.keys.toList()
     override fun remove(id: CredentialsId) {}
-    override fun rotate(id: CredentialsId, newBytes: ByteArray) {}
+    override fun rotate(id: CredentialsId, credential: Credential) {}
+    override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {}
     override fun close() {}
 }
 
@@ -45,7 +55,7 @@ class GitCredentialsApplierTest {
     lateinit var tempDir: Path
 
     @Test
-    fun `apply string channel creates git-credentials and gitconfig with 0600`() {
+    fun `apply string channel creates answer file and credential helper with 0600`() {
         val tokenHandle = SecretHandleRef(CredentialsId("api-token"), "string")
         val credentials = GitCredentials(string = tokenHandle)
         val secretStore = MockSecretStore(mapOf(CredentialsId("api-token") to "fake-token".toByteArray()))
@@ -53,15 +63,25 @@ class GitCredentialsApplierTest {
         val applier = GitCredentialsApplier(tempDir, credentials, secretStore)
         applier.apply(tokenHandle)  // Apply the string channel
         applier.use {
-            // Verify .git-credentials exists
-            val gitCreds = tempDir.resolve(".git-credentials")
-            assertTrue(Files.exists(gitCreds), ".git-credentials must exist")
+            // Verify .git-answer exists (answer file with pre-resolved token)
+            val answerFile = tempDir.resolve(".git-answer")
+            assertTrue(Files.exists(answerFile), ".git-answer must exist")
 
             // Verify permissions are 0600
-            val perms = Files.getPosixFilePermissions(gitCreds)
+            val perms = Files.getPosixFilePermissions(answerFile)
             assertTrue(perms.contains(PosixFilePermission.OWNER_READ), "Must be owner-read")
             assertTrue(perms.contains(PosixFilePermission.OWNER_WRITE), "Must be owner-write")
-            assertEquals(2, perms.size, "Only owner-read and owner-write (no group/other)")
+            assertEquals(2, perms.size, "Only owner-read and owner-write (0600)")
+
+            // Verify .git-credential-helper exists
+            val helperScript = tempDir.resolve(".git-credential-helper")
+            assertTrue(Files.exists(helperScript), ".git-credential-helper must exist")
+
+            // Verify helper script is executable
+            val helperPerms = Files.getPosixFilePermissions(helperScript)
+            assertTrue(helperPerms.contains(PosixFilePermission.OWNER_READ), "Helper must be owner-read")
+            assertTrue(helperPerms.contains(PosixFilePermission.OWNER_WRITE), "Helper must be owner-write")
+            assertTrue(helperPerms.contains(PosixFilePermission.OWNER_EXECUTE), "Helper must be owner-execute (0700)")
 
             // Verify parent dir is 0700
             val parentPerms = Files.getPosixFilePermissions(tempDir)
@@ -72,7 +92,7 @@ class GitCredentialsApplierTest {
     }
 
     @Test
-    fun `close wipes both git-credentials and gitconfig`() {
+    fun `close wipes answer file and credential helper`() {
         val tokenHandle = SecretHandleRef(CredentialsId("api-token"), "string")
         val credentials = GitCredentials(string = tokenHandle)
         val secretStore = MockSecretStore(mapOf(CredentialsId("api-token") to "fake-token".toByteArray()))
@@ -84,10 +104,10 @@ class GitCredentialsApplierTest {
         }
 
         // After close, files must be gone
-        val gitCreds = tempDir.resolve(".git-credentials")
-        val gitConfig = tempDir.resolve(".gitconfig")
-        assertFalse(Files.exists(gitCreds), ".git-credentials must be wiped after close")
-        assertFalse(Files.exists(gitConfig), ".gitconfig must be wiped after close")
+        val answerFile = tempDir.resolve(".git-answer")
+        val helperScript = tempDir.resolve(".git-credential-helper")
+        assertFalse(Files.exists(answerFile), ".git-answer must be wiped after close")
+        assertFalse(Files.exists(helperScript), ".git-credential-helper must be wiped after close")
     }
 
     @Test
@@ -108,10 +128,10 @@ class GitCredentialsApplierTest {
         }
 
         // Files must still be wiped despite exception
-        val gitCreds = tempDir.resolve(".git-credentials")
-        val gitConfig = tempDir.resolve(".gitconfig")
-        assertFalse(Files.exists(gitCreds), ".git-credentials must be wiped after exception")
-        assertFalse(Files.exists(gitConfig), ".gitconfig must be wiped after exception")
+        val answerFile = tempDir.resolve(".git-answer")
+        val helperScript = tempDir.resolve(".git-credential-helper")
+        assertFalse(Files.exists(answerFile), ".git-answer must be wiped after exception")
+        assertFalse(Files.exists(helperScript), ".git-credential-helper must be wiped after exception")
     }
 
     @Test

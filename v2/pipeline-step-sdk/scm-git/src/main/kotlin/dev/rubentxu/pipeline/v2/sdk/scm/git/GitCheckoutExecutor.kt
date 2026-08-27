@@ -306,7 +306,7 @@ class GitCheckoutExecutor(
         val credentialsId = spec.credentialsId ?: return null
         val store = secretStore ?: req.secretStore ?: return null
         return try {
-            val handle = store.get(credentialsId)
+            val handle = store.getAsSecretHandle(credentialsId)
             handle.use { bytes ->
                 // Infer credential kind: if bytes contain a colon, treat as usernamePassword,
                 // otherwise treat as string (API token). This heuristic covers the common cases.

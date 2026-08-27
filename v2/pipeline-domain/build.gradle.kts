@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.kotlinx.serialization.json)
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

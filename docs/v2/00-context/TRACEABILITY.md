@@ -25,3 +25,4 @@
 | BTA futuro | `SCRIPTING_COMPILER_SPEC` | ADR-0020 | spike | SPIKE-007 |
 | Sandbox local | `EXECUTION_SANDBOX` | [[ADR-0048-sandbox-profile-local]] | ML | UAT-LOCAL-003 + UAT-LOCAL-007 |
 | Credentials local + secret redaction | `CREDENTIALS_PROVIDERS` | [[ADR-0049-credentials-local]] | ML-R4 | UAT-LOCAL-008 |
+| Checkout / git step (L5) | `SCM_CHECKOUT` | [[ADR-0050-checkout-git-step]] | ML-R5 | UAT-LOCAL-005 |

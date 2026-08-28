@@ -10,17 +10,24 @@ import java.nio.file.attribute.PosixFilePermissions
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 
 /**
- * Tests for LocalSecretStore implementation.
+ * Tests for LocalSecretStore implementation — CR-ST-001..014.
  *
- * CR-ST-001: roundtrip add→read byte-identical
- * CR-ST-002: tamper (flip 1 byte of ciphertext) throws SecretStoreTamperException
- * CR-ST-003: wrong passphrase throws SecretStorePassphraseMismatchException
- * CR-ST-004: AAD swap (copy entry-a's bytes into slot-b) throws SecretStoreTamperException (AAD mismatch)
- * CR-ST-005: POSIX 0600 file / 0700 dir permissions enforced
- * CR-ST-006: rotate(id) preserves other entries
- * CR-ST-007: KDF params persisted in header + upgrade path on next put
- * CR-ST-013: put with empty bytes throws CredentialsStoreEmptySecretException
- * CR-ST-014: put against existing id overwrites the slot (siblings untouched)
+ * ## Scenario Coverage
+ *
+ * | Scenario ID | Description | Test Method |
+ * |------------|-------------|-------------|
+ * | CR-ST-001 | roundtrip add→read byte-identical | `add and read returns byte-identical secret` |
+ * | CR-ST-002 | tamper (flip 1 byte of ciphertext) throws | `tamper ciphertext throws SecretStoreTamperException` |
+ * | CR-ST-003 | wrong passphrase throws | `wrong passphrase throws SecretStorePassphraseMismatchException` |
+ * | CR-ST-004 | AAD swap throws SecretStoreTamperException | `AAD swap throws SecretStoreTamperException` |
+ * | CR-ST-005 | POSIX 0600 file / 0700 dir permissions enforced | `file permissions are 0600` |
+ * | CR-ST-006 | rotate(id) preserves other entries | `rotate preserves other entries` |
+ * | CR-ST-007 | KDF params persisted in header + upgrade path | `KDF params persisted in header` |
+ * | CR-ST-013 | put with empty bytes throws | `empty secret throws CredentialsStoreEmptySecretException` |
+ * | CR-ST-014 | put against existing id overwrites the slot | `put overwrites existing slot` |
+ *
+ * Note: CR-ST-008..012 (passphrase env/TTY resolution, list IDs only, atomic write, minimum-length guard)
+ * are covered by integration tests in UatLocal008CredentialsTest.
  */
 @DisplayName("LocalSecretStore tests")
 class CredentialsStoreTest {

@@ -819,7 +819,7 @@ private suspend fun executeDurableStepImpl(
                                 // Build effective ShOptions from step configuration
                                 val workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
-                                // WS-S-002: ensure workspace directory exists before execution
+                                // WS-S-002: ensure workspace directory exists before sh execution
                                 // (ensureCreated was previously in ShExecution but must live here since
                                 // ShExecution now passes shOptions.workspaceRoot directly per ML-R2 T4)
                                 workspaceResolver?.ensureCreated(workspaceRoot)

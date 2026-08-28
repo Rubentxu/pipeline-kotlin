@@ -19,4 +19,7 @@ enum class Effect {
 
     /** Step aborts the entire pipeline when executed. */
     ABORTS_PIPELINE,
+
+    /** Step writes to the workspace filesystem (writeFile, archiveArtifacts). */
+    WRITES_WORKSPACE,
 }

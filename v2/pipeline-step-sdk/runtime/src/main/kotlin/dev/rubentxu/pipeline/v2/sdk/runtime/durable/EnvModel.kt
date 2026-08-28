@@ -26,12 +26,20 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 object EnvModel {
 
     /**
+     * Regex for PATH+= prepend syntax (Jenkins verbatim).
+     * Matches keys like "PATH+MAVEN" where the VALUE is the directory to prepend.
+     * Example: key="PATH+MAVEN", value="/opt/maven/bin" → prepends /opt/maven/bin to PATH.
+     */
+    private val PATH_PLUS_REGEX = Regex("""^PATH\+([A-Za-z0-9_]+)$""")
+
+    /**
      * Applies environment variable transformations for typed SecretHandle env.
      *
      * Given the user-provided typed env map, this function:
      * 1. Copies all non-masked entries to the output map
-     * 2. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH (masked entries skipped)
-     * 3. If M2_HOME is set, prepends `${M2_HOME}/bin` to PATH
+     * 2. Handles PATH+= prepend syntax (PATH+=/dir prepends to existing PATH)
+     * 3. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH (masked entries skipped)
+     * 4. If M2_HOME is set, prepends `${M2_HOME}/bin` to PATH
      *
      * Masked entries (used for PATH manipulation) are skipped during transformation
      * because PATH prepend logic operates on path strings, not secret data.
@@ -45,37 +53,58 @@ object EnvModel {
         // 1. Skip masked entries (PATH manipulation doesn't need secrets)
         // 2. Apply PATH prepend logic using the materialized path values
         // 3. Wrap transformed plain values back in SecretHandle.plain()
-        
+
         // Get the PATH value before transformation (from a non-masked entry)
         val pathHandle = env["PATH"]
         val originalPath = pathHandle?.materialize() ?: System.getenv("PATH") ?: ""
-        
+
         val out = mutableMapOf<String, SecretHandle>()
-        
+
+        // Collect PATH+= prepends to apply after processing all entries
+        val pathPlusDirs = mutableListOf<String>()
+
         // Copy all entries, skipping masked ones (they're PATH/etc, not secrets)
+        // Handle PATH+= syntax specially
         for ((key, handle) in env) {
             if (!handle.isMasked) {
-                out[key] = handle
+                val match = PATH_PLUS_REGEX.matchEntire(key)
+                if (match != null) {
+                    // PATH+= prepend syntax: capture the directory to prepend
+                    val dir = match.groupValues[1]
+                    pathPlusDirs.add(dir)
+                } else {
+                    out[key] = handle
+                }
             }
         }
-        
+
+        // Apply PATH+= prepends in order (deduplicated, preserving order)
+        var currentPath = originalPath
+        for (dir in pathPlusDirs) {
+            if (dir.isNotEmpty()) {
+                currentPath = "$dir${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
+            }
+        }
+
         // JAVA_HOME/bin prepend to PATH
         val javaHomeHandle = env["JAVA_HOME"]
         if (javaHomeHandle != null) {
             val javaHome = javaHomeHandle.materialize()
-            val newPath = "${javaHome}/bin${if (originalPath.isNotEmpty()) ":$originalPath" else ""}"
-            out["PATH"] = SecretHandle.plain(newPath)
+            currentPath = "${javaHome}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
-        
+
         // M2_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
         val m2HomeHandle = env["M2_HOME"]
         if (m2HomeHandle != null) {
             val m2Home = m2HomeHandle.materialize()
-            val basePath = out["PATH"]?.materialize() ?: originalPath
-            val newPath = "${m2Home}/bin${if (basePath.isNotEmpty()) ":$basePath" else ""}"
-            out["PATH"] = SecretHandle.plain(newPath)
+            // M2_HOME prepends to whatever PATH is currently (after JAVA_HOME)
+            currentPath = "${m2Home}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
-        
+
+        if (currentPath.isNotEmpty()) {
+            out["PATH"] = SecretHandle.plain(currentPath)
+        }
+
         return out
     }
 
@@ -84,6 +113,10 @@ object EnvModel {
      *
      * This is a convenience wrapper that delegates to the typed form
      * via [ShOptions.from] for back-compat with legacy callers.
+     *
+     * Handles PATH+= prepend syntax (Jenkins verbatim):
+     * - PATH+= value prepends to existing PATH
+     * - Multiple PATH+= entries prepend in order (first declared = outermost)
      *
      * @param env The legacy user-provided environment variables.
      * @return The transformed environment with PATH adjustments.
@@ -99,15 +132,50 @@ object EnvModel {
         // setsid/bash would become unresolvable (observed: setsid "failed to execute bash").
         val originalPath = out["PATH"] ?: System.getenv("PATH") ?: ""
 
+        // Collect PATH+= prepends in the order they appear
+        val pathPlusDirs = mutableListOf<String>()
+
+        // Process entries: handle PATH+= syntax and remove duplicates
+        val keysToRemove = mutableListOf<String>()
+        for ((key, value) in env) {
+            val match = PATH_PLUS_REGEX.matchEntire(key)
+            if (match != null) {
+                pathPlusDirs.add(value)
+                keysToRemove.add(key)
+            }
+        }
+
+        // Remove PATH+= keys from output (we handle them separately)
+        for (key in keysToRemove) {
+            out.remove(key)
+        }
+
+        // Apply PATH+= prepends in order: first declared = outermost (appears first in final PATH)
+        // Deduplicate globally: first occurrence wins (pathPlusDirs first, then original PATH)
+        val allDirs = pathPlusDirs.filter { it.isNotEmpty() } + originalPath.split(":").filter { it.isNotEmpty() }
+        val seenDirs = mutableSetOf<String>()
+        val uniqueOrderedDirs = allDirs.filter { dir ->
+            if (dir !in seenDirs) {
+                seenDirs.add(dir)
+                true
+            } else {
+                false
+            }
+        }
+        var currentPath = uniqueOrderedDirs.joinToString(":")
+
         // JAVA_HOME/bin prepend to PATH
         env["JAVA_HOME"]?.let { javaHome ->
-            out["PATH"] = "${javaHome}/bin${if (originalPath.isNotEmpty()) ":$originalPath" else ""}"
+            currentPath = "${javaHome}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
 
         // M2_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
         env["M2_HOME"]?.let { m2Home ->
-            val basePath = out["PATH"] ?: originalPath
-            out["PATH"] = "${m2Home}/bin${if (basePath.isNotEmpty()) ":$basePath" else ""}"
+            currentPath = "${m2Home}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
+        }
+
+        if (currentPath.isNotEmpty()) {
+            out["PATH"] = currentPath
         }
 
         return out

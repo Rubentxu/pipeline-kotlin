@@ -86,4 +86,38 @@ class EffectReplayPolicyTest {
         )
         assertEquals(ReplayDecision.RERUN, decision)
     }
+
+    @Test
+    fun `WRITES_WORKSPACE with journaled SUCCEEDED returns RERUN`() {
+        // WRITES_WORKSPACE always reruns (like EXECUTES_SUBPROCESS)
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.MEMOIZED,
+            effects = setOf(Effect.WRITES_WORKSPACE),
+            hasJournalEntry = true,
+            journaledOutcome = OperationStatus.SUCCEEDED,
+        )
+        assertEquals(ReplayDecision.RERUN, decision)
+    }
+
+    @Test
+    fun `WRITES_WORKSPACE with no journal entry returns RERUN`() {
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.MEMOIZED,
+            effects = setOf(Effect.WRITES_WORKSPACE),
+            hasJournalEntry = false,
+            journaledOutcome = null,
+        )
+        assertEquals(ReplayDecision.RERUN, decision)
+    }
+
+    @Test
+    fun `RERUN policy with WRITES_WORKSPACE returns SKIP when SUCCEEDED`() {
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.RERUN,
+            effects = setOf(Effect.WRITES_WORKSPACE),
+            hasJournalEntry = true,
+            journaledOutcome = OperationStatus.SUCCEEDED,
+        )
+        assertEquals(ReplayDecision.SKIP, decision)
+    }
 }

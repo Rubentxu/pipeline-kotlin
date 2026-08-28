@@ -18,6 +18,7 @@ import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
  * | MEMOIZED     | READ_ONLY            | true              | !SUCCEEDED        | RERUN    |
  * | MEMOIZED     | READ_ONLY            | false             | —                 | RERUN    |
  * | MEMOIZED     | EXECUTES_SUBPROCESS  | any               | any               | RERUN    |
+ * | MEMOIZED     | WRITES_WORKSPACE     | any               | any               | RERUN    |
  * | RERUN        | any                  | any               | any               | RERUN    |
  * | NEVER        | any                  | any               | any               | ABORT    |
  * | any          | ABORTS_PIPELINE      | any               | any               | ABORT    |
@@ -108,6 +109,11 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
 
         // EXECUTES_SUBPROCESS always reruns.
         if (Effect.EXECUTES_SUBPROCESS in effects) {
+            return ReplayDecision.RERUN
+        }
+
+        // WRITES_WORKSPACE always reruns (like EXECUTES_SUBPROCESS).
+        if (Effect.WRITES_WORKSPACE in effects) {
             return ReplayDecision.RERUN
         }
 

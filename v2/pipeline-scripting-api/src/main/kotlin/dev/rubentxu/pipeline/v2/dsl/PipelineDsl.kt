@@ -209,6 +209,125 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val name: String get() = "checkout"
         override val type: String get() = "checkout"
     }
+
+    // =============================================================================
+    // L7 Jenkins top-steps (ML-R7) — ADR-0046 §D2 verbatim signatures
+    // =============================================================================
+
+    /**
+     * Writes content to a file in the workspace.
+     *
+     * Jenkins verbatim signature (catalog §1.1 line 35):
+     * `writeFile(file: String, text: String, encoding: String = "UTF-8")`
+     *
+     * F1: file, text required. F2: encoding (UTF-8 default; "Base64" decodes binary).
+     *
+     * @param file Workspace-relative file path
+     * @param text Content to write
+     * @param encoding Character encoding (default UTF-8; use "Base64" for binary)
+     */
+    data class WriteFile(
+        val file: String,
+        val text: String,
+        val encoding: String = "UTF-8",
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "writeFile"
+        override val type: String get() = "writeFile"
+    }
+
+    /**
+     * Reads content from a file in the workspace.
+     *
+     * Jenkins verbatim signature (catalog §1.1 line 36):
+     * `readFile(file: String, encoding: String = "UTF-8")`
+     *
+     * NOTE: No returnValue field — consumers use `sh(returnStdout=true)` for runtime
+     * values. Documented limitation per D2; addressed in ML-R8 follow-up.
+     *
+     * @param file Workspace-relative file path
+     * @param encoding Character encoding (default UTF-8)
+     */
+    data class ReadFile(
+        val file: String,
+        val encoding: String = "UTF-8",
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "readFile"
+        override val type: String get() = "readFile"
+    }
+
+    /**
+     * Checks whether a file exists in the workspace.
+     *
+     * Jenkins verbatim signature (catalog §1.1 line 37):
+     * `fileExists(file: String)` — returns Boolean.
+     *
+     * NOTE: No returnValue field — consumers use `sh(returnStdout=true)` for runtime
+     * values. Documented limitation per D2; addressed in ML-R8 follow-up.
+     *
+     * @param file Workspace-relative file path
+     */
+    data class FileExists(
+        val file: String,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "fileExists"
+        override val type: String get() = "fileExists"
+    }
+
+    /**
+     * Sets environment variables for the duration of a nested block.
+     *
+     * Jenkins verbatim signature (catalog §1.1 line 40):
+     * `withEnv(overrides: List<String>)`
+     *
+     * Each entry is `"VAR=value"` or `"PATH+X=/dir"` (PATH prepend per catalog §3 lines 261-291).
+     * Nested block mirrors [WithCredentialsBlock] pattern — [steps] carries the desugared
+     * inner scope's emitted StepSpecs.
+     *
+     * @param overrides Environment variable overrides (each `"VAR=value"` or `"PATH+X=/dir"`)
+     * @param steps Nested block payload — steps executed with the overridden env
+     */
+    data class WithEnv(
+        val overrides: List<String>,
+        val steps: List<StepSpec>,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "withEnv"
+        override val type: String get() = "withEnv"
+    }
+
+    /**
+     * Archives artifacts for retention (server-side artifact storage).
+     *
+     * Jenkins verbatim signature (catalog §1.1 line 45):
+     * `archiveArtifacts(artifacts: String, allowEmptyArchive: Boolean = false,
+     *                  fingerprint: Boolean = false, onlyIfSuccessful: Boolean = false)`
+     *
+     * F1: artifacts (required). F2: allowEmptyArchive, fingerprint, onlyIfSuccessful.
+     * The `excludes` parameter is deferred to L7.1 per spec.
+     *
+     * @param artifacts Ant-style glob patterns (comma-separated)
+     * @param allowEmptyArchive If true, empty archive is not a failure (default false)
+     * @param fingerprint If true, record fingerprints (F2/deferred to L7.1)
+     * @param onlyIfSuccessful If true, archive only on successful build (F2/deferred to L7.1)
+     */
+    data class ArchiveArtifacts(
+        val artifacts: String,
+        val allowEmptyArchive: Boolean = false,
+        val fingerprint: Boolean = false,
+        val onlyIfSuccessful: Boolean = false,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "archiveArtifacts"
+        override val type: String get() = "archiveArtifacts"
+    }
 }
 
 /**
@@ -550,6 +669,12 @@ class StageScope(private val stageName: String) {
             is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
             is StepSpec.WithCredentialsBlock -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Checkout -> currentStep.copy(retry = retryPolicy)
+            // L7 Jenkins top-steps (ML-R7)
+            is StepSpec.WriteFile -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.ReadFile -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.FileExists -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.WithEnv -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.ArchiveArtifacts -> currentStep.copy(retry = retryPolicy)
         }
     }
 

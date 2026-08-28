@@ -167,6 +167,10 @@ fun main(args: Array<String>) {
     // The canary value __ssh_canary__ is never used in any real SSH credential.
     secretPatternRegistry.addSecret(SecretHandle.plain("__ssh_canary__"))
 
+    // ARC-CANARY-001 / CR-RD-022 artefact canary: synthetic secret for artefact step round-gate.
+    // The canary value __artefact_canary__ is never used in any real artefact.
+    secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
+
     val scriptPath = Paths.get(config.scriptPath!!)
 
     if (command == "validate") {

@@ -35,4 +35,5 @@ include(
     ":pipeline-credentials-local",
     ":pipeline-credentials-multipart",
     ":pipeline-binding-factory",
+    ":pipeline-artefacts-local",
 )

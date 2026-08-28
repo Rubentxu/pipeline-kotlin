@@ -702,6 +702,116 @@ class StageScope(private val stageName: String) {
         }
     }
 
+    /**
+     * Returns the steps added to this scope (for testing / DSL inspection).
+     */
+    fun steps(): List<StepSpec> = steps.toList()
+
+    // =============================================================================
+    // L7 Jenkins top-steps builders (ML-R7) — ADR-0046 §D2 verbatim DSL
+    // =============================================================================
+
+    /**
+     * Writes content to a workspace file.
+     *
+     * Jenkins verbatim: `writeFile(file: String, text: String, encoding: String = "UTF-8")`
+     *
+     * @param file Workspace-relative file path
+     * @param text Content to write
+     * @param encoding Character encoding (default UTF-8; "Base64" decodes binary)
+     */
+    fun writeFile(file: String, text: String, encoding: String = "UTF-8") {
+        steps.add(StepSpec.WriteFile(file = file, text = text, encoding = encoding))
+    }
+
+    /**
+     * Reads content from a workspace file.
+     *
+     * Jenkins verbatim: `readFile(file: String, encoding: String = "UTF-8")`
+     *
+     * NOTE: No return value — consumers use `sh(returnStdout=true)` for runtime values.
+     * Documented limitation per D2; addressed in ML-R8 follow-up.
+     *
+     * @param file Workspace-relative file path
+     * @param encoding Character encoding (default UTF-8)
+     */
+    fun readFile(file: String, encoding: String = "UTF-8") {
+        steps.add(StepSpec.ReadFile(file = file, encoding = encoding))
+    }
+
+    /**
+     * Checks whether a file exists in the workspace.
+     *
+     * Jenkins verbatim: `fileExists(file: String)` — returns Boolean.
+     *
+     * NOTE: No return value — consumers use `sh(returnStdout=true)` for runtime values.
+     * Documented limitation per D2; addressed in ML-R8 follow-up.
+     *
+     * @param file Workspace-relative file path
+     */
+    fun fileExists(file: String) {
+        steps.add(StepSpec.FileExists(file = file))
+    }
+
+    /**
+     * Sets environment variables for the duration of the nested block.
+     *
+     * Jenkins verbatim: `withEnv(overrides: List<String>)` (catalog §1.1 line 40).
+     * Each entry is `"VAR=value"` or `"PATH+X=/dir"` (PATH prepend per catalog §3).
+     *
+     * Mirrors [withCredentials] pattern — creates a nested [StepSpec.WithEnv] block
+     * carrier that the dispatcher folds into the env model.
+     *
+     * @param overrides Environment overrides (each `"VAR=value"` or `"PATH+X=/dir"`)
+     * @param block Nested steps executed with the overridden environment
+     */
+    fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.WithEnv(overrides = overrides, steps = inner.steps.toList()))
+    }
+
+    /**
+     * Sets environment variables using a map (convenience overload).
+     *
+     * @param overrides Environment overrides as Map (converted to `"VAR=value"` strings)
+     * @param block Nested steps executed with the overridden environment
+     */
+    fun withEnv(overrides: Map<String, String>, block: StageScope.() -> Unit) {
+        withEnv(overrides.map { "${it.key}=${it.value}" }, block)
+    }
+
+    /**
+     * Archives artifacts for server-side retention.
+     *
+     * Jenkins verbatim: `archiveArtifacts(artifacts: String,
+     *                                   allowEmptyArchive: Boolean = false,
+     *                                   fingerprint: Boolean = false,
+     *                                   onlyIfSuccessful: Boolean = false)`
+     *
+     * F1: artifacts required. F2: allowEmptyArchive, fingerprint, onlyIfSuccessful.
+     *
+     * @param artifacts Ant-style glob patterns (comma-separated)
+     * @param allowEmptyArchive If true, empty archive is not a failure (default false)
+     * @param fingerprint If true, record fingerprints (F2/deferred to L7.1)
+     * @param onlyIfSuccessful If true, archive only on success (F2/deferred to L7.1)
+     */
+    fun archiveArtifacts(
+        artifacts: String,
+        allowEmptyArchive: Boolean = false,
+        fingerprint: Boolean = false,
+        onlyIfSuccessful: Boolean = false,
+    ) {
+        steps.add(
+            StepSpec.ArchiveArtifacts(
+                artifacts = artifacts,
+                allowEmptyArchive = allowEmptyArchive,
+                fingerprint = fingerprint,
+                onlyIfSuccessful = onlyIfSuccessful,
+            )
+        )
+    }
+
     fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)
 }
 

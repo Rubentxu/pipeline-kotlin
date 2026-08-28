@@ -123,6 +123,14 @@ object EnvModel {
      */
     @JvmName("applyLegacy")
     fun apply(env: Map<String, String>): Map<String, String> {
+        // T-02 regression fix: apply(emptyMap()) must return empty map.
+        // The empty input contract is that no environment variables are inherited —
+        // not even PATH from the controller's system. Early return before any
+        // PATH fallback logic so the controller's PATH never leaks into step envs.
+        if (env.isEmpty()) {
+            return emptyMap()
+        }
+
         val out = env.toMutableMap()
 
         // Capture original PATH before any modifications so each prepend starts from the base.
@@ -150,19 +158,26 @@ object EnvModel {
             out.remove(key)
         }
 
-        // Apply PATH+= prepends in order: first declared = outermost (appears first in final PATH)
-        // Deduplicate globally: first occurrence wins (pathPlusDirs first, then original PATH)
-        val allDirs = pathPlusDirs.filter { it.isNotEmpty() } + originalPath.split(":").filter { it.isNotEmpty() }
-        val seenDirs = mutableSetOf<String>()
-        val uniqueOrderedDirs = allDirs.filter { dir ->
-            if (dir !in seenDirs) {
-                seenDirs.add(dir)
-                true
-            } else {
-                false
+        // T-02 regression: when no PATH+= entries are present, preserve original behavior
+        // (JAVA_HOME/M2_HOME prepend onto originalPath without deduplication).
+        // Only deduplicate when PATH+= is actually used, per the PATH+= prepend semantics.
+        var currentPath = if (pathPlusDirs.isEmpty()) {
+            originalPath
+        } else {
+            // Apply PATH+= prepends in order: first declared = outermost (appears first in final PATH)
+            // Deduplicate globally: first occurrence wins (pathPlusDirs first, then original PATH)
+            val allDirs = pathPlusDirs.filter { it.isNotEmpty() } + originalPath.split(":").filter { it.isNotEmpty() }
+            val seenDirs = mutableSetOf<String>()
+            val uniqueOrderedDirs = allDirs.filter { dir ->
+                if (dir !in seenDirs) {
+                    seenDirs.add(dir)
+                    true
+                } else {
+                    false
+                }
             }
+            uniqueOrderedDirs.joinToString(":")
         }
-        var currentPath = uniqueOrderedDirs.joinToString(":")
 
         // JAVA_HOME/bin prepend to PATH
         env["JAVA_HOME"]?.let { javaHome ->

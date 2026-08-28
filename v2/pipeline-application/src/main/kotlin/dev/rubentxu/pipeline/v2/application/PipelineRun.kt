@@ -819,7 +819,11 @@ private suspend fun executeDurableStepImpl(
                                 // Build effective ShOptions from step configuration
                                 val workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
-                        val shellStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell
+                                // WS-S-002: ensure workspace directory exists before execution
+                                // (ensureCreated was previously in ShExecution but must live here since
+                                // ShExecution now passes shOptions.workspaceRoot directly per ML-R2 T4)
+                                workspaceResolver?.ensureCreated(workspaceRoot)
+                                val shellStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell
 
                         // ML-R3: Resolve sandbox config from sysprops/env vars (controller JVM)
                         val sandboxConfig = SandboxConfigResolver.resolve(

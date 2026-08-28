@@ -40,7 +40,7 @@ class ReasonScrubTest {
         registry.addSecret(SecretHandle.plain("GIT_CANARY_b8c9d7e6f5a4b3c2d1e0"))
 
         // Register the ML-R6 SSH canary
-        registry.addSecret(SecretHandle.plain("SSH_CANARY_9a8b7c6d5e4f3a2b"))
+        registry.addSecret(SecretHandle.plain("__ssh_canary__"))
 
         // Simulate a stderr that contains the canary
         val stderrWithCanary = """

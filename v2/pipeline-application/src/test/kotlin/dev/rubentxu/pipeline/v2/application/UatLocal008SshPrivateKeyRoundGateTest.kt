@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 /**
  * UAT-LOCAL-008: CR-RD-021 SSH Channel Canary Round Gate.
  *
- * Verifies that the SSH canary `SSH_CANARY_9a8b7c6d5e4f3a2b` registered in
+ * Verifies that the SSH canary `__ssh_canary__` registered in
  * SecretPatternRegistry at Main.kt:168 does NOT appear in any output surface
  * when flowing through the SSH channel (git+ssh://).
  *
@@ -53,7 +53,7 @@ import java.util.concurrent.TimeUnit
 class UatLocal008SshPrivateKeyRoundGateTest {
 
     private val processes = mutableListOf<Process>()
-    private val canary = "SSH_CANARY_9a8b7c6d5e4f3a2b"
+    private val canary = "__ssh_canary__"
 
     @BeforeEach
     fun setUp() {

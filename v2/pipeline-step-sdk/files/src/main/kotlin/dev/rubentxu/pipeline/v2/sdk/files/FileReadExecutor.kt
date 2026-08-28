@@ -52,9 +52,15 @@ class FileReadExecutor(
 
     /**
      * Executes a [StepSpec.ReadFile] step.
+     *
+     * @param stageName The stage name (used as workspace identifier)
+     * @param stageIndex The stage index (passed to workspace resolver)
+     * @param stepIndex The step index (unused)
+     * @param spec The readFile step specification
+     * @return [FileReadResult] with path, content, sha256, size
      */
-    fun execute(stageIndex: Int, stepIndex: Int, spec: StepSpec.ReadFile): FileReadResult {
-        val workspace = workspaceResolver(spec.file, stageIndex)
+    fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.ReadFile): FileReadResult {
+        val workspace = workspaceResolver(stageName, stageIndex)
         val targetPath = workspace.resolve(spec.file).normalize()
 
         // Path safety: outside workspace → false

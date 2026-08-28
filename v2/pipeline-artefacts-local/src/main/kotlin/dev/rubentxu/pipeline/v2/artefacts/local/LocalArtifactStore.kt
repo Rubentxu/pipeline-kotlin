@@ -78,6 +78,11 @@ class LocalArtifactStore(
         val dir = stageDir(runId, stageName)
         Files.createDirectories(dir)
 
+        // Ensure workspace exists before walking — Jenkins semantics: archive matches
+        // files in the current workspace. If workspace was never created (no steps
+        // wrote files), Files.walk() would throw NoSuchFileException.
+        Files.createDirectories(workspace)
+
         val glob = AntStyleGlob(pattern)
         val matchedFiles = glob.match(workspace, excludes = excludes, defaultExcludes = true)
 

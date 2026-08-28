@@ -32,7 +32,7 @@ class FileReadExecutorTest {
         val executor = FileReadExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.ReadFile(file = "input.txt")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertTrue(result.exists)
         assertEquals("hello world", result.content)
@@ -49,7 +49,7 @@ class FileReadExecutorTest {
         val executor = FileReadExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.ReadFile(file = "logo.bin", encoding = "Base64")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertTrue(result.exists)
         assertEquals("aGVsbG8=", result.content) // "hello" in Base64
@@ -64,7 +64,7 @@ class FileReadExecutorTest {
         val executor = FileReadExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.ReadFile(file = "missing.txt")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
         assertNull(result.content)
@@ -79,7 +79,7 @@ class FileReadExecutorTest {
         val executor = FileReadExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.ReadFile(file = "../etc/passwd")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
         assertNull(result.content)
@@ -93,7 +93,7 @@ class FileReadExecutorTest {
         val executor = FileReadExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.ReadFile(file = ".v2/secret")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
         assertNull(result.content)

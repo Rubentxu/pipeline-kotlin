@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import kotlinx.serialization.json.Json
@@ -302,7 +303,13 @@ fun main(args: Array<String>) {
     }
 
     val events = eventStore.eventsFor(runId).toList()
+    val lastEvent = events.lastOrNull()
+    val runOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
+    // Jenkins verbatim: print events first, then propagate failure to OS exit code
     println(JsonEventLog.encode(events))
+    if (runOutcome != "success") {
+        System.exit(1)
+    }
 }
 
 /**

@@ -74,12 +74,9 @@ object ShExecution {
             return executeNonDurable(step.command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId)
         }
 
-        val workspaceResolver = WorkspaceResolver(controlDirRoot)
-        val workspacePath = workspaceResolver.ensureCreated(
-            workspaceResolver.resolve("stage-$stageIndex", stageIndex)
-        )
-
-        val effectiveOptions = shOptions.copy(workspaceRoot = workspacePath)
+        // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
+        // ShExecution just passes it through; no recomputation needed.
+        val effectiveOptions = shOptions
         // controlDir is sibling to workspace: {controlDirRoot}/{opId}
         val controlDir = controlDirRoot.resolve(opId.format())
 

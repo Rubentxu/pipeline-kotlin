@@ -763,6 +763,16 @@ class StageScope(private val stageName: String) {
     }
 
     /**
+     * Sets environment variables using an array (Jenkins-faithful overload).
+     *
+     * @param overrides Environment overrides as an array of strings (each `"VAR=value"` or `"PATH+X=/dir"`)
+     * @param block Nested steps executed with the overridden environment
+     */
+    fun withEnv(overrides: Array<String>, block: StageScope.() -> Unit) {
+        withEnv(overrides.toList(), block)
+    }
+
+    /**
      * Sets environment variables using a map (convenience overload).
      *
      * @param overrides Environment overrides as Map (converted to `"VAR=value"` strings)

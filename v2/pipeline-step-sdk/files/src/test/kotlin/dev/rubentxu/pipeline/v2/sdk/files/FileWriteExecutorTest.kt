@@ -43,7 +43,7 @@ class FileWriteExecutorTest {
         val executor = FileWriteExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.WriteFile(file = "output.txt", text = "hello world")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertTrue(Files.exists(result.path), "File should exist")
         assertEquals("hello world", Files.readString(result.path))
@@ -59,8 +59,8 @@ class FileWriteExecutorTest {
         val executor = FileWriteExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.WriteFile(file = "output.txt", text = "same content")
-        val result1 = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
-        val result2 = executor.execute(stageIndex = 0, stepIndex = 1, spec = spec)
+        val result1 = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
+        val result2 = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 1, spec = spec)
 
         // Same content → same sha
         assertEquals(result1.sha256, result2.sha256)
@@ -74,7 +74,7 @@ class FileWriteExecutorTest {
         val executor = FileWriteExecutor(workspaceResolver = { _, _ -> workspace })
 
         val spec = StepSpec.WriteFile(file = "a/b/c/d/e.txt", text = "x")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertTrue(Files.exists(result.path))
         assertEquals("x", Files.readString(result.path))
@@ -92,7 +92,7 @@ class FileWriteExecutorTest {
 
         // "hello" in Base64 is "aGVsbG8="
         val spec = StepSpec.WriteFile(file = "logo.bin", text = "aGVsbG8=", encoding = "Base64")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertEquals("hello", Files.readString(result.path))
         assertEquals(5L, result.size)
@@ -111,7 +111,7 @@ class FileWriteExecutorTest {
 
         val spec = StepSpec.WriteFile(file = "../escape.txt", text = "hacked")
         val exception = runCatching {
-            executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+            executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
         }.exceptionOrNull()
 
         assertTrue(exception is IllegalArgumentException)
@@ -126,7 +126,7 @@ class FileWriteExecutorTest {
 
         val spec = StepSpec.WriteFile(file = ".v2/secret", text = "sensitive")
         val exception = runCatching {
-            executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+            executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
         }.exceptionOrNull()
 
         assertTrue(exception is IllegalArgumentException)

@@ -33,9 +33,15 @@ class FileExistsExecutor(
 
     /**
      * Executes a [StepSpec.FileExists] step.
+     *
+     * @param stageName The stage name (used as workspace identifier)
+     * @param stageIndex The stage index (passed to workspace resolver)
+     * @param stepIndex The step index (unused)
+     * @param spec The fileExists step specification
+     * @return [FileExistsResult] with path and exists flag
      */
-    fun execute(stageIndex: Int, stepIndex: Int, spec: StepSpec.FileExists): FileExistsResult {
-        val workspace = workspaceResolver(spec.file, stageIndex)
+    fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.FileExists): FileExistsResult {
+        val workspace = workspaceResolver(stageName, stageIndex)
         val targetPath = workspace.resolve(spec.file).normalize()
 
         // Path safety: outside workspace → false

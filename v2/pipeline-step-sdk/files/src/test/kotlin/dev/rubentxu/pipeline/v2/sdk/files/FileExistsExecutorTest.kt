@@ -36,7 +36,7 @@ class FileExistsExecutorTest {
         )
 
         val spec = StepSpec.FileExists(file = "config.xml")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertTrue(result.exists)
     }
@@ -51,7 +51,7 @@ class FileExistsExecutorTest {
         )
 
         val spec = StepSpec.FileExists(file = "missing.txt")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
     }
@@ -66,7 +66,7 @@ class FileExistsExecutorTest {
         )
 
         val spec = StepSpec.FileExists(file = "/etc/passwd")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
     }
@@ -81,7 +81,7 @@ class FileExistsExecutorTest {
         )
 
         val spec = StepSpec.FileExists(file = "../escape.txt")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
     }
@@ -96,7 +96,7 @@ class FileExistsExecutorTest {
         )
 
         val spec = StepSpec.FileExists(file = ".v2/secret")
-        val result = executor.execute(stageIndex = 0, stepIndex = 0, spec = spec)
+        val result = executor.execute(stageName = "test", stageIndex = 0, stepIndex = 0, spec = spec)
 
         assertFalse(result.exists)
     }

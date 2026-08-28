@@ -60,14 +60,15 @@ class FileWriteExecutor(
     /**
      * Executes a [StepSpec.WriteFile] step.
      *
+     * @param stageName The stage name (used as workspace identifier)
      * @param stageIndex The stage index (passed to workspace resolver)
      * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The writeFile step specification
      * @return [FileWriteResult] on success
      * @throws IllegalArgumentException if path escapes workspace or targets .v2 directory
      */
-    fun execute(stageIndex: Int, stepIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
-        val workspace = workspaceResolver(spec.file, stageIndex)
+    fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
+        val workspace = workspaceResolver(stageName, stageIndex)
         val targetPath = workspace.resolve(spec.file).normalize()
 
         // Path traversal guard

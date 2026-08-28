@@ -240,7 +240,7 @@ class UatLocal009TopStepsTest {
             pipeline {
                 stages {
                     stage("test") {
-                        withEnv(["PATH+EXTRA=/usr/local/bin"]) {
+                        withEnv(listOf("PATH+EXTRA=/usr/local/bin")) {
                             echo("PATH+EXTRA applied")
                         }
                     }
@@ -267,7 +267,7 @@ class UatLocal009TopStepsTest {
             pipeline {
                 stages {
                     stage("test") {
-                        withEnv(["JAVA_HOME=/opt/jdk21"]) {
+                        withEnv(listOf("JAVA_HOME=/opt/jdk21")) {
                             echo("JAVA_HOME set")
                         }
                     }
@@ -294,8 +294,8 @@ class UatLocal009TopStepsTest {
             pipeline {
                 stages {
                     stage("test") {
-                        withEnv(["MY_VAR=outer"]) {
-                            withEnv(["MY_VAR=inner"]) {
+                        withEnv(listOf("MY_VAR=outer")) {
+                            withEnv(listOf("MY_VAR=inner")) {
                                 echo("MY_VAR=inner")
                             }
                         }

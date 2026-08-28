@@ -793,31 +793,31 @@ private suspend fun executeDurableStepImpl(
                 echo(StepContext(runId = runId), step.text, eventSink, stepIndex)
                 "success"
             }
-            is StepSpec.Shell -> {
-                // ML-R1 C1: Check step-level classification from resume reconciliation
-                val classification = stepClassifications[opId]
-                when (classification) {
-                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Complete -> {
-                        // Step completed before JVM death; use cached exit code (no re-execution)
-                        if (classification.exitCode == 0) "success" else "failure"
-                    }
-                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Reattach -> {
-                        // Step may still be running; poll existing control-dir result (no relaunch)
-                        val config = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig.fromSystemProperties()
-                        val executor = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor()
-                        val exitCode = executor.pollResult(classification.controlDir, timeoutMs = 60_000) ?: -1
-                        if (exitCode == 0) "success" else "failure"
-                    }
-                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.TimedOut -> {
-                        // Timeout was triggered before JVM death; return failure (not lost)
-                        "failure"
-                    }
-                    is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost,
-                    null -> {
-                        // LOST: return "lost" to signal to caller to journal LOST (not FAILED)
-                        // null: no pre-existing classification; proceed with normal durable execution
-                        // Build effective ShOptions from step configuration
-                        val workspaceRoot = workspaceResolver?.resolve("stage-$stageIndex", stageIndex)
+                    is StepSpec.Shell -> {
+                        // ML-R1 C1: Check step-level classification from resume reconciliation
+                        val classification = stepClassifications[opId]
+                        when (classification) {
+                            is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Complete -> {
+                                // Step completed before JVM death; use cached exit code (no re-execution)
+                                if (classification.exitCode == 0) "success" else "failure"
+                            }
+                            is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Reattach -> {
+                                // Step may still be running; poll existing control-dir result (no relaunch)
+                                val config = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig.fromSystemProperties()
+                                val executor = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor()
+                                val exitCode = executor.pollResult(classification.controlDir, timeoutMs = 60_000) ?: -1
+                                if (exitCode == 0) "success" else "failure"
+                            }
+                            is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.TimedOut -> {
+                                // Timeout was triggered before JVM death; return failure (not lost)
+                                "failure"
+                            }
+                            is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Lost,
+                            null -> {
+                                // LOST: return "lost" to signal to caller to journal LOST (not FAILED)
+                                // null: no pre-existing classification; proceed with normal durable execution
+                                // Build effective ShOptions from step configuration
+                                val workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
                         val shellStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.Shell
 
@@ -890,6 +890,7 @@ private suspend fun executeDurableStepImpl(
                 walkParallelFrame(
                     frame = parallelFrame,
                     stageIndex = stageIndex,
+                    stageName = stageName,
                     stepIndex = stepIndex,
                     runId = runId,
                     eventSink = eventSink,
@@ -945,7 +946,7 @@ private suspend fun executeDurableStepImpl(
                         val effectiveShOptions = shOptions?.copy(
                             env = (shOptions.env ?: emptyMap()) + credentialEnv
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
-                            workspaceRoot = workspaceResolver?.resolve("stage-$stageIndex", stageIndex)
+                            workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
                                 ?: java.nio.file.Files.createTempDirectory("withcreds"),
                             captureStdout = false,
                             timeoutMs = stageTimeout,
@@ -1044,7 +1045,7 @@ private suspend fun executeDurableStepImpl(
                     throw IllegalArgumentException("Missing required parameter: url")
                 }
                 // Resolve workspace root
-                val workspaceRoot = workspaceResolver?.resolve("stage-${stageIndex}", stageIndex)
+                val workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
                     ?: Files.createTempDirectory("checkout-workspace")
                 Files.createDirectories(workspaceRoot)
                 // Create credentials temp dir with 0700 perms
@@ -1091,7 +1092,7 @@ private suspend fun executeDurableStepImpl(
                     workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
                     eventSink = eventSink
                 )
-                val result = executor.execute(stageIndex, stepIndex, step)
+                val result = executor.execute(stageName, stageIndex, stepIndex, step)
                 eventSink.append(
                     FileWritten(
                         eventId = UUID.randomUUID().toString(),
@@ -1113,7 +1114,7 @@ private suspend fun executeDurableStepImpl(
                     workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
                     eventSink = eventSink
                 )
-                val result = executor.execute(stageIndex, stepIndex, step)
+                val result = executor.execute(stageName, stageIndex, stepIndex, step)
                 eventSink.append(
                     FileRead(
                         eventId = UUID.randomUUID().toString(),
@@ -1133,7 +1134,7 @@ private suspend fun executeDurableStepImpl(
                 val executor = FileExistsExecutor(
                     workspaceResolver = { name, idx -> resolver.resolve(name, idx) }
                 )
-                executor.execute(stageIndex, stepIndex, step)
+                executor.execute(stageName, stageIndex, stepIndex, step)
                 "success"
             }
             is StepSpec.WithEnv -> {
@@ -1216,6 +1217,16 @@ private suspend fun executeDurableStepImpl(
                     "success"
                 } catch (e: EmptyArchiveException) {
                     if (step.allowEmptyArchive != true) {
+                        // Jenkins verbatim: allowEmptyArchive=false → fail with ArtifactArchiveFailed
+                        eventSink.append(
+                            ArtifactArchiveFailed(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId,
+                                sequence = 0L,
+                                occurredAt = clock.now(),
+                                reason = e.message ?: "no files matched pattern: ${step.artifacts}",
+                            )
+                        )
                         return "failure"
                     }
                     eventSink.append(
@@ -1968,6 +1979,7 @@ private fun emitParallelBranchFinished(
 private suspend fun walkParallelFrame(
     frame: dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame,
     stageIndex: Int,
+    stageName: String,
     stepIndex: Int,
     runId: String,
     eventSink: EventSink,
@@ -2044,6 +2056,7 @@ private suspend fun walkParallelFrame(
                             branch = branch,
                             branchIndex = branchIndex,
                             parentOpId = parentOpId,
+                            stageName = stageName,
                             runId = runId,
                             eventSink = eventSink,
                             journal = journal,
@@ -2153,6 +2166,7 @@ private suspend fun walkBranchDurable(
     branch: dev.rubentxu.pipeline.v2.domain.durable.BranchSpec,
     branchIndex: Int,
     parentOpId: OpId,
+    stageName: String,
     runId: String,
     eventSink: EventSink,
     journal: OperationJournal,
@@ -2264,6 +2278,7 @@ private suspend fun walkBranchDurable(
                 walkParallelFrame(
                     frame = nestedFrame,
                     stageIndex = parentOpId.stageIndex,
+                    stageName = stageName,
                     stepIndex = parentOpId.stepIndex + stepOffset,
                     runId = runId,
                     eventSink = eventSink,
@@ -2286,6 +2301,7 @@ private suspend fun walkBranchDurable(
                         eventSink = eventSink
                     )
                     val result = executor.execute(
+                        stageName,
                         parentOpId.stageIndex,
                         parentOpId.stepIndex + stepOffset,
                         step
@@ -2315,6 +2331,7 @@ private suspend fun walkBranchDurable(
                         eventSink = eventSink
                     )
                     val result = executor.execute(
+                        stageName,
                         parentOpId.stageIndex,
                         parentOpId.stepIndex + stepOffset,
                         step
@@ -2341,7 +2358,7 @@ private suspend fun walkBranchDurable(
                     val executor = FileExistsExecutor(
                         workspaceResolver = { name: String, idx: Int -> resolver.resolve(name, idx) }
                     )
-                    executor.execute(parentOpId.stageIndex, parentOpId.stepIndex + stepOffset, step)
+                    executor.execute(stageName, parentOpId.stageIndex, parentOpId.stepIndex + stepOffset, step)
                     "success"
                 } else {
                     "failure"

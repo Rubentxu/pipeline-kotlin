@@ -241,6 +241,54 @@ object JsonEventLog {
                 sb.append(",\"newSha\":")
                 sb.append(jsonString(event.newSha))
             }
+            // L7 Jenkins File + Artefact Events (ML-R7)
+            is FileWritten -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path.toString()))
+                sb.append(",\"sha256\":")
+                sb.append(jsonString(event.sha256))
+                sb.append(",\"size\":")
+                sb.append(event.size)
+                sb.append(",\"atomicallyMoved\":")
+                sb.append(event.atomicallyMoved.toString())
+            }
+            is FileRead -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path.toString()))
+                if (event.sha256 != null) {
+                    sb.append(",\"sha256\":")
+                    sb.append(jsonString(event.sha256))
+                }
+                if (event.size != null) {
+                    sb.append(",\"size\":")
+                    sb.append(event.size)
+                }
+            }
+            is ArtifactArchived -> {
+                sb.append(",\"files\":[")
+                event.files.forEachIndexed { idx, entry ->
+                    if (idx > 0) sb.append(",")
+                    sb.append("{")
+                    sb.append("\"runId\":")
+                    sb.append(jsonString(entry.runId))
+                    sb.append(",\"stageName\":")
+                    sb.append(jsonString(entry.stageName))
+                    sb.append(",\"relPath\":")
+                    sb.append(jsonString(entry.relPath))
+                    sb.append(",\"sha256\":")
+                    sb.append(jsonString(entry.sha256))
+                    sb.append(",\"size\":")
+                    sb.append(entry.size)
+                    sb.append(",\"archivedAt\":")
+                    sb.append(jsonString(entry.archivedAt.toString()))
+                    sb.append("}")
+                }
+                sb.append("]")
+            }
+            is ArtifactArchiveFailed -> {
+                sb.append(",\"reason\":")
+                sb.append(jsonString(event.reason))
+            }
         }
         sb.append("}")
         return sb.toString()
@@ -613,6 +661,59 @@ object JsonEventLog {
                     newSha = newSha,
                 )
             }
+            // L7 Jenkins File + Artefact Events (ML-R7)
+            "FileWritten" -> {
+                val pathStr = stringField(s, "path") ?: ""
+                val path = java.nio.file.Paths.get(pathStr)
+                val sha256 = stringField(s, "sha256") ?: ""
+                val size = longField(s, "size") ?: 0L
+                val atomicallyMoved = boolField(s, "atomicallyMoved")
+                FileWritten(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    sha256 = sha256,
+                    size = size,
+                    atomicallyMoved = atomicallyMoved,
+                )
+            }
+            "FileRead" -> {
+                val pathStr = stringField(s, "path") ?: ""
+                val path = java.nio.file.Paths.get(pathStr)
+                val sha256 = stringField(s, "sha256")
+                val size = longField(s, "size")
+                FileRead(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    sha256 = sha256,
+                    size = size,
+                )
+            }
+            "ArtifactArchived" -> {
+                val files = decodeArtifactEntries(s)
+                ArtifactArchived(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    files = files,
+                )
+            }
+            "ArtifactArchiveFailed" -> {
+                val reason = stringField(s, "reason") ?: ""
+                ArtifactArchiveFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    reason = reason,
+                )
+            }
             else -> null
         }
     }
@@ -692,6 +793,74 @@ object JsonEventLog {
 
     private fun intField(json: String, name: String): Int? {
         return longField(json, name)?.toInt()
+    }
+
+    private fun boolField(json: String, name: String): Boolean {
+        val nameStart = json.indexOf("\"$name\"")
+        if (nameStart == -1) return false
+        val colonPos = json.indexOf(':', nameStart)
+        if (colonPos == -1) return false
+        var i = colonPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        val start = i
+        while (i < json.length && json[i].isLetter()) i++
+        val value = json.substring(start, i)
+        return value == "true"
+    }
+
+    private fun decodeArtifactEntries(json: String): List<ArtifactEntry> {
+        val arrStart = json.indexOf("\"files\"")
+        if (arrStart == -1) return emptyList()
+        val bracketPos = json.indexOf('[', arrStart)
+        if (bracketPos == -1) return emptyList()
+        var i = bracketPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        if (i >= json.length || json[i] == ']') return emptyList()
+
+        val results = mutableListOf<ArtifactEntry>()
+        var depth = 0
+        var inString = false
+        var escape = false
+        val current = StringBuilder()
+        i = bracketPos + 1
+
+        while (i < json.length) {
+            val ch = json[i]
+            when {
+                escape -> { current.append(ch); escape = false; i++ }
+                ch == '\\' && inString -> { current.append(ch); escape = true; i++ }
+                ch == '"' -> { current.append(ch); inString = !inString; i++ }
+                ch == '{' && !inString -> { depth++; current.append(ch); i++ }
+                ch == '}' && !inString -> {
+                    depth--
+                    current.append(ch)
+                    if (depth == 0) {
+                        val entryStr = current.toString().trim()
+                        if (entryStr.isNotEmpty()) {
+                            parseArtifactEntry(entryStr)?.let { results.add(it) }
+                        }
+                        current.clear()
+                    }
+                    i++
+                }
+                ch == ',' && depth == 0 && !inString -> {
+                    i++
+                }
+                else -> { if (depth > 0) current.append(ch); i++ }
+            }
+        }
+        return results
+    }
+
+    private fun parseArtifactEntry(s: String): ArtifactEntry? {
+        val runId = stringField(s, "runId") ?: return null
+        val stageName = stringField(s, "stageName") ?: return null
+        val relPath = stringField(s, "relPath") ?: return null
+        val sha256 = stringField(s, "sha256") ?: return null
+        val size = longField(s, "size") ?: return null
+        val archivedAtStr = stringField(s, "archivedAt") ?: return null
+        val archivedAt = try { Instant.parse(archivedAtStr) } catch (_: Exception) { Instant.now() }
+        return ArtifactEntry(runId, stageName, relPath, sha256, size, archivedAt)
     }
 
     private fun decodeDiagnostics(json: String): List<ScriptingDiagnostic> {

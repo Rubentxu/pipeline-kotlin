@@ -47,6 +47,11 @@ class InMemoryEventStore : EventSink {
             is GitCheckoutCompleted -> event.copy(sequence = assignedSequence)
             is GitCheckoutFailed -> event.copy(sequence = assignedSequence)
             is GitPollChanged -> event.copy(sequence = assignedSequence)
+            // L7 Jenkins File + Artefact Events (ML-R7)
+            is FileWritten -> event.copy(sequence = assignedSequence)
+            is FileRead -> event.copy(sequence = assignedSequence)
+            is ArtifactArchived -> event.copy(sequence = assignedSequence)
+            is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

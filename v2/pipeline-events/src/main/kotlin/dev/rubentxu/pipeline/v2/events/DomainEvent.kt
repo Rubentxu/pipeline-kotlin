@@ -425,3 +425,124 @@ data class GitPollChanged(
 ) : DomainEvent {
     override val kind: String get() = "GitPollChanged"
 }
+
+// =============================================================================
+// L7 Jenkins File + Artefact Events (ML-R7)
+// =============================================================================
+
+/**
+ * Entry for a single archived artifact file.
+ *
+ * @param runId Run ID
+ * @param stageName Stage name
+ * @param relPath Path relative to workspace root
+ * @param sha256 SHA-256 hex digest of the file
+ * @param size Size in bytes
+ * @param archivedAt When the file was archived
+ */
+data class ArtifactEntry(
+    val runId: String,
+    val stageName: String,
+    val relPath: String,
+    val sha256: String,
+    val size: Long,
+    val archivedAt: Instant,
+)
+
+/**
+ * Emitted when a writeFile step completes successfully.
+ *
+ * Payload is restricted to path + sha256 + size — NEVER text/content/bytes.
+ * INV-L6-EVT-001 (F-ARCH-L6-004): no secret material.
+ *
+ * @param runId Run ID
+ * @param stageName Stage name
+ * @param path Resolved absolute path of the written file
+ * @param sha256 SHA-256 hex digest of the file content
+ * @param size Size in bytes
+ * @param atomicallyMoved True if ATOMIC_MOVE succeeded; false if cross-fs fallback was used
+ * @param occurredAt Timestamp
+ */
+data class FileWritten(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: java.nio.file.Path,
+    val sha256: String,
+    val size: Long,
+    val atomicallyMoved: Boolean,
+) : DomainEvent {
+    override val kind: String get() = "FileWritten"
+}
+
+/**
+ * Emitted when a readFile step executes.
+ *
+ * Payload is restricted to path + sha256 + size — NEVER text/content/bytes.
+ * INV-L6-EVT-001 (F-ARCH-L6-004): no secret material.
+ * readText is captured ONLY for files created within the same run (writeFile→readFile pipeline).
+ * Files read from outside the run have exists=false and no bytes captured.
+ *
+ * @param runId Run ID
+ * @param stageName Stage name
+ * @param path Resolved absolute path of the file
+ * @param sha256 SHA-256 hex digest (null if file does not exist)
+ * @param size Size in bytes (null if file does not exist)
+ * @param occurredAt Timestamp
+ */
+data class FileRead(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: java.nio.file.Path,
+    val sha256: String?,
+    val size: Long?,
+) : DomainEvent {
+    override val kind: String get() = "FileRead"
+}
+
+/**
+ * Emitted when archiveArtifacts completes successfully.
+ *
+ * ONE event per call (not per file) — INV-L6-ARC-006 journal hygiene.
+ * Each ArtifactEntry carries sha256 + size for auditability.
+ * Payload is restricted to typed ArtifactEntry list — NEVER content/bytes/data.
+ * INV-L6-EVT-001 (F-ARCH-L6-004): no secret material.
+ *
+ * @param runId Run ID
+ * @param stageName Stage name
+ * @param files List of archived artifact entries
+ * @param occurredAt Timestamp
+ */
+data class ArtifactArchived(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val files: List<ArtifactEntry>,
+) : DomainEvent {
+    override val kind: String get() = "ArtifactArchived"
+}
+
+/**
+ * Emitted when archiveArtifacts fails (glob mismatch with allowEmptyArchive=false, or I/O error).
+ *
+ * The reason is passed through SecretPatternRegistry.scrub() BEFORE emit.
+ * INV-L6-CR-015: no secret material in reason field.
+ *
+ * @param runId Run ID
+ * @param stageName Stage name
+ * @param reason Scrubbed failure reason
+ * @param occurredAt Timestamp
+ */
+data class ArtifactArchiveFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "ArtifactArchiveFailed"
+}

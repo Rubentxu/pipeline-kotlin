@@ -46,44 +46,40 @@ class FArchL7JenkinsVerbatimStepTest {
     private val jenkinsCatalogShapes = mapOf(
         "WriteFile" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/lang/String;",  // name
                 "Ljava/lang/String;",  // file
                 "Ljava/lang/String;",  // text
-                "Ljava/lang/String;"   // encoding (nullable)
+                "Ljava/lang/String;"   // encoding
             ),
-            fieldNames = setOf("name", "file", "text", "encoding")
+            fieldNames = setOf("file", "text", "encoding")
         ),
         "ReadFile" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/lang/String;",  // name
-                "Ljava/lang/String;"   // file
+                "Ljava/lang/String;",  // file
+                "Ljava/lang/String;"   // encoding
             ),
-            fieldNames = setOf("name", "file")
+            fieldNames = setOf("file", "encoding")
         ),
         "FileExists" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/lang/String;",  // name
                 "Ljava/lang/String;"   // file
             ),
-            fieldNames = setOf("name", "file")
+            fieldNames = setOf("file")
         ),
         "WithEnv" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/lang/String;",  // name
                 "Ljava/util/Map;",     // overrides
                 "Ljava/util/List;"      // steps
             ),
-            fieldNames = setOf("name", "overrides", "steps")
+            fieldNames = setOf("overrides", "steps")
         ),
         "ArchiveArtifacts" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/lang/String;",  // name
                 "Ljava/lang/String;",  // artifacts
                 "Ljava/lang/Boolean;", // allowEmptyArchive
                 "Ljava/lang/String;",  // excludes
                 "Ljava/lang/Boolean;"  // fingerprint
             ),
-            fieldNames = setOf("name", "artifacts", "allowEmptyArchive", "excludes", "fingerprint")
+            fieldNames = setOf("artifacts", "allowEmptyArchive", "excludes", "fingerprint")
         )
     )
 
@@ -95,7 +91,7 @@ class FArchL7JenkinsVerbatimStepTest {
     @Test
     fun `writeFile_shape_matches_jenkins_catalog`() {
         val writeFileClass = Class.forName(
-            "dev.rubentxu.pipeline.v2.dsl.StepSpec.WriteFile"
+            "dev.rubentxu.pipeline.v2.dsl.StepSpec\$WriteFile"
         )
 
         val shape = jenkinsCatalogShapes["WriteFile"]
@@ -135,7 +131,7 @@ class FArchL7JenkinsVerbatimStepTest {
 
         for ((stepName, shape) in jenkinsCatalogShapes) {
             try {
-                val fqcn = "dev.rubentxu.pipeline.v2.dsl.StepSpec.$stepName"
+                val fqcn = "dev.rubentxu.pipeline.v2.dsl.StepSpec\$$stepName"
                 val stepClass = Class.forName(fqcn)
 
                 // Verify constructor

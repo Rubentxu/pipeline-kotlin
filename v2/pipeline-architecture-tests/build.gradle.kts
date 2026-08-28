@@ -17,6 +17,8 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation("org.jetbrains.kotlin:kotlin-reflect")
     testImplementation(project(":pipeline-events"))
+    testImplementation(project(":pipeline-scripting-api"))
+    testImplementation(project(":pipeline-artefacts-local"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly(project(":pipeline-binding-factory"))
 }

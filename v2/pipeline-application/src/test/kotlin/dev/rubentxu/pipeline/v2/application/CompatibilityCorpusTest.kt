@@ -22,7 +22,7 @@ class CompatibilityCorpusTest {
     @Test
     fun corpusSmokeRunsAndProducesParseableEvents() {
         val fixtures = discoverFixtures()
-        assertTrue(fixtures.isNotEmpty()) { "Expected at least 6 corpus fixtures, found ${fixtures.size}" }
+        assertTrue(fixtures.isNotEmpty()) { "Expected at least 9 corpus fixtures, found ${fixtures.size}" }
 
         val appBin = AppBinSupport.discover()
 
@@ -47,7 +47,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = discoverFixtures()
-        assertEquals(6, fixtures.size)
+        assertEquals(9, fixtures.size)
 
         val names = fixtures.map { it.fileName.toString() }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -56,5 +56,8 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("04-sh.pipeline.kts"))
         assertTrue(names.contains("05-scripted-if.pipeline.kts"))
         assertTrue(names.contains("06-loop.pipeline.kts"))
+        assertTrue(names.contains("07-writeFile-readFile.pipeline.kts"))
+        assertTrue(names.contains("08-withEnv-pipeline.pipeline.kts"))
+        assertTrue(names.contains("09-archive-artefacts.pipeline.kts"))
     }
 }

@@ -30,6 +30,7 @@ include(
     ":pipeline-step-sdk:processor",
     ":pipeline-step-sdk:runtime",
     ":pipeline-step-sdk:scm-git",
+    ":pipeline-step-sdk:files",
     ":pipeline-credentials-api",
     ":pipeline-credentials-local",
     ":pipeline-credentials-multipart",

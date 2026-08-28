@@ -1067,6 +1067,12 @@ private suspend fun executeDurableStepImpl(
                     checkoutExecutor.close()
                 }
             }
+            // L7 Jenkins top-steps (ML-R7) — T-09 adds full dispatch
+            is StepSpec.WriteFile -> throw UnsupportedOperationException("WriteFile dispatch T-09")
+            is StepSpec.ReadFile -> throw UnsupportedOperationException("ReadFile dispatch T-09")
+            is StepSpec.FileExists -> throw UnsupportedOperationException("FileExists dispatch T-09")
+            is StepSpec.WithEnv -> throw UnsupportedOperationException("WithEnv dispatch T-09")
+            is StepSpec.ArchiveArtifacts -> throw UnsupportedOperationException("ArchiveArtifacts dispatch T-09")
         }
     } catch (_: Throwable) {
         runOutcomeRef.set("failure")
@@ -1117,6 +1123,12 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         is StepSpec.Parallel -> Triple("parallel", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         is StepSpec.WithCredentialsBlock -> Triple("withCredentials", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
         is StepSpec.Checkout -> Triple("checkout", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
+        // L7 Jenkins top-steps (ML-R7) — T-09 adds full dispatch
+        is StepSpec.WriteFile -> Triple("writeFile", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.ReadFile -> Triple("readFile", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.FileExists -> Triple("fileExists", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.WithEnv -> Triple("withEnv", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
+        is StepSpec.ArchiveArtifacts -> Triple("archiveArtifacts", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
     }
 }
 
@@ -1190,6 +1202,28 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
                 }
             }
         }
+        // L7 Jenkins top-steps (ML-R7) — T-09 adds full dispatch; stubs here make the code compile
+        is StepSpec.WriteFile -> mapOf(
+            "file" to JsonPrimitive(step.file),
+            "text" to JsonPrimitive(step.text),
+            "encoding" to JsonPrimitive(step.encoding),
+        )
+        is StepSpec.ReadFile -> mapOf(
+            "file" to JsonPrimitive(step.file),
+            "encoding" to JsonPrimitive(step.encoding),
+        )
+        is StepSpec.FileExists -> mapOf(
+            "file" to JsonPrimitive(step.file),
+        )
+        is StepSpec.WithEnv -> mapOf(
+            "overrides" to JsonArray(step.overrides.map { JsonPrimitive(it) }),
+        )
+        is StepSpec.ArchiveArtifacts -> mapOf(
+            "artifacts" to JsonPrimitive(step.artifacts),
+            "allowEmptyArchive" to JsonPrimitive(step.allowEmptyArchive),
+            "fingerprint" to JsonPrimitive(step.fingerprint),
+            "onlyIfSuccessful" to JsonPrimitive(step.onlyIfSuccessful),
+        )
     }
 }
 
@@ -1394,6 +1428,22 @@ private fun emitStepEvents(
                     stepType = stepType,
                 )
             )
+        }
+        // L7 Jenkins top-steps (ML-R7) — T-09 adds full dispatch; stubs here for compilation
+        is StepSpec.WriteFile -> {
+            // T-09: Full dispatch + StepStarted/StepFinished events
+        }
+        is StepSpec.ReadFile -> {
+            // T-09: Full dispatch + StepStarted/StepFinished events
+        }
+        is StepSpec.FileExists -> {
+            // T-09: Full dispatch + StepStarted/StepFinished events
+        }
+        is StepSpec.WithEnv -> {
+            // T-09: Full dispatch + StepStarted/StepFinished events (nested steps handled recursively)
+        }
+        is StepSpec.ArchiveArtifacts -> {
+            // T-09: Full dispatch + StepStarted/StepFinished events
         }
     }
 }

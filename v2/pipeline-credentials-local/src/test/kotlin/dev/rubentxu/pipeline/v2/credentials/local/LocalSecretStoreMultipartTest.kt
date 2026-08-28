@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
+import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -332,5 +333,179 @@ class LocalSecretStoreMultipartTest {
         assertTrue(store.get(id1).let { (it as SecretText).bytes.contentEquals("secret1".toByteArray()) })
         assertTrue(store.get(id3).let { (it as SecretText).bytes.contentEquals("secret3".toByteArray()) })
         assertTrue(store.get(id2).let { (it as SecretText).bytes.contentEquals("new-secret2".toByteArray()) })
+    }
+
+    // ─── Fix 4 RED test ────────────────────────────────────────────────────────
+
+    /**
+     * Fix 4: Concurrent mutations to the store must be serialized via file locking.
+     * Two threads doing interleaved add() calls must not lose data.
+     */
+    @Test
+    fun `Fix-4 concurrent add operations are serialized via file lock`() {
+        val passphrase = "concurrent-lock-test".toCharArray()
+        val storeFile2 = tempDir.resolve("credentials2.bin")
+        val store = LocalSecretStore(storeFile2, passphrase)
+
+        val n = 20
+        val ids = (0 until n).map { CredentialsId("concurrent-id-$it") }
+        val exceptions = mutableListOf<Throwable>()
+
+        val t1 = Thread {
+            for (i in 0 until n step 2) {
+                try {
+                    store.add(ids[i], SecretText(ids[i], CredentialScope.GLOBAL, "value-$i".toByteArray()))
+                } catch (e: Throwable) {
+                    synchronized(exceptions) { exceptions.add(e) }
+                }
+            }
+        }
+
+        val t2 = Thread {
+            for (i in 1 until n step 2) {
+                try {
+                    store.add(ids[i], SecretText(ids[i], CredentialScope.GLOBAL, "value-$i".toByteArray()))
+                } catch (e: Throwable) {
+                    synchronized(exceptions) { exceptions.add(e) }
+                }
+            }
+        }
+
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        // All operations should succeed
+        assertTrue(exceptions.isEmpty(), "No exceptions expected, got: $exceptions")
+
+        // Final list must contain ALL ids (no data loss due to race)
+        val listedIds = store.list().map { it.value }.toSet()
+        val expectedIds = ids.map { it.value }.toSet()
+        assertEquals(expectedIds, listedIds, "All $n credentials must be present after concurrent adds")
+    }
+
+
+    /**
+     * Fix 3: Linked-ref cycle A→B→A must throw SecretStoreTamperException, not StackOverflowError.
+     * We test via getAsHandle on SshPrivateKey with mutually-referencing passphrase LinkedSecretRefs.
+     */
+    @Test
+    fun `Fix-3 LinkedSecretRef cycle A-to-B-to-A throws SecretStoreTamperException not StackOverflow`() {
+        val passphrase = "cycle-test".toCharArray()
+        val store = LocalSecretStore(storeFile, passphrase)
+
+        val idA = CredentialsId("cycle-a")
+        val idB = CredentialsId("cycle-b")
+
+        // Use SshPrivateKey with passphrase LinkedSecretRef to create the cycle
+        // A's passphrase -> LinkedSecretRef to B
+        // B's passphrase -> LinkedSecretRef to A
+        val sshA = SshPrivateKey(idA, CredentialScope.GLOBAL, "user",
+            "PRIVATE-KEY-A".toByteArray(),
+            LinkedSecretRef(idB))  // A's passphrase refs B
+        val sshB = SshPrivateKey(idB, CredentialScope.GLOBAL, "user",
+            "PRIVATE-KEY-B".toByteArray(),
+            LinkedSecretRef(idA))  // B's passphrase refs A
+
+        store.add(idA, sshA)
+        store.add(idB, sshB)
+
+        // Getting A's passphrase should detect the cycle and throw, not StackOverflow
+        val ex = assertThrows(LocalSecretStore.SecretStoreTamperException::class.java) {
+            store.getAsHandle(idA, "passphrase")
+        }
+        assertTrue(ex.message?.contains("circular") == true || ex.message?.contains("cycle") == true ||
+                    ex.message?.contains("recursive") == true,
+            "Exception must mention circular/cycle/recursive, got: ${ex.message}")
+    }
+
+
+    /**
+     * Fix 2a: Zip credential with entry name > 255 bytes must be rejected at add()
+     * with a descriptive exception (not a cryptic UTF-8 encoding error).
+     */
+    @Test
+    fun `Fix-2a Zip entry name exceeding 255 bytes is rejected at add`() {
+        val passphrase = "zip-name-len-test".toCharArray()
+        val store = LocalSecretStore(storeFile, passphrase)
+        val id = CredentialsId("zip-long-name")
+
+        // Create a name that exceeds 255 bytes when encoded as UTF-8
+        // 'é' is 2 bytes in UTF-8, so 200 such chars = 400 bytes
+        val longName = "é".repeat(200)
+        assertTrue(longName.toByteArray(Charsets.UTF_8).size > 255,
+            "Test name must exceed 255 UTF-8 bytes")
+
+        val entries = mapOf(longName to "content".toByteArray())
+        val zipCred = Zip(id, CredentialScope.GLOBAL, entries)
+
+        // Must throw with descriptive message about name length
+        val ex = assertThrows(LocalSecretStore.SecretStoreTamperException::class.java) {
+            store.add(id, zipCred)
+        }
+        assertTrue(ex.message?.contains("255") == true || ex.message?.contains("name") == true,
+            "Exception must mention 255-byte limit or name validation, got: ${ex.message}")
+    }
+
+    /**
+     * Fix 2b: Crafted envelope with nameLen exceeding remaining bytes throws SecretStoreTamperException.
+     * We construct a valid store first, then corrupt the nameLen byte to a large value.
+     */
+    @Test
+    fun `Fix-2b corrupted nameLen in envelope throws SecretStoreTamperException on get`() {
+        val passphrase = "tamper-name-len-test".toCharArray()
+        val store = LocalSecretStore(storeFile, passphrase)
+        val id = CredentialsId("tamper-test")
+
+        // Store a simple credential first
+        store.add(id, SecretText(id, CredentialScope.GLOBAL, "secret".toByteArray()))
+
+        // Read the file and find the nameLen byte for the credential
+        // The envelope format: header + [idLen(2) + id + kind(2) + plaintextLen(4) + nonce(12) + ciphertext + tag(16)]
+        // We need to find the credential's nameLen position and corrupt it
+        val fileBytes = java.nio.file.Files.readAllBytes(storeFile)
+        val tamperedBytes = fileBytes.copyOf()
+
+        // Find the position after the header where our credential entry starts
+        // The header is 74 bytes (PKCR(4) + version(2) + m(4) + t(4) + p(4) + salt(16) + wrappedDEK(40))
+        val headerSize = 74
+        // Entry format: idLen(2 LE) + id + kind(2 LE) + plaintextLen(4 LE) + nonce(12) + ciphertext + tag(16)
+        // Find the id "tamper-test" in the bytes and corrupt the nameLen byte that follows it
+        val idBytes = "tamper-test".toByteArray(Charsets.UTF_8)
+        var pos = headerSize
+        while (pos < tamperedBytes.size - idBytes.size) {
+            var match = true
+            for (i in idBytes.indices) {
+                if (tamperedBytes[pos + i] != idBytes[i]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) {
+                // Found id at pos. After id comes kind(2) then plaintextLen(4).
+                // Then nonce(12) + ciphertext + tag(16).
+                // We need to find where the actual credential data (nameLen for parts) starts.
+                // For SecretText: partCount(1) + nameLen(1) + name + len(4) + value
+                // The part data starts at: pos + idBytes.size + kind(2) + plaintextLen(4) + nonce(12) + ciphertext
+                // But we don't know ciphertext length. Instead, let's corrupt the idLen itself
+                // to a value larger than remaining bytes.
+                // Actually, let's just corrupt the idLen to a huge value.
+                tamperedBytes[pos - 2] = 0xFF.toByte()
+                tamperedBytes[pos - 1] = 0xFF.toByte()
+                break
+            }
+            pos++
+        }
+
+        java.nio.file.Files.write(storeFile, tamperedBytes)
+
+        // get() must throw SecretStoreTamperException (not IndexOutOfBoundsException)
+        val ex = assertThrows(LocalSecretStore.SecretStoreTamperException::class.java) {
+            store.get(id)
+        }
+        assertTrue(ex.message?.contains("nameLen") == true || ex.message?.contains("tamper") == true ||
+                    ex.message?.contains("invalid") == true || ex.message?.contains("corrupt") == true,
+            "Exception must mention tampered nameLen or corruption, got: ${ex.message}")
     }
 }

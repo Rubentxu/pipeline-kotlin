@@ -302,3 +302,66 @@ Design: cycle-artifacts `design.md` (sha256 computed at archive time).
 
 - 2026-08-27T21:10:00Z | created | cycle=[[CYC-2026-08-27-ml-r6-credentials-parity]] | status=proposed (design-phase advance)
 - 2026-08-27T21:10:00Z | supersedes-deep | ADR-0050 D6 + D3 | git channel switch to helper-protocol + SSH; provider-agnostic
+
+---
+
+## Addendum — envelope format drift (post-review)
+
+This addendum documents the accepted deviations between the multipart-store spec text (ADR-0051 D1) and the actual implementation following review findings from cycle `ml-r6-credentials-parity`.
+
+### 1. Single-blob per-credential encryption with AAD `(credentialId + ":" + kindId)`
+
+The spec text (D1) states: "AAD per part = `(credentialId + ":" + partName)` (binds slot to name — anti-swap, anti-rename)."
+
+**Implemented**: AAD = `credentialId + ":" + kindId` (not per-part). Each credential is stored as a single encrypted blob; the `kindId` is embedded in the envelope entry header, not in the AAD. Part names are serialized inside the ciphertext but are not bound as AAD.
+
+**Rationale**: Per-part envelope isolation would require a separate DEK per part, significantly increasing KDF cost and envelope complexity. The single-blob approach with `kindId` in the AAD provides adequate anti-swap protection for the credential as a whole.
+
+**Debt reference**: FIND-000001 (per-part AAD gap); follow-up backlog item in future cycle: evaluate per-part envelope upgrade or spec amendment to D1.
+
+### 2. 1-byte nameLen field
+
+The spec text does not specify the width of `nameLen`. The implementation uses a 1-byte unsigned length prefix, limiting part/entry names to 255 bytes (UTF-8 byte length, not character count).
+
+**Impact**: Names exceeding 255 UTF-8 bytes are rejected at `add()` time with `SecretStoreTamperException`. This affects `Zip` credential entry names which are user-controlled.
+
+**Workaround**: Applications must truncate or hash entry names exceeding 255 bytes before storing.
+
+**Debt reference**: FIND-000006 (name length validation gap); follow-up backlog item: consider 2-byte nameLen in future envelope version.
+
+### 3. Scope not persisted (GLOBAL-only per design D-decision)
+
+The spec mentions `scope(1)` in the v2 envelope format but the implementation does not persist scope. All credentials are stored and retrieved as `CredentialScope.GLOBAL`.
+
+**Rationale**: The pipeline execution model currently only supports GLOBAL scope. Session/User scopes are deferred.
+
+**Debt reference**: FIND-000006; follow-up backlog item: add scope persistence when multi-scope model is implemented.
+
+### 4. Description field deferred
+
+The spec includes `descLen(2) + descBytes` in the v2 envelope. The implementation does not persist or deserialize the description field.
+
+**Rationale**: The CLI does not currently accept a description parameter; no user-facing feature requires it.
+
+**Debt reference**: FIND-000006; follow-up backlog item: add description field when CLI is extended.
+
+### 5. Wipe-failure stderr-only logging (GitCredentialsApplier.wipeFile)
+
+`wipeFile` in `GitCredentialsApplier` catches exceptions during secure wipe and logs to stderr only (`System.err.println`), rather than throwing or using the event system.
+
+**Known limitation**: If wipe fails, the error is not visible to the pipeline orchestrator unless stderr is captured.
+
+**Debt reference**: FIND-000006.
+
+### 6. .tmp crash window
+
+Mutating operations write to a `.tmp` file before atomic rename. If the JVM crashes after writing the `.tmp` but before the rename, the `.tmp` file remains on disk. This is a known limitation of the write-then-rename pattern.
+
+**Mitigation**: File locking is applied to the store file itself (not the `.tmp`) to serialize mutations. The `.tmp` is created with `Files.write()` which is atomic on POSIX systems for our use case.
+
+**Debt reference**: FIND-000006.
+
+---
+
+*Addendum added: 2026-08-28 (review-round-1 fix cycle)*
+

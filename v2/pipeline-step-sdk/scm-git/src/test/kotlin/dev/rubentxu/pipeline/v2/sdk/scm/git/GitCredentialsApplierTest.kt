@@ -195,4 +195,31 @@ class GitCredentialsApplierTest {
             assertEquals(2, perms.size, "Only owner-read and owner-write (0600)")
         }
     }
+
+    // ─── F-01 RED test ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `F-01 applySsh derives host from repoUrl not credential ID for ssh URL`() {
+        // Given: SSH credentials with a git private key, and an SSH repo URL
+        val sshKeyHandle = SecretHandleRef(CredentialsId("ssh-key-creds"), "sshPrivateKey")
+        val credentials = GitCredentials(sshKey = sshKeyHandle)
+        val secretStore = MockSecretStore(mapOf(
+            CredentialsId("ssh-key-creds") to "FAKE-SSH-KEY".toByteArray()
+        ))
+        val repoUrl = "ssh://git@github.com/user/repo.git"
+
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore)
+
+        // When: applySsh is called with the SSH repo URL
+        applier.applySsh(sshKeyHandle, null, repoUrl)
+        applier.use {
+            // Then: the answer file's first line must be the host derived from repoUrl (github.com)
+            val answerFile = tempDir.resolve(".git-answer")
+            assertTrue(Files.exists(answerFile), ".git-answer must exist for SSH")
+            val answerLines = Files.readString(answerFile).split("\n")
+            val hostLine = answerLines.firstOrNull() ?: ""
+            assertEquals("github.com", hostLine,
+                "Host must be derived from repoUrl, not from credential ID. Got: '$hostLine'")
+        }
+    }
 }

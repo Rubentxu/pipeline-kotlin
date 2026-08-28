@@ -182,7 +182,7 @@ class GitCredentialsApplier(
             return
         }
 
-        val host = extractHost(credentials.string?.id?.value ?: "")
+        val host = repoUrl?.let { extractHost(it) } ?: ""
 
         // Write SSH key to temp file (0600)
         val keyBytes = resolveSecret(sshKeySecret)
@@ -442,9 +442,19 @@ class GitCredentialsApplier(
         private val URL_CREDENTIALS_PATTERN = Regex("https?://[^/]+:[^/]+@")
 
         fun extractHost(url: String): String {
-            val clean = url
+            // Step 1: strip protocol prefix
+            val noProtocol = url
+                .removePrefix("ssh://")
                 .removePrefix("https://")
                 .removePrefix("http://")
+            // Step 2: strip userinfo (user@) if present before the host
+            val noUserinfo = if (noProtocol.contains("@") && noProtocol.indexOf("@") < noProtocol.indexOf("/")) {
+                noProtocol.substringAfter("@")
+            } else {
+                noProtocol
+            }
+            // Step 3: extract host (before / or :)
+            val clean = noUserinfo
                 .substringBefore("/")
                 .substringBefore(":")
             return clean.ifEmpty {

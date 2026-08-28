@@ -18,8 +18,10 @@ import org.bouncycastle.crypto.params.KeyParameter
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.security.SecureRandom
 
 /**
@@ -220,6 +222,37 @@ class LocalSecretStore(
     }
 
     /**
+     * Returns the path to the lock file for this store.
+     */
+    private fun lockFile(): Path = file.resolveSibling(file.fileName.toString() + ".lock")
+
+    /**
+     * Executes a mutation operation with an exclusive file lock.
+     * Uses synchronized for JVM-level mutual exclusion (handles same-JVM thread contention)
+     * and FileChannel.lock() for OS-level inter-process locking (handles crash consistency).
+     */
+    private val mutationLock = Any()
+
+    private inline fun <T> withExclusiveLock(block: () -> T): T {
+        synchronized(mutationLock) {
+            // Inside synchronized block, perform the actual file mutation with file-level locking
+            // The synchronized ensures same-JVM threads don't conflict
+            // FileChannel.lock() provides OS-level inter-process locking for crash consistency
+            val lock = lockFile()
+            val channel = FileChannel.open(lock,
+                StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)
+            try {
+                // Acquire exclusive OS-level lock (blocks until available)
+                channel.lock().use {
+                    return block()
+                }
+            } finally {
+                channel.close()
+            }
+        }
+    }
+
+    /**
      * Stores a credential.
      *
      * @param id The credential ID
@@ -229,47 +262,49 @@ class LocalSecretStore(
     override fun put(id: CredentialsId, bytes: ByteArray) {
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
-        val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
-        val hdr = if (existingFileBytes != null) {
-            readHeader(existingFileBytes)
-        } else {
-            // Fresh V1 store for legacy backward-compat contract
-            val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
-            StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
-        }
-        val kek = deriveKek(hdr.kdfSalt)
-
-        // Load existing DEK from header, or generate new one for a FRESH store only.
-        val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
-            ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
-        } else {
-            unwrapDek(kek, hdr.wrappedDek)
-        }
-
-        val wrappedDek = wrapDek(kek, dek)
-        val aad = buildAad(hdr, id)
-        val sealed = AeadCipher.encrypt(dek, bytes, aad)
-
-        val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-        val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrappedDek)
-
-        // Parse existing entries and rebuild with new/updated entry
-        if (existingFileBytes != null && existingFileBytes.size > HEADER_SIZE_V1) {
-            val existingEntries = readEntriesV1(existingFileBytes).toMutableMap()
-            existingEntries[id.value] = EntryData(id, sealed, bytes.size)
-            for ((_, entryData) in existingEntries) {
-                out.write(encodeEntry(entryData.id, entryData.sealed))
+        withExclusiveLock {
+            val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
+            val hdr = if (existingFileBytes != null) {
+                readHeader(existingFileBytes)
+            } else {
+                // Fresh V1 store for legacy backward-compat contract
+                val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
+                StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
             }
-        } else {
-            // New store: just write the single entry
-            out.write(encodeEntry(id, sealed))
-        }
+            val kek = deriveKek(hdr.kdfSalt)
 
-        val written = out.toByteArray()
-        Files.write(tempFile, written)
-        CredentialsStorePosix.setFilePermissions(tempFile)
-        tempFile.toFile().renameTo(file.toFile())
+            // Load existing DEK from header, or generate new one for a FRESH store only.
+            val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
+                ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
+            } else {
+                unwrapDek(kek, hdr.wrappedDek)
+            }
+
+            val wrappedDek = wrapDek(kek, dek)
+            val aad = buildAad(hdr, id)
+            val sealed = AeadCipher.encrypt(dek, bytes, aad)
+
+            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
+            val out = ByteArrayOutputStream()
+            writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrappedDek)
+
+            // Parse existing entries and rebuild with new/updated entry
+            if (existingFileBytes != null && existingFileBytes.size > HEADER_SIZE_V1) {
+                val existingEntries = readEntriesV1(existingFileBytes).toMutableMap()
+                existingEntries[id.value] = EntryData(id, sealed, bytes.size)
+                for ((_, entryData) in existingEntries) {
+                    out.write(encodeEntry(entryData.id, entryData.sealed))
+                }
+            } else {
+                // New store: just write the single entry
+                out.write(encodeEntry(id, sealed))
+            }
+
+            val written = out.toByteArray()
+            Files.write(tempFile, written)
+            CredentialsStorePosix.setFilePermissions(tempFile)
+            tempFile.toFile().renameTo(file.toFile())
+        }
     }
 
     /**
@@ -277,59 +312,61 @@ class LocalSecretStore(
      * On first add() to a v1 file: migrates existing v1 entries to v2.
      */
     override fun add(id: CredentialsId, credential: Credential) {
-        val hdr = loadOrCreateHeader()
-        val kek = deriveKek(hdr.kdfSalt)
+        withExclusiveLock {
+            val hdr = loadOrCreateHeader()
+            val kek = deriveKek(hdr.kdfSalt)
 
-        // Load or generate DEK
-        val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
-            ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
-        } else {
-            unwrapDek(kek, hdr.wrappedDek)
-        }
-
-        // Serialize credential to bytes
-        val credentialBytes = serializeCredential(credential)
-        val kindId = kindIdFor(credential)
-
-        // Encrypt with DEK - AAD includes kind for anti-swap
-        val aad = buildV2Aad(hdr, id, kindId)
-        val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
-
-        // Atomic write
-        val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-        val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
-
-        val out = ByteArrayOutputStream()
-        // Always write V2 header for new entries; migrate V1 entries to V2
-        writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrapDek(kek, dek))
-
-        if (existingBytes != null && existingBytes.size > HEADER_SIZE_V1) {
-            // Route to correct reader based on header version of existing file
-            val existingEntries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
-                // Migrate V1 entries to V2: decrypt as SecretText and re-encrypt as V2
-                val v1Entries = readEntriesV1(existingBytes)
-                v1Entries.mapValues { (entryId, v1Entry) ->
-                    val v1Hdr = readHeader(existingBytes)
-                    val v1Aad = buildAad(v1Hdr, CredentialsId.from(entryId))
-                    val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
-                    val migratedSealed = AeadCipher.encrypt(dek, plaintext, buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
-                    V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
-                }.toMutableMap()
+            // Load or generate DEK
+            val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
+                ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
             } else {
-                readEntries(existingBytes).toMutableMap()
+                unwrapDek(kek, hdr.wrappedDek)
             }
-            existingEntries[id.value] = V2EntryData(id, sealed, kindId)
-            for ((_, entryData) in existingEntries) {
-                out.write(encodeV2Entry(entryData))
-            }
-        } else {
-            out.write(encodeV2Entry(V2EntryData(id, sealed, kindId)))
-        }
 
-        val written = out.toByteArray()
-        Files.write(tempFile, written)
-        CredentialsStorePosix.setFilePermissions(tempFile)
-        tempFile.toFile().renameTo(file.toFile())
+            // Serialize credential to bytes
+            val credentialBytes = serializeCredential(credential)
+            val kindId = kindIdFor(credential)
+
+            // Encrypt with DEK - AAD includes kind for anti-swap
+            val aad = buildV2Aad(hdr, id, kindId)
+            val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
+
+            // Atomic write
+            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
+            val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
+
+            val out = ByteArrayOutputStream()
+            // Always write V2 header for new entries; migrate V1 entries to V2
+            writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrapDek(kek, dek))
+
+            if (existingBytes != null && existingBytes.size > HEADER_SIZE_V1) {
+                // Route to correct reader based on header version of existing file
+                val existingEntries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
+                    // Migrate V1 entries to V2: decrypt as SecretText and re-encrypt as V2
+                    val v1Entries = readEntriesV1(existingBytes)
+                    v1Entries.mapValues { (entryId, v1Entry) ->
+                        val v1Hdr = readHeader(existingBytes)
+                        val v1Aad = buildAad(v1Hdr, CredentialsId.from(entryId))
+                        val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
+                        val migratedSealed = AeadCipher.encrypt(dek, plaintext, buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
+                        V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
+                    }.toMutableMap()
+                } else {
+                    readEntries(existingBytes).toMutableMap()
+                }
+                existingEntries[id.value] = V2EntryData(id, sealed, kindId)
+                for ((_, entryData) in existingEntries) {
+                    out.write(encodeV2Entry(entryData))
+                }
+            } else {
+                out.write(encodeV2Entry(V2EntryData(id, sealed, kindId)))
+            }
+
+            val written = out.toByteArray()
+            Files.write(tempFile, written)
+            CredentialsStorePosix.setFilePermissions(tempFile)
+            tempFile.toFile().renameTo(file.toFile())
+        }
     }
 
     /**
@@ -450,8 +487,8 @@ class LocalSecretStore(
             throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
         }
 
-        // Deserialize and extract the requested part
-        return extractPart(plaintext, v2Entry.kindId, id, partName, dek)
+        // Deserialize and extract the requested part; use visited set for cycle detection
+        return extractPart(plaintext, v2Entry.kindId, id, partName, dek, mutableSetOf(id))
     }
 
     /**
@@ -464,7 +501,8 @@ class LocalSecretStore(
         kindId: Short,
         id: CredentialsId,
         partName: String,
-        dek: ByteArray
+        dek: ByteArray,
+        visited: MutableSet<CredentialsId> = mutableSetOf(id)
     ): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
 
@@ -473,6 +511,10 @@ class LocalSecretStore(
         // advance to start of value bytes.
         fun readValueLen(buf: ByteBuffer): Int {
             val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) {
+                throw SecretStoreTamperException(
+                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            }
             buf.position(buf.position() + nameLen)
             return buf.int // big-endian, unsigned-safe; position now at value bytes
         }
@@ -481,6 +523,10 @@ class LocalSecretStore(
         // Returns the value length for the caller's use.
         fun skipPart(buf: ByteBuffer): Int {
             val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) {
+                throw SecretStoreTamperException(
+                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            }
             buf.position(buf.position() + nameLen)
             val valueLen = buf.int
             buf.position(buf.position() + valueLen)
@@ -540,7 +586,7 @@ class LocalSecretStore(
                                 val refIdLen = buf.int
                                 val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
                                 val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                                return resolveLinkedSecretRef(refId, id)
+                                return resolveLinkedSecretRef(refId, id, visited)
                             }
                             0x00000000.toInt() -> {
                                 throw SecretStoreTamperException("Credential has no passphrase part")
@@ -594,7 +640,7 @@ class LocalSecretStore(
                                 val refIdLen = buf.int
                                 val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
                                 val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                                return resolveLinkedSecretRef(refId, id)
+                                return resolveLinkedSecretRef(refId, id, visited)
                             }
                             0x00000000.toInt() -> {
                                 throw SecretStoreTamperException("Credential has no password part")
@@ -650,8 +696,22 @@ class LocalSecretStore(
 
     /**
      * Resolves a LinkedSecretRef by getting the SecretText part of the referenced credential.
+     * Uses a visited set with depth cap ≤16 to detect circular linked secret references.
+     * For SshPrivateKey/Certificate passphrase/password LinkedSecretRefs, this method
+     * traverses through intermediate credentials following the ref chain until SecretText is found.
      */
-    private fun resolveLinkedSecretRef(refId: CredentialsId, originalId: CredentialsId): SecretHandle {
+    private fun resolveLinkedSecretRef(refId: CredentialsId, originalId: CredentialsId, visited: MutableSet<CredentialsId> = mutableSetOf()): SecretHandle {
+        // Cycle detection: if refId is already in visited set, we have a circular reference
+        if (refId in visited) {
+            throw SecretStoreTamperException("Circular linked secret reference detected: ${visited.joinToString(" → ") { it.value }} → ${refId.value}")
+        }
+        // Depth cap: if visited set is large, we've hit a long chain (potential cycle or deep ref)
+        if (visited.size >= 16) {
+            throw SecretStoreTamperException("Linked secret reference chain exceeds maximum depth of 16")
+        }
+
+        visited.add(refId)
+
         if (!Files.exists(file)) {
             throw LinkedSecretReferenceNotFoundException(refId)
         }
@@ -676,27 +736,133 @@ class LocalSecretStore(
             throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown (v1 format not supported for linked refs)")
         }
 
-        // The referenced credential must be SecretText
-        if (v2Entry.kindId != KIND_SECRET_TEXT) {
-            throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", kindNameFor(v2Entry.kindId))
+        // For SecretText: directly extract and return the value
+        if (v2Entry.kindId == KIND_SECRET_TEXT) {
+            val aad = buildV2Aad(hdr, refId, v2Entry.kindId)
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+            }
+            // Extract the "value" part from SecretText using canonical format
+            val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+            val partCount = buf.get().toInt()
+            val nameLen = buf.get().toInt()
+            if (nameLen > buf.remaining()) {
+                throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            }
+            buf.position(buf.position() + nameLen) // skip name "value"
+            val valueLen = buf.int
+            val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+            return SecretHandle.secret(valueBytes)
         }
 
-        val aad = buildV2Aad(hdr, refId, v2Entry.kindId)
-        val plaintext = try {
-            AeadCipher.decrypt(dek, v2Entry.sealed, aad)
-        } catch (e: javax.crypto.AEADBadTagException) {
-            throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+        // For SshPrivateKey: follow the passphrase LinkedSecretRef chain
+        if (v2Entry.kindId == KIND_SSH_PRIVATE_KEY) {
+            val aad = buildV2Aad(hdr, refId, v2Entry.kindId)
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+            }
+            return extractLinkedRefFromSshPrivateKey(refId, plaintext, visited)
         }
 
-        // Extract the "value" part from SecretText using canonical format
+        // For Certificate: follow the password LinkedSecretRef chain
+        if (v2Entry.kindId == KIND_CERTIFICATE) {
+            val aad = buildV2Aad(hdr, refId, v2Entry.kindId)
+            val plaintext = try {
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            } catch (e: javax.crypto.AEADBadTagException) {
+                throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+            }
+            return extractLinkedRefFromCertificate(refId, plaintext, visited)
+        }
+
+        // Other credential types cannot be the target of a LinkedSecretRef for passphrase/password
+        throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", kindNameFor(v2Entry.kindId))
+    }
+
+    /**
+     * Extracts the passphrase LinkedSecretRef from a SshPrivateKey and resolves it.
+     */
+    private fun extractLinkedRefFromSshPrivateKey(refId: CredentialsId, plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
         val partCount = buf.get().toInt()
-        val nameLen = buf.get().toInt()
-        buf.position(buf.position() + nameLen) // skip name "value"
-        val valueLen = buf.int
-        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+        // Skip username part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Skip privateKey part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Now at passphrase header: nameLen(1) + name + 4-byte marker
+        val passphraseNameLen = buf.get().toInt() and 0xFF
+        if (passphraseNameLen > buf.remaining()) {
+            throw SecretStoreTamperException("Malformed envelope: nameLen($passphraseNameLen) exceeds remaining bytes(${buf.remaining()})")
+        }
+        buf.position(buf.position() + passphraseNameLen)
+        val marker = buf.int
+        when (marker) {
+            0xFFFFFFFF.toInt() -> {
+                val refIdLen = buf.int
+                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                val nextRefId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+                return resolveLinkedSecretRef(nextRefId, refId, visited)
+            }
+            0x00000000.toInt() -> {
+                throw SecretStoreTamperException("Credential has no passphrase part")
+            }
+            else -> throw SecretStoreTamperException("SshPrivateKey passphrase must be linked-ref or absent")
+        }
+    }
 
-        return SecretHandle.secret(valueBytes)
+    /**
+     * Extracts the password LinkedSecretRef from a Certificate and resolves it.
+     */
+    private fun extractLinkedRefFromCertificate(refId: CredentialsId, plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
+        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+        val partCount = buf.get().toInt()
+        // Skip keystore part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Skip alias part
+        run {
+            val nameLen = buf.get().toInt() and 0xFF
+            if (nameLen > buf.remaining()) throw SecretStoreTamperException("Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int; buf.position(buf.position() + valueLen)
+        }
+        // Now at password header: nameLen(1) + name + 4-byte marker
+        val pwNameLen = buf.get().toInt() and 0xFF
+        if (pwNameLen > buf.remaining()) {
+            throw SecretStoreTamperException("Malformed envelope: nameLen($pwNameLen) exceeds remaining bytes(${buf.remaining()})")
+        }
+        buf.position(buf.position() + pwNameLen)
+        val marker = buf.int
+        when (marker) {
+            0xFFFFFFFF.toInt() -> {
+                val pwRefIdLen = buf.int
+                val pwRefIdBytes = ByteArray(pwRefIdLen); buf.get(pwRefIdBytes)
+                val nextRefId = CredentialsId.from(String(pwRefIdBytes, Charsets.UTF_8))
+                return resolveLinkedSecretRef(nextRefId, refId, visited)
+            }
+            0x00000000.toInt() -> {
+                throw SecretStoreTamperException("Credential has no password part")
+            }
+            else -> throw SecretStoreTamperException("Certificate password must be linked-ref or absent")
+        }
     }
 
     /**
@@ -723,31 +889,33 @@ class LocalSecretStore(
      * @param id The credential ID to remove
      */
     override fun remove(id: CredentialsId) {
-        if (!Files.exists(file)) return
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
+        withExclusiveLock {
+            if (!Files.exists(file)) return
+            val fileBytes = Files.readAllBytes(file)
+            val hdr = readHeader(fileBytes)
 
-        // Route based on header version
-        val entries: MutableMap<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
-            readEntriesV1(fileBytes).toMutableMap()
-        } else {
-            readEntries(fileBytes).toMutableMap()
-        }
-        entries.remove(id.value) ?: return // Not found, no-op
-
-        // Rewrite without the removed entry
-        val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-        val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-        for ((_, entryData) in entries) {
-            when (entryData) {
-                is EntryData -> out.write(encodeEntry(entryData.id, entryData.sealed))
-                is V2EntryData -> out.write(encodeV2Entry(entryData))
+            // Route based on header version
+            val entries: MutableMap<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+                readEntriesV1(fileBytes).toMutableMap()
+            } else {
+                readEntries(fileBytes).toMutableMap()
             }
+            entries.remove(id.value) ?: return // Not found, no-op
+
+            // Rewrite without the removed entry
+            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
+            val out = ByteArrayOutputStream()
+            writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
+            for ((_, entryData) in entries) {
+                when (entryData) {
+                    is EntryData -> out.write(encodeEntry(entryData.id, entryData.sealed))
+                    is V2EntryData -> out.write(encodeV2Entry(entryData))
+                }
+            }
+            Files.write(tempFile, out.toByteArray())
+            CredentialsStorePosix.setFilePermissions(tempFile)
+            tempFile.toFile().renameTo(file.toFile())
         }
-        Files.write(tempFile, out.toByteArray())
-        CredentialsStorePosix.setFilePermissions(tempFile)
-        tempFile.toFile().renameTo(file.toFile())
     }
 
     /**
@@ -762,58 +930,60 @@ class LocalSecretStore(
      * @throws SecretStoreTamperException if the credential doesn't exist
      */
     override fun rotate(id: CredentialsId, credential: Credential) {
-        if (!Files.exists(file)) {
-            throw SecretStoreTamperException("Store file does not exist")
-        }
-        if (Files.size(file) == 0L) {
-            throw SecretStoreTamperException("Credential not found: ${id.value}")
-        }
+        withExclusiveLock {
+            if (!Files.exists(file)) {
+                throw SecretStoreTamperException("Store file does not exist")
+            }
+            if (Files.size(file) == 0L) {
+                throw SecretStoreTamperException("Credential not found: ${id.value}")
+            }
 
-        val fileBytes = Files.readAllBytes(file)
-        val hdr = readHeader(fileBytes)
-        val kek = deriveKek(hdr.kdfSalt)
+            val fileBytes = Files.readAllBytes(file)
+            val hdr = readHeader(fileBytes)
+            val kek = deriveKek(hdr.kdfSalt)
 
-        // Route based on header version; rotate always upgrades to v2
-        val entries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
-            // Migrate V1 entries to V2
-            val v1Entries = readEntriesV1(fileBytes)
+            // Route based on header version; rotate always upgrades to v2
+            val entries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
+                // Migrate V1 entries to V2
+                val v1Entries = readEntriesV1(fileBytes)
+                val dek = unwrapDek(kek, hdr.wrappedDek)
+                v1Entries.mapValues { (entryId, v1Entry) ->
+                    val v1Aad = buildAad(hdr, CredentialsId.from(entryId))
+                    val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
+                    val migratedSealed = AeadCipher.encrypt(dek, plaintext, buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
+                    V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
+                }.toMutableMap()
+            } else {
+                readEntries(fileBytes).toMutableMap()
+            }
+
+            if (!entries.containsKey(id.value)) {
+                throw SecretStoreTamperException("Credential not found: ${id.value}")
+            }
+
+            // Get DEK from header (reuse existing DEK)
             val dek = unwrapDek(kek, hdr.wrappedDek)
-            v1Entries.mapValues { (entryId, v1Entry) ->
-                val v1Aad = buildAad(hdr, CredentialsId.from(entryId))
-                val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
-                val migratedSealed = AeadCipher.encrypt(dek, plaintext, buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
-                V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
-            }.toMutableMap()
-        } else {
-            readEntries(fileBytes).toMutableMap()
+
+            // Serialize and encrypt the new credential
+            val credentialBytes = serializeCredential(credential)
+            val kindId = kindIdFor(credential)
+            val aad = buildV2Aad(hdr, id, kindId)
+            val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
+
+            // Update entries
+            entries[id.value] = V2EntryData(id, sealed, kindId)
+
+            // Atomic write - always write V2 header
+            val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
+            val out = ByteArrayOutputStream()
+            writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
+            for ((_, entryData) in entries) {
+                out.write(encodeV2Entry(entryData))
+            }
+            Files.write(tempFile, out.toByteArray())
+            CredentialsStorePosix.setFilePermissions(tempFile)
+            tempFile.toFile().renameTo(file.toFile())
         }
-
-        if (!entries.containsKey(id.value)) {
-            throw SecretStoreTamperException("Credential not found: ${id.value}")
-        }
-
-        // Get DEK from header (reuse existing DEK)
-        val dek = unwrapDek(kek, hdr.wrappedDek)
-
-        // Serialize and encrypt the new credential
-        val credentialBytes = serializeCredential(credential)
-        val kindId = kindIdFor(credential)
-        val aad = buildV2Aad(hdr, id, kindId)
-        val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
-
-        // Update entries
-        entries[id.value] = V2EntryData(id, sealed, kindId)
-
-        // Atomic write - always write V2 header
-        val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-        val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-        for ((_, entryData) in entries) {
-            out.write(encodeV2Entry(entryData))
-        }
-        Files.write(tempFile, out.toByteArray())
-        CredentialsStorePosix.setFilePermissions(tempFile)
-        tempFile.toFile().renameTo(file.toFile())
     }
 
     /**
@@ -1241,8 +1411,13 @@ class LocalSecretStore(
                 out.write(metaContentBuf.array())
                 for ((entryName, entryBytes) in credential.entries) {
                     val entryPartName = entryName
-                    out.write(entryPartName.length)
-                    out.write(entryPartName.toByteArray(Charsets.UTF_8))
+                    val entryNameBytes = entryPartName.toByteArray(Charsets.UTF_8)
+                    if (entryNameBytes.size !in 1..255) {
+                        throw SecretStoreTamperException(
+                            "Zip entry name must be 1-255 UTF-8 bytes, got ${entryNameBytes.size} bytes for entry '$entryPartName'")
+                    }
+                    out.write(entryNameBytes.size)
+                    out.write(entryNameBytes)
                     val entryLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(entryBytes.size)
                     out.write(entryLenBuf.array())
                     out.write(entryBytes, 0, entryBytes.size)

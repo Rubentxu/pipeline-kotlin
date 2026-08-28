@@ -193,7 +193,8 @@ class CredentialsStoreTest {
         // Entry format: idLen(2) + idBytes + plaintextLen(4) + blob
         // blob = nonce(12) + ciphertext + tag(16)
         val result = fileBytes.copyOf()
-        val headerSize = 73 // magic(4) + version(1) + m(4) + t(4) + p(4) + salt(16) + wrappedDEK(40)
+        // Header: magic(4) + version(2) + m(4) + t(4) + p(4) + salt(16) + wrappedDEK(40) = 74 bytes
+        val headerSize = 74
         var offset = headerSize
         val entries = mutableListOf<Pair<String, ByteArray>>() // id → blob
         while (offset < fileBytes.size) {

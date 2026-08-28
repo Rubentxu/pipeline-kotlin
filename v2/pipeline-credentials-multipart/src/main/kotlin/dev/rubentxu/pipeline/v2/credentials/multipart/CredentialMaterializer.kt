@@ -89,15 +89,18 @@ class CredentialMaterializer(
     }
 
     private fun materializeSecretFile(credential: SecretFile): MaterializedCredential {
-        // Create temp file with 0600 permissions
-        val tempFile = createTempFile(
-            prefix = "pipeline-secret-",
-            suffix = credential.originalName?.let { "-$it" } ?: ""
+        // Create parent dir with 0700 perms (mkstemp-style) to satisfy CR-MZ-001 spec
+        val parentDir = createTempDir(
+            prefix = "pipeline-secret-dir-",
+            suffix = "-${credential.id.value}"
         )
-        Files.write(tempFile, credential.bytes)
+        Files.setPosixFilePermissions(parentDir, OWNER_READ_WRITE_EXECUTE)
+        trackedDirs.add(parentDir)
 
-        // Ensure 0600 permissions
+        // Create temp file inside the parent dir with 0600 permissions
+        val tempFile = Files.createTempFile(parentDir, "pipeline-secret-", ".tmp")
         Files.setPosixFilePermissions(tempFile, OWNER_READ_WRITE)
+        Files.write(tempFile, credential.bytes)
 
         trackedPaths.add(tempFile)
 
@@ -197,6 +200,13 @@ class CredentialMaterializer(
         // Extract entries
         for ((entryName, entryBytes) in credential.entries) {
             val entryPath = tempDir.resolve(entryName)
+            // Create parent directories for nested paths (e.g., "subdir/c.txt")
+            val parent = entryPath.parent
+            if (parent != null && Files.notExists(parent)) {
+                Files.createDirectories(parent)
+                // Set 0700 on created parent directories
+                Files.setPosixFilePermissions(parent, OWNER_READ_WRITE_EXECUTE)
+            }
             Files.write(entryPath, entryBytes)
             Files.setPosixFilePermissions(entryPath, OWNER_READ_WRITE)
             trackedPaths.add(entryPath)
@@ -207,8 +217,7 @@ class CredentialMaterializer(
 
     private fun createTempFile(prefix: String, suffix: String): Path {
         val tempDir = System.getProperty("java.io.tmpdir").let { Path.of(it) }
-        val uniqueName = "$prefix${UUID.randomUUID()}$suffix"
-        return Files.createTempFile(tempDir, prefix, uniqueName + suffix)
+        return Files.createTempFile(tempDir, prefix, suffix)
     }
 
     private fun createTempDir(prefix: String, suffix: String): Path {

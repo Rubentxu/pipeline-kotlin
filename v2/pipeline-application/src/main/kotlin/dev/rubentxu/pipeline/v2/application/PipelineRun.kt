@@ -18,6 +18,11 @@ import dev.rubentxu.pipeline.v2.events.EventStore
 import dev.rubentxu.pipeline.v2.events.FileRead
 import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
+import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
+import dev.rubentxu.pipeline.v2.artefacts.local.LocalArtifactStore
+import dev.rubentxu.pipeline.v2.artefacts.local.RunId
+import dev.rubentxu.pipeline.v2.artefacts.local.StageName
+import dev.rubentxu.pipeline.v2.artefacts.local.EmptyArchiveException
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
 import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
@@ -388,6 +393,7 @@ internal suspend fun walkPipelineSpecDurable(
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
                 runId = runId,
+                stageName = stage.name,
                 ctx = ctx,
                 divergenceDetector = divergenceDetector,
                 effectReplayPolicy = effectReplayPolicy,
@@ -435,6 +441,7 @@ private suspend fun emitDurableStepEvents(
     stageIndex: Int,
     stepIndex: Int,
     runId: String,
+    stageName: String,
     ctx: DurableWalkContext,
     divergenceDetector: DivergenceDetector,
     effectReplayPolicy: dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy,
@@ -584,6 +591,7 @@ private suspend fun emitDurableStepEvents(
                     stageIndex = stageIndex,
                     stepIndex = stepIndex,
                     runId = runId,
+                    stageName = stageName,
                     eventSink = ctx.eventSink,
                     journal = ctx.opJournal,
                     cursorStore = ctx.cursorStore,
@@ -684,6 +692,7 @@ private suspend fun executeDurableStep(
     stageIndex: Int,
     stepIndex: Int,
     runId: String,
+    stageName: String,
     eventSink: EventSink,
     journal: OperationJournal,
     cursorStore: ReplayCursorStore,
@@ -706,6 +715,7 @@ private suspend fun executeDurableStep(
         stageIndex = stageIndex,
         stepIndex = stepIndex,
         runId = runId,
+        stageName = stageName,
         eventSink = eventSink,
         journal = journal,
         cursorStore = cursorStore,
@@ -756,6 +766,7 @@ private suspend fun executeDurableStepImpl(
     stageIndex: Int,
     stepIndex: Int,
     runId: String,
+    stageName: String,
     eventSink: EventSink,
     journal: OperationJournal,
     cursorStore: ReplayCursorStore,
@@ -768,13 +779,9 @@ private suspend fun executeDurableStepImpl(
     workspaceResolver: dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver? = null,
     shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions? = null,
     stepClassifications: Map<String, dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification> = emptyMap(),
-    // TMO-S-002: Stage-level timeout via options{} — stageTimeout is the canonical source.
     stageTimeout: Long? = null,
-    // Stage-level environment: StageSpec.environment merged at stage entry (WS-S-005).
     stageEnvironment: Map<String, String>? = null,
-    // ML-R3: Sandbox profile for this step.
     sandboxProfile: SandboxProfile = SandboxProfile.NONE,
-    // T11: Secret store for credential resolution in withCredentials blocks.
     secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
 ): String {
     // Build opId for durable shell control dir
@@ -954,6 +961,7 @@ private suspend fun executeDurableStepImpl(
                                 stageIndex = stageIndex,
                                 stepIndex = stepIndex,
                                 runId = runId,
+                                stageName = stageName,
                                 eventSink = eventSink,
                                 journal = journal,
                                 cursorStore = cursorStore,
@@ -1000,6 +1008,7 @@ private suspend fun executeDurableStepImpl(
                             stageIndex = stageIndex,
                             stepIndex = stepIndex,
                             runId = runId,
+                            stageName = stageName,
                             eventSink = eventSink,
                             journal = journal,
                             cursorStore = cursorStore,
@@ -1151,6 +1160,7 @@ private suspend fun executeDurableStepImpl(
                         stageIndex = stageIndex,
                         stepIndex = stepIndex,
                         runId = runId,
+                        stageName = stageName,
                         eventSink = eventSink,
                         journal = journal,
                         cursorStore = cursorStore,
@@ -1176,9 +1186,64 @@ private suspend fun executeDurableStepImpl(
                 outcome
             }
             is StepSpec.ArchiveArtifacts -> {
-                // T-10 (LocalArtifactStore) provides the actual archive implementation.
-                // Until then, return failure so the step is visible as not-implemented.
-                "failure"
+                val resolver = workspaceResolver ?: return "failure"
+                val archiveDir = resolver.resolveArchiveDir(runId, stageName)
+                val store = LocalArtifactStore(archiveDir)
+                try {
+                    val result = store.archive(
+                        runId = RunId(runId),
+                        stageName = StageName(stageName),
+                        workspace = resolver.resolve(stageName, stageIndex),
+                        pattern = step.artifacts,
+                        allowEmptyArchive = step.allowEmptyArchive,
+                        excludes = emptyList(),
+                    )
+                    eventSink.append(
+                        ArtifactArchived(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            files = result.entries.map { entry ->
+                                dev.rubentxu.pipeline.v2.events.ArtifactEntry(
+                                    runId = runId,
+                                    stageName = stageName,
+                                    relPath = entry.relPath,
+                                    sha256 = entry.sha256,
+                                    size = entry.size,
+                                    archivedAt = entry.archivedAt,
+                                )
+                            },
+                        )
+                    )
+                    "success"
+                } catch (e: EmptyArchiveException) {
+                    if (!step.allowEmptyArchive) {
+                        return "failure"
+                    }
+                    eventSink.append(
+                        ArtifactArchived(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            files = emptyList(),
+                        )
+                    )
+                    "success"
+                } catch (e: Exception) {
+                    val reason = e.message ?: "unknown error"
+                    eventSink.append(
+                        ArtifactArchiveFailed(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            reason = reason,
+                        )
+                    )
+                    "failure"
+                }
             }
         }
     } catch (_: Throwable) {

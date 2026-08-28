@@ -42,6 +42,18 @@ class WorkspaceResolver(private val controlDirRoot: Path) {
     }
 
     /**
+     * Resolves the artefacts directory for a given run and stage.
+     *
+     * @param runId The run identifier.
+     * @param stageName The name of the stage.
+     * @return The artefacts directory: `<controlDirRoot>/artefacts/<runId>/<stageName>/`
+     */
+    fun resolveArchiveDir(runId: String, stageName: String): Path {
+        val safeName = stageName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        return controlDirRoot.resolve("artefacts").resolve(runId).resolve(safeName)
+    }
+
+    /**
      * Ensures the workspace directory exists, creating it if necessary.
      *
      * Uses Files.createDirectories for lazy, idempotent creation.

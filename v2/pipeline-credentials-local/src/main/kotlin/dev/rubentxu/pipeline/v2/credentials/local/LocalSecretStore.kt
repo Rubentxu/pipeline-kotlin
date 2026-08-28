@@ -393,11 +393,278 @@ class LocalSecretStore(
 
     /**
      * Retrieves a specific part of a multipart credential as a SecretHandle.
-     * Stub - full implementation in T-05.
+     *
+     * For file-based kinds (SecretFile, Certificate, Zip), this returns the raw part bytes.
+     * For LinkedSecretRef parts, this resolves the reference and returns the SecretText part
+     * of the referenced credential.
+     *
+     * @param id The credential ID
+     * @param partName The name of the part to retrieve (e.g., "password", "privateKey")
+     * @return SecretHandle wrapping the part bytes
+     * @throws LinkedSecretReferenceNotFoundException if the credential or referenced credential does not exist
+     * @throws LinkedSecretReferenceTypeMismatchException if the referenced credential is not SecretText
+     * @throws SecretStoreTamperException if the credential is tampered
      */
     override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
-        // TODO(ML-R6): Implement in T-05
-        throw NotImplementedError("LocalSecretStore.getAsHandle - implementation in T-05")
+        if (!Files.exists(file)) {
+            throw SecretStoreTamperException("Store file does not exist")
+        }
+        val fileBytes = Files.readAllBytes(file)
+        val hdr = readHeader(fileBytes)
+        val kek = deriveKek(hdr.kdfSalt)
+        val dek = unwrapDek(kek, hdr.wrappedDek)
+
+        val entries = readEntries(fileBytes)
+        val entry = entries[id.value]
+            ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
+
+        val v2Entry = entry as? V2EntryData
+            ?: throw SecretStoreTamperException("Invalid entry type for v2 format")
+
+        val aad = buildV2Aad(hdr, id, v2Entry.kindId)
+        val plaintext = try {
+            AeadCipher.decrypt(dek, entry.sealed, aad)
+        } catch (e: javax.crypto.AEADBadTagException) {
+            throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
+        }
+
+        // Deserialize and extract the requested part
+        return extractPart(plaintext, v2Entry.kindId, id, partName, dek)
+    }
+
+    /**
+     * Extracts a named part from deserialized credential bytes.
+     */
+    private fun extractPart(
+        plaintext: ByteArray,
+        kindId: Short,
+        id: CredentialsId,
+        partName: String,
+        dek: ByteArray
+    ): SecretHandle {
+        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+
+        return when (kindId) {
+            KIND_SECRET_TEXT -> {
+                // SecretText: single "value" part
+                if (partName != "value") {
+                    throw SecretStoreTamperException("Part '$partName' not found in SecretText credential")
+                }
+                val partCount = buf.get().toInt()
+                val nameLen = buf.get().toInt()
+                val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                val partLen = buf.int
+                val partBytes = ByteArray(partLen); buf.get(partBytes)
+                SecretHandle.secret(partBytes)
+            }
+            KIND_USERNAME_PASSWORD -> {
+                val partCount = buf.get().toInt()
+                when (partName) {
+                    "username" -> {
+                        val nameLen = buf.get().toInt()
+                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                        val partLen = buf.int
+                        val partBytes = ByteArray(partLen); buf.get(partBytes)
+                        SecretHandle.secret(partBytes)
+                    }
+                    "password" -> {
+                        // Skip username
+                        val nameLen = buf.get().toInt()
+                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                        val partLen = buf.int
+                        val partBytes = ByteArray(partLen); buf.get(partBytes)
+                        // Now at password
+                        val passNameLen = buf.get().toInt()
+                        val passNameBytes = ByteArray(passNameLen); buf.get(passNameBytes)
+                        val passLen = buf.int
+                        val passPartBytes = ByteArray(passLen); buf.get(passPartBytes)
+                        SecretHandle.secret(passPartBytes)
+                    }
+                    else -> throw SecretStoreTamperException("Part '$partName' not found in UsernamePassword credential")
+                }
+            }
+            KIND_SSH_PRIVATE_KEY -> {
+                val partCount = buf.get().toInt()
+                // username
+                val userNameLen = buf.get().toInt()
+                val userNameBytes = ByteArray(userNameLen); buf.get(userNameBytes)
+                val userLen = buf.int
+                val userBytes = ByteArray(userLen); buf.get(userBytes)
+                // privateKey
+                val keyNameLen = buf.get().toInt()
+                val keyNameBytes = ByteArray(keyNameLen); buf.get(keyNameBytes)
+                val keyLen = buf.int
+                val keyBytes = ByteArray(keyLen); buf.get(keyBytes)
+                // passphrase (optional)
+                val passphraseNameLen = buf.get().toInt()
+
+                when (partName) {
+                    "username" -> SecretHandle.secret(userBytes)
+                    "privateKey" -> SecretHandle.secret(keyBytes)
+                    "passphrase" -> {
+                        if (passphraseNameLen == -1) {
+                            // Linked ref
+                            val refIdLen = buf.get().toInt()
+                            val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                            val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+                            // Resolve the referenced credential's SecretText part
+                            return resolveLinkedSecretRef(refId, id)
+                        } else if (passphraseNameLen == 0) {
+                            throw SecretStoreTamperException("Credential has no passphrase part")
+                        } else {
+                            val passphraseBytes = ByteArray(passphraseNameLen); buf.get(passphraseBytes)
+                            SecretHandle.secret(passphraseBytes)
+                        }
+                    }
+                    else -> throw SecretStoreTamperException("Part '$partName' not found in SshPrivateKey credential")
+                }
+            }
+            KIND_SECRET_FILE -> {
+                val partCount = buf.get().toInt()
+                when (partName) {
+                    "originalName" -> {
+                        val nameNameLen = buf.get().toInt()
+                        val nameLen = buf.int
+                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                        SecretHandle.secret(nameBytes)
+                    }
+                    "content" -> {
+                        // Skip originalName
+                        val nameNameLen = buf.get().toInt()
+                        val nameLen = buf.int
+                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                        // Now at content
+                        val contentNameLen = buf.get().toInt()
+                        val contentLen = buf.int
+                        val contentBytes = ByteArray(contentLen); buf.get(contentBytes)
+                        SecretHandle.secret(contentBytes)
+                    }
+                    else -> throw SecretStoreTamperException("Part '$partName' not found in SecretFile credential")
+                }
+            }
+            KIND_CERTIFICATE -> {
+                val partCount = buf.get().toInt()
+                // keystore
+                val keystoreNameLen = buf.get().toInt()
+                val keystoreLen = buf.int
+                val keystoreBytes = ByteArray(keystoreLen); buf.get(keystoreBytes)
+                // alias
+                val aliasNameLen = buf.get().toInt()
+                val aliasLen = buf.int
+                val aliasBytes = ByteArray(aliasLen); buf.get(aliasBytes)
+                // password (optional)
+                val passwordNameLen = buf.get().toInt()
+
+                when (partName) {
+                    "keystore" -> SecretHandle.secret(keystoreBytes)
+                    "alias" -> SecretHandle.secret(aliasBytes)
+                    "password" -> {
+                        if (passwordNameLen == -1) {
+                            val refIdLen = buf.get().toInt()
+                            val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                            val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+                            return resolveLinkedSecretRef(refId, id)
+                        } else if (passwordNameLen == 0) {
+                            throw SecretStoreTamperException("Credential has no password part")
+                        } else {
+                            val passwordBytes = ByteArray(passwordNameLen); buf.get(passwordBytes)
+                            SecretHandle.secret(passwordBytes)
+                        }
+                    }
+                    else -> throw SecretStoreTamperException("Part '$partName' not found in Certificate credential")
+                }
+            }
+            KIND_ZIP -> {
+                val partCount = buf.get().toInt()
+                // metadata entry count
+                val metaNameLen = buf.get().toInt()
+                val metaLen = buf.int
+                buf.get() // consume metadata content byte
+
+                // Find the requested entry
+                repeat(partCount - 1) {
+                    val entryNameLen = buf.get().toInt()
+                    val entryNameBytes = ByteArray(entryNameLen); buf.get(entryNameBytes)
+                    val entryName = String(entryNameBytes, Charsets.UTF_8)
+                    val entryLen = buf.int
+                    val entryBytes = ByteArray(entryLen); buf.get(entryBytes)
+
+                    if (entryName == partName) {
+                        return SecretHandle.secret(entryBytes)
+                    }
+                }
+                throw SecretStoreTamperException("Part '$partName' not found in Zip credential")
+            }
+            KIND_USERNAME_COLON_PASSWORD -> {
+                val partCount = buf.get().toInt()
+                when (partName) {
+                    "username" -> {
+                        val nameLen = buf.get().toInt()
+                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                        val partLen = buf.int
+                        val partBytes = ByteArray(partLen); buf.get(partBytes)
+                        SecretHandle.secret(partBytes)
+                    }
+                    "password" -> {
+                        // Skip username
+                        val nameLen = buf.get().toInt()
+                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+                        val partLen = buf.int
+                        val partBytes = ByteArray(partLen); buf.get(partBytes)
+                        // Now at password
+                        val passNameLen = buf.get().toInt()
+                        val passNameBytes = ByteArray(passNameLen); buf.get(passNameBytes)
+                        val passLen = buf.int
+                        val passPartBytes = ByteArray(passLen); buf.get(passPartBytes)
+                        SecretHandle.secret(passPartBytes)
+                    }
+                    else -> throw SecretStoreTamperException("Part '$partName' not found in UsernameColonPassword credential")
+                }
+            }
+            else -> throw SecretStoreTamperException("Unknown credential kind: $kindId")
+        }
+    }
+
+    /**
+     * Resolves a LinkedSecretRef by getting the SecretText part of the referenced credential.
+     */
+    private fun resolveLinkedSecretRef(refId: CredentialsId, originalId: CredentialsId): SecretHandle {
+        if (!Files.exists(file)) {
+            throw LinkedSecretReferenceNotFoundException(refId)
+        }
+        val fileBytes = Files.readAllBytes(file)
+        val hdr = readHeader(fileBytes)
+        val kek = deriveKek(hdr.kdfSalt)
+        val dek = unwrapDek(kek, hdr.wrappedDek)
+
+        val entries = readEntries(fileBytes)
+        val refEntry = entries[refId.value]
+            ?: throw LinkedSecretReferenceNotFoundException(refId)
+
+        val v2Entry = refEntry as? V2EntryData
+            ?: throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown")
+
+        // The referenced credential must be SecretText
+        if (v2Entry.kindId != KIND_SECRET_TEXT) {
+            throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", kindNameFor(v2Entry.kindId))
+        }
+
+        val aad = buildV2Aad(hdr, refId, v2Entry.kindId)
+        val plaintext = try {
+            AeadCipher.decrypt(dek, refEntry.sealed, aad)
+        } catch (e: javax.crypto.AEADBadTagException) {
+            throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
+        }
+
+        // Extract the "value" part from SecretText
+        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+        val partCount = buf.get().toInt()
+        val nameLen = buf.get().toInt()
+        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
+        val partLen = buf.int
+        val partBytes = ByteArray(partLen); buf.get(partBytes)
+
+        return SecretHandle.secret(partBytes)
     }
 
     /**
@@ -437,12 +704,57 @@ class LocalSecretStore(
     }
 
     /**
-     * Rotates a credential with new bytes, preserving the DEK.
-     * Stub - full implementation in T-05.
+     * Re-encrypts a credential with new bytes, preserving the DEK.
+     *
+     * Replaces the existing credential with a new one of the same ID but new content.
+     * Uses the same DEK (from the store header) to re-encrypt the new credential.
+     * This preserves the ability to decrypt existing entries while updating the credential.
+     *
+     * @param id The credential ID (must already exist)
+     * @param credential The new typed credential to store
+     * @throws SecretStoreTamperException if the credential doesn't exist
      */
     override fun rotate(id: CredentialsId, credential: Credential) {
-        // TODO(ML-R6): Implement in T-05
-        throw NotImplementedError("LocalSecretStore.rotate - implementation in T-05")
+        if (!Files.exists(file)) {
+            throw SecretStoreTamperException("Store file does not exist")
+        }
+        if (Files.size(file) == 0L) {
+            throw SecretStoreTamperException("Credential not found: ${id.value}")
+        }
+
+        val fileBytes = Files.readAllBytes(file)
+        val hdr = readHeader(fileBytes)
+        val kek = deriveKek(hdr.kdfSalt)
+
+        // Verify the credential exists and get its format
+        val entries = readEntries(fileBytes)
+        if (!entries.containsKey(id.value)) {
+            throw SecretStoreTamperException("Credential not found: ${id.value}")
+        }
+
+        // Get DEK from header (reuse existing DEK)
+        val dek = unwrapDek(kek, hdr.wrappedDek)
+
+        // Serialize and encrypt the new credential
+        val credentialBytes = serializeCredential(credential)
+        val kindId = kindIdFor(credential)
+        val aad = buildV2Aad(hdr, id, kindId)
+        val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
+
+        // Update entries
+        val updatedEntries = entries.toMutableMap()
+        updatedEntries[id.value] = V2EntryData(id, sealed, kindId)
+
+        // Atomic write
+        val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
+        val out = ByteArrayOutputStream()
+        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
+        for ((_, entryData) in updatedEntries) {
+            out.write(encodeV2Entry(entryData))
+        }
+        Files.write(tempFile, out.toByteArray())
+        CredentialsStorePosix.setFilePermissions(tempFile)
+        tempFile.toFile().renameTo(file.toFile())
     }
 
     /**

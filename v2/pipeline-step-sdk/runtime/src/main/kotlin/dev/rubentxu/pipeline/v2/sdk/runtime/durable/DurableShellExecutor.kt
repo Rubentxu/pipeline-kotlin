@@ -264,6 +264,23 @@ class DurableShellExecutor : DurableShellLaunching {
             // Coerce SecretHandle to String at the single choke point
             val coercedEnv: Map<String, String> = env.mapValues { entry -> entry.value.materialize() }
             pbEnv.putAll(coercedEnv)
+
+            // SB-S-005 regression fix (T-02): re-normalize PATH after user env merge.
+            // User-provided PATH overrides the sandbox-normalized PATH if it contains
+            // entries outside the keep-set. Re-apply normalization to ensure sandbox
+            // filtering is enforced on user-provided PATH values.
+            if (coercedEnv.containsKey("PATH") && sandbox.profile == SandboxProfile.LOCAL) {
+                val userPath = coercedEnv["PATH"] ?: ""
+                val normalizedUserPath = mapOf("PATH" to userPath).normalizePath(
+                    sandbox.pathKeep,
+                    pbEnv["JAVA_HOME"],
+                    pbEnv["M2_HOME"]
+                )["PATH"] ?: ""
+                if (normalizedUserPath != userPath) {
+                    pbEnv["PATH"] = normalizedUserPath
+                }
+            }
+
             // WS-S-023: wipe handles after putAll
             // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
             for (handle in env.values) {

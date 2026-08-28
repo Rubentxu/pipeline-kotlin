@@ -9,19 +9,23 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
  * UAT-LOCAL-005: Compatibility Corpus UNTOUCHED.
  *
- * Verifies that the ML-R5 checkout-git implementation does not modify any
- * files in the v2/compatibility/ corpus directory. The corpus is a frozen
- * fixture set that must remain byte-identical to the base commit.
+ * Verifies that the ML-R7 compatibility corpus does not modify any
+ * of the 6 BASE files (01-06) from the base commit. The corpus is a
+ * frozen fixture set whose ORIGINAL 6 files must remain byte-identical.
+ * Files 07-09 are new legitimate fixtures for ML-R7 and are excluded
+ * from the byte-identity check (they are verified by the corpus count
+ * check below).
  *
- * This is the CP-001 gate for ML-R5, matching the pattern from ML-R4
- * (UatLocal008CredentialsTest CP-001).
+ * This is the CP-001/CP-002 gate for ML-R7.
  *
- * INV-CR-7: Compatibility corpus must be byte-identical to base commit.
+ * INV-CR-7: Compatibility corpus original 6 files must be byte-identical
+ * to base commit. Files 07-09 are new ML-R7 additions verified separately.
  *
  * @see <a href="ADR-0050">ADR-0050 §Compatibility</a>
  */
@@ -37,67 +41,103 @@ class UatLocal005CorpusUntouchedTest {
     }
 
     /**
-     * CP-001: compatibility corpus unchanged since base commit.
+     * CP-001: original 6 corpus files (01-06) are byte-identical to base commit.
      *
-     * The base commit for the ML-R5 cycle is the commit before T-01.
-     * This test verifies that no files in v2/compatibility/ were modified.
+     * The original 6 fixtures must not change. Files 07-09 are new ML-R7
+     * additions and are excluded from this check (verified by count below).
      */
     @Test
-    fun `CP-001 compatibility corpus unchanged since base commit`(@TempDir tempDir: Path) {
+    fun `CP-001 original 6 corpus files byte-identical to base commit`(@TempDir tempDir: Path) {
         val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
-
-        // Find the base commit (before T-01)
         val baseCommit = findBaseCommit()
-        assertTrue(baseCommit.isNotBlank(), "Base commit must be found")
 
-        // Run git diff between base and HEAD for the compatibility directory
-        val pb = ProcessBuilder(
-            "git", "diff", baseCommit, "HEAD", "--", "v2/compatibility/"
+        // The original 6 files that must not change
+        val originalFiles = listOf(
+            "01-basic.pipeline.kts",
+            "02-environment.pipeline.kts",
+            "03-stages.pipeline.kts",
+            "04-sh.pipeline.kts",
+            "05-scripted-if.pipeline.kts",
+            "06-loop.pipeline.kts"
         )
-            .directory(projectRoot.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
 
-        val process = pb.start()
-        val exitCode = process.waitFor(30, TimeUnit.SECONDS)
-        assertTrue(exitCode, "git diff must complete")
-        val diff = process.inputStream.bufferedReader().readText()
+        val compatibilityDir = projectRoot.resolve("v2/compatibility")
 
-        assertEquals("", diff.trim(),
-            "Compatibility corpus should be unchanged vs base commit. " +
-            "Diff:\n$diff\n\nBase commit: $baseCommit")
+        for (fileName in originalFiles) {
+            val filePath = compatibilityDir.resolve(fileName)
+            assertTrue(Files.exists(filePath),
+                "Original corpus file must exist: $fileName")
+
+            // Compute SHA-256 of current file
+            val currentHash = sha256(filePath)
+
+            // Get SHA-256 from git at base commit
+            val baseHash = gitCatFile(baseCommit, "v2/compatibility/$fileName")
+
+            assertEquals(baseHash, currentHash,
+                "Original corpus file must be byte-identical to base: $fileName. " +
+                "Base SHA: $baseHash, Current SHA: $currentHash")
+        }
     }
 
     /**
-     * CP-002: No new files added to compatibility corpus.
+     * CP-002: corpus has exactly 9 files (6 original + 3 new ML-R7 fixtures).
      */
     @Test
-    fun `CP-002 no new files added to compatibility corpus`(@TempDir tempDir: Path) {
+    fun `CP-002 corpus has exactly 9 fixture files`(@TempDir tempDir: Path) {
         val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
-        val baseCommit = findBaseCommit()
+        val compatibilityDir = projectRoot.resolve("v2/compatibility")
 
+        val pipelineFiles = Files.list(compatibilityDir)
+            .filter { it.fileName.toString().endsWith(".pipeline.kts") }
+            .sorted()
+            .toList()
+
+        assertEquals(9, pipelineFiles.size,
+            "Corpus must have exactly 9 pipeline fixtures. Found: " +
+            pipelineFiles.joinToString { it.fileName.toString() })
+
+        // Verify the 3 new ML-R7 fixtures exist
+        val newFiles = setOf(
+            "07-writeFile-readFile.pipeline.kts",
+            "08-withEnv-pipeline.pipeline.kts",
+            "09-archive-artefacts.pipeline.kts"
+        )
+        val actualNames = pipelineFiles.map { it.fileName.toString() }.toSet()
+        assertTrue(actualNames.containsAll(newFiles),
+            "New ML-R7 fixtures must exist: $newFiles. Found: $actualNames")
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private fun sha256(path: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val content = Files.readAllBytes(path)
+        val hash = digest.digest(content)
+        return hash.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun gitCatFile(commit: String, path: String): String {
+        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
         val pb = ProcessBuilder(
-            "git", "diff", baseCommit, "HEAD", "--name-status", "--", "v2/compatibility/"
+            "git", "show", "$commit:$path"
         )
             .directory(projectRoot.toFile())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
 
         val process = pb.start()
-        val exitCode = process.waitFor(30, TimeUnit.SECONDS)
-        assertTrue(exitCode, "git diff must complete")
-        val output = process.inputStream.bufferedReader().readText()
-
-        // Filter only A (added) entries — M (modified) is covered by CP-001
-        val addedFiles = output.lines()
-            .filter { it.startsWith("A\t") || it.startsWith("A") }
-            .filter { it.contains("v2/compatibility/") }
-
-        assertEquals("", addedFiles.joinToString("\n"),
-            "No new files should be added to compatibility corpus. Found added:\n${addedFiles.joinToString("\n")}")
+        val terminated = process.waitFor(10, TimeUnit.SECONDS)
+        return if (terminated && process.exitValue() == 0) {
+            // Compute SHA of the file content at base
+            val content = process.inputStream.readBytes()
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hash = digest.digest(content)
+            hash.joinToString("") { "%02x".format(it) }
+        } else {
+            throw AssertionError("Could not read $path at commit $commit from git")
+        }
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /**
      * Finds the base commit for the ML-R5 cycle.

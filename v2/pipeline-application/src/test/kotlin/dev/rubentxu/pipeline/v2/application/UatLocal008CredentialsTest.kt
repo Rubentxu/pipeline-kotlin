@@ -15,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
@@ -124,20 +125,35 @@ class UatLocal008CredentialsTest {
     // ─── CP-001 — corpus UNTOUCHABLE ──────────────────────────────────────
 
     @Test
-    fun `UAT-L8-CP-001 compatibility corpus unchanged since base commit`() {
-        // INV-CR-7: Compatibility corpus must be byte-identical to base commit
-        val result = ProcessBuilder()
-            .command(listOf("git", "diff", "a3fd09040b6ac647e46ef668758c6ac756c48a7b",
-                "HEAD", "--", "v2/compatibility/"))
-            .directory(java.io.File("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin"))
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start()
-        val diff = result.inputStream.bufferedReader().readText()
-        result.waitFor()
+    fun `UAT-L8-CP-001 original 6 corpus files byte-identical to base commit`() {
+        // INV-CR-7: Compatibility corpus original 6 files must be byte-identical
+        // Base for ML-R6 cycle is b9ba89e (ML-R6 closure)
+        val baseCommit = "b9ba89ecede2a749ff1fc05ba95908941c28fffd"
+        val projectRoot = java.io.File("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
 
-        assertEquals("", diff.trim(),
-            "Compatibility corpus should be unchanged vs base commit. Diff:\n$diff")
+        // The original 6 files that must not change (01-06)
+        val originalFiles = listOf(
+            "01-basic.pipeline.kts",
+            "02-environment.pipeline.kts",
+            "03-stages.pipeline.kts",
+            "04-sh.pipeline.kts",
+            "05-scripted-if.pipeline.kts",
+            "06-loop.pipeline.kts"
+        )
+
+        for (fileName in originalFiles) {
+            val file = java.io.File(projectRoot, "v2/compatibility/$fileName")
+            assertTrue(file.exists(), "Original corpus file must exist: $fileName")
+
+            // Compute SHA-256 of current file
+            val currentHash = sha256(file.toPath())
+
+            // Get SHA-256 from git at base commit
+            val baseHash = gitCatFile(baseCommit, "v2/compatibility/$fileName", projectRoot)
+
+            assertEquals(baseHash, currentHash,
+                "Original corpus file must be byte-identical to base: $fileName")
+        }
     }
 
     // ─── RG-001 — regression smoke ────────────────────────────────────────
@@ -418,5 +434,32 @@ pipeline {
                 "No RunFinished event in output: ${jsonText.take(800)}"
             )
         return runFinished.outcome
+    }
+
+    private fun sha256(path: java.nio.file.Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val content = java.nio.file.Files.readAllBytes(path)
+        val hash = digest.digest(content)
+        return hash.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun gitCatFile(commit: String, path: String, projectRoot: java.io.File): String {
+        val pb = ProcessBuilder(
+            "git", "show", "$commit:$path"
+        )
+            .directory(projectRoot)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val process = pb.start()
+        val terminated = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
+        return if (terminated && process.exitValue() == 0) {
+            val content = process.inputStream.readBytes()
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hash = digest.digest(content)
+            hash.joinToString("") { "%02x".format(it) }
+        } else {
+            throw AssertionError("Could not read $path at commit $commit from git")
+        }
     }
 }

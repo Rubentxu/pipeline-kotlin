@@ -15,6 +15,9 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.EventStore
+import dev.rubentxu.pipeline.v2.events.FileRead
+import dev.rubentxu.pipeline.v2.events.FileWritten
+import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
 import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
@@ -63,11 +66,15 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.ShellResult
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
+import dev.rubentxu.pipeline.v2.sdk.files.FileExistsExecutor
+import dev.rubentxu.pipeline.v2.sdk.files.FileReadExecutor
+import dev.rubentxu.pipeline.v2.sdk.files.FileWriteExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ShExecution
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import kotlinx.coroutines.Dispatchers
@@ -1067,12 +1074,112 @@ private suspend fun executeDurableStepImpl(
                     checkoutExecutor.close()
                 }
             }
-            // L7 Jenkins top-steps (ML-R7) — T-09 adds full dispatch
-            is StepSpec.WriteFile -> throw UnsupportedOperationException("WriteFile dispatch T-09")
-            is StepSpec.ReadFile -> throw UnsupportedOperationException("ReadFile dispatch T-09")
-            is StepSpec.FileExists -> throw UnsupportedOperationException("FileExists dispatch T-09")
-            is StepSpec.WithEnv -> throw UnsupportedOperationException("WithEnv dispatch T-09")
-            is StepSpec.ArchiveArtifacts -> throw UnsupportedOperationException("ArchiveArtifacts dispatch T-09")
+            // L7 Jenkins top-steps (ML-R7) — T-09 full dispatch
+            is StepSpec.WriteFile -> {
+                val resolver = workspaceResolver
+                    ?: return "failure"
+                val executor = FileWriteExecutor(
+                    workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+                    eventSink = eventSink
+                )
+                val result = executor.execute(stageIndex, stepIndex, step)
+                eventSink.append(
+                    FileWritten(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        path = result.path,
+                        sha256 = result.sha256,
+                        size = result.size,
+                        atomicallyMoved = result.atomicallyMoved,
+                    )
+                )
+                "success"
+            }
+            is StepSpec.ReadFile -> {
+                val resolver = workspaceResolver
+                    ?: return "failure"
+                val executor = FileReadExecutor(
+                    workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+                    eventSink = eventSink
+                )
+                val result = executor.execute(stageIndex, stepIndex, step)
+                eventSink.append(
+                    FileRead(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        path = result.path,
+                        sha256 = result.sha256,
+                        size = result.size,
+                    )
+                )
+                "success"
+            }
+            is StepSpec.FileExists -> {
+                val resolver = workspaceResolver
+                    ?: return "failure"
+                val executor = FileExistsExecutor(
+                    workspaceResolver = { name, idx -> resolver.resolve(name, idx) }
+                )
+                executor.execute(stageIndex, stepIndex, step)
+                "success"
+            }
+            is StepSpec.WithEnv -> {
+                // Parse "VAR=value" / "PATH+X=/dir" overrides into Map<String, String>
+                val overridesMap = mutableMapOf<String, String>()
+                for (entry in step.overrides) {
+                    val eqIdx = entry.indexOf('=')
+                    if (eqIdx > 0) {
+                        val key = entry.substring(0, eqIdx)
+                        val value = entry.substring(eqIdx + 1)
+                        overridesMap[key] = value
+                    }
+                }
+                // Apply EnvModel PATH+= prepend semantics
+                val effectiveEnv = EnvModel.apply(overridesMap)
+                // Merge with existing stageEnvironment
+                val mergedEnv = (stageEnvironment ?: emptyMap()).toMutableMap()
+                mergedEnv.putAll(effectiveEnv)
+                // Execute nested steps with the overridden environment
+                var outcome = "success"
+                for (innerStep in step.steps) {
+                    val innerOutcome = executeDurableStep(
+                        step = innerStep,
+                        stageIndex = stageIndex,
+                        stepIndex = stepIndex,
+                        runId = runId,
+                        eventSink = eventSink,
+                        journal = journal,
+                        cursorStore = cursorStore,
+                        divergenceDetector = divergenceDetector,
+                        effectReplayPolicy = effectReplayPolicy,
+                        clock = clock,
+                        runOutcomeRef = runOutcomeRef,
+                        reconciledBranches = reconciledBranches,
+                        controlDirRoot = controlDirRoot,
+                        workspaceResolver = workspaceResolver,
+                        shOptions = shOptions,
+                        stepClassifications = stepClassifications,
+                        stageTimeout = stageTimeout,
+                        stageEnvironment = mergedEnv,
+                        sandboxProfile = sandboxProfile,
+                        secretStore = secretStore,
+                    )
+                    if (innerOutcome != "success") {
+                        outcome = innerOutcome
+                        break
+                    }
+                }
+                outcome
+            }
+            is StepSpec.ArchiveArtifacts -> {
+                // T-10 (LocalArtifactStore) provides the actual archive implementation.
+                // Until then, return failure so the step is visible as not-implemented.
+                "failure"
+            }
         }
     } catch (_: Throwable) {
         runOutcomeRef.set("failure")
@@ -1429,21 +1536,149 @@ private fun emitStepEvents(
                 )
             )
         }
-        // L7 Jenkins top-steps (ML-R7) — T-09 adds full dispatch; stubs here for compilation
+        // L7 Jenkins top-steps (ML-R7) — T-09 StepStarted/StepFinished events for file/env steps
         is StepSpec.WriteFile -> {
-            // T-09: Full dispatch + StepStarted/StepFinished events
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            // Execution is handled in executeDurableStepImpl; emit StepFinished here
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
         }
         is StepSpec.ReadFile -> {
-            // T-09: Full dispatch + StepStarted/StepFinished events
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
         }
         is StepSpec.FileExists -> {
-            // T-09: Full dispatch + StepStarted/StepFinished events
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
         }
         is StepSpec.WithEnv -> {
-            // T-09: Full dispatch + StepStarted/StepFinished events (nested steps handled recursively)
+            // WithEnv is a scope carrier; nested steps emit their own StepStarted/StepFinished events.
+            // Emit StepStarted/StepFinished for the withEnv itself.
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
         }
         is StepSpec.ArchiveArtifacts -> {
-            // T-09: Full dispatch + StepStarted/StepFinished events
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
         }
     }
 }
@@ -1979,6 +2214,201 @@ private suspend fun walkBranchDurable(
                     shOptions = shOptions,
                     stageEnvironment = stageEnvironment,
                 )
+            }
+            // L7 Jenkins top-steps (ML-R7) — T-09 branch dispatch for parallel branch steps
+            is StepSpec.WriteFile -> {
+                val resolver = workspaceResolver
+                if (resolver != null) {
+                    val executor = FileWriteExecutor(
+                        workspaceResolver = { name: String, idx: Int -> resolver.resolve(name, idx) },
+                        eventSink = eventSink
+                    )
+                    val result = executor.execute(
+                        parentOpId.stageIndex,
+                        parentOpId.stepIndex + stepOffset,
+                        step
+                    )
+                    eventSink.append(
+                        FileWritten(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            path = result.path,
+                            sha256 = result.sha256,
+                            size = result.size,
+                            atomicallyMoved = result.atomicallyMoved,
+                        )
+                    )
+                    "success"
+                } else {
+                    "failure"
+                }
+            }
+            is StepSpec.ReadFile -> {
+                val resolver = workspaceResolver
+                if (resolver != null) {
+                    val executor = FileReadExecutor(
+                        workspaceResolver = { name: String, idx: Int -> resolver.resolve(name, idx) },
+                        eventSink = eventSink
+                    )
+                    val result = executor.execute(
+                        parentOpId.stageIndex,
+                        parentOpId.stepIndex + stepOffset,
+                        step
+                    )
+                    eventSink.append(
+                        FileRead(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            path = result.path,
+                            sha256 = result.sha256,
+                            size = result.size,
+                        )
+                    )
+                    "success"
+                } else {
+                    "failure"
+                }
+            }
+            is StepSpec.FileExists -> {
+                val resolver = workspaceResolver
+                if (resolver != null) {
+                    val executor = FileExistsExecutor(
+                        workspaceResolver = { name: String, idx: Int -> resolver.resolve(name, idx) }
+                    )
+                    executor.execute(parentOpId.stageIndex, parentOpId.stepIndex + stepOffset, step)
+                    "success"
+                } else {
+                    "failure"
+                }
+            }
+            is StepSpec.WithEnv -> {
+                // Apply env overrides using EnvModel and execute nested steps directly in branch context.
+                val overridesMap = mutableMapOf<String, String>()
+                for (entry in step.overrides) {
+                    val eqIdx = entry.indexOf('=')
+                    if (eqIdx > 0) {
+                        val key = entry.substring(0, eqIdx)
+                        val value = entry.substring(eqIdx + 1)
+                        overridesMap[key] = value
+                    }
+                }
+                val effectiveEnv = EnvModel.apply(overridesMap)
+                val mergedEnv = (stageEnvironment ?: emptyMap()).toMutableMap()
+                mergedEnv.putAll(effectiveEnv)
+                // Execute each nested step directly in branch context with the merged env
+                var outcome = "success"
+                for (innerStep in step.steps) {
+                    val innerStepOffset = step.steps.indexOf(innerStep)
+                    val innerStepStartedId = UUID.randomUUID().toString()
+                    val innerStepStartedAt = clock.now()
+                    eventSink.append(
+                        StepStarted(
+                            eventId = innerStepStartedId,
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = innerStepStartedAt,
+                            stageIndex = parentOpId.stageIndex,
+                            stepIndex = parentOpId.stepIndex + stepOffset + innerStepOffset + 1,
+                            stepName = "${branch.name}:${step.name}:${innerStep.name}",
+                            stepType = innerStep.type,
+                        )
+                    )
+                    // Execute via existing durable path with merged env
+                    val innerOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex)
+                    val innerBranchEnv: Map<String, SecretHandle> = mergedEnv
+                        .mapValues { SecretHandle.plain(it.value) }
+                    val effectiveShOptions = shOptions?.copy(
+                        env = innerBranchEnv,
+                    ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
+                        workspaceRoot = java.nio.file.Files.createTempDirectory("branch-withenv"),
+                        captureStdout = false,
+                        timeoutMs = null,
+                        env = innerBranchEnv,
+                    )
+                    val innerOutcome: String = when (innerStep) {
+                        is StepSpec.Shell -> {
+                            ShExecution.executeBranchStep(
+                                stageIndex = parentOpId.stageIndex,
+                                stepIndex = parentOpId.stepIndex + stepOffset + innerStepOffset + 1,
+                                branchOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex),
+                                runId = runId,
+                                command = innerStep.command,
+                                shOptions = effectiveShOptions,
+                                controlDirRoot = controlDirRoot,
+                                eventSink = eventSink,
+                            )
+                        }
+                        is StepSpec.Echo -> {
+                            dev.rubentxu.pipeline.v2.sdk.runtime.echo(
+                                dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                                innerStep.text,
+                                eventSink,
+                                stepOffset + innerStepOffset + 1,
+                            )
+                            "success"
+                        }
+                        is StepSpec.Sleep -> {
+                            dev.rubentxu.pipeline.v2.sdk.runtime.sleep(
+                                dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                                innerStep.seconds,
+                                eventSink,
+                                stepOffset + innerStepOffset + 1,
+                            )
+                            "success"
+                        }
+                        is StepSpec.Error -> {
+                            try {
+                                val failureKind = try {
+                                    dev.rubentxu.pipeline.v2.domain.FailureKind.valueOf(innerStep.failureKind)
+                                } catch (_: Exception) {
+                                    dev.rubentxu.pipeline.v2.domain.FailureKind.UNKNOWN
+                                }
+                                dev.rubentxu.pipeline.v2.sdk.runtime.error(
+                                    dev.rubentxu.pipeline.v2.sdk.StepContext(runId = runId),
+                                    innerStep.message,
+                                    failureKind,
+                                    eventSink,
+                                    stepOffset + innerStepOffset + 1,
+                                )
+                                "success"
+                            } catch (_: Throwable) {
+                                "failure"
+                            }
+                        }
+                        else -> {
+                            // For other step types (Parallel, nested WithEnv, etc.), fall back to failure
+                            // The full nested step support requires deeper integration
+                            "failure"
+                        }
+                    }
+                    val innerStepFinishedId = UUID.randomUUID().toString()
+                    val innerStepFinishedAt = clock.now()
+                    eventSink.append(
+                        StepFinished(
+                            eventId = innerStepFinishedId,
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = innerStepFinishedAt,
+                            stageIndex = parentOpId.stageIndex,
+                            stepIndex = parentOpId.stepIndex + stepOffset + innerStepOffset + 1,
+                            stepName = "${branch.name}:${step.name}:${innerStep.name}",
+                            stepType = innerStep.type,
+                        )
+                    )
+                    if (innerOutcome != "success") {
+                        outcome = innerOutcome
+                        break
+                    }
+                }
+                outcome
+            }
+            is StepSpec.ArchiveArtifacts -> {
+                // T-10 (LocalArtifactStore) provides the actual implementation
+                "failure"
             }
             else -> {
                 // Unknown step type - treat as error

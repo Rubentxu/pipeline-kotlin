@@ -25,6 +25,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-step-sdk:runtime"))
+    implementation(project(":pipeline-step-sdk:files"))
     implementation(project(":pipeline-step-sdk:scm-git"))
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-credentials-local"))

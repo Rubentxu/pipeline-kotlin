@@ -1137,8 +1137,15 @@ private suspend fun executeDurableStepImpl(
                 "success"
             }
             is StepSpec.WithEnv -> {
-                // overrides is already a Map<String, String> from StepSpec
-                val effectiveEnv = EnvModel.apply(step.overrides)
+                // overrides is List<String>, each entry is "VAR=value" or "PATH+X=/dir"
+                // Fold per entry via EnvModel.apply(entry) - last-write-wins per ENV-WE-009
+                var effectiveEnv = emptyMap<String, String>()
+                for (entry in step.overrides) {
+                    val parts = entry.split("=", limit = 2)
+                    val key = parts[0]
+                    val value = parts.getOrElse(1) { "" }
+                    effectiveEnv = EnvModel.apply(effectiveEnv + (key to value))
+                }
                 // Merge with existing stageEnvironment
                 val mergedEnv = (stageEnvironment ?: emptyMap()).toMutableMap()
                 mergedEnv.putAll(effectiveEnv)
@@ -1378,7 +1385,7 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
             "file" to JsonPrimitive(step.file),
         )
         is StepSpec.WithEnv -> mapOf(
-            "overrides" to JsonArray(step.overrides.map { (k, v) -> JsonObject(mapOf("key" to JsonPrimitive(k), "value" to JsonPrimitive(v))) }),
+            "overrides" to JsonArray(step.overrides.map { JsonPrimitive(it) }),
         )
         is StepSpec.ArchiveArtifacts -> mapOf(
             "artifacts" to JsonPrimitive(step.artifacts),
@@ -2341,8 +2348,15 @@ private suspend fun walkBranchDurable(
                 }
             }
             is StepSpec.WithEnv -> {
-                // overrides is already a Map<String, String> from StepSpec
-                val effectiveEnv = EnvModel.apply(step.overrides)
+                // overrides is List<String>, each entry is "VAR=value" or "PATH+X=/dir"
+                // Fold per entry via EnvModel.apply(entry) - last-write-wins per ENV-WE-009
+                var effectiveEnv = emptyMap<String, String>()
+                for (entry in step.overrides) {
+                    val parts = entry.split("=", limit = 2)
+                    val key = parts[0]
+                    val value = parts.getOrElse(1) { "" }
+                    effectiveEnv = EnvModel.apply(effectiveEnv + (key to value))
+                }
                 val mergedEnv = (stageEnvironment ?: emptyMap()).toMutableMap()
                 mergedEnv.putAll(effectiveEnv)
                 // Execute each nested step directly in branch context with the merged env

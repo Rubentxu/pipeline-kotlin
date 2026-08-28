@@ -67,7 +67,7 @@ class FArchL7JenkinsVerbatimStepTest {
         ),
         "WithEnv" to StepShape(
             paramTypeDescriptors = listOf(
-                "Ljava/util/Map;",     // overrides
+                "Ljava/util/List;",     // overrides (List<String> per Jenkins catalog §1.1 line 40)
                 "Ljava/util/List;"      // steps
             ),
             fieldNames = setOf("overrides", "steps")

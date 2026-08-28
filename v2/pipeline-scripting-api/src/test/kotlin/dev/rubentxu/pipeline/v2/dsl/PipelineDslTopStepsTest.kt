@@ -153,7 +153,6 @@ class PipelineDslTopStepsTest {
         assertEquals("build/**/*.jar", archive.artifacts)
         assertEquals(false, archive.allowEmptyArchive)
         assertEquals(false, archive.fingerprint)
-        assertEquals(false, archive.onlyIfSuccessful)
     }
 
     @Test

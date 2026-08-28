@@ -287,7 +287,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * @param steps Nested block payload — steps executed with the overridden env
      */
     data class WithEnv(
-        val overrides: Map<String, String>,
+        val overrides: List<String>,
         val steps: List<StepSpec>,
     ) : StepSpec {
         override val name: String get() = "withEnv"
@@ -759,12 +759,7 @@ class StageScope(private val stageName: String) {
     fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
         val inner = StageScope(stageName)
         inner.block()
-        // Convert List<String> ("VAR=value") to Map<String, String> for StepSpec.WithEnv
-        val overridesMap = overrides.associate {
-            val parts = it.split("=", limit = 2)
-            parts[0] to parts.getOrElse(1) { "" }
-        }
-        steps.add(StepSpec.WithEnv(overrides = overridesMap, steps = inner.steps.toList()))
+        steps.add(StepSpec.WithEnv(overrides = overrides, steps = inner.steps.toList()))
     }
 
     /**

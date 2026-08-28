@@ -13,14 +13,51 @@ import java.nio.file.Path
  * Design: D7 — wraps Spring `AntPathMatcher` (already on classpath via spring-core).
  * Invariant: INV-L6-ANT-001 (default excludes verbatim), INV-L6-ANT-002 (traversal safety).
  */
-class AntStyleGlob(private val patterns: List<String>) {
+class AntStyleGlob private constructor(private val pattern: String) {
 
-    constructor(vararg patterns: String) : this(patterns.toList())
+    companion object {
+        /**
+         * Jenkins 13-entry default excludes (verbatim from Jenkins `archiveArtifacts` page).
+         * INV-L6-ANT-001: this list must remain exactly 13 entries.
+         */
+        val DEFAULT_EXCLUDES: List<String> = listOf(
+            "**/.git/**",
+            "**/.svn/**",
+            "**/.bzr/**",
+            "**/.hg/**",
+            "**/CVS/**",
+            "**/.DS_Store",
+            "**/.gitignore",
+            "**/.gitattributes",
+            "**/.hgignore",
+            "**/.hgsub",
+            "**/.hgtags",
+            "**/.bzrignore",
+            "**/.bzr-tags",
+        )
+
+        /**
+         * Factory for List<String> - joins to comma-separated string.
+         */
+        fun fromList(patterns: List<String>): AntStyleGlob {
+            return AntStyleGlob(patterns.joinToString(","))
+        }
+    }
+
+    // Constructor for vararg patterns
+    constructor(vararg patterns: String) : this(patterns.joinToString(","))
 
     private val matcher = AntPathMatcher()
 
+    // Internal list storage - split comma-separated pattern back to list
+    private val patternList: List<String> = if (pattern.contains(",")) {
+        pattern.split(",").filter { it.isNotEmpty() }
+    } else {
+        listOf(pattern)
+    }
+
     init {
-        require(patterns.isNotEmpty()) { "At least one pattern must be provided" }
+        require(pattern.isNotEmpty()) { "At least one pattern must be provided" }
     }
 
     /**
@@ -43,7 +80,7 @@ class AntStyleGlob(private val patterns: List<String>) {
         }
 
         val excludeMatchers = effectiveExcludes.map { ExcludeMatcher(it) }
-        val includeMatchers = patterns.map { PatternMatcher(it) }
+        val includeMatchers = patternList.map { PatternMatcher(it) }
 
         val matched = allFiles
             .filter { file ->
@@ -56,28 +93,6 @@ class AntStyleGlob(private val patterns: List<String>) {
             .toSet()
 
         return matched.sortedBy { it.toString() }
-    }
-
-    companion object {
-        /**
-         * Jenkins 13-entry default excludes (verbatim from Jenkins `archiveArtifacts` page).
-         * INV-L6-ANT-001: this list must remain exactly 13 entries.
-         */
-        val DEFAULT_EXCLUDES: List<String> = listOf(
-            "**/.git/**",
-            "**/.svn/**",
-            "**/.bzr/**",
-            "**/.hg/**",
-            "**/CVS/**",
-            "**/.DS_Store",
-            "**/.gitignore",
-            "**/.gitattributes",
-            "**/.hgignore",
-            "**/.hgsub",
-            "**/.hgtags",
-            "**/.bzrignore",
-            "**/.bzr-tags",
-        )
     }
 
     private inner class PatternMatcher(private val pattern: String) {

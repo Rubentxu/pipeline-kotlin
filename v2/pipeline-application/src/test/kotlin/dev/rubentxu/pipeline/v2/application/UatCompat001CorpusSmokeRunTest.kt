@@ -33,7 +33,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(6, fixtures.size, "Corpus must have 6 fixtures")
+        assertEquals(9, fixtures.size, "Corpus must have 9 fixtures (ML-R7: 6 base + 3 new)")
 
         val appBin = AppBinSupport.discover()
         val failures = mutableListOf<String>()
@@ -67,7 +67,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(6, fixtures.size, "Corpus must have 6 fixtures")
+        assertEquals(9, fixtures.size, "Corpus must have 9 fixtures (ML-R7: 6 base + 3 new)")
         val appBin = AppBinSupport.discover()
 
         fixtures.forEach { fixture ->

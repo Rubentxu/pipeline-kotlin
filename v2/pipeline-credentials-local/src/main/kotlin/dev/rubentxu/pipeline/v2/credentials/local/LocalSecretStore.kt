@@ -229,36 +229,34 @@ class LocalSecretStore(
     override fun put(id: CredentialsId, bytes: ByteArray) {
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
-        val hdr = loadOrCreateHeader()
+        val existingFileBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
+        val hdr = if (existingFileBytes != null) {
+            readHeader(existingFileBytes)
+        } else {
+            // Fresh V1 store for legacy backward-compat contract
+            val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
+            StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
+        }
         val kek = deriveKek(hdr.kdfSalt)
 
         // Load existing DEK from header, or generate new one for a FRESH store only.
-        // The same DEK is reused for ALL entries (per-store DEK).
         val dek = if (hdr.wrappedDek.contentEquals(ByteArray(WRAPPED_DEK_SIZE))) {
-            // Fresh store: generate new DEK
             ByteArray(DEK_SIZE).also { secureRandom.nextBytes(it) }
         } else {
-            // Existing store: reuse the stored DEK
             unwrapDek(kek, hdr.wrappedDek)
         }
 
-        // Always wrap the current DEK (deterministic: same KEK + DEK → same result)
         val wrappedDek = wrapDek(kek, dek)
-
-        // Encrypt the secret with the DEK (AES-256-GCM)
         val aad = buildAad(hdr, id)
         val sealed = AeadCipher.encrypt(dek, bytes, aad)
 
-        // Atomic write: read existing entries, replace/insert, rewrite file
         val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
-        val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
-
         val out = ByteArrayOutputStream()
         writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrappedDek)
 
         // Parse existing entries and rebuild with new/updated entry
-        if (existingBytes != null && existingBytes.size > HEADER_SIZE_V1) {
-            val existingEntries = readEntriesV1(existingBytes).toMutableMap()
+        if (existingFileBytes != null && existingFileBytes.size > HEADER_SIZE_V1) {
+            val existingEntries = readEntriesV1(existingFileBytes).toMutableMap()
             existingEntries[id.value] = EntryData(id, sealed, bytes.size)
             for ((_, entryData) in existingEntries) {
                 out.write(encodeEntry(entryData.id, entryData.sealed))
@@ -276,6 +274,7 @@ class LocalSecretStore(
 
     /**
      * Stores a typed credential (ML-R6) in v2 format.
+     * On first add() to a v1 file: migrates existing v1 entries to v2.
      */
     override fun add(id: CredentialsId, credential: Credential) {
         val hdr = loadOrCreateHeader()
@@ -301,10 +300,24 @@ class LocalSecretStore(
         val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
 
         val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrapDek(kek, dek))
+        // Always write V2 header for new entries; migrate V1 entries to V2
+        writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, wrapDek(kek, dek))
 
         if (existingBytes != null && existingBytes.size > HEADER_SIZE_V1) {
-            val existingEntries = readEntries(existingBytes).toMutableMap()
+            // Route to correct reader based on header version of existing file
+            val existingEntries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
+                // Migrate V1 entries to V2: decrypt as SecretText and re-encrypt as V2
+                val v1Entries = readEntriesV1(existingBytes)
+                v1Entries.mapValues { (entryId, v1Entry) ->
+                    val v1Hdr = readHeader(existingBytes)
+                    val v1Aad = buildAad(v1Hdr, CredentialsId.from(entryId))
+                    val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
+                    val migratedSealed = AeadCipher.encrypt(dek, plaintext, buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
+                    V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
+                }.toMutableMap()
+            } else {
+                readEntries(existingBytes).toMutableMap()
+            }
             existingEntries[id.value] = V2EntryData(id, sealed, kindId)
             for ((_, entryData) in existingEntries) {
                 out.write(encodeV2Entry(entryData))
@@ -332,27 +345,32 @@ class LocalSecretStore(
         val kek = deriveKek(hdr.kdfSalt)
         val dek = unwrapDek(kek, hdr.wrappedDek)
 
-        val entries = readEntries(fileBytes)
+        // Route to correct reader based on header version
+        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+            readEntriesV1(fileBytes)
+        } else {
+            readEntries(fileBytes)
+        }
         val entry = entries[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
         // Check if v1 or v2 entry
         if (hdr.version == VERSION_V1.toShort()) {
             // v1 entry - decrypt and return as SecretText
+            val v1Entry = entry as EntryData
             val aad = buildAad(hdr, id)
             val plaintext = try {
-                AeadCipher.decrypt(dek, entry.sealed, aad)
+                AeadCipher.decrypt(dek, v1Entry.sealed, aad)
             } catch (e: javax.crypto.AEADBadTagException) {
                 throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
             }
             return SecretText(id, CredentialScope.GLOBAL, plaintext)
         } else {
             // v2 entry - decrypt and deserialize
-            val v2Entry = entry as? V2EntryData
-                ?: throw SecretStoreTamperException("Invalid entry type for v2 format")
+            val v2Entry = entry as V2EntryData
             val aad = buildV2Aad(hdr, id, v2Entry.kindId)
             val plaintext = try {
-                AeadCipher.decrypt(dek, entry.sealed, aad)
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
             } catch (e: javax.crypto.AEADBadTagException) {
                 throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
             }
@@ -414,16 +432,20 @@ class LocalSecretStore(
         val kek = deriveKek(hdr.kdfSalt)
         val dek = unwrapDek(kek, hdr.wrappedDek)
 
-        val entries = readEntries(fileBytes)
+        // Route based on header version
+        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+            throw SecretStoreTamperException("getAsHandle not supported for v1 single-blob entries")
+        } else {
+            readEntries(fileBytes)
+        }
         val entry = entries[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
-        val v2Entry = entry as? V2EntryData
-            ?: throw SecretStoreTamperException("Invalid entry type for v2 format")
+        val v2Entry = entry as V2EntryData
 
         val aad = buildV2Aad(hdr, id, v2Entry.kindId)
         val plaintext = try {
-            AeadCipher.decrypt(dek, entry.sealed, aad)
+            AeadCipher.decrypt(dek, v2Entry.sealed, aad)
         } catch (e: javax.crypto.AEADBadTagException) {
             throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
         }
@@ -433,7 +455,9 @@ class LocalSecretStore(
     }
 
     /**
-     * Extracts a named part from deserialized credential bytes.
+     * Extracts a named part from deserialized credential bytes using the canonical part format.
+     * Format per part: [nameLen:1][name][len:4 BE][bytes]
+     * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
      */
     private fun extractPart(
         plaintext: ByteArray,
@@ -444,131 +468,138 @@ class LocalSecretStore(
     ): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
 
+        // ── helpers ────────────────────────────────────────────────────────────
+        // Read nameLen(1) + name(nameLen) + 4-byte length field, return value length,
+        // advance to start of value bytes.
+        fun readValueLen(buf: ByteBuffer): Int {
+            val nameLen = buf.get().toInt() and 0xFF
+            buf.position(buf.position() + nameLen)
+            return buf.int // big-endian, unsigned-safe; position now at value bytes
+        }
+
+        // Skip nameLen(1) + name(nameLen) + 4-byte length + valueLen bytes.
+        // Returns the value length for the caller's use.
+        fun skipPart(buf: ByteBuffer): Int {
+            val nameLen = buf.get().toInt() and 0xFF
+            buf.position(buf.position() + nameLen)
+            val valueLen = buf.int
+            buf.position(buf.position() + valueLen)
+            return valueLen
+        }
+
         return when (kindId) {
             KIND_SECRET_TEXT -> {
-                // SecretText: single "value" part
                 if (partName != "value") {
                     throw SecretStoreTamperException("Part '$partName' not found in SecretText credential")
                 }
-                val partCount = buf.get().toInt()
-                val nameLen = buf.get().toInt()
-                val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                val partLen = buf.int
-                val partBytes = ByteArray(partLen); buf.get(partBytes)
-                SecretHandle.secret(partBytes)
+                buf.get().toInt() // partCount
+                val valueLen = readValueLen(buf)
+                val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                SecretHandle.secret(valueBytes)
             }
             KIND_USERNAME_PASSWORD -> {
-                val partCount = buf.get().toInt()
+                buf.get().toInt() // partCount
                 when (partName) {
                     "username" -> {
-                        val nameLen = buf.get().toInt()
-                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                        val partLen = buf.int
-                        val partBytes = ByteArray(partLen); buf.get(partBytes)
-                        SecretHandle.secret(partBytes)
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
                     }
                     "password" -> {
-                        // Skip username
-                        val nameLen = buf.get().toInt()
-                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                        val partLen = buf.int
-                        val partBytes = ByteArray(partLen); buf.get(partBytes)
-                        // Now at password
-                        val passNameLen = buf.get().toInt()
-                        val passNameBytes = ByteArray(passNameLen); buf.get(passNameBytes)
-                        val passLen = buf.int
-                        val passPartBytes = ByteArray(passLen); buf.get(passPartBytes)
-                        SecretHandle.secret(passPartBytes)
+                        skipPart(buf) // skip username part
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
                     }
                     else -> throw SecretStoreTamperException("Part '$partName' not found in UsernamePassword credential")
                 }
             }
             KIND_SSH_PRIVATE_KEY -> {
-                val partCount = buf.get().toInt()
-                // username
-                val userNameLen = buf.get().toInt()
-                val userNameBytes = ByteArray(userNameLen); buf.get(userNameBytes)
-                val userLen = buf.int
-                val userBytes = ByteArray(userLen); buf.get(userBytes)
-                // privateKey
-                val keyNameLen = buf.get().toInt()
-                val keyNameBytes = ByteArray(keyNameLen); buf.get(keyNameBytes)
-                val keyLen = buf.int
-                val keyBytes = ByteArray(keyLen); buf.get(keyBytes)
-                // passphrase (optional)
-                val passphraseNameLen = buf.get().toInt()
-
+                buf.get().toInt() // partCount
                 when (partName) {
-                    "username" -> SecretHandle.secret(userBytes)
-                    "privateKey" -> SecretHandle.secret(keyBytes)
+                    "username" -> {
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
+                    }
+                    "privateKey" -> {
+                        skipPart(buf) // skip username part
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
+                    }
                     "passphrase" -> {
-                        if (passphraseNameLen == -1) {
-                            // Linked ref
-                            val refIdLen = buf.get().toInt()
-                            val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                            val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                            // Resolve the referenced credential's SecretText part
-                            return resolveLinkedSecretRef(refId, id)
-                        } else if (passphraseNameLen == 0) {
-                            throw SecretStoreTamperException("Credential has no passphrase part")
-                        } else {
-                            val passphraseBytes = ByteArray(passphraseNameLen); buf.get(passphraseBytes)
-                            SecretHandle.secret(passphraseBytes)
+                        skipPart(buf) // skip username part
+                        skipPart(buf) // skip privateKey part
+                        // Now at passphrase header: nameLen(1) + name + 4-byte marker
+                        val passphraseNameLen = buf.get().toInt() and 0xFF
+                        buf.position(buf.position() + passphraseNameLen)
+                        val marker = buf.int
+                        when (marker) {
+                            0xFFFFFFFF.toInt() -> {
+                                val refIdLen = buf.int
+                                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                                val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+                                return resolveLinkedSecretRef(refId, id)
+                            }
+                            0x00000000.toInt() -> {
+                                throw SecretStoreTamperException("Credential has no passphrase part")
+                            }
+                            else -> throw SecretStoreTamperException("SshPrivateKey passphrase must be linked-ref or absent")
                         }
                     }
                     else -> throw SecretStoreTamperException("Part '$partName' not found in SshPrivateKey credential")
                 }
             }
             KIND_SECRET_FILE -> {
-                val partCount = buf.get().toInt()
+                buf.get().toInt() // partCount
                 when (partName) {
                     "originalName" -> {
-                        val nameNameLen = buf.get().toInt()
-                        val nameLen = buf.int
-                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                        SecretHandle.secret(nameBytes)
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
                     }
                     "content" -> {
-                        // Skip originalName
-                        val nameNameLen = buf.get().toInt()
-                        val nameLen = buf.int
-                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                        // Now at content
-                        val contentNameLen = buf.get().toInt()
-                        val contentLen = buf.int
-                        val contentBytes = ByteArray(contentLen); buf.get(contentBytes)
-                        SecretHandle.secret(contentBytes)
+                        skipPart(buf) // skip originalName part
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
                     }
                     else -> throw SecretStoreTamperException("Part '$partName' not found in SecretFile credential")
                 }
             }
             KIND_CERTIFICATE -> {
-                val partCount = buf.get().toInt()
-                // keystore
-                val keystoreNameLen = buf.get().toInt()
-                val keystoreLen = buf.int
-                val keystoreBytes = ByteArray(keystoreLen); buf.get(keystoreBytes)
-                // alias
-                val aliasNameLen = buf.get().toInt()
-                val aliasLen = buf.int
-                val aliasBytes = ByteArray(aliasLen); buf.get(aliasBytes)
-                // password (optional)
-                val passwordNameLen = buf.get().toInt()
-
+                buf.get().toInt() // partCount
                 when (partName) {
-                    "keystore" -> SecretHandle.secret(keystoreBytes)
-                    "alias" -> SecretHandle.secret(aliasBytes)
+                    "keystore" -> {
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
+                    }
+                    "alias" -> {
+                        skipPart(buf) // skip keystore part
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
+                    }
                     "password" -> {
-                        if (passwordNameLen == -1) {
-                            val refIdLen = buf.get().toInt()
-                            val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                            val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                            return resolveLinkedSecretRef(refId, id)
-                        } else if (passwordNameLen == 0) {
-                            throw SecretStoreTamperException("Credential has no password part")
-                        } else {
-                            val passwordBytes = ByteArray(passwordNameLen); buf.get(passwordBytes)
-                            SecretHandle.secret(passwordBytes)
+                        skipPart(buf) // skip keystore part
+                        skipPart(buf) // skip alias part
+                        // Now at password header: nameLen(1) + name + 4-byte marker
+                        val pwNameLen = buf.get().toInt() and 0xFF
+                        buf.position(buf.position() + pwNameLen)
+                        val pwMarker = buf.int
+                        when (pwMarker) {
+                            0xFFFFFFFF.toInt() -> {
+                                val refIdLen = buf.int
+                                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                                val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+                                return resolveLinkedSecretRef(refId, id)
+                            }
+                            0x00000000.toInt() -> {
+                                throw SecretStoreTamperException("Credential has no password part")
+                            }
+                            else -> throw SecretStoreTamperException("Certificate password must be linked-ref or absent")
                         }
                     }
                     else -> throw SecretStoreTamperException("Part '$partName' not found in Certificate credential")
@@ -576,10 +607,11 @@ class LocalSecretStore(
             }
             KIND_ZIP -> {
                 val partCount = buf.get().toInt()
-                // metadata entry count
+                // metadata: _entryCount (normal)
                 val metaNameLen = buf.get().toInt()
-                val metaLen = buf.int
-                buf.get() // consume metadata content byte
+                buf.position(buf.position() + metaNameLen)
+                buf.int // skip count value
+                buf.get() // consume metadata content byte (1)
 
                 // Find the requested entry
                 repeat(partCount - 1) {
@@ -596,27 +628,18 @@ class LocalSecretStore(
                 throw SecretStoreTamperException("Part '$partName' not found in Zip credential")
             }
             KIND_USERNAME_COLON_PASSWORD -> {
-                val partCount = buf.get().toInt()
+                buf.get().toInt() // partCount
                 when (partName) {
                     "username" -> {
-                        val nameLen = buf.get().toInt()
-                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                        val partLen = buf.int
-                        val partBytes = ByteArray(partLen); buf.get(partBytes)
-                        SecretHandle.secret(partBytes)
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
                     }
                     "password" -> {
-                        // Skip username
-                        val nameLen = buf.get().toInt()
-                        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                        val partLen = buf.int
-                        val partBytes = ByteArray(partLen); buf.get(partBytes)
-                        // Now at password
-                        val passNameLen = buf.get().toInt()
-                        val passNameBytes = ByteArray(passNameLen); buf.get(passNameBytes)
-                        val passLen = buf.int
-                        val passPartBytes = ByteArray(passLen); buf.get(passPartBytes)
-                        SecretHandle.secret(passPartBytes)
+                        skipPart(buf) // skip username part
+                        val valueLen = readValueLen(buf)
+                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                        SecretHandle.secret(valueBytes)
                     }
                     else -> throw SecretStoreTamperException("Part '$partName' not found in UsernameColonPassword credential")
                 }
@@ -637,12 +660,21 @@ class LocalSecretStore(
         val kek = deriveKek(hdr.kdfSalt)
         val dek = unwrapDek(kek, hdr.wrappedDek)
 
-        val entries = readEntries(fileBytes)
+        // Route to correct reader based on header version
+        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+            readEntriesV1(fileBytes)
+        } else {
+            readEntries(fileBytes)
+        }
         val refEntry = entries[refId.value]
             ?: throw LinkedSecretReferenceNotFoundException(refId)
 
-        val v2Entry = refEntry as? V2EntryData
-            ?: throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown")
+        val v2Entry: V2EntryData
+        try {
+            v2Entry = refEntry as V2EntryData
+        } catch (e: ClassCastException) {
+            throw LinkedSecretReferenceTypeMismatchException(refId, "SecretText", "Unknown (v1 format not supported for linked refs)")
+        }
 
         // The referenced credential must be SecretText
         if (v2Entry.kindId != KIND_SECRET_TEXT) {
@@ -651,20 +683,20 @@ class LocalSecretStore(
 
         val aad = buildV2Aad(hdr, refId, v2Entry.kindId)
         val plaintext = try {
-            AeadCipher.decrypt(dek, refEntry.sealed, aad)
+            AeadCipher.decrypt(dek, v2Entry.sealed, aad)
         } catch (e: javax.crypto.AEADBadTagException) {
             throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
         }
 
-        // Extract the "value" part from SecretText
+        // Extract the "value" part from SecretText using canonical format
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
         val partCount = buf.get().toInt()
         val nameLen = buf.get().toInt()
-        val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-        val partLen = buf.int
-        val partBytes = ByteArray(partLen); buf.get(partBytes)
+        buf.position(buf.position() + nameLen) // skip name "value"
+        val valueLen = buf.int
+        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
 
-        return SecretHandle.secret(partBytes)
+        return SecretHandle.secret(valueBytes)
     }
 
     /**
@@ -675,7 +707,13 @@ class LocalSecretStore(
     override fun list(): List<CredentialsId> {
         if (!Files.exists(file) || Files.size(file) == 0L) return emptyList()
         val fileBytes = Files.readAllBytes(file)
-        val entries = readEntriesV1(fileBytes)
+        val hdr = readHeader(fileBytes)
+        // Route based on header version
+        val entries = if (hdr.version == VERSION_V1.toShort()) {
+            readEntriesV1(fileBytes)
+        } else {
+            readEntries(fileBytes)
+        }
         return entries.keys.map { CredentialsId.from(it) }
     }
 
@@ -688,7 +726,13 @@ class LocalSecretStore(
         if (!Files.exists(file)) return
         val fileBytes = Files.readAllBytes(file)
         val hdr = readHeader(fileBytes)
-        val entries = readEntriesV1(fileBytes).toMutableMap()
+
+        // Route based on header version
+        val entries: MutableMap<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+            readEntriesV1(fileBytes).toMutableMap()
+        } else {
+            readEntries(fileBytes).toMutableMap()
+        }
         entries.remove(id.value) ?: return // Not found, no-op
 
         // Rewrite without the removed entry
@@ -696,7 +740,10 @@ class LocalSecretStore(
         val out = ByteArrayOutputStream()
         writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
         for ((_, entryData) in entries) {
-            out.write(encodeEntry(entryData.id, entryData.sealed))
+            when (entryData) {
+                is EntryData -> out.write(encodeEntry(entryData.id, entryData.sealed))
+                is V2EntryData -> out.write(encodeV2Entry(entryData))
+            }
         }
         Files.write(tempFile, out.toByteArray())
         CredentialsStorePosix.setFilePermissions(tempFile)
@@ -726,8 +773,21 @@ class LocalSecretStore(
         val hdr = readHeader(fileBytes)
         val kek = deriveKek(hdr.kdfSalt)
 
-        // Verify the credential exists and get its format
-        val entries = readEntries(fileBytes)
+        // Route based on header version; rotate always upgrades to v2
+        val entries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
+            // Migrate V1 entries to V2
+            val v1Entries = readEntriesV1(fileBytes)
+            val dek = unwrapDek(kek, hdr.wrappedDek)
+            v1Entries.mapValues { (entryId, v1Entry) ->
+                val v1Aad = buildAad(hdr, CredentialsId.from(entryId))
+                val plaintext = AeadCipher.decrypt(dek, v1Entry.sealed, v1Aad)
+                val migratedSealed = AeadCipher.encrypt(dek, plaintext, buildV2Aad(hdr, CredentialsId.from(entryId), KIND_SECRET_TEXT))
+                V2EntryData(CredentialsId.from(entryId), migratedSealed, KIND_SECRET_TEXT)
+            }.toMutableMap()
+        } else {
+            readEntries(fileBytes).toMutableMap()
+        }
+
         if (!entries.containsKey(id.value)) {
             throw SecretStoreTamperException("Credential not found: ${id.value}")
         }
@@ -742,14 +802,13 @@ class LocalSecretStore(
         val sealed = AeadCipher.encrypt(dek, credentialBytes, aad)
 
         // Update entries
-        val updatedEntries = entries.toMutableMap()
-        updatedEntries[id.value] = V2EntryData(id, sealed, kindId)
+        entries[id.value] = V2EntryData(id, sealed, kindId)
 
-        // Atomic write
+        // Atomic write - always write V2 header
         val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
         val out = ByteArrayOutputStream()
-        writeHeader(out, hdr.magic, hdr.version, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
-        for ((_, entryData) in updatedEntries) {
+        writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
+        for ((_, entryData) in entries) {
             out.write(encodeV2Entry(entryData))
         }
         Files.write(tempFile, out.toByteArray())
@@ -1043,29 +1102,43 @@ class LocalSecretStore(
 
     // === Credential serialization ===
 
+    // Canonical part format (D2):
+    //   normal part:  [nameLen:1][name][len:4 BE][bytes]
+    //   linked-ref:   [nameLen:1][name][0xFFFFFFFF:4][refIdLen:4][refId]
+    //   absent opt:   [nameLen:1][name][0x00000000:4]
+    private fun writeLinkedRefMarker(out: ByteArrayOutputStream) {
+        val marker = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(0xFFFFFFFF.toInt())
+        out.write(marker.array())
+    }
+
+    private fun writeAbsentMarker(out: ByteArrayOutputStream) {
+        val marker = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(0x00000000.toInt())
+        out.write(marker.array())
+    }
+
     private fun serializeCredential(credential: Credential): ByteArray {
         val out = ByteArrayOutputStream()
         when (credential) {
             is SecretText -> {
-                out.write(1) // part count marker for single-part
-                val partNameBytes = "value".toByteArray(Charsets.UTF_8)
-                out.write(partNameBytes.size)
-                out.write(partNameBytes)
+                out.write(1) // part count
+                val partName = "value"
+                out.write(partName.length)
+                out.write(partName.toByteArray(Charsets.UTF_8))
                 val partBytesLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.bytes.size)
                 out.write(partBytesLenBuf.array())
                 out.write(credential.bytes, 0, credential.bytes.size)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword -> {
                 out.write(2) // 2 parts
-                // username part: format = nameLen(1) + nameBytes + valueLen(4) + valueBytes
-                val userBytes = credential.username.toByteArray(Charsets.UTF_8)
+                // username part: normal
                 val userPartName = "username"
                 out.write(userPartName.length)
                 out.write(userPartName.toByteArray(Charsets.UTF_8))
+                val userBytes = credential.username.toByteArray(Charsets.UTF_8)
                 val userLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(userBytes.size)
                 out.write(userLenBuf.array())
                 out.write(userBytes, 0, userBytes.size)
-                // password part
+                // password part: normal
                 val passPartName = "password"
                 out.write(passPartName.length)
                 out.write(passPartName.toByteArray(Charsets.UTF_8))
@@ -1075,6 +1148,7 @@ class LocalSecretStore(
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey -> {
                 out.write(3) // 3 parts: username, privateKey, passphrase
+                // username: normal
                 val usernamePartName = "username"
                 out.write(usernamePartName.length)
                 out.write(usernamePartName.toByteArray(Charsets.UTF_8))
@@ -1082,29 +1156,31 @@ class LocalSecretStore(
                 val usernameLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(usernameBytes.size)
                 out.write(usernameLenBuf.array())
                 out.write(usernameBytes, 0, usernameBytes.size)
+                // privateKey: normal
                 val keyPartName = "privateKey"
                 out.write(keyPartName.length)
                 out.write(keyPartName.toByteArray(Charsets.UTF_8))
                 val keyLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.privateKey.size)
                 out.write(keyLenBuf.array())
                 out.write(credential.privateKey, 0, credential.privateKey.size)
+                // passphrase: linked-ref or absent
+                val passphrasePartName = "passphrase"
+                out.write(passphrasePartName.length)
+                out.write(passphrasePartName.toByteArray(Charsets.UTF_8))
                 val passphraseRef = credential.passphraseRef
                 if (passphraseRef != null) {
-                    val passphrasePartName = "passphrase"
-                    out.write(passphrasePartName.length)
-                    out.write(passphrasePartName.toByteArray(Charsets.UTF_8))
-                    // Linked ref format: [-1 (1 byte)][refIdLen (4 bytes)][refId bytes]
-                    out.write(-1) // indicates linked ref
+                    writeLinkedRefMarker(out)
                     val refIdBytes = passphraseRef.credentialsId.value.toByteArray(Charsets.UTF_8)
                     val refIdLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(refIdBytes.size)
                     out.write(refIdLenBuf.array())
                     out.write(refIdBytes, 0, refIdBytes.size)
                 } else {
-                    out.write(0) // no passphrase
+                    writeAbsentMarker(out)
                 }
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.SecretFile -> {
                 out.write(2) // 2 parts: originalName, content
+                // originalName: normal
                 val namePartName = "originalName"
                 out.write(namePartName.length)
                 out.write(namePartName.toByteArray(Charsets.UTF_8))
@@ -1112,6 +1188,7 @@ class LocalSecretStore(
                 val nameLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(nameBytes.size)
                 out.write(nameLenBuf.array())
                 out.write(nameBytes, 0, nameBytes.size)
+                // content: normal
                 val contentPartName = "content"
                 out.write(contentPartName.length)
                 out.write(contentPartName.toByteArray(Charsets.UTF_8))
@@ -1120,13 +1197,15 @@ class LocalSecretStore(
                 out.write(credential.bytes, 0, credential.bytes.size)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.Certificate -> {
-                out.write(3) // 3 parts: keystore, alias, passwordRef
+                out.write(3) // 3 parts: keystore, alias, password
+                // keystore: normal
                 val keystorePartName = "keystore"
                 out.write(keystorePartName.length)
                 out.write(keystorePartName.toByteArray(Charsets.UTF_8))
                 val keystoreLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.keystore.size)
                 out.write(keystoreLenBuf.array())
                 out.write(credential.keystore, 0, credential.keystore.size)
+                // alias: normal
                 val aliasPartName = "alias"
                 out.write(aliasPartName.length)
                 out.write(aliasPartName.toByteArray(Charsets.UTF_8))
@@ -1134,35 +1213,36 @@ class LocalSecretStore(
                 val aliasLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(aliasBytes.size)
                 out.write(aliasLenBuf.array())
                 out.write(aliasBytes, 0, aliasBytes.size)
+                // password: linked-ref or absent
+                val passwordPartName = "password"
+                out.write(passwordPartName.length)
+                out.write(passwordPartName.toByteArray(Charsets.UTF_8))
                 val passwordRef = credential.passwordRef
                 if (passwordRef != null) {
-                    val passwordPartName = "password"
-                    out.write(passwordPartName.length)
-                    out.write(passwordPartName.toByteArray(Charsets.UTF_8))
-                    // Linked ref format: [-1 (1 byte)][refIdLen (4 bytes)][refId bytes]
-                    out.write(-1) // linked ref
+                    writeLinkedRefMarker(out)
                     val refIdBytes = passwordRef.credentialsId.value.toByteArray(Charsets.UTF_8)
                     val refIdLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(refIdBytes.size)
                     out.write(refIdLenBuf.array())
                     out.write(refIdBytes, 0, refIdBytes.size)
                 } else {
-                    out.write(0)
+                    writeAbsentMarker(out)
                 }
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.Zip -> {
                 out.write(1 + credential.entries.size) // 1 + n parts
-                // metadata part: entry count
+                // _entryCount metadata: normal
                 val metaPartName = "_entryCount"
                 out.write(metaPartName.length)
                 out.write(metaPartName.toByteArray(Charsets.UTF_8))
                 val countBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.entries.size)
                 out.write(countBuf.array())
-                // write 1 as 4-byte integer for metadata content (matches deserialize reading buf.int)
+                // metadata content = 1 (as int)
                 val metaContentBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(1)
                 out.write(metaContentBuf.array())
                 for ((entryName, entryBytes) in credential.entries) {
-                    out.write(entryName.length)
-                    out.write(entryName.toByteArray(Charsets.UTF_8))
+                    val entryPartName = entryName
+                    out.write(entryPartName.length)
+                    out.write(entryPartName.toByteArray(Charsets.UTF_8))
                     val entryLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(entryBytes.size)
                     out.write(entryLenBuf.array())
                     out.write(entryBytes, 0, entryBytes.size)
@@ -1170,6 +1250,7 @@ class LocalSecretStore(
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword -> {
                 out.write(2) // 2 parts
+                // username: normal
                 val userPartName = "username"
                 out.write(userPartName.length)
                 out.write(userPartName.toByteArray(Charsets.UTF_8))
@@ -1177,6 +1258,7 @@ class LocalSecretStore(
                 val userLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(userBytes.size)
                 out.write(userLenBuf.array())
                 out.write(userBytes, 0, userBytes.size)
+                // password: normal
                 val passPartName = "password"
                 out.write(passPartName.length)
                 out.write(passPartName.toByteArray(Charsets.UTF_8))
@@ -1188,98 +1270,124 @@ class LocalSecretStore(
         return out.toByteArray()
     }
 
+    // Reads a 4-byte big-endian marker from the buffer.
+    // Returns: 0xFFFFFFFF = linked-ref, 0x00000000 = absent, other = inline byte count
+    private fun readPartMarker(buf: ByteBuffer): Int {
+        return buf.int
+    }
+
     private fun deserializeCredential(bytes: ByteArray, kindId: Short, id: CredentialsId): Credential {
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
         return when (kindId) {
             KIND_SECRET_TEXT -> {
                 val partCount = buf.get().toInt()
-                val partNameLen = buf.get().toInt()
-                val partName = ByteArray(partNameLen); buf.get(partName); String(partName, Charsets.UTF_8)
-                val partLen = buf.int
-                val partBytes = ByteArray(partLen); buf.get(partBytes)
-                SecretText(id, CredentialScope.GLOBAL, partBytes)
+                // name
+                val nameLen = buf.get().toInt()
+                buf.position(buf.position() + nameLen)
+                // value (inline)
+                val valueLen = readPartMarker(buf)
+                val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
+                SecretText(id, CredentialScope.GLOBAL, valueBytes)
             }
             KIND_USERNAME_PASSWORD -> {
                 val partCount = buf.get().toInt()
-                // username
+                // username: normal
                 val userNameLen = buf.get().toInt()
-                val userNameBytes = ByteArray(userNameLen); buf.get(userNameBytes)
-                val user = String(userNameBytes, Charsets.UTF_8)
-                // password
+                buf.position(buf.position() + userNameLen) // skip name
+                val userLen = readPartMarker(buf)
+                val userBytes = ByteArray(userLen); buf.get(userBytes)
+                val username = String(userBytes, Charsets.UTF_8)
+                // password: normal
                 val passNameLen = buf.get().toInt()
-                val passLen = buf.int
+                buf.position(buf.position() + passNameLen) // skip name
+                val passLen = readPartMarker(buf)
                 val passBytes = ByteArray(passLen); buf.get(passBytes)
-                dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword(id, CredentialScope.GLOBAL, user, passBytes)
+                dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword(id, CredentialScope.GLOBAL, username, passBytes)
             }
             KIND_SSH_PRIVATE_KEY -> {
                 val partCount = buf.get().toInt()
-                // username
+                // username: normal
                 val userNameLen = buf.get().toInt()
-                val userNameBytes = ByteArray(userNameLen); buf.get(userNameBytes)
-                val username = String(userNameBytes, Charsets.UTF_8)
-                // privateKey
+                buf.position(buf.position() + userNameLen)
+                val userLen = readPartMarker(buf)
+                val userBytes = ByteArray(userLen); buf.get(userBytes)
+                val username = String(userBytes, Charsets.UTF_8)
+                // privateKey: normal
                 val keyNameLen = buf.get().toInt()
-                val keyLen = buf.int
+                buf.position(buf.position() + keyNameLen)
+                val keyLen = readPartMarker(buf)
                 val keyBytes = ByteArray(keyLen); buf.get(keyBytes)
-                // passphrase (optional)
+                // passphrase: linked-ref or absent
                 val passphraseNameLen = buf.get().toInt()
-                val passphraseRef = if (passphraseNameLen == -1) {
-                    val refIdLen = buf.get().toInt()
-                    val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                    LinkedSecretRef(CredentialsId.from(String(refIdBytes, Charsets.UTF_8)))
-                } else if (passphraseNameLen == 0) {
-                    null
-                } else {
-                    val passphraseBytes = ByteArray(passphraseNameLen); buf.get(passphraseBytes)
-                    LinkedSecretRef(CredentialsId.from(String(passphraseBytes, Charsets.UTF_8)))
+                buf.position(buf.position() + passphraseNameLen) // skip name
+                val passphraseMarker = readPartMarker(buf)
+                val passphraseRef = when (passphraseMarker) {
+                    0xFFFFFFFF.toInt() -> {
+                        val refIdLen = buf.int
+                        val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                        LinkedSecretRef(CredentialsId.from(String(refIdBytes, Charsets.UTF_8)))
+                    }
+                    0x00000000.toInt() -> null
+                    else -> throw SecretStoreTamperException("SshPrivateKey passphrase must be linked-ref or absent")
                 }
                 dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey(id, CredentialScope.GLOBAL, username, keyBytes, passphraseRef)
             }
             KIND_SECRET_FILE -> {
                 val partCount = buf.get().toInt()
-                // originalName
-                val nameNameLen = buf.get().toInt()
-                val nameLen = buf.int
-                val nameBytes = ByteArray(nameLen); buf.get(nameBytes)
-                val originalName = String(nameBytes, Charsets.UTF_8)
-                // content
+                // originalName: normal
+                val origNameLen = buf.get().toInt()
+                buf.position(buf.position() + origNameLen)
+                val origNameLen2 = readPartMarker(buf)
+                val origNameBytes = ByteArray(origNameLen2); buf.get(origNameBytes)
+                val originalName = String(origNameBytes, Charsets.UTF_8)
+                // content: normal
                 val contentNameLen = buf.get().toInt()
-                val contentLen = buf.int
+                buf.position(buf.position() + contentNameLen)
+                val contentLen = readPartMarker(buf)
                 val contentBytes = ByteArray(contentLen); buf.get(contentBytes)
                 dev.rubentxu.pipeline.v2.domain.credentials.SecretFile(id, CredentialScope.GLOBAL, contentBytes, originalName.ifEmpty { null })
             }
             KIND_CERTIFICATE -> {
                 val partCount = buf.get().toInt()
-                // keystore
-                val keystoreNameLen = buf.get().toInt()
-                val keystoreLen = buf.int
-                val keystoreBytes = ByteArray(keystoreLen); buf.get(keystoreBytes)
-                // alias
+                // keystore: normal
+                val ksNameLen = buf.get().toInt()
+                buf.position(buf.position() + ksNameLen)
+                val ksLen = readPartMarker(buf)
+                val ksBytes = ByteArray(ksLen); buf.get(ksBytes)
+                // alias: normal
                 val aliasNameLen = buf.get().toInt()
-                val aliasLen = buf.int
+                buf.position(buf.position() + aliasNameLen)
+                val aliasLen = readPartMarker(buf)
                 val aliasBytes = ByteArray(aliasLen); buf.get(aliasBytes)
                 val alias = String(aliasBytes, Charsets.UTF_8)
-                // passwordRef
-                val passwordNameLen = buf.get().toInt()
-                val passwordRef = if (passwordNameLen == -1) {
-                    val refIdLen = buf.get().toInt()
-                    val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                    LinkedSecretRef(CredentialsId.from(String(refIdBytes, Charsets.UTF_8)))
-                } else null
-                dev.rubentxu.pipeline.v2.domain.credentials.Certificate(id, CredentialScope.GLOBAL, keystoreBytes, passwordRef, alias.ifEmpty { null })
+                // password: linked-ref or absent
+                val pwNameLen = buf.get().toInt()
+                buf.position(buf.position() + pwNameLen)
+                val pwMarker = readPartMarker(buf)
+                val passwordRef = when (pwMarker) {
+                    0xFFFFFFFF.toInt() -> {
+                        val refIdLen = buf.int
+                        val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
+                        LinkedSecretRef(CredentialsId.from(String(refIdBytes, Charsets.UTF_8)))
+                    }
+                    0x00000000.toInt() -> null
+                    else -> throw SecretStoreTamperException("Certificate password must be linked-ref or absent")
+                }
+                dev.rubentxu.pipeline.v2.domain.credentials.Certificate(id, CredentialScope.GLOBAL, ksBytes, passwordRef, alias.ifEmpty { null })
             }
             KIND_ZIP -> {
                 val partCount = buf.get().toInt()
-                // metadata entry count
+                // _entryCount metadata: normal
                 val metaNameLen = buf.get().toInt()
-                val metaLen = buf.int
-                buf.get() // consume metadata content byte
+                buf.position(buf.position() + metaNameLen)
+                buf.int // skip count
+                buf.get() // consume metadata content byte (1)
                 val entries = mutableMapOf<String, ByteArray>()
                 repeat(partCount - 1) {
                     val entryNameLen = buf.get().toInt()
                     val entryNameBytes = ByteArray(entryNameLen); buf.get(entryNameBytes)
                     val entryName = String(entryNameBytes, Charsets.UTF_8)
-                    val entryLen = buf.int
+                    val entryLen = readPartMarker(buf)
                     val entryBytes = ByteArray(entryLen); buf.get(entryBytes)
                     entries[entryName] = entryBytes
                 }
@@ -1287,15 +1395,18 @@ class LocalSecretStore(
             }
             KIND_USERNAME_COLON_PASSWORD -> {
                 val partCount = buf.get().toInt()
-                // username
+                // username: normal
                 val userNameLen = buf.get().toInt()
-                val userNameBytes = ByteArray(userNameLen); buf.get(userNameBytes)
-                val user = String(userNameBytes, Charsets.UTF_8)
-                // password
+                buf.position(buf.position() + userNameLen)
+                val userLen = readPartMarker(buf)
+                val userBytes = ByteArray(userLen); buf.get(userBytes)
+                val username = String(userBytes, Charsets.UTF_8)
+                // password: normal
                 val passNameLen = buf.get().toInt()
-                val passLen = buf.int
+                buf.position(buf.position() + passNameLen)
+                val passLen = readPartMarker(buf)
                 val passBytes = ByteArray(passLen); buf.get(passBytes)
-                dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword(id, CredentialScope.GLOBAL, user, passBytes)
+                dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword(id, CredentialScope.GLOBAL, username, passBytes)
             }
             else -> throw SecretStoreTamperException("Unknown credential kind: $kindId")
         }

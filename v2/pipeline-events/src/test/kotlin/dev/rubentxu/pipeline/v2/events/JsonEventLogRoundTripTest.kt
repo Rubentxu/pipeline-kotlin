@@ -380,7 +380,7 @@ class JsonEventLogRoundTripTest {
             sequence = 20L,
             occurredAt = Instant.parse("2026-08-27T10:00:00Z"),
             credentialsId = CredentialsId("github-token"),
-            purpose = BoundPurpose.ENV,
+            purpose = BoundPurpose.API_KEY,
         )
         val encoded = JsonEventLog.encode(listOf(event))
         val decoded = JsonEventLog.decode(encoded)
@@ -401,7 +401,7 @@ class JsonEventLogRoundTripTest {
             sequence = 21L,
             occurredAt = Instant.parse("2026-08-27T10:00:01Z"),
             credentialsId = CredentialsId("deploy-key"),
-            purpose = BoundPurpose.ENV,
+            purpose = BoundPurpose.API_KEY,
             stepIndex = 3,
         )
         val encoded = JsonEventLog.encode(listOf(event))
@@ -432,8 +432,8 @@ class JsonEventLogRoundTripTest {
     @Test
     fun `EVT-CR-004 new variants carry no secret field`() {
         val events = listOf(
-            CredentialBound("cb-1", "cr", 1L, Instant.now(), CredentialsId("id"), BoundPurpose.ENV),
-            CredentialUsed("cu-1", "cr", 2L, Instant.now(), CredentialsId("id"), BoundPurpose.ENV, 0),
+            CredentialBound("cb-1", "cr", 1L, Instant.now(), CredentialsId("id"), BoundPurpose.API_KEY),
+            CredentialUsed("cu-1", "cr", 2L, Instant.now(), CredentialsId("id"), BoundPurpose.API_KEY, 0),
             CredentialUnbound("cun-1", "cr", 3L, Instant.now(), CredentialsId("id")),
         )
         val encoded = JsonEventLog.encode(events)
@@ -446,8 +446,8 @@ class JsonEventLogRoundTripTest {
     fun `EVT-CR-005 mixed event roundtrip preserves all 3 new variants`() {
         val events = listOf(
             RunStarted("rs-1", "mixed-run", 1L, Instant.now(), "/path/to/script.kts"),
-            CredentialBound("cb-1", "mixed-run", 2L, Instant.now(), CredentialsId("github"), BoundPurpose.ENV),
-            CredentialUsed("cu-1", "mixed-run", 3L, Instant.now(), CredentialsId("github"), BoundPurpose.ENV, 0),
+            CredentialBound("cb-1", "mixed-run", 2L, Instant.now(), CredentialsId("github"), BoundPurpose.API_KEY),
+            CredentialUsed("cu-1", "mixed-run", 3L, Instant.now(), CredentialsId("github"), BoundPurpose.API_KEY, 0),
             StepFinished("sf-1", "mixed-run", 4L, Instant.now(), 0, 0, "build", "sh"),
             CredentialUnbound("cun-1", "mixed-run", 5L, Instant.now(), CredentialsId("github")),
             RunFinished("rf-1", "mixed-run", 6L, Instant.now(), "SUCCESS", emptyList()),

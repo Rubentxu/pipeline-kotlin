@@ -104,21 +104,29 @@ class GitCheckoutExecutor(
             val sshPassphraseCred = gitCreds.sshPassphrase
             when {
                 stringCred != null -> {
-                    credentialsApplier.apply(stringCred)
+                    credentialsApplier.apply(stringCred, spec.url)
                     credentialsFilePath = credentialsApplier.credentialsFilePath()
                 }
                 userCred != null && passCred != null -> {
-                    credentialsApplier.apply(userCred, passCred)
+                    credentialsApplier.apply(userCred, passCred, spec.url)
                     gitConfigFilePath = credentialsApplier.gitConfigFilePath()
                 }
                 sshKeyCred != null -> {
-                    credentialsApplier.applySsh(sshKeyCred, sshPassphraseCred)
+                    credentialsApplier.applySsh(sshKeyCred, sshPassphraseCred, spec.url)
                 }
             }
         }
 
         return try {
-            executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha)
+            // Apply credentials BEFORE executeInternal so buildEnv() is available for all git spawns.
+            // buildEnv() must be called AFTER apply()/applySsh() which write the temp files.
+            val env = if (gitCreds != null) {
+                credentialsApplier.buildEnv()
+            } else {
+                emptyMap()
+            }
+
+            executeInternal(req, spec, workspace, gitDir, startMs, req.previousRemoteSha, env)
                 .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
@@ -147,13 +155,14 @@ class GitCheckoutExecutor(
         gitDir: Path,
         startMs: Long,
         previousRemoteSha: String?,
+        env: Map<String, String> = emptyMap(),
     ): Result<GitCheckoutResult> {
         val url = spec.url
         val branch = spec.branch
         val workspaceRoot = req.workspaceRoot
 
-        // Step 2: ls-remote to get remote SHA
-        val remoteShaResult = poll.execute(url, branch)
+        // Step 2: ls-remote to get remote SHA (with buildEnv wired into ProcessBuilder)
+        val remoteShaResult = poll.execute(url, branch, credentialsApplier)
         if (remoteShaResult.isFailure) {
             val durationMs = System.currentTimeMillis() - startMs
             val errorMsg = remoteShaResult.exceptionOrNull()?.message ?: "Unknown"
@@ -188,7 +197,7 @@ class GitCheckoutExecutor(
         // Step 1: Check if .git exists
         if (Files.exists(gitDir)) {
             // Existing checkout - check SHA equality
-            val currentSha = revParse(req, workspace, "HEAD")
+            val currentSha = revParse(req, workspace, "HEAD", env)
             if (currentSha != null && currentSha == remoteSha) {
                 // SHA equal - no-op
                 val durationMs = System.currentTimeMillis() - startMs
@@ -207,7 +216,7 @@ class GitCheckoutExecutor(
             }
 
             // SHA different - fetch and reset
-            val fetchResult = gitFetch(req, workspace)
+            val fetchResult = gitFetch(req, workspace, env)
             if (fetchResult.isFailure) {
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
@@ -223,7 +232,7 @@ class GitCheckoutExecutor(
                 return Result.failure(fetchResult.exceptionOrNull() ?: IllegalStateException("Fetch failed"))
             }
 
-            val resetResult = gitResetHard(req, workspace, remoteSha)
+            val resetResult = gitResetHard(req, workspace, remoteSha, env)
             if (resetResult.isFailure) {
                 val durationMs = System.currentTimeMillis() - startMs
                 emitEvent(req, GitCheckoutFailed(
@@ -261,7 +270,7 @@ class GitCheckoutExecutor(
 
         // No .git - clone
         Files.createDirectories(workspace)
-        val cloneResult = gitClone(req, url, branch, workspace)
+        val cloneResult = gitClone(req, url, branch, workspace, env)
         if (cloneResult.isFailure) {
             val durationMs = System.currentTimeMillis() - startMs
             emitEvent(req, GitCheckoutFailed(
@@ -278,7 +287,7 @@ class GitCheckoutExecutor(
         }
 
         // Get cloned SHA
-        val sha = revParse(req, workspace, "HEAD") ?: remoteSha
+        val sha = revParse(req, workspace, "HEAD", env) ?: remoteSha
 
         // Append changelog
         if (spec.changelog) {
@@ -372,10 +381,13 @@ class GitCheckoutExecutor(
         }
     }
 
-    private fun revParse(req: GitCheckoutRequest, workspace: Path, ref: String): String? {
+    private fun revParse(req: GitCheckoutRequest, workspace: Path, ref: String, env: Map<String, String>): String? {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "rev-parse", ref)
-            val process = ProcessBuilder(args).start()
+            guardProcessBuilderArgs(args)
+            val builder = ProcessBuilder(args)
+            env.forEach { (key, value) -> builder.environment()[key] = value }
+            val process = builder.start()
             val output = process.inputStream.bufferedReader().readText().trim()
             val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -388,10 +400,13 @@ class GitCheckoutExecutor(
         }
     }
 
-    private fun gitFetch(req: GitCheckoutRequest, workspace: Path): Result<Unit> {
+    private fun gitFetch(req: GitCheckoutRequest, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "fetch")
-            val process = ProcessBuilder(args).start()
+            guardProcessBuilderArgs(args)
+            val builder = ProcessBuilder(args)
+            env.forEach { (key, value) -> builder.environment()[key] = value }
+            val process = builder.start()
             val stdout = process.inputStream.bufferedReader().readText()
             val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -408,10 +423,13 @@ class GitCheckoutExecutor(
         }
     }
 
-    private fun gitResetHard(req: GitCheckoutRequest, workspace: Path, sha: String): Result<Unit> {
+    private fun gitResetHard(req: GitCheckoutRequest, workspace: Path, sha: String, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "reset", "--hard", sha)
-            val process = ProcessBuilder(args).start()
+            guardProcessBuilderArgs(args)
+            val builder = ProcessBuilder(args)
+            env.forEach { (key, value) -> builder.environment()[key] = value }
+            val process = builder.start()
             val stdout = process.inputStream.bufferedReader().readText()
             val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -428,10 +446,13 @@ class GitCheckoutExecutor(
         }
     }
 
-    private fun gitClone(req: GitCheckoutRequest, url: String, branch: String, workspace: Path): Result<Unit> {
+    private fun gitClone(req: GitCheckoutRequest, url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
-            val process = ProcessBuilder(args).start()
+            guardProcessBuilderArgs(args)
+            val builder = ProcessBuilder(args)
+            env.forEach { (key, value) -> builder.environment()[key] = value }
+            val process = builder.start()
             val stdout = process.inputStream.bufferedReader().readText()
             val stderr = process.errorStream.bufferedReader().readText()
             val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS * 2, TimeUnit.SECONDS)

@@ -89,16 +89,17 @@ Sources: `…/steps/git/`, `…/steps/workflow-scm-step/`
 | `git` | `git(url: String, branch: String = 'master', changelog: boolean = true, credentialsId: String = <empty>, poll: boolean = true)` | exactly 5 params, no more — advanced checkouts require `checkout`. branch must be local name (no `origin/`, tags, SHAs). F1 (url, branch, credentialsId), F2 (changelog, poll) |
 | `checkout` | `checkout(scm: SCM)` | one required param; `scm` is a nested choice over every installed SCM (`scmGit(...)`, `git`, `svn`, `github`, plus branch-source SCMs). The dominant real-world form is `checkout(scm)` inside multibranch pipelines (implicit `scm` variable). F1 |
 
-**v2 implementation (ML-R5 — L5):**
+**v2 implementation (ML-R6 — Full git auth parity):**
 - `GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir)` — DSL entry point
-- Supported auth at L5: `string` (→ `API_KEY` purpose via `GitCredentials.string`), `usernamePassword` (→ `GitCredentials.user/pass`)
-- Deferred to ML-R5.1: `sshUserPrivateKey`, `depth`, `shallowClone`, Subversion/Mercurial SCMs
-- Implementation: `GitCheckoutExecutor` (CLI-git, not JGit — F-ARCH-L5-001); `GitPollExecutor` for sync ls-remote; `GitChangelogWriter` for plain-text changelog
+- Supported auth at ML-R6: `SecretText` (→ `API_KEY` purpose via helper script), `UsernamePassword` (→ `GitCredentials.user/pass`), `SshPrivateKey` (→ SSH channel via `GIT_SSH_COMMAND`) — IMPLEMENTED ML-R6
+- Deferred to ML-R6.1: `depth`, `shallowClone`, Subversion/Mercurial SCMs, `awsCredentials` (no Jenkins §1.6 binding counterpart)
+- Implementation: `GitCheckoutExecutor` (CLI-git, not JGit — F-ARCH-L5-001); `GitCredentialAdapter` for credential-helper + SSH channel; `GitPollExecutor` for sync ls-remote; `GitChangelogWriter` for plain-text changelog
 - SHA-equality idempotency: <2s no-op when remote SHA equals local HEAD
-- Credentials never enter argv — temp `.git-credentials` (0600) + `.gitconfig` (0600) via `GitCredentialsApplier`, wiped in `finally`
+- Credentials never enter argv — answer-file pattern + per-host config sections (no host literals), wiped in `finally`
 - Argv guard fail-closed: rejects `extraHeader`/`Authorization` substrings in process args
 - Events: `GitCheckoutStarted`, `GitPollChanged`, `GitCheckoutCompleted`, `GitCheckoutFailed`
-- See [[ADR-0050-checkout-git-step]] §Jenkins Mapping Table
+- Provider-agnostic: git's own credential protocol replaces hardcoded `https://github.com` literals
+- See [[ADR-0051-credentials-parity]] §D6 Jenkins Mapping Table
 
 ### 1.6 credentials-binding — v728.v902a_273b_8947 (198k installs)
 Source: `…/steps/credentials-binding/`
@@ -117,12 +118,20 @@ Source: `…/steps/credentials-binding/`
 
 **No `mask` binding exists.** Masking of bound variables in build logs is automatic behavior of the plugin; there is no `mask` parameter on any core binding.
 
-**v2 implementation (ML-R4 — L4):**
-- `withCredentials(id: String, purpose: BoundPurpose, block: () -> T)` — DSL entry point
-- Supported bindings at L4: `string` (→ `API_KEY` purpose), `usernamePassword` (→ `USERNAME_PASSWORD` purpose)
-- Deferred to ML-R4.1: `sshUserPrivateKey`, `file`, `certificate`, `zip`, and all plugin-contributed bindings
-- Error messages match Jenkins verbatim: missing ID → `"Could not find credentials entry with ID 'xxx'"`; type mismatch → `"Credentials 'xxx' is of type 'SshCredentials' where 'StringCredentials' was expected."`
-- See [[ADR-0049-credentials-local]] §D6
+**v2 implementation (ML-R6 — Full Jenkins §1.6 parity):**
+- `withCredentials(bindings: List<CredentialsBinding>, block: (List<MaterializedCredential>) -> T)` — ML-R6 DSL entry point
+- All 7 Jenkins §1.6 core bindings IMPLEMENTED (ML-R6):
+  - `string` (→ `API_KEY` purpose)
+  - `usernamePassword` (→ `USERNAME_PASSWORD` purpose)
+  - `sshUserPrivateKey` (→ `SSH_KEY` purpose) — IMPLEMENTED ML-R6
+  - `file` (→ `FILE` purpose) — IMPLEMENTED ML-R6
+  - `certificate` (→ `CERTIFICATE` purpose) — IMPLEMENTED ML-R6
+  - `zip` (→ `ZIP` purpose) — IMPLEMENTED ML-R6
+  - `usernameColonPassword` (→ `USERNAME_COLON_PASSWORD` purpose) — IMPLEMENTED ML-R6
+- Deferred to ML-R6.1: `awsCredentials` (no Jenkins §1.6 binding counterpart; design candidate)
+- Contributed bindings via `ContributedBindingFactory` SPI — placeholder, shipped empty
+- Error messages match Jenkins verbatim: missing ID → `"Could not find credentials entry with ID 'xxx'"`; type mismatch → `"Credential 'xxx' is of type 'actual' where 'expected' was expected."`
+- See [[ADR-0051-credentials-parity]]
 
 ### 1.7 junit — v1424.vc64a_edde7777 (199k installs)
 Source: `…/steps/junit/`

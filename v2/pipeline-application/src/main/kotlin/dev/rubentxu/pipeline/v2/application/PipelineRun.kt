@@ -904,7 +904,7 @@ private suspend fun executeDurableStepImpl(
                         val credentialEnv = mutableMapOf<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>()
                         for (binding in step.bindings) {
                             try {
-                                val handle = secretStore.get(binding.credentialsId)
+                                val handle = secretStore.getAsSecretHandle(binding.credentialsId)
                                 activeHandles.add(handle)
                                 when (binding.kind) {
                                     StepSpec.CredentialsBinding.Kind.STRING -> {

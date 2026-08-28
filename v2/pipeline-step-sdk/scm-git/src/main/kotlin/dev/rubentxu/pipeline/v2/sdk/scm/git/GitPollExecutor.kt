@@ -21,14 +21,21 @@ class GitPollExecutor(
      *
      * @param url Repository URL (https or file://)
      * @param branch Branch name
+     * @param credentialsApplier GitCredentialsApplier for env injection (may be null — no-op)
      * @return Result containing SHA string, or failure classification
      */
-    fun execute(url: String, branch: String): Result<String> {
+    fun execute(url: String, branch: String, credentialsApplier: GitCredentialsApplier? = null): Result<String> {
         return try {
             val args = listOf("git", "ls-remote", url, branch)
-            val process = ProcessBuilder(args)
+            val builder = ProcessBuilder(args)
                 .redirectErrorStream(true)
-                .start()
+
+            // Wire buildEnv() into ProcessBuilder.environment() — GIT_CONFIG_GLOBAL, GIT_SSH_COMMAND, GIT_ASKPASS
+            credentialsApplier?.buildEnv()?.forEach { (key, value) ->
+                builder.environment()[key] = value
+            }
+
+            val process = builder.start()
 
             val output = process.inputStream.bufferedReader().readText()
             val exited = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)

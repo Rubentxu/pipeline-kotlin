@@ -310,7 +310,20 @@ class UatLocal005GitAuthCanaryRoundGateTest {
             store[id] = SecretHandle.plain(String(bytes, Charsets.UTF_8))
         }
 
-        override fun get(id: CredentialsId): SecretHandle {
+        override fun get(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
+            val handle = store[id] ?: throw IllegalStateException("Credential not found: ${id.value}")
+            return dev.rubentxu.pipeline.v2.domain.credentials.SecretText(
+                id = id,
+                scope = dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL,
+                bytes = handle.unwrap()
+            )
+        }
+
+        override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
+            return store[id] ?: throw IllegalStateException("Credential not found: ${id.value}")
+        }
+
+        override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
             return store[id] ?: throw IllegalStateException("Credential not found: ${id.value}")
         }
 
@@ -320,8 +333,20 @@ class UatLocal005GitAuthCanaryRoundGateTest {
             store.remove(id)
         }
 
-        override fun rotate(id: CredentialsId, newBytes: ByteArray) {
+        override fun rotate(id: CredentialsId, credential: dev.rubentxu.pipeline.v2.domain.credentials.Credential) {
+            val secretText = credential as? dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+                ?: throw IllegalArgumentException("Only SecretText supported in test")
+            store[id] = SecretHandle.secret(secretText.bytes)
+        }
+
+        override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
             store[id] = SecretHandle.plain(String(newBytes, Charsets.UTF_8))
+        }
+
+        override fun add(id: CredentialsId, credential: dev.rubentxu.pipeline.v2.domain.credentials.Credential) {
+            val secretText = credential as? dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+                ?: throw IllegalArgumentException("Only SecretText supported in test")
+            store[id] = SecretHandle.secret(secretText.bytes)
         }
 
         override fun close() {

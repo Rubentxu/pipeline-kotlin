@@ -16,6 +16,7 @@ kotlin {
 dependencies {
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(project(":pipeline-binding-factory"))
 }
 
 tasks.test {
@@ -38,6 +39,7 @@ val v2Modules = listOf(
     "pipeline-step-sdk:api",
     "pipeline-step-sdk:processor",
     "pipeline-step-sdk:runtime",
+    "pipeline-binding-factory",
 )
 
 // Map module names to project paths
@@ -52,6 +54,7 @@ val v2ModulePaths = mapOf(
     "pipeline-step-sdk:api" to ":pipeline-step-sdk:api",
     "pipeline-step-sdk:processor" to ":pipeline-step-sdk:processor",
     "pipeline-step-sdk:runtime" to ":pipeline-step-sdk:runtime",
+    "pipeline-binding-factory" to ":pipeline-binding-factory",
 )
 
 gradle.allprojects {

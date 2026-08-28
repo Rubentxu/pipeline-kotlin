@@ -1137,18 +1137,8 @@ private suspend fun executeDurableStepImpl(
                 "success"
             }
             is StepSpec.WithEnv -> {
-                // Parse "VAR=value" / "PATH+X=/dir" overrides into Map<String, String>
-                val overridesMap = mutableMapOf<String, String>()
-                for (entry in step.overrides) {
-                    val eqIdx = entry.indexOf('=')
-                    if (eqIdx > 0) {
-                        val key = entry.substring(0, eqIdx)
-                        val value = entry.substring(eqIdx + 1)
-                        overridesMap[key] = value
-                    }
-                }
-                // Apply EnvModel PATH+= prepend semantics
-                val effectiveEnv = EnvModel.apply(overridesMap)
+                // overrides is already a Map<String, String> from StepSpec
+                val effectiveEnv = EnvModel.apply(step.overrides)
                 // Merge with existing stageEnvironment
                 val mergedEnv = (stageEnvironment ?: emptyMap()).toMutableMap()
                 mergedEnv.putAll(effectiveEnv)
@@ -1195,8 +1185,8 @@ private suspend fun executeDurableStepImpl(
                         stageName = StageName(stageName),
                         workspace = resolver.resolve(stageName, stageIndex),
                         pattern = step.artifacts,
-                        allowEmptyArchive = step.allowEmptyArchive,
-                        excludes = emptyList(),
+                        allowEmptyArchive = step.allowEmptyArchive ?: false,
+                        excludes = step.excludes.split(",").map { it.trim() }.filter { it.isNotEmpty() },
                     )
                     eventSink.append(
                         ArtifactArchived(
@@ -1218,7 +1208,7 @@ private suspend fun executeDurableStepImpl(
                     )
                     "success"
                 } catch (e: EmptyArchiveException) {
-                    if (!step.allowEmptyArchive) {
+                    if (step.allowEmptyArchive != true) {
                         return "failure"
                     }
                     eventSink.append(
@@ -1388,13 +1378,13 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
             "file" to JsonPrimitive(step.file),
         )
         is StepSpec.WithEnv -> mapOf(
-            "overrides" to JsonArray(step.overrides.map { JsonPrimitive(it) }),
+            "overrides" to JsonArray(step.overrides.map { (k, v) -> JsonObject(mapOf("key" to JsonPrimitive(k), "value" to JsonPrimitive(v))) }),
         )
         is StepSpec.ArchiveArtifacts -> mapOf(
             "artifacts" to JsonPrimitive(step.artifacts),
-            "allowEmptyArchive" to JsonPrimitive(step.allowEmptyArchive),
-            "fingerprint" to JsonPrimitive(step.fingerprint),
-            "onlyIfSuccessful" to JsonPrimitive(step.onlyIfSuccessful),
+            "allowEmptyArchive" to JsonPrimitive(step.allowEmptyArchive ?: false),
+            "excludes" to JsonPrimitive(step.excludes),
+            "fingerprint" to JsonPrimitive(step.fingerprint ?: false),
         )
     }
 }
@@ -2351,17 +2341,8 @@ private suspend fun walkBranchDurable(
                 }
             }
             is StepSpec.WithEnv -> {
-                // Apply env overrides using EnvModel and execute nested steps directly in branch context.
-                val overridesMap = mutableMapOf<String, String>()
-                for (entry in step.overrides) {
-                    val eqIdx = entry.indexOf('=')
-                    if (eqIdx > 0) {
-                        val key = entry.substring(0, eqIdx)
-                        val value = entry.substring(eqIdx + 1)
-                        overridesMap[key] = value
-                    }
-                }
-                val effectiveEnv = EnvModel.apply(overridesMap)
+                // overrides is already a Map<String, String> from StepSpec
+                val effectiveEnv = EnvModel.apply(step.overrides)
                 val mergedEnv = (stageEnvironment ?: emptyMap()).toMutableMap()
                 mergedEnv.putAll(effectiveEnv)
                 // Execute each nested step directly in branch context with the merged env

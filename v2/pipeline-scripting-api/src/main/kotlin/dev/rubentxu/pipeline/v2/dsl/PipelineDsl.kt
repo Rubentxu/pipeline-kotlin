@@ -230,8 +230,6 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val file: String,
         val text: String,
         val encoding: String = "UTF-8",
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "writeFile"
         override val type: String get() = "writeFile"
@@ -252,8 +250,6 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     data class ReadFile(
         val file: String,
         val encoding: String = "UTF-8",
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "readFile"
         override val type: String get() = "readFile"
@@ -272,8 +268,6 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      */
     data class FileExists(
         val file: String,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "fileExists"
         override val type: String get() = "fileExists"
@@ -293,10 +287,8 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * @param steps Nested block payload — steps executed with the overridden env
      */
     data class WithEnv(
-        val overrides: List<String>,
+        val overrides: Map<String, String>,
         val steps: List<StepSpec>,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
         override val name: String get() = "withEnv"
         override val type: String get() = "withEnv"
@@ -319,11 +311,9 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      */
     data class ArchiveArtifacts(
         val artifacts: String,
-        val allowEmptyArchive: Boolean = false,
-        val fingerprint: Boolean = false,
-        val onlyIfSuccessful: Boolean = false,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
+        val allowEmptyArchive: Boolean? = false,
+        val excludes: String = "",
+        val fingerprint: Boolean? = false,
     ) : StepSpec {
         override val name: String get() = "archiveArtifacts"
         override val type: String get() = "archiveArtifacts"
@@ -669,12 +659,13 @@ class StageScope(private val stageName: String) {
             is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
             is StepSpec.WithCredentialsBlock -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Checkout -> currentStep.copy(retry = retryPolicy)
-            // L7 Jenkins top-steps (ML-R7)
-            is StepSpec.WriteFile -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.ReadFile -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.FileExists -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.WithEnv -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.ArchiveArtifacts -> currentStep.copy(retry = retryPolicy)
+            // L7 Jenkins top-steps (ML-R7): retry/timeout not supported per Jenkins catalog
+            // These steps use stage-level retry via options { retry(count) }
+            is StepSpec.WriteFile -> currentStep
+            is StepSpec.ReadFile -> currentStep
+            is StepSpec.FileExists -> currentStep
+            is StepSpec.WithEnv -> currentStep
+            is StepSpec.ArchiveArtifacts -> currentStep
         }
     }
 
@@ -768,7 +759,12 @@ class StageScope(private val stageName: String) {
     fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
         val inner = StageScope(stageName)
         inner.block()
-        steps.add(StepSpec.WithEnv(overrides = overrides, steps = inner.steps.toList()))
+        // Convert List<String> ("VAR=value") to Map<String, String> for StepSpec.WithEnv
+        val overridesMap = overrides.associate {
+            val parts = it.split("=", limit = 2)
+            parts[0] to parts.getOrElse(1) { "" }
+        }
+        steps.add(StepSpec.WithEnv(overrides = overridesMap, steps = inner.steps.toList()))
     }
 
     /**
@@ -784,30 +780,29 @@ class StageScope(private val stageName: String) {
     /**
      * Archives artifacts for server-side retention.
      *
-     * Jenkins verbatim: `archiveArtifacts(artifacts: String,
-     *                                   allowEmptyArchive: Boolean = false,
-     *                                   fingerprint: Boolean = false,
-     *                                   onlyIfSuccessful: Boolean = false)`
+     * Jenkins verbatim (catalog §1.1 line 45):
+     * `archiveArtifacts(artifacts: String, allowEmptyArchive: Boolean = false,
+     *                  excludes: String = "", fingerprint: Boolean = false)`
      *
-     * F1: artifacts required. F2: allowEmptyArchive, fingerprint, onlyIfSuccessful.
+     * F1: artifacts required. F2: allowEmptyArchive, excludes, fingerprint.
      *
      * @param artifacts Ant-style glob patterns (comma-separated)
      * @param allowEmptyArchive If true, empty archive is not a failure (default false)
-     * @param fingerprint If true, record fingerprints (F2/deferred to L7.1)
-     * @param onlyIfSuccessful If true, archive only on success (F2/deferred to L7.1)
+     * @param excludes Ant-style patterns to exclude from archive
+     * @param fingerprint If true, record fingerprints (F2)
      */
     fun archiveArtifacts(
         artifacts: String,
         allowEmptyArchive: Boolean = false,
+        excludes: String = "",
         fingerprint: Boolean = false,
-        onlyIfSuccessful: Boolean = false,
     ) {
         steps.add(
             StepSpec.ArchiveArtifacts(
                 artifacts = artifacts,
                 allowEmptyArchive = allowEmptyArchive,
+                excludes = excludes,
                 fingerprint = fingerprint,
-                onlyIfSuccessful = onlyIfSuccessful,
             )
         )
     }

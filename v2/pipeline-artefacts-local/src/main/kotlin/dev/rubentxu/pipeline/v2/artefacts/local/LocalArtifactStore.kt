@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.events.ArtifactEntry
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
@@ -76,7 +77,9 @@ class LocalArtifactStore(
         excludes: List<String> = emptyList(),
     ): ArchiveResult {
         val dir = stageDir(runId, stageName)
-        Files.createDirectories(dir)
+        assertPosixSupported(controlRoot)
+        Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(
+            PosixFilePermissions.fromString("rwx------")))
 
         // Ensure workspace exists before walking — Jenkins semantics: archive matches
         // files in the current workspace. If workspace was never created (no steps
@@ -120,6 +123,8 @@ class LocalArtifactStore(
                 }
             }
         }
+
+        Files.setPosixFilePermissions(archivePath, PosixFilePermissions.fromString("rw-------"))
 
         return ArchiveResult(
             archivePath = archivePath,
@@ -169,3 +174,16 @@ data class RunId(val value: String)
  * Stage name — domain value type.
  */
 data class StageName(val value: String)
+
+/**
+ * Thrown when archive is invoked on a filesystem that does not support POSIX permissions.
+ */
+class LocalArtifactStorePosixUnsupportedException(message: String) : RuntimeException(message)
+
+private fun assertPosixSupported(root: Path) {
+    if (!root.fileSystem.supportedFileAttributeViews().contains("posix")) {
+        throw LocalArtifactStorePosixUnsupportedException(
+            "POSIX file attributes not supported on this filesystem"
+        )
+    }
+}

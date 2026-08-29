@@ -419,4 +419,216 @@ class UatLocal010SmokeE2ESandboxTest {
             "Two parallel runs must produce distinct SANDBOX_RUN_ID. " +
             "Got id1=$id1, id2=$id2. SC-010-10 FAILED: IDs are identical.")
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════
+    // T-07 — Online scenarios (V2_SMOKE_E2E_OK gate)
+    // ═══════════════════════════════════════════════════════════════════════════════════
+
+    // ─── SC-010-01: picocli Gradle wrapper builds ──────────────────────────────────
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-01 picocli gradle assemble exits 0 with ArtifactArchived`() {
+        assumeLinux()
+
+        val script = tempDir.resolve("sc-010-01.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("build") {
+                        sh("git clone --depth 1 https://github.com/remkop/picocli.git . && git fetch --depth 1 origin $gradle_picocli && git checkout $gradle_picocli")
+                        sh("./gradlew assemble --no-daemon")
+                        archiveArtifacts(artifacts = "build/libs/*.jar", allowEmptyArchive = false)
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertEquals(0, result.exitCode,
+            "Runner must exit 0. stdout: ${result.stdout}")
+
+        val archiveEvents = result.events.filterIsInstance<ArtifactArchived>()
+        assertTrue(archiveEvents.isNotEmpty(),
+            "ArtifactArchived must be emitted. Events: ${result.events.map { it::class.simpleName }}")
+        val jars = archiveEvents.flatMap { it.files }.filter { it.relPath.endsWith(".jar") }
+        assertTrue(jars.isNotEmpty(),
+            "At least one .jar must be archived. Files: ${archiveEvents.flatMap { it.files }.map { it.relPath }}")
+    }
+
+    // ─── SC-010-02: jcommander Maven wrapper builds ─────────────────────────────────
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-02 jcommander mvnw package exits 0 with ArtifactArchived`() {
+        assumeLinux()
+
+        val script = tempDir.resolve("sc-010-02.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("build") {
+                        sh("git clone https://github.com/cbeust/jcommander.git . && git checkout $maven_jcommander")
+                        sh("./mvnw -B package -DskipTests")
+                        archiveArtifacts(artifacts = "target/*.jar", allowEmptyArchive = false)
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertEquals(0, result.exitCode,
+            "Runner must exit 0. stdout: ${result.stdout}")
+
+        val archiveEvents = result.events.filterIsInstance<ArtifactArchived>()
+        assertTrue(archiveEvents.isNotEmpty(),
+            "ArtifactArchived must be emitted. Events: ${result.events.map { it::class.simpleName }}")
+        val jars = archiveEvents.flatMap { it.files }.filter { it.relPath.endsWith(".jar") }
+        assertTrue(jars.isNotEmpty(),
+            "At least one .jar from target/ must be archived. Files: ${archiveEvents.flatMap { it.files }.map { it.relPath }}")
+    }
+
+    // ─── SC-010-03: jcommander mvnw test + JUnit XML archive ─────────────────────
+    // NOTE: vavr@0.10.3 has Maven wrappers (not Gradle), so we use jcommander for
+    // the "Gradle test + JUnit XML" slot (both produce test-results XML archives).
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-03 jcommander mvnw test exits 0 with test-results xml archived`() {
+        assumeLinux()
+
+        val script = tempDir.resolve("sc-010-03.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        sh("git clone https://github.com/cbeust/jcommander.git . && git checkout $maven_jcommander")
+                        sh("./mvnw test -B")
+                        archiveArtifacts(artifacts = "**/test-results/**/*.xml", allowEmptyArchive = false)
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertEquals(0, result.exitCode,
+            "Runner must exit 0. stdout: ${result.stdout}")
+
+        val archiveEvents = result.events.filterIsInstance<ArtifactArchived>()
+        assertTrue(archiveEvents.isNotEmpty(),
+            "ArtifactArchived must be emitted. Events: ${result.events.map { it::class.simpleName }}")
+        val xmls = archiveEvents.flatMap { it.files }.filter { it.relPath.endsWith(".xml") }
+        assertTrue(xmls.isNotEmpty(),
+            "At least one test-results .xml must be archived. Files: ${archiveEvents.flatMap { it.files }.map { it.relPath }}")
+    }
+
+    // ─── SC-010-04: jansi writeFile + mvnw + archive round-trip ──────────────────
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-04 jansi writeFile mvnw archive round-trip exits 0`() {
+        assumeLinux()
+
+        val script = tempDir.resolve("sc-010-04.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("build") {
+                        sh("git clone https://github.com/fusesource/jansi.git . && git checkout $maven_jansi")
+                        writeFile(file = "build-info.txt", text = "version=1.0")
+                        sh("./mvnw -B package -DskipTests")
+                        archiveArtifacts(artifacts = "build-info.txt", allowEmptyArchive = false)
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertEquals(0, result.exitCode,
+            "Runner must exit 0. stdout: ${result.stdout}")
+
+        val fileWrittenEvents = result.events.filterIsInstance<FileWritten>()
+        assertTrue(fileWrittenEvents.isNotEmpty(),
+            "FileWritten must be emitted. Events: ${result.events.map { it::class.simpleName }}")
+        val buildInfoWritten = fileWrittenEvents.any { it.path.fileName?.toString()?.contains("build-info.txt") == true }
+        assertTrue(buildInfoWritten,
+            "build-info.txt must be written. FileWritten paths: ${fileWrittenEvents.map { it.path }}")
+
+        val archiveEvents = result.events.filterIsInstance<ArtifactArchived>()
+        assertTrue(archiveEvents.isNotEmpty(),
+            "ArtifactArchived must be emitted. Events: ${result.events.map { it::class.simpleName }}")
+        val buildInfoArchived = archiveEvents.flatMap { it.files }
+            .any { it.relPath.contains("build-info.txt") }
+        assertTrue(buildInfoArchived,
+            "build-info.txt must be in archive. Files: ${archiveEvents.flatMap { it.files }.map { it.relPath }}")
+    }
+
+    // ─── SC-010-06: idempotent re-run — clone → no-op ─────────────────────────────
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-06 second picocli run is no-op within 2 seconds`() {
+        assumeLinux()
+
+        val script = tempDir.resolve("sc-010-06.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("build") {
+                        sh("git clone https://github.com/remkop/picocli.git . && git checkout $gradle_picocli")
+                        sh("./gradlew assemble --no-daemon")
+                        archiveArtifacts(artifacts = "build/libs/*.jar", allowEmptyArchive = false)
+                    }
+                }
+            }
+        """.trimIndent())
+
+        // First run
+        val result1 = runPipeline(script)
+        assertEquals(0, result1.exitCode, "First run must exit 0. stdout: ${result1.stdout}")
+
+        // Second run — same control root (tempDir reused), should be no-op
+        val t0 = System.currentTimeMillis()
+        val result2 = runPipeline(script)
+        val elapsed = System.currentTimeMillis() - t0
+
+        assertEquals(0, result2.exitCode, "Second run must exit 0. stdout: ${result2.stdout}")
+        assertTrue(elapsed <= 2000,
+            "Second run must complete in ≤2 s (no-op classification). Took ${elapsed} ms. " +
+            "This suggests the checkout was not classified as no-op. stdout: ${result2.stdout}")
+    }
+
+    // ─── SC-010-08: offline canary — warm cache satisfies build ──────────────────
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-08 picocli offline re-run exits 0 with warm cache`() {
+        assumeLinux()
+
+        val script = tempDir.resolve("sc-010-08.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("build") {
+                        sh("git clone https://github.com/remkop/picocli.git . && git checkout $gradle_picocli")
+                        sh("./gradlew assemble --no-daemon --offline")
+                        archiveArtifacts(artifacts = "build/libs/*.jar", allowEmptyArchive = false)
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertEquals(0, result.exitCode,
+            "Offline run must exit 0 when cache is warm. stdout: ${result.stdout}")
+
+        val archiveEvents = result.events.filterIsInstance<ArtifactArchived>()
+        assertTrue(archiveEvents.isNotEmpty(),
+            "ArtifactArchived must be emitted on offline run. Events: ${result.events.map { it::class.simpleName }}")
+    }
 }

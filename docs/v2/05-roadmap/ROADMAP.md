@@ -261,7 +261,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 4. ✅ L4 — credentials provider local + secret redaction (ML-R4, ADR-0049)
 5. ✅ L5 — `checkout`/git step (ML-R5, ADR-0050)
 6. ⬜ L6 — Jenkins top steps (deferred)
-7. ⬜ L7 — smoke E2E (deferred)
+7. ✅ L7 — smoke E2E (ML-R8, ADR-0053)
 
 ### Exit/UAT
 - UAT-LOCAL-001: kill del runner **durante** `sh` → resume SIN re-ejecución

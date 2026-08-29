@@ -121,7 +121,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **L-04** credentials provider local + redacción secretos en logs/events/journal. **Gate: UAT-LOCAL-004 (partial UAT-SEC-001).**
 - **L-05** `checkout`/git step. **Gate: UAT-LOCAL-005.**
 - **L-06** steps ecosistema: writeFile/readFile, archiveArtifacts mínimo, wrappers maven/gradle.
-- **L-07** smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.**
+- **L-07** ✅ CLOSED — smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.**
 - Carry-in: FIND-M4R1-016/022 (roll-forward de M4-R2) si aplican al tocar protocol/step-sdk.
 
 ## Epic E6 — Kubernetes/Credentials

@@ -81,10 +81,10 @@ class UatLocal005CorpusUntouchedTest {
     }
 
     /**
-     * CP-002: corpus has exactly 9 files (6 original + 3 new ML-R7 fixtures).
+     * CP-002: corpus has exactly 10 files (6 original + 3 new ML-R7 fixtures + L7 smoke).
      */
     @Test
-    fun `CP-002 corpus has exactly 9 fixture files`(@TempDir tempDir: Path) {
+    fun `CP-002 corpus has exactly 10 fixture files`(@TempDir tempDir: Path) {
         val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
         val compatibilityDir = projectRoot.resolve("v2/compatibility")
 
@@ -93,19 +93,20 @@ class UatLocal005CorpusUntouchedTest {
             .sorted()
             .toList()
 
-        assertEquals(9, pipelineFiles.size,
-            "Corpus must have exactly 9 pipeline fixtures. Found: " +
+        assertEquals(10, pipelineFiles.size,
+            "Corpus must have exactly 10 pipeline fixtures. Found: " +
             pipelineFiles.joinToString { it.fileName.toString() })
 
-        // Verify the 3 new ML-R7 fixtures exist
+        // Verify the 4 new ML-R7 + L7 fixtures exist
         val newFiles = setOf(
             "07-writeFile-readFile.pipeline.kts",
             "08-withEnv-pipeline.pipeline.kts",
-            "09-archive-artefacts.pipeline.kts"
+            "09-archive-artefacts.pipeline.kts",
+            "10-smoke-e2e.pipeline.kts"
         )
         val actualNames = pipelineFiles.map { it.fileName.toString() }.toSet()
         assertTrue(actualNames.containsAll(newFiles),
-            "New ML-R7 fixtures must exist: $newFiles. Found: $actualNames")
+            "New ML-R7/L7 fixtures must exist: $newFiles. Found: $actualNames")
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

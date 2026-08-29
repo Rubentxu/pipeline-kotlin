@@ -631,4 +631,86 @@ class UatLocal010SmokeE2ESandboxTest {
         assertTrue(archiveEvents.isNotEmpty(),
             "ArtifactArchived must be emitted on offline run. Events: ${result.events.map { it::class.simpleName }}")
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════
+    // T-08 — Canary round-gate + regression
+    // ═══════════════════════════════════════════════════════════════════════════════════
+
+    // ─── SC-010-11: regression gate — all UAT-LOCAL families still green ─────────
+
+    @Test
+    fun `SC-010-11 regression gate — UAT-LOCAL families still pass`() {
+        assumeLinux()
+
+        // Simple sh smoke — same pattern as UatLocal005RegressionGateTest RG-001
+        val script = tempDir.resolve("sc-010-11.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("test") {
+                        sh("echo smoke-regression-gate")
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        val runFinished = result.events.filterIsInstance<dev.rubentxu.pipeline.v2.events.RunFinished>().firstOrNull()
+        assertNotNull(runFinished, "RunFinished must be present. Events: ${result.events.map { it::class.simpleName }}")
+        assertEquals("success", runFinished!!.outcome,
+            "Regression smoke: pipeline must succeed. Events: ${result.events.map { it::class.simpleName }}")
+    }
+
+    // ─── SC-010-12: __artefact_canary__ zero occurrences round-gate ─────────────────
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "V2_SMOKE_E2E_OK", matches = "true")
+    fun `SC-010-12 artefact canary zero occurrences in output`() {
+        assumeLinux()
+
+        val canary = "__artefact_canary__"
+
+        // Pipeline that writes, archives, and echoes the canary value
+        val script = tempDir.resolve("sc-010-12.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("canary") {
+                        writeFile(file = "settings.xml", text = "API_KEY=$canary")
+                        archiveArtifacts(artifacts = "settings.xml", allowEmptyArchive = false)
+                        withEnv(["PATH+HACK=/hack/with/$canary"]) {
+                            sh("echo ${'$'}PATH")
+                        }
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        assertEquals(0, result.exitCode,
+            "Pipeline should exit 0. stdout: ${result.stdout}")
+
+        // Encode all events to JSON and scan for canary
+        val eventsJson = JsonEventLog.encode(result.events)
+
+        // Check 1: events JSON — no literal canary
+        assertFalse(eventsJson.contains(canary),
+            "Canary must NOT appear in events JSON. Events: ${result.events.map { it::class.simpleName }}")
+
+        // Check 2: events JSON — no base64 std encoding
+        val canaryBase64 = java.util.Base64.getEncoder().encodeToString(canary.toByteArray())
+        assertFalse(eventsJson.contains(canaryBase64),
+            "Canary (base64 std) must NOT appear in events JSON. Base64: $canaryBase64")
+
+        // Check 3: events JSON — no base64 url-safe encoding
+        val canaryBase64Url = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(canary.toByteArray())
+        assertFalse(eventsJson.contains(canaryBase64Url),
+            "Canary (base64 url-safe) must NOT appear in events JSON. Base64Url: $canaryBase64Url")
+
+        // Check 4: stdout — no literal canary
+        assertFalse(result.stdout.contains(canary),
+            "Canary must NOT appear in stdout. stdout: ${result.stdout.take(500)}")
+    }
 }

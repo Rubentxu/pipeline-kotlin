@@ -231,3 +231,72 @@ This is the **only** CI change required to activate the 6 DISABLED online scenar
 ## Changelog
 
 - 2026-08-29T00:00:00Z | created | status=proposed | valid_from=2026-08-29 | valid_to=∞
+
+---
+
+## Appendix: §Subject Pinning Protocol (HARDENED, applied 2026-08-29)
+
+### The Problem
+
+Design §D9 originally claimed: "SHAs verified via `git ls-remote <url> HEAD` on 2026-08-29;
+pinning by SHA = immutable." This only confirmed the SHA exists as a branch tip — it did NOT
+confirm the wrapper file (`mvnw`/`gradlew`) exists at that SHA.
+
+Evidence: jcommander@e9599fe has no `./mvnw` (git log --all -- mvnw → empty).
+fusesource/jansi@c10d43f no longer exists on upstream (force-pushed history).
+
+### HARDENED 2-Gate Protocol
+
+Any subject re-pin MUST pass BOTH gates before being committed:
+
+**Gate A — Reachability**: `git ls-remote <url>` shows the repo is accessible. The SHA
+must be reachable via `git fetch <sha>` or `git clone + git checkout <sha>`.
+
+**Gate B — Wrapper Presence**: Tree probe at the pinned SHA shows the wrapper file
+(`mvnw`/`gradlew`) is present, via:
+- **Option 1 (preferred)**: GitHub API `GET /repos/:owner/:repo/git/trees/<sha>?recursive=1`
+  filtered to `mvnw`/`gradlew` — unauthenticated, rate-limit aware.
+  ```bash
+  curl -s "https://api.github.com/repos/google/guava/git/trees/d5cc108?recursive=1" \
+    | python3 -c "import sys,json; items=[i['path'] for i in json.load(sys.stdin).get('tree',[])]; print('mvnw' in items)"
+  ```
+- **Option 2**: Shallow clone + `test -f mvnw` / `test -f gradlew`
+  ```bash
+  git clone --depth 1 https://github.com/owner/repo.git /tmp/probe \
+    && cd /tmp/probe \
+    && git fetch --depth 1 origin <sha> \
+    && git checkout FETCH_HEAD \
+    && test -f mvnw && echo "HAS mvnw" || echo "NO mvnw"
+  ```
+
+**Cycle-level invariant**: Any re-pin that fails either gate MUST NOT be committed.
+Probe evidence (command + output digest) MUST be recorded in the test class comments
+at the constant declaration.
+
+### Verified Candidates (Round 2)
+
+| Constant | Repo | SHA | Gate A | Gate B | Wrapper | Probe Evidence |
+|---|---|---|---|---|---|---|
+| `gradle_picocli` | remkop/picocli | `10509c0af89aa3254ca14ba90d9b3b7168e57994` | ls-remote HEAD matches ✓ | gradlew in tree ✓ | gradlew | GitHub API tree probe |
+| `maven_jackson` | FasterXML/jackson-databind | `e82178d19415dddce37ede95c125b70b20561954` | ls-remote HEAD matches ✓ | mvnw in tree ✓ | mvnw | GitHub API tree probe |
+| `gradle_vavr` | vavr-io/vavr | `113e6f7cefd7ed9b9043ef809681cd7304c6ca32` | ls-remote HEAD matches ✓ | mvnw in tree ✓ | mvnw | GitHub API tree probe |
+
+### Rejected Candidates
+
+- **google/guava@d5cc108**: mvnw present (tree probe ✓) but multi-module Maven
+  reactor cannot exit 0 cleanly (guava-gwt submodule fails). Excluded.
+- **jOOQ/jool@31ed3a3**: gradlew absent from tree probe.
+- **fusesource/jansi@c10d43f**: SHA no longer exists on upstream (force-pushed).
+
+### Execution Order
+
+Online scenarios and offline canaries have different timing semantics:
+
+1. **Online first**: `V2_SMOKE_E2E_OK=true` → `UatLocal010SmokeE2ESandboxTest`
+   (12 scenarios: 7 online + 5 offline/crosscut, ~12 min wall-clock)
+2. **Offline second**: `V2_SMOKE_E2E_OFFLINE_OK=true` →
+   `UatLocal010SmokeE2ESandboxOfflineTest` (2 scenarios: SC-010-08 offline canary +
+   SC-010-12 artefact canary, ~2 min wall-clock after warm cache)
+
+Offline canaries REQUIRE the online class to run FIRST to warm the Gradle/Maven caches.
+Running offline class standalone will produce different (cache-cold) timings.

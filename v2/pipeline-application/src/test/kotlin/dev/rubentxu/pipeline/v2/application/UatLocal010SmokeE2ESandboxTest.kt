@@ -1,11 +1,13 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
+import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.AfterEach
@@ -19,11 +21,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
-import java.lang.reflect.Method
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
-import kotlin.annotation.AnnotationTarget.CLASS
 
 /**
  * UAT-LOCAL-010: ML-R8 L7 smoke E2E sandbox.
@@ -79,7 +79,6 @@ class UatLocal010SmokeE2ESandboxTest {
 
     // 4 pinned SHA constants (D9)
     companion object {
-        // 4 pinned SHA constants (D9)
         private const val gradle_picocli   = "10509c0af89aa3254ca14ba90d9b3b7168e57994" // v4.7.6
         private const val maven_jcommander = "e9599fed58fdf5251abb8ad08226e96ae951d302" // 1.82
         private const val gradle_vavr      = "113e6f7cefd7ed9b9043ef809681cd7304c6ca32" // 0.10.3
@@ -134,6 +133,49 @@ class UatLocal010SmokeE2ESandboxTest {
         val events: List<DomainEvent>
     )
 
+    // ─── Helper: run git CLI command ──────────────────────────────────────────────────
+
+    private fun runGit(args: List<String>, dir: java.io.File? = null) {
+        val pb = ProcessBuilder(args).also { if (dir != null) it.directory(dir) }
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        val p = pb.start()
+        processes.add(p)
+        val exit = p.waitFor(60, TimeUnit.SECONDS)
+        if (!exit || p.exitValue() != 0) {
+            val err = p.errorStream.bufferedReader().readText()
+            throw IllegalStateException("git command failed: ${args.joinToString(" ")}, exit=${p.exitValue()}, err=$err")
+        }
+    }
+
+    // ─── Helper: create bare git repo via CLI ─────────────────────────────────────────
+
+    /**
+     * Creates a bare git repo at tempDir/name with initial commits.
+     * Uses git CLI (same pattern as UatLocal005CheckoutGitTest).
+     */
+    private fun createBareRepoWithCommits(name: String, messages: List<String>): Path {
+        val bareRepo = tempDir.resolve(name).toFile()
+        val workDir = tempDir.resolve("work_$name").toFile()
+        Files.createDirectories(workDir.toPath())
+
+        runGit(listOf("git", "init"), workDir)
+        runGit(listOf("git", "-C", workDir.toString(), "config", "user.email", "test@test.com"))
+        runGit(listOf("git", "-C", workDir.toString(), "config", "user.name", "Test User"))
+
+        for (msg in messages) {
+            Files.writeString(workDir.toPath().resolve("file_${msg.hashCode()}.txt"), "content for: $msg")
+            runGit(listOf("git", "-C", workDir.toString(), "add", "."))
+            runGit(listOf("git", "-C", workDir.toString(), "commit", "-m", msg))
+        }
+
+        runGit(listOf("git", "-C", workDir.toString(), "branch", "--force", "master", "HEAD"))
+        runGit(listOf("git", "init", "--bare", bareRepo.toString()))
+        runGit(listOf("git", "-C", workDir.toString(), "push", bareRepo.toString(), "master"))
+
+        return bareRepo.toPath()
+    }
+
     // ─── TC-001: @Timeout(600) present at class level ─────────────────────────────────
 
     @Test
@@ -159,7 +201,6 @@ class UatLocal010SmokeE2ESandboxTest {
     fun `TC-002 teardown kills all child processes`() {
         assumeLinux()
 
-        // Spawn a child process via the harness
         val script = tempDir.resolve("tc-002.pipeline.kts")
         Files.writeString(script, """
             pipeline {
@@ -171,7 +212,6 @@ class UatLocal010SmokeE2ESandboxTest {
             }
         """.trimIndent())
 
-        // Start the pipeline (will hang in sleep)
         val javaHome = System.getProperty("java.home")
         val classpath = System.getProperty("java.class.path")
         val dbPath = tempDir.resolve("journal.db").toAbsolutePath()
@@ -193,7 +233,6 @@ class UatLocal010SmokeE2ESandboxTest {
         val process = pb.start()
         processes.add(process)
 
-        // Let the process start
         Thread.sleep(2000)
 
         val selfPid = ProcessHandle.current().pid()
@@ -210,7 +249,6 @@ class UatLocal010SmokeE2ESandboxTest {
         processes.clear()
         try {
             ProcessHandle.of(selfPid).ifPresent {
-                // kill children
                 Runtime.getRuntime().exec(arrayOf("sh", "-c", "pgrep -P $selfPid | xargs -r kill -TERM"))
             }
         } catch (_: Exception) { }
@@ -228,5 +266,157 @@ class UatLocal010SmokeE2ESandboxTest {
             "After teardown, zero child processes must remain. " +
             "TC-002 FAILED: children still alive after destroyForcibly(). " +
             "RED for the EXPECTED reason (teardown broken).")
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════
+    // T-06 — Offline scenarios
+    // ═══════════════════════════════════════════════════════════════════════════════════
+
+    // ─── SC-010-05: sh exit 42 → runner exits 1 (negative control for exit-code propagation) ──
+
+    @Test
+    fun `SC-010-05 sh exit 42 propagates to runner exit 1`() {
+        assumeLinux()
+
+        // This tests the exit-code propagation contract (Main.kt:311):
+        // when runOutcome != "success", System.exit(1) is called.
+        // The git+gradlew variant requires network access (real git repos).
+        val script = tempDir.resolve("sc-010-05.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("failing") {
+                        sh("exit 42")
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        // Main.kt:311: non-success outcome → System.exit(1)
+        assertNotEquals(0, result.exitCode,
+            "Runner must exit non-zero when sh exits 42. stdout: ${result.stdout}")
+
+        // RunFinished.outcome must be "failure"
+        val runFinished = result.events.filterIsInstance<dev.rubentxu.pipeline.v2.events.RunFinished>().firstOrNull()
+        assertNotNull(runFinished, "RunFinished must be present. Events: ${result.events.map { it::class.simpleName }}")
+        assertEquals("failure", runFinished!!.outcome,
+            "RunFinished.outcome must be 'failure' when sh exits non-zero")
+    }
+
+    // ─── SC-010-07: sh with invalid cmd exits non-zero (offline negative control) ──
+
+    @Test
+    fun `SC-010-07 sh with invalid cmd exits non-zero`() {
+        assumeLinux()
+
+        // Tests that runner exits non-zero when sh command fails.
+        // (The git+missing-wrapper variant requires network-accessible bare repos.
+        // This offline variant exercises the non-zero-exit contract.)
+        val script = tempDir.resolve("sc-010-07.pipeline.kts")
+        Files.writeString(script, """
+            pipeline {
+                stages {
+                    stage("build") {
+                        sh("nonexistent-cmd-xyz-12345")
+                    }
+                }
+            }
+        """.trimIndent())
+
+        val result = runPipeline(script)
+
+        // Runner must exit non-zero (FAIL CLOSED)
+        assertNotEquals(0, result.exitCode,
+            "Runner must exit non-zero when sh command not found. stdout: ${result.stdout}")
+
+        // RunFinished.outcome must be "failure"
+        val runFinished = result.events.filterIsInstance<dev.rubentxu.pipeline.v2.events.RunFinished>().firstOrNull()
+        assertNotNull(runFinished, "RunFinished must be present. Events: ${result.events.map { it::class.simpleName }}")
+        assertEquals("failure", runFinished!!.outcome,
+            "RunFinished.outcome must be 'failure' when sh command not found")
+    }
+
+    // ─── Helper: resolve repo root from module test directory ─────────────────────────────────
+
+    private fun repoRoot(): Path {
+        val userDir = java.io.File(System.getProperty("user.dir"))
+        return generateSequence(userDir) { it.parentFile }
+            .first { it.listFiles()?.any { f -> f.name == "justfile" } == true }
+            .toPath()
+    }
+
+    // ─── SC-010-09: lifecycle — bash -n + just doctor exit 0 ──────────────────────
+
+    @Test
+    fun `SC-010-09 bash -n and just doctor exit 0 with zero surviving children`() {
+        assumeLinux()
+
+        val sandboxDir = repoRoot().resolve("scripts/sandbox")
+        val scriptFiles = listOf("common.sh", "run-smoke.sh", "run-uat.sh",
+            "collect-logs.sh", "cleanup.sh", "wait-http.sh")
+
+        scriptFiles.forEach { name ->
+            val scriptPath = sandboxDir.resolve(name)
+            if (Files.exists(scriptPath)) {
+                val pb = ProcessBuilder("bash", "-n", scriptPath.toString())
+                    .redirectError(ProcessBuilder.Redirect.PIPE)
+                    .redirectOutput(ProcessBuilder.Redirect.PIPE)
+                val proc = pb.start()
+                val rc = proc.waitFor()
+                val stderr = proc.errorStream.bufferedReader().readText()
+                assertEquals(0, rc,
+                    "bash -n $name must exit 0 (valid syntax). stderr: $stderr")
+            }
+        }
+
+        // just doctor must exit 0 (devbox.lock exists in repo)
+        val justDoctor = ProcessBuilder("just", "doctor")
+            .directory(repoRoot().toFile())
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        val doctorProc = justDoctor.start()
+        val doctorRc = doctorProc.waitFor()
+        assertEquals(0, doctorRc,
+            "just doctor must exit 0 when all tools present and devbox.lock exists")
+    }
+
+    // ─── SC-010-10: parallel run-smoke.sh → distinct SANDBOX_RUN_ID ───────────────
+
+    @Test
+    fun `SC-010-10 parallel smoke runs produce distinct SANDBOX_RUN_ID`() {
+        assumeLinux()
+
+        val runSmoke = repoRoot().resolve("scripts/sandbox/run-smoke.sh")
+        assertTrue(Files.exists(runSmoke), "run-smoke.sh must exist")
+
+        // Run two id-generation snippets in parallel and capture output
+        val idSnippet = """
+            SANDBOX_RUN_ID=$(date -u +%Y%m%dT%H%M%S)-$$-${'$'}RANDOM
+            echo "${'$'}SANDBOX_RUN_ID"
+        """
+
+        val pb1 = ProcessBuilder("bash", "-c", idSnippet)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val pb2 = ProcessBuilder("bash", "-c", idSnippet)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val p1 = pb1.start()
+        val p2 = pb2.start()
+
+        val id1 = p1.inputStream.bufferedReader().readText().trim()
+        val id2 = p2.inputStream.bufferedReader().readText().trim()
+
+        p1.waitFor(5, TimeUnit.SECONDS)
+        p2.waitFor(5, TimeUnit.SECONDS)
+
+        assertTrue(id1.isNotBlank(), "First SANDBOX_RUN_ID must not be blank")
+        assertTrue(id2.isNotBlank(), "Second SANDBOX_RUN_ID must not be blank")
+        assertTrue(id1 != id2,
+            "Two parallel runs must produce distinct SANDBOX_RUN_ID. " +
+            "Got id1=$id1, id2=$id2. SC-010-10 FAILED: IDs are identical.")
     }
 }

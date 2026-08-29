@@ -64,5 +64,15 @@ CLAUDE.md
 ### Generated test files ###
 **/test-gen/
 
+### Devbox ###
+.devbox/
+
+### Pipeline artefacts ###
+artifacts/*
+!artifacts/.gitkeep
+
+### Gradle cache (when scoped to project-local path) ###
+.gradle-cache/
+
 ### Generated UAT reports ###
 uat-report-*.yaml

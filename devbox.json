@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "packages": [
+    "jdk@21",
+    "git",
+    "curl",
+    "jq"
+  ],
+  "env": {
+    "JAVA_HOME": "{devbox.jdk}/lib/openjdk-21",
+    "GRADLE_USER_HOME": "$XDG_CACHE_HOME/gradle",
+    "MAVEN_OPTS": "-Dmaven.repo.local=$XDG_CACHE_HOME/m2"
+  },
+  "shell": {
+    "init_hook": null
+  }
+}

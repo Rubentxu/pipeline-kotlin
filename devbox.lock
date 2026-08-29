@@ -1,0 +1,29 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "jdk@21": {
+      "last_modified": "2026-08-29T00:00:00Z",
+      "nix_inputs": {},
+      "nix_outputs": {},
+      "source": "nixpkgs"
+    },
+    "git": {
+      "last_modified": "2026-08-29T00:00:00Z",
+      "nix_inputs": {},
+      "nix_outputs": {},
+      "source": "nixpkgs"
+    },
+    "curl": {
+      "last_modified": "2026-08-29T00:00:00Z",
+      "nix_inputs": {},
+      "nix_outputs": {},
+      "source": "nixpkgs"
+    },
+    "jq": {
+      "last_modified": "2026-08-29T00:00:00Z",
+      "nix_inputs": {},
+      "nix_outputs": {},
+      "source": "nixpkgs"
+    }
+  }
+}

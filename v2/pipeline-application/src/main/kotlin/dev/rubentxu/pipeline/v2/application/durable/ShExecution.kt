@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellResult
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
@@ -99,10 +101,11 @@ object ShExecution {
 
             // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)
             // L1 constraint: output.txt is only read when captureStdout=true
+            var capturedOutput = ""
             try {
                 val logFile = controlDir.resolve("jenkins-log.txt")
                 if (Files.exists(logFile)) {
-                    val capturedOutput = Files.readString(logFile)
+                    capturedOutput = Files.readString(logFile)
                     eventSink.append(EchoOutputCaptured(
                         eventId = UUID.randomUUID().toString(),
                         runId = runId,
@@ -118,7 +121,23 @@ object ShExecution {
 
             when (result.state) {
                 DurableShellState.COMPLETE -> {
-                    if (result.exitCode != 0) "failure" else "success"
+                    if (result.exitCode != 0) {
+                        // Emit StepFailed for non-zero exit (INC-R8-ARC-001)
+                        val message = "sh exited with code ${result.exitCode}" +
+                            if (capturedOutput.isNotBlank()) ": ${capturedOutput.take(256)}" else ""
+                        eventSink.append(StepFailed(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            stepIndex = stepIndex,
+                            stepName = "sh",
+                            stepType = "sh",
+                            failureKind = FailureKind.SCRIPT,
+                            message = message,
+                        ))
+                        "failure"
+                    } else "success"
                 }
                 DurableShellState.TIMED_OUT -> {
                     // TMO-S-001: timeout is terminal - distinct from plain failure
@@ -285,6 +304,22 @@ object ShExecution {
                 stepIndex = stepIndex,
                 content = output,
             ))
+            if (exitCode != 0) {
+                // Emit StepFailed for non-zero exit (INC-R8-ARC-001)
+                val message = "sh exited with code $exitCode" +
+                    if (output.isNotBlank()) ": ${output.take(256)}" else ""
+                eventSink.append(StepFailed(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stepIndex = stepIndex,
+                    stepName = "sh",
+                    stepType = "sh",
+                    failureKind = FailureKind.SCRIPT,
+                    message = message,
+                ))
+            }
             return if (exitCode != 0) "failure" else "success"
         } catch (_: Exception) {
             return "failure"

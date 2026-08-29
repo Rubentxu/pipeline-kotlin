@@ -69,6 +69,24 @@ fun sh(context: StepContext, argv: List<String>, sink: EventSink, stepIndex: Int
         stepIndex = stepIndex,
         content = result.stdout,
     ))
+    if (result.exitCode != 0) {
+        val message = if (result.stderr.isNotBlank()) {
+            "sh exited with code ${result.exitCode}: ${result.stderr.take(256)}"
+        } else {
+            "sh exited with code ${result.exitCode}"
+        }
+        sink.append(StepFailed(
+            eventId = UUID.randomUUID().toString(),
+            runId = context.runId,
+            sequence = 0L,
+            occurredAt = java.time.Instant.now(),
+            stepIndex = stepIndex,
+            stepName = "sh",
+            stepType = "sh",
+            failureKind = FailureKind.SCRIPT,
+            message = message,
+        ))
+    }
     return result
 }
 

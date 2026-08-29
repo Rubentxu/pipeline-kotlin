@@ -306,6 +306,10 @@ class UatLocal010SmokeE2ESandboxTest {
         assertNotNull(runFinished, "RunFinished must be present. Events: ${result.events.map { it::class.simpleName }}")
         assertEquals("failure", runFinished!!.outcome,
             "RunFinished.outcome must be 'failure' when sh exits non-zero")
+
+        // StepFailed must be emitted for sh non-zero exit (INC-R8-ARC-001)
+        assertTrue(result.events.any { it is StepFailed && it.stepIndex == 0 },
+            "StepFailed must be emitted on sh exit 42. Events: ${result.events.map { it::class.simpleName }}")
     }
 
     // ─── SC-010-07: sh with invalid cmd exits non-zero (offline negative control) ──
@@ -339,6 +343,10 @@ class UatLocal010SmokeE2ESandboxTest {
         assertNotNull(runFinished, "RunFinished must be present. Events: ${result.events.map { it::class.simpleName }}")
         assertEquals("failure", runFinished!!.outcome,
             "RunFinished.outcome must be 'failure' when sh command not found")
+
+        // StepFailed must be emitted for sh non-zero exit (INC-R8-ARC-001)
+        assertTrue(result.events.any { it is StepFailed && it.stepIndex == 0 },
+            "StepFailed must be emitted when sh command not found. Events: ${result.events.map { it::class.simpleName }}")
     }
 
     // ─── Helper: resolve repo root from module test directory ─────────────────────────────────

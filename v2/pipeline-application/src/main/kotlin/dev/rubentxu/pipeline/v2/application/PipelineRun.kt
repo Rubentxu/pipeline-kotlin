@@ -644,7 +644,6 @@ private suspend fun emitDurableStepEvents(
                     } else {
                         // Last attempt failed → return failure outcome (spec C-030.2)
                         runOutcomeRef.set("failure")
-                        emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, "failure", ctx.clock)
                         return "failure"
                     }
                 } else {

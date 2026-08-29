@@ -118,11 +118,11 @@ pipeline {
 
         // SB-S-001: pwd must report workspace directory, not control directory
         val pwdOutput = Files.readString(pwdFile).trim()
-        // Workspace path format: {controlRoot}/workspace/stage-{stageIndex}-{stepIndex}
-        // For stageIndex=0, stepIndex=0: stage-0-0
-        val expectedWorkspaceDir = controlRoot.resolve("workspace").resolve("stage-0-0").toString()
+        // Workspace path format: {controlRoot}/workspace/{stageName}-{stageIndex}
+        // (ML-R7 T-14 workspace unification: real stageName key, not synthetic stage-N)
+        val expectedWorkspaceDir = controlRoot.resolve("workspace").resolve("TestStage-0").toString()
         assertTrue(
-            pwdOutput.startsWith(expectedWorkspaceDir) || pwdOutput.endsWith("stage-0-0"),
+            pwdOutput.startsWith(expectedWorkspaceDir),
             "pwd should report workspace directory. Expected prefix: $expectedWorkspaceDir, got: $pwdOutput (SB-S-001)"
         )
     }
@@ -368,10 +368,12 @@ pipeline {
 
         // SB-S-006: cwd still flipped to workspace even under NONE (DEC-1 is profile-independent)
         val pwdOutput = Files.readString(pwdFile).trim()
-        val expectedWorkspaceDir = controlRoot.resolve("workspace").resolve("stage-0-0").toString()
+        // Workspace path format: {controlRoot}/workspace/{stageName}-{stageIndex}
+        // (ML-R7 T-14 workspace unification: real stageName key, not synthetic stage-N)
+        val expectedWorkspaceDir = controlRoot.resolve("workspace").resolve("TestStage-0").toString()
         assertTrue(
-            pwdOutput.startsWith(expectedWorkspaceDir) || pwdOutput.endsWith("stage-0-0"),
-            "pwd should report workspace directory even under NONE profile. got: $pwdOutput (SB-S-006)"
+            pwdOutput.startsWith(expectedWorkspaceDir),
+            "pwd should report workspace directory even under NONE profile. Expected prefix: $expectedWorkspaceDir, got: $pwdOutput (SB-S-006)"
         )
     }
 

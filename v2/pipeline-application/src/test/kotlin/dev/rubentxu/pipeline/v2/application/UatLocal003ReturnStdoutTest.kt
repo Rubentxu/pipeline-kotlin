@@ -37,17 +37,21 @@ class UatLocal003ReturnStdoutTest {
         val outputFile = tempDir.resolve("output.txt")
         Files.createDirectories(controlRoot)
 
-        // Create a VERSION file to read
-        val versionFile = tempDir.resolve("VERSION.txt")
-        Files.writeString(versionFile, "1.2.3\n")
+        // ML-R7 T-14 workspace unification: sh runs in the stage workspace
+        // ({controlRoot}/workspace/{stageName}-{stageIndex}). The file must be
+        // created IN the workspace (writeFile step), not in the process CWD.
+        // Note: the previous variant (VERSION.txt in tempDir + `cat VERSION.txt`)
+        // was a false green — Main.kt did not propagate failure exit codes before
+        // the CR-U9-009 fix, so the failing cat was never observed.
 
-        // Create pipeline script using sh with env and captureStdout
+        // Create pipeline script: writeFile + sh share the stage workspace
         // Note: current DSL sh("cmd") doesn't expose returnStdout as return value
         // This test verifies the execution path works
         val scriptContent = """
 pipeline {
     stages {
         stage("TestStage") {
+            writeFile(file = "VERSION.txt", text = "1.2.3\n")
             sh("cat VERSION.txt")
         }
     }

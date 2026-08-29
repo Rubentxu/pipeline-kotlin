@@ -1,6 +1,6 @@
 {
   "schemaVersion": "v1",
-  "generatedAt": "2026-08-23T14:50:00Z",
+  "generatedAt": "2026-08-29T00:00:00Z",
   "fixtures": {
     "01-basic.pipeline.kts": {
       "events": [
@@ -99,16 +99,19 @@
         { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "sh" },
         { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "content": null },
         { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "sh" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "checkout" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "build" },
         { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "sh" },
         { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "content": null },
         { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "sh" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "checkout" },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "build" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "sh" },
+        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "content": null },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "sh" },
         { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "build" },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "archive" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "archiveArtifacts" },
-        { "kind": "ArtifactArchived", "eventId": null, "runId": null, "occurredAt": null, "files": [] },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "archiveArtifacts" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "archiveArtifacts" },
+        { "kind": "ArtifactArchived", "eventId": null, "runId": null, "occurredAt": null, "files": ["build/libs/smoke.jar"] },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "archiveArtifacts" },
         { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "archive" },
         { "kind": "RunFinished", "runId": null, "occurredAt": null }
       ],

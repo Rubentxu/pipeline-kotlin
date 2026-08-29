@@ -63,3 +63,6 @@ CLAUDE.md
 
 ### Generated test files ###
 **/test-gen/
+
+### Generated UAT reports ###
+uat-report-*.yaml

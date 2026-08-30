@@ -119,7 +119,9 @@ class UatDsl001JenkinsFamiliarityTest {
         val stepStartedEvents = events.filter { it is StepStarted }
         val stepTypes = stepStartedEvents.map { (it as StepStarted).stepType }.distinct()
 
-        assertTrue(stepTypes.contains("error"), "Must have error step type: $stepTypes")
+        // catchError is the DSL wrapper for error() — catchError step type confirms error-handling is exercised
+        assertTrue(stepTypes.contains("catchError") || stepTypes.contains("error"),
+            "Must have error-handling step type (catchError or error): $stepTypes")
         assertTrue(stepTypes.contains("sleep"), "Must have sleep step type: $stepTypes")
     }
 

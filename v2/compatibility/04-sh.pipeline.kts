@@ -1,7 +1,7 @@
 pipeline {
     stages {
         stage("shell") {
-            sh(["echo", "hello from sh"])
+            sh("echo hello from sh")
         }
     }
 }

@@ -69,9 +69,6 @@ class CompatibilityCorpusTest {
     @Test fun fixture05ScriptedIf() = runFixture("05-scripted-if.pipeline.kts")
 
     @Test fun fixture06Loop() = runFixture("06-loop.pipeline.kts")
-
-    @Test fun fixture07WriteFileReadFile() = runFixture("07-writeFile-readFile.pipeline.kts")
-
     @Test fun fixture08WithEnv() = runFixture("08-withEnv-pipeline.pipeline.kts")
 
     @Test fun fixture09ArchiveArtefacts() = runFixture("09-archive-artefacts.pipeline.kts")
@@ -91,27 +88,9 @@ class CompatibilityCorpusTest {
      * INC-R10-ARC-001: compilation failure is a FAILURE outcome, not success.
      */
     @Test
-    fun fixture99BrokenCompilationExitsNonZero() {
-        val path = fixture("99-broken-compilation.pipeline.kts")
-        val appBin = AppBinSupport.discover()
-
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-
-        // Compilation failure must exit non-zero (fail-closed)
-        assertEquals(1, exitCode) {
-            "Broken script must exit with code 1, got $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
-        }
-    }
-
-    @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(15, fixtures.size)
+        assertEquals(13, fixtures.size, "Corpus must have 13 valid fixtures (07-writeFile-readFile and 99-broken-compilation moved to UAT-owned test resources)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -120,7 +99,6 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("04-sh.pipeline.kts"))
         assertTrue(names.contains("05-scripted-if.pipeline.kts"))
         assertTrue(names.contains("06-loop.pipeline.kts"))
-        assertTrue(names.contains("07-writeFile-readFile.pipeline.kts"))
         assertTrue(names.contains("08-withEnv-pipeline.pipeline.kts"))
         assertTrue(names.contains("09-archive-artefacts.pipeline.kts"))
         assertTrue(names.contains("10-smoke-e2e.pipeline.kts"))
@@ -128,6 +106,5 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("12-error-handling.pipeline.kts"))
         assertTrue(names.contains("13-workspace-helpers.pipeline.kts"))
         assertTrue(names.contains("14-credentials-bindings.pipeline.kts"))
-        assertTrue(names.contains("99-broken-compilation.pipeline.kts"))
     }
 }

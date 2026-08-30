@@ -59,7 +59,7 @@
       "descriptorProjection": {}
     },
     "02-environment.pipeline.kts": {
-      "sha256": "5c2c265b74578c706c8d11c0dd1d7a7804a7c0762aa41637303273bad959bf7c",
+      "sha256": "e7ae290c6f9122a1b4cea4ee78fef59be286b224bf013aab4511cce8bd375853",
       "events": [
         {
           "kind": "RunStarted",
@@ -249,7 +249,7 @@
       "descriptorProjection": {}
     },
     "04-sh.pipeline.kts": {
-      "sha256": "14e5034c97dbba869b75083e80124934ff5bbaf5a116c1cbd6f80b4da9a613f8",
+      "sha256": "6aa1ed4be24b727825f140c72595b4cca871bedce6bab2a29cd4e7b727ba31a1",
       "events": [
         {
           "kind": "RunStarted",
@@ -477,7 +477,7 @@
       "descriptorProjection": {}
     },
     "08-withEnv-pipeline.pipeline.kts": {
-      "sha256": "405bad939ce892959230555bcf8b1e5655d023ebff87f5d131eaf15416821997",
+      "sha256": "80c0b24bc42fc16f8b86c87fb28aa904e8adc0a48990ec12fb31fcd4147871b5",
       "events": [
         {
           "kind": "RunStarted",

@@ -1,12 +1,9 @@
-environment {
-    KEY = "value"
-    BUILD_VERSION = "1.0.0"
-}
-
 pipeline {
     stages {
         stage("build") {
-            echo("building...")
+            withEnv(listOf("KEY=value", "BUILD_VERSION=1.0.0")) {
+                echo("building...")
+            }
         }
     }
 }

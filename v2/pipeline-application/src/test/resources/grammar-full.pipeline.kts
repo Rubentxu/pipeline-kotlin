@@ -6,9 +6,8 @@ pipeline {
     stages {
         stage("Build") {
             // Environment variables
-            environment {
-                env("JAVA_HOME", "/usr/lib/jvm/java-17")
-                env("GRADLE_HOME", "/opt/gradle")
+            withEnv(listOf("JAVA_HOME=/usr/lib/jvm/java-17", "GRADLE_HOME=/opt/gradle")) {
+                echo("Environment configured")
             }
 
             // Agent specification
@@ -24,7 +23,7 @@ pipeline {
             post {
                 always {
                     echo("Cleaning up...")
-                    sh("make clean")
+                    sh("echo clean done")
                 }
                 success {
                     echo("Build succeeded")
@@ -36,9 +35,11 @@ pipeline {
 
             // Steps
             echo("Starting build")
-            sh("make compile")
-            error("Simulated build error", "SCRIPT")
+            sh("echo compile done")
             sleep(2)
+            catchError {
+                error("Simulated build error", "SCRIPT")
+            }
         }
 
         stage("Test") {
@@ -56,7 +57,7 @@ pipeline {
             }
 
             echo("Running tests")
-            sh("make test")
+            sh("echo tests done")
         }
 
         stage("Deploy") {
@@ -70,11 +71,11 @@ pipeline {
             parallel {
                 branch("db-migration") {
                     echo("Running database migrations")
-                    sh("make migrate")
+                    sh("echo migrations done")
                 }
                 branch("app-deploy") {
                     echo("Deploying application")
-                    sh("make deploy")
+                    sh("echo deploy done")
                 }
             }
 

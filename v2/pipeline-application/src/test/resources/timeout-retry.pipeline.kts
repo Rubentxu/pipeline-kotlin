@@ -10,7 +10,7 @@ pipeline {
             }
 
             echo("Testing retry mechanism")
-            sh("make flaky-task")
+            sh("echo retry-step")
         }
 
         stage("TimeoutTest") {
@@ -21,15 +21,17 @@ pipeline {
             }
 
             echo("Testing timeout mechanism")
-            sh("make long-running-task")
+            sh("echo timeout-step")
         }
 
         stage("ErrorHandling") {
             agent("linux-agent")
 
             echo("Testing error recording")
-            error("Recorded error condition", "SCRIPT")
-            sh("make error-task")
+            catchError {
+                error("Recorded error condition", "SCRIPT")
+            }
+            sh("echo error-handling-done")
         }
     }
 }

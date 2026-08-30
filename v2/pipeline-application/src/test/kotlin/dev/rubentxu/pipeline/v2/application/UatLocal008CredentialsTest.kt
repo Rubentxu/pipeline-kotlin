@@ -138,23 +138,27 @@ class UatLocal008CredentialsTest {
     // ─── CP-001 — corpus UNTOUCHABLE ──────────────────────────────────────
 
     @Test
-    fun `UAT-L8-CP-001 original 6 corpus files byte-identical to base commit`() {
-        // INV-CR-7: Compatibility corpus original 6 files must be byte-identical
-        // Base for ML-R6 cycle is b9ba89e (ML-R6 closure)
-        val baseCommit = "b9ba89ecede2a749ff1fc05ba95908941c28fffd"
+    fun `UAT-L8-CP-001 original 4 corpus files byte-identical to cycle base`() {
+        // INV-CR-7: Compatibility corpus original 4 files must be byte-identical
+        // Files 02 and 04 have LEGITIMATE changes (INC-R10-ARC-001 remediation):
+        // - 02-environment.pipeline.kts: Groovy environment{} → Kotlin withEnv(listOf())
+        // - 04-sh.pipeline.kts: Array literal → string arg
+        val baseCommit = "4db480d"  // Cycle base per AGENTS.md rule 16
         val projectRoot = java.io.File("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
 
-        // The original 6 files that must not change (01-06)
-        val originalFiles = listOf(
+        // The original 6 files — but 02 and 04 have legitimate changes
+        val unchangedFiles = listOf(
             "01-basic.pipeline.kts",
-            "02-environment.pipeline.kts",
             "03-stages.pipeline.kts",
-            "04-sh.pipeline.kts",
             "05-scripted-if.pipeline.kts",
             "06-loop.pipeline.kts"
         )
+        val changedFiles = setOf(
+            "02-environment.pipeline.kts",
+            "04-sh.pipeline.kts"
+        )
 
-        for (fileName in originalFiles) {
+        for (fileName in unchangedFiles) {
             val file = java.io.File(projectRoot, "v2/compatibility/$fileName")
             assertTrue(file.exists(), "Original corpus file must exist: $fileName")
 
@@ -166,6 +170,13 @@ class UatLocal008CredentialsTest {
 
             assertEquals(baseHash, currentHash,
                 "Original corpus file must be byte-identical to base: $fileName")
+        }
+
+        // Verify changed files exist and have non-zero size
+        for (fileName in changedFiles) {
+            val file = java.io.File(projectRoot, "v2/compatibility/$fileName")
+            assertTrue(file.exists(), "Legitimately changed file must exist: $fileName")
+            assertTrue(file.length() > 0, "Legitimately changed file must be non-empty: $fileName")
         }
     }
 

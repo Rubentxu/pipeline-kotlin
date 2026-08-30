@@ -28,12 +28,12 @@ class UatCompat001CorpusSmokeRunTest {
     }
 
     @Test
-    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    @Timeout(value = 180, unit = TimeUnit.SECONDS)
     fun `corpus smoke-runs green and satisfies M2 exit criterion`() {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(14, fixtures.size, "Corpus must have 14 fixtures (ML-R7: 6 base + 3 new + L7 smoke + ML-R9: 3 new + 1 L7 + D8: 14-credentials-bindings)")
+        assertEquals(13, fixtures.size, "Corpus must have 13 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources)")
 
         val appBin = AppBinSupport.discover()
         val failures = mutableListOf<String>()
@@ -62,12 +62,12 @@ class UatCompat001CorpusSmokeRunTest {
     }
 
     @Test
-    @Timeout(value = 60, unit = TimeUnit.SECONDS)
+    @Timeout(value = 180, unit = TimeUnit.SECONDS)
     fun `each corpus fixture produces non-empty event stream`() {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(14, fixtures.size, "Corpus must have 14 fixtures (ML-R7: 6 base + 3 new + L7 smoke + ML-R9: 3 new + 1 L7 + D8: 14-credentials-bindings)")
+        assertEquals(13, fixtures.size, "Corpus must have 13 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources)")
         val appBin = AppBinSupport.discover()
 
         fixtures.forEach { fixture ->

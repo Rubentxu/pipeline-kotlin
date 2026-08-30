@@ -119,8 +119,6 @@ object BlockStepFlattener {
                     flattenImpl(inner, depth + 1, childPath, result)
                 }
             }
-            // CatchError, WarnError, TimeoutBlock, RetryBlock, Timestamps,
-            // AnsiColor, NodeNoOp, Milestone — add when those types are defined
             is StepSpec.CatchError -> {
                 for ((idx, inner) in step.steps.withIndex()) {
                     val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
@@ -128,6 +126,42 @@ object BlockStepFlattener {
                 }
             }
             is StepSpec.WarnError -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
+            // ML-R9 T-08 output-decorators
+            is StepSpec.Timestamps -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
+            is StepSpec.AnsiColor -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
+            is StepSpec.NodeNoOp -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
+            // ML-R9 T-09 milestone
+            is StepSpec.Milestone -> {
+                // Milestone has no nested steps
+            }
+            // ML-R9 T-10 timeout/retry blocks
+            is StepSpec.TimeoutBlock -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
+            is StepSpec.RetryBlock -> {
                 for ((idx, inner) in step.steps.withIndex()) {
                     val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
                     flattenImpl(inner, depth + 1, childPath, result)

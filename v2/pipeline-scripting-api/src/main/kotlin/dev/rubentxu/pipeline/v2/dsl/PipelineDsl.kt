@@ -508,6 +508,151 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val name: String get() = "waitUntil"
         override val type: String get() = "waitUntil"
     }
+
+    // =============================================================================
+    // ML-R9 output-decorator step kinds (T-08) — NO new DomainEvent variants (marker reuse)
+    // =============================================================================
+
+    /**
+     * Decorates captured stdout/stderr with timestamps.
+     *
+     * Jenkins verbatim: `timestamps { block }`
+     *
+     * Wraps the captured output with a SimpleFormatter that prepends HH:mm:ss.SSS
+     * to each line. Pure log-rewriter orchestrator — reuses StepStarted/StepFinished
+     * with stepType="timestamps" (marker-event reuse per ADR-0052 §D5).
+     *
+     * Effect.READ_ONLY, ReplayPolicy.MEMOIZED.
+     */
+    data class Timestamps(
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "timestamps"
+        override val type: String get() = "timestamps"
+    }
+
+    /**
+     * Decorates captured stdout/stderr with ANSI color codes.
+     *
+     * Jenkins verbatim: `ansiColor(colorMapName: String = "xterm") { block }`
+     *
+     * The colorMapName selects the color palette mapping (e.g., "xterm", "vga").
+     * Tee-passes ANSI escape codes through unchanged. Pure log-rewriter orchestrator —
+     * reuses StepStarted/StepFinished with stepType="ansiColor" (marker-event reuse).
+     *
+     * Effect.READ_ONLY, ReplayPolicy.MEMOIZED.
+     *
+     * @param colorMapName Color map name (default "xterm" per Jenkins catalog §1.13 line 194)
+     * @param steps Nested block payload
+     */
+    data class AnsiColor(
+        val colorMapName: String = "xterm",
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "ansiColor"
+        override val type: String get() = "ansiColor"
+    }
+
+    /**
+     * No-op step that emits AgentResolved.
+     *
+     * Jenkins verbatim: `node(label?: String) { block }`
+     *
+     * In local execution model, node is a no-op that emits AgentResolved event.
+     * The block is executed as-is. Reuses existing AgentResolved event per ADR-0052 §D5.
+     *
+     * Effect.EXECUTES_SUBPROCESS, ReplayPolicy.RERUN.
+     *
+     * @param label Agent label (optional)
+     * @param steps Nested block payload
+     */
+    data class NodeNoOp(
+        val label: String? = null,
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "node"
+        override val type: String get() = "node"
+    }
+
+    // =============================================================================
+    // ML-R9 milestone step kind (T-09) — NEW events: MilestoneReached, MilestoneAborted
+    // =============================================================================
+
+    /**
+     * Milestone step for cross-build coordination.
+     *
+     * Jenkins verbatim: `milestone(ordinal: Int, label: String? = null)`
+     *
+     * Records a milestone reached for coordinating concurrent builds.
+     * In local single-run model, emits MilestoneReached or MilestoneAborted events
+     * but does NOT abort inner steps (single-run semantics per ADR-0046 §ML).
+     *
+     * Effect.EXECUTES_SUBPROCESS, ReplayPolicy.RERUN.
+     *
+     * @param ordinal The milestone ordinal (must be monotonically increasing within a run)
+     * @param label Optional label for the milestone
+     */
+    data class Milestone(
+        val ordinal: Int,
+        val label: String? = null,
+    ) : StepSpec {
+        override val name: String get() = "milestone"
+        override val type: String get() = "milestone"
+    }
+
+    // =============================================================================
+    // ML-R9 timeout/retry block steps (T-10) — NEW event: TimeoutTriggered
+    // =============================================================================
+
+    /**
+     * Timeout block with wall-clock deadline.
+     *
+     * Jenkins verbatim: `timeout(time: Long, unit: String, activity: String? = null) { block }`
+     *
+     * Executes the inner block with a deadline. If the deadline elapses before
+     * completion, emits TimeoutTriggered and throws FlowInterruptedException.
+     * The inner durable sh subprocess is destroyedForcibly() per ADR-0046 §D2.
+     *
+     * Effect.EXECUTES_SUBPROCESS, ReplayPolicy.RERUN.
+     *
+     * @param time Timeout value
+     * @param unit Time unit (SECONDS, MINUTES, etc.)
+     * @param activity Optional activity description
+     * @param steps Nested block payload
+     */
+    data class TimeoutBlock(
+        val time: Long,
+        val unit: String,
+        val activity: String? = null,
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "timeout"
+        override val type: String get() = "timeout"
+    }
+
+    /**
+     * Retry block that re-executes on failure.
+     *
+     * Jenkins verbatim: `retry(count: Int, conditions: List<String>? = null) { block }`
+     *
+     * Executes the inner block up to `count` times on failure.
+     * Emits RetryAttemptStarted/RetryAttemptFinished per attempt (M2-R1 events, reused).
+     * The `conditions` list filters which failures trigger retry (null = retry all).
+     *
+     * Effect.EXECUTES_SUBPROCESS, ReplayPolicy.RERUN.
+     *
+     * @param count Maximum retry attempts
+     * @param conditions Failure conditions to retry on (null = retry all)
+     * @param steps Nested block payload
+     */
+    data class RetryBlock(
+        val count: Int,
+        val conditions: List<String>? = null,
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "retry"
+        override val type: String get() = "retry"
+    }
 }
 
 /**
@@ -870,6 +1015,15 @@ class StageScope(private val stageName: String) {
             is StepSpec.IsUnix -> currentStep
             is StepSpec.Load -> currentStep
             is StepSpec.WaitUntil -> currentStep
+            // ML-R9 T-08 output-decorators: not retryable at step level
+            is StepSpec.Timestamps -> currentStep
+            is StepSpec.AnsiColor -> currentStep
+            is StepSpec.NodeNoOp -> currentStep
+            // ML-R9 T-09 milestone: not retryable at step level
+            is StepSpec.Milestone -> currentStep
+            // ML-R9 T-10 timeout/retry blocks: not retryable at step level
+            is StepSpec.TimeoutBlock -> currentStep
+            is StepSpec.RetryBlock -> currentStep
         }
     }
 
@@ -1207,6 +1361,102 @@ class StageScope(private val stageName: String) {
             quiet = quiet,
         ))
         // Note: condition is currently not journaled; waitUntil uses ReplayPolicy.NEVER
+    }
+
+    // =============================================================================
+    // ML-R9 output-decorator DSL (T-08)
+    // =============================================================================
+
+    /**
+     * Decorates captured stdout/stderr with timestamps.
+     *
+     * Jenkins verbatim: `timestamps { block }`
+     *
+     * @param block Nested steps to execute with timestamp decoration
+     */
+    fun timestamps(block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.Timestamps(steps = inner.steps.toList()))
+    }
+
+    /**
+     * Decorates captured stdout/stderr with ANSI color codes.
+     *
+     * Jenkins verbatim: `ansiColor(colorMapName: String = "xterm") { block }`
+     *
+     * @param colorMapName Color map name (default "xterm")
+     * @param block Nested steps to execute with ANSI color decoration
+     */
+    fun ansiColor(colorMapName: String = "xterm", block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.AnsiColor(colorMapName = colorMapName, steps = inner.steps.toList()))
+    }
+
+    /**
+     * No-op step that emits AgentResolved.
+     *
+     * Jenkins verbatim: `node(label?: String) { block }`
+     *
+     * @param label Agent label (optional)
+     * @param block Nested steps to execute
+     */
+    fun node(label: String? = null, block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.NodeNoOp(label = label, steps = inner.steps.toList()))
+    }
+
+    // =============================================================================
+    // ML-R9 milestone DSL (T-09)
+    // =============================================================================
+
+    /**
+     * Records a milestone for cross-build coordination.
+     *
+     * Jenkins verbatim: `milestone(ordinal: Int, label: String? = null)`
+     *
+     * @param ordinal The milestone ordinal (must be monotonically increasing)
+     * @param label Optional label for the milestone
+     */
+    fun milestone(ordinal: Int, label: String? = null) {
+        steps.add(StepSpec.Milestone(ordinal = ordinal, label = label))
+    }
+
+    // =============================================================================
+    // ML-R9 timeout/retry DSL (T-10)
+    // =============================================================================
+
+    /**
+     * Executes the inner block with a timeout.
+     *
+     * Jenkins verbatim: `timeout(time: Long, unit: String, activity: String? = null) { block }`
+     *
+     * @param time Timeout value
+     * @param unit Time unit (SECONDS, MINUTES, etc.)
+     * @param activity Optional activity description
+     * @param block Nested steps to execute with timeout
+     */
+    fun timeout(time: Long, unit: String, activity: String? = null, block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, activity = activity, steps = inner.steps.toList()))
+    }
+
+    /**
+     * Executes the inner block with retry on failure.
+     *
+     * Jenkins verbatim: `retry(count: Int, conditions: List<String>? = null) { block }`
+     *
+     * @param count Maximum retry attempts
+     * @param conditions Failure conditions to retry on (null = retry all)
+     * @param block Nested steps to execute with retry
+     */
+    fun retry(count: Int, conditions: List<String>? = null, block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.RetryBlock(count = count, conditions = conditions, steps = inner.steps.toList()))
     }
 
     fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)

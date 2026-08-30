@@ -729,3 +729,67 @@ data class WaitUntilCompleted(
 ) : DomainEvent {
     override val kind: String get() = "WaitUntilCompleted"
 }
+
+// =============================================================================
+// ML-R9 milestone events (T-09)
+// =============================================================================
+
+/**
+ * Emitted when a milestone is reached (ordinal > previously reached ordinal).
+ *
+ * @param ordinal The milestone ordinal
+ * @param label The milestone label (null if not provided)
+ */
+data class MilestoneReached(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val ordinal: Int,
+    val label: String?,
+) : DomainEvent {
+    override val kind: String get() = "MilestoneReached"
+}
+
+/**
+ * Emitted when a milestone is aborted (ordinal <= previously reached ordinal).
+ *
+ * In Jenkins, older ordinals abort older builds. In local single-run model,
+ * this is recorded-only (no inner step abortion).
+ *
+ * @param ordinal The milestone ordinal that was aborted
+ * @param reason The reason for abortion (e.g., "ordinal-already-reached")
+ */
+data class MilestoneAborted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val ordinal: Int,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "MilestoneAborted"
+}
+
+// =============================================================================
+// ML-R9 timeout event (T-10)
+// =============================================================================
+
+/**
+ * Emitted when a timeout deadline is exceeded and the block is interrupted.
+ *
+ * @param stageOrStep The stage or step name (e.g., "step:sh" or "stage:build")
+ * @param action The action taken ("interrupt")
+ * @param durationMs The elapsed time since timeout started (ms)
+ */
+data class TimeoutTriggered(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageOrStep: String,
+    val action: String,
+    val durationMs: Long,
+) : DomainEvent {
+    override val kind: String get() = "TimeoutTriggered"
+}

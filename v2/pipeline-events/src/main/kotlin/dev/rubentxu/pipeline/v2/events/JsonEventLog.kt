@@ -363,6 +363,26 @@ object JsonEventLog {
                 sb.append(",\"outcome\":")
                 sb.append(jsonString(event.outcome))
             }
+            is MilestoneReached -> {
+                sb.append(",\"ordinal\":")
+                sb.append(event.ordinal)
+                sb.append(",\"label\":")
+                sb.append(jsonString(event.label ?: ""))
+            }
+            is MilestoneAborted -> {
+                sb.append(",\"ordinal\":")
+                sb.append(event.ordinal)
+                sb.append(",\"reason\":")
+                sb.append(jsonString(event.reason))
+            }
+            is TimeoutTriggered -> {
+                sb.append(",\"stageOrStep\":")
+                sb.append(jsonString(event.stageOrStep))
+                sb.append(",\"action\":")
+                sb.append(jsonString(event.action))
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs)
+            }
         }
         sb.append("}")
         return sb.toString()
@@ -910,6 +930,44 @@ object JsonEventLog {
                     totalAttempts = totalAttempts,
                     totalDurationMs = totalDurationMs,
                     outcome = outcome,
+                )
+            }
+            "MilestoneReached" -> {
+                val ordinal = intField(s, "ordinal") ?: 0
+                val label = stringField(s, "label")?.takeIf { it.isNotEmpty() }
+                MilestoneReached(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    ordinal = ordinal,
+                    label = label,
+                )
+            }
+            "MilestoneAborted" -> {
+                val ordinal = intField(s, "ordinal") ?: 0
+                val reason = stringField(s, "reason") ?: ""
+                MilestoneAborted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    ordinal = ordinal,
+                    reason = reason,
+                )
+            }
+            "TimeoutTriggered" -> {
+                val stageOrStep = stringField(s, "stageOrStep") ?: ""
+                val action = stringField(s, "action") ?: "interrupt"
+                val durationMs = longField(s, "durationMs") ?: 0L
+                TimeoutTriggered(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageOrStep = stageOrStep,
+                    action = action,
+                    durationMs = durationMs,
                 )
             }
             else -> null

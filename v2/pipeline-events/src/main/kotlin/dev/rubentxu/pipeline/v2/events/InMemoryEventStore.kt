@@ -65,6 +65,11 @@ class InMemoryEventStore : EventSink {
             is WorkflowLoaded -> event.copy(sequence = assignedSequence)
             is WaitUntilPolled -> event.copy(sequence = assignedSequence)
             is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
+            // ML-R9 T-09 milestone events
+            is MilestoneReached -> event.copy(sequence = assignedSequence)
+            is MilestoneAborted -> event.copy(sequence = assignedSequence)
+            // ML-R9 T-10 timeout events
+            is TimeoutTriggered -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

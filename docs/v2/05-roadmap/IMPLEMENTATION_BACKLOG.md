@@ -122,6 +122,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **L-05** ✅ CLOSED — `checkout`/git step. **Gate: UAT-LOCAL-005.** (ML-R5 — v0.19.0)
 - **L-06** ✅ CLOSED — steps ecosistema: writeFile/readFile, archiveArtifacts mínimo, wrappers maven/gradle. **Gate: UAT-LOCAL-006.** (ML-R6 — v0.21.0)
 - **L-07** ✅ CLOSED — smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.** (ML-R8 — v0.22.0)
+- **L-09** ✅ CLOSED — Jenkins catalog steps: workflow-control (dir/deleteDir/cleanWs/timeout/retry), error-handling (catchError/warnError/unstable), milestone, utility (pwd/isUnix/load/waitUntil), decorators (timestamps/ansiColor), node no-op + 3-state outcome model. **Gate: UAT-LOCAL-011 + UAT-LOCAL-012 + UAT-LOCAL-013.** (ML-R9 — v0.23.0)
 - Carry-in: FIND-M4R1-016/022 (roll-forward de M4-R2) si aplican al tocar protocol/step-sdk.
 
 ## Epic E6 — Kubernetes/Credentials

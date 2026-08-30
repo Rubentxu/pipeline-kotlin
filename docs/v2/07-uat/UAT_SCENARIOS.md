@@ -147,3 +147,12 @@ Pipeline con `sh` malicioso (escribir fuera del workspace, leer `$HOME/.ssh`) es
 
 ## UAT-LOCAL-006 — Smoke build real — ML/L7
 Pipeline end-to-end sobre un proyecto open-source famoso (pequeño, con Gradle/Maven wrapper): checkout → build → test-report → artifact, ejecutado por steps V2 con runner local durable. Clases: `UatLocal010SmokeE2ESandboxTest` (online) + `UatLocal010SmokeE2ESandboxOfflineTest` (offline, no network).
+
+## UAT-LOCAL-011 — Workflow-control steps — ML/L9
+12 escenarios SC-011-01..12 cubriendo los 16 nuevos step kinds de workflow-control y utilidad: `dir`, `deleteDir`, `cleanWs`, `timeout`-block, `retry`-block, `pwd`, `isUnix`, `load`, `waitUntil`, `timestamps`, `ansiColor`, `node` no-op. Incluye replay de bloques anidados (SC-011-07/08) y canary round-gate `__ml_r9_canary__` cero-ocurrencia en todos los canales de salida. Clase: `UatLocal011WorkflowControlTest`.
+
+## UAT-LOCAL-012 — Error-handling steps — ML/L9
+8 escenarios SC-012-01..08 cubriendo error-handling con 3-state outcome: `catchError` (default UNSTABLE, buildResult=FAILURE re-throws, buildResult=SUCCESS downgrades), `warnError`, `unstable`. Verifica que el outcome se propagó correctamente a `RunFinished.outcome`. Clase: `UatLocal012ErrorHandlingTest`.
+
+## UAT-LOCAL-013 — Milestone timing — ML/L9
+4 escenarios SC-013-01..04 cubriendo `milestone(ordinal, label?)`: orden ordinal estrictamente creciente dentro de un run, labels opcionales, y coordinación cross-build ( MilestoneReached / MilestoneAborted events). Clase: `UatLocal013MilestoneTimingTest`.

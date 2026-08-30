@@ -242,6 +242,7 @@ steps de ecosistema — sin controller externo.
   [`../01-product/JENKINS_FAMILIARITY_CATALOG.md`](../01-product/JENKINS_FAMILIARITY_CATALOG.md)
   (top-25 verificado; ver ADR-0005 amendment).
 - L7: smoke E2E sobre repos reales famosos (build con Gradle/Maven wrapper).
+- L9: Jenkins catalog steps — workflow-control (dir/deleteDir/cleanWs/timeout/retry-block), error-handling (catchError/warnError/unstable), milestone, utility (pwd/isUnix/load/waitUntil), decorators (timestamps/ansiColor), node no-op + 3-state outcome model. **Cerrado: UAT-LOCAL-011 + UAT-LOCAL-012 + UAT-LOCAL-013.** (ML-R9 — v0.23.0)
 
 ### No hacer
 No conectar controller/gateway externo (M4-rest); no Pods K8s (M5); no portar
@@ -256,6 +257,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 | ML-R6 — L6 Jenkins top steps (writeFile/readFile/archive) | ✅ CLOSED | **v0.21.0** | … | 2026-08-30 |
 | ML-R7 — L7 durable sh step-failure events (INC-R8-ARC-001/002) | ✅ CLOSED | **v0.21.1** | … | 2026-08-30 |
 | ML-R8 — smoke E2E on real open-source projects | ✅ CLOSED | **v0.22.0** | 0968a94… | 2026-08-30 |
+| ML-R9 — Jenkins catalog steps workflow-control + error-handling + milestone + 3-state outcome | ✅ CLOSED | **v0.23.0** | 5da8f83… | 2026-08-30 |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)
@@ -265,6 +267,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 5. ✅ L5 — `checkout`/git step (ML-R5, ADR-0050)
 6. ✅ L6 — Jenkins top steps (writeFile/readFile/archive) (ML-R6, ADR-0053)
 7. ✅ L7 — smoke E2E (ML-R8, ADR-0053)
+8. ✅ L9 — Jenkins catalog steps: workflow-control + error-handling + milestone + 3-state outcome (ML-R9, ADR-0054)
 
 ### Exit/UAT
 - UAT-LOCAL-001: kill del runner **durante** `sh` → resume SIN re-ejecución

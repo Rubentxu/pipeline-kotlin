@@ -253,6 +253,9 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 |---|---|---|---|---|
 | ML-R4 — L4 credentials local + secret redaction | ✅ CLOSED | **v0.18.0** | 9a27823… | 2026-08-27 |
 | ML-R5 — L5 checkout/git step | ✅ CLOSED | **v0.19.0** | 24dd2cb… | 2026-08-27 |
+| ML-R6 — L6 Jenkins top steps (writeFile/readFile/archive) | ✅ CLOSED | **v0.21.0** | … | 2026-08-30 |
+| ML-R7 — L7 durable sh step-failure events (INC-R8-ARC-001/002) | ✅ CLOSED | **v0.21.1** | … | 2026-08-30 |
+| ML-R8 — smoke E2E on real open-source projects | ✅ CLOSED | **v0.22.0** | 0968a94… | 2026-08-30 |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)
@@ -260,7 +263,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 3. ✅ L3 — sandbox profile local (ML-R3, ADR-0048)
 4. ✅ L4 — credentials provider local + secret redaction (ML-R4, ADR-0049)
 5. ✅ L5 — `checkout`/git step (ML-R5, ADR-0050)
-6. ⬜ L6 — Jenkins top steps (deferred)
+6. ✅ L6 — Jenkins top steps (writeFile/readFile/archive) (ML-R6, ADR-0053)
 7. ✅ L7 — smoke E2E (ML-R8, ADR-0053)
 
 ### Exit/UAT

@@ -146,4 +146,4 @@ Pipeline con `sh` malicioso (escribir fuera del workspace, leer `$HOME/.ssh`) es
 `checkout` clona un repositorio público real dentro del workspace aislado y expone commit/branch al resto del pipeline.
 
 ## UAT-LOCAL-006 — Smoke build real — ML/L7
-Pipeline end-to-end sobre un proyecto open-source famoso (pequeño, con Gradle/Maven wrapper): checkout → build → test-report → artifact, ejecutado por steps V2 con runner local durable.
+Pipeline end-to-end sobre un proyecto open-source famoso (pequeño, con Gradle/Maven wrapper): checkout → build → test-report → artifact, ejecutado por steps V2 con runner local durable. Clases: `UatLocal010SmokeE2ESandboxTest` (online) + `UatLocal010SmokeE2ESandboxOfflineTest` (offline, no network).

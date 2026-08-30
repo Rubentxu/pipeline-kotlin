@@ -115,13 +115,13 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 ## Epic ML — Ecosistema de ejecución local (ADR-0046)
 > Priorizado sobre E5-02..E5-10 (aplazados). Ámbito local-only, sin controller externo.
 
-- **L-01** `sh` durable Jenkins-fiel: patrón durable-task (script.sh + result.txt atómico + log fichero + heartbeat + cookie + `-xe`/shebang). **Gate: UAT-LOCAL-001; cierra UAT-REC-002.**
-- **L-02** workspace por stage + environment (PATH/JAVA_HOME/M2_HOME) + `returnStdout` (output file) + timeouts reales. **Gate: UAT-LOCAL-002.**
-- **L-03** sandbox profile local: confinement workspace/env best-effort (ADR-0016). **Gate: UAT-LOCAL-003.**
-- **L-04** credentials provider local + redacción secretos en logs/events/journal. **Gate: UAT-LOCAL-004 (partial UAT-SEC-001).**
-- **L-05** `checkout`/git step. **Gate: UAT-LOCAL-005.**
-- **L-06** steps ecosistema: writeFile/readFile, archiveArtifacts mínimo, wrappers maven/gradle.
-- **L-07** ✅ CLOSED — smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.**
+- **L-01** ✅ CLOSED — `sh` durable Jenkins-fiel: patrón durable-task (script.sh + result.txt atómico + log fichero + heartbeat + cookie + `-xe`/shebang). **Gate: UAT-LOCAL-001; cierra UAT-REC-002.** (ML-R1 — v0.16.0)
+- **L-02** ✅ CLOSED — workspace por stage + environment (PATH/JAVA_HOME/M2_HOME) + `returnStdout` (output file) + timeouts reales. **Gate: UAT-LOCAL-002.** (ML-R2/R3 — v0.17.0)
+- **L-03** ✅ CLOSED — sandbox profile local: confinement workspace/env best-effort (ADR-0016). **Gate: UAT-LOCAL-003.** (ML-R3 — v0.17.0)
+- **L-04** ✅ CLOSED — credentials provider local + redacción secretos en logs/events/journal. **Gate: UAT-LOCAL-004 (partial UAT-SEC-001).** (ML-R4 — v0.18.0)
+- **L-05** ✅ CLOSED — `checkout`/git step. **Gate: UAT-LOCAL-005.** (ML-R5 — v0.19.0)
+- **L-06** ✅ CLOSED — steps ecosistema: writeFile/readFile, archiveArtifacts mínimo, wrappers maven/gradle. **Gate: UAT-LOCAL-006.** (ML-R6 — v0.21.0)
+- **L-07** ✅ CLOSED — smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.** (ML-R8 — v0.22.0)
 - Carry-in: FIND-M4R1-016/022 (roll-forward de M4-R2) si aplican al tocar protocol/step-sdk.
 
 ## Epic E6 — Kubernetes/Credentials

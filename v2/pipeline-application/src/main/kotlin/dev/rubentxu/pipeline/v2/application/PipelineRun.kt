@@ -407,6 +407,7 @@ internal suspend fun walkPipelineSpecDurable(
             )
             if (stepOutcome == "failure") {
                 runOutcomeRef.set("failure")
+                break // abort remaining steps in this stage on failure
             }
         }
 
@@ -648,12 +649,17 @@ private suspend fun emitDurableStepEvents(
                         runOutcomeRef.set("failure")
                         return "failure"
                     }
+                } else if (stepOutcome == "unstable") {
+                    // Unstable step — advance cursor and propagate the unstable outcome
+                    ctx.cursorStore.advance(runId, opId, stageIndex)
+                    emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, stepOutcome, ctx.clock)
+                    return runOutcomeRef.get()
                 } else {
                     // Attempt succeeded
                     // Advance cursor after successful journal append (per R-C mitigation)
                     ctx.cursorStore.advance(runId, opId, stageIndex)
                     emitStepFinished(ctx.eventSink, step, stageIndex, stepIndex, runId, stepOutcome, ctx.clock)
-                    return "success"
+                    return runOutcomeRef.get()
                 }
             }
             dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision.ABORT -> {
@@ -1353,6 +1359,7 @@ private suspend fun executeDurableStepImpl(
                         message = step.message,
                     )
                 )
+                runOutcomeRef.set("unstable")
                 "success"
             }
             is StepSpec.CatchError -> {
@@ -1392,6 +1399,8 @@ private suspend fun executeDurableStepImpl(
                     outcome = "failure"
                 }
                 if (outcome != "success") {
+                    val effectiveResult = step.buildResult?.uppercase() ?: "UNSTABLE"
+                    val effectiveStageResult = step.stageResult ?: effectiveResult
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
                             eventId = UUID.randomUUID().toString(),
@@ -1399,16 +1408,18 @@ private suspend fun executeDurableStepImpl(
                             sequence = 0L,
                             occurredAt = clock.now(),
                             stageName = stageName,
-                            buildResult = step.buildResult,
-                            stageResult = step.stageResult ?: "",
+                            buildResult = effectiveResult,
+                            stageResult = effectiveStageResult,
                             message = step.message,
                         )
                     )
-                }
-                // Downgrade outcome per buildResult/stageResult
-                val effectiveResult = step.buildResult?.uppercase() ?: "UNSTABLE"
-                if (outcome != "success" && (effectiveResult == "UNSTABLE" || effectiveResult == "SUCCESS")) {
-                    outcome = "success"  // Jenkins: catchError suppresses failure
+                    // Downgrade outcome per buildResult/stageResult
+                    if (effectiveResult == "UNSTABLE" || effectiveResult == "SUCCESS") {
+                        outcome = "success"  // Jenkins: catchError suppresses failure
+                        if (effectiveResult == "UNSTABLE") {
+                            runOutcomeRef.set("unstable")  // Stage/run outcome = unstable
+                        }
+                    }
                 }
                 outcome
             }
@@ -1471,6 +1482,7 @@ private suspend fun executeDurableStepImpl(
                             message = step.message,
                         )
                     )
+                    runOutcomeRef.set("unstable")  // Stage/run outcome = unstable
                     outcome = "success"  // warnError: suppress failure, mark unstable
                 }
                 outcome
@@ -1536,7 +1548,7 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         // ML-R9 T-06: new step kinds
         is StepSpec.DeleteDir -> Triple("deleteDir", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
         is StepSpec.CleanWs -> Triple("cleanWs", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
-        is StepSpec.Unstable -> Triple("unstable", setOf(Effect.ABORTS_PIPELINE), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.Unstable -> Triple("unstable", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         is StepSpec.CatchError -> Triple("catchError", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         is StepSpec.WarnError -> Triple("warnError", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
     }
@@ -2110,6 +2122,18 @@ private fun emitStepEvents(
                     stepType = stepType,
                 )
             )
+            // Emit StageMarkedUnstable and mark the run as unstable
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = clock.now(),
+                    stageName = stepName,
+                    message = (step as StepSpec.Unstable).message,
+                )
+            )
+            runOutcome.set("unstable")
             val stepFinishedId = UUID.randomUUID().toString()
             val stepFinishedAt = clock.now()
             eventSink.append(

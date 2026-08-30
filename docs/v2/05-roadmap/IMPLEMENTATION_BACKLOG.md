@@ -124,6 +124,7 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **L-07** ✅ CLOSED — smoke E2E sobre repos reales famosos (Gradle/Maven wrapper). **Gate: UAT-LOCAL-006.** (ML-R8 — v0.22.0)
 - **L-09** ✅ CLOSED — Jenkins catalog steps: workflow-control (dir/deleteDir/cleanWs/timeout/retry), error-handling (catchError/warnError/unstable), milestone, utility (pwd/isUnix/load/waitUntil), decorators (timestamps/ansiColor), node no-op + 3-state outcome model. **Gate: UAT-LOCAL-011 + UAT-LOCAL-012 + UAT-LOCAL-013.** (ML-R9 — v0.23.0)
 - Carry-in: FIND-M4R1-016/022 (roll-forward de M4-R2) si aplican al tocar protocol/step-sdk.
+- **INC-MLR9-BASELINE-DRIFT** (P3) — `v2/compatibility/baseline.json` has 10 `FixtureSnapshot` entries (01..06 + 10..13); missing 07/08/09 from ML-R7. Runtime tests pass: `UatLocal005CorpusUntouchedTest` CP-001 byte-identity + CP-002 fixture count = 13 both PASS — drift is documentation/inventory, NOT a runtime regression. Action (backlog): backfill `baseline.json` with real sha256sum entries for `07-writeFile-readFile.pipeline.kts` + `08-withEnv-pipeline.pipeline.kts` + `09-archive-artefacts.pipeline.kts`; re-run `UatLocal005CorpusUntouchedTest`, `CorpusNormalizerTest`, `CorpusSnapshotDifferTest`, `CompatibilityCorpusTest`, `UatCompat001CorpusSmokeRunTest`; update spec scenario `CB-L9-002` if count widening rationale changes (13 vs 12). Origin: FIND-MLR9-DV-001 (verify S-1).
 
 ## Epic E6 — Kubernetes/Credentials
 - **E6-01** WorkerProvisioner port.

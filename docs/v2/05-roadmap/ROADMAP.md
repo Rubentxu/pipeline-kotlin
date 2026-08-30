@@ -257,7 +257,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 | ML-R6 — L6 Jenkins top steps (writeFile/readFile/archive) | ✅ CLOSED | **v0.21.0** | … | 2026-08-30 |
 | ML-R7 — L7 durable sh step-failure events (INC-R8-ARC-001/002) | ✅ CLOSED | **v0.21.1** | … | 2026-08-30 |
 | ML-R8 — smoke E2E on real open-source projects | ✅ CLOSED | **v0.22.0** | 0968a94… | 2026-08-30 |
-| ML-R9 — Jenkins catalog steps workflow-control + error-handling + milestone + 3-state outcome | ✅ CLOSED | **v0.23.0** | 5da8f83… | 2026-08-30 |
+| ML-R9 — Jenkins catalog steps workflow-control + error-handling + milestone + 3-state outcome | ✅ CLOSED | **v0.23.0** | 1526711… | 2026-08-30 |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)

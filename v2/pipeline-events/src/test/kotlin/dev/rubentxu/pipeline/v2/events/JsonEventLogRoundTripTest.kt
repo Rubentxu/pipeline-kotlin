@@ -18,6 +18,9 @@ import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
+import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
+import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
+import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
@@ -609,6 +612,75 @@ class JsonEventLogRoundTripTest {
         assertEquals("StageMarkedUnstable", restored.kind)
         assertEquals("Integration", restored.stageName)
         assertEquals("flaky-network", restored.message)
+        assertEquals(runId, restored.runId)
+    }
+
+    @Test
+    fun `ML-R9 T-07 WorkflowLoaded roundtrips correctly`() {
+        val runId = "workflow-loaded-run"
+        val event = WorkflowLoaded(
+            eventId = "wl-1",
+            runId = runId,
+            sequence = 40L,
+            occurredAt = Instant.parse("2026-08-30T10:00:10Z"),
+            path = "sub.pipeline.kts",
+            stepCount = 3,
+            sha256 = "abc123def456",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as WorkflowLoaded
+        assertEquals("WorkflowLoaded", restored.kind)
+        assertEquals("sub.pipeline.kts", restored.path)
+        assertEquals(3, restored.stepCount)
+        assertEquals("abc123def456", restored.sha256)
+        assertEquals(runId, restored.runId)
+    }
+
+    @Test
+    fun `ML-R9 T-07 WaitUntilPolled roundtrips correctly`() {
+        val runId = "wait-until-run"
+        val event = WaitUntilPolled(
+            eventId = "wup-1",
+            runId = runId,
+            sequence = 41L,
+            occurredAt = Instant.parse("2026-08-30T10:00:15Z"),
+            attempt = 5,
+            durationMs = 250L,
+            conditionResult = true,
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as WaitUntilPolled
+        assertEquals("WaitUntilPolled", restored.kind)
+        assertEquals(5, restored.attempt)
+        assertEquals(250L, restored.durationMs)
+        assertEquals(true, restored.conditionResult)
+        assertEquals(runId, restored.runId)
+    }
+
+    @Test
+    fun `ML-R9 T-07 WaitUntilCompleted roundtrips correctly`() {
+        val runId = "wait-until-run"
+        val event = WaitUntilCompleted(
+            eventId = "wuc-1",
+            runId = runId,
+            sequence = 42L,
+            occurredAt = Instant.parse("2026-08-30T10:00:20Z"),
+            totalAttempts = 7,
+            totalDurationMs = 500L,
+            outcome = "completed",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as WaitUntilCompleted
+        assertEquals("WaitUntilCompleted", restored.kind)
+        assertEquals(7, restored.totalAttempts)
+        assertEquals(500L, restored.totalDurationMs)
+        assertEquals("completed", restored.outcome)
         assertEquals(runId, restored.runId)
     }
 }

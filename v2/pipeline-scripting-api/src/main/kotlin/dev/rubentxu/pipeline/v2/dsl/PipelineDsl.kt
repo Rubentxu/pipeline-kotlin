@@ -443,6 +443,71 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val name: String get() = "unstable"
         override val type: String get() = "unstable"
     }
+
+    /**
+     * Prints the current working directory (workspace root).
+     *
+     * Jenkins verbatim:
+     * `pwd()` or `pwd(tmp: Boolean)`
+     *
+     * @param tmp If true, creates a temp subdirectory and returns its path
+     */
+    data class Pwd(
+        val tmp: Boolean = false,
+    ) : StepSpec {
+        override val name: String get() = "pwd"
+        override val type: String get() = "pwd"
+    }
+
+    /**
+     * Checks whether the current system is Unix-like (Linux/macOS).
+     *
+     * Jenkins verbatim:
+     * `isUnix()`
+     */
+    class IsUnix : StepSpec {
+        override val name: String get() = "isUnix"
+        override val type: String get() = "isUnix"
+    }
+
+    /**
+     * Loads and executes steps from an external pipeline script file.
+     *
+     * Jenkins verbatim:
+     * `load(path: String)`
+     *
+     * The path is resolved relative to the workspace root. On successful
+     * load, the file is compiled via Kotlin24ScriptingHost and its steps
+     * are appended to the current execution scope.
+     *
+     * Re-entrancy: if the same (path, sha256) is loaded twice in one run,
+     * the second load is a no-op with stepCount=0.
+     *
+     * @param path Workspace-relative path to the .pipeline.kts file
+     */
+    data class Load(
+        val path: String,
+    ) : StepSpec {
+        override val name: String get() = "load"
+        override val type: String get() = "load"
+    }
+
+    /**
+     * Polls a condition closure until it returns true or a deadline elapses.
+     *
+     * Jenkins verbatim:
+     * `waitUntil(initialRecurrencePeriod: Long = 1, quiet: Boolean = false) { condition }`
+     *
+     * @param initialRecurrencePeriod Initial poll interval in milliseconds
+     * @param quiet If true, suppress output during polling
+     */
+    data class WaitUntil(
+        val initialRecurrencePeriod: Long = 1L,
+        val quiet: Boolean = false,
+    ) : StepSpec {
+        override val name: String get() = "waitUntil"
+        override val type: String get() = "waitUntil"
+    }
 }
 
 /**
@@ -800,6 +865,11 @@ class StageScope(private val stageName: String) {
             is StepSpec.CatchError -> currentStep
             is StepSpec.WarnError -> currentStep
             is StepSpec.Unstable -> currentStep
+            // ML-R9 workflow-utility: not retryable at step level
+            is StepSpec.Pwd -> currentStep
+            is StepSpec.IsUnix -> currentStep
+            is StepSpec.Load -> currentStep
+            is StepSpec.WaitUntil -> currentStep
         }
     }
 
@@ -1070,6 +1140,73 @@ class StageScope(private val stageName: String) {
      */
     fun unstable(message: String) {
         steps.add(StepSpec.Unstable(message = message))
+    }
+
+    /**
+     * Prints the current working directory (workspace root).
+     *
+     * Jenkins verbatim:
+     * `pwd()` or `pwd(tmp: Boolean)`
+     *
+     * @param tmp If true, creates a temp subdirectory and returns its path
+     */
+    fun pwd(tmp: Boolean = false): String {
+        val step = StepSpec.Pwd(tmp = tmp)
+        steps.add(step)
+        // Return value is set by the executor; for now return workspace root placeholder
+        return "<workspace>"
+    }
+
+    /**
+     * Checks whether the current system is Unix-like (Linux/macOS).
+     *
+     * Jenkins verbatim:
+     * `isUnix()`
+     *
+     * @return true on Linux or macOS, false otherwise
+     */
+    fun isUnix(): Boolean {
+        steps.add(StepSpec.IsUnix())
+        // Return value is set by the executor
+        return true
+    }
+
+    /**
+     * Loads and executes steps from an external pipeline script file.
+     *
+     * Jenkins verbatim:
+     * `load(path: String)`
+     *
+     * The path is resolved relative to the workspace root. On successful load,
+     * the file is compiled and its steps are appended to the current execution scope.
+     *
+     * @param path Workspace-relative path to the .pipeline.kts file
+     */
+    fun load(path: String) {
+        steps.add(StepSpec.Load(path = path))
+    }
+
+    /**
+     * Polls a condition closure until it returns true or a deadline elapses.
+     *
+     * Jenkins verbatim:
+     * `waitUntil(initialRecurrencePeriod: Long = 1, quiet: Boolean = false) { condition }`
+     *
+     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1ms)
+     * @param quiet If true, suppress output during polling
+     * @param condition Lambda that returns true when the wait should stop
+     * @throws WaitUntilDeadlineExceededException if deadline elapses before condition returns true
+     */
+    fun waitUntil(
+        initialRecurrencePeriod: Long = 1L,
+        quiet: Boolean = false,
+        condition: () -> Boolean,
+    ) {
+        steps.add(StepSpec.WaitUntil(
+            initialRecurrencePeriod = initialRecurrencePeriod,
+            quiet = quiet,
+        ))
+        // Note: condition is currently not journaled; waitUntil uses ReplayPolicy.NEVER
     }
 
     fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)

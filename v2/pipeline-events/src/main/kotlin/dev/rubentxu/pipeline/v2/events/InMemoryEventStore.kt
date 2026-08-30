@@ -61,6 +61,10 @@ class InMemoryEventStore : EventSink {
             // ML-R9 error-handling events (T-06)
             is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
             is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
+            // ML-R9 workflow-utility events (T-07)
+            is WorkflowLoaded -> event.copy(sequence = assignedSequence)
+            is WaitUntilPolled -> event.copy(sequence = assignedSequence)
+            is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

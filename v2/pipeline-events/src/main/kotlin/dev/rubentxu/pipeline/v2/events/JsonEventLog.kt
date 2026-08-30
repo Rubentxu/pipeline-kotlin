@@ -339,6 +339,30 @@ object JsonEventLog {
                 sb.append(",\"message\":")
                 sb.append(jsonString(event.message))
             }
+            is WorkflowLoaded -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path))
+                sb.append(",\"stepCount\":")
+                sb.append(event.stepCount)
+                sb.append(",\"sha256\":")
+                sb.append(jsonString(event.sha256))
+            }
+            is WaitUntilPolled -> {
+                sb.append(",\"attempt\":")
+                sb.append(event.attempt)
+                sb.append(",\"durationMs\":")
+                sb.append(event.durationMs)
+                sb.append(",\"conditionResult\":")
+                sb.append(event.conditionResult)
+            }
+            is WaitUntilCompleted -> {
+                sb.append(",\"totalAttempts\":")
+                sb.append(event.totalAttempts)
+                sb.append(",\"totalDurationMs\":")
+                sb.append(event.totalDurationMs)
+                sb.append(",\"outcome\":")
+                sb.append(jsonString(event.outcome))
+            }
         }
         sb.append("}")
         return sb.toString()
@@ -844,6 +868,48 @@ object JsonEventLog {
                     occurredAt = occurredAt,
                     stageName = stageName,
                     message = message,
+                )
+            }
+            "WorkflowLoaded" -> {
+                val path = stringField(s, "path") ?: ""
+                val stepCount = intField(s, "stepCount") ?: 0
+                val sha256 = stringField(s, "sha256") ?: ""
+                WorkflowLoaded(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    stepCount = stepCount,
+                    sha256 = sha256,
+                )
+            }
+            "WaitUntilPolled" -> {
+                val attempt = intField(s, "attempt") ?: 1
+                val durationMs = longField(s, "durationMs") ?: 0L
+                val conditionResult = boolField(s, "conditionResult") ?: false
+                WaitUntilPolled(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    attempt = attempt,
+                    durationMs = durationMs,
+                    conditionResult = conditionResult,
+                )
+            }
+            "WaitUntilCompleted" -> {
+                val totalAttempts = intField(s, "totalAttempts") ?: 0
+                val totalDurationMs = longField(s, "totalDurationMs") ?: 0L
+                val outcome = stringField(s, "outcome") ?: "completed"
+                WaitUntilCompleted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    totalAttempts = totalAttempts,
+                    totalDurationMs = totalDurationMs,
+                    outcome = outcome,
                 )
             }
             else -> null

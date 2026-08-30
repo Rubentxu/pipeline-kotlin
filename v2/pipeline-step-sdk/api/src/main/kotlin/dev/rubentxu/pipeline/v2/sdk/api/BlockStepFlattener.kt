@@ -145,7 +145,11 @@ object BlockStepFlattener {
             is StepSpec.ArchiveArtifacts,
             is StepSpec.DeleteDir,
             is StepSpec.CleanWs,
-            is StepSpec.Unstable -> {
+            is StepSpec.Unstable,
+            is StepSpec.Pwd,
+            is StepSpec.IsUnix,
+            is StepSpec.Load,
+            is StepSpec.WaitUntil -> {
                 // Terminal — no nested steps to flatten
             }
         }

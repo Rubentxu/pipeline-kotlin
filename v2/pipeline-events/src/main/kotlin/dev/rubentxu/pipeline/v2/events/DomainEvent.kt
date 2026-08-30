@@ -672,3 +672,60 @@ data class StageMarkedUnstable(
 ) : DomainEvent {
     override val kind: String get() = "StageMarkedUnstable"
 }
+
+/**
+ * Emitted when a script file is loaded via `load(path)` step.
+ *
+ * @param path Workspace-relative path to the loaded script
+ * @param stepCount Number of steps appended (0 for re-entrant no-op)
+ * @param sha256 SHA-256 of the loaded file content
+ */
+data class WorkflowLoaded(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: String,
+    val stepCount: Int,
+    val sha256: String,
+) : DomainEvent {
+    override val kind: String get() = "WorkflowLoaded"
+}
+
+/**
+ * Emitted on each poll iteration of a `waitUntil` step.
+ *
+ * @param attempt 1-based attempt number
+ * @param durationMs Elapsed time since waitUntil started (ms)
+ * @param conditionResult Whether the condition returned true this iteration
+ */
+data class WaitUntilPolled(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val attempt: Int,
+    val durationMs: Long,
+    val conditionResult: Boolean,
+) : DomainEvent {
+    override val kind: String get() = "WaitUntilPolled"
+}
+
+/**
+ * Emitted when a `waitUntil` step completes (success or deadline exceeded).
+ *
+ * @param totalAttempts Total number of poll attempts
+ * @param totalDurationMs Total elapsed time (ms)
+ * @param outcome "completed" or "deadline-exceeded"
+ */
+data class WaitUntilCompleted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val totalAttempts: Int,
+    val totalDurationMs: Long,
+    val outcome: String,
+) : DomainEvent {
+    override val kind: String get() = "WaitUntilCompleted"
+}

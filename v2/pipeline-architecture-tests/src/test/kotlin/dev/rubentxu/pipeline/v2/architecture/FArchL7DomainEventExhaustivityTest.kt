@@ -11,16 +11,17 @@ import kotlin.reflect.full.memberProperties
  *
  * Architecture test that enforces DomainEvent sealed hierarchy is complete.
  *
- * The sealed hierarchy must contain exactly 33 variants:
+ * The sealed hierarchy must contain exactly 36 variants:
  * - 23 existing (ML-R1 through ML-R6)
  * - 4 new for ML-R7 (FileWritten, FileRead, ArtifactArchived, ArtifactArchiveFailed)
- * - 6 new for ML-R9 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
+ * - 6 new for ML-R9 T-06 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
+ * - 3 new for ML-R9 T-07 (WorkflowLoaded, WaitUntilPolled, WaitUntilCompleted)
  * NOTE: ArtifactEntry is a nested data class, not a standalone DomainEvent
  *
  * This CLOSES the DomainEvent exhaustivity invariant from ADR-0046 §D2.
  *
- * RED: AssertionError (hierarchy count != 33)
- * GREEN: After T-07, hierarchy count == 33
+ * RED: AssertionError (hierarchy count != 36)
+ * GREEN: After T-07, hierarchy count == 36
  */
 class FArchL7DomainEventExhaustivityTest {
 
@@ -61,13 +62,16 @@ class FArchL7DomainEventExhaustivityTest {
      * 31. WsCleaned (ML-R9 T-05)
      * 32. CatchErrorTriggered (ML-R9 T-06)
      * 33. StageMarkedUnstable (ML-R9 T-06)
+     * 34. WorkflowLoaded (ML-R9 T-07)
+     * 35. WaitUntilPolled (ML-R9 T-07)
+     * 36. WaitUntilCompleted (ML-R9 T-07)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_33_variants`() {
+    fun `domain_event_sealed_hierarchy_has_36_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 33
+        val expectedCount = 36
 
         assertEquals(
             expectedCount,
@@ -108,7 +112,7 @@ class FArchL7DomainEventExhaustivityTest {
     }
 
     /**
-     * Verifies all 33 variants have the required DomainEvent interface fields.
+     * Verifies all 36 variants have the required DomainEvent interface fields.
      */
     @Test
     fun `all_domain_event_variants_implement_interface_fields`() {

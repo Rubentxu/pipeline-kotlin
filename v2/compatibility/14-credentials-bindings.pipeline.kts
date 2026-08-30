@@ -7,40 +7,40 @@ pipeline {
             // Rule 13 ${'$'}VAR — shell variable expansion in strings.
 
             withCredentials(listOf(
-                // Kind.STRING (pre-existing)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("string-creds"),
+                // Kind.STRING (pre-existing) — pure DSL, no FQCN imports
+                StepSpec.CredentialsBinding.string(
+                    "string-creds",
                     "API_KEY"
                 ),
-                // Kind.USERNAME_PASSWORD (pre-existing)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernamePassword(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("userpass-creds"),
+                // Kind.USERNAME_PASSWORD (pre-existing) — pure DSL
+                StepSpec.CredentialsBinding.usernamePassword(
+                    "userpass-creds",
                     "DB_USER",
                     "DB_PASS"
                 ),
-                // Kind.SSH_USER_PRIVATE_KEY (NEW in ML-R10)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-creds"),
+                // Kind.SSH_USER_PRIVATE_KEY (NEW in ML-R10) — pure DSL
+                StepSpec.CredentialsBinding.sshUserPrivateKey(
+                    "ssh-creds",
                     "SSH_KEY_FILE"
                 ),
-                // Kind.FILE (NEW in ML-R10)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("file-creds"),
+                // Kind.FILE (NEW in ML-R10) — pure DSL
+                StepSpec.CredentialsBinding.file(
+                    "file-creds",
                     "SECRET_FILE"
                 ),
-                // Kind.CERTIFICATE (NEW in ML-R10)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-creds"),
+                // Kind.CERTIFICATE (NEW in ML-R10) — pure DSL
+                StepSpec.CredentialsBinding.certificate(
+                    "cert-creds",
                     "KEYSTORE_PATH"
                 ),
-                // Kind.ZIP (NEW in ML-R10)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.zip(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("zip-creds"),
+                // Kind.ZIP (NEW in ML-R10) — pure DSL
+                StepSpec.CredentialsBinding.zip(
+                    "zip-creds",
                     "ZIP_PATH"
                 ),
-                // Kind.USERNAME_COLON_PASSWORD (NEW in ML-R10)
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernameColonPassword(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ucp-creds"),
+                // Kind.USERNAME_COLON_PASSWORD (NEW in ML-R10) — pure DSL
+                StepSpec.CredentialsBinding.usernameColonPassword(
+                    "ucp-creds",
                     "U_P"
                 )
             )) {

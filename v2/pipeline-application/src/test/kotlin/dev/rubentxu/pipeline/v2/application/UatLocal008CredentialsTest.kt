@@ -326,7 +326,6 @@ pipeline {
      * in a .pipeline.kts fixture until the DSL classpath is widened.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-018 sshUserPrivateKey binding resolves key file env var`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -351,7 +350,7 @@ pipeline {
         stage("ssh-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-test-key"),
+                    "ssh-test-key"),
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -381,7 +380,6 @@ pipeline {
      * BLOCKED: DSL classpath does not include pipeline-domain module (same as CR-BD-018).
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-019 file binding resolves secret file path env var`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -406,7 +404,7 @@ pipeline {
         stage("file-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("file-test-secret"),
+                    "file-test-secret"),
                     "SECRET_FILE"
                 )
             )) {
@@ -432,7 +430,6 @@ pipeline {
      * Materialization: mkstemp for keystore, wiped in finally.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-020 certificate binding resolves keystore path env var`(@TempDir tempDir: Path) {
         // Create a PKCS#12 keystore file
         val keystorePath = tempDir.resolve("testkeystore.p12")
@@ -461,7 +458,7 @@ pipeline {
         stage("cert-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-test"),
+                    "cert-test"),
                     "KEYSTORE_PATH"
                 )
             )) {
@@ -487,7 +484,6 @@ pipeline {
      * Materialization: mkdtemp for ZIP contents, wiped in finally.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-021 zip binding resolves extracted directory path env var`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -511,7 +507,7 @@ pipeline {
         stage("zip-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.zip(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("zip-test"),
+                    "zip-test"),
                     "ZIP_PATH"
                 )
             )) {
@@ -536,7 +532,6 @@ pipeline {
      * CR-BD-022: USERNAME_COLON_PASSWORD binding — colon-joined string injected as env var.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-022 usernameColonPassword binding resolves user_pass env var`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -561,7 +556,7 @@ pipeline {
         stage("ucp-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernameColonPassword(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ucp-test"),
+                    "ucp-test"),
                     "U_P"
                 )
             )) {
@@ -588,7 +583,6 @@ pipeline {
      * CR-BD-023: SSH key file wiped (fill + delete) after withCredentials block.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-023 ssh key file wiped after block exit`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -613,7 +607,7 @@ pipeline {
         stage("wipe-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-wipe-key"),
+                    "ssh-wipe-key"),
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -636,7 +630,6 @@ pipeline {
      * CR-BD-024: Secret file wiped (fill + delete) after withCredentials block.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-024 secret file wiped after block exit`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -660,7 +653,7 @@ pipeline {
         stage("file-wipe") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("file-wipe-secret"),
+                    "file-wipe-secret"),
                     "SECRET_FILE"
                 )
             )) {
@@ -681,7 +674,6 @@ pipeline {
      * CR-BD-025: Certificate keystore wiped after withCredentials block.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-025 certificate keystore wiped after block exit`(@TempDir tempDir: Path) {
         // Create a PKCS#12 keystore file
         val keystorePath = tempDir.resolve("wipekeystore.p12")
@@ -710,7 +702,7 @@ pipeline {
         stage("cert-wipe") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-wipe"),
+                    "cert-wipe"),
                     "KEYSTORE_PATH"
                 )
             )) {
@@ -734,7 +726,6 @@ pipeline {
      * Ordering: CredentialBound → inner step → CredentialUnbound.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-026 CredentialBound before injection`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -758,7 +749,7 @@ pipeline {
         stage("audit") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("audit-order-key"),
+                    "audit-order-key"),
                     "API_KEY"
                 )
             )) {
@@ -787,7 +778,6 @@ pipeline {
      * CR-BD-027: CredentialUsed emitted for each use of the credential.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-027 CredentialUsed per use`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -811,7 +801,7 @@ pipeline {
         stage("multi-use") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("used-multi-key"),
+                    "used-multi-key"),
                     "API_KEY"
                 )
             )) {
@@ -837,7 +827,6 @@ pipeline {
      * CR-BD-028: CredentialUnbound emitted in finally (even on success).
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-028 CredentialUnbound in finally on success`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -861,7 +850,7 @@ pipeline {
         stage("unbound") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("unbound-key"),
+                    "unbound-key"),
                     "API_KEY"
                 )
             )) {
@@ -888,7 +877,6 @@ pipeline {
      * CR-BD-029: SecretText value never appears in event surfaces (only in env injection).
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-029 SecretText redaction — no secret in events`(@TempDir tempDir: Path) {
         val secret = "SUPER_SECRET_REDACT_12345"
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
@@ -909,7 +897,7 @@ pipeline {
         stage("redact") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("redact-text-key"),
+                    "redact-text-key"),
                     "API_KEY"
                 )
             )) {
@@ -932,7 +920,6 @@ pipeline {
      * CR-BD-030: UsernamePassword password never appears in event surfaces.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-030 UsernamePassword redaction — no password in events`(@TempDir tempDir: Path) {
         val password = "REDACTED_PASS_XYZ"
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
@@ -953,7 +940,7 @@ pipeline {
         stage("redact-up") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernamePassword(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("redact-up-key"),
+                    "redact-up-key"),
                     "DB_USER",
                     "DB_PASS"
                 )
@@ -977,7 +964,6 @@ pipeline {
      * CR-BD-031: SshPrivateKey private key bytes never appear in event surfaces.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-031 SshPrivateKey redaction — no private key in events`(@TempDir tempDir: Path) {
         val privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nREDACTED_PRIVATE_KEY_CONTENT\n-----END OPENSSH PRIVATE KEY-----\n"
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
@@ -998,7 +984,7 @@ pipeline {
         stage("redact-ssh") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("redact-ssh-key"),
+                    "redact-ssh-key"),
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -1023,7 +1009,6 @@ pipeline {
      * CR-BD-032: Nested withCredentials — inner binding shadows outer.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-032 nested withCredentials inner shadows outer binding`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -1047,14 +1032,14 @@ pipeline {
         stage("nested") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("outer-key"),
+                    "outer-key"),
                     "SHARED_VAR"
                 )
             )) {
                 sh("echo outer=${'$'}SHARED_VAR")
                 withCredentials(listOf(
                     dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                        dev.rubentxu.pipeline.v2.domain.CredentialsId("inner-key"),
+                        "inner-key"),
                         "SHARED_VAR"
                     )
                 )) {
@@ -1081,7 +1066,6 @@ pipeline {
      * CR-BD-033: CredentialUnbound emitted in finally even when inner step throws.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-033 CredentialUnbound in finally even on exception`(@TempDir tempDir: Path) {
         val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
             store.add(
@@ -1101,7 +1085,7 @@ pipeline {
         stage("exception-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("exception-key"),
+                    "exception-key"),
                     "API_KEY"
                 )
             )) {
@@ -1157,7 +1141,7 @@ pipeline {
         stage("mismatch") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("mismatch-key"),
+                    "mismatch-key"),
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -1179,7 +1163,6 @@ pipeline {
      * CR-BD-035: Missing credential ID throws.
      */
     @Test
-    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
     fun `CR-BD-035 missing credential ID throws`(@TempDir tempDir: Path) {
         // No credentials added to store — deliberately empty
         val (storePath, passphrase) = createCredentialsStore(tempDir) { _ ->
@@ -1197,7 +1180,7 @@ pipeline {
         stage("missing") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    dev.rubentxu.pipeline.v2.domain.CredentialsId("nonexistent-id"),
+                    "nonexistent-id"),
                     "API_KEY"
                 )
             )) {

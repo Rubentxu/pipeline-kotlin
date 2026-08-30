@@ -154,28 +154,28 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
             /**
              * Creates a STRING binding: the secret value is injected as a single env var.
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param variable The environment variable name
              */
-            fun string(credentialsId: CredentialsId, variable: String): CredentialsBinding {
-                return CredentialsBinding(Kind.STRING, credentialsId, variable = variable)
+            fun string(credentialsId: String, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.STRING, CredentialsId(credentialsId), variable = variable)
             }
 
             /**
              * Creates a USERNAME_PASSWORD binding: two env vars are injected.
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param usernameVariable The username environment variable name
              * @param passwordVariable The password environment variable name
              */
             fun usernamePassword(
-                credentialsId: CredentialsId,
+                credentialsId: String,
                 usernameVariable: String,
                 passwordVariable: String,
             ): CredentialsBinding {
                 return CredentialsBinding(
                     Kind.USERNAME_PASSWORD,
-                    credentialsId,
+                    CredentialsId(credentialsId),
                     usernameVariable = usernameVariable,
                     passwordVariable = passwordVariable,
                 )
@@ -186,20 +186,20 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
              *
              * Jenkins verbatim signature: credentialsId, keyFileVariable, passphraseVariable?, usernameVariable?
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param keyFileVariable The SSH key file environment variable name
              * @param passphraseVariable The passphrase environment variable name (optional)
              * @param usernameVariable The username environment variable name (optional)
              */
             fun sshUserPrivateKey(
-                credentialsId: CredentialsId,
+                credentialsId: String,
                 keyFileVariable: String,
                 passphraseVariable: String? = null,
                 usernameVariable: String? = null,
             ): CredentialsBinding {
                 return CredentialsBinding(
                     Kind.SSH_USER_PRIVATE_KEY,
-                    credentialsId,
+                    CredentialsId(credentialsId),
                     keyFileVariable = keyFileVariable,
                     passphraseVariable = passphraseVariable,
                     usernameVariable = usernameVariable,
@@ -211,11 +211,11 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
              *
              * Jenkins verbatim signature: credentialsId, variable
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param variable The file path environment variable name
              */
-            fun file(credentialsId: CredentialsId, variable: String): CredentialsBinding {
-                return CredentialsBinding(Kind.FILE, credentialsId, variable = variable)
+            fun file(credentialsId: String, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.FILE, CredentialsId(credentialsId), variable = variable)
             }
 
             /**
@@ -223,20 +223,20 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
              *
              * Jenkins verbatim signature: keystoreVariable, credentialsId, aliasVariable?, passwordVariable?
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param keystoreVariable The keystore file environment variable name
              * @param aliasVariable The alias environment variable name (optional)
              * @param passwordVariable The password environment variable name (optional)
              */
             fun certificate(
-                credentialsId: CredentialsId,
+                credentialsId: String,
                 keystoreVariable: String,
                 aliasVariable: String? = null,
                 passwordVariable: String? = null,
             ): CredentialsBinding {
                 return CredentialsBinding(
                     Kind.CERTIFICATE,
-                    credentialsId,
+                    CredentialsId(credentialsId),
                     keystoreVariable = keystoreVariable,
                     aliasVariable = aliasVariable,
                     passwordVariable = passwordVariable,
@@ -248,11 +248,11 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
              *
              * Jenkins verbatim signature: variable, credentialsId
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param variable The ZIP path environment variable name
              */
-            fun zip(credentialsId: CredentialsId, variable: String): CredentialsBinding {
-                return CredentialsBinding(Kind.ZIP, credentialsId, variable = variable)
+            fun zip(credentialsId: String, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.ZIP, CredentialsId(credentialsId), variable = variable)
             }
 
             /**
@@ -260,11 +260,11 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
              *
              * Jenkins verbatim signature: variable, credentialsId
              *
-             * @param credentialsId The credentials ID in the store
+             * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
              * @param variable The user:pass environment variable name
              */
-            fun usernameColonPassword(credentialsId: CredentialsId, variable: String): CredentialsBinding {
-                return CredentialsBinding(Kind.USERNAME_COLON_PASSWORD, credentialsId, variable = variable)
+            fun usernameColonPassword(credentialsId: String, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.USERNAME_COLON_PASSWORD, CredentialsId(credentialsId), variable = variable)
             }
         }
     }
@@ -1067,11 +1067,11 @@ class StageScope(private val stageName: String) {
      * }
      * ```
      *
-     * @param credentialsId The credentials ID in the store
+     * @param credentialsId The credentials ID in the store (string — CredentialsId is constructed internally)
      * @param variable The environment variable name to inject
      * @param block The steps to execute with the credential bound
      */
-    fun environment(credentialsId: CredentialsId, variable: String, block: StageScope.() -> Unit) {
+    fun environment(credentialsId: String, variable: String, block: StageScope.() -> Unit) {
         withCredentials(listOf(StepSpec.CredentialsBinding.string(credentialsId, variable)), block)
     }
 

@@ -1,7 +1,20 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
+import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
+import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
+import dev.rubentxu.pipeline.v2.domain.credentials.Zip
+import dev.rubentxu.pipeline.v2.events.CredentialBound
+import dev.rubentxu.pipeline.v2.events.CredentialUnbound
+import dev.rubentxu.pipeline.v2.events.CredentialUsed
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -300,7 +313,907 @@ pipeline {
         assertTrue(allContent.contains("LINE2"), "LINE2 should be captured")
     }
 
-    // ─── CR-BD-017 — E2E credential injection via existing test infrastructure ──
+    // ─── CR-BD-018..022 — 5 new binding kinds happy-path ───────────────────
+
+    /**
+     * CR-BD-018: SSH_USER_PRIVATE_KEY binding — key file path injected as env var.
+     * Materialization: mkstemp for key file, wiped in finally.
+     *
+     * BLOCKED: DSL classpath does not include pipeline-domain module.
+     * CredentialsId is not accessible in .pipeline.kts scripts (dev.rubentxu.pipeline.v2.domain
+     * not on DSL compilation classpath). Script compilation fails with "Cannot access class
+     * '...domain.CredentialsId'". The withCredentials DSL syntax cannot be exercised E2E
+     * in a .pipeline.kts fixture until the DSL classpath is widened.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-018 sshUserPrivateKey binding resolves key file env var`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("ssh-test-key"),
+                SshPrivateKey(
+                    CredentialsId("ssh-test-key"),
+                    CredentialScope.GLOBAL,
+                    "git",
+                    "-----BEGIN OPENSSH PRIVATE KEY-----\ntestkey\n-----END OPENSSH PRIVATE KEY-----\n".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("ssh-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-test-key"),
+                    "SSH_KEY_FILE"
+                )
+            )) {
+                sh("echo SSH_KEY_FILE=${'$'}SSH_KEY_FILE")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("ssh.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("success", runFinished?.outcome, "SSH binding pipeline should succeed. stdout: ${stdout.take(300)}")
+
+        // Verify key file path appears in output (materialized)
+        assertTrue(stdout.contains("SSH_KEY_FILE=/"), "Materialized SSH key path should appear in output")
+    }
+
+    /**
+     * CR-BD-019: FILE binding — secret file path injected as env var.
+     * Materialization: mkstemp for secret file, wiped in finally.
+     *
+     * BLOCKED: DSL classpath does not include pipeline-domain module (same as CR-BD-018).
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-019 file binding resolves secret file path env var`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("file-test-secret"),
+                SecretFile(
+                    CredentialsId("file-test-secret"),
+                    CredentialScope.GLOBAL,
+                    "super-secret-content".toByteArray(),
+                    "secret.txt"
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("file-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("file-test-secret"),
+                    "SECRET_FILE"
+                )
+            )) {
+                sh("echo SECRET_FILE=${'$'}SECRET_FILE")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("file.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("success", runFinished?.outcome, "FILE binding pipeline should succeed")
+        assertTrue(stdout.contains("SECRET_FILE=/"), "Materialized secret file path should appear in output")
+    }
+
+    /**
+     * CR-BD-020: CERTIFICATE binding — keystore path injected as env var.
+     * Materialization: mkstemp for keystore, wiped in finally.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-020 certificate binding resolves keystore path env var`(@TempDir tempDir: Path) {
+        // Create a PKCS#12 keystore file
+        val keystorePath = tempDir.resolve("testkeystore.p12")
+        val keystorePassphrase = "keystore-pass"
+        createTestKeystore(tempDir, keystorePath, keystorePassphrase)
+
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("cert-test"),
+                Certificate(
+                    CredentialsId("cert-test"),
+                    CredentialScope.GLOBAL,
+                    Files.readAllBytes(keystorePath)
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("cert-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-test"),
+                    "KEYSTORE_PATH"
+                )
+            )) {
+                sh("echo KEYSTORE_PATH=${'$'}KEYSTORE_PATH")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("cert.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("success", runFinished?.outcome, "CERTIFICATE binding pipeline should succeed")
+        assertTrue(stdout.contains("KEYSTORE_PATH=/"), "Materialized keystore path should appear in output")
+    }
+
+    /**
+     * CR-BD-021: ZIP binding — extracted directory path injected as env var.
+     * Materialization: mkdtemp for ZIP contents, wiped in finally.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-021 zip binding resolves extracted directory path env var`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("zip-test"),
+                Zip(
+                    CredentialsId("zip-test"),
+                    CredentialScope.GLOBAL,
+                    mapOf("config.json" to """{"key":"value"}""".toByteArray())
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("zip-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.zip(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("zip-test"),
+                    "ZIP_PATH"
+                )
+            )) {
+                sh("echo ZIP_PATH=${'$'}ZIP_PATH")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("zip.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("success", runFinished?.outcome, "ZIP binding pipeline should succeed")
+        assertTrue(stdout.contains("ZIP_PATH=/"), "Materialized ZIP path should appear in output")
+    }
+
+    /**
+     * CR-BD-022: USERNAME_COLON_PASSWORD binding — colon-joined string injected as env var.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-022 usernameColonPassword binding resolves user_pass env var`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("ucp-test"),
+                UsernameColonPassword(
+                    CredentialsId("ucp-test"),
+                    CredentialScope.GLOBAL,
+                    "admin",
+                    "secret123".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("ucp-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernameColonPassword(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ucp-test"),
+                    "U_P"
+                )
+            )) {
+                sh("echo U_P=${'$'}U_P")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("ucp.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val runFinished = events.filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("success", runFinished?.outcome, "USERNAME_COLON_PASSWORD binding pipeline should succeed")
+        assertTrue(stdout.contains("U_P=admin:secret123"), "Colon-joined credential should appear in output")
+    }
+
+    // ─── CR-BD-023..025 — wipe-on-close for file-based kinds ─────────────────
+
+    /**
+     * CR-BD-023: SSH key file wiped (fill + delete) after withCredentials block.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-023 ssh key file wiped after block exit`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("ssh-wipe-key"),
+                SshPrivateKey(
+                    CredentialsId("ssh-wipe-key"),
+                    CredentialScope.GLOBAL,
+                    "git",
+                    "-----BEGIN OPENSSH PRIVATE KEY-----\nwipekey\n-----END OPENSSH PRIVATE KEY-----\n".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("wipe-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-wipe-key"),
+                    "SSH_KEY_FILE"
+                )
+            )) {
+                sh("echo SSH_KEY_FILE=${'$'}SSH_KEY_FILE && test -f ${'$'}SSH_KEY_FILE && echo EXISTS")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("wipe.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+
+        // After the block, SSH_KEY_FILE should NOT exist
+        assertFalse(stdout.contains("EXISTS"), "SSH key file should be wiped after block exit")
+    }
+
+    /**
+     * CR-BD-024: Secret file wiped (fill + delete) after withCredentials block.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-024 secret file wiped after block exit`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("file-wipe-secret"),
+                SecretFile(
+                    CredentialsId("file-wipe-secret"),
+                    CredentialScope.GLOBAL,
+                    "wipe-secret-content".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("file-wipe") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("file-wipe-secret"),
+                    "SECRET_FILE"
+                )
+            )) {
+                sh("echo SECRET_FILE=${'$'}SECRET_FILE && test -f ${'$'}SECRET_FILE && echo EXISTS")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("file_wipe.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        assertFalse(stdout.contains("EXISTS"), "Secret file should be wiped after block exit")
+    }
+
+    /**
+     * CR-BD-025: Certificate keystore wiped after withCredentials block.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-025 certificate keystore wiped after block exit`(@TempDir tempDir: Path) {
+        // Create a PKCS#12 keystore file
+        val keystorePath = tempDir.resolve("wipekeystore.p12")
+        val keystorePassphrase = "keystore-pass"
+        createTestKeystore(tempDir, keystorePath, keystorePassphrase)
+
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("cert-wipe"),
+                Certificate(
+                    CredentialsId("cert-wipe"),
+                    CredentialScope.GLOBAL,
+                    Files.readAllBytes(keystorePath)
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("cert-wipe") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-wipe"),
+                    "KEYSTORE_PATH"
+                )
+            )) {
+                sh("echo KEYSTORE_PATH=${'$'}KEYSTORE_PATH && test -f ${'$'}KEYSTORE_PATH && echo EXISTS")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("cert_wipe.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        assertFalse(stdout.contains("EXISTS"), "Keystore should be wiped after block exit")
+    }
+
+    // ─── CR-BD-026..028 — audit event ordering ────────────────────────────────
+
+    /**
+     * CR-BD-026: CredentialBound emitted BEFORE env var injection.
+     * Ordering: CredentialBound → inner step → CredentialUnbound.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-026 CredentialBound before injection`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("audit-order-key"),
+                SecretText(
+                    CredentialsId("audit-order-key"),
+                    CredentialScope.GLOBAL,
+                    "secret-value".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("audit") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("audit-order-key"),
+                    "API_KEY"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("audit.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val boundSeq = events.filterIsInstance<CredentialBound>().firstOrNull()?.sequence
+        val stepSeq = events.filterIsInstance<dev.rubentxu.pipeline.v2.events.StepStarted>().firstOrNull { it.stepType == "sh" }?.sequence
+
+        assertNotNull(boundSeq, "CredentialBound event must be present")
+        assertNotNull(stepSeq, "StepStarted event must be present")
+        assertTrue(boundSeq!! < stepSeq!!,
+            "CredentialBound (seq=$boundSeq) must appear BEFORE step (seq=$stepSeq)")
+    }
+
+    /**
+     * CR-BD-027: CredentialUsed emitted for each use of the credential.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-027 CredentialUsed per use`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("used-multi-key"),
+                SecretText(
+                    CredentialsId("used-multi-key"),
+                    CredentialScope.GLOBAL,
+                    "multi-use-secret".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("multi-use") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("used-multi-key"),
+                    "API_KEY"
+                )
+            )) {
+                sh("echo ${'$'}API_KEY")
+                sh("echo ${'$'}API_KEY")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("multi_use.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val usedEvents = events.filterIsInstance<CredentialUsed>()
+        assertTrue(usedEvents.size >= 2,
+            "Should have at least 2 CredentialUsed events (one per use). Got: ${usedEvents.size}")
+    }
+
+    /**
+     * CR-BD-028: CredentialUnbound emitted in finally (even on success).
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-028 CredentialUnbound in finally on success`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("unbound-key"),
+                SecretText(
+                    CredentialsId("unbound-key"),
+                    CredentialScope.GLOBAL,
+                    "unbound-secret".toByteArray()
+                )
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("unbound") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("unbound-key"),
+                    "API_KEY"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("unbound.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val unboundEvents = events.filterIsInstance<CredentialUnbound>()
+        assertTrue(unboundEvents.isNotEmpty(),
+            "CredentialUnbound must be emitted after block. Events: ${events.map { it::class.simpleName }}")
+    }
+
+    // ─── CR-BD-029..031 — redaction: no secret values in events ─────────────
+
+    /**
+     * CR-BD-029: SecretText value never appears in event surfaces (only in env injection).
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-029 SecretText redaction — no secret in events`(@TempDir tempDir: Path) {
+        val secret = "SUPER_SECRET_REDACT_12345"
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("redact-text-key"),
+                SecretText(CredentialsId("redact-text-key"), CredentialScope.GLOBAL, secret.toByteArray())
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("redact") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("redact-text-key"),
+                    "API_KEY"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("redact.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val encodedAll = JsonEventLog.encode(JsonEventLog.decode(stdout))
+        assertFalse(encodedAll.contains(secret),
+            "SecretText value must NOT appear in event surfaces. ADR-0049 §D8")
+    }
+
+    /**
+     * CR-BD-030: UsernamePassword password never appears in event surfaces.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-030 UsernamePassword redaction — no password in events`(@TempDir tempDir: Path) {
+        val password = "REDACTED_PASS_XYZ"
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("redact-up-key"),
+                UsernamePassword(CredentialsId("redact-up-key"), CredentialScope.GLOBAL, "admin", password.toByteArray())
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("redact-up") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernamePassword(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("redact-up-key"),
+                    "DB_USER",
+                    "DB_PASS"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("redact_up.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val encodedAll = JsonEventLog.encode(JsonEventLog.decode(stdout))
+        assertFalse(encodedAll.contains(password),
+            "UsernamePassword password must NOT appear in event surfaces. ADR-0049 §D8")
+    }
+
+    /**
+     * CR-BD-031: SshPrivateKey private key bytes never appear in event surfaces.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-031 SshPrivateKey redaction — no private key in events`(@TempDir tempDir: Path) {
+        val privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nREDACTED_PRIVATE_KEY_CONTENT\n-----END OPENSSH PRIVATE KEY-----\n"
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("redact-ssh-key"),
+                SshPrivateKey(CredentialsId("redact-ssh-key"), CredentialScope.GLOBAL, "git", privateKey.toByteArray())
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("redact-ssh") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("redact-ssh-key"),
+                    "SSH_KEY_FILE"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("redact_ssh.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val encodedAll = JsonEventLog.encode(JsonEventLog.decode(stdout))
+        assertFalse(encodedAll.contains("REDACTED_PRIVATE_KEY_CONTENT"),
+            "SshPrivateKey private key must NOT appear in event surfaces. ADR-0049 §D8")
+    }
+
+    // ─── CR-BD-032 — nested withCredentials ──────────────────────────────────
+
+    /**
+     * CR-BD-032: Nested withCredentials — inner binding shadows outer.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-032 nested withCredentials inner shadows outer binding`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("outer-key"),
+                SecretText(CredentialsId("outer-key"), CredentialScope.GLOBAL, "outer-secret".toByteArray())
+            )
+            store.add(
+                CredentialsId("inner-key"),
+                SecretText(CredentialsId("inner-key"), CredentialScope.GLOBAL, "inner-secret".toByteArray())
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("nested") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("outer-key"),
+                    "SHARED_VAR"
+                )
+            )) {
+                sh("echo outer=${'$'}SHARED_VAR")
+                withCredentials(listOf(
+                    dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                        dev.rubentxu.pipeline.v2.domain.CredentialsId("inner-key"),
+                        "SHARED_VAR"
+                    )
+                )) {
+                    sh("echo inner=${'$'}SHARED_VAR")
+                }
+                sh("echo restored=${'$'}SHARED_VAR")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("nested.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        assertTrue(stdout.contains("outer=outer-secret"), "Outer binding should be visible")
+        assertTrue(stdout.contains("inner=inner-secret"), "Inner binding should shadow outer")
+        assertTrue(stdout.contains("restored=outer-secret"), "Outer binding should be restored after inner block")
+    }
+
+    // ─── CR-BD-033 — exception-path unbound ──────────────────────────────────
+
+    /**
+     * CR-BD-033: CredentialUnbound emitted in finally even when inner step throws.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-033 CredentialUnbound in finally even on exception`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            store.add(
+                CredentialsId("exception-key"),
+                SecretText(CredentialsId("exception-key"), CredentialScope.GLOBAL, "exception-secret".toByteArray())
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("exception-test") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("exception-key"),
+                    "API_KEY"
+                )
+            )) {
+                sh("exit 1")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("exception.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val events = JsonEventLog.decode(stdout)
+
+        val unboundEvents = events.filterIsInstance<CredentialUnbound>()
+        assertTrue(unboundEvents.isNotEmpty(),
+            "CredentialUnbound must be emitted even when step throws. Events: ${events.map { it::class.simpleName }}")
+    }
+
+    // ─── CR-BD-034..035 — negative tests ───────────────────────────────────
+
+    /**
+     * CR-BD-034: Wrong credential kind throws MismatchedSecretException.
+     *
+     * NOTE: Blocked by pipeline-scripting-api module boundary — CredentialsId is not
+     * accessible from DSL scripts (dev.rubentxu.pipeline.v2.domain not on DSL classpath).
+     * The credential kind mismatch dispatch is implemented in the runtime executor, but
+     * the E2E test cannot inject a mismatched credential because the DSL cannot
+     * construct the required CredentialBinding objects directly.
+     * This test is DISABLED until the DSL classpath issue is resolved.
+     */
+    @Test
+    @Disabled("DSL classpath: CredentialsId not accessible in .pipeline.kts scripts")
+    fun `CR-BD-034 mismatched credential kind throws`(@TempDir tempDir: Path) {
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { store ->
+            // Store a STRING credential
+            store.add(
+                CredentialsId("mismatch-key"),
+                SecretText(CredentialsId("mismatch-key"), CredentialScope.GLOBAL, "secret".toByteArray())
+            )
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        // Request it as SSH_USER_PRIVATE_KEY kind
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("mismatch") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("mismatch-key"),
+                    "SSH_KEY_FILE"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("mismatch.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val runFinished = JsonEventLog.decode(stdout).filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("failure", runFinished?.outcome, "Mismatched kind should cause pipeline failure")
+    }
+
+    /**
+     * CR-BD-035: Missing credential ID throws.
+     */
+    @Test
+    @Disabled("DSL classpath: pipeline-domain not accessible from script compilation")
+    fun `CR-BD-035 missing credential ID throws`(@TempDir tempDir: Path) {
+        // No credentials added to store — deliberately empty
+        val (storePath, passphrase) = createCredentialsStore(tempDir) { _ ->
+            // No-op: store stays empty
+        }
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+        val controlRoot = tempDir.resolve("ctrl")
+        val dbPath = tempDir.resolve("journal.db")
+        Files.createDirectories(controlRoot)
+
+        val scriptContent = """
+pipeline {
+    stages {
+        stage("missing") {
+            withCredentials(listOf(
+                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("nonexistent-id"),
+                    "API_KEY"
+                )
+            )) {
+                sh("echo done")
+            }
+        }
+    }
+}
+"""
+        val scriptPath = tempDir.resolve("missing.pipeline.kts")
+        Files.writeString(scriptPath, scriptContent)
+
+        val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
+        val runFinished = JsonEventLog.decode(stdout).filterIsInstance<RunFinished>().firstOrNull()
+        assertEquals("failure", runFinished?.outcome, "Missing credential should cause pipeline failure")
+    }
 
     /**
      * CR-BD-017: verify SecretStore plumbing works via existing pipeline smoke test.
@@ -354,6 +1267,92 @@ pipeline {
         val canaryInEvents = encodedAll.contains(canary)
         assertFalse(canaryInEvents,
             "Canary must NOT appear after T12 plumbing. Events: ${events.map { it::class.simpleName }}")
+    }
+
+    // ─── Credential store helpers ────────────────────────────────────────────
+
+    /**
+     * Creates a LocalSecretStore seeded with test credentials.
+     * Returns the store path and passphrase to pass to subprocess via env vars.
+     */
+    private fun createCredentialsStore(
+        tempDir: Path,
+        seed: (LocalSecretStore) -> Unit
+    ): Pair<Path, String> {
+        val storePath = tempDir.resolve("credentials.store")
+        val passphrase = "test-passphrase-123"
+        val store = LocalSecretStore(storePath, passphrase.toCharArray())
+        seed(store)
+        store.close()
+        return storePath to passphrase
+    }
+
+    /**
+     * Runs a pipeline subprocess with a pre-seeded credentials store.
+     */
+    private fun runPipelineWithCredentialsStore(
+        javaHome: String,
+        classpath: String,
+        dbPath: Path,
+        controlRoot: Path,
+        scriptPath: Path,
+        credentialsStorePath: Path,
+        credentialsPassphrase: String,
+        extraArgs: Array<String> = emptyArray(),
+    ): String {
+        val args = mutableListOf(
+            javaHome + "/bin/java",
+            "-cp", classpath,
+            "dev.rubentxu.pipeline.v2.application.MainKt",
+            "run",
+            "--db", dbPath.toString(),
+            "--control-root", controlRoot.toString()
+        )
+        args.addAll(extraArgs)
+        args.add(scriptPath.toString())
+
+        val pb = ProcessBuilder(args)
+            .directory(scriptPath.parent.toFile())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val env = pb.environment()
+        env["PIPELINE_CREDENTIALS_STORE"] = credentialsStorePath.toString()
+        env["PIPELINE_STORE_PASSPHRASE"] = credentialsPassphrase
+
+        val process = pb.start()
+        processes.add(process)
+        val stdout = process.inputStream.bufferedReader().readText()
+        process.waitFor(120, TimeUnit.SECONDS)
+        return stdout
+    }
+
+    /**
+     * Creates a minimal PKCS#12 keystore for testing using keytool.
+     * Writes keystore to tempDir and returns the path.
+     */
+    private fun createTestKeystore(tempDir: Path, storePath: Path, passphrase: String) {
+        val javaHome = System.getProperty("java.home")
+        val keytool = java.nio.file.Paths.get(javaHome, "bin", "keytool")
+        val args = listOf(
+            keytool.toString(),
+            "-genkeypair",
+            "-alias", "test",
+            "-keyalg", "RSA",
+            "-keysize", "2048",
+            "-keystore", storePath.toString(),
+            "-storepass", passphrase,
+            "-keypass", passphrase,
+            "-dname", "CN=test,OU=test,O=test,L=test,ST=test,C=US",
+            "-validity", "1",
+            "-storetype", "PKCS12"
+        )
+        val pb = ProcessBuilder(args)
+            .directory(tempDir.toFile())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val proc = pb.start()
+        proc.waitFor(30, TimeUnit.SECONDS)
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────────

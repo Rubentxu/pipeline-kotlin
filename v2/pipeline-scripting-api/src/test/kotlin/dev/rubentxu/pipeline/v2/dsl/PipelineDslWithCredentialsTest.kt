@@ -26,7 +26,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.string(
-                                CredentialsId("github"),
+                                "github",
                                 "API_KEY"
                             )
                         )
@@ -58,7 +58,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.usernamePassword(
-                                CredentialsId("db-creds"),
+                                "db-creds",
                                 "DB_USER",
                                 "DB_PASS"
                             )
@@ -87,7 +87,7 @@ class PipelineDslWithCredentialsTest {
         val spec = pipeline {
             stages {
                 stage("Test") {
-                    environment(CredentialsId("github"), "GITHUB_TOKEN") {
+                    environment("github", "GITHUB_TOKEN") {
                         sh("echo \$GITHUB_TOKEN")
                     }
                 }
@@ -114,7 +114,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.string(
-                                CredentialsId("api-key"),
+                                "api-key",
                                 "SECRET"
                             )
                         )
@@ -142,7 +142,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.string(
-                                CredentialsId("test"),
+                                "test",
                                 "VAR"
                             )
                         )
@@ -172,7 +172,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.sshUserPrivateKey(
-                                CredentialsId("ssh-key"),
+                                "ssh-key",
                                 "SSH_KEY_FILE"
                             )
                         )
@@ -199,7 +199,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.sshUserPrivateKey(
-                                CredentialsId("ssh-key"),
+                                "ssh-key",
                                 "SSH_KEY_FILE",
                                 "SSH_PP",
                                 "SSH_USER"
@@ -226,7 +226,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.file(
-                                CredentialsId("pem"),
+                                "pem",
                                 "DEPLOY_PEM"
                             )
                         )
@@ -250,7 +250,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.certificate(
-                                CredentialsId("keystore"),
+                                "keystore",
                                 "KEYSTORE"
                             )
                         )
@@ -276,7 +276,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.certificate(
-                                CredentialsId("keystore"),
+                                "keystore",
                                 "KEYSTORE",
                                 "KEY_ALIAS",
                                 "KEY_PASS"
@@ -303,7 +303,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.zip(
-                                CredentialsId("zip-archive"),
+                                "zip-archive",
                                 "ZIP_PATH"
                             )
                         )
@@ -327,7 +327,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.usernameColonPassword(
-                                CredentialsId("db"),
+                                "db",
                                 "U_P"
                             )
                         )
@@ -355,7 +355,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.sshUserPrivateKey(
-                                CredentialsId("ssh-key"),
+                                "ssh-key",
                                 "SSH_KEY_FILE"
                             )
                         )
@@ -379,7 +379,7 @@ class PipelineDslWithCredentialsTest {
                     withCredentials(
                         listOf(
                             StepSpec.CredentialsBinding.certificate(
-                                CredentialsId("keystore"),
+                                "keystore",
                                 "KEYSTORE"
                             )
                         )
@@ -402,7 +402,7 @@ class PipelineDslWithCredentialsTest {
     @Test
     fun `sshUserPrivateKey carries keyFileVariable into binding payload`() {
         val binding = StepSpec.CredentialsBinding.sshUserPrivateKey(
-            CredentialsId("ssh-creds"),
+            "ssh-creds",
             "SSH_KEY_FILE"
         )
         assertEquals("SSH_KEY_FILE", binding.keyFileVariable)
@@ -412,7 +412,7 @@ class PipelineDslWithCredentialsTest {
     @Test
     fun `certificate carries keystoreVariable into binding payload`() {
         val binding = StepSpec.CredentialsBinding.certificate(
-            CredentialsId("cert-creds"),
+            "cert-creds",
             "KEYSTORE"
         )
         assertEquals("KEYSTORE", binding.keystoreVariable)

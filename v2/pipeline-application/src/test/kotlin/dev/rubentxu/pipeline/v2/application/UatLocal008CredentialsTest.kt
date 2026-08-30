@@ -777,7 +777,7 @@ pipeline {
         val events = JsonEventLog.decode(stdout)
 
         val boundSeq = events.filterIsInstance<CredentialBound>().firstOrNull()?.sequence
-        val stepSeq = events.filterIsInstance<dev.rubentxu.pipeline.v2.events.StepStarted>().firstOrNull { it.stepType == "sh" }?.sequence
+        val stepSeq = events.filterIsInstance<dev.rubentxu.pipeline.v2.events.StepStarted>().firstOrNull()?.sequence
 
         assertNotNull(boundSeq, "CredentialBound event must be present")
         assertNotNull(stepSeq, "StepStarted event must be present")

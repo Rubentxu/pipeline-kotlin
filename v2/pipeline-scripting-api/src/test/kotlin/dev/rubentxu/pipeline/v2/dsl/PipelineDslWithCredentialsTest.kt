@@ -159,4 +159,263 @@ class PipelineDslWithCredentialsTest {
         assertEquals("withCredentials", step.name)
         assertEquals("withCredentials", step.type)
     }
+
+    // =========================================================================
+    // ML-R10: 5 NEW factories × kind desugar (Dsl-Widening-CR-4..8)
+    // =========================================================================
+
+    @Test
+    fun `sshUserPrivateKey factory desugars to Kind_SSH_USER_PRIVATE_KEY`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.sshUserPrivateKey(
+                                CredentialsId("ssh-key"),
+                                "SSH_KEY_FILE"
+                            )
+                        )
+                    ) {
+                        sh("cat \$SSH_KEY_FILE")
+                    }
+                }
+            }
+        }
+
+        val step = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock)
+        val binding = step.bindings.single()
+        assertEquals(StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY, binding.kind)
+        assertEquals("SSH_KEY_FILE", binding.keyFileVariable)
+        assertNull(binding.passphraseVariable)
+        assertNull(binding.usernameVariable)
+    }
+
+    @Test
+    fun `sshUserPrivateKey factory with optional args persists variable names`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.sshUserPrivateKey(
+                                CredentialsId("ssh-key"),
+                                "SSH_KEY_FILE",
+                                "SSH_PP",
+                                "SSH_USER"
+                            )
+                        )
+                    ) {
+                        sh("cat \$SSH_KEY_FILE")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertEquals("SSH_KEY_FILE", binding.keyFileVariable)
+        assertEquals("SSH_PP", binding.passphraseVariable)
+        assertEquals("SSH_USER", binding.usernameVariable)
+    }
+
+    @Test
+    fun `file factory desugars to Kind_FILE`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.file(
+                                CredentialsId("pem"),
+                                "DEPLOY_PEM"
+                            )
+                        )
+                    ) {
+                        sh("cat \$DEPLOY_PEM")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertEquals(StepSpec.CredentialsBinding.Kind.FILE, binding.kind)
+        assertEquals("DEPLOY_PEM", binding.variable)
+    }
+
+    @Test
+    fun `certificate factory desugars to Kind_CERTIFICATE`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.certificate(
+                                CredentialsId("keystore"),
+                                "KEYSTORE"
+                            )
+                        )
+                    ) {
+                        sh("ls \$KEYSTORE")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertEquals(StepSpec.CredentialsBinding.Kind.CERTIFICATE, binding.kind)
+        assertEquals("KEYSTORE", binding.keystoreVariable)
+        assertNull(binding.aliasVariable)
+        assertNull(binding.passwordVariable)
+    }
+
+    @Test
+    fun `certificate factory with optional args persists all variable names`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.certificate(
+                                CredentialsId("keystore"),
+                                "KEYSTORE",
+                                "KEY_ALIAS",
+                                "KEY_PASS"
+                            )
+                        )
+                    ) {
+                        sh("ls \$KEYSTORE")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertEquals("KEYSTORE", binding.keystoreVariable)
+        assertEquals("KEY_ALIAS", binding.aliasVariable)
+        assertEquals("KEY_PASS", binding.passwordVariable)
+    }
+
+    @Test
+    fun `zip factory desugars to Kind_ZIP`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.zip(
+                                CredentialsId("zip-archive"),
+                                "ZIP_PATH"
+                            )
+                        )
+                    ) {
+                        sh("unzip \$ZIP_PATH")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertEquals(StepSpec.CredentialsBinding.Kind.ZIP, binding.kind)
+        assertEquals("ZIP_PATH", binding.variable)
+    }
+
+    @Test
+    fun `usernameColonPassword factory desugars to Kind_USERNAME_COLON_PASSWORD`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.usernameColonPassword(
+                                CredentialsId("db"),
+                                "U_P"
+                            )
+                        )
+                    ) {
+                        sh("echo \$U_P")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertEquals(StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD, binding.kind)
+        assertEquals("U_P", binding.variable)
+    }
+
+    // =========================================================================
+    // Ergonomic shape tests: parameter names match Jenkins verbatim, optionals nullable
+    // =========================================================================
+
+    @Test
+    fun `sshUserPrivateKey optional args default to null`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.sshUserPrivateKey(
+                                CredentialsId("ssh-key"),
+                                "SSH_KEY_FILE"
+                            )
+                        )
+                    ) {
+                        sh("cat \$SSH_KEY_FILE")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertNull(binding.passphraseVariable)
+        assertNull(binding.usernameVariable)
+    }
+
+    @Test
+    fun `certificate optional args default to null`() {
+        val spec = pipeline {
+            stages {
+                stage("Test") {
+                    withCredentials(
+                        listOf(
+                            StepSpec.CredentialsBinding.certificate(
+                                CredentialsId("keystore"),
+                                "KEYSTORE"
+                            )
+                        )
+                    ) {
+                        sh("ls \$KEYSTORE")
+                    }
+                }
+            }
+        }
+
+        val binding = (spec.stages.single().steps.single() as StepSpec.WithCredentialsBlock).bindings.single()
+        assertNull(binding.aliasVariable)
+        assertNull(binding.passwordVariable)
+    }
+
+    // =========================================================================
+    // Variable-name persistence tests: factory carries variable name into payload
+    // =========================================================================
+
+    @Test
+    fun `sshUserPrivateKey carries keyFileVariable into binding payload`() {
+        val binding = StepSpec.CredentialsBinding.sshUserPrivateKey(
+            CredentialsId("ssh-creds"),
+            "SSH_KEY_FILE"
+        )
+        assertEquals("SSH_KEY_FILE", binding.keyFileVariable)
+        assertEquals(CredentialsId("ssh-creds"), binding.credentialsId)
+    }
+
+    @Test
+    fun `certificate carries keystoreVariable into binding payload`() {
+        val binding = StepSpec.CredentialsBinding.certificate(
+            CredentialsId("cert-creds"),
+            "KEYSTORE"
+        )
+        assertEquals("KEYSTORE", binding.keystoreVariable)
+        assertEquals(CredentialsId("cert-creds"), binding.credentialsId)
+    }
 }

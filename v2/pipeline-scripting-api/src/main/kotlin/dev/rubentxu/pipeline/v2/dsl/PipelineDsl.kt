@@ -117,11 +117,17 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     /**
      * Credentials binding for the withCredentials DSL block.
      *
-     * Two binding kinds are supported:
+     * Seven binding kinds are supported (per ADR-0051 §D4 Jenkins verbatim signatures):
      * - [Kind.STRING]: injects a plaintext value as an environment variable
      * - [Kind.USERNAME_PASSWORD]: injects two env vars (username and password)
+     * - [Kind.SSH_USER_PRIVATE_KEY]: injects SSH key file path + optional passphrase/user
+     * - [Kind.FILE]: injects secret file path
+     * - [Kind.CERTIFICATE]: injects certificate keystore path + optional alias/password
+     * - [Kind.ZIP]: injects ZIP archive extraction directory path
+     * - [Kind.USERNAME_COLON_PASSWORD]: injects colon-joined user:pass env var
      *
      * @see WithCredentialsBlock
+     * @see <https://wiki.jenkins.io/display/JENKINS/Credentials+Binding+Plugin>
      */
     data class CredentialsBinding(
         val kind: Kind,
@@ -129,10 +135,19 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val variable: String? = null,
         val usernameVariable: String? = null,
         val passwordVariable: String? = null,
+        val keyFileVariable: String? = null,
+        val passphraseVariable: String? = null,
+        val keystoreVariable: String? = null,
+        val aliasVariable: String? = null,
     ) {
         enum class Kind {
             STRING,
-            USERNAME_PASSWORD
+            USERNAME_PASSWORD,
+            SSH_USER_PRIVATE_KEY,
+            FILE,
+            CERTIFICATE,
+            ZIP,
+            USERNAME_COLON_PASSWORD
         }
 
         companion object {
@@ -164,6 +179,92 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
                     usernameVariable = usernameVariable,
                     passwordVariable = passwordVariable,
                 )
+            }
+
+            /**
+             * Creates an SSH_USER_PRIVATE_KEY binding: injects key file path + optional passphrase/user.
+             *
+             * Jenkins verbatim signature: credentialsId, keyFileVariable, passphraseVariable?, usernameVariable?
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param keyFileVariable The SSH key file environment variable name
+             * @param passphraseVariable The passphrase environment variable name (optional)
+             * @param usernameVariable The username environment variable name (optional)
+             */
+            fun sshUserPrivateKey(
+                credentialsId: CredentialsId,
+                keyFileVariable: String,
+                passphraseVariable: String? = null,
+                usernameVariable: String? = null,
+            ): CredentialsBinding {
+                return CredentialsBinding(
+                    Kind.SSH_USER_PRIVATE_KEY,
+                    credentialsId,
+                    keyFileVariable = keyFileVariable,
+                    passphraseVariable = passphraseVariable,
+                    usernameVariable = usernameVariable,
+                )
+            }
+
+            /**
+             * Creates a FILE binding: injects secret file path.
+             *
+             * Jenkins verbatim signature: credentialsId, variable
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param variable The file path environment variable name
+             */
+            fun file(credentialsId: CredentialsId, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.FILE, credentialsId, variable = variable)
+            }
+
+            /**
+             * Creates a CERTIFICATE binding: injects keystore path + optional alias/password.
+             *
+             * Jenkins verbatim signature: keystoreVariable, credentialsId, aliasVariable?, passwordVariable?
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param keystoreVariable The keystore file environment variable name
+             * @param aliasVariable The alias environment variable name (optional)
+             * @param passwordVariable The password environment variable name (optional)
+             */
+            fun certificate(
+                credentialsId: CredentialsId,
+                keystoreVariable: String,
+                aliasVariable: String? = null,
+                passwordVariable: String? = null,
+            ): CredentialsBinding {
+                return CredentialsBinding(
+                    Kind.CERTIFICATE,
+                    credentialsId,
+                    keystoreVariable = keystoreVariable,
+                    aliasVariable = aliasVariable,
+                    passwordVariable = passwordVariable,
+                )
+            }
+
+            /**
+             * Creates a ZIP binding: injects ZIP archive extraction directory path.
+             *
+             * Jenkins verbatim signature: variable, credentialsId
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param variable The ZIP path environment variable name
+             */
+            fun zip(credentialsId: CredentialsId, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.ZIP, credentialsId, variable = variable)
+            }
+
+            /**
+             * Creates a USERNAME_COLON_PASSWORD binding: injects colon-joined user:pass env var.
+             *
+             * Jenkins verbatim signature: variable, credentialsId
+             *
+             * @param credentialsId The credentials ID in the store
+             * @param variable The user:pass environment variable name
+             */
+            fun usernameColonPassword(credentialsId: CredentialsId, variable: String): CredentialsBinding {
+                return CredentialsBinding(Kind.USERNAME_COLON_PASSWORD, credentialsId, variable = variable)
             }
         }
     }

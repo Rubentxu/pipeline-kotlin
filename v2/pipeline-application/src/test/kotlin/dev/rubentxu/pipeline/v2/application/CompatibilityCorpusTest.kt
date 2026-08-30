@@ -84,10 +84,12 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture13WorkspaceHelpers() = runFixture("13-workspace-helpers.pipeline.kts")
 
+    @Test fun fixture14CredentialsBindings() = runFixture("14-credentials-bindings.pipeline.kts")
+
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(13, fixtures.size)
+        assertEquals(14, fixtures.size)
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -103,5 +105,6 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("11-workflow-control.pipeline.kts"))
         assertTrue(names.contains("12-error-handling.pipeline.kts"))
         assertTrue(names.contains("13-workspace-helpers.pipeline.kts"))
+        assertTrue(names.contains("14-credentials-bindings.pipeline.kts"))
     }
 }

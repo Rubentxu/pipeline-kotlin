@@ -350,7 +350,7 @@ pipeline {
         stage("ssh-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    "ssh-test-key"),
+                    "ssh-test-key",
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -404,7 +404,7 @@ pipeline {
         stage("file-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
-                    "file-test-secret"),
+                    "file-test-secret",
                     "SECRET_FILE"
                 )
             )) {
@@ -458,7 +458,7 @@ pipeline {
         stage("cert-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
-                    "cert-test"),
+                    "cert-test",
                     "KEYSTORE_PATH"
                 )
             )) {
@@ -507,7 +507,7 @@ pipeline {
         stage("zip-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.zip(
-                    "zip-test"),
+                    "zip-test",
                     "ZIP_PATH"
                 )
             )) {
@@ -556,7 +556,7 @@ pipeline {
         stage("ucp-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernameColonPassword(
-                    "ucp-test"),
+                    "ucp-test",
                     "U_P"
                 )
             )) {
@@ -607,7 +607,7 @@ pipeline {
         stage("wipe-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    "ssh-wipe-key"),
+                    "ssh-wipe-key",
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -653,7 +653,7 @@ pipeline {
         stage("file-wipe") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
-                    "file-wipe-secret"),
+                    "file-wipe-secret",
                     "SECRET_FILE"
                 )
             )) {
@@ -702,7 +702,7 @@ pipeline {
         stage("cert-wipe") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
-                    "cert-wipe"),
+                    "cert-wipe",
                     "KEYSTORE_PATH"
                 )
             )) {
@@ -749,7 +749,7 @@ pipeline {
         stage("audit") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "audit-order-key"),
+                    "audit-order-key",
                     "API_KEY"
                 )
             )) {
@@ -801,7 +801,7 @@ pipeline {
         stage("multi-use") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "used-multi-key"),
+                    "used-multi-key",
                     "API_KEY"
                 )
             )) {
@@ -850,7 +850,7 @@ pipeline {
         stage("unbound") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "unbound-key"),
+                    "unbound-key",
                     "API_KEY"
                 )
             )) {
@@ -897,7 +897,7 @@ pipeline {
         stage("redact") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "redact-text-key"),
+                    "redact-text-key",
                     "API_KEY"
                 )
             )) {
@@ -940,7 +940,7 @@ pipeline {
         stage("redact-up") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernamePassword(
-                    "redact-up-key"),
+                    "redact-up-key",
                     "DB_USER",
                     "DB_PASS"
                 )
@@ -984,7 +984,7 @@ pipeline {
         stage("redact-ssh") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    "redact-ssh-key"),
+                    "redact-ssh-key",
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -1032,14 +1032,14 @@ pipeline {
         stage("nested") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "outer-key"),
+                    "outer-key",
                     "SHARED_VAR"
                 )
             )) {
                 sh("echo outer=${'$'}SHARED_VAR")
                 withCredentials(listOf(
                     dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                        "inner-key"),
+                        "inner-key",
                         "SHARED_VAR"
                     )
                 )) {
@@ -1085,7 +1085,7 @@ pipeline {
         stage("exception-test") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "exception-key"),
+                    "exception-key",
                     "API_KEY"
                 )
             )) {
@@ -1141,7 +1141,7 @@ pipeline {
         stage("mismatch") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
-                    "mismatch-key"),
+                    "mismatch-key",
                     "SSH_KEY_FILE"
                 )
             )) {
@@ -1180,7 +1180,7 @@ pipeline {
         stage("missing") {
             withCredentials(listOf(
                 dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
-                    "nonexistent-id"),
+                    "nonexistent-id",
                     "API_KEY"
                 )
             )) {

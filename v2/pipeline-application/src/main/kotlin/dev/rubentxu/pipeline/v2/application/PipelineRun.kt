@@ -82,6 +82,8 @@ import dev.rubentxu.pipeline.v2.sdk.files.FileReadExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.FileWriteExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.CleanWsExecutor
+import dev.rubentxu.pipeline.v2.events.DirEntered
+import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.application.durable.ShExecution
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import kotlinx.coroutines.Dispatchers
@@ -99,7 +101,14 @@ import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
+
+/**
+ * Tracks loaded scripts per runId for re-entrancy detection.
+ * Key: runId, Value: MutableSet of "path:sha256" keys for already-loaded scripts.
+ */
+private val loadedScriptsPerRun = ConcurrentHashMap<String, MutableSet<String>>()
 
 /**
  * Executes a pipeline script, emitting a complete event timeline.
@@ -1149,11 +1158,59 @@ private suspend fun executeDurableStepImpl(
                 "success"
             }
             is StepSpec.Dir -> {
-                // ML-R9 T-04: dir block changes working directory for nested steps
+                // ML-R9 T-04: dir block with traversal guard + DirEntered/DirExited event emission
+                val resolver = workspaceResolver ?: return "failure"
+                val workspace = resolver.resolve(stageName, stageIndex)
+
+                // Resolve target path - absolute paths are used as-is, relative paths resolve against workspace
+                val targetPath = if (step.path.startsWith("/")) {
+                    // Absolute path — use as-is (Jenkins verbatim: dir("/tmp") goes to /tmp)
+                    java.nio.file.Paths.get(step.path)
+                } else {
+                    // Relative path — resolve against workspace root (Jenkins semantics)
+                    workspace.resolve(step.path)
+                }.normalize()
+
+                // Traversal guard: only applies to relative paths to prevent ../escape from workspace
+                val workspaceStr = workspace.toString()
+                if (!step.path.startsWith("/") && !targetPath.toString().startsWith(workspaceStr)) {
+                    // Relative path escaped workspace - reject
+                    val previousDir = System.getProperty("user.dir") ?: ""
+                    eventSink.append(
+                        DirExited(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            path = previousDir,
+                            restoredTo = previousDir,
+                        )
+                    )
+                    return "failure"
+                }
+
                 val previousDir = System.getProperty("user.dir") ?: ""
-                val targetDir = step.path
+                val targetDirStr = targetPath.toUri().path
+
                 // Change to target directory
-                System.setProperty("user.dir", targetDir)
+                val targetDirFile = targetPath.toFile()
+                if (!targetDirFile.exists()) {
+                    targetDirFile.mkdirs()
+                }
+                System.setProperty("user.dir", targetDirStr)
+
+                // Emit DirEntered after successful directory change
+                eventSink.append(
+                    DirEntered(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        path = targetPath.toString(),
+                        previousPath = previousDir,
+                    )
+                )
+
                 try {
                     // Execute nested steps
                     var outcome = "success"
@@ -1188,8 +1245,18 @@ private suspend fun executeDurableStepImpl(
                     }
                     outcome
                 } finally {
-                    // Always restore previous directory
+                    // Always restore previous directory and emit DirExited
                     System.setProperty("user.dir", previousDir)
+                    eventSink.append(
+                        DirExited(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            path = targetPath.toString(),
+                            restoredTo = previousDir,
+                        )
+                    )
                 }
             }
             is StepSpec.WithEnv -> {
@@ -1506,17 +1573,122 @@ private suspend fun executeDurableStepImpl(
                 }
             }
             is StepSpec.Load -> {
-                // Load is handled via Kotlin24ScriptingHost — stub for now
-                // The actual load logic would resolve path, compile, and append steps
+                // ML-R9 T-07: load(path) compiles script via Kotlin24ScriptingHost and appends steps
+                // Re-entrancy: same (path, sha256) in same run = NO-OP
+                val scriptPath = step.path
+                val file = java.io.File(scriptPath)
+
+                // Compute sha256 of the script file
+                val fileContent = try {
+                    file.readBytes()
+                } catch (e: java.io.FileNotFoundException) {
+                    throw e // Let it propagate as FileNotFoundException
+                }
+                val digest = MessageDigest.getInstance("SHA-256")
+                val sha256 = digest.digest(fileContent).joinToString("") { "%02x".format(it) }
+
+                // Re-entrancy check: track loaded (path, sha) pairs per runId
+                val loadedKey = "$scriptPath:$sha256"
+                val loadedScripts = loadedScriptsPerRun.computeIfAbsent(runId) { mutableSetOf() }
+                if (loadedScripts.contains(loadedKey)) {
+                    // Re-entrant load: same path + sha already loaded in this run
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.WorkflowLoaded(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            path = scriptPath,
+                            stepCount = 0,  // Re-entrant NO-OP
+                            sha256 = sha256,
+                        )
+                    )
+                    return "success"
+                }
+
+                // Compile the loaded script via Kotlin24ScriptingHost
+                val dslJar = ScriptDefinition.dslApiJar()
+                val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+                val definition = ScriptDefinition.file(file.toPath(), classpath = dslClasspath)
+                val host = Kotlin24ScriptingHost(eventSink, runId)
+                val compileResult = host.compile(definition)
+
+                if (!compileResult.isSuccess) {
+                    // Compilation failed - emit failure event
+                    runOutcomeRef.set("failure")
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.WorkflowLoaded(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            path = scriptPath,
+                            stepCount = 0,
+                            sha256 = sha256,
+                        )
+                    )
+                    return "failure"
+                }
+
+                // Extract PipelineSpec from compiled script
+                val scriptInstance = compileResult.value
+                val pipelineSpec = scriptInstance?.let { inst ->
+                    try {
+                        val resultMethod = inst.javaClass.getMethod("get\$\$result")
+                        @Suppress("UNCHECKED_CAST")
+                        resultMethod.invoke(inst) as? PipelineSpec
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+
+                // Count steps and execute them
+                var totalStepCount = 0
+                if (pipelineSpec != null) {
+                    for (stage in pipelineSpec.stages) {
+                        for (step in stage.steps) {
+                            totalStepCount++
+                            val innerOutcome = executeDurableStep(
+                                step = step,
+                                stageIndex = stageIndex,
+                                stepIndex = stepIndex,
+                                runId = runId,
+                                stageName = stageName,
+                                eventSink = eventSink,
+                                journal = journal,
+                                cursorStore = cursorStore,
+                                divergenceDetector = divergenceDetector,
+                                effectReplayPolicy = effectReplayPolicy,
+                                clock = clock,
+                                runOutcomeRef = runOutcomeRef,
+                                reconciledBranches = reconciledBranches,
+                                controlDirRoot = controlDirRoot,
+                                workspaceResolver = workspaceResolver,
+                                shOptions = shOptions,
+                                stepClassifications = stepClassifications,
+                                stageTimeout = stageTimeout,
+                                stageEnvironment = stageEnvironment,
+                                sandboxProfile = sandboxProfile,
+                                secretStore = secretStore,
+                            )
+                            if (innerOutcome != "success") {
+                                runOutcomeRef.set(innerOutcome)
+                            }
+                        }
+                    }
+                }
+
+                // Mark as loaded and emit WorkflowLoaded
+                loadedScripts.add(loadedKey)
                 eventSink.append(
                     dev.rubentxu.pipeline.v2.events.WorkflowLoaded(
                         eventId = UUID.randomUUID().toString(),
                         runId = runId,
                         sequence = 0L,
                         occurredAt = clock.now(),
-                        path = step.path,
-                        stepCount = 0,  // stub: would be actual step count
-                        sha256 = "stub",
+                        path = scriptPath,
+                        stepCount = totalStepCount,
+                        sha256 = sha256,
                     )
                 )
                 "success"

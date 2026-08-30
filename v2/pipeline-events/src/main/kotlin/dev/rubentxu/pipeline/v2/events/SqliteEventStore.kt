@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.events
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema
 import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
 import java.sql.Connection
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * SQLite-backed event store using JDK 21 stdlib java.sql.
@@ -27,6 +29,8 @@ import java.sql.Connection
  * via [SqliteConnectionFactory] with WAL mode enabled.
  */
 class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
+
+    private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
 
     private fun freshConnection(): Connection =
         SqliteConnectionFactory.open(file)
@@ -116,15 +120,70 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     override fun append(event: DomainEvent) {
         val conn = freshConnection()
         try {
+            // Assign per-runId sequence like InMemoryEventStore does
+            val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
+            val assignedSequence = if (event.sequence == 0L) {
+                counter.incrementAndGet()
+            } else {
+                val current = counter.get()
+                if (event.sequence > current) {
+                    counter.set(event.sequence)
+                }
+                event.sequence
+            }
+
+            // Create event with assigned sequence (same pattern as InMemoryEventStore)
+            val eventWithSequence = when (event) {
+                is RunStarted -> event.copy(sequence = assignedSequence)
+                is CompilationStarted -> event.copy(sequence = assignedSequence)
+                is CompilationFinished -> event.copy(sequence = assignedSequence)
+                is RunFinished -> event.copy(sequence = assignedSequence)
+                is StageStarted -> event.copy(sequence = assignedSequence)
+                is StageFinished -> event.copy(sequence = assignedSequence)
+                is StepStarted -> event.copy(sequence = assignedSequence)
+                is StepFinished -> event.copy(sequence = assignedSequence)
+                is AgentResolved -> event.copy(sequence = assignedSequence)
+                is ParallelBranchStarted -> event.copy(sequence = assignedSequence)
+                is ParallelBranchFinished -> event.copy(sequence = assignedSequence)
+                is RetryAttemptStarted -> event.copy(sequence = assignedSequence)
+                is RetryAttemptFinished -> event.copy(sequence = assignedSequence)
+                is TimeoutScheduled -> event.copy(sequence = assignedSequence)
+                is StepFailed -> event.copy(sequence = assignedSequence)
+                is EchoOutputCaptured -> event.copy(sequence = assignedSequence)
+                is CredentialBound -> event.copy(sequence = assignedSequence)
+                is CredentialUsed -> event.copy(sequence = assignedSequence)
+                is CredentialUnbound -> event.copy(sequence = assignedSequence)
+                is GitCheckoutStarted -> event.copy(sequence = assignedSequence)
+                is GitCheckoutCompleted -> event.copy(sequence = assignedSequence)
+                is GitCheckoutFailed -> event.copy(sequence = assignedSequence)
+                is GitPollChanged -> event.copy(sequence = assignedSequence)
+                is FileWritten -> event.copy(sequence = assignedSequence)
+                is FileRead -> event.copy(sequence = assignedSequence)
+                is ArtifactArchived -> event.copy(sequence = assignedSequence)
+                is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
+                is DirEntered -> event.copy(sequence = assignedSequence)
+                is DirExited -> event.copy(sequence = assignedSequence)
+                is DirDeleted -> event.copy(sequence = assignedSequence)
+                is WsCleaned -> event.copy(sequence = assignedSequence)
+                is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
+                is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
+                is WorkflowLoaded -> event.copy(sequence = assignedSequence)
+                is WaitUntilPolled -> event.copy(sequence = assignedSequence)
+                is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
+                is MilestoneReached -> event.copy(sequence = assignedSequence)
+                is MilestoneAborted -> event.copy(sequence = assignedSequence)
+                is TimeoutTriggered -> event.copy(sequence = assignedSequence)
+            }
+
             conn.prepareStatement(
                 "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
             ).use { ps ->
                 ps.setString(1, event.eventId)
                 ps.setString(2, event.runId)
-                ps.setLong(3, event.sequence)
+                ps.setLong(3, assignedSequence)
                 ps.setString(4, event.kind)
                 ps.setString(5, event.occurredAt.toString())
-                ps.setString(6, JsonEventLog.encode(listOf(event)))
+                ps.setString(6, JsonEventLog.encode(listOf(eventWithSequence)))
                 ps.executeUpdate()
             }
         } finally {

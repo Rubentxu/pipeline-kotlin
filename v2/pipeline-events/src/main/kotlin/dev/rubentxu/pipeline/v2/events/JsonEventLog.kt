@@ -289,6 +289,18 @@ object JsonEventLog {
                 sb.append(",\"reason\":")
                 sb.append(jsonString(event.reason))
             }
+            is DirEntered -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path))
+                sb.append(",\"previousPath\":")
+                sb.append(jsonString(event.previousPath))
+            }
+            is DirExited -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path))
+                sb.append(",\"restoredTo\":")
+                sb.append(jsonString(event.restoredTo))
+            }
         }
         sb.append("}")
         return sb.toString()
@@ -712,6 +724,30 @@ object JsonEventLog {
                     sequence = sequence,
                     occurredAt = occurredAt,
                     reason = reason,
+                )
+            }
+            "DirEntered" -> {
+                val path = stringField(s, "path") ?: ""
+                val previousPath = stringField(s, "previousPath") ?: ""
+                DirEntered(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    previousPath = previousPath,
+                )
+            }
+            "DirExited" -> {
+                val path = stringField(s, "path") ?: ""
+                val restoredTo = stringField(s, "restoredTo") ?: ""
+                DirExited(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    restoredTo = restoredTo,
                 )
             }
             else -> null

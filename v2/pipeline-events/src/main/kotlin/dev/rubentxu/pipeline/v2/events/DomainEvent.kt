@@ -546,3 +546,41 @@ data class ArtifactArchiveFailed(
 ) : DomainEvent {
     override val kind: String get() = "ArtifactArchiveFailed"
 }
+
+// =============================================================================
+// ML-R9 workflow-control events
+// =============================================================================
+
+/**
+ * Emitted when entering a dir block (cwd changes).
+ *
+ * @param path The directory path entered
+ * @param previousPath The previous working directory (for restore on exit)
+ */
+data class DirEntered(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: String,
+    val previousPath: String,
+) : DomainEvent {
+    override val kind: String get() = "DirEntered"
+}
+
+/**
+ * Emitted when exiting a dir block (cwd restored).
+ *
+ * @param path The directory path exited
+ * @param restoredTo The working directory after restoration
+ */
+data class DirExited(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: String,
+    val restoredTo: String,
+) : DomainEvent {
+    override val kind: String get() = "DirExited"
+}

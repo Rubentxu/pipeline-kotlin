@@ -294,6 +294,30 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val type: String get() = "withEnv"
     }
 
+    // =============================================================================
+    // ML-R9 workflow-control step kinds
+    // =============================================================================
+
+    /**
+     * Changes the current working directory for the duration of a nested block.
+     *
+     * Jenkins verbatim signature (catalog §1.1/§1.2):
+     * `dir(path: String) { ... }`
+     *
+     * Changes the working directory (cwd) for nested steps. The previous working
+     * directory is restored when the block exits (including on exception).
+     *
+     * @param path Workspace-relative or absolute directory path
+     * @param steps Nested block payload
+     */
+    data class Dir(
+        val path: String,
+        val steps: List<StepSpec>,
+    ) : StepSpec {
+        override val name: String get() = "dir"
+        override val type: String get() = "dir"
+    }
+
     /**
      * Archives artifacts for retention (server-side artifact storage).
      *
@@ -666,6 +690,8 @@ class StageScope(private val stageName: String) {
             is StepSpec.FileExists -> currentStep
             is StepSpec.WithEnv -> currentStep
             is StepSpec.ArchiveArtifacts -> currentStep
+            // ML-R9 workflow-control: step-level retry not supported
+            is StepSpec.Dir -> currentStep
         }
     }
 

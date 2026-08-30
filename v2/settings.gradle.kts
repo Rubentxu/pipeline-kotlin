@@ -31,6 +31,7 @@ include(
     ":pipeline-step-sdk:runtime",
     ":pipeline-step-sdk:scm-git",
     ":pipeline-step-sdk:files",
+    ":pipeline-step-sdk:workflow-control",
     ":pipeline-credentials-api",
     ":pipeline-credentials-local",
     ":pipeline-credentials-multipart",

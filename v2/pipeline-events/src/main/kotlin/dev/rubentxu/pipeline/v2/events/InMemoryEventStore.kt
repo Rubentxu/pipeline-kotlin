@@ -52,6 +52,9 @@ class InMemoryEventStore : EventSink {
             is FileRead -> event.copy(sequence = assignedSequence)
             is ArtifactArchived -> event.copy(sequence = assignedSequence)
             is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
+            // ML-R9 workflow-control events
+            is DirEntered -> event.copy(sequence = assignedSequence)
+            is DirExited -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

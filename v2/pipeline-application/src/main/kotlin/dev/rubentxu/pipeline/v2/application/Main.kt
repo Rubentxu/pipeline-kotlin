@@ -307,8 +307,18 @@ fun main(args: Array<String>) {
     val runOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
     // Jenkins verbatim: print events first, then propagate failure to OS exit code
     println(JsonEventLog.encode(events))
-    if (runOutcome != "success") {
-        System.exit(1)
+    // D5: 3-state outcome widening — unstable exits 0 like success, failure exits 1
+    when (runOutcome) {
+        "success" -> {
+            System.err.println("Pipeline finished with SUCCESS")
+        }
+        "unstable" -> {
+            System.err.println("Pipeline finished with UNSTABLE")
+        }
+        else -> {
+            System.err.println("Pipeline finished with FAILURE")
+            System.exit(1)
+        }
     }
 }
 

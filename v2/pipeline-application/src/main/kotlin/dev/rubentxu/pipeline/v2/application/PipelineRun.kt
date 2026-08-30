@@ -406,6 +406,9 @@ internal suspend fun walkPipelineSpecDurable(
         val firstStepIndex = if (stageIndex == startFromStageIndex) startFromStepIndex else 0
         for ((relativeIdx, step) in stepsToProcess.withIndex()) {
             val stepIndex = firstStepIndex + relativeIdx
+            // CR-BD-026 fix: for WithCredentialsBlock, skip StepStarted in emitDurableStepEvents
+            // (it will be emitted in executeDurableStepImpl after CredentialBound).
+            val emitStepStarted = step !is StepSpec.WithCredentialsBlock
             val stepOutcome = emitDurableStepEvents(
                 step = step,
                 stageIndex = stageIndex,
@@ -420,6 +423,7 @@ internal suspend fun walkPipelineSpecDurable(
                 stepClassifications = stepClassifications,
                 stageTimeout = stageTimeoutMs,
                 stageEnvironment = stage.environment,
+                emitStepStarted = emitStepStarted,
             )
             if (stepOutcome == "failure") {
                 runOutcomeRef.set("failure")
@@ -471,6 +475,10 @@ private suspend fun emitDurableStepEvents(
     stageTimeout: Long? = null,
     // Stage-level environment: StageSpec.environment merged at stage entry (WS-S-005).
     stageEnvironment: Map<String, String>? = null,
+    // CR-BD-026 fix: when true (default), emit StepStarted before executeDurableStep.
+    // When false (for WithCredentialsBlock), skip StepStarted here; emit it in
+    // executeDurableStepImpl after CredentialBound to satisfy INV-L10-CR-001 ordering.
+    emitStepStarted: Boolean = true,
 ): String {
     val (stepType, effects, domainPolicy) = stepTypeMetadata(step)
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -572,18 +580,22 @@ private suspend fun emitDurableStepEvents(
         val stepStartedId = UUID.randomUUID().toString()
         val stepStartedAt = ctx.clock.now()
 
-        ctx.eventSink.append(
-            StepStarted(
-                eventId = stepStartedId,
-                runId = runId,
-                sequence = 0L,
-                occurredAt = stepStartedAt,
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                stepName = step.name,
-                stepType = step.type,
+        // CR-BD-026 fix: skip StepStarted for WithCredentialsBlock; it will be emitted
+        // inside executeDurableStepImpl after CredentialBound to satisfy INV-L10-CR-001 ordering.
+        if (emitStepStarted) {
+            ctx.eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = step.name,
+                    stepType = step.type,
+                )
             )
-        )
+        }
 
         when (decision) {
             dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision.SKIP -> {
@@ -1092,23 +1104,26 @@ private suspend fun executeDurableStepImpl(
                             sandbox = SandboxConfigResolver.resolve(sandboxProfile),
                         )
 
+                        // CR-BD-026 fix: emit StepStarted AFTER all CredentialBound events.
+                        // This satisfies INV-L10-CR-001: CredentialBound before StepStarted.
+                        val outerStepStartedId = UUID.randomUUID().toString()
+                        val outerStepStartedAt = clock.now()
+                        eventSink.append(
+                            StepStarted(
+                                eventId = outerStepStartedId,
+                                runId = runId,
+                                sequence = 0L,
+                                occurredAt = outerStepStartedAt,
+                                stageIndex = stageIndex,
+                                stepIndex = stepIndex,
+                                stepName = step.name,
+                                stepType = step.type,
+                            )
+                        )
+
                         // Execute inner steps with credential env injected
                         var innerOutcome = "success"
                         for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
-                            // Emit CredentialUsed per inner step (D3)
-                            for (binding in step.bindings) {
-                                eventSink.append(
-                                    CredentialUsed(
-                                        eventId = UUID.randomUUID().toString(),
-                                        runId = runId,
-                                        sequence = 0L,
-                                        occurredAt = clock.now(),
-                                        credentialsId = binding.credentialsId,
-                                        purpose = kindToPurpose(binding.kind),
-                                        stepIndex = innerStepIdx,
-                                    )
-                                )
-                            }
                             val innerStepOutcome = executeDurableStep(
                                 step = innerStep,
                                 stageIndex = stageIndex,
@@ -1132,6 +1147,23 @@ private suspend fun executeDurableStepImpl(
                                 sandboxProfile = sandboxProfile,
                                 secretStore = secretStore,
                             )
+                            // CR-BD-027 fix: emit CredentialUsed AFTER inner step execution.
+                            // The credential was actually used only if the step succeeded.
+                            if (innerStepOutcome == "success") {
+                                for (binding in step.bindings) {
+                                    eventSink.append(
+                                        CredentialUsed(
+                                            eventId = UUID.randomUUID().toString(),
+                                            runId = runId,
+                                            sequence = 0L,
+                                            occurredAt = clock.now(),
+                                            credentialsId = binding.credentialsId,
+                                            purpose = kindToPurpose(binding.kind),
+                                            stepIndex = innerStepIdx,
+                                        )
+                                    )
+                                }
+                            }
                             if (innerStepOutcome != "success") {
                                 innerOutcome = innerStepOutcome
                                 break
@@ -1175,7 +1207,22 @@ private suspend fun executeDurableStepImpl(
                         }
                     }
                 } else {
-                    // No secretStore available - execute inner steps without credential injection
+                    // No secretStore available - execute inner steps without credential injection.
+                    // CR-BD-026 fix: emit StepStarted for the outer WithCredentialsBlock here too.
+                    val outerStepStartedId = UUID.randomUUID().toString()
+                    val outerStepStartedAt = clock.now()
+                    eventSink.append(
+                        StepStarted(
+                            eventId = outerStepStartedId,
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = outerStepStartedAt,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                            stepName = step.name,
+                            stepType = step.type,
+                        )
+                    )
                     var innerOutcome = "success"
                     for (innerStep in step.steps) {
                         val innerStepOutcome = executeDurableStep(

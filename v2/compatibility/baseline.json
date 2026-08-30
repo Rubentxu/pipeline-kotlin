@@ -3,6 +3,7 @@
   "generatedAt": "2026-08-29T00:00:00Z",
   "fixtures": {
     "01-basic.pipeline.kts": {
+      "sha256": "eee2525aa652a26eb12f7ac5a52eac54b4ec4f81ff77ffb6de01711325c2251f",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "hello" },
@@ -16,6 +17,7 @@
       "descriptorProjection": {}
     },
     "02-environment.pipeline.kts": {
+      "sha256": "5c2c265b74578c706c8d11c0dd1d7a7804a7c0762aa41637303273bad959bf7c",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "build" },
@@ -29,6 +31,7 @@
       "descriptorProjection": {}
     },
     "03-stages.pipeline.kts": {
+      "sha256": "588d4827a994ac956948cb93870932dcf6e03242a18f0698127b15a7db6c39c5",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "build" },
@@ -52,6 +55,7 @@
       "descriptorProjection": {}
     },
     "04-sh.pipeline.kts": {
+      "sha256": "14e5034c97dbba869b75083e80124934ff5bbaf5a116c1cbd6f80b4da9a613f8",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "shell" },
@@ -65,6 +69,7 @@
       "descriptorProjection": {}
     },
     "05-scripted-if.pipeline.kts": {
+      "sha256": "42ab8d899ec776a1dc3b31d0db06d086d1b41189a2747e161c41dd7b8883a300",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "conditional" },
@@ -78,6 +83,7 @@
       "descriptorProjection": {}
     },
     "06-loop.pipeline.kts": {
+      "sha256": "34cb00a76c72add46799d0a3131902f73cb85960bbb0b6679e6248d0b4d591e5",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "loop" },
@@ -93,6 +99,7 @@
       "descriptorProjection": {}
     },
     "10-smoke-e2e.pipeline.kts": {
+      "sha256": "e0da6881396da480f3b61063537ac421bb517187f439866ef6885ba89dc2dc2d",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "checkout" },
@@ -119,6 +126,7 @@
       "descriptorProjection": {}
     },
     "11-workflow-control.pipeline.kts": {
+      "sha256": "29d7a8978cebd70013e9583f7fe5c5b94d4ec1402fc2f47968401e63332e9a90",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-control" },
@@ -144,6 +152,7 @@
       "descriptorProjection": {}
     },
     "12-error-handling.pipeline.kts": {
+      "sha256": "0a5ba7e4bd985d779dd9f33c1ad758d9c896923aac134c8fc87269ad770acf65",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "error-and-milestone" },
@@ -163,6 +172,7 @@
       "descriptorProjection": {}
     },
     "13-workspace-helpers.pipeline.kts": {
+      "sha256": "65512e5476a331742ba11436de51f2d17eeabf81c8bfb26e9e98628e6ee05b00",
       "events": [
         { "kind": "RunStarted", "runId": null, "occurredAt": null },
         { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-helpers" },

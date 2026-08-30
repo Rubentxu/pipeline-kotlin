@@ -21,13 +21,22 @@ D. Backlog item with documented Exit criterion + Gate owner.
 
 1. Inner loop: targeted runs only (`--tests 'UatLocal004*'`), warm daemon,
    NO `--rerun-tasks` while iterating.
-2. Full `./gradlew -p v2 check --rerun-tasks` runs ONCE per apply/verify
-   round, as the final gate. Never per-iteration.
+ 2. Full round gate = `./gradlew -p v2 check` (incremental) runs ONCE per
+    apply/verify round, as the final gate. Never per-iteration. Gradle's
+    content-hash up-to-date checks are the freshness oracle: a no-op
+    `check` returning BUILD SUCCESSFUL with all tasks UP-TO-DATE is a
+    VALID green — it proves nothing changed since the last green
+    (measured 2026-08-30: forced gate 977s vs 1s incremental no-op).
+    Escalate to `check --rerun-tasks` ONLY after (a) a run killed
+    mid-flight, (b) suspected stale green, or (c) hidden-state suspicion;
+    then reconcile ONCE with the rule-4 budget before trusting
+    incremental again (reconciliation measured 948s).
 3. Never `--no-daemon` for repeated runs; the daemon JVM stays warm.
 4. Wrap every Gradle invocation in `timeout` — silent hangs are defects
    of the harness, not the code under test. Two regimes:
    - Targeted / inner-loop runs: `timeout 600` (fixed).
-   - Full round gate (`check --rerun-tasks`): DERIVED budget =
+   - Full round gate (`check` incremental, or escalated
+     `check --rerun-tasks`): DERIVED budget =
      last green round-gate duration × 1.3, floor 600, ceiling 1800.
      Compute and record the budget in the round plan BEFORE the run;
      put the observed duration in the round receipt. An over-budget
@@ -47,12 +56,18 @@ timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal004*'
 timeout 600 ./gradlew -p v2 :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest'
 ```
 
-Round gate (once per apply/verify round, not per iteration). Budget derived
-per rule 4 — current baseline 977s → budget 1270:
+Round gate (once per apply/verify round, not per iteration). Incremental
+by default — the escalated budget (rule 4) applies to the escalation form
+only; current escalated baseline 977s → budget 1270:
 
 ```bash
-timeout 1270 ./gradlew -p v2 check --rerun-tasks
+./gradlew -p v2 check                              # incremental (default)
+timeout 1270 ./gradlew -p v2 check --rerun-tasks   # escalation only
 ```
+
+Quick interface: `just gate` / `just gate-escalate` / `just t '<pattern>'` /
+`just corpus <n>` / `just changed [base]` (see justfile test-efficiency
+group).
 
 ### Test design ( hangs and processes )
 
@@ -70,6 +85,10 @@ timeout 1270 ./gradlew -p v2 check --rerun-tasks
 11. Do NOT add `maxParallelForks` to UAT modules: these tests verify
     timing semantics (heartbeat staleness, backoff, LOST classification)
     that degrade under CPU contention and turn deterministic suites flaky.
+    EXCEPTION PATH: functional suites without timing semantics (e.g. the
+    compatibility corpus, one method per fixture since 2026-08-30) MAY be
+    parallelized — but only as a measured, explicit decision with a
+    recorded before/after baseline, never as a default.
 12. Prefer SDK-level unit tests when semantics do not depend on real
     processes. Real-process UATs are reserved for kill/resume/durability
     semantics that cannot be mocked faithfully.
@@ -94,6 +113,10 @@ timeout 1270 ./gradlew -p v2 check --rerun-tasks
     (package/feature filter) → L4 module suite → L5 full `check`
     (the round gate). Never jump L1→L4; exception: cross-cutting changes
     (build files, engine core, base DSL, event model) → L4 directly.
+    Derive the level from the diff (`just changed [base]` or
+    `git diff --name-only <base>`): docs-only → docs validation;
+    test-only → L0+L1/L2; production in module M → L0 + owning classes
+    (L1/L2); cross-cutting → L4; release round → L5.
 18. One behavior per iteration. Batch the edits, then validate once — no
     validation between micro-edits. L0 after every batch: a 10 s compile
     error beats a 60 s test failure.

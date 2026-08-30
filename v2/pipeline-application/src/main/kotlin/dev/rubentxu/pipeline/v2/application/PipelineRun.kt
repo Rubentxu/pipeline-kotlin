@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
@@ -11,6 +12,9 @@ import dev.rubentxu.pipeline.v2.dsl.StageSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
+import dev.rubentxu.pipeline.v2.events.CredentialBound
+import dev.rubentxu.pipeline.v2.events.CredentialUnbound
+import dev.rubentxu.pipeline.v2.events.CredentialUsed
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -99,6 +103,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
+import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
+import dev.rubentxu.pipeline.v2.credentials.multipart.MaterializationKind
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -926,34 +933,135 @@ private suspend fun executeDurableStepImpl(
                 )
             }
             is StepSpec.WithCredentialsBlock -> {
-                // T11: Wire real withCredentials block execution.
+                // ML-R10 (D2+D3+D4+D11): Wire real withCredentials block execution.
                 // If secretStore is available, resolve credentials and inject into inner steps.
                 // If not available, execute inner steps without credential injection.
                 if (secretStore != null) {
                     // Collect active handles for cleanup
                     val activeHandles = mutableListOf<dev.rubentxu.pipeline.v2.domain.SecretHandle>()
+                    // Materializer for file-based credential kinds
+                    val materializer = CredentialMaterializer(secretStore)
                     var firstException: Throwable? = null
+
+                    // Map DSL Kind to BoundPurpose (per ADR-0051 §D8)
+                    fun kindToPurpose(kind: StepSpec.CredentialsBinding.Kind): BoundPurpose = when (kind) {
+                        StepSpec.CredentialsBinding.Kind.STRING -> BoundPurpose.API_KEY
+                        StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> BoundPurpose.USERNAME_PASSWORD
+                        StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> BoundPurpose.SSH_KEY
+                        StepSpec.CredentialsBinding.Kind.FILE -> BoundPurpose.FILE
+                        StepSpec.CredentialsBinding.Kind.CERTIFICATE -> BoundPurpose.CERTIFICATE
+                        StepSpec.CredentialsBinding.Kind.ZIP -> BoundPurpose.ZIP
+                        StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> BoundPurpose.USERNAME_COLON_PASSWORD
+                    }
+
+                    // Map DSL Kind to MaterializationKind (for file-based kinds)
+                    fun kindToMaterializationKind(kind: StepSpec.CredentialsBinding.Kind): MaterializationKind? = when (kind) {
+                        StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> MaterializationKind.SshPrivateKey
+                        StepSpec.CredentialsBinding.Kind.FILE -> MaterializationKind.SecretFile
+                        StepSpec.CredentialsBinding.Kind.CERTIFICATE -> MaterializationKind.Certificate
+                        StepSpec.CredentialsBinding.Kind.ZIP -> MaterializationKind.Zip
+                        else -> null
+                    }
 
                     try {
                         // Build credential env map from bindings
                         val credentialEnv = mutableMapOf<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>()
                         for (binding in step.bindings) {
                             try {
-                                val handle = secretStore.getAsSecretHandle(binding.credentialsId)
-                                activeHandles.add(handle)
-                                when (binding.kind) {
-                                    StepSpec.CredentialsBinding.Kind.STRING -> {
-                                        binding.variable?.let { varName ->
-                                            credentialEnv[varName] = handle
+                                val purpose = kindToPurpose(binding.kind)
+                                val materializationKind = kindToMaterializationKind(binding.kind)
+
+                                if (materializationKind != null) {
+                                    // File-based kinds: materialize to temp path and inject path (D11)
+                                    val credential = secretStore.get(binding.credentialsId)
+                                    val materialized = materializer.materialize(credential, materializationKind)
+                                    val path = materialized.path
+                                    if (path != null) {
+                                        // Emit CredentialBound BEFORE injection (INV-L10-CR-001)
+                                        eventSink.append(
+                                            CredentialBound(
+                                                eventId = UUID.randomUUID().toString(),
+                                                runId = runId,
+                                                sequence = 0L,
+                                                occurredAt = clock.now(),
+                                                credentialsId = binding.credentialsId,
+                                                purpose = purpose,
+                                            )
+                                        )
+                                        // Inject path as masked handle (not subject to secret redaction)
+                                        when (binding.kind) {
+                                            StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> {
+                                                binding.keyFileVariable?.let { varName ->
+                                                    // Inject the path to the key file as a masked handle
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                                binding.passphraseVariable?.let { varName ->
+                                                    // The passphrase path is injected via the same mechanism
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                                binding.usernameVariable?.let { varName ->
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                            }
+                                            StepSpec.CredentialsBinding.Kind.FILE -> {
+                                                binding.variable?.let { varName ->
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                            }
+                                            StepSpec.CredentialsBinding.Kind.CERTIFICATE -> {
+                                                binding.keystoreVariable?.let { varName ->
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                                binding.aliasVariable?.let { varName ->
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                                binding.passwordVariable?.let { varName ->
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                            }
+                                            StepSpec.CredentialsBinding.Kind.ZIP -> {
+                                                binding.variable?.let { varName ->
+                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                                                }
+                                            }
+                                            else -> { /* handled above */ }
                                         }
                                     }
-                                    StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> {
-                                        binding.usernameVariable?.let { varName ->
-                                            credentialEnv[varName] = handle
+                                } else {
+                                    // Non-file kinds: use SecretHandle directly
+                                    val handle = secretStore.getAsSecretHandle(binding.credentialsId)
+                                    activeHandles.add(handle)
+                                    // Emit CredentialBound BEFORE injection (INV-L10-CR-001)
+                                    eventSink.append(
+                                        CredentialBound(
+                                            eventId = UUID.randomUUID().toString(),
+                                            runId = runId,
+                                            sequence = 0L,
+                                            occurredAt = clock.now(),
+                                            credentialsId = binding.credentialsId,
+                                            purpose = purpose,
+                                        )
+                                    )
+                                    when (binding.kind) {
+                                        StepSpec.CredentialsBinding.Kind.STRING -> {
+                                            binding.variable?.let { varName ->
+                                                credentialEnv[varName] = handle
+                                            }
                                         }
-                                        binding.passwordVariable?.let { varName ->
-                                            credentialEnv[varName] = handle
+                                        StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> {
+                                            binding.usernameVariable?.let { varName ->
+                                                credentialEnv[varName] = handle
+                                            }
+                                            binding.passwordVariable?.let { varName ->
+                                                credentialEnv[varName] = handle
+                                            }
                                         }
+                                        StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> {
+                                            binding.variable?.let { varName ->
+                                                credentialEnv[varName] = handle
+                                            }
+                                        }
+                                        else -> { /* file-based handled above */ }
                                     }
                                 }
                             } catch (e: dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException) {
@@ -977,6 +1085,20 @@ private suspend fun executeDurableStepImpl(
                         // Execute inner steps with credential env injected
                         var innerOutcome = "success"
                         for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
+                            // Emit CredentialUsed per inner step (D3)
+                            for (binding in step.bindings) {
+                                eventSink.append(
+                                    CredentialUsed(
+                                        eventId = UUID.randomUUID().toString(),
+                                        runId = runId,
+                                        sequence = 0L,
+                                        occurredAt = clock.now(),
+                                        credentialsId = binding.credentialsId,
+                                        purpose = kindToPurpose(binding.kind),
+                                        stepIndex = innerStepIdx,
+                                    )
+                                )
+                            }
                             val innerStepOutcome = executeDurableStep(
                                 step = innerStep,
                                 stageIndex = stageIndex,
@@ -1007,7 +1129,29 @@ private suspend fun executeDurableStepImpl(
                         }
                         innerOutcome
                     } finally {
-                        // Wipe all active handles (INV-CR-CR7)
+                        // Emit CredentialUnbound for all bindings (D3)
+                        for (binding in step.bindings) {
+                            eventSink.append(
+                                CredentialUnbound(
+                                    eventId = UUID.randomUUID().toString(),
+                                    runId = runId,
+                                    sequence = 0L,
+                                    occurredAt = clock.now(),
+                                    credentialsId = binding.credentialsId,
+                                )
+                            )
+                        }
+                        // Wipe materializer paths (INV-CR-CR7 + D4)
+                        try {
+                            materializer.close()
+                        } catch (t: Throwable) {
+                            if (firstException == null) {
+                                firstException = t
+                            } else {
+                                firstException.addSuppressed(t)
+                            }
+                        }
+                        // Wipe all active handles
                         for (handle in activeHandles) {
                             try {
                                 handle.close()
@@ -2223,6 +2367,29 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
                                 "usernameVariable" to JsonPrimitive(binding.usernameVariable ?: ""),
                                 "passwordVariable" to JsonPrimitive(binding.passwordVariable ?: ""),
                             )
+                        }
+                        StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> {
+                            mapOf(
+                                "keyFileVariable" to JsonPrimitive(binding.keyFileVariable ?: ""),
+                                "passphraseVariable" to JsonPrimitive(binding.passphraseVariable ?: ""),
+                                "usernameVariable" to JsonPrimitive(binding.usernameVariable ?: ""),
+                            )
+                        }
+                        StepSpec.CredentialsBinding.Kind.FILE -> {
+                            mapOf("variable" to JsonPrimitive(binding.variable ?: ""))
+                        }
+                        StepSpec.CredentialsBinding.Kind.CERTIFICATE -> {
+                            mapOf(
+                                "keystoreVariable" to JsonPrimitive(binding.keystoreVariable ?: ""),
+                                "aliasVariable" to JsonPrimitive(binding.aliasVariable ?: ""),
+                                "passwordVariable" to JsonPrimitive(binding.passwordVariable ?: ""),
+                            )
+                        }
+                        StepSpec.CredentialsBinding.Kind.ZIP -> {
+                            mapOf("variable" to JsonPrimitive(binding.variable ?: ""))
+                        }
+                        StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> {
+                            mapOf("variable" to JsonPrimitive(binding.variable ?: ""))
                         }
                     }
                 )

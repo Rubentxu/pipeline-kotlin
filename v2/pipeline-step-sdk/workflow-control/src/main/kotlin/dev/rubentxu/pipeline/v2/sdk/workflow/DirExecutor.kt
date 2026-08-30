@@ -88,12 +88,11 @@ class DirExecutor(
 
     private fun resolveTargetPath(path: String, workspace: Path): Path {
         val target = if (path.startsWith("/")) {
-            // Absolute path
+            // Absolute path — use as-is
             Paths.get(path)
         } else {
-            // Relative path - resolve against current directory
-            val currentDir = Paths.get(System.getProperty("user.dir") ?: ".")
-            currentDir.resolve(path)
+            // Relative path — resolve against workspace root (Jenkins semantics)
+            workspace.resolve(path)
         }.normalize()
 
         // Guard against path traversal outside workspace

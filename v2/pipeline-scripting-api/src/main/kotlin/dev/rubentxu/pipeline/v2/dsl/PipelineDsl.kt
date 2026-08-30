@@ -838,6 +838,24 @@ class StageScope(private val stageName: String) {
         )
     }
 
+    /**
+     * Changes the current working directory for the duration of the nested block.
+     *
+     * Jenkins verbatim (catalog §1.1/§1.2):
+     * `dir(path: String) { ... }`
+     *
+     * Changes the working directory (cwd) for nested steps. The previous working
+     * directory is restored when the block exits (including on exception).
+     *
+     * @param path Workspace-relative or absolute directory path
+     * @param block Nested steps executed in the changed directory
+     */
+    fun dir(path: String, block: StageScope.() -> Unit) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.Dir(path = path, steps = inner.steps.toList()))
+    }
+
     fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)
 }
 

@@ -24,8 +24,16 @@ D. Backlog item with documented Exit criterion + Gate owner.
 2. Full `./gradlew -p v2 check --rerun-tasks` runs ONCE per apply/verify
    round, as the final gate. Never per-iteration.
 3. Never `--no-daemon` for repeated runs; the daemon JVM stays warm.
-4. Wrap every Gradle invocation in `timeout 600` — silent hangs are defects
-   of the harness, not the code under test.
+4. Wrap every Gradle invocation in `timeout` — silent hangs are defects
+   of the harness, not the code under test. Two regimes:
+   - Targeted / inner-loop runs: `timeout 600` (fixed).
+   - Full round gate (`check --rerun-tasks`): DERIVED budget =
+     last green round-gate duration × 1.3, floor 600, ceiling 1800.
+     Compute and record the budget in the round plan BEFORE the run;
+     put the observed duration in the round receipt. An over-budget
+     kill is a signal: either the suite legitimately grew (re-derive
+     the baseline explicitly and document why) or something degraded
+     (diagnose per rules 28-31). NEVER raise a timeout mid-run.
 5. Base-SHA evidence is immutable: never recompile a base worktree to
    "re-prove" a result already captured (cite the prior XML/SHA).
 6. `v2/gradle.properties` MUST keep enabled: `org.gradle.caching=true`,
@@ -39,10 +47,11 @@ timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal004*'
 timeout 600 ./gradlew -p v2 :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest'
 ```
 
-Round gate (once per apply/verify round, not per iteration):
+Round gate (once per apply/verify round, not per iteration). Budget derived
+per rule 4 — current baseline 977s → budget 1270:
 
 ```bash
-timeout 600 ./gradlew -p v2 check --rerun-tasks
+timeout 1270 ./gradlew -p v2 check --rerun-tasks
 ```
 
 ### Test design ( hangs and processes )
@@ -101,10 +110,11 @@ timeout 600 ./gradlew -p v2 check --rerun-tasks
 ### Output capture and result truth
 
 23. NEVER pipe test output through `| tail` under `timeout`: the output is
-    lost when the process is killed. Safe pattern:
-    `timeout 600 ./gradlew ... > /tmp/gradle-run.log 2>&1; tail -n 30 /tmp/gradle-run.log`
+    lost when the process is killed. Safe pattern (`<budget>` per rule 4:
+    600 targeted, derived for the round gate):
+    `timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1; tail -n 30 /tmp/gradle-run.log`
 24. Long builds run backgrounded with polling:
-    `nohup timeout 600 ./gradlew ... > /tmp/gradle-run.log 2>&1 &` then
+    `nohup timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1 &` then
     poll `tail -n 20 /tmp/gradle-run.log` — keep editing while it runs.
 25. Result truth is the JUnit XML in `build/test-results/test/`, NOT the
     console or the Gradle exit code. When a run MUST have executed, use

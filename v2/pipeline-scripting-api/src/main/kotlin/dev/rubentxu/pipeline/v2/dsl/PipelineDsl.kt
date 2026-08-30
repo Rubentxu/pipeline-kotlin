@@ -342,6 +342,107 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val name: String get() = "archiveArtifacts"
         override val type: String get() = "archiveArtifacts"
     }
+
+    // =============================================================================
+    // ML-R9 workspace-cleanup step kinds (T-05)
+    // =============================================================================
+
+    /**
+     * Deletes the specified directory within the workspace (default: current workspace).
+     *
+     * Jenkins verbatim (catalog §1.1 line 44):
+     * `deleteDir()`
+     *
+     * Idempotent: re-execution on already-deleted path emits DirDeleted with deletedCount=0.
+     *
+     * @param path Workspace-relative path (default ".")
+     */
+    data class DeleteDir(
+        val path: String = ".",
+    ) : StepSpec {
+        override val name: String get() = "deleteDir"
+        override val type: String get() = "deleteDir"
+    }
+
+    /**
+     * Cleans the workspace with optional Ant-style glob filtering.
+     *
+     * Jenkins verbatim (catalog §1.1 line 44):
+     * `cleanWs(deleteDirs: Boolean = true, patterns: List<String>? = null)`
+     *
+     * @param deleteDirs If true, remove empty parent directories after deletion
+     * @param patterns Ant-style glob patterns (null = delete all non-.v2 files)
+     */
+    data class CleanWs(
+        val deleteDirs: Boolean = true,
+        val patterns: List<String>? = null,
+    ) : StepSpec {
+        override val name: String get() = "cleanWs"
+        override val type: String get() = "cleanWs"
+    }
+
+    // =============================================================================
+    // ML-R9 error-handling step kinds (T-06)
+    // =============================================================================
+
+    /**
+     * Catches errors from nested steps and optionally downgrades the build result.
+     *
+     * Jenkins verbatim (catalog §1.1 lines 41-43):
+     * `catchError(buildResult: String? = null, stageResult: String? = null, message: String? = null) { ... }`
+     *
+     * @param buildResult Override build result (null = default Jenkins UNSTABLE)
+     * @param stageResult Override stage result (null = use buildResult or default UNSTABLE)
+     * @param message User-visible message
+     * @param steps Nested steps
+     */
+    data class CatchError(
+        val buildResult: String? = null,
+        val stageResult: String? = null,
+        val message: String? = null,
+        val steps: List<StepSpec> = emptyList(),
+    ) : StepSpec {
+        override val name: String get() = "catchError"
+        override val type: String get() = "catchError"
+    }
+
+    /**
+     * Catches errors and forces stage result to UNSTABLE (warnError semantics).
+     *
+     * Jenkins verbatim:
+     * `warnError(message: String, catchInterruptions: Boolean = true) { ... }`
+     *
+     * Equivalent to `catchError(message, buildResult="UNSTABLE")`.
+     *
+     * @param message User-visible warning message
+     * @param catchInterruptions If true, also catch Thread.interrupt()
+     * @param steps Nested steps
+     */
+    data class WarnError(
+        val message: String,
+        val catchInterruptions: Boolean = true,
+        val steps: List<StepSpec> = emptyList(),
+    ) : StepSpec {
+        override val name: String get() = "warnError"
+        override val type: String get() = "warnError"
+    }
+
+    /**
+     * Marks the current stage as unstable (soft warning, pipeline continues).
+     *
+     * Jenkins verbatim:
+     * `unstable(message: String)`
+     *
+     * Pipeline-level exit code remains 0 (Jenkins soft-warning semantics).
+     *
+     * @param message User-visible message describing the instability
+     */
+    data class Unstable(
+        val message: String,
+    ) : StepSpec {
+        override val name: String get() = "unstable"
+        override val type: String get() = "unstable"
+    }
 }
 
 /**
@@ -692,6 +793,13 @@ class StageScope(private val stageName: String) {
             is StepSpec.ArchiveArtifacts -> currentStep
             // ML-R9 workflow-control: step-level retry not supported
             is StepSpec.Dir -> currentStep
+            // ML-R9 workspace-cleanup: not retryable at step level
+            is StepSpec.DeleteDir -> currentStep
+            is StepSpec.CleanWs -> currentStep
+            // ML-R9 error-handling: not retryable at step level
+            is StepSpec.CatchError -> currentStep
+            is StepSpec.WarnError -> currentStep
+            is StepSpec.Unstable -> currentStep
         }
     }
 
@@ -854,6 +962,114 @@ class StageScope(private val stageName: String) {
         val inner = StageScope(stageName)
         inner.block()
         steps.add(StepSpec.Dir(path = path, steps = inner.steps.toList()))
+    }
+
+    // =============================================================================
+    // ML-R9 workspace-cleanup DSL (T-05)
+    // =============================================================================
+
+    /**
+     * Deletes the specified directory within the workspace.
+     *
+     * Jenkins verbatim (catalog §1.1 line 44):
+     * `deleteDir()`
+     *
+     * Idempotent: re-execution on already-deleted path succeeds with deletedCount=0.
+     *
+     * @param path Workspace-relative path (default ".")
+     */
+    fun deleteDir(path: String = ".") {
+        steps.add(StepSpec.DeleteDir(path = path))
+    }
+
+    /**
+     * Cleans the workspace with optional Ant-style glob filtering.
+     *
+     * Jenkins verbatim (catalog §1.1 line 44):
+     * `cleanWs(deleteDirs: Boolean = true, patterns: List<String>? = null)`
+     *
+     * @param deleteDirs If true, remove empty parent directories after deletion
+     * @param patterns Ant-style glob patterns (null = delete all non-.v2 files)
+     */
+    fun cleanWs(deleteDirs: Boolean = true, patterns: List<String>? = null) {
+        steps.add(StepSpec.CleanWs(deleteDirs = deleteDirs, patterns = patterns))
+    }
+
+    /**
+     * Cleans the workspace with array syntax (Jenkins-faithful overload).
+     *
+     * @param deleteDirs If true, remove empty parent directories after deletion
+     * @param patterns Ant-style glob patterns as vararg
+     */
+    fun cleanWs(deleteDirs: Boolean = true, vararg patterns: String) {
+        steps.add(StepSpec.CleanWs(deleteDirs = deleteDirs, patterns = patterns.toList()))
+    }
+
+    // =============================================================================
+    // ML-R9 error-handling DSL (T-06)
+    // =============================================================================
+
+    /**
+     * Catches errors from nested steps and optionally downgrades the build result.
+     *
+     * Jenkins verbatim (catalog §1.1 lines 41-43):
+     * `catchError(buildResult: String? = null, stageResult: String? = null, message: String? = null) { ... }`
+     *
+     * @param buildResult Override build result (null = default Jenkins UNSTABLE)
+     * @param stageResult Override stage result (null = use buildResult or default UNSTABLE)
+     * @param message User-visible message
+     * @param block Nested steps
+     */
+    fun catchError(
+        buildResult: String? = null,
+        stageResult: String? = null,
+        message: String? = null,
+        block: StageScope.() -> Unit,
+    ) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.CatchError(
+            buildResult = buildResult,
+            stageResult = stageResult,
+            message = message,
+            steps = inner.steps.toList(),
+        ))
+    }
+
+    /**
+     * Catches errors and forces stage result to UNSTABLE (warnError semantics).
+     *
+     * Jenkins verbatim:
+     * `warnError(message: String, catchInterruptions: Boolean = true) { ... }`
+     *
+     * @param message User-visible warning message
+     * @param catchInterruptions If true, also catch Thread.interrupt()
+     * @param block Nested steps
+     */
+    fun warnError(
+        message: String,
+        catchInterruptions: Boolean = true,
+        block: StageScope.() -> Unit,
+    ) {
+        val inner = StageScope(stageName)
+        inner.block()
+        steps.add(StepSpec.WarnError(
+            message = message,
+            catchInterruptions = catchInterruptions,
+            steps = inner.steps.toList(),
+        ))
+    }
+
+    /**
+     * Marks the current stage as unstable (soft warning, pipeline continues).
+     *
+     * Jenkins verbatim:
+     * `unstable(message: String)`
+     *
+     * @param message User-visible message describing the instability
+     */
+    fun unstable(message: String) {
+        steps.add(StepSpec.Unstable(message = message))
     }
 
     fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)

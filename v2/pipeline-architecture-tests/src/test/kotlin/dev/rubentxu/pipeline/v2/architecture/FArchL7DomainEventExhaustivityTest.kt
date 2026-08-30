@@ -11,23 +11,23 @@ import kotlin.reflect.full.memberProperties
  *
  * Architecture test that enforces DomainEvent sealed hierarchy is complete.
  *
- * The sealed hierarchy must contain exactly 29 variants:
+ * The sealed hierarchy must contain exactly 33 variants:
  * - 23 existing (ML-R1 through ML-R6)
  * - 4 new for ML-R7 (FileWritten, FileRead, ArtifactArchived, ArtifactArchiveFailed)
- * - 2 new for ML-R9 (DirEntered, DirExited)
+ * - 6 new for ML-R9 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
  * NOTE: ArtifactEntry is a nested data class, not a standalone DomainEvent
  *
  * This CLOSES the DomainEvent exhaustivity invariant from ADR-0046 §D2.
  *
- * RED: AssertionError (hierarchy count != 29)
- * GREEN: After T-07, hierarchy count == 29
+ * RED: AssertionError (hierarchy count != 33)
+ * GREEN: After T-07, hierarchy count == 33
  */
 class FArchL7DomainEventExhaustivityTest {
 
     /**
-     * Verifies DomainEvent sealed hierarchy contains exactly 29 variants.
+     * Verifies DomainEvent sealed hierarchy contains exactly 33 variants.
      *
-     * Expected variants (23 existing + 4 ML-R7 + 2 ML-R9):
+     * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9):
      * 1. RunStarted
      * 2. CompilationStarted
      * 3. CompilationFinished
@@ -51,19 +51,23 @@ class FArchL7DomainEventExhaustivityTest {
      * 21. GitCheckoutCompleted
      * 22. GitCheckoutFailed
      * 23. GitPollChanged
-     * 24. FileWritten (NEW ML-R7)
-     * 25. FileRead (NEW ML-R7)
-     * 26. ArtifactArchived (NEW ML-R7)
-     * 27. ArtifactArchiveFailed (NEW ML-R7)
-     * 28. DirEntered (NEW ML-R9)
-     * 29. DirExited (NEW ML-R9)
+     * 24. FileWritten (ML-R7)
+     * 25. FileRead (ML-R7)
+     * 26. ArtifactArchived (ML-R7)
+     * 27. ArtifactArchiveFailed (ML-R7)
+     * 28. DirEntered (ML-R9)
+     * 29. DirExited (ML-R9)
+     * 30. DirDeleted (ML-R9 T-05)
+     * 31. WsCleaned (ML-R9 T-05)
+     * 32. CatchErrorTriggered (ML-R9 T-06)
+     * 33. StageMarkedUnstable (ML-R9 T-06)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_29_variants`() {
+    fun `domain_event_sealed_hierarchy_has_33_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 29
+        val expectedCount = 33
 
         assertEquals(
             expectedCount,
@@ -104,7 +108,7 @@ class FArchL7DomainEventExhaustivityTest {
     }
 
     /**
-     * Verifies all 27 variants have the required DomainEvent interface fields.
+     * Verifies all 33 variants have the required DomainEvent interface fields.
      */
     @Test
     fun `all_domain_event_variants_implement_interface_fields`() {

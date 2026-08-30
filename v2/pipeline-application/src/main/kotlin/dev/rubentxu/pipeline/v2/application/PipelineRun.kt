@@ -80,6 +80,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
 import dev.rubentxu.pipeline.v2.sdk.files.FileExistsExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.FileReadExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.FileWriteExecutor
+import dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor
+import dev.rubentxu.pipeline.v2.sdk.files.CleanWsExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ShExecution
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import kotlinx.coroutines.Dispatchers
@@ -1300,6 +1302,179 @@ private suspend fun executeDurableStepImpl(
                     "failure"
                 }
             }
+            // ML-R9 T-06: new step kinds
+            is StepSpec.DeleteDir -> {
+                val resolver = workspaceResolver ?: return "failure"
+                val executor = DeleteDirExecutor(
+                    workspaceResolver = { name, idx -> resolver.resolve(name, idx) }
+                )
+                val result = executor.execute(stageName, stageIndex, stepIndex, step)
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.DirDeleted(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        path = step.path,
+                        deletedCount = result.deletedCount,
+                        sha256 = result.sha256,
+                    )
+                )
+                "success"
+            }
+            is StepSpec.CleanWs -> {
+                val resolver = workspaceResolver ?: return "failure"
+                val executor = CleanWsExecutor(
+                    workspaceResolver = { name, idx -> resolver.resolve(name, idx) }
+                )
+                val result = executor.execute(stageName, stageIndex, stepIndex, step)
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.WsCleaned(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        deletedFiles = result.deletedFiles,
+                        deletedDirs = result.deletedDirs,
+                        patterns = result.patterns,
+                        sha256 = result.sha256,
+                    )
+                )
+                "success"
+            }
+            is StepSpec.Unstable -> {
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        stageName = stageName,
+                        message = step.message,
+                    )
+                )
+                "success"
+            }
+            is StepSpec.CatchError -> {
+                // ML-R9 T-06: catchError block — execute nested steps, catch exceptions
+                var outcome = "success"
+                try {
+                    for (innerStep in step.steps) {
+                        val innerOutcome = executeDurableStep(
+                            step = innerStep,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                            runId = runId,
+                            stageName = stageName,
+                            eventSink = eventSink,
+                            journal = journal,
+                            cursorStore = cursorStore,
+                            divergenceDetector = divergenceDetector,
+                            effectReplayPolicy = effectReplayPolicy,
+                            clock = clock,
+                            runOutcomeRef = runOutcomeRef,
+                            reconciledBranches = reconciledBranches,
+                            controlDirRoot = controlDirRoot,
+                            workspaceResolver = workspaceResolver,
+                            shOptions = shOptions,
+                            stepClassifications = stepClassifications,
+                            stageTimeout = stageTimeout,
+                            stageEnvironment = stageEnvironment,
+                            sandboxProfile = sandboxProfile,
+                            secretStore = secretStore,
+                        )
+                        if (innerOutcome != "success") {
+                            outcome = innerOutcome
+                            break
+                        }
+                    }
+                } catch (e: Throwable) {
+                    outcome = "failure"
+                }
+                if (outcome != "success") {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            stageName = stageName,
+                            buildResult = step.buildResult,
+                            stageResult = step.stageResult ?: "",
+                            message = step.message,
+                        )
+                    )
+                }
+                // Downgrade outcome per buildResult/stageResult
+                val effectiveResult = step.buildResult?.uppercase() ?: "UNSTABLE"
+                if (outcome != "success" && (effectiveResult == "UNSTABLE" || effectiveResult == "SUCCESS")) {
+                    outcome = "success"  // Jenkins: catchError suppresses failure
+                }
+                outcome
+            }
+            is StepSpec.WarnError -> {
+                // ML-R9 T-06: warnError block — same as catchError but always UNSTABLE
+                var outcome = "success"
+                try {
+                    for (innerStep in step.steps) {
+                        val innerOutcome = executeDurableStep(
+                            step = innerStep,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                            runId = runId,
+                            stageName = stageName,
+                            eventSink = eventSink,
+                            journal = journal,
+                            cursorStore = cursorStore,
+                            divergenceDetector = divergenceDetector,
+                            effectReplayPolicy = effectReplayPolicy,
+                            clock = clock,
+                            runOutcomeRef = runOutcomeRef,
+                            reconciledBranches = reconciledBranches,
+                            controlDirRoot = controlDirRoot,
+                            workspaceResolver = workspaceResolver,
+                            shOptions = shOptions,
+                            stepClassifications = stepClassifications,
+                            stageTimeout = stageTimeout,
+                            stageEnvironment = stageEnvironment,
+                            sandboxProfile = sandboxProfile,
+                            secretStore = secretStore,
+                        )
+                        if (innerOutcome != "success") {
+                            outcome = innerOutcome
+                            break
+                        }
+                    }
+                } catch (e: Throwable) {
+                    outcome = "failure"
+                }
+                if (outcome != "success") {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            stageName = stageName,
+                            buildResult = "UNSTABLE",
+                            stageResult = "UNSTABLE",
+                            message = step.message,
+                        )
+                    )
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            stageName = stageName,
+                            message = step.message,
+                        )
+                    )
+                    outcome = "success"  // warnError: suppress failure, mark unstable
+                }
+                outcome
+            }
         }
     } catch (_: Throwable) {
         runOutcomeRef.set("failure")
@@ -1358,6 +1533,12 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         is StepSpec.ArchiveArtifacts -> Triple("archiveArtifacts", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
         // ML-R9 workflow-control steps
         is StepSpec.Dir -> Triple("dir", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
+        // ML-R9 T-06: new step kinds
+        is StepSpec.DeleteDir -> Triple("deleteDir", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.CleanWs -> Triple("cleanWs", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.Unstable -> Triple("unstable", setOf(Effect.ABORTS_PIPELINE), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.CatchError -> Triple("catchError", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
+        is StepSpec.WarnError -> Triple("warnError", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
     }
 }
 
@@ -1456,6 +1637,28 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
         // ML-R9 workflow-control steps
         is StepSpec.Dir -> mapOf(
             "path" to JsonPrimitive(step.path),
+            "stepCount" to JsonPrimitive(step.steps.size),
+        )
+        // ML-R9 T-06: new step kinds
+        is StepSpec.DeleteDir -> mapOf(
+            "path" to JsonPrimitive(step.path),
+        )
+        is StepSpec.CleanWs -> mapOf(
+            "deleteDirs" to JsonPrimitive(step.deleteDirs),
+            "patterns" to JsonPrimitive(step.patterns?.joinToString(",") ?: ""),
+        )
+        is StepSpec.Unstable -> mapOf(
+            "message" to JsonPrimitive(step.message),
+        )
+        is StepSpec.CatchError -> mapOf(
+            "buildResult" to JsonPrimitive(step.buildResult ?: ""),
+            "stageResult" to JsonPrimitive(step.stageResult ?: ""),
+            "message" to JsonPrimitive(step.message ?: ""),
+            "stepCount" to JsonPrimitive(step.steps.size),
+        )
+        is StepSpec.WarnError -> mapOf(
+            "message" to JsonPrimitive(step.message),
+            "catchInterruptions" to JsonPrimitive(step.catchInterruptions),
             "stepCount" to JsonPrimitive(step.steps.size),
         )
     }
@@ -1822,6 +2025,149 @@ private fun emitStepEvents(
                     stepType = stepType,
                 )
             )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+        // ML-R9 T-06: new step kinds
+        is StepSpec.DeleteDir -> {
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+        is StepSpec.CleanWs -> {
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+        is StepSpec.Unstable -> {
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+        is StepSpec.CatchError -> {
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            // Nested steps emit their own StepStarted/StepFinished events
+            val stepFinishedId = UUID.randomUUID().toString()
+            val stepFinishedAt = clock.now()
+            eventSink.append(
+                StepFinished(
+                    eventId = stepFinishedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepFinishedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+        }
+        is StepSpec.WarnError -> {
+            eventSink.append(
+                StepStarted(
+                    eventId = stepStartedId,
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = stepStartedAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = stepName,
+                    stepType = stepType,
+                )
+            )
+            // Nested steps emit their own StepStarted/StepFinished events
             val stepFinishedId = UUID.randomUUID().toString()
             val stepFinishedAt = clock.now()
             eventSink.append(

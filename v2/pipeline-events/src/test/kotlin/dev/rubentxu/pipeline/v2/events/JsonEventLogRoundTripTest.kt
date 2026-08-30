@@ -14,6 +14,10 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.events.DirDeleted
+import dev.rubentxu.pipeline.v2.events.WsCleaned
+import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
@@ -467,5 +471,144 @@ class JsonEventLogRoundTripTest {
         val decoded = JsonEventLog.decode(encoded)
         assertEquals(1, decoded.size)
         assertTrue(decoded[0] is CredentialBound)
+    }
+
+    // === ML-R9 workspace-cleanup events (T-05) ===
+
+    @Test
+    fun `ML-R9 T-05 DirDeleted roundtrips correctly`() {
+        val runId = "dir-deleted-run"
+        val event = DirDeleted(
+            eventId = "dd-1",
+            runId = runId,
+            sequence = 30L,
+            occurredAt = Instant.parse("2026-08-30T10:00:00Z"),
+            path = "build/output",
+            deletedCount = 42,
+            sha256 = "abc123def456",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as DirDeleted
+        assertEquals("DirDeleted", restored.kind)
+        assertEquals("build/output", restored.path)
+        assertEquals(42, restored.deletedCount)
+        assertEquals("abc123def456", restored.sha256)
+        assertEquals(runId, restored.runId)
+        assertEquals(30L, restored.sequence)
+    }
+
+    @Test
+    fun `ML-R9 T-05 WsCleaned roundtrips correctly`() {
+        val runId = "ws-cleaned-run"
+        val event = WsCleaned(
+            eventId = "wc-1",
+            runId = runId,
+            sequence = 31L,
+            occurredAt = Instant.parse("2026-08-30T10:00:01Z"),
+            deletedFiles = 17,
+            deletedDirs = 3,
+            patterns = listOf("target/**", "*.tmp"),
+            sha256 = "deadbeef1234",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as WsCleaned
+        assertEquals("WsCleaned", restored.kind)
+        assertEquals(17, restored.deletedFiles)
+        assertEquals(3, restored.deletedDirs)
+        assertEquals(listOf("target/**", "*.tmp"), restored.patterns)
+        assertEquals("deadbeef1234", restored.sha256)
+    }
+
+    @Test
+    fun `ML-R9 T-05 WsCleaned with null patterns roundtrips correctly`() {
+        val runId = "ws-cleaned-null-run"
+        val event = WsCleaned(
+            eventId = "wcn-1",
+            runId = runId,
+            sequence = 32L,
+            occurredAt = Instant.parse("2026-08-30T10:00:02Z"),
+            deletedFiles = 5,
+            deletedDirs = 1,
+            patterns = emptyList(),
+            sha256 = "feedface",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as WsCleaned
+        assertEquals(emptyList<String>(), restored.patterns)
+    }
+
+    // === ML-R9 error-handling events (T-06) ===
+
+    @Test
+    fun `ML-R9 T-06 CatchErrorTriggered roundtrips correctly`() {
+        val runId = "catch-error-run"
+        val event = CatchErrorTriggered(
+            eventId = "cet-1",
+            runId = runId,
+            sequence = 33L,
+            occurredAt = Instant.parse("2026-08-30T10:00:03Z"),
+            stageName = "Build",
+            buildResult = "UNSTABLE",
+            stageResult = "UNSTABLE",
+            message = "tolerated failure",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as CatchErrorTriggered
+        assertEquals("CatchErrorTriggered", restored.kind)
+        assertEquals("Build", restored.stageName)
+        assertEquals("UNSTABLE", restored.buildResult)
+        assertEquals("UNSTABLE", restored.stageResult)
+        assertEquals("tolerated failure", restored.message)
+    }
+
+    @Test
+    fun `ML-R9 T-06 CatchErrorTriggered with null buildResult roundtrips`() {
+        val runId = "catch-error-null-run"
+        val event = CatchErrorTriggered(
+            eventId = "cetn-1",
+            runId = runId,
+            sequence = 34L,
+            occurredAt = Instant.parse("2026-08-30T10:00:04Z"),
+            stageName = "Test",
+            buildResult = null,
+            stageResult = "FAILURE",
+            message = null,
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as CatchErrorTriggered
+        assertEquals(null, restored.buildResult)
+        assertEquals("FAILURE", restored.stageResult)
+        assertEquals(null, restored.message)
+    }
+
+    @Test
+    fun `ML-R9 T-06 StageMarkedUnstable roundtrips correctly`() {
+        val runId = "stage-unstable-run"
+        val event = StageMarkedUnstable(
+            eventId = "smu-1",
+            runId = runId,
+            sequence = 35L,
+            occurredAt = Instant.parse("2026-08-30T10:00:05Z"),
+            stageName = "Integration",
+            message = "flaky-network",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as StageMarkedUnstable
+        assertEquals("StageMarkedUnstable", restored.kind)
+        assertEquals("Integration", restored.stageName)
+        assertEquals("flaky-network", restored.message)
+        assertEquals(runId, restored.runId)
     }
 }

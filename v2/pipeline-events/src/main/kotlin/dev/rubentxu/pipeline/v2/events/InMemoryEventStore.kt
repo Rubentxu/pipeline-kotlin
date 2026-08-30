@@ -55,6 +55,12 @@ class InMemoryEventStore : EventSink {
             // ML-R9 workflow-control events
             is DirEntered -> event.copy(sequence = assignedSequence)
             is DirExited -> event.copy(sequence = assignedSequence)
+            // ML-R9 workspace-cleanup events (T-05)
+            is DirDeleted -> event.copy(sequence = assignedSequence)
+            is WsCleaned -> event.copy(sequence = assignedSequence)
+            // ML-R9 error-handling events (T-06)
+            is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
+            is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

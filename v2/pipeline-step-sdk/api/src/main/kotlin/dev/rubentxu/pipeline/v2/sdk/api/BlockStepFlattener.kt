@@ -121,6 +121,18 @@ object BlockStepFlattener {
             }
             // CatchError, WarnError, TimeoutBlock, RetryBlock, Timestamps,
             // AnsiColor, NodeNoOp, Milestone — add when those types are defined
+            is StepSpec.CatchError -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
+            is StepSpec.WarnError -> {
+                for ((idx, inner) in step.steps.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
             // --- Terminal steps — no recursion ---
             is StepSpec.Echo,
             is StepSpec.Shell,
@@ -130,7 +142,10 @@ object BlockStepFlattener {
             is StepSpec.WriteFile,
             is StepSpec.ReadFile,
             is StepSpec.FileExists,
-            is StepSpec.ArchiveArtifacts -> {
+            is StepSpec.ArchiveArtifacts,
+            is StepSpec.DeleteDir,
+            is StepSpec.CleanWs,
+            is StepSpec.Unstable -> {
                 // Terminal — no nested steps to flatten
             }
         }

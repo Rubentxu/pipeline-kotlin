@@ -301,6 +301,44 @@ object JsonEventLog {
                 sb.append(",\"restoredTo\":")
                 sb.append(jsonString(event.restoredTo))
             }
+            is DirDeleted -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path))
+                sb.append(",\"deletedCount\":")
+                sb.append(event.deletedCount)
+                sb.append(",\"sha256\":")
+                sb.append(jsonString(event.sha256))
+            }
+            is WsCleaned -> {
+                sb.append(",\"deletedFiles\":")
+                sb.append(event.deletedFiles)
+                sb.append(",\"deletedDirs\":")
+                sb.append(event.deletedDirs)
+                sb.append(",\"patterns\":[")
+                event.patterns.forEachIndexed { idx, pattern ->
+                    if (idx > 0) sb.append(",")
+                    sb.append(jsonString(pattern))
+                }
+                sb.append("]")
+                sb.append(",\"sha256\":")
+                sb.append(jsonString(event.sha256))
+            }
+            is CatchErrorTriggered -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"buildResult\":")
+                sb.append(jsonString(event.buildResult ?: ""))
+                sb.append(",\"stageResult\":")
+                sb.append(jsonString(event.stageResult))
+                sb.append(",\"message\":")
+                sb.append(jsonString(event.message ?: ""))
+            }
+            is StageMarkedUnstable -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"message\":")
+                sb.append(jsonString(event.message))
+            }
         }
         sb.append("}")
         return sb.toString()
@@ -750,6 +788,64 @@ object JsonEventLog {
                     restoredTo = restoredTo,
                 )
             }
+            "DirDeleted" -> {
+                val path = stringField(s, "path") ?: ""
+                val deletedCount = intField(s, "deletedCount") ?: 0
+                val sha256 = stringField(s, "sha256") ?: ""
+                DirDeleted(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    deletedCount = deletedCount,
+                    sha256 = sha256,
+                )
+            }
+            "WsCleaned" -> {
+                val deletedFiles = intField(s, "deletedFiles") ?: 0
+                val deletedDirs = intField(s, "deletedDirs") ?: 0
+                val patterns = decodeStringList(s, "patterns")
+                val sha256 = stringField(s, "sha256") ?: ""
+                WsCleaned(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    deletedFiles = deletedFiles,
+                    deletedDirs = deletedDirs,
+                    patterns = patterns,
+                    sha256 = sha256,
+                )
+            }
+            "CatchErrorTriggered" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val buildResult = stringField(s, "buildResult")?.takeIf { it.isNotEmpty() }
+                val stageResult = stringField(s, "stageResult") ?: "UNSTABLE"
+                val message = stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                CatchErrorTriggered(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    buildResult = buildResult,
+                    stageResult = stageResult,
+                    message = message,
+                )
+            }
+            "StageMarkedUnstable" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val message = stringField(s, "message") ?: ""
+                StageMarkedUnstable(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    message = message,
+                )
+            }
             else -> null
         }
     }
@@ -842,6 +938,37 @@ object JsonEventLog {
         while (i < json.length && json[i].isLetter()) i++
         val value = json.substring(start, i)
         return value == "true"
+    }
+
+    private fun decodeStringList(json: String, fieldName: String): List<String> {
+        val arrStart = json.indexOf("\"$fieldName\"")
+        if (arrStart == -1) return emptyList()
+        val bracketPos = json.indexOf('[', arrStart)
+        if (bracketPos == -1) return emptyList()
+        var i = bracketPos + 1
+        while (i < json.length && json[i].isWhitespace()) i++
+        if (i >= json.length || json[i] == ']') return emptyList()
+
+        val results = mutableListOf<String>()
+        while (i < json.length) {
+            val ch = json[i]
+            when {
+                ch == '"' -> {
+                    i++
+                    val start = i
+                    while (i < json.length && json[i] != '"') {
+                        if (json[i] == '\\') i++
+                        i++
+                    }
+                    results.add(json.substring(start, i))
+                    i++ // skip closing "
+                }
+                ch == ']' -> break
+                ch == ',' -> i++
+                else -> i++
+            }
+        }
+        return results
     }
 
     private fun decodeArtifactEntries(json: String): List<ArtifactEntry> {

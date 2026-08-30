@@ -584,3 +584,91 @@ data class DirExited(
 ) : DomainEvent {
     override val kind: String get() = "DirExited"
 }
+
+// =============================================================================
+// ML-R9 workspace-cleanup events (T-05)
+// =============================================================================
+
+/**
+ * Emitted when deleteDir completes (atomically erases workspace contents).
+ *
+ * Idempotent: re-execution on already-deleted path emits deletedCount=0 with same sha.
+ *
+ * @param path The directory path that was deleted (workspace-relative)
+ * @param deletedCount Number of files/directories deleted (0 if already deleted)
+ * @param sha256 SHA-256 hex of the .deleted marker file content
+ */
+data class DirDeleted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: String,
+    val deletedCount: Int,
+    val sha256: String,
+) : DomainEvent {
+    override val kind: String get() = "DirDeleted"
+}
+
+/**
+ * Emitted when cleanWs completes (selective workspace cleanup with glob patterns).
+ *
+ * @param deletedFiles Number of files deleted
+ * @param deletedDirs Number of directories deleted (recursive, includes now-empty parents)
+ * @param patterns Ant-style glob patterns applied (empty list = delete all non-.v2)
+ * @param sha256 SHA-256 hex of the .cleaned marker file content
+ */
+data class WsCleaned(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val deletedFiles: Int,
+    val deletedDirs: Int,
+    val patterns: List<String>,
+    val sha256: String,
+) : DomainEvent {
+    override val kind: String get() = "WsCleaned"
+}
+
+// =============================================================================
+// ML-R9 error-handling events (T-06)
+// =============================================================================
+
+/**
+ * Emitted when catchError catches an inner failure.
+ *
+ * @param stageName The stage containing the catchError block
+ * @param buildResult The build result override (null = use Jenkins default UNSTABLE)
+ * @param stageResult The stage result after catch (UNSTABLE or FAILURE)
+ * @param message The user-provided message from catchError
+ */
+data class CatchErrorTriggered(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val buildResult: String?,
+    val stageResult: String,
+    val message: String?,
+) : DomainEvent {
+    override val kind: String get() = "CatchErrorTriggered"
+}
+
+/**
+ * Emitted when unstable(message) marks the stage as unstable.
+ *
+ * @param stageName The stage containing the unstable step
+ * @param message The user-provided message
+ */
+data class StageMarkedUnstable(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val message: String,
+) : DomainEvent {
+    override val kind: String get() = "StageMarkedUnstable"
+}

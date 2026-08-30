@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
+import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -23,12 +24,16 @@ import java.nio.file.Paths
  * UAT-EVT-002: multi-step pipeline fixture test.
  *
  * Full DSL multi-step evaluation with 2 stages (build, test) x 2 steps each.
- * Produces 20 events: RunStarted, CompilationStarted, CompilationFinished,
+ * Produces 22 events: RunStarted, CompilationStarted, CompilationFinished,
  * StageStarted(build) + StepStarted(echo) + EchoOutputCaptured + StepFinished(echo)
- *   + StepStarted(sh) + EchoOutputCaptured + StepFinished(sh) + StageFinished(build),
+ *   + StepStarted(sh) + EchoOutputCaptured + StepFailed + StepFinished(sh) + StageFinished(build),
  * StageStarted(test) + StepStarted(echo) + EchoOutputCaptured + StepFinished(echo)
- *   + StepStarted(sh) + EchoOutputCaptured + StepFinished(sh) + StageFinished(test),
+ *   + StepStarted(sh) + EchoOutputCaptured + StepFailed + StepFinished(sh) + StageFinished(test),
  * RunFinished.
+ *
+ * The 2 extra StepFailed events are emitted by INC-R8-ARC-001 (sh non-zero exit
+ * emits StepFailed). The `make` and `make test` commands fail because no Makefile
+ * exists in the test working directory.
  */
 @Timeout(120)
 class UatEvt002MultiStepReplayTest {
@@ -80,8 +85,8 @@ class UatEvt002MultiStepReplayTest {
     @Test
     fun `multi-step script compiles successfully`() {
         val (stdout, events) = runAndDecode()
-        // 2 stages x 2 steps each + 4 run/compilation events + 2 stage finishes + 4 EchoOutputCaptured = 20
-        assertEquals(20, events.size, "Expected 20 events from multi-step fixture: $stdout")
+        // 2 stages x 2 steps each + 4 run/compilation events + 2 stage finishes + 4 EchoOutputCaptured + 2 StepFailed (INC-R8-ARC-001) = 22
+        assertEquals(22, events.size, "Expected 22 events from multi-step fixture: $stdout")
 
         assertTrue(events[0] is RunStarted, "events[0] must be RunStarted")
         assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
@@ -97,12 +102,15 @@ class UatEvt002MultiStepReplayTest {
         val stepStartedEvents = events.filterIsInstance<StepStarted>()
         val stepFinishedEvents = events.filterIsInstance<StepFinished>()
         val echoCapturedEvents = events.filterIsInstance<EchoOutputCaptured>()
+        val stepFailedEvents = events.filterIsInstance<StepFailed>()
 
         assertEquals(2, stageStartedEvents.size, "Must have 2 StageStarted events")
         assertEquals(2, stageFinishedEvents.size, "Must have 2 StageFinished events")
         assertEquals(4, stepStartedEvents.size, "Must have 4 StepStarted events")
         assertEquals(4, stepFinishedEvents.size, "Must have 4 StepFinished events")
         assertEquals(4, echoCapturedEvents.size, "Must have 4 EchoOutputCaptured events (one per step)")
+        // INC-R8-ARC-001: sh failure emits StepFailed; make + make test fail → 2 StepFailed events
+        assertEquals(2, stepFailedEvents.size, "Must have 2 StepFailed events (make failures): ${stepFailedEvents.map { it.message }}")
 
         // Verify build stage
         val buildStageStart = stageStartedEvents.find { it.stageName == "build" }

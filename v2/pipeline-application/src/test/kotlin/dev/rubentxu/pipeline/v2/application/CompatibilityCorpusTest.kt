@@ -47,7 +47,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = discoverFixtures()
-        assertEquals(10, fixtures.size)
+        assertEquals(13, fixtures.size)
 
         val names = fixtures.map { it.fileName.toString() }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -59,5 +59,9 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("07-writeFile-readFile.pipeline.kts"))
         assertTrue(names.contains("08-withEnv-pipeline.pipeline.kts"))
         assertTrue(names.contains("09-archive-artefacts.pipeline.kts"))
+        assertTrue(names.contains("10-smoke-e2e.pipeline.kts"))
+        assertTrue(names.contains("11-workflow-control.pipeline.kts"))
+        assertTrue(names.contains("12-error-handling.pipeline.kts"))
+        assertTrue(names.contains("13-workspace-helpers.pipeline.kts"))
     }
 }

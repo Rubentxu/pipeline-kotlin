@@ -117,6 +117,77 @@
       ],
       "diagnostics": [],
       "descriptorProjection": {}
+    },
+    "11-workflow-control.pipeline.kts": {
+      "events": [
+        { "kind": "RunStarted", "runId": null, "occurredAt": null },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-control" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "dir" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "dir" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "deleteDir" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "deleteDir" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-control" },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "retry-block" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "timeout" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "timeout" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "retry-block" },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "error-handling" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "catchError" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "catchError" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "unstable" },
+        { "kind": "StageMarkedUnstable", "eventId": null, "runId": null, "occurredAt": null, "stageName": "unstable", "message": "flaky" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "unstable" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "error-handling" },
+        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
+    },
+    "12-error-handling.pipeline.kts": {
+      "events": [
+        { "kind": "RunStarted", "runId": null, "occurredAt": null },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "error-and-milestone" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "warnError" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "warnError" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "milestone" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "milestone" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "error-and-milestone" },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "post-milestone" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
+        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "content": "milestone reached" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "post-milestone" },
+        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
+    },
+    "13-workspace-helpers.pipeline.kts": {
+      "events": [
+        { "kind": "RunStarted", "runId": null, "occurredAt": null },
+        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-helpers" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "pwd" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "pwd" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "echo" },
+        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "content": null },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "echo" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "isUnix" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "isUnix" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "echo" },
+        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "content": null },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "echo" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 4, "stepType": "timestamps" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 4, "stepType": "timestamps" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 5, "stepType": "waitUntil" },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 5, "stepType": "waitUntil" },
+        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 6, "stepType": "echo" },
+        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 6, "content": null },
+        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 6, "stepType": "echo" },
+        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-helpers" },
+        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
     }
   }
 }

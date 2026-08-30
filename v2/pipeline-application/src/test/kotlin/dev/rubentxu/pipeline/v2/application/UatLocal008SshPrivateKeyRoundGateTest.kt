@@ -91,11 +91,16 @@ class UatLocal008SshPrivateKeyRoundGateTest {
      * CR-RD-021: SSH canary must not appear in any event surface after flowing
      * through the SSH channel.
      *
-     * Uses local SSH daemon fixture if V2_SSH_OK is set, otherwise uses
-     * file:// fallback to test the materialization path without real SSH.
+     * Guard: V2_SSH_OK env var must be "true" (ADR-0051 §D11).
+     * When absent, the test is skipped — the SSH channel materialization path
+     * is exercised via file:// + GIT_SSH_COMMAND in the existing tests.
      */
     @Test
     fun `CR-RD-021 SSH canary zero occurrences in event surfaces after SSH channel path`(@TempDir tempDir: Path) {
+        assumeTrue(
+            System.getenv("V2_SSH_OK") == "true",
+            "V2_SSH_OK must be set to run SSH channel round gate (ADR-0051 §D11)"
+        )
         // Create a local repo for testing
         val bareRepo = createBareRepoWithCommits(tempDir, "ssh-canary-fixture.git", listOf("Initial commit"))
         val workspace = tempDir.resolve("workspace")
@@ -154,9 +159,15 @@ class UatLocal008SshPrivateKeyRoundGateTest {
      *
      * For SSH channel, the helper script is NOT used (SSH uses GIT_SSH_COMMAND directly),
      * but we verify the canary doesn't leak through any script generation.
+     *
+     * Guard: V2_SSH_OK env var must be "true" (ADR-0051 §D11).
      */
     @Test
     fun `CR-RD-021 SSH canary not in any generated script content`(@TempDir tempDir: Path) {
+        assumeTrue(
+            System.getenv("V2_SSH_OK") == "true",
+            "V2_SSH_OK must be set to run SSH channel round gate (ADR-0051 §D11)"
+        )
         val passphraseId = CredentialsId("ssh-passphrase-script")
         val privateKeyId = CredentialsId("ssh-private-key-script")
 

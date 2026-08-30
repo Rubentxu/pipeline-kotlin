@@ -1,17 +1,59 @@
 {
   "schemaVersion": "v1",
-  "generatedAt": "2026-08-29T00:00:00Z",
+  "generatedAt": "2026-08-30T00:00:00Z",
   "fixtures": {
     "01-basic.pipeline.kts": {
       "sha256": "eee2525aa652a26eb12f7ac5a52eac54b4ec4f81ff77ffb6de01711325c2251f",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "hello" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "hello world" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "hello" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "hello"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "hello world"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "hello"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -19,13 +61,55 @@
     "02-environment.pipeline.kts": {
       "sha256": "5c2c265b74578c706c8d11c0dd1d7a7804a7c0762aa41637303273bad959bf7c",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "build" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "building..." },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "build" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "build"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "building..."
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "build"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -33,23 +117,133 @@
     "03-stages.pipeline.kts": {
       "sha256": "588d4827a994ac956948cb93870932dcf6e03242a18f0698127b15a7db6c39c5",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "build" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "building..." },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "build" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "test" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "testing..." },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "test" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "deploy" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "deploying..." },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "deploy" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "build"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "building..."
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "build"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "test"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "testing..."
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "test"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 2,
+          "stageName": "deploy"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "deploying..."
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 2,
+          "stageName": "deploy"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -57,13 +251,55 @@
     "04-sh.pipeline.kts": {
       "sha256": "14e5034c97dbba869b75083e80124934ff5bbaf5a116c1cbd6f80b4da9a613f8",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "shell" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "sh" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "hello from sh" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "sh" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "shell" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "shell"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "sh"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "hello from sh"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "sh"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "shell"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -71,13 +307,55 @@
     "05-scripted-if.pipeline.kts": {
       "sha256": "42ab8d899ec776a1dc3b31d0db06d086d1b41189a2747e161c41dd7b8883a300",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "conditional" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "script" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "x is positive" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "script" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "conditional" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "conditional"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "script"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "x is positive"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "script"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "conditional"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -85,15 +363,253 @@
     "06-loop.pipeline.kts": {
       "sha256": "34cb00a76c72add46799d0a3131902f73cb85960bbb0b6679e6248d0b4d591e5",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "loop" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "script" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "iteration 1" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "iteration 2" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "content": "iteration 3" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "script" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "loop" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "loop"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "script"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "iteration 1"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "iteration 2"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "content": "iteration 3"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "script"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "loop"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
+    },
+    "07-writeFile-readFile.pipeline.kts": {
+      "sha256": "b66ed1c070b8d1f5404d2eee8cdf91ad62d01de33576ccf30aa3102cbd128dd4",
+      "events": [
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationFinished",
+          "runId": null,
+          "occurredAt": null,
+          "diagnostics": [
+            {
+              "severity": "ERROR",
+              "message": "Syntax error: Expecting an element.",
+              "line": 5,
+              "column": 25,
+              "path": "07-writeFile-readFile.pipeline.kts"
+            }
+          ]
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null,
+          "outcome": "failure",
+          "diagnostics": [
+            {
+              "severity": "ERROR",
+              "message": "Syntax error: Expecting an element.",
+              "line": 5,
+              "column": 25,
+              "path": "07-writeFile-readFile.pipeline.kts"
+            }
+          ]
+        }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
+    },
+    "08-withEnv-pipeline.pipeline.kts": {
+      "sha256": "405bad939ce892959230555bcf8b1e5655d023ebff87f5d131eaf15416821997",
+      "events": [
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationFinished",
+          "runId": null,
+          "occurredAt": null,
+          "diagnostics": [
+            {
+              "severity": "ERROR",
+              "message": "Array literals outside of annotations are unsupported.",
+              "line": 4,
+              "column": 21,
+              "path": "08-withEnv-pipeline.pipeline.kts"
+            },
+            {
+              "severity": "ERROR",
+              "message": "The feature \"collection literals\" is experimental and should be enabled explicitly.",
+              "line": 4,
+              "column": 21,
+              "path": "08-withEnv-pipeline.pipeline.kts"
+            }
+          ]
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null,
+          "outcome": "failure",
+          "diagnostics": [
+            {
+              "severity": "ERROR",
+              "message": "Array literals outside of annotations are unsupported.",
+              "line": 4,
+              "column": 21,
+              "path": "08-withEnv-pipeline.pipeline.kts"
+            },
+            {
+              "severity": "ERROR",
+              "message": "The feature \"collection literals\" is experimental and should be enabled explicitly.",
+              "line": 4,
+              "column": 21,
+              "path": "08-withEnv-pipeline.pipeline.kts"
+            }
+          ]
+        }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
+    },
+    "09-archive-artefacts.pipeline.kts": {
+      "sha256": "57cfd3867c027f504eb782d24ce77762eb71201bcaa2b08ac602ca3f7820fdd3",
+      "events": [
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationFinished",
+          "runId": null,
+          "occurredAt": null,
+          "diagnostics": []
+        },
+        {
+          "kind": "StageStarted",
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "archive"
+        },
+        {
+          "kind": "StepStarted",
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "sh"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "sh"
+        },
+        {
+          "kind": "StepStarted",
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "archiveArtifacts"
+        },
+        {
+          "kind": "StepFinished",
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "archiveArtifacts"
+        },
+        {
+          "kind": "StageFinished",
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "archive"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null,
+          "outcome": "success"
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -101,26 +617,161 @@
     "10-smoke-e2e.pipeline.kts": {
       "sha256": "e0da6881396da480f3b61063537ac421bb517187f439866ef6885ba89dc2dc2d",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "checkout" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "sh" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "content": null },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "sh" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "sh" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "content": null },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "sh" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "checkout" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "build" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "sh" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "content": null },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "sh" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "build" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "archive" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "archiveArtifacts" },
-        { "kind": "ArtifactArchived", "eventId": null, "runId": null, "occurredAt": null, "files": ["build/libs/smoke.jar"] },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "archiveArtifacts" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "archive" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "checkout"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "sh"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "sh"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "sh"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "sh"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "checkout"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "build"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "stepType": "sh"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "stepType": "sh"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "build"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 2,
+          "stageName": "archive"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 3,
+          "stepType": "archiveArtifacts"
+        },
+        {
+          "kind": "ArtifactArchived",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "files": [
+            "build/libs/smoke.jar"
+          ]
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 3,
+          "stepType": "archiveArtifacts"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 2,
+          "stageName": "archive"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -128,25 +779,152 @@
     "11-workflow-control.pipeline.kts": {
       "sha256": "29d7a8978cebd70013e9583f7fe5c5b94d4ec1402fc2f47968401e63332e9a90",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-control" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "dir" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "dir" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "deleteDir" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "deleteDir" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-control" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "retry-block" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "timeout" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "timeout" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "retry-block" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "error-handling" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "catchError" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "catchError" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "unstable" },
-        { "kind": "StageMarkedUnstable", "eventId": null, "runId": null, "occurredAt": null, "stageName": "unstable", "message": "flaky" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "unstable" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 2, "stageName": "error-handling" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "workspace-control"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "dir"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "dir"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "deleteDir"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "deleteDir"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "workspace-control"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "retry-block"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "timeout"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "timeout"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "retry-block"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 2,
+          "stageName": "error-handling"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "catchError"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "catchError"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "unstable"
+        },
+        {
+          "kind": "StageMarkedUnstable",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageName": "unstable",
+          "message": "flaky"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "unstable"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 2,
+          "stageName": "error-handling"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -154,19 +932,104 @@
     "12-error-handling.pipeline.kts": {
       "sha256": "0a5ba7e4bd985d779dd9f33c1ad758d9c896923aac134c8fc87269ad770acf65",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "error-and-milestone" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "warnError" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "warnError" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "milestone" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "milestone" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "error-and-milestone" },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "post-milestone" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "content": "milestone reached" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 1, "stageName": "post-milestone" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "error-and-milestone"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "warnError"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "warnError"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "milestone"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "milestone"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "error-and-milestone"
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "post-milestone"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "content": "milestone reached"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 1,
+          "stageName": "post-milestone"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}
@@ -174,27 +1037,228 @@
     "13-workspace-helpers.pipeline.kts": {
       "sha256": "65512e5476a331742ba11436de51f2d17eeabf81c8bfb26e9e98628e6ee05b00",
       "events": [
-        { "kind": "RunStarted", "runId": null, "occurredAt": null },
-        { "kind": "StageStarted", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-helpers" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "pwd" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 0, "stepType": "pwd" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "content": null },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 1, "stepType": "echo" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "isUnix" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 2, "stepType": "isUnix" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "content": null },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 3, "stepType": "echo" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 4, "stepType": "timestamps" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 4, "stepType": "timestamps" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 5, "stepType": "waitUntil" },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 5, "stepType": "waitUntil" },
-        { "kind": "StepStarted", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 6, "stepType": "echo" },
-        { "kind": "EchoOutputCaptured", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 6, "content": null },
-        { "kind": "StepFinished", "eventId": null, "runId": null, "occurredAt": null, "stepIndex": 6, "stepType": "echo" },
-        { "kind": "StageFinished", "eventId": null, "runId": null, "occurredAt": null, "stageIndex": 0, "stageName": "workspace-helpers" },
-        { "kind": "RunFinished", "runId": null, "occurredAt": null }
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "StageStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "workspace-helpers"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "pwd"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 0,
+          "stepType": "pwd"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 1,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "stepType": "isUnix"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 2,
+          "stepType": "isUnix"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 3,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 3,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 3,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 4,
+          "stepType": "timestamps"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 4,
+          "stepType": "timestamps"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 5,
+          "stepType": "waitUntil"
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 5,
+          "stepType": "waitUntil"
+        },
+        {
+          "kind": "StepStarted",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 6,
+          "stepType": "echo"
+        },
+        {
+          "kind": "EchoOutputCaptured",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 6,
+          "content": null
+        },
+        {
+          "kind": "StepFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stepIndex": 6,
+          "stepType": "echo"
+        },
+        {
+          "kind": "StageFinished",
+          "eventId": null,
+          "runId": null,
+          "occurredAt": null,
+          "stageIndex": 0,
+          "stageName": "workspace-helpers"
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null
+        }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
+    },
+    "14-credentials-bindings.pipeline.kts": {
+      "sha256": "e045032c9fdf9efda218a00ba10f19c4eda437f02640a125026c96affc1fdb04",
+      "events": [
+        {
+          "kind": "RunStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationStarted",
+          "runId": null,
+          "occurredAt": null
+        },
+        {
+          "kind": "CompilationFinished",
+          "runId": null,
+          "occurredAt": null,
+          "diagnostics": [
+            {
+              "severity": "ERROR",
+              "message": "Cannot access class 'dev.rubentxu.pipeline.v2.domain.CredentialsId'. Check your module classpath for missing or conflicting dependencies.",
+              "line": 11,
+              "column": 74,
+              "path": "14-credentials-bindings.pipeline.kts"
+            },
+            {
+              "severity": "ERROR",
+              "message": "Unresolved reference 'domain'.",
+              "line": 12,
+              "column": 46,
+              "path": "14-credentials-bindings.pipeline.kts"
+            }
+          ]
+        },
+        {
+          "kind": "RunFinished",
+          "runId": null,
+          "occurredAt": null,
+          "outcome": "failure",
+          "diagnostics": [
+            {
+              "severity": "ERROR",
+              "message": "Cannot access class 'dev.rubentxu.pipeline.v2.domain.CredentialsId'. Check your module classpath for missing or conflicting dependencies.",
+              "line": 11,
+              "column": 74,
+              "path": "14-credentials-bindings.pipeline.kts"
+            },
+            {
+              "severity": "ERROR",
+              "message": "Unresolved reference 'domain'.",
+              "line": 12,
+              "column": 46,
+              "path": "14-credentials-bindings.pipeline.kts"
+            }
+          ]
+        }
       ],
       "diagnostics": [],
       "descriptorProjection": {}

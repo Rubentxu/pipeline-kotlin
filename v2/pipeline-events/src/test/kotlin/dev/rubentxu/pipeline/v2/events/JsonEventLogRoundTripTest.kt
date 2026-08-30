@@ -16,12 +16,17 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.WsCleaned
+import dev.rubentxu.pipeline.v2.events.DirEntered
+import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
+import dev.rubentxu.pipeline.v2.events.TimeoutTriggered
+import dev.rubentxu.pipeline.v2.events.MilestoneReached
+import dev.rubentxu.pipeline.v2.events.MilestoneAborted
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
@@ -681,6 +686,120 @@ class JsonEventLogRoundTripTest {
         assertEquals(7, restored.totalAttempts)
         assertEquals(500L, restored.totalDurationMs)
         assertEquals("completed", restored.outcome)
+        assertEquals(runId, restored.runId)
+    }
+
+    // === ML-R9 T-05 Dir events (Entered/Exited) ===
+
+    @Test
+    fun `ML-R9 T-05 DirEntered roundtrips correctly`() {
+        val runId = "dir-entered-run"
+        val event = DirEntered(
+            eventId = "de-1",
+            runId = runId,
+            sequence = 45L,
+            occurredAt = Instant.parse("2026-08-30T10:00:15Z"),
+            path = "build/output",
+            previousPath = "/workspace",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as DirEntered
+        assertEquals("DirEntered", restored.kind)
+        assertEquals("build/output", restored.path)
+        assertEquals("/workspace", restored.previousPath)
+        assertEquals(runId, restored.runId)
+        assertEquals(45L, restored.sequence)
+    }
+
+    @Test
+    fun `ML-R9 T-05 DirExited roundtrips correctly`() {
+        val runId = "dir-exited-run"
+        val event = DirExited(
+            eventId = "dex-1",
+            runId = runId,
+            sequence = 46L,
+            occurredAt = Instant.parse("2026-08-30T10:00:20Z"),
+            path = "build/output",
+            restoredTo = "/workspace",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as DirExited
+        assertEquals("DirExited", restored.kind)
+        assertEquals("build/output", restored.path)
+        assertEquals("/workspace", restored.restoredTo)
+        assertEquals(runId, restored.runId)
+    }
+
+    // === ML-R9 T-10 timeout event ===
+
+    @Test
+    fun `ML-R9 T-10 TimeoutTriggered roundtrips correctly`() {
+        val runId = "timeout-triggered-run"
+        val event = TimeoutTriggered(
+            eventId = "tt-1",
+            runId = runId,
+            sequence = 47L,
+            occurredAt = Instant.parse("2026-08-30T10:00:25Z"),
+            stageOrStep = "step:sh",
+            action = "interrupt",
+            durationMs = 30000L,
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as TimeoutTriggered
+        assertEquals("TimeoutTriggered", restored.kind)
+        assertEquals("step:sh", restored.stageOrStep)
+        assertEquals("interrupt", restored.action)
+        assertEquals(30000L, restored.durationMs)
+        assertEquals(runId, restored.runId)
+    }
+
+    // === MILESTONE events ===
+
+    @Test
+    fun `ML-R9 T-09 MilestoneReached roundtrips correctly`() {
+        val runId = "milestone-run"
+        val event = MilestoneReached(
+            eventId = "mr-1",
+            runId = runId,
+            sequence = 48L,
+            occurredAt = Instant.parse("2026-08-30T10:00:30Z"),
+            ordinal = 5,
+            label = "build-milestone",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as MilestoneReached
+        assertEquals("MilestoneReached", restored.kind)
+        assertEquals(5, restored.ordinal)
+        assertEquals("build-milestone", restored.label)
+        assertEquals(runId, restored.runId)
+    }
+
+    @Test
+    fun `ML-R9 T-09 MilestoneAborted roundtrips correctly`() {
+        val runId = "milestone-aborted-run"
+        val event = MilestoneAborted(
+            eventId = "ma-1",
+            runId = runId,
+            sequence = 49L,
+            occurredAt = Instant.parse("2026-08-30T10:00:35Z"),
+            ordinal = 3,
+            reason = "ordinal-already-reached",
+        )
+        val encoded = JsonEventLog.encode(listOf(event))
+        val decoded = JsonEventLog.decode(encoded)
+        assertEquals(1, decoded.size)
+        val restored = decoded[0] as MilestoneAborted
+        assertEquals("MilestoneAborted", restored.kind)
+        assertEquals(3, restored.ordinal)
+        assertEquals("ordinal-already-reached", restored.reason)
         assertEquals(runId, restored.runId)
     }
 }

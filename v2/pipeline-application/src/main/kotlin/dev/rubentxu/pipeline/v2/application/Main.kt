@@ -189,6 +189,20 @@ fun main(args: Array<String>) {
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
         val events = execute(scriptPath, store)
         println(JsonEventLog.encode(events))
+        // D5: 3-state outcome — check RunFinished outcome and propagate to exit code.
+        // Compilation failure is reflected in RunFinished.outcome = "failure".
+        val lastEvent = events.lastOrNull()
+        val runOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
+        when (runOutcome) {
+            "success", "unstable" -> {
+                // D5: unstable exits 0 like success ( Jenkins verbatim )
+                System.err.println("Pipeline finished with ${runOutcome.uppercase()}")
+            }
+            else -> {
+                System.err.println("Pipeline finished with FAILURE")
+                System.exit(1)
+            }
+        }
         return
     }
 

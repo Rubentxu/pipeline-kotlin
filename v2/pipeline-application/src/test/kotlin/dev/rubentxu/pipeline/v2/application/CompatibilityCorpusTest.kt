@@ -86,10 +86,32 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture14CredentialsBindings() = runFixture("14-credentials-bindings.pipeline.kts")
 
+    /**
+     * Verifies that a script with compilation errors exits with non-zero code.
+     * INC-R10-ARC-001: compilation failure is a FAILURE outcome, not success.
+     */
+    @Test
+    fun fixture99BrokenCompilationExitsNonZero() {
+        val path = fixture("99-broken-compilation.pipeline.kts")
+        val appBin = AppBinSupport.discover()
+
+        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val process = pb.start()
+        val exitCode = process.waitFor()
+
+        // Compilation failure must exit non-zero (fail-closed)
+        assertEquals(1, exitCode) {
+            "Broken script must exit with code 1, got $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        }
+    }
+
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(14, fixtures.size)
+        assertEquals(15, fixtures.size)
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -106,5 +128,6 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("12-error-handling.pipeline.kts"))
         assertTrue(names.contains("13-workspace-helpers.pipeline.kts"))
         assertTrue(names.contains("14-credentials-bindings.pipeline.kts"))
+        assertTrue(names.contains("99-broken-compilation.pipeline.kts"))
     }
 }

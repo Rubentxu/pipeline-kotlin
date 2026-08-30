@@ -311,8 +311,14 @@ fun main(args: Array<String>) {
 
     // Run via orchestrator (fresh run or resume based on --resume flag)
     if (pipelineSpec != null) {
-        runBlocking {
-            orchestrator.run(pipelineSpec, runId, startFromCursor = config.resumeFlag)
+        try {
+            runBlocking {
+                orchestrator.run(pipelineSpec, runId, startFromCursor = config.resumeFlag)
+            }
+        } catch (e: Throwable) {
+            System.err.println("[DEBUG-diag-001] Orchestrator threw: ${e::class.java.name}: ${e.message}")
+            e.printStackTrace(System.err)
+            throw e
         }
     }
 

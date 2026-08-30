@@ -860,8 +860,11 @@ private suspend fun executeDurableStepImpl(
                         // WS-S-005: env via StageSpec.environment — stageEnvironment is the env source
                         // TMO-S-002: stage-level timeout via options{} — stageTimeout is the timeout source
                         // T2 migration: stageEnvironment (Map<String,String>) is widened to Map<String,SecretHandle>
-                        val effectiveEnv: Map<String, SecretHandle> = (stageEnvironment ?: emptyMap())
-                            .mapValues { SecretHandle.plain(it.value) }
+                        // CR-BD-032 fix: accumulate shOptions.env (outer credentials) before merging current block's env
+                        val baseEnvFromParent: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> = shOptions?.env ?: emptyMap()
+                        val effectiveEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> =
+                            baseEnvFromParent + (stageEnvironment ?: emptyMap())
+                                .mapValues { dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(it.value) }
                         val effectiveShOptions = shOptions?.copy(
                             workspaceRoot = workspaceRoot,
                             captureStdout = shellStep.returnStdout,
@@ -973,21 +976,22 @@ private suspend fun executeDurableStepImpl(
 
                                 if (materializationKind != null) {
                                     // File-based kinds: materialize to temp path and inject path (D11)
+                                    // Emit CredentialBound BEFORE materialization (INV-L10-CR-001)
+                                    // If materialization fails, the catch block will handle and return "failure"
+                                    eventSink.append(
+                                        CredentialBound(
+                                            eventId = UUID.randomUUID().toString(),
+                                            runId = runId,
+                                            sequence = 0L,
+                                            occurredAt = clock.now(),
+                                            credentialsId = binding.credentialsId,
+                                            purpose = purpose,
+                                        )
+                                    )
                                     val credential = secretStore.get(binding.credentialsId)
                                     val materialized = materializer.materialize(credential, materializationKind)
                                     val path = materialized.path
                                     if (path != null) {
-                                        // Emit CredentialBound BEFORE injection (INV-L10-CR-001)
-                                        eventSink.append(
-                                            CredentialBound(
-                                                eventId = UUID.randomUUID().toString(),
-                                                runId = runId,
-                                                sequence = 0L,
-                                                occurredAt = clock.now(),
-                                                credentialsId = binding.credentialsId,
-                                                purpose = purpose,
-                                            )
-                                        )
                                         // Inject path as masked handle (not subject to secret redaction)
                                         when (binding.kind) {
                                             StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> {
@@ -1029,9 +1033,8 @@ private suspend fun executeDurableStepImpl(
                                     }
                                 } else {
                                     // Non-file kinds: use SecretHandle directly
-                                    val handle = secretStore.getAsSecretHandle(binding.credentialsId)
-                                    activeHandles.add(handle)
-                                    // Emit CredentialBound BEFORE injection (INV-L10-CR-001)
+                                    // Emit CredentialBound BEFORE getAsSecretHandle (INV-L10-CR-001)
+                                    // If getAsSecretHandle fails, the catch block will handle and return "failure"
                                     eventSink.append(
                                         CredentialBound(
                                             eventId = UUID.randomUUID().toString(),
@@ -1042,6 +1045,8 @@ private suspend fun executeDurableStepImpl(
                                             purpose = purpose,
                                         )
                                     )
+                                    val handle = secretStore.getAsSecretHandle(binding.credentialsId)
+                                    activeHandles.add(handle)
                                     when (binding.kind) {
                                         StepSpec.CredentialsBinding.Kind.STRING -> {
                                             binding.variable?.let { varName ->
@@ -1066,6 +1071,11 @@ private suspend fun executeDurableStepImpl(
                                 }
                             } catch (e: dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException) {
                                 // Credential resolution failed - propagate failure
+                                return "failure"
+                            } catch (e: Throwable) {
+                                // Materialization or other failures - prevent pipeline crash, return failure
+                                // This catches MaterializationKindUnsupportedException, LinkedSecretReferenceTypeMismatchException,
+                                // IOException from file operations, and any other unexpected errors
                                 return "failure"
                             }
                         }

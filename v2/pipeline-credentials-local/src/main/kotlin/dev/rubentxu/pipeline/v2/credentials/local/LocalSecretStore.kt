@@ -427,18 +427,31 @@ class LocalSecretStore(
         val hdr = readHeader(fileBytes)
         val kek = deriveKek(hdr.kdfSalt)
 
-        // Find entry for this ID - use V1 reader since put() stores in v1 format
-        val entries = readEntriesV1(fileBytes)
-        val entryData = entries[id.value]
+        // Route to correct reader based on header version (add() stores in V2 format)
+        val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
+            readEntriesV1(fileBytes)
+        } else {
+            readEntries(fileBytes)
+        }
+        val entry = entries[id.value]
             ?: throw SecretStoreTamperException("Credential not found: ${id.value}")
 
         // Decrypt DEK: the DEK is stored in the header (wrapped with KEK)
         val dek = unwrapDek(kek, hdr.wrappedDek)
 
-        // Decrypt secret
-        val aad = buildAad(hdr, id)
+        // Decrypt secret - build AAD based on version
         val plaintext = try {
-            AeadCipher.decrypt(dek, entryData.sealed, aad)
+            if (hdr.version == VERSION_V1.toShort()) {
+                // V1 entry: decrypt using V1 AAD
+                val v1Entry = entry as? EntryData ?: throw ClassCastException("Expected EntryData but got ${entry::class.simpleName}")
+                val aad = buildAad(hdr, id)
+                AeadCipher.decrypt(dek, v1Entry.sealed, aad)
+            } else {
+                // V2 entry: decrypt using V2 AAD with kindId
+                val v2Entry = entry as? V2EntryData ?: throw ClassCastException("Expected V2EntryData but got ${entry::class.simpleName}")
+                val aad = buildV2Aad(hdr, id, v2Entry.kindId)
+                AeadCipher.decrypt(dek, v2Entry.sealed, aad)
+            }
         } catch (e: javax.crypto.AEADBadTagException) {
             throw SecretStoreTamperException("Tamper detected for credential: ${id.value}", e)
         }

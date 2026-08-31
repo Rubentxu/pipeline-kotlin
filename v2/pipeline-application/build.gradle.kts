@@ -30,6 +30,7 @@ dependencies {
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-credentials-local"))
     implementation(project(":pipeline-credentials-multipart")) // D2-rev: wire CredentialMaterializer for file-based credential dispatch
+    implementation(project(":pipeline-credentials-executor")) // H0 Slice 1: binding seam provider
     implementation(project(":pipeline-artefacts-local"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sqlite.jdbc)

@@ -18,8 +18,8 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * - Legacy `Map<String, String>` (back-compat via [ShOptions.from])
  * - Typed `Map<String, SecretHandle>` for ML-R4 secret redaction
  *
- * When using the typed form, masked entries (PATH manipulation) are skipped
- * because the PATH prepend logic operates on the path string, not secret data.
+ * When using the typed form, masked entries (PATH manipulation) bypass PATH prepend
+ * and are propagated as-is to the output; non-masked entries are transformed.
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
@@ -38,11 +38,11 @@ object EnvModel {
      * Given the user-provided typed env map, this function:
      * 1. Copies all non-masked entries to the output map
      * 2. Handles PATH+= prepend syntax (PATH+=/dir prepends to existing PATH)
-     * 3. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH (masked entries skipped)
+     * 3. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH
      * 4. If M2_HOME is set, prepends `${M2_HOME}/bin` to PATH
      *
-     * Masked entries (used for PATH manipulation) are skipped during transformation
-     * because PATH prepend logic operates on path strings, not secret data.
+     * Masked entries bypass PATH prepend and are propagated as-is to the output.
+     * PATH prepend applies only to non-masked entries.
      *
      * @param env The typed user-provided environment variables.
      * @return The transformed environment with PATH adjustments.
@@ -50,21 +50,23 @@ object EnvModel {
     @JvmName("applyTyped")
     fun apply(env: Map<String, SecretHandle>): Map<String, SecretHandle> {
         // For the typed form, we need to:
-        // 1. Skip masked entries (PATH manipulation doesn't need secrets)
+        // 1. Propagate masked non-PATH+= entries as-is (not secret values)
         // 2. Apply PATH prepend logic using the materialized path values
         // 3. Wrap transformed plain values back in SecretHandle.plain()
 
-        // Get the PATH value before transformation (from a non-masked entry)
-        val pathHandle = env["PATH"]
-        val originalPath = pathHandle?.materialize() ?: System.getenv("PATH") ?: ""
+        // Track whether PATH was originally masked (before any loop could add it)
+        val originalPathInInput = env.containsKey("PATH")
+        val originalPathHandle = env["PATH"]
+        val originalPathMasked = originalPathInInput && originalPathHandle?.isMasked == true
+        val originalPath = originalPathHandle?.materialize() ?: System.getenv("PATH") ?: ""
 
         val out = mutableMapOf<String, SecretHandle>()
 
         // Collect PATH+= prepends to apply after processing all entries
         val pathPlusDirs = mutableListOf<String>()
 
-        // Copy all entries, skipping masked ones (they're PATH/etc, not secrets)
-        // Handle PATH+= syntax specially
+        // Copy all entries: non-masked PATH+= captured for prepend,
+        // non-masked non-PATH+= copied directly, masked non-PATH+= propagated as-is
         for ((key, handle) in env) {
             if (!handle.isMasked) {
                 val match = PATH_PLUS_REGEX.matchEntire(key)
@@ -75,6 +77,9 @@ object EnvModel {
                 } else {
                     out[key] = handle
                 }
+            } else {
+                // Masked non-PATH+= entry — propagate as-is (not a secret value)
+                out[key] = handle
             }
         }
 
@@ -86,7 +91,7 @@ object EnvModel {
             }
         }
 
-        // JAVA_HOME/bin prepend to PATH
+        // JAVA_HOME/bin prepend to PATH (materialize even if masked — only used for path string)
         val javaHomeHandle = env["JAVA_HOME"]
         if (javaHomeHandle != null) {
             val javaHome = javaHomeHandle.materialize()
@@ -101,7 +106,9 @@ object EnvModel {
             currentPath = "${m2Home}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
 
-        if (currentPath.isNotEmpty()) {
+        // Add computed PATH only if: (a) PATH was not masked in input, OR (b) there are prepends
+        // If PATH was masked in input, it was already propagated as-is above; do not overwrite
+        if (currentPath.isNotEmpty() && !originalPathMasked) {
             out["PATH"] = SecretHandle.plain(currentPath)
         }
 

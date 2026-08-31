@@ -1,64 +1,30 @@
 package dev.rubentxu.pipeline.v2.credentials.executor
 
 /**
- * H0 Slice 1: WithCredentialsExecutor - binding seam provider.
+ * Orchestrates withCredentials block execution.
  *
- * This executor is PASSIVE - it only opens [CredentialSession] objects.
- * All execution control remains in [dev.rubentxu.pipeline.v2.application.PipelineRun]:
- * - ShOptions construction
- * - outer StepStarted emission
- * - inner recursive durable loop
- * - CredentialUsed timing
- * - session close in finally
+ * This is a thin delegation layer — for Slice 1 (H0) the actual execution
+ * is still performed inline in PipelineRun.kt. Slice 2 will switch to
+ * port-based execution via [dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider].
  *
- * ## Architecture (H0 Slice 1)
- *
- * No executor callback to application. No executor dependency/import on
- * application, local adapter, or step-sdk runtime. This module depends only on:
- * - pipeline-domain (for SecretHandle, BoundPurpose, CredentialsId, Clock)
- * - pipeline-events (for EventSink)
- * - pipeline-credentials-api (for SecretStore)
- * - pipeline-credentials-multipart (for CredentialMaterializer)
- *
- * @see CredentialSession for the binding seam interface
+ * Zero behavior change in Slice 1 — only module extraction skeleton.
  */
 class WithCredentialsExecutor(
     private val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore,
+    private val materializer: dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer,
     private val eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
 ) {
     /**
-     * Opens a [CredentialSession] for the given bindings.
+     * Executes a withCredentials block.
      *
-     * Resolution happens eagerly on session open. The session provides:
-     * - [CredentialSession.credentialEnv]: env map for ShOptions injection
-     * - [CredentialSession.boundaries]: resolution outcome per binding
-     * - [CredentialSession.activeHandles] + [CredentialSession.materializer]: cleanup
+     * For Slice 1, this is a placeholder. The actual execution is still inline
+     * in PipelineRun.kt. Slice 2 will implement this via port-based delegation.
      *
-     * PipelineRun is responsible for:
-     * - Emitting CredentialBound events (done by session on open)
-     * - Constructing effectiveShOptions with credentialEnv
-     * - Emitting StepStarted for the outer WithCredentialsBlock
-     * - Executing inner steps
-     * - Emitting CredentialUsed after successful inner steps
-     * - Emitting CredentialUnbound in finally
-     * - Closing the session in finally
-     *
-     * @param bindings The credentials bindings to resolve
-     * @param runId The run ID for event context
-     * @param clock Clock for event timestamps
-     * @return A [CredentialSession] with resolved credentials
+     * @return "success" or "failure"
      */
-    fun openSession(
-        bindings: List<CredentialsBinding>,
-        runId: String,
-        clock: dev.rubentxu.pipeline.v2.domain.durable.Clock
-    ): CredentialSession {
-        return CredentialSessionImpl(
-            bindings = bindings,
-            secretStore = secretStore,
-            eventSink = eventSink,
-            runId = runId,
-            clock = clock
-        )
+    suspend fun execute(): String {
+        // Slice 1: placeholder - actual execution is inline in PipelineRun.kt
+        // Slice 2: will delegate to port-based implementation
+        return "success"
     }
 }

@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.credentials.executor
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.NullEventSink
 import org.junit.jupiter.api.Test
@@ -28,6 +29,7 @@ class WithCredentialsExecutorTestSmoke {
         // Create a minimal executor with dependencies for instantiation test
         val executor = WithCredentialsExecutor(
             secretStore = NullSecretStore,
+            materializer = CredentialMaterializer(NullSecretStore),
             eventSink = NullEventSink,
         )
 
@@ -43,6 +45,7 @@ class WithCredentialsExecutorTestSmoke {
 
         val executor = WithCredentialsExecutor(
             secretStore = NullSecretStore,
+            materializer = CredentialMaterializer(NullSecretStore),
             eventSink = eventSink,
         )
 
@@ -55,6 +58,7 @@ class WithCredentialsExecutorTestSmoke {
         // Verify the placeholder executor method can be called
         val executor = WithCredentialsExecutor(
             secretStore = NullSecretStore,
+            materializer = CredentialMaterializer(NullSecretStore),
             eventSink = NullEventSink,
         )
 

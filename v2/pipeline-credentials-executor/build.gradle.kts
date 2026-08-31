@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))
+    testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

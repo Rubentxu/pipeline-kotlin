@@ -360,7 +360,7 @@ pipeline {
     stages {
         stage("ssh-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                StepSpec.CredentialsBinding.sshUserPrivateKey(
                     "ssh-test-key",
                     "SSH_KEY_FILE"
                 )
@@ -414,7 +414,7 @@ pipeline {
     stages {
         stage("file-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
+                StepSpec.CredentialsBinding.file(
                     "file-test-secret",
                     "SECRET_FILE"
                 )
@@ -468,7 +468,7 @@ pipeline {
     stages {
         stage("cert-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
+                StepSpec.CredentialsBinding.certificate(
                     "cert-test",
                     "KEYSTORE_PATH"
                 )
@@ -517,7 +517,7 @@ pipeline {
     stages {
         stage("zip-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.zip(
+                StepSpec.CredentialsBinding.zip(
                     "zip-test",
                     "ZIP_PATH"
                 )
@@ -566,7 +566,7 @@ pipeline {
     stages {
         stage("ucp-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernameColonPassword(
+                StepSpec.CredentialsBinding.usernameColonPassword(
                     "ucp-test",
                     "U_P"
                 )
@@ -617,7 +617,7 @@ pipeline {
     stages {
         stage("wipe-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                StepSpec.CredentialsBinding.sshUserPrivateKey(
                     "ssh-wipe-key",
                     "SSH_KEY_FILE"
                 )
@@ -663,7 +663,7 @@ pipeline {
     stages {
         stage("file-wipe") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.file(
+                StepSpec.CredentialsBinding.file(
                     "file-wipe-secret",
                     "SECRET_FILE"
                 )
@@ -712,7 +712,7 @@ pipeline {
     stages {
         stage("cert-wipe") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.certificate(
+                StepSpec.CredentialsBinding.certificate(
                     "cert-wipe",
                     "KEYSTORE_PATH"
                 )
@@ -759,7 +759,7 @@ pipeline {
     stages {
         stage("audit") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "audit-order-key",
                     "API_KEY"
                 )
@@ -811,7 +811,7 @@ pipeline {
     stages {
         stage("multi-use") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "used-multi-key",
                     "API_KEY"
                 )
@@ -860,7 +860,7 @@ pipeline {
     stages {
         stage("unbound") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "unbound-key",
                     "API_KEY"
                 )
@@ -907,7 +907,7 @@ pipeline {
     stages {
         stage("redact") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "redact-text-key",
                     "API_KEY"
                 )
@@ -950,7 +950,7 @@ pipeline {
     stages {
         stage("redact-up") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.usernamePassword(
+                StepSpec.CredentialsBinding.usernamePassword(
                     "redact-up-key",
                     "DB_USER",
                     "DB_PASS"
@@ -994,7 +994,7 @@ pipeline {
     stages {
         stage("redact-ssh") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                StepSpec.CredentialsBinding.sshUserPrivateKey(
                     "redact-ssh-key",
                     "SSH_KEY_FILE"
                 )
@@ -1042,14 +1042,14 @@ pipeline {
     stages {
         stage("nested") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "outer-key",
                     "SHARED_VAR"
                 )
             )) {
                 sh("echo outer=${'$'}SHARED_VAR")
                 withCredentials(listOf(
-                    dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                    StepSpec.CredentialsBinding.string(
                         "inner-key",
                         "SHARED_VAR"
                     )
@@ -1095,7 +1095,7 @@ pipeline {
     stages {
         stage("exception-test") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "exception-key",
                     "API_KEY"
                 )
@@ -1151,7 +1151,7 @@ pipeline {
     stages {
         stage("mismatch") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.sshUserPrivateKey(
+                StepSpec.CredentialsBinding.sshUserPrivateKey(
                     "mismatch-key",
                     "SSH_KEY_FILE"
                 )
@@ -1190,7 +1190,7 @@ pipeline {
     stages {
         stage("missing") {
             withCredentials(listOf(
-                dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding.string(
+                StepSpec.CredentialsBinding.string(
                     "nonexistent-id",
                     "API_KEY"
                 )

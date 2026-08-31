@@ -109,7 +109,9 @@ class Kotlin24ScriptingHost(
                         "dev.rubentxu.pipeline.v2.dsl.PipelineScope",
                         "dev.rubentxu.pipeline.v2.dsl.StagesScope",
                         "dev.rubentxu.pipeline.v2.dsl.StageScope",
-                        "dev.rubentxu.pipeline.v2.dsl.StageBuilder"
+                        "dev.rubentxu.pipeline.v2.dsl.StageBuilder",
+                        "dev.rubentxu.pipeline.v2.domain.CredentialsId",
+                        "dev.rubentxu.pipeline.v2.domain.CredentialsRef"
                     )
                 }
             )

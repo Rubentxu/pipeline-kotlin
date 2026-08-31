@@ -18,6 +18,7 @@ dependencies {
     implementation(libs.kotlin.scripting.jvm)
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-events"))
+    implementation(project(":pipeline-domain"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.Zip
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach

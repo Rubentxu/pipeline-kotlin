@@ -243,6 +243,7 @@ steps de ecosistema — sin controller externo.
   (top-25 verificado; ver ADR-0005 amendment).
 - L7: smoke E2E sobre repos reales famosos (build con Gradle/Maven wrapper).
 - L9: Jenkins catalog steps — workflow-control (dir/deleteDir/cleanWs/timeout/retry-block), error-handling (catchError/warnError/unstable), milestone, utility (pwd/isUnix/load/waitUntil), decorators (timestamps/ansiColor), node no-op + 3-state outcome model. **Cerrado: UAT-LOCAL-011 + UAT-LOCAL-012 + UAT-LOCAL-013.** (ML-R9 — v0.23.0)
+- L10 — H0 extract `WithCredentialsExecutor` to provider-agnostic hexagonal architecture (cycle `p-733fb505b5a6bd2d/ml-r10-credentials-parity`). Zero behavior change. Closes 0 of 8 failing UATs — necessary but not sufficient for F-1..F-8. See cycle replan addendum for exit criterion + gates.
 
 ### No hacer
 No conectar controller/gateway externo (M4-rest); no Pods K8s (M5); no portar
@@ -258,6 +259,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 | ML-R7 — L7 durable sh step-failure events (INC-R8-ARC-001/002) | ✅ CLOSED | **v0.21.1** | … | 2026-08-30 |
 | ML-R8 — smoke E2E on real open-source projects | ✅ CLOSED | **v0.22.0** | 0968a94… | 2026-08-30 |
 | ML-R9 — Jenkins catalog steps workflow-control + error-handling + milestone + 3-state outcome | ✅ CLOSED | **v0.23.0** | 1526711… | 2026-08-30 |
+| ML-R10 — H0 extract `WithCredentialsExecutor` to provider-agnostic hexagonal (zero behavior change) | 🔲 IN PROGRESS (replan addendum approved) | TBD | 0bfa876 | TBD | TBD |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)

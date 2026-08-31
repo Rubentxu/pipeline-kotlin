@@ -19,8 +19,8 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
     implementation(project(":pipeline-credentials-api"))
-    implementation(project(":pipeline-binding-factory"))
-    implementation(project(":pipeline-credentials-multipart"))
+    implementation(project(":pipeline-scripting-api"))
+    implementation(project(":pipeline-step-sdk:api"))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

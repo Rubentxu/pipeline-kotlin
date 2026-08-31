@@ -718,4 +718,93 @@ print("shebang safe")
             "LD_PRELOAD should be preserved under NONE profile (DSE-S-040)"
         )
     }
+
+    // ============================================================
+    // Test 20: F-D1 regression — EnvModel.apply called by launch()
+    // ============================================================
+    // Regression test for F-D1-DEAD-CODE: EnvModel.apply(Map<String, SecretHandle>)
+    // must be called by DurableShellExecutor.launch() to apply PATH prepend logic.
+    //
+    // If EnvModel.apply() is NOT called, JAVA_HOME/bin will NOT be prepended to PATH.
+    // If EnvModel.apply() IS called, JAVA_HOME/bin WILL be prepended to PATH.
+    //
+    // This test verifies the fix by checking that PATH contains JAVA_HOME/bin after execution.
+    @Test
+    fun `F-D1 EnvModel apply is called by launch - JAVA_HOME bin prepended to PATH`(@TempDir tempDir: Path) {
+        assumeLinux()
+        val controlDir = createControlDir("test-envmodel-apply")
+        val pathOutputFile = tempDir.resolve("path_out.txt")
+        val pathOutputFileStr = pathOutputFile.toString()
+
+        // Script that writes first PATH entry to output file
+        // The first entry should be JAVA_HOME/bin after EnvModel.apply prepends it
+        val script = """printenv PATH | tr ':' '\n' | head -1 > '$pathOutputFileStr'"""
+
+        val shOptions = ShOptions(
+            workspaceRoot = controlDir,
+            captureStdout = false,
+            timeoutMs = null,
+            env = mapOf(
+                "JAVA_HOME" to SecretHandle.plain("/usr/lib/jvm/java-17")
+            ),
+            sandbox = SandboxConfig.NONE,
+        )
+
+        val result = executor.execute(controlDir, script, "envmodel-apply-test", shOptions)
+
+        assertEquals(0, result.exitCode, "Script should complete successfully")
+
+        val firstPathEntry = Files.readString(pathOutputFile).trim()
+        assertEquals(
+            "/usr/lib/jvm/java-17/bin",
+            firstPathEntry,
+            "F-D1: EnvModel.apply must prepend JAVA_HOME/bin to PATH. " +
+            "If this fails, EnvModel.apply(Map<String, SecretHandle>) is NOT being called by launch()."
+        )
+    }
+
+    // ============================================================
+    // Test 21: F-D1 regression — Masked SecretHandle bypass without NUL bytes
+    // ============================================================
+    // Verifies that masked SecretHandle values do NOT introduce NUL bytes when
+    // passed through EnvModel.apply and then materialized by launch().
+    //
+    // EnvModel.apply propagates masked entries as-is (isMasked=true stays true).
+    // The materialize() call in launch() should return the original string value.
+    @Test
+    fun `F-D1 masked SecretHandle no NUL bytes in materialized env`(@TempDir tempDir: Path) {
+        assumeLinux()
+        val controlDir = createControlDir("test-masked-nul")
+        val envOutputFile = tempDir.resolve("env_out.txt")
+        val envOutputFileStr = envOutputFile.toString()
+
+        // Script that writes the SSH_KEY env var to output
+        val script = """printenv SSH_KEY > '$envOutputFileStr'"""
+
+        val shOptions = ShOptions(
+            workspaceRoot = controlDir,
+            captureStdout = false,
+            timeoutMs = null,
+            env = mapOf(
+                "SSH_KEY" to SecretHandle.masked("/tmp/id_rsa")
+            ),
+            sandbox = SandboxConfig.NONE,
+        )
+
+        val result = executor.execute(controlDir, script, "masked-nul-test", shOptions)
+
+        assertEquals(0, result.exitCode, "Script should complete successfully")
+
+        val sshKeyValue = Files.readString(envOutputFile).trim()
+        assertFalse(
+            sshKeyValue.contains('\u0000'),
+            "F-D1: Masked SecretHandle must NOT contain NUL bytes after materialize(). " +
+            "Got: ${sshKeyValue.toByteArray().joinToString()}"
+        )
+        assertEquals(
+            "/tmp/id_rsa",
+            sshKeyValue,
+            "F-D1: Masked SecretHandle should materialize to original path"
+        )
+    }
 }

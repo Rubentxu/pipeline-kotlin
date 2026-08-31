@@ -261,8 +261,12 @@ class DurableShellExecutor : DurableShellLaunching {
         // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
         // WS-S-022: coerce SecretHandle to String at pb.environment() putAll
         if (env.isNotEmpty()) {
+            // F-D1: Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
+            // This ensures JAVA_HOME/bin and M2_HOME/bin are prepended to PATH, and PATH+=
+            // entries are properly handled. Without this call, the PATH manipulation is skipped.
+            val transformedEnv = EnvModel.apply(env)
             // Coerce SecretHandle to String at the single choke point
-            val coercedEnv: Map<String, String> = env.mapValues { entry -> entry.value.materialize() }
+            val coercedEnv: Map<String, String> = transformedEnv.mapValues { entry -> entry.value.materialize() }
             pbEnv.putAll(coercedEnv)
 
             // SB-S-005 regression fix (T-02): re-normalize PATH after user env merge.
@@ -283,7 +287,7 @@ class DurableShellExecutor : DurableShellLaunching {
 
             // WS-S-023: wipe handles after putAll
             // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
-            for (handle in env.values) {
+            for (handle in transformedEnv.values) {
                 try {
                     handle.close()
                 } catch (wipeError: Exception) {

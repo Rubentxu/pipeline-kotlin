@@ -1,15 +1,14 @@
 package dev.rubentxu.pipeline.v2.credentials.spi
 
-import dev.rubentxu.pipeline.v2.credentials.multipart.MaterializationKind
-import dev.rubentxu.pipeline.v2.credentials.multipart.MaterializedCredential
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 
 /**
  * SPI port for credential materialization to temporary files.
  *
  * Design (design §2.3, research §4.3-proposed; E-24):
- * - Reuses existing MaterializationKind enum from :pipeline-credentials-multipart
- * - Reuses existing MaterializedCredential sealed type from :pipeline-credentials-multipart
+ * - MaterializationKind and MaterializedCredential defined in this module (spi package)
+ * - These types were moved from :pipeline-credentials-multipart to resolve
+ *   circular dependency while maintaining the port contract
  * - `materialize(credential, kind)`: materializes a credential to temp file/path
  * - `close()`: implements AutoCloseable for lifecycle management
  *
@@ -23,8 +22,6 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
  * - META-INF/services SPI registration deferred to H1+ (design §7)
  *
  * @see dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer for the H0 implementation
- * @see dev.rubentxu.pipeline.v2.credentials.multipart.MaterializationKind for supported kinds
- * @see dev.rubentxu.pipeline.v2.credentials.multipart.MaterializedCredential for result type
  */
 interface CredentialMaterialization : AutoCloseable {
 

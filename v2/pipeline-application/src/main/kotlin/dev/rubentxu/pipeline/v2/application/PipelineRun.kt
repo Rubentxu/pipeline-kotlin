@@ -104,7 +104,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
 import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
-import dev.rubentxu.pipeline.v2.credentials.multipart.MaterializationKind
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import java.time.Instant
 import java.util.UUID

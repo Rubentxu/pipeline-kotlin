@@ -3,6 +3,9 @@ package dev.rubentxu.pipeline.v2.credentials.multipart
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceNotFoundException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate

@@ -1022,6 +1022,32 @@ private suspend fun executeDurableStepImpl(
                                 sandboxProfile = sandboxProfile,
                                 secretStore = secretStore,
                             )
+                            // Emit CredentialUsed per binding per SUCCESS (D-2)
+                            if (innerStepOutcome == "success") {
+                                // Map DSL Kind to BoundPurpose (per ADR-0051 §D8)
+                                fun kindToPurpose(kind: StepSpec.CredentialsBinding.Kind): BoundPurpose = when (kind) {
+                                    StepSpec.CredentialsBinding.Kind.STRING -> BoundPurpose.API_KEY
+                                    StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> BoundPurpose.USERNAME_PASSWORD
+                                    StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> BoundPurpose.SSH_KEY
+                                    StepSpec.CredentialsBinding.Kind.FILE -> BoundPurpose.FILE
+                                    StepSpec.CredentialsBinding.Kind.CERTIFICATE -> BoundPurpose.CERTIFICATE
+                                    StepSpec.CredentialsBinding.Kind.ZIP -> BoundPurpose.ZIP
+                                    StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> BoundPurpose.USERNAME_COLON_PASSWORD
+                                }
+                                for (binding in step.bindings) {
+                                    eventSink.append(
+                                        CredentialUsed(
+                                            eventId = UUID.randomUUID().toString(),
+                                            runId = runId,
+                                            sequence = 0L,
+                                            occurredAt = clock.now(),
+                                            credentialsId = binding.credentialsId,
+                                            purpose = kindToPurpose(binding.kind),
+                                            stepIndex = stepIndex,
+                                        )
+                                    )
+                                }
+                            }
                             if (innerStepOutcome != "success") {
                                 innerOutcome = innerStepOutcome
                                 break

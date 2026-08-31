@@ -329,12 +329,6 @@ pipeline {
     /**
      * CR-BD-018: SSH_USER_PRIVATE_KEY binding — key file path injected as env var.
      * Materialization: mkstemp for key file, wiped in finally.
-     *
-     * BLOCKED: DSL classpath does not include pipeline-domain module.
-     * CredentialsId is not accessible in .pipeline.kts scripts (dev.rubentxu.pipeline.v2.domain
-     * not on DSL compilation classpath). Script compilation fails with "Cannot access class
-     * '...domain.CredentialsId'". The withCredentials DSL syntax cannot be exercised E2E
-     * in a .pipeline.kts fixture until the DSL classpath is widened.
      */
     @Test
     fun `CR-BD-018 sshUserPrivateKey binding resolves key file env var`(@TempDir tempDir: Path) {
@@ -387,8 +381,6 @@ pipeline {
     /**
      * CR-BD-019: FILE binding — secret file path injected as env var.
      * Materialization: mkstemp for secret file, wiped in finally.
-     *
-     * BLOCKED: DSL classpath does not include pipeline-domain module (same as CR-BD-018).
      */
     @Test
     fun `CR-BD-019 file binding resolves secret file path env var`(@TempDir tempDir: Path) {

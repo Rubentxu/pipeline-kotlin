@@ -41,6 +41,19 @@ class LocalCredentialProvider(
     }
 
     /**
+     * Resolves a credential by ID, returning the full typed [Credential].
+     *
+     * Delegates directly to [SecretStore.get].
+     *
+     * @param id The credential identifier
+     * @return [Credential] typed credential
+     * @throws dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException if not found or tampered
+     */
+    override fun resolveToCredential(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
+        return store.get(id)
+    }
+
+    /**
      * Closes this provider by closing the underlying store.
      * Idempotent — [SecretStore.close] is idempotent.
      */

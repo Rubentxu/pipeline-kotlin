@@ -155,6 +155,17 @@ private class MockCredentialProvider : CredentialProvider {
         return secrets[id] ?: throw Exception("Credential not found: ${id.value}")
     }
 
+    override fun resolveToCredential(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
+        val handle = secrets[id] ?: throw Exception("Credential not found: ${id.value}")
+        return handle.use { bytes ->
+            dev.rubentxu.pipeline.v2.domain.credentials.SecretText(
+                id = id,
+                scope = dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL,
+                bytes = bytes
+            )
+        }
+    }
+
     override fun close() {}
 }
 

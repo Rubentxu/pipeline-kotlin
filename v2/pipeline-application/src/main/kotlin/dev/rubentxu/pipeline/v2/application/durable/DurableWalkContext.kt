@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import java.nio.file.Path
 
 /**
@@ -109,4 +110,11 @@ data class DurableWalkContext(
      * When null, withCredentials blocks execute inner steps without credential injection.
      */
     val secretStore: SecretStore? = null,
+    /**
+     * Port-driven executor for credential binding in withCredentials blocks (H0).
+     *
+     * When non-null, credentials are bound via this executor which delegates to SPI ports.
+     * When null, withCredentials blocks use the inline legacy path.
+     */
+    val withCredentialsExecutor: WithCredentialsExecutor? = null,
 )

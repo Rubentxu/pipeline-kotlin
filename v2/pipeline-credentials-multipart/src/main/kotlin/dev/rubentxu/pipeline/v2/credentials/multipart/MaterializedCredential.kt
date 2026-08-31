@@ -1,25 +1,17 @@
 package dev.rubentxu.pipeline.v2.credentials.multipart
 
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind as SpiMaterializationKind
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential as SpiMaterializedCredential
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException as SpiMaterializationKindUnsupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Kind of materialization for file-based credential types.
+ * Materialization types re-exported from credentials SPI package.
  *
- * Re-exported from dev.rubentxu.pipeline.v2.credentials.spi for backward compatibility.
+ * These types are now canonical in dev.rubentxu.pipeline.v2.credentials.spi.
+ * This file re-exports them for backward compatibility with code that imports from multipart.
  */
-typealias MaterializationKind = dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
-
-/**
- * Result of credential materialization.
- *
- * Re-exported from dev.rubentxu.pipeline.v2.credentials.spi for backward compatibility.
- */
-typealias MaterializedCredential = dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
-
-/**
- * Thrown when a credential kind cannot be materialized to a file.
- *
- * Re-exported from dev.rubentxu.pipeline.v2.credentials.spi for backward compatibility.
- */
-typealias MaterializationKindUnsupportedException = dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
+typealias MaterializationKind = SpiMaterializationKind
+typealias MaterializedCredential = SpiMaterializedCredential
+typealias MaterializationKindUnsupportedException = SpiMaterializationKindUnsupportedException

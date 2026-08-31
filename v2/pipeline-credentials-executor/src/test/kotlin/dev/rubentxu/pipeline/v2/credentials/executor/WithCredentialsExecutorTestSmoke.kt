@@ -63,6 +63,16 @@ class WithCredentialsExecutorTestSmoke {
 private object NullCredentialProvider : CredentialProvider {
     override val providerId: String = "null"
     override fun resolve(id: CredentialsId): SecretHandle = SecretHandle.plain("null")
+    override fun resolveToCredential(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
+        val handle = SecretHandle.plain("null")
+        return handle.use { bytes ->
+            dev.rubentxu.pipeline.v2.domain.credentials.SecretText(
+                id = id,
+                scope = dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL,
+                bytes = bytes
+            )
+        }
+    }
     override fun close() {}
 }
 

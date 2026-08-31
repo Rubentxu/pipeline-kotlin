@@ -81,6 +81,13 @@ class PipelineOrchestrator(
      * When null, withCredentials blocks will execute inner steps without credential injection.
      */
     private val secretStore: SecretStore? = null,
+    /**
+     * Port-driven executor for credential binding in withCredentials blocks (H0).
+     *
+     * When non-null, credentials are bound via this executor which delegates to SPI ports.
+     * When null, withCredentials blocks use the inline behavior (legacy path).
+     */
+    private val withCredentialsExecutor: dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor? = null,
 ) {
     /**
      * Executes a pipeline spec with full durable guarantees.
@@ -162,6 +169,7 @@ class PipelineOrchestrator(
                     shOptions = defaultShOptions,
                     sandboxProfile = sandboxProfile,
                     secretStore = secretStore,
+                    withCredentialsExecutor = withCredentialsExecutor,
                 )
 
                 // Execute with durable walk — ctx carries branchReconciler for LIVE reconciliation

@@ -84,18 +84,26 @@ class WithCredentialsExecutor(
 
                 // Resolve credential via provider
                 val secretHandle = provider.resolve(credentialsId)
-                closeables.add(secretHandle)
 
-                // Materialize if file-based kind
+                // Materialize if file-based kind, otherwise use handle directly
                 val materializationKind = kindToMaterializationKind(binding.kind)
-                if (materializationKind != null) {
-                    // For file-based kinds, we need the actual credential to materialize
-                    // Since we only have the handle, we materialization is limited
-                    // The actual implementation will materialization in the application layer
+                val handleToInject: SecretHandle = if (materializationKind != null) {
+                    // File-based: materialize to temp file and inject path
+                    val credential = provider.resolveToCredential(credentialsId)
+                    val materialized = materialization.materialize(credential, materializationKind)
+                    closeables.add(materialized)
+                    // The temp file path is the env var value (masked, not redacted)
+                    val path = materialized.path
+                        ?: throw IllegalStateException("MaterializationKind.${materializationKind} must provide a path")
+                    dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
+                } else {
+                    // Non-file-based: use the raw handle directly
+                    closeables.add(secretHandle)
+                    secretHandle
                 }
 
                 // Inject into env map based on binding kind
-                injectEnvVar(env, binding, secretHandle)
+                injectEnvVar(env, binding, handleToInject)
             }
 
             return BoundCredentials(env.toMap()) {

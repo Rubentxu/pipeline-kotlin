@@ -638,6 +638,7 @@ private suspend fun emitDurableStepEvents(
                     stageEnvironment = stageEnvironment,
                     sandboxProfile = ctx.sandboxProfile,
                     secretStore = ctx.secretStore,
+                    withCredentialsExecutor = ctx.withCredentialsExecutor,
                 )
 
                 // Journal the operation (UPSERT RUNNING → terminal, C-025)
@@ -744,6 +745,7 @@ private suspend fun executeDurableStep(
     stageEnvironment: Map<String, String>? = null,
     sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
+    withCredentialsExecutor: dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor? = null,
 ): String {
     return executeDurableStepImpl(
         step = step,
@@ -763,11 +765,12 @@ private suspend fun executeDurableStep(
         workspaceResolver = workspaceResolver,
         shOptions = shOptions,
         stepClassifications = stepClassifications,
-        stageTimeout = stageTimeout,
-        stageEnvironment = stageEnvironment,
-        sandboxProfile = sandboxProfile,
-        secretStore = secretStore,
-    )
+                                stageTimeout = stageTimeout,
+                                stageEnvironment = stageEnvironment,
+                                sandboxProfile = sandboxProfile,
+                                secretStore = secretStore,
+                                withCredentialsExecutor = withCredentialsExecutor,
+                            )
 }
 
 /**
@@ -818,6 +821,7 @@ private suspend fun executeDurableStepImpl(
     stageEnvironment: Map<String, String>? = null,
     sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
+    withCredentialsExecutor: dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor? = null,
 ): String {
     // Build opId for durable shell control dir
     val opId = OpId(runId, stageIndex, stepIndex).format()
@@ -949,9 +953,85 @@ private suspend fun executeDurableStepImpl(
             }
             is StepSpec.WithCredentialsBlock -> {
                 // ML-R10 (D2+D3+D4+D11): Wire real withCredentials block execution.
-                // If secretStore is available, resolve credentials and inject into inner steps.
-                // If not available, execute inner steps without credential injection.
-                if (secretStore != null) {
+                // H0: Use port-driven WithCredentialsExecutor when available.
+                // If withCredentialsExecutor is available, delegate to it.
+                // Otherwise fall back to inline implementation.
+                if (withCredentialsExecutor != null) {
+                    // H0 port-driven path: executor handles CredentialBound events,
+                    // materialization, env injection, and CredentialUnbound cleanup.
+                    var boundCredentials: dev.rubentxu.pipeline.v2.credentials.executor.BoundCredentials? = null
+                    try {
+                        boundCredentials = withCredentialsExecutor.bind(
+                            bindings = step.bindings,
+                            runId = runId,
+                            eventSink = eventSink,
+                        )
+
+                        // Build effective shOptions with credential env injected
+                        val credentialEnv = boundCredentials.env()
+                        val effectiveShOptions = shOptions?.copy(
+                            env = (shOptions.env ?: emptyMap()) + credentialEnv
+                        ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
+                            workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
+                                ?: java.nio.file.Files.createTempDirectory("withcreds"),
+                            captureStdout = false,
+                            timeoutMs = stageTimeout,
+                            env = credentialEnv,
+                            sandbox = SandboxConfigResolver.resolve(sandboxProfile),
+                        )
+
+                        // Emit StepStarted after CredentialBound events (INV-L10-CR-001)
+                        val outerStepStartedId = UUID.randomUUID().toString()
+                        val outerStepStartedAt = clock.now()
+                        eventSink.append(
+                            StepStarted(
+                                eventId = outerStepStartedId,
+                                runId = runId,
+                                sequence = 0L,
+                                occurredAt = outerStepStartedAt,
+                                stageIndex = stageIndex,
+                                stepIndex = stepIndex,
+                                stepName = step.name,
+                                stepType = step.type,
+                            )
+                        )
+
+                        // Execute inner steps with credential env injected
+                        var innerOutcome = "success"
+                        for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
+                            val innerStepOutcome = executeDurableStep(
+                                step = innerStep,
+                                stageIndex = stageIndex,
+                                stepIndex = stepIndex,
+                                runId = runId,
+                                stageName = stageName,
+                                eventSink = eventSink,
+                                journal = journal,
+                                cursorStore = cursorStore,
+                                divergenceDetector = divergenceDetector,
+                                effectReplayPolicy = effectReplayPolicy,
+                                clock = clock,
+                                runOutcomeRef = runOutcomeRef,
+                                reconciledBranches = reconciledBranches,
+                                controlDirRoot = controlDirRoot,
+                                workspaceResolver = workspaceResolver,
+                                shOptions = effectiveShOptions,
+                                stepClassifications = stepClassifications,
+                                stageTimeout = stageTimeout,
+                                stageEnvironment = stageEnvironment,
+                                sandboxProfile = sandboxProfile,
+                                secretStore = secretStore,
+                            )
+                            if (innerStepOutcome != "success") {
+                                innerOutcome = innerStepOutcome
+                                break
+                            }
+                        }
+                        innerOutcome
+                    } finally {
+                        boundCredentials?.close()
+                    }
+                } else if (secretStore != null) {
                     // Collect active handles for cleanup
                     val activeHandles = mutableListOf<dev.rubentxu.pipeline.v2.domain.SecretHandle>()
                     // Materializer for file-based credential kinds

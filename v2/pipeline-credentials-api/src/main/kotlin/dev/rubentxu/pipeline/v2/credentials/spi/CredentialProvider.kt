@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.credentials.spi
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 
 /**
  * SPI port for credential resolution — ISP-optimal single-responsibility interface.
@@ -38,6 +39,18 @@ interface CredentialProvider : AutoCloseable {
      * @throws dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException if not found or tampered
      */
     fun resolve(id: CredentialsId): SecretHandle
+
+    /**
+     * Resolves a credential by ID, returning the full typed Credential.
+     *
+     * Required for materialization of file-based credentials (SSH key, certificate, ZIP).
+     * The Credential type carries the typed payload needed for file creation.
+     *
+     * @param id The credential identifier
+     * @return Credential typed credential (NOT a handle)
+     * @throws dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException if not found or tampered
+     */
+    fun resolveToCredential(id: CredentialsId): Credential
 
     /**
      * Closes this provider, releasing any resources.

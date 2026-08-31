@@ -5,6 +5,10 @@ import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
+import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
+import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
+import dev.rubentxu.pipeline.v2.credentials.multipart.LocalFileMaterialization
+import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
 import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
 import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
@@ -296,6 +300,16 @@ fun main(args: Array<String>) {
             }
         }
 
+    // H0 composition root: construct credential ports and executor
+    // LocalSecretStore (existing) -> LocalCredentialProvider -> CredentialMaterializer -> LocalFileMaterialization -> WithCredentialsExecutor
+    val credentialProvider: dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider? = secretStore?.let { LocalCredentialProvider(it) }
+    val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }
+    val withCredentialsExecutor: WithCredentialsExecutor? = if (credentialProvider != null && credentialMaterialization != null) {
+        WithCredentialsExecutor(credentialProvider, credentialMaterialization, clock)
+    } else {
+        null
+    }
+
     val orchestrator = PipelineOrchestrator(
         journal = journal,
         cursorStore = cursorStore,
@@ -307,6 +321,7 @@ fun main(args: Array<String>) {
         sandboxProfile = config.sandboxProfile,
         redactingEventSink = eventStore,
         secretStore = secretStore,
+        withCredentialsExecutor = withCredentialsExecutor,
     )
 
     // Run via orchestrator (fresh run or resume based on --resume flag)

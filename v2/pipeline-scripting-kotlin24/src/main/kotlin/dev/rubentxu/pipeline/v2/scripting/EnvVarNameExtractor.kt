@@ -30,30 +30,77 @@ internal object EnvVarNameExtractor {
             val wcStart = text.indexOf("withCredentials(", pos, ignoreCase = false)
             if (wcStart == -1) break
 
-            // Find the matching closing paren for the withCredentials( call
-            val afterParen = wcStart + "withCredentials(".length
-            val blockEnd = findMatchingParen(text, afterParen)
+            // The opening parenthesis of withCredentials( is right before the first argument.
+            // We first find the lambda's opening brace (brace depth 0 scan),
+            // then search backward from that brace to find the correct ) that closes withCredentials(.
+            val lambdaBrace = findLambdaBrace(text, wcStart)
+            if (lambdaBrace == -1) {
+                pos = wcStart + "withCredentials(".length
+                continue
+            }
+
+            // Search backward from lambdaBrace to find the ) that closes withCredentials(
+            val blockEnd = findClosingParenBackward(text, lambdaBrace)
             if (blockEnd == -1) {
-                pos = afterParen
+                pos = lambdaBrace + 1
                 continue
             }
 
-            // The "body" of withCredentials is the lambda block, which starts after the opening brace.
-            // We look for the opening brace to distinguish the binding-call list from the lambda body.
-            val bodyStart = findOpeningBrace(text, afterParen, blockEnd)
-            if (bodyStart == -1) {
-                pos = afterParen
-                continue
-            }
-
-            // Scan only the credentials-binding call list (before the lambda opening brace)
-            scanBindingCalls(text, afterParen, bodyStart, acc)
+            // The binding call list is between afterParen and lambdaBrace
+            val afterParen = wcStart + "withCredentials(".length
+            scanBindingCalls(text, afterParen, lambdaBrace, acc)
 
             // Advance past this entire withCredentials block
             pos = blockEnd + 1
         }
 
         return pos
+    }
+
+    /**
+     * Finds the first `{` at brace depth 0 (the lambda body's opening brace)
+     * that appears after [from] within [limit].
+     * Ignores braces inside strings.
+     */
+    private fun findLambdaBrace(text: String, from: Int, limit: Int = text.length): Int {
+        var depth = 0
+        var inString = false
+        var stringChar: Char = 0.toChar()
+        var i = from
+        while (i < limit) {
+            val c = text[i]
+            if (!inString) {
+                when (c) {
+                    '{' -> if (depth == 0) return i
+                    '}' -> { /* depth would go negative, but we return on depth=0 */ }
+                    '"', '\'' -> { inString = true; stringChar = c }
+                }
+            } else {
+                if (c == stringChar) inString = false
+            }
+            i++
+        }
+        return -1
+    }
+
+    /**
+     * Search backward from [start] to find the `)` that closes the `withCredentials(` call.
+     * The `withCredentials(` opens at or before [start], and we need its matching `)`.
+     */
+    private fun findClosingParenBackward(text: String, start: Int): Int {
+        var depth = 0
+        var i = start - 1
+        while (i >= 0) {
+            val c = text[i]
+            if (c == ')') {
+                depth++
+            } else if (c == '(') {
+                depth--
+                if (depth == 0) return i
+            }
+            i--
+        }
+        return -1
     }
 
     /**

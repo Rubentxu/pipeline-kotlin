@@ -14,6 +14,7 @@ import kotlin.script.experimental.api.ScriptDiagnostic
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.defaultImports
+import kotlin.script.experimental.host.StringScriptSource
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
@@ -72,7 +73,21 @@ class Kotlin24ScriptingHost(
             )
         )
 
-        val source: SourceCode = SourceCodeFactory.toSourceCode(definition)
+        // Extract env vars from the original script text before any escaping.
+        // This must happen before creating `source` so we pass escaped text to the compiler.
+        val scriptText = definition.sourceText
+            ?: definition.sourcePath?.toFile()?.readText()
+            ?: ""
+        val envVars = EnvVarNameExtractor.extract(scriptText)
+        val escapedText = ScriptTextEscaper.escape(scriptText, envVars)
+
+        // Pass the escaped text to the Kotlin compiler; the original scriptText
+        // (above) is preserved verbatim for the cache key computation below.
+        val source: SourceCode = StringScriptSource(
+            escapedText,
+            name = definition.sourcePath?.toString() ?: "<inline>",
+            locationId = definition.sourcePath?.toString() ?: "<inline>"
+        )
 
         // Per-call classpath files from the script definition (may be empty).
         // We resolve to absolute canonical paths so the cache key stays stable
@@ -131,10 +146,7 @@ class Kotlin24ScriptingHost(
             .map(::mapDiagnostic)
         val isSuccess = rwd is ResultWithDiagnostics.Success
 
-        val scriptText = definition.sourceText
-            ?: definition.sourcePath?.toFile()?.readText()
-            ?: ""
-
+        // scriptText is already captured at line 78; reuse it for the cache key.
         val cacheKey = CacheKey(
             CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion),
             CacheKey.V1,

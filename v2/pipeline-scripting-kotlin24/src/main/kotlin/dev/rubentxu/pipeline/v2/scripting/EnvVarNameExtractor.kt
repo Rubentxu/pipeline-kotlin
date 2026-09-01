@@ -193,8 +193,8 @@ internal object EnvVarNameExtractor {
             // Look for StepSpec.CredentialsBinding. identifier (
             val factory = matchFactoryCall(text, i, before)
             if (factory != null) {
-                val (envVar, newI) = extractEnvVarFromFactoryCall(text, factory.parenEnd + 1, before)
-                if (envVar != null) acc.add(envVar)
+                val (envVars, newI) = extractEnvVarFromFactoryCall(text, factory.parenStart + 1, before)
+                acc.addAll(envVars)
                 i = newI
                 continue
             }
@@ -276,14 +276,15 @@ internal object EnvVarNameExtractor {
     private data class FactoryMatch(val name: String, val parenStart: Int, val parenEnd: Int)
 
     /**
-     * Inside a factory call's argument list, finds the env-var string literal and returns it.
-     * The search scans through nested parentheses.
+     * Inside a factory call's argument list, finds ALL env-var string literals and returns them.
+     * The search scans through nested parentheses. Skips non-env-var strings (e.g., credentialsId).
      */
-    private fun extractEnvVarFromFactoryCall(text: String, from: Int, before: Int): Pair<String?, Int> {
+    private fun extractEnvVarFromFactoryCall(text: String, from: Int, before: Int): Pair<Set<String>, Int> {
         var depth = 0
         var inString = false
         var stringChar: Char = 0.toChar()
         var i = from
+        val envVars = mutableSetOf<String>()
 
         while (i < before) {
             val c = text[i]
@@ -291,14 +292,12 @@ internal object EnvVarNameExtractor {
             if (!inString) {
                 when (c) {
                     '(' -> { depth++; i++; }
-                    ')' -> { if (depth == 0) return Pair(null, i + 1); depth--; i++; }
+                    ')' -> { if (depth == 0) return Pair(envVars, i + 1); depth--; i++; }
                     '"' -> {
-                        // read the string
                         val strEnd = skipString(text, i, before)
                         val content = text.substring(i + 1, strEnd - 1)
-                        // Check if this string looks like an env var name (uppercase, alphanumeric + underscore)
                         if (looksLikeEnvVarName(content)) {
-                            return Pair(content, strEnd)
+                            envVars.add(content)
                         }
                         i = strEnd
                     }
@@ -311,7 +310,7 @@ internal object EnvVarNameExtractor {
                 i++
             }
         }
-        return Pair(null, i)
+        return Pair(envVars, i)
     }
 
     private fun looksLikeEnvVarName(s: String): Boolean {

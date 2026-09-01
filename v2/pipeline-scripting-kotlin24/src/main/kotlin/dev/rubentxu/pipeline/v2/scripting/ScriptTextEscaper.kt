@@ -34,45 +34,107 @@ internal object ScriptTextEscaper {
 
         val result = StringBuilder(scriptText.length + envVars.size * 4)
         var braceDepth = 0
+        var inLineComment = false
+        var inBlockComment = false
+        var inDoubleString = false
+        var inSingleString = false
         var i = 0
 
         while (i < scriptText.length) {
             val c = scriptText[i]
 
-            // Track brace depth when not inside a string
-            if (c == '$' && i + 1 < scriptText.length) {
-                val next = scriptText[i + 1]
-                if (next == '{') {
-                    // Could be ${...} block
-                    if (!isInsideString(scriptText, i)) {
-                        braceDepth++
+            // Track line comment state
+            if (!inLineComment && !inBlockComment && !inDoubleString && !inSingleString && c == '/' && i + 1 < scriptText.length && scriptText[i + 1] == '/') {
+                inLineComment = true
+                result.append(c)
+                i++
+                continue
+            }
+
+            // Track block comment state
+            if (!inLineComment && !inBlockComment && !inDoubleString && !inSingleString && c == '/' && i + 1 < scriptText.length && scriptText[i + 1] == '*') {
+                inBlockComment = true
+                result.append(c)
+                i++
+                continue
+            }
+
+            // Exit line comment on newline
+            if (inLineComment && c == '\n') {
+                inLineComment = false
+                result.append(c)
+                i++
+                continue
+            }
+
+            // Exit block comment on */
+            if (inBlockComment && c == '*' && i + 1 < scriptText.length && scriptText[i + 1] == '/') {
+                inBlockComment = false
+                result.append(c)
+                i++
+                continue
+            }
+
+            // Track double-quoted string
+            if (!inLineComment && !inBlockComment && !inSingleString && c == '"') {
+                if (inDoubleString) {
+                    // Check if this quote is escaped (preceded by odd number of backslashes)
+                    var j = i - 1
+                    var escapeCount = 0
+                    while (j >= 0 && scriptText[j] == '\\') {
+                        escapeCount++
+                        j--
                     }
+                    if (escapeCount % 2 == 0) {
+                        // Not escaped — this closes the string
+                        inDoubleString = false
+                    }
+                    // If escaped (odd backslashes), stay in string
+                } else {
+                    // Opening quote
+                    inDoubleString = true
                 }
             }
 
-            // Handle $ identifier references
-            if (c == '$' && !isInsideString(scriptText, i)) {
+            // Track single-quoted string
+            if (!inLineComment && !inBlockComment && !inDoubleString && c == '\'') {
+                if (inSingleString) {
+                    var j = i - 1
+                    var escapeCount = 0
+                    while (j >= 0 && scriptText[j] == '\\') {
+                        escapeCount++
+                        j--
+                    }
+                    if (escapeCount % 2 == 0) {
+                        inSingleString = false
+                    }
+                } else {
+                    inSingleString = true
+                }
+            }
+
+            // Track brace depth (only outside strings and comments)
+            if (!inLineComment && !inBlockComment && !inDoubleString && !inSingleString) {
+                if (c == '{') {
+                    braceDepth++
+                } else if (c == '}') {
+                    braceDepth = maxOf(0, braceDepth - 1)
+                }
+            }
+
+            // Handle $ identifier references (only at top-level, not in strings/comments/braces)
+            if (c == '$' && !inLineComment && !inBlockComment && !inDoubleString && !inSingleString && braceDepth == 0) {
                 val idPair = tryReadIdentifier(scriptText, i + 1)
                 if (idPair != null) {
                     val (identifier, identifierEnd) = idPair
-                    if (identifier in envVars && braceDepth == 0) {
+                    if (identifier in envVars) {
                         // Escape: $VAR -> ${'$'}VAR
                         result.append("\${'$'}")
                         result.append(identifier)
                         i = identifierEnd
                         continue
-                    } else {
-                        // Not an env var or inside braces — copy as-is
-                        result.append(c)
-                        i++
-                        continue
                     }
                 }
-            }
-
-            // Decrement brace depth when closing
-            if (c == '}' && !isInsideString(scriptText, i)) {
-                if (braceDepth > 0) braceDepth--
             }
 
             result.append(c)
@@ -131,14 +193,24 @@ internal object ScriptTextEscaper {
                 continue
             }
             if (inDoubleString) {
-                if (text[i] == '"' && (i == 0 || text[i - 1] != '\\')) {
+                if (text[i] == '\\' && i + 1 < text.length) {
+                    // Skip escaped character
+                    i += 2
+                    continue
+                }
+                if (text[i] == '"') {
                     inDoubleString = false
                 }
                 i++
                 continue
             }
             if (inSingleString) {
-                if (text[i] == '\'' && (i == 0 || text[i - 1] != '\\')) {
+                if (text[i] == '\\' && i + 1 < text.length) {
+                    // Skip escaped character
+                    i += 2
+                    continue
+                }
+                if (text[i] == '\'') {
                     inSingleString = false
                 }
                 i++

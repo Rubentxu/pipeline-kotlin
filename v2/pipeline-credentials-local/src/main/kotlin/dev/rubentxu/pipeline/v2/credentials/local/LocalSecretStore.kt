@@ -700,6 +700,20 @@ class LocalSecretStore(
                         val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
                         SecretHandle.secret(valueBytes)
                     }
+                    "value" -> {
+                        // Read username part: readValueLen positions at username value bytes
+                        val usernameLen = readValueLen(buf)
+                        val usernameBytes = ByteArray(usernameLen); buf.get(usernameBytes)
+                        // Read password length from header (pass name follows username value)
+                        val passNameLen = buf.get().toInt() and 0xFF
+                        buf.position(buf.position() + passNameLen) // skip "password" name
+                        val passLen = buf.int
+                        // Read password value bytes (do NOT skip — we're at the value already)
+                        val passwordBytes = ByteArray(passLen); buf.get(passwordBytes)
+                        // Join with ASCII colon (0x3A)
+                        val joinedBytes = usernameBytes + byteArrayOf(0x3A) + passwordBytes
+                        SecretHandle.secret(joinedBytes)
+                    }
                     else -> throw SecretStoreTamperException("Part '$partName' not found in UsernameColonPassword credential")
                 }
             }

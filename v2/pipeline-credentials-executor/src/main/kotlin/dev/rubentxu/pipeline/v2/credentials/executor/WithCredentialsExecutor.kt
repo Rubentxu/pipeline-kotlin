@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.credentials.executor
 
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
@@ -98,8 +99,20 @@ class WithCredentialsExecutor(
                     dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
                 } else {
                     // Non-file-based: use the raw handle directly
-                    closeables.add(secretHandle)
-                    secretHandle
+                    when (binding.kind) {
+                        CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> {
+                            val raw = provider.resolveToCredential(binding.credentialsId)
+                            val credential = raw as? UsernameColonPassword
+                                ?: throw IllegalStateException("UsernameColonPassword credential ${binding.credentialsId} resolved to ${raw?.javaClass?.simpleName ?: "null"} instead of UsernameColonPassword")
+                            val joinedBytes = credential.user.toByteArray(Charsets.UTF_8) + byteArrayOf(0x3A) + credential.pass
+                            closeables.add(secretHandle)
+                            SecretHandle.secret(joinedBytes)
+                        }
+                        else -> {
+                            closeables.add(secretHandle)
+                            secretHandle
+                        }
+                    }
                 }
 
                 // Inject into env map based on binding kind

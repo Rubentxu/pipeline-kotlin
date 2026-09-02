@@ -191,46 +191,41 @@ class FArchM3CanonicalTaskRuntimeTest {
     }
 
     @Test
-    fun `LF-0305 and LF-0306 migrate git and tar onto the task runtime (no ProcessBuilder outside the runtime)`() {
+    fun `LF-0305 LF-0306 LF-0307 migrate git tar and sh onto the task runtime (no ProcessBuilder outside the runtime)`() {
         val v2Root = FitnessPaths.v2Root()
 
-        // The four call-site families migrated by LF-0305 (scm-git) and
-        // LF-0306 (artefacts-local). They MUST NOT use ProcessBuilder; they
-        // MUST route through the runtime.
+        // The five call-site families migrated by LF-0305 (scm-git),
+        // LF-0306 (artefacts-local) and LF-0307 (ShExecution non-durable
+        // fallback). They MUST NOT use ProcessBuilder; they MUST route
+        // through the runtime.
         val migratedFiles = listOf(
             "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitCheckoutExecutor.kt",
             "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitPollExecutor.kt",
             "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitChangelogWriter.kt",
             "pipeline-artefacts-local/src/main/kotlin/dev/rubentxu/pipeline/v2/artefacts/local/TarWriter.kt",
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt",
         )
         for (relative in migratedFiles) {
             val path = v2Root.resolve(relative)
             val source = sanitizedSource(path)
             assertFalse(
                 source.contains("ProcessBuilder("),
-                "$relative must not construct processes directly — use the runtime (LF-0305/0306)",
+                "$relative must not construct processes directly — use the runtime (LF-0305/0306/0307)",
             )
             assertTrue(
                 source.contains("ProcessDurableTaskRuntime") || source.contains("runCaptured") ||
-                    source.contains("DurableTaskRuntime"),
-                "$relative must reference the task runtime after LF-0305/0306",
+                    source.contains("DurableTaskRuntime") || source.contains("TaskSpec"),
+                "$relative must reference the task runtime after LF-0305/0306/0307",
             )
         }
 
-        // Global census: ProcessBuilder( is allowed ONLY in the runtime
-        // module's process adapter and in the legacy ShExecution shell
-        // migration site (LF-0307 still pending). This is the second
-        // pressure gauge for the LF-0309 gate.
+        // Global census across the application production tree: zero
+        // ProcessBuilder( call sites outside the runtime module. This is the
+        // gating condition the LF-0309 single-home pin formalises.
         val productionRoot = v2Root.resolve("pipeline-application/src/main/kotlin")
-        val shellMigration = productionRoot.resolve("dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt")
         if (Files.exists(productionRoot)) {
             val offenders = Files.walk(productionRoot)
                 .use { stream -> stream.filter { it.toString().endsWith(".kt") }.toList() }
-                .filter { it != shellMigration }
-                .filter {
-                    val rel = it.toString().replace('\\', '/')
-                    rel.contains("scm/git/") || rel.contains("artefacts/local/")
-                }
                 .flatMap { file ->
                     sanitizedSource(file).lineSequence().withIndex().filter { (_, line) ->
                         line.contains("ProcessBuilder(")
@@ -238,7 +233,7 @@ class FArchM3CanonicalTaskRuntimeTest {
                 }
             assertTrue(
                 offenders.isEmpty(),
-                "scm-git and artefacts-local must not invoke ProcessBuilder directly (LF-0305/0306); offenders: $offenders",
+                "pipeline-application must not invoke ProcessBuilder directly (LF-0307 closes the last site); offenders: $offenders",
             )
         }
     }

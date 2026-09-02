@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.testkit
 
+import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.PipelineDefinition
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 
@@ -24,7 +25,11 @@ object HelloPipelineFixture {
 
     fun build(): HelloPipeline =
         HelloPipeline(
-            definition = PipelineDefinition(id = "hello", name = "hello", version = "0.0.0"),
+            definition = PipelineDefinition(
+                id = DefinitionId("hello"),
+                name = "hello",
+                version = "0.0.0",
+            ),
             steps = listOf(echoStep, sleepStep),
         )
 }

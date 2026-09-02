@@ -4,6 +4,11 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.MismatchedSecretException
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
+import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
@@ -12,10 +17,14 @@ import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
 import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
 import dev.rubentxu.pipeline.v2.events.GitPollChanged
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -50,7 +59,35 @@ class GitCheckoutExecutor(
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: SecretStore? = null,
     private val secretPatternRegistry: SecretPatternRegistry = SecretPatternRegistry(),
+    private val taskRuntime: DurableTaskRuntime? = null,
+    private val gitControlRoot: Path = Files.createTempDirectory("git-tasks"),
 ) : AutoCloseable {
+
+    /**
+     * The runtime used to execute git subcommands. Lazily built per instance
+     * (avoids forcing callers/tests to wire it; deterministic default root).
+     */
+    private val runtimeInstance: DurableTaskRuntime by lazy {
+        taskRuntime ?: ProcessDurableTaskRuntime(
+            gitControlRoot,
+            object : dev.rubentxu.pipeline.v2.domain.durable.Clock {
+                override fun now(): Instant = Instant.now()
+            },
+        )
+    }
+
+    private fun runGit(args: List<String>, env: Map<String, String>, timeoutMs: Long): dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.CapturedRun {
+        guardProcessBuilderArgs(args)
+        val secretEnv = env.mapValues { (_, v) -> SecretHandle.plain(v) }
+        val request = TaskExecutionRequest(
+            task = TaskSpec.ExecTask(argv = args),
+            runId = RunId("git-${UUID.randomUUID()}"),
+            opId = "git-${UUID.randomUUID()}",
+            timeoutMs = timeoutMs,
+            env = secretEnv,
+        )
+        return runBlocking { runtimeInstance.runCaptured(request) }
+    }
 
     companion object {
         private const val GIT_TIMEOUT_SECONDS = 30L
@@ -384,17 +421,11 @@ class GitCheckoutExecutor(
     private fun revParse(req: GitCheckoutRequest, workspace: Path, ref: String, env: Map<String, String>): String? {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "rev-parse", ref)
-            guardProcessBuilderArgs(args)
-            val builder = ProcessBuilder(args)
-            env.forEach { (key, value) -> builder.environment()[key] = value }
-            val process = builder.start()
-            val output = process.inputStream.bufferedReader().readText().trim()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            if (stderr.isNotBlank()) {
-                emitEcho(req, "git rev-parse stderr: $stderr")
+            val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
+            if (captured.stderr.isNotBlank()) {
+                emitEcho(req, "git rev-parse stderr: ${captured.stderr}")
             }
-            if (exitCode && process.exitValue() == 0) output else null
+            if (captured.succeeded) captured.stdout.trim() else null
         } catch (e: Exception) {
             null
         }
@@ -403,21 +434,15 @@ class GitCheckoutExecutor(
     private fun gitFetch(req: GitCheckoutRequest, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "fetch")
-            guardProcessBuilderArgs(args)
-            val builder = ProcessBuilder(args)
-            env.forEach { (key, value) -> builder.environment()[key] = value }
-            val process = builder.start()
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            if (stdout.isNotBlank()) {
-                emitEcho(req, stdout)
+            val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
+            if (captured.stdout.isNotBlank()) {
+                emitEcho(req, captured.stdout)
             }
-            if (stderr.isNotBlank()) {
-                emitEcho(req, "git fetch stderr: $stderr")
+            if (captured.stderr.isNotBlank()) {
+                emitEcho(req, "git fetch stderr: ${captured.stderr}")
             }
-            if (exitCode && process.exitValue() == 0) Result.success(Unit)
-            else Result.failure(IllegalStateException("git fetch failed${stderr.prependIndent()}"))
+            if (captured.succeeded) Result.success(Unit)
+            else Result.failure(IllegalStateException("git fetch failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -426,21 +451,15 @@ class GitCheckoutExecutor(
     private fun gitResetHard(req: GitCheckoutRequest, workspace: Path, sha: String, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "-C", workspace.toString(), "reset", "--hard", sha)
-            guardProcessBuilderArgs(args)
-            val builder = ProcessBuilder(args)
-            env.forEach { (key, value) -> builder.environment()[key] = value }
-            val process = builder.start()
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            if (stdout.isNotBlank()) {
-                emitEcho(req, stdout)
+            val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 1000)
+            if (captured.stdout.isNotBlank()) {
+                emitEcho(req, captured.stdout)
             }
-            if (stderr.isNotBlank()) {
-                emitEcho(req, "git reset --hard stderr: $stderr")
+            if (captured.stderr.isNotBlank()) {
+                emitEcho(req, "git reset --hard stderr: ${captured.stderr}")
             }
-            if (exitCode && process.exitValue() == 0) Result.success(Unit)
-            else Result.failure(IllegalStateException("git reset --hard failed${stderr.prependIndent()}"))
+            if (captured.succeeded) Result.success(Unit)
+            else Result.failure(IllegalStateException("git reset --hard failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -449,21 +468,15 @@ class GitCheckoutExecutor(
     private fun gitClone(req: GitCheckoutRequest, url: String, branch: String, workspace: Path, env: Map<String, String>): Result<Unit> {
         return try {
             val args = listOf("git", "clone", "--branch", branch, url, workspace.toString())
-            guardProcessBuilderArgs(args)
-            val builder = ProcessBuilder(args)
-            env.forEach { (key, value) -> builder.environment()[key] = value }
-            val process = builder.start()
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exitCode = process.waitFor(GIT_TIMEOUT_SECONDS * 2, TimeUnit.SECONDS)
-            if (stdout.isNotBlank()) {
-                emitEcho(req, stdout)
+            val captured = runGit(args, env, GIT_TIMEOUT_SECONDS * 2 * 1000)
+            if (captured.stdout.isNotBlank()) {
+                emitEcho(req, captured.stdout)
             }
-            if (stderr.isNotBlank()) {
-                emitEcho(req, "git clone stderr: $stderr")
+            if (captured.stderr.isNotBlank()) {
+                emitEcho(req, "git clone stderr: ${captured.stderr}")
             }
-            if (exitCode && process.exitValue() == 0) Result.success(Unit)
-            else Result.failure(IllegalStateException("git clone failed${stderr.prependIndent()}"))
+            if (captured.succeeded) Result.success(Unit)
+            else Result.failure(IllegalStateException("git clone failed${captured.stderr.prependIndent()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -26,7 +26,10 @@ class FArchM3CanonicalTaskRuntimeTest {
         "ExecutionOutputSink" to listOf(runtimePortRelativePath),
         "OutputChunk" to listOf(runtimePortRelativePath),
         "TaskStream" to listOf(runtimePortRelativePath),
-        "RecordingDurableTaskRuntime" to listOf(recordingRuntimeRelativePath).sorted(),
+        "RecordingDurableTaskRuntime" to listOf(recordingRuntimeRelativePath),
+        "ProcessDurableTaskRuntime" to listOf(
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/task/ProcessDurableTaskRuntime.kt"
+        ).sorted(),
     )
 
     @Test
@@ -110,6 +113,38 @@ class FArchM3CanonicalTaskRuntimeTest {
     }
 
     @Test
+    fun `ProcessDurableTaskRuntime is the single authorised ProcessBuilder home for the task runtime`() {
+        val path = FitnessPaths.v2Root()
+            .resolve("pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/task/ProcessDurableTaskRuntime.kt")
+        val source = sanitizedSource(path)
+
+        assertTrue(
+            classPattern("ProcessDurableTaskRuntime", "DurableTaskRuntime").containsMatchIn(source),
+            "ProcessDurableTaskRuntime must implement the domain DurableTaskRuntime port",
+        )
+        assertTrue(
+            source.contains("ProcessBuilder(argv)"),
+            "ExecTask must construct the process from argv verbatim (no shell)",
+        )
+        // O(chunk) invariant: streaming reads only — whole-pipe reads are
+        // the memory blow-up the spec prohibits.
+        assertFalse(
+            source.contains("readText()") || source.contains("readAllBytes()"),
+            "ProcessDurableTaskRuntime must not buffer whole pipes (O(chunk) invariant)",
+        )
+        // Process-tree termination.
+        assertTrue(
+            source.contains("descendants()"),
+            "ProcessDurableTaskRuntime must kill the whole process tree (LF-0304)",
+        )
+        // Atomic durable result.
+        assertTrue(
+            source.contains("ATOMIC_MOVE"),
+            "Durable result must be written atomically",
+        )
+    }
+
+    @Test
     fun `task runtime symbols match the M3 allowlist exactly`() {
         val declarations = scanCanonicalDeclarations(
             FitnessPaths.v2Root(),
@@ -153,6 +188,59 @@ class FArchM3CanonicalTaskRuntimeTest {
             offenders.isEmpty(),
             "Domain must declare only RecordingDurableTaskRuntime as a concrete DurableTaskRuntime; offenders: $offenders",
         )
+    }
+
+    @Test
+    fun `LF-0305 and LF-0306 migrate git and tar onto the task runtime (no ProcessBuilder outside the runtime)`() {
+        val v2Root = FitnessPaths.v2Root()
+
+        // The four call-site families migrated by LF-0305 (scm-git) and
+        // LF-0306 (artefacts-local). They MUST NOT use ProcessBuilder; they
+        // MUST route through the runtime.
+        val migratedFiles = listOf(
+            "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitCheckoutExecutor.kt",
+            "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitPollExecutor.kt",
+            "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitChangelogWriter.kt",
+            "pipeline-artefacts-local/src/main/kotlin/dev/rubentxu/pipeline/v2/artefacts/local/TarWriter.kt",
+        )
+        for (relative in migratedFiles) {
+            val path = v2Root.resolve(relative)
+            val source = sanitizedSource(path)
+            assertFalse(
+                source.contains("ProcessBuilder("),
+                "$relative must not construct processes directly — use the runtime (LF-0305/0306)",
+            )
+            assertTrue(
+                source.contains("ProcessDurableTaskRuntime") || source.contains("runCaptured") ||
+                    source.contains("DurableTaskRuntime"),
+                "$relative must reference the task runtime after LF-0305/0306",
+            )
+        }
+
+        // Global census: ProcessBuilder( is allowed ONLY in the runtime
+        // module's process adapter and in the legacy ShExecution shell
+        // migration site (LF-0307 still pending). This is the second
+        // pressure gauge for the LF-0309 gate.
+        val productionRoot = v2Root.resolve("pipeline-application/src/main/kotlin")
+        val shellMigration = productionRoot.resolve("dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt")
+        if (Files.exists(productionRoot)) {
+            val offenders = Files.walk(productionRoot)
+                .use { stream -> stream.filter { it.toString().endsWith(".kt") }.toList() }
+                .filter { it != shellMigration }
+                .filter {
+                    val rel = it.toString().replace('\\', '/')
+                    rel.contains("scm/git/") || rel.contains("artefacts/local/")
+                }
+                .flatMap { file ->
+                    sanitizedSource(file).lineSequence().withIndex().filter { (_, line) ->
+                        line.contains("ProcessBuilder(")
+                    }.map { (i, line) -> Finding(file, i + 1, "ProcessBuilder call", line) }.toList()
+                }
+            assertTrue(
+                offenders.isEmpty(),
+                "scm-git and artefacts-local must not invoke ProcessBuilder directly (LF-0305/0306); offenders: $offenders",
+            )
+        }
     }
 
     private fun interfacePattern(name: String): Regex =

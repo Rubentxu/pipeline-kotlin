@@ -1,8 +1,18 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
+import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
+import java.nio.file.StandardOpenOption
+import java.time.Instant
+import java.util.UUID
 
 /**
  * Appends new commits to `<workspace>/changelog.txt`.
@@ -16,7 +26,15 @@ import java.util.concurrent.TimeUnit
  */
 class GitChangelogWriter(
     private val timeoutSeconds: Long = 10,
+    private val taskRuntime: DurableTaskRuntime? = null,
+    private val controlRoot: Path = Files.createTempDirectory("git-changelog-tasks"),
 ) {
+    private val runtimeInstance: DurableTaskRuntime by lazy {
+        taskRuntime ?: ProcessDurableTaskRuntime(
+            controlRoot,
+            object : Clock { override fun now(): Instant = Instant.now() },
+        )
+    }
     companion object {
         private const val MAX_SUBJECT_LEN = 256
         private val SHA7_PATTERN = Regex("^[0-9a-f]{7}")
@@ -59,21 +77,22 @@ class GitChangelogWriter(
                 range
             )
 
-            val process = ProcessBuilder(args)
-                .redirectErrorStream(true)
-                .start()
-
-            val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-            if (!completed) {
+            val request = TaskExecutionRequest(
+                task = TaskSpec.ExecTask(argv = args),
+                runId = RunId("git-log-${UUID.randomUUID()}"),
+                opId = "git-log-${UUID.randomUUID()}",
+                timeoutMs = timeoutSeconds * 1000,
+                env = emptyMap(),
+            )
+            val captured = runBlocking { runtimeInstance.runCaptured(request) }
+            if (captured.timedOut) {
                 return Result.failure(IllegalStateException("git log timed out after ${timeoutSeconds}s"))
             }
-
-            if (process.exitValue() != 0) {
-                return Result.failure(IllegalStateException("git log failed with exit ${process.exitValue()}"))
+            if (captured.exitCode != 0) {
+                return Result.failure(IllegalStateException("git log failed (exit ${captured.exitCode}): ${captured.combinedOutput}"))
             }
 
-            val output = process.inputStream.bufferedReader().readText()
-            val newLines = output
+            val newLines = captured.combinedOutput
                 .trim()
                 .lines()
                 .filter { it.isNotBlank() }

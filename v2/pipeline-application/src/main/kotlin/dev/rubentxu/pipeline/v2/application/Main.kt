@@ -177,34 +177,133 @@ fun main(args: Array<String>) {
     val scriptPath = Paths.get(config.scriptPath!!)
 
     if (command == "validate") {
+        // M2-002: validate NEVER starts processes. It compiles the script
+        // and reports diagnostics — nothing else.
         val rawStore = InMemoryEventStore()
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
-        val events = execute(scriptPath, store)
+        val scriptContent = scriptPath.toFile().readText()
+        val validateRunId = java.util.UUID.randomUUID().toString()
+        val host = Kotlin24ScriptingHost(store, validateRunId)
+        val dslJar = ScriptDefinition.dslApiJar()
+        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
+        val compileResult = host.compile(definition)
+        val events = store.eventsFor(validateRunId).toList()
         println(JsonEventLog.encode(events))
+        if (!compileResult.isSuccess) {
+            System.err.println("VALIDATION FAILED")
+            System.exit(1)
+        } else {
+            System.err.println("VALIDATION SUCCESSFUL")
+        }
         return
     }
 
     // "run" command.
     if (config.dbPath == null) {
-        // Default: in-memory store for backwards compatibility (M2-R2 behavior).
-        val rawStore = InMemoryEventStore()
-        val store = RedactingEventSink(rawStore, secretPatternRegistry)
-        val events = execute(scriptPath, store)
-        println(JsonEventLog.encode(events))
-        // D5: 3-state outcome — check RunFinished outcome and propagate to exit code.
-        // Compilation failure is reflected in RunFinished.outcome = "failure".
-        val lastEvent = events.lastOrNull()
-        val runOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
-        when (runOutcome) {
-            "success", "unstable" -> {
-                // D5: unstable exits 0 like success ( Jenkins verbatim )
-                System.err.println("Pipeline finished with ${runOutcome.uppercase()}")
+        // LF-0208 (Single Runtime Spine): storage choice must not select a
+        // different execution algorithm. Without --db the run uses the SAME
+        // durable spine with volatile (in-memory) stores — same walker,
+        // same coordinator, same semantics; nothing survives the process.
+        // --resume is rejected: there is no durable state to resume from.
+        if (config.resumeFlag) {
+            System.err.println("Error: --resume requires --db (no durable state exists without a journal database)")
+            System.exit(2)
+            return
+        }
+        val rawEventStore = InMemoryEventStore()
+        val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
+
+        val scriptContent = scriptPath.toFile().readText()
+        val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
+            scriptPath.toString(),
+            scriptContent,
+        )
+        val controlDirRoot: Path = java.nio.file.Files.createTempDirectory("pipelinek-inmem-run")
+        val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
+        val fresh = UuidRunIdGenerator().next()
+        runIdDirectory.record(definitionId, fresh)
+        val runId: String = fresh.value
+        val host = Kotlin24ScriptingHost(eventStore, runId)
+        val dslJar = ScriptDefinition.dslApiJar()
+        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
+        val result = host.compile(definition0)
+
+        val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
+            val scriptInstance = result.value
+            scriptInstance?.let { inst ->
+                try {
+                    val resultMethod = inst.javaClass.getMethod("get\$\$result")
+                    @Suppress("UNCHECKED_CAST")
+                    resultMethod.invoke(inst) as? PipelineSpec
+                } catch (_: Exception) {
+                    null
+                }
             }
-            else -> {
-                System.err.println("Pipeline finished with FAILURE")
-                System.exit(1)
+        } else null
+
+        val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+        val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal =
+            dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal(clock)
+        val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore =
+            dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore(clock)
+
+        val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (pipelineSpec != null) {
+            val orchestrator = dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator(
+                journal = journal,
+                cursorStore = cursorStore,
+                divergenceDetector = dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector(),
+                effectReplayPolicy = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy(),
+                eventSink = eventStore,
+                clock = clock,
+                controlDirRoot = controlDirRoot,
+                sandboxProfile = config.sandboxProfile,
+                redactingEventSink = eventStore,
+                secretStore = null,
+                withCredentialsExecutor = null,
+            )
+            val specRegistry = SpecRegistry()
+            specRegistry.register(definitionId, pipelineSpec)
+            val definition = SpecDefinitionMapper.toDefinition(pipelineSpec, definitionId)
+            val coordinator: dev.rubentxu.pipeline.v2.domain.RunCoordinator = DurableRunCoordinator(
+                delegate = DurableRunDelegate(orchestrator::run),
+                specs = specRegistry,
+            )
+            coordinator.run(
+                dev.rubentxu.pipeline.v2.domain.RunRequest(
+                    definition = definition,
+                    runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
+                )
+            )
+        } else {
+            null
+        }
+
+        val events = eventStore.eventsFor(runId).toList()
+        println(JsonEventLog.encode(events))
+        val exitFailure: Boolean = if (runOutcome != null) {
+            when (runOutcome) {
+                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> {
+                    System.err.println("Pipeline finished with SUCCESS"); false
+                }
+                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> {
+                    System.err.println("Pipeline finished with UNSTABLE"); false
+                }
+                else -> {
+                    System.err.println("Pipeline finished with FAILURE"); true
+                }
+            }
+        } else {
+            val lastEvent = events.lastOrNull()
+            val legacyOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
+            when (legacyOutcome) {
+                "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
+                "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
+                else -> { System.err.println("Pipeline finished with FAILURE"); true }
             }
         }
+        if (exitFailure) System.exit(1)
         return
     }
 

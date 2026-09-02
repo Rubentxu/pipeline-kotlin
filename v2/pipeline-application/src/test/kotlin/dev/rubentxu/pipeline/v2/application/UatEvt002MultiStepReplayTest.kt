@@ -85,14 +85,20 @@ class UatEvt002MultiStepReplayTest {
     @Test
     fun `multi-step script compiles successfully`() {
         val (stdout, events) = runAndDecode()
-        // 2 stages x 2 steps each + 4 run/compilation events + 2 stage finishes + 4 EchoOutputCaptured + 2 StepFailed (INC-R8-ARC-001) = 22
-        assertEquals(22, events.size, "Expected 22 events from multi-step fixture: $stdout")
+        // Durable-spine timeline (LF-0208: sh steps REALLY execute now):
+        // 2 compilation events + 2 run events + 2x (StageStarted + 2x
+        // (StepStarted + EchoOutputCaptured for echo + StepFinished for
+        // echo + StepStarted + StepFinished for sh) + StageFinished) = 18.
+        // INC-R8-ARC-001 historical note: under the legacy record-only
+        // walker the make steps were simulated as StepFailed; under real
+        // execution the fixture uses succeeding commands.
+        assertEquals(18, events.size, "Expected 18 events from multi-step fixture: $stdout")
 
-        assertTrue(events[0] is RunStarted, "events[0] must be RunStarted")
-        assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
-        assertTrue(events[2] is CompilationFinished, "events[2] must be CompilationFinished")
+        assertTrue(events[0] is CompilationStarted, "events[0] must be CompilationStarted (durable spine)")
+        assertTrue(events[1] is CompilationFinished, "events[1] must be CompilationFinished")
+        assertTrue(events[2] is RunStarted, "events[2] must be RunStarted")
 
-        val cf = events[2] as CompilationFinished
+        val cf = events[1] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         assertTrue(cf.diagnostics.isEmpty(), "CompilationFinished diagnostics must be empty: ${cf.diagnostics}")
 
@@ -108,9 +114,10 @@ class UatEvt002MultiStepReplayTest {
         assertEquals(2, stageFinishedEvents.size, "Must have 2 StageFinished events")
         assertEquals(4, stepStartedEvents.size, "Must have 4 StepStarted events")
         assertEquals(4, stepFinishedEvents.size, "Must have 4 StepFinished events")
-        assertEquals(4, echoCapturedEvents.size, "Must have 4 EchoOutputCaptured events (one per step)")
-        // INC-R8-ARC-001: sh failure emits StepFailed; make + make test fail → 2 StepFailed events
-        assertEquals(2, stepFailedEvents.size, "Must have 2 StepFailed events (make failures): ${stepFailedEvents.map { it.message }}")
+        // EchoOutputCaptured is emitted for echo steps under the durable spine.
+        assertEquals(2, echoCapturedEvents.size, "Must have 2 EchoOutputCaptured events (one per echo step)")
+        // Real execution: succeeding commands produce no StepFailed events.
+        assertEquals(0, stepFailedEvents.size, "No StepFailed events expected: ${stepFailedEvents.map { it.message }}")
 
         // Verify build stage
         val buildStageStart = stageStartedEvents.find { it.stageName == "build" }

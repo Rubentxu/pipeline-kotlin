@@ -78,14 +78,16 @@ class UatEvt001ReplayTest {
     @Test
     fun `re-parsed timeline equals original with correct kinds`() {
         val (stdout, events) = runAndDecode()
-        // hello.pipeline.kts (DSL, 1 stage x 1 step):
-        // RunStarted, CompilationStarted, CompilationFinished, StageStarted,
+        // hello.pipeline.kts (DSL, 1 stage x 1 step) under the Single Runtime
+        // Spine (LF-0208): compilation events precede RunStarted because the
+        // script compiles before the coordinator starts the run.
+        // CompilationStarted, CompilationFinished, RunStarted, StageStarted,
         // StepStarted, EchoOutputCaptured, StepFinished, StageFinished, RunFinished
         assertEquals(9, events.size, "Expected 9 events for hello DSL pipeline: $stdout")
 
-        assertTrue(events[0] is RunStarted, "events[0] must be RunStarted")
-        assertTrue(events[1] is CompilationStarted, "events[1] must be CompilationStarted")
-        assertTrue(events[2] is CompilationFinished, "events[2] must be CompilationFinished")
+        assertTrue(events[0] is CompilationStarted, "events[0] must be CompilationStarted")
+        assertTrue(events[1] is CompilationFinished, "events[1] must be CompilationFinished")
+        assertTrue(events[2] is RunStarted, "events[2] must be RunStarted")
         assertTrue(events[3] is StageStarted, "events[3] must be StageStarted (DSL evaluated)")
         assertTrue(events[4] is StepStarted, "events[4] must be StepStarted")
         assertTrue(events[5] is EchoOutputCaptured, "events[5] must be EchoOutputCaptured")
@@ -93,7 +95,7 @@ class UatEvt001ReplayTest {
         assertTrue(events[7] is StageFinished, "events[7] must be StageFinished")
         assertTrue(events[8] is RunFinished, "events[8] must be RunFinished")
 
-        val cf = events[2] as CompilationFinished
+        val cf = events[1] as CompilationFinished
         assertEquals("v1", cf.cacheKey.version, "cacheKey.version must be v1")
         assertEquals(64, cf.cacheKey.value.length, "cacheKey.value must be 64-char hex")
         assertTrue(cf.diagnostics.isEmpty(), "CompilationFinished diagnostics must be empty for DSL: ${cf.diagnostics}")
@@ -120,11 +122,27 @@ class UatEvt001ReplayTest {
 
         assertEquals(events1.size, events2.size, "Both runs must produce the same number of events")
 
+        // LF-0206 identity model: each invocation has exactly one RunId and
+        // two invocations of the same script MUST have different RunIds
+        // (M1-001) while producing structurally identical timelines.
+        val runIds1 = events1.map { it.runId }.distinct()
+        val runIds2 = events2.map { it.runId }.distinct()
+        assertEquals(1, runIds1.size, "Timeline 1 must use a single RunId")
+        assertEquals(1, runIds2.size, "Timeline 2 must use a single RunId")
+        assertTrue(
+            runIds1.single() != runIds2.single(),
+            "Two invocations of the same script must have different RunIds (M1-001)",
+        )
+
         for (i in events1.indices) {
             val e1 = events1[i]
             val e2 = events2[i]
+
+            // LF-0206: RunId is unique per invocation. Timelines must be
+            // structurally equal EXCEPT the run id, which must differ
+            // between invocations (M1-001) while staying internally
+            // consistent within each timeline.
             assertEquals(e1.kind, e2.kind, "Event $i kind must match")
-            assertEquals(e1.runId, e2.runId, "Event $i runId must match")
             assertEquals(e1.sequence, e2.sequence, "Event $i sequence must match")
 
             if (e1 is CompilationFinished && e2 is CompilationFinished) {

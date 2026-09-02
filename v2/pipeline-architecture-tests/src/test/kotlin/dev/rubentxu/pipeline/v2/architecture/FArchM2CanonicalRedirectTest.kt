@@ -171,6 +171,60 @@ class FArchM2CanonicalRedirectTest {
         )
     }
 
+    @Test
+    fun `no alternate runner is reachable after LF-0208`() {
+        val pipelineRunSource = sanitizedSource(
+            FitnessPaths.v2Root()
+                .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PipelineRun.kt")
+        )
+        val mainSource = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
+
+        // The non-durable walker and its entry point are gone. The regex
+        // deliberately does NOT match walkPipelineSpecDurable (negative
+        // lookahead on 'Durable').
+        assertFalse(
+            Regex("""fun\s+execute\s*\(""").containsMatchIn(pipelineRunSource),
+            "PipelineRun must not declare the non-durable execute() entry point",
+        )
+        assertFalse(
+            Regex("""private\s+fun\s+walkPipelineSpec\(""").containsMatchIn(pipelineRunSource),
+            "PipelineRun must not declare the non-durable walkPipelineSpec walker",
+        )
+        assertTrue(
+            Regex("""internal\s+suspend\s+fun\s+walkPipelineSpecDurable\(""").containsMatchIn(pipelineRunSource),
+            "The durable walker must remain (it IS the single execution algorithm)",
+        )
+        assertFalse(
+            Regex("""\bexecute\s*\(\s*scriptPath""").containsMatchIn(mainSource),
+            "Main must not call the deleted non-durable runner",
+        )
+    }
+
+    @Test
+    fun `Single Runtime Spine - storage choice does not select the execution algorithm`() {
+        val mainSource = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
+
+        // BOTH the --db path and the in-memory path must go through the
+        // same DurableRunCoordinator port (M2-006 + spine rule).
+        val coordinatorWiringCount = Regex("""DurableRunCoordinator\(""").findAll(mainSource).count()
+        assertTrue(
+            coordinatorWiringCount >= 2,
+            "Main must wire DurableRunCoordinator for BOTH storage modes (found $coordinatorWiringCount wiring sites)",
+        )
+        // The in-memory branch uses the in-memory journal/cursor stores.
+        assertTrue(
+            mainSource.contains("InMemoryOperationJournal") && mainSource.contains("InMemoryReplayCursorStore"),
+            "The in-memory run path must use the in-memory journal and cursor stores",
+        )
+        // Validate must never walk: it is compile-only (M2-002).
+        val validateSlice = mainSource.substringAfter("command == \"validate\"")
+            .substringBefore("// \"run\" command")
+        assertFalse(
+            validateSlice.contains("walkPipelineSpec"),
+            "validate must not walk or execute steps (M2-002: validate no inicia procesos)",
+        )
+    }
+
     private fun interfacePattern(name: String): Regex =
         Regex("""(?m)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*(?:fun\s+)?interface\s+$name\b""")
 

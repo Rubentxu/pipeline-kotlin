@@ -59,13 +59,14 @@ class UatDsl005TimeoutGrammarTest {
 
     @Test
     fun `timeout-retry script compiles and emits parseable JSON`() {
+        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
         val result = ProcessBuilder(appBin.toString(), "run", timeoutRetryScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
             .also { it.waitFor() }
 
-        val stdout = result.inputStream.bufferedReader().readText().trim()
+        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
         assertTrue(stdout.isNotEmpty(), "stdout must not be empty")
         assertTrue(stdout.startsWith("["), "stdout must start with '['")
         assertTrue(stdout.endsWith("]"), "stdout must end with ']'")
@@ -109,7 +110,7 @@ class UatDsl005TimeoutGrammarTest {
         val (_, events) = runAndDecode()
 
         // Verify RunStarted
-        assertTrue(events.first() is RunStarted, "First event must be RunStarted")
+        assertTrue(events.first() is CompilationStarted, "First event must be CompilationStarted (durable spine: script compiles before the run starts)")
         // Verify RunFinished
         assertTrue(events.last() is RunFinished, "Last event must be RunFinished")
 
@@ -139,12 +140,13 @@ class UatDsl005TimeoutGrammarTest {
     }
 
     private fun runAndDecode(): Pair<String, List<DomainEvent>> {
+        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
         val pb = ProcessBuilder(appBin.toString(), "run", timeoutRetryScript.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()
         val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
+        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
         if (exitCode != 0) {
             val stderr = process.errorStream.bufferedReader().readText()
             throw IllegalStateException("CLI exited with $exitCode. stderr: $stderr")

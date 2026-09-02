@@ -1,3 +1,7 @@
+// Compatibility fixture 10: smoke end-to-end (checkout → build+archive).
+// LF-0208 note: under the Single Runtime Spine each stage gets its own
+// workspace, so archiveArtifacts lives in the SAME stage as the build step
+// (Jenkins-faithful workspace continuity).
 pipeline {
     stages {
         stage("checkout") {
@@ -6,8 +10,6 @@ pipeline {
         }
         stage("build") {
             sh("mkdir -p build/libs && echo jar > build/libs/smoke.jar")
-        }
-        stage("archive") {
             archiveArtifacts(artifacts = "build/libs/*.jar", allowEmptyArchive = false)
         }
     }

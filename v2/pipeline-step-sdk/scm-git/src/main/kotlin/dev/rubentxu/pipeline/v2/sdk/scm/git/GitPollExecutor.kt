@@ -1,7 +1,18 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskRuntime
+import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
+import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.runCaptured
+import kotlinx.coroutines.runBlocking
+import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
+import java.time.Instant
+import java.util.UUID
 
 /**
  * Executes `git ls-remote <url> <branch>` to get the remote SHA.
@@ -15,7 +26,16 @@ import java.util.concurrent.TimeUnit
  */
 class GitPollExecutor(
     private val timeoutSeconds: Long = 30,
+    private val taskRuntime: DurableTaskRuntime? = null,
+    private val controlRoot: Path = Files.createTempDirectory("git-poll-tasks"),
 ) {
+    private val runtimeInstance: DurableTaskRuntime by lazy {
+        taskRuntime ?: ProcessDurableTaskRuntime(
+            controlRoot,
+            object : Clock { override fun now(): Instant = Instant.now() },
+        )
+    }
+
     /**
      * Execute git ls-remote and return the remote SHA.
      *
@@ -27,33 +47,30 @@ class GitPollExecutor(
     fun execute(url: String, branch: String, credentialsApplier: GitCredentialsApplier? = null): Result<String> {
         return try {
             val args = listOf("git", "ls-remote", url, branch)
-            val builder = ProcessBuilder(args)
-                .redirectErrorStream(true)
+            // ls-remote historically used redirectErrorStream(true); emulate
+            // by passing both streams into the captured run and joining for
+            // failure classification.
+            val env = credentialsApplier?.buildEnv() ?: emptyMap()
+            val secretEnv = env.mapValues { (_, v) -> SecretHandle.plain(v) }
+            val request = TaskExecutionRequest(
+                task = TaskSpec.ExecTask(argv = args),
+                runId = RunId("git-poll-${UUID.randomUUID()}"),
+                opId = "git-poll-${UUID.randomUUID()}",
+                timeoutMs = timeoutSeconds * 1000,
+                env = secretEnv,
+            )
+            val captured = runBlocking { runtimeInstance.runCaptured(request) }
 
-            // Wire buildEnv() into ProcessBuilder.environment() — GIT_CONFIG_GLOBAL, GIT_SSH_COMMAND, GIT_ASKPASS
-            credentialsApplier?.buildEnv()?.forEach { (key, value) ->
-                builder.environment()[key] = value
-            }
-
-            val process = builder.start()
-
-            val output = process.inputStream.bufferedReader().readText()
-            val exited = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-
-            if (!exited) {
-                // Timeout
+            if (captured.timedOut) {
                 return Result.failure(IllegalStateException("git ls-remote timed out after ${timeoutSeconds}s"))
             }
-
-            val exitValue = process.exitValue()
-            if (exitValue != 0) {
-                // Non-zero exit
-                val reason = classifyFailure(output, exitValue)
+            if (captured.exitCode != 0) {
+                val reason = classifyFailure(captured.combinedOutput, captured.exitCode)
                 return Result.failure(reason)
             }
 
             // Parse output: "<sha>\t<ref>"
-            val firstLine = output.lines().firstOrNull() ?: ""
+            val firstLine = captured.combinedOutput.lines().firstOrNull() ?: ""
             val sha = firstLine.substringBefore("\t").trim()
 
             if (sha.isBlank()) {

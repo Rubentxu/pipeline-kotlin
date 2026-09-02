@@ -16,6 +16,8 @@ kotlin {
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
+    implementation(project(":pipeline-step-sdk:runtime"))
+    implementation(libs.kotlinx.coroutines.core)
 
     // Spring AntPathMatcher for Ant-style glob matching
     implementation("org.springframework:spring-core:6.2.4")

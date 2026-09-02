@@ -67,6 +67,7 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.Effect
 import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
 import dev.rubentxu.pipeline.v2.sdk.runtime.error as sdkError
 import dev.rubentxu.pipeline.v2.sdk.runtime.sleep as sdkSleep
@@ -1207,11 +1208,30 @@ private suspend fun executeDurableStepImpl(
                     stepIndex = stepIndex,
                     previousRemoteSha = null,
                 )
-                // Execute checkout via GitCheckoutExecutor
-                val pollExecutor = GitPollExecutor()
-                val changelogWriter = GitChangelogWriter()
+                // Execute checkout via GitCheckoutExecutor (M3: git subcommands run
+                // through the shared ProcessDurableTaskRuntime, scoped under
+                // controlDirRoot/git-tasks so reconciliation can replay them).
+                val gitTasksRoot = (controlDirRoot ?: java.nio.file.Files.createTempDirectory("git-tasks"))
+                    .resolve("git-tasks")
+                java.nio.file.Files.createDirectories(gitTasksRoot)
+                val gitRuntime = ProcessDurableTaskRuntime(
+                    gitTasksRoot,
+                    object : dev.rubentxu.pipeline.v2.domain.durable.Clock {
+                        override fun now(): java.time.Instant = java.time.Instant.now()
+                    },
+                )
+                val pollExecutor = GitPollExecutor(taskRuntime = gitRuntime)
+                val changelogWriter = GitChangelogWriter(taskRuntime = gitRuntime)
                 val credentialsApplier = GitCredentialsApplier(credsDir, GitCredentials(), secretStore)
-                val checkoutExecutor = GitCheckoutExecutor(pollExecutor, changelogWriter, credentialsApplier, javaClock, secretStore)
+                val checkoutExecutor = GitCheckoutExecutor(
+                    poll = pollExecutor,
+                    changelog = changelogWriter,
+                    credentialsApplier = credentialsApplier,
+                    clock = javaClock,
+                    secretStore = secretStore,
+                    taskRuntime = gitRuntime,
+                    gitControlRoot = gitTasksRoot,
+                )
                 try {
                     val result = checkoutExecutor.execute(checkoutRequest)
                     if (result.isSuccess) "success" else "failure"

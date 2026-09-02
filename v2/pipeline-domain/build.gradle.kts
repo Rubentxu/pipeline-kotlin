@@ -5,6 +5,8 @@ plugins {
 
 dependencies {
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
+    testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
     testImplementation(libs.junit.jupiter)

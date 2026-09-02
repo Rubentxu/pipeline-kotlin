@@ -33,7 +33,6 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
-import kotlinx.coroutines.runBlocking
 
 /**
  * CLI entry point for the V2 pipeline runner.
@@ -324,37 +323,65 @@ fun main(args: Array<String>) {
         withCredentialsExecutor = withCredentialsExecutor,
     )
 
-    // Run via orchestrator (fresh run or resume based on --resume flag)
-    if (pipelineSpec != null) {
-        try {
-            runBlocking {
-                orchestrator.run(pipelineSpec, runId, startFromCursor = config.resumeFlag)
-            }
-        } catch (e: Throwable) {
-            System.err.println("[DEBUG-diag-001] Orchestrator threw: ${e::class.java.name}: ${e.message}")
-            e.printStackTrace(System.err)
-            throw e
-        }
+    // LF-0205 redirect: the CLI reaches the durable runtime ONLY through
+    // the RunCoordinator port. The orchestrator is constructed here (it is
+    // the composition root) but handed in as a DurableRunDelegate; the
+    // typed outcome returned by the coordinator drives the exit code.
+    val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (pipelineSpec != null) {
+        val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
+            scriptPath.toString(),
+            scriptContent,
+        )
+        val specRegistry = SpecRegistry()
+        specRegistry.register(definitionId, pipelineSpec)
+        val definition = SpecDefinitionMapper.toDefinition(pipelineSpec, definitionId)
+        val coordinator: dev.rubentxu.pipeline.v2.domain.RunCoordinator = DurableRunCoordinator(
+            delegate = DurableRunDelegate(orchestrator::run),
+            specs = specRegistry,
+        )
+        coordinator.run(
+            dev.rubentxu.pipeline.v2.domain.RunRequest(
+                definition = definition,
+                runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
+                resumeFromCursor = config.resumeFlag,
+            )
+        )
+    } else {
+        null
     }
 
     val events = eventStore.eventsFor(runId).toList()
-    val lastEvent = events.lastOrNull()
-    val runOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
     // Jenkins verbatim: print events first, then propagate failure to OS exit code
     println(JsonEventLog.encode(events))
-    // D5: 3-state outcome widening — unstable exits 0 like success, failure exits 1
-    when (runOutcome) {
-        "success" -> {
-            System.err.println("Pipeline finished with SUCCESS")
+    // D5: 3-state outcome widening — unstable exits 0 like success, failure exits 1.
+    // When the coordinator ran, the typed outcome is the single authority for the
+    // exit decision; the legacy event-based branch only covers compile-failure
+    // paths where no definition was produced.
+    val exitFailure: Boolean = if (runOutcome != null) {
+        when (runOutcome) {
+            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> {
+                System.err.println("Pipeline finished with SUCCESS"); false
+            }
+            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> {
+                System.err.println("Pipeline finished with UNSTABLE"); false
+            }
+            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> {
+                System.err.println("Pipeline finished with FAILURE"); true
+            }
+            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Aborted -> {
+                System.err.println("Pipeline finished with FAILURE"); true
+            }
         }
-        "unstable" -> {
-            System.err.println("Pipeline finished with UNSTABLE")
-        }
-        else -> {
-            System.err.println("Pipeline finished with FAILURE")
-            System.exit(1)
+    } else {
+        val lastEvent = events.lastOrNull()
+        val legacyOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
+        when (legacyOutcome) {
+            "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
+            "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
+            else -> { System.err.println("Pipeline finished with FAILURE"); true }
         }
     }
+    if (exitFailure) System.exit(1)
 }
 
 /**

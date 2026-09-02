@@ -11,6 +11,15 @@ package dev.rubentxu.pipeline.v2.domain
  * like "the coordinator did NOT dispatch skipped steps on resume" trivial
  * to write.
  *
+ * ## Thread safety
+ *
+ * Call logging is synchronized, so ONE instance can safely sit behind a
+ * [ConcurrentStepDispatcher] receiving parallel wave dispatches — exactly
+ * the M2-004 scenario ("parallel usa dispatcher principal"). Recorded
+ * order is dispatch-call order across threads (the wave submits in
+ * declaration order; interleaving between concurrent calls is possible
+ * by design and is part of what the tests characterise).
+ *
  * ## Configuration
  *
  * Outcomes are configured per step id at construction. A step id without
@@ -20,8 +29,8 @@ package dev.rubentxu.pipeline.v2.domain
  * repeating.
  *
  * The recorded call log is exposed read-only via [dispatchedSteps] and
- * [dispatchCount]. The dispatcher is NOT thread-safe (tests are
- * sequential); concurrent use will corrupt the call log.
+ * [dispatchCount]. The outcome index computation and the call log are
+ * updated atomically per dispatch.
  *
  * @see StepDispatcher
  * @see InMemoryRunCoordinator
@@ -37,21 +46,22 @@ class RecordingStepDispatcher(
 
     /** Step ids dispatched so far, in dispatch order, with their attempt numbers. */
     val dispatchedSteps: List<Pair<String, Int>>
-        get() = calls.toList()
+        get() = synchronized(calls) { calls.toList() }
 
     /** Step ids dispatched so far, in dispatch order, without attempt numbers. */
     val dispatchedStepIds: List<String>
-        get() = calls.map { it.first }
+        get() = synchronized(calls) { calls.map { it.first } }
 
     /** Number of times the given step id has been dispatched. */
-    fun dispatchCount(stepId: String): Int = calls.count { it.first == stepId }
+    fun dispatchCount(stepId: String): Int = synchronized(calls) { calls.count { it.first == stepId } }
 
-    override fun dispatch(step: StepDescriptor, context: StepExecutionContext): StepOutcome {
-        calls += step.id to context.attempt
-        val configured = outcomesView[step.id] ?: return StepOutcome.Success
-        val index = (calls.count { it.first == step.id } - 1).coerceAtMost(configured.size - 1)
-        return configured[index]
-    }
+    override fun dispatch(step: StepDescriptor, context: StepExecutionContext): StepOutcome =
+        synchronized(calls) {
+            calls += step.id to context.attempt
+            val configured = outcomesView[step.id] ?: return StepOutcome.Success
+            val index = (calls.count { it.first == step.id } - 1).coerceAtMost(configured.size - 1)
+            configured[index]
+        }
 
     /** Returns a dispatcher that records calls but yields [StepOutcome.Success] for every step. */
     companion object {

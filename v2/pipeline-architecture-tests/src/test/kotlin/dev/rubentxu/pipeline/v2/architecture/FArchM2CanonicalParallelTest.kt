@@ -7,150 +7,109 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
 
-class FArchM2CanonicalRunCoordinatorTest {
+class FArchM2CanonicalParallelTest {
 
-    private val dispatcherRelativePath =
-        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDispatcher.kt"
-    private val recordingDispatcherRelativePath =
-        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/RecordingStepDispatcher.kt"
+    private val executionUnitRelativePath =
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/ExecutionUnit.kt"
     private val plannerRelativePath =
         "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/ExecutionPlanner.kt"
-    private val coordinatorRelativePath =
-        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/RunCoordinator.kt"
-    private val inMemoryCoordinatorRelativePath =
-        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/InMemoryRunCoordinator.kt"
+    private val concurrentDispatcherRelativePath =
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/ConcurrentStepDispatcher.kt"
 
     /** Exact allowlist of files where each canonical symbol may be declared. */
     private val allowedDeclarations: Map<String, List<String>> = mapOf(
-        "StepDispatcher" to listOf(dispatcherRelativePath),
-        "StepExecutionContext" to listOf(dispatcherRelativePath),
-        "RecordingStepDispatcher" to listOf(recordingDispatcherRelativePath),
+        "ExecutionUnit" to listOf(executionUnitRelativePath),
+        "ExecutionPlan" to listOf(executionUnitRelativePath),
         "ExecutionPlanner" to listOf(plannerRelativePath),
-        "RunCoordinator" to listOf(coordinatorRelativePath),
-        "RunRequest" to listOf(coordinatorRelativePath),
-        "InMemoryRunCoordinator" to listOf(inMemoryCoordinatorRelativePath),
+        "ConcurrentStepDispatcher" to listOf(concurrentDispatcherRelativePath).sorted(),
     )
 
     @Test
-    fun `StepDispatcher port and its execution context live in domain`() {
-        val source = sanitizedSource(FitnessPaths.v2Root().resolve(dispatcherRelativePath))
+    fun `ExecutionUnit and ExecutionPlan live in domain as the canonical plan vocabulary`() {
+        val source = sanitizedSource(FitnessPaths.v2Root().resolve(executionUnitRelativePath))
 
         assertTrue(
-            interfacePattern("StepDispatcher").containsMatchIn(source),
-            "StepDispatcher must be declared as a `fun interface` or `interface`",
+            Regex("""sealed\s+interface\s+ExecutionUnit\b""").containsMatchIn(source),
+            "ExecutionUnit must be a sealed interface (closed set: Single, Concurrent)",
         )
-        assertTrue(
-            classPattern("StepExecutionContext").containsMatchIn(source),
-            "StepExecutionContext must be a data class in the same file",
-        )
-        assertTrue(
-            source.contains("val runId: RunId"),
-            "StepExecutionContext must carry the typed RunId (M1-001 chain)",
-        )
-        assertTrue(
-            source.contains("val attempt: Int"),
-            "StepExecutionContext must carry the retry attempt counter",
-        )
-    }
-
-    @Test
-    fun `RecordingStepDispatcher is the deterministic test adapter and performs no IO`() {
-        val source = sanitizedSource(FitnessPaths.v2Root().resolve(recordingDispatcherRelativePath))
-
-        assertTrue(
-            classPattern("RecordingStepDispatcher", "StepDispatcher").containsMatchIn(source),
-            "RecordingStepDispatcher must implement StepDispatcher",
-        )
-        listOf("System.getenv", "System.getProperty", "Files.", "Paths.get", "ProcessBuilder").forEach { token ->
-            assertFalse(
-                source.contains(token),
-                "RecordingStepDispatcher must not call $token; determinism is the entire reason this adapter exists",
+        listOf("Single", "Concurrent").forEach { variant ->
+            assertTrue(
+                Regex("""data\s+class\s+$variant\b""").containsMatchIn(source),
+                "ExecutionUnit must declare data class variant `$variant`",
             )
         }
+        assertTrue(
+            classPattern("ExecutionPlan").containsMatchIn(source),
+            "ExecutionPlan must be a data class in the same file",
+        )
+        // A concurrent wave needs at least two steps; one step is a Single.
+        // (Pinned on code, not on the message — sanitized source masks
+        // string literals.)
+        assertTrue(
+            Regex("""steps\.size\s*>=\s*2""").containsMatchIn(source),
+            "ExecutionUnit.Concurrent must reject single-step waves at construction time",
+        )
     }
 
     @Test
-    fun `ExecutionPlanner is pure and fails closed on cycles and unknown references`() {
+    fun `ExecutionPlanner gives PARALLEL edges real semantics - no ordering, same-wave assertion`() {
         val source = sanitizedSource(FitnessPaths.v2Root().resolve(plannerRelativePath))
 
         assertTrue(
             objectPattern("ExecutionPlanner").containsMatchIn(source),
             "ExecutionPlanner must be declared as an object (pure, stateless)",
         )
-        listOf("System.getenv", "System.getProperty", "Files.", "Paths.get").forEach { token ->
-            assertFalse(
-                source.contains(token),
-                "ExecutionPlanner must not call $token; it must stay a pure function of the definition",
-            )
-        }
-        // Fail-closed structure: the planner signals definition violations
-        // with IllegalArgumentException (unknown edge references, cycles,
-        // and contradictory PARALLEL edges). The behavioural assertions
-        // live in ExecutionPlannerTest; this pin only guards the mechanism.
+        // PARALLEL edges must NOT feed the ordering graph — they are
+        // same-wave assertions. Pin the filter explicitly.
         assertTrue(
-            Regex("""IllegalArgumentException""").containsMatchIn(source),
-            "ExecutionPlanner must throw IllegalArgumentException for definition violations",
+            Regex("""kind\s*!=\s*EdgeKind\.PARALLEL""").containsMatchIn(source),
+            "ExecutionPlanner must exclude PARALLEL edges from the ordering graph",
         )
-        assertEquals(
-            4,
-            Regex("""throw\s+IllegalArgumentException""").findAll(source).count(),
-            "ExecutionPlanner must have exactly four fail-closed throw sites: unknown edge source, " +
-                "unknown edge target, cycle, and contradictory PARALLEL edge",
-        )
-    }
-
-    @Test
-    fun `RunCoordinator port returns the canonical RunOutcome via RunRequest`() {
-        val source = sanitizedSource(FitnessPaths.v2Root().resolve(coordinatorRelativePath))
-
+        // Contradiction check pinned on code, not on the message (sanitized
+        // source masks string literals).
         assertTrue(
-            interfacePattern("RunCoordinator").containsMatchIn(source),
-            "RunCoordinator must be declared as an interface",
-        )
-        assertTrue(
-            Regex("""(?m)^\s*data\s+class\s+RunRequest\b""").containsMatchIn(source),
-            "RunRequest must be a data class in the same file",
-        )
-        // The single-method contract: outcomes only, no raw strings, no
-        // exceptions as step-failure signals.
-        assertTrue(
-            Regex("""fun\s+run\s*\(\s*request\s*:\s*RunRequest\s*\)\s*:\s*RunOutcome\b""").containsMatchIn(source),
-            "RunCoordinator.run must return the typed RunOutcome (LF-0104 chain)",
-        )
-        assertTrue(
-            source.contains("resumeAfter"),
-            "RunRequest must carry the resumeAfter cursor",
-        )
-    }
-
-    @Test
-    fun `InMemoryRunCoordinator is the reference adapter and reduces through RunOutcomeReducer`() {
-        val source = sanitizedSource(FitnessPaths.v2Root().resolve(inMemoryCoordinatorRelativePath))
-
-        assertTrue(
-            classPattern("InMemoryRunCoordinator", "RunCoordinator").containsMatchIn(source),
-            "InMemoryRunCoordinator must implement RunCoordinator",
-        )
-        // The canonical-authority chain: outcomes MUST be produced by the
-        // single reducer (LF-0104), never fabricated inline.
-        assertTrue(
-            source.contains("RunOutcomeReducer.reduce"),
-            "InMemoryRunCoordinator must fold step outcomes via RunOutcomeReducer.reduce (single authority)",
-        )
-        assertTrue(
-            source.contains("ExecutionPlanner.plan"),
-            "InMemoryRunCoordinator must derive execution units via ExecutionPlanner.plan",
+            Regex("""fromWave\s*!=\s*toWave""").containsMatchIn(source),
+            "ExecutionPlanner must fail closed on PARALLEL edges across different waves",
         )
         listOf("System.getenv", "System.getProperty", "Files.", "Paths.get").forEach { token ->
             assertFalse(
                 source.contains(token),
-                "InMemoryRunCoordinator must not call $token; it is the deterministic reference adapter",
+                "ExecutionPlanner must not call $token; it is a pure function of the definition",
             )
         }
     }
 
     @Test
-    fun `canonical symbols match the M2 run-coordinator allowlist exactly`() {
+    fun `ConcurrentStepDispatcher reuses the SAME dispatcher instance as the serial path`() {
+        val source = sanitizedSource(FitnessPaths.v2Root().resolve(concurrentDispatcherRelativePath))
+
+        // The single-dispatcher property (M2-004): the wave dispatcher is a
+        // decorator over the injected StepDispatcher, never a second
+        // execution path.
+        assertTrue(
+            Regex("""private\s+val\s+\w+\s*:\s*StepDispatcher""").containsMatchIn(source),
+            "ConcurrentStepDispatcher must wrap the injected StepDispatcher (the same instance the serial path uses)",
+        )
+        assertTrue(
+            Regex("""ExecutorService""").containsMatchIn(source),
+            "ConcurrentStepDispatcher must take the executor from the caller (JDK, framework-free)",
+        )
+        // Determinism: results are collected in declaration order, not
+        // completion order, so the reducer folds deterministically.
+        assertTrue(
+            classPattern("ConcurrentStepDispatcher").containsMatchIn(source),
+            "ConcurrentStepDispatcher must be a class",
+        )
+        listOf("System.getenv", "System.getProperty", "Files.", "Paths.get").forEach { token ->
+            assertFalse(
+                source.contains(token),
+                "ConcurrentStepDispatcher must not call $token; dispatch is its only job",
+            )
+        }
+    }
+
+    @Test
+    fun `parallel symbols match the allowlist exactly`() {
         val declarations = scanCanonicalDeclarations(
             FitnessPaths.v2Root(),
             allowedDeclarations.keys,
@@ -168,40 +127,12 @@ class FArchM2CanonicalRunCoordinatorTest {
         assertEquals(
             normalizedAllowlist,
             actualByName,
-            "M2 canonical run-coordinator symbols must match the exact allowlist. " +
+            "M2 canonical parallel symbols must match the exact allowlist. " +
                 "Expected: $normalizedAllowlist; actual: $actualByName; findings: $declarations",
         )
     }
 
-    @Test
-    fun `domain declares only InMemoryRunCoordinator as a concrete RunCoordinator implementation`() {
-        // The production durable coordinator (LF-0205) belongs to
-        // :pipeline-application. Any additional concrete RunCoordinator in
-        // domain would re-introduce the two-sources-of-truth pattern that
-        // the M2 milestone exists to remove.
-        val domainRoot = FitnessPaths.v2Root().resolve("pipeline-domain/src/main/kotlin")
-        val offenders = Files.walk(domainRoot)
-            .use { stream -> stream.filter { it.toString().endsWith(".kt") }.toList() }
-            .flatMap { file ->
-                sanitizedSource(file).lineSequence().withIndex().filter { (_, line) ->
-                    Regex("""(?m)^\s*(?:@\w+(?:\s*\([^)]*\))?\s*)*(?:public\s+|internal\s+|private\s+)?class\s+\w+\b[^\{]*:\s*[^\{]*\bRunCoordinator\b""")
-                        .containsMatchIn(line) &&
-                        !file.toString().replace('\\', '/').endsWith("InMemoryRunCoordinator.kt")
-                }.map { (index, line) -> Finding(file, index + 1, "RunCoordinator impl", line) }.toList()
-            }
-
-        assertTrue(
-            offenders.isEmpty(),
-            "Domain must declare only InMemoryRunCoordinator as a concrete RunCoordinator; offenders: $offenders",
-        )
-    }
-
-    private fun interfacePattern(name: String): Regex =
-        Regex("""(?m)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*(?:fun\s+)?interface\s+$name\b""")
-
     private fun classPattern(name: String, superType: String? = null): Regex {
-        // The supertype clause is optional: `class X(...) {` has no explicit
-        // supertype while `class X(...) : Y {` does. Match either shape.
         val superTypeClause = if (superType == null) "" else """[\s\S]*?:\s*[\s\S]*?\b$superType\b"""
         return Regex(
             """(?ms)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*""" +

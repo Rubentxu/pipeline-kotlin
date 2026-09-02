@@ -69,10 +69,10 @@ import dev.rubentxu.pipeline.v2.sdk.Effect
 import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
+
 import dev.rubentxu.pipeline.v2.sdk.runtime.error as sdkError
 import dev.rubentxu.pipeline.v2.sdk.runtime.sleep as sdkSleep
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh
-import dev.rubentxu.pipeline.v2.sdk.runtime.ShellResult
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState

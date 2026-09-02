@@ -191,7 +191,7 @@ class FArchM3CanonicalTaskRuntimeTest {
     }
 
     @Test
-    fun `LF-0305 LF-0306 LF-0307 migrate git tar and sh onto the task runtime (no ProcessBuilder outside the runtime)`() {
+    fun `LF-0305 LF-0306 LF-0307 LF-0308 migrate git tar sh and SDK sh onto the task runtime (no ProcessBuilder outside the runtime)`() {
         val v2Root = FitnessPaths.v2Root()
 
         // The five call-site families migrated by LF-0305 (scm-git),
@@ -204,6 +204,7 @@ class FArchM3CanonicalTaskRuntimeTest {
             "pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitChangelogWriter.kt",
             "pipeline-artefacts-local/src/main/kotlin/dev/rubentxu/pipeline/v2/artefacts/local/TarWriter.kt",
             "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ShExecution.kt",
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/StepExecutors.kt",
         )
         for (relative in migratedFiles) {
             val path = v2Root.resolve(relative)
@@ -219,23 +220,41 @@ class FArchM3CanonicalTaskRuntimeTest {
             )
         }
 
-        // Global census across the application production tree: zero
-        // ProcessBuilder( call sites outside the runtime module. This is the
-        // gating condition the LF-0309 single-home pin formalises.
-        val productionRoot = v2Root.resolve("pipeline-application/src/main/kotlin")
-        if (Files.exists(productionRoot)) {
-            val offenders = Files.walk(productionRoot)
-                .use { stream -> stream.filter { it.toString().endsWith(".kt") }.toList() }
-                .flatMap { file ->
-                    sanitizedSource(file).lineSequence().withIndex().filter { (_, line) ->
-                        line.contains("ProcessBuilder(")
-                    }.map { (i, line) -> Finding(file, i + 1, "ProcessBuilder call", line) }.toList()
-                }
-            assertTrue(
-                offenders.isEmpty(),
-                "pipeline-application must not invoke ProcessBuilder directly (LF-0307 closes the last site); offenders: $offenders",
+        // LF-0308 deletion: ProcessExecutor and ShellResult are gone. Any
+        // surviving reference is a regression — the legacy PB wrapper must
+        // not reappear.
+        val legacyRefs = listOf(
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/ProcessExecutor.kt",
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/ShellResult.kt",
+            "pipeline-step-sdk/runtime/src/test/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/ProcessExecutorTest.kt",
+        )
+        for (relative in legacyRefs) {
+            assertFalse(
+                Files.exists(v2Root.resolve(relative)),
+                "$relative must not exist after LF-0308",
             )
         }
+
+        // Global census across the whole v2 tree, EXCLUDING the runtime
+        // module's main sources (ProcessDurableTaskRuntime is the only
+        // authorised home): zero ProcessBuilder( call sites. This is the
+        // LF-0309 single-home gate condition, now enforced globally.
+        val runtimeMainRoot = v2Root.resolve("pipeline-step-sdk/runtime/src/main/kotlin").toAbsolutePath()
+        val allKtFiles = FitnessPaths.walkKotlinFiles(v2Root)
+            .filter { it.toString().replace('\\', '/').contains("/src/main/kotlin/") }
+            .filter { file -> !file.toAbsolutePath().startsWith(runtimeMainRoot) }
+            .toList()
+
+        val offenders = allKtFiles
+            .flatMap { file ->
+                sanitizedSource(file).lineSequence().withIndex().filter { (_, line) ->
+                    line.contains("ProcessBuilder(")
+                }.map { (i, line) -> Finding(file, i + 1, "ProcessBuilder call", line) }.toList()
+            }
+        assertTrue(
+            offenders.isEmpty(),
+            "ProcessBuilder must appear ONLY inside the runtime module (ProcessDurableTaskRuntime home); offenders: $offenders",
+        )
     }
 
     private fun interfacePattern(name: String): Regex =

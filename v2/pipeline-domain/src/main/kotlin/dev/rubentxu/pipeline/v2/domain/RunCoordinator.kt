@@ -54,10 +54,21 @@ interface RunCoordinator {
  *                 definition must carry different run ids (M1-001).
  * @property resumeAfter optional step id: execute strictly the steps after
  *                       this one in the resolved order. `null` runs the
- *                       whole pipeline from the start.
+ *                       whole pipeline from the start. Structural resume
+ *                       (no persisted state); used by deterministic
+ *                       in-process adapters.
+ * @property resumeFromCursor optional resume flag: when `true`, the
+ *                            coordinator loads whatever persisted cursor
+ *                            state it owns for [runId] and continues from
+ *                            it (journal-backed resume, LF-0206). `false`
+ *                            (default) starts a fresh run. The two resume
+ *                            mechanisms are orthogonal: store-backed
+ *                            resume for the durable coordinator, step-id
+ *                            resume for structural adapters.
  */
 data class RunRequest(
     val definition: PipelineDefinition,
     val runId: RunId,
     val resumeAfter: String? = null,
+    val resumeFromCursor: Boolean = false,
 )

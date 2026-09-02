@@ -26,7 +26,10 @@ class FArchM3CanonicalTaskRuntimeTest {
         "ExecutionOutputSink" to listOf(runtimePortRelativePath),
         "OutputChunk" to listOf(runtimePortRelativePath),
         "TaskStream" to listOf(runtimePortRelativePath),
-        "RecordingDurableTaskRuntime" to listOf(recordingRuntimeRelativePath).sorted(),
+        "RecordingDurableTaskRuntime" to listOf(recordingRuntimeRelativePath),
+        "ProcessDurableTaskRuntime" to listOf(
+            "pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/task/ProcessDurableTaskRuntime.kt"
+        ).sorted(),
     )
 
     @Test
@@ -106,6 +109,38 @@ class FArchM3CanonicalTaskRuntimeTest {
         assertFalse(
             source.contains("ProcessBuilder"),
             "RecordingDurableTaskRuntime must never spawn processes",
+        )
+    }
+
+    @Test
+    fun `ProcessDurableTaskRuntime is the single authorised ProcessBuilder home for the task runtime`() {
+        val path = FitnessPaths.v2Root()
+            .resolve("pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/task/ProcessDurableTaskRuntime.kt")
+        val source = sanitizedSource(path)
+
+        assertTrue(
+            classPattern("ProcessDurableTaskRuntime", "DurableTaskRuntime").containsMatchIn(source),
+            "ProcessDurableTaskRuntime must implement the domain DurableTaskRuntime port",
+        )
+        assertTrue(
+            source.contains("ProcessBuilder(argv)"),
+            "ExecTask must construct the process from argv verbatim (no shell)",
+        )
+        // O(chunk) invariant: streaming reads only — whole-pipe reads are
+        // the memory blow-up the spec prohibits.
+        assertFalse(
+            source.contains("readText()") || source.contains("readAllBytes()"),
+            "ProcessDurableTaskRuntime must not buffer whole pipes (O(chunk) invariant)",
+        )
+        // Process-tree termination.
+        assertTrue(
+            source.contains("descendants()"),
+            "ProcessDurableTaskRuntime must kill the whole process tree (LF-0304)",
+        )
+        // Atomic durable result.
+        assertTrue(
+            source.contains("ATOMIC_MOVE"),
+            "Durable result must be written atomically",
         )
     }
 

@@ -26,7 +26,10 @@ class FArchM2CanonicalRedirectTest {
         "DurableRunCoordinator" to listOf(coordinatorRelativePath),
         "DurableRunDelegate" to listOf(coordinatorRelativePath),
         "SpecRegistry" to listOf(registryRelativePath),
-        "SpecDefinitionMapper" to listOf(mapperRelativePath).sorted(),
+        "SpecDefinitionMapper" to listOf(mapperRelativePath),
+        "RunIdDirectory" to listOf(
+            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/RunIdDirectory.kt"
+        ).sorted(),
     )
 
     @Test
@@ -95,6 +98,52 @@ class FArchM2CanonicalRedirectTest {
         assertTrue(
             source.contains("RunRequest("),
             "Main must build a typed RunRequest for the coordinator call",
+        )
+    }
+
+    @Test
+    fun `Main identity reinterpretation - derived hash is DefinitionId and RunId is fresh or recovered`() {
+        val source = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
+
+        // The legacy deriveRunId helper must be gone: the deterministic hash
+        // survives only as DeterministicIdGenerator.definitionId (LF-0206
+        // reinterpretation per CANONICAL_CONTRACTS_SPEC §Identity).
+        assertFalse(
+            source.contains("deriveRunId("),
+            "Main must NOT derive the run id from the script hash; the hash is the DefinitionId",
+        )
+        // Fresh invocations get a unique RunId from the M1 generator seam.
+        assertTrue(
+            source.contains("UuidRunIdGenerator"),
+            "Main must generate fresh RunIds via UuidRunIdGenerator (RunId unique per invocation)",
+        )
+        // Resume recovers the PRIOR RunId instead of re-deriving it (M1-002).
+        assertTrue(
+            source.contains("RunIdDirectory"),
+            "Main must recover the prior RunId from the RunIdDirectory on --resume",
+        )
+        assertTrue(
+            Regex("""DeterministicIdGenerator\.definitionId""").containsMatchIn(source),
+            "Main must derive the DefinitionId via DeterministicIdGenerator.definitionId",
+        )
+    }
+
+    @Test
+    fun `RunIdDirectory lives in application as the definition-to-lastrun mapping`() {
+        val source = sanitizedSource(
+            FitnessPaths.v2Root()
+                .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/RunIdDirectory.kt")
+        )
+
+        assertTrue(
+            classPattern("RunIdDirectory").containsMatchIn(source),
+            "RunIdDirectory must be a class in :pipeline-application",
+        )
+        // Fail-closed contract: a resume without a prior record must be a
+        // hard error, never a silent fresh run.
+        assertTrue(
+            Regex("""IllegalArgumentException""").containsMatchIn(source),
+            "RunIdDirectory must fail closed (IllegalArgumentException) on missing or corrupted records",
         )
     }
 

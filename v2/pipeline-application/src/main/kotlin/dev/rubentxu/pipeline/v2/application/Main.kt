@@ -32,7 +32,6 @@ import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.security.MessageDigest
 
 /**
  * CLI entry point for the V2 pipeline runner.
@@ -217,9 +216,33 @@ fun main(args: Array<String>) {
     val dbPathStr = rawEventStore.databasePath()
     val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
 
-    // Compile script → PipelineSpec (same approach as execute())
+    // LF-0206 identity reinterpretation per CANONICAL_CONTRACTS_SPEC §Identity:
+    // the script-derived hash is the DefinitionId; the RunId is unique per
+    // invocation (UuidRunIdGenerator); --resume recovers the PRIOR RunId from
+    // the RunIdDirectory instead of re-deriving it. The record is written
+    // BEFORE the run starts so a run killed mid-flight is still resumable.
     val scriptContent = scriptPath.toFile().readText()
-    val runId = deriveRunId(scriptPath.toString(), scriptContent)
+    val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
+        scriptPath.toString(),
+        scriptContent,
+    )
+    // ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
+    // Can be overridden via --control-root flag for testing.
+    // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
+    val dbPath = Paths.get(config.dbPath!!)
+    val controlDirRoot: Path = if (config.controlRoot != null) {
+        Paths.get(config.controlRoot)
+    } else {
+        dbPath.parent.resolve("durable-shell")
+    }
+    val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
+    val runId: String = if (config.resumeFlag) {
+        runIdDirectory.lastRunId(definitionId).value
+    } else {
+        val fresh = UuidRunIdGenerator().next()
+        runIdDirectory.record(definitionId, fresh)
+        fresh.value
+    }
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslJar = ScriptDefinition.dslApiJar()
     val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
@@ -245,16 +268,6 @@ fun main(args: Array<String>) {
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
-
-    // ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
-    // Can be overridden via --control-root flag for testing.
-    // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
-    val dbPath = Paths.get(config.dbPath!!)
-    val controlDirRoot: Path = if (config.controlRoot != null) {
-        Paths.get(config.controlRoot)
-    } else {
-        dbPath.parent.resolve("durable-shell")
-    }
 
     // T12: Resolve SecretStore for credential injection in withCredentials blocks.
     //
@@ -328,10 +341,6 @@ fun main(args: Array<String>) {
     // the composition root) but handed in as a DurableRunDelegate; the
     // typed outcome returned by the coordinator drives the exit code.
     val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (pipelineSpec != null) {
-        val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
-            scriptPath.toString(),
-            scriptContent,
-        )
         val specRegistry = SpecRegistry()
         specRegistry.register(definitionId, pipelineSpec)
         val definition = SpecDefinitionMapper.toDefinition(pipelineSpec, definitionId)
@@ -384,13 +393,3 @@ fun main(args: Array<String>) {
     if (exitFailure) System.exit(1)
 }
 
-/**
- * Derives a deterministic runId from the script path and content.
- * Two invocations of the same script produce the same runId.
- */
-private fun deriveRunId(scriptPath: String, scriptContent: String): String {
-    val input = "$scriptPath|$scriptContent"
-    val digest = MessageDigest.getInstance("SHA-256")
-    val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
-    return hash.joinToString("") { "%02x".format(it) }.take(36)
-}

@@ -104,8 +104,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
-import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import java.time.Instant
 import java.util.UUID
@@ -763,13 +761,22 @@ private suspend fun executeDurableStepImpl(
                 )
             }
             is StepSpec.WithCredentialsBlock -> {
-                // ML-R10 (D2+D3+D4+D11): Wire real withCredentials block execution.
-                // H0: Use port-driven WithCredentialsExecutor when available.
-                // If withCredentialsExecutor is available, delegate to it.
-                // Otherwise fall back to inline implementation.
+                try {
+                    java.nio.file.Files.writeString(
+                        java.nio.file.Paths.get("/tmp/uat008-debug/wcb-${System.nanoTime()}.log"),
+                        "WithCredentialsBlock ARM: bindings.size=${step.bindings.size} steps.size=${step.steps.size} wce=${withCredentialsExecutor != null}\n",
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND,
+                    )
+                } catch (_: Exception) {}
+                // LF-0404: Single withCredentials code path. The executor handles
+                // materialization, env injection, CredentialBound / CredentialUnbound
+                // event emission, and wipe-on-close. The legacy 250-line inline
+                // branch (the carbon-copy that assigned the SAME masked file-path
+                // handle to keyFileVariable / passphraseVariable / usernameVariable)
+                // is removed — Main.kt constructs the executor whenever a
+                // secretStore is available, so the inline branch is unreachable.
                 if (withCredentialsExecutor != null) {
-                    // H0 port-driven path: executor handles CredentialBound events,
-                    // materialization, env injection, and CredentialUnbound cleanup.
                     var boundCredentials: dev.rubentxu.pipeline.v2.credentials.executor.BoundCredentials? = null
                     try {
                         boundCredentials = withCredentialsExecutor.bind(
@@ -778,8 +785,15 @@ private suspend fun executeDurableStepImpl(
                             eventSink = eventSink,
                         )
 
-                        // Build effective shOptions with credential env injected
                         val credentialEnv = boundCredentials.env()
+                        try {
+                            java.nio.file.Files.writeString(
+                                java.nio.file.Paths.get("/tmp/uat008-debug/wcb-postbind-${System.nanoTime()}.log"),
+                                "postbind: credentialEnv.keys=${credentialEnv.keys}\n",
+                                java.nio.file.StandardOpenOption.CREATE,
+                                java.nio.file.StandardOpenOption.APPEND,
+                            )
+                        } catch (_: Exception) {}
                         val effectiveShOptions = shOptions?.copy(
                             env = (shOptions.env ?: emptyMap()) + credentialEnv
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
@@ -791,7 +805,6 @@ private suspend fun executeDurableStepImpl(
                             sandbox = SandboxConfigResolver.resolve(sandboxProfile),
                         )
 
-                        // Emit StepStarted after CredentialBound events (INV-L10-CR-001)
                         val outerStepStartedId = UUID.randomUUID().toString()
                         val outerStepStartedAt = clock.now()
                         eventSink.append(
@@ -807,240 +820,24 @@ private suspend fun executeDurableStepImpl(
                             )
                         )
 
-                        // Execute inner steps with credential env injected
                         var innerOutcome = "success"
-                        for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
-                            val innerStepOutcome = executeDurableStep(
-                                step = innerStep,
-                                stageIndex = stageIndex,
-                                stepIndex = stepIndex,
-                                runId = runId,
-                                stageName = stageName,
-                                eventSink = eventSink,
-                                journal = journal,
-                                cursorStore = cursorStore,
-                                divergenceDetector = divergenceDetector,
-                                effectReplayPolicy = effectReplayPolicy,
-                                clock = clock,
-                                runOutcomeRef = runOutcomeRef,
-                                reconciledBranches = reconciledBranches,
-                                controlDirRoot = controlDirRoot,
-                                workspaceResolver = workspaceResolver,
-                                shOptions = effectiveShOptions,
-                                stepClassifications = stepClassifications,
-                                stageTimeout = stageTimeout,
-                                stageEnvironment = stageEnvironment,
-                                sandboxProfile = sandboxProfile,
-                                secretStore = secretStore,
+                        try {
+                            java.nio.file.Files.writeString(
+                                java.nio.file.Paths.get("/tmp/uat008-debug/innerloop-${System.nanoTime()}.log"),
+                                "WITH CREDS: step.steps.size=${step.steps.size} env.keys=${credentialEnv.keys}\n",
+                                java.nio.file.StandardOpenOption.CREATE,
+                                java.nio.file.StandardOpenOption.APPEND,
                             )
-                            // Emit CredentialUsed per binding per SUCCESS (D-2)
-                            if (innerStepOutcome == "success") {
-                                // Map DSL Kind to BoundPurpose (per ADR-0051 §D8)
-                                fun kindToPurpose(kind: StepSpec.CredentialsBinding.Kind): BoundPurpose = when (kind) {
-                                    StepSpec.CredentialsBinding.Kind.STRING -> BoundPurpose.API_KEY
-                                    StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> BoundPurpose.USERNAME_PASSWORD
-                                    StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> BoundPurpose.SSH_KEY
-                                    StepSpec.CredentialsBinding.Kind.FILE -> BoundPurpose.FILE
-                                    StepSpec.CredentialsBinding.Kind.CERTIFICATE -> BoundPurpose.CERTIFICATE
-                                    StepSpec.CredentialsBinding.Kind.ZIP -> BoundPurpose.ZIP
-                                    StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> BoundPurpose.USERNAME_COLON_PASSWORD
-                                }
-                                for (binding in step.bindings) {
-                                    eventSink.append(
-                                        CredentialUsed(
-                                            eventId = UUID.randomUUID().toString(),
-                                            runId = runId,
-                                            sequence = 0L,
-                                            occurredAt = clock.now(),
-                                            credentialsId = binding.credentialsId,
-                                            purpose = kindToPurpose(binding.kind),
-                                            stepIndex = stepIndex,
-                                        )
-                                    )
-                                }
-                            }
-                            if (innerStepOutcome != "success") {
-                                innerOutcome = innerStepOutcome
-                                break
-                            }
-                        }
-                        innerOutcome
-                    } finally {
-                        boundCredentials?.close()
-                    }
-                } else if (secretStore != null) {
-                    // Collect active handles for cleanup
-                    val activeHandles = mutableListOf<dev.rubentxu.pipeline.v2.domain.SecretHandle>()
-                    // Materializer for file-based credential kinds
-                    val materializer = CredentialMaterializer(secretStore)
-                    var firstException: Throwable? = null
-
-                    // Map DSL Kind to BoundPurpose (per ADR-0051 §D8)
-                    fun kindToPurpose(kind: StepSpec.CredentialsBinding.Kind): BoundPurpose = when (kind) {
-                        StepSpec.CredentialsBinding.Kind.STRING -> BoundPurpose.API_KEY
-                        StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> BoundPurpose.USERNAME_PASSWORD
-                        StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> BoundPurpose.SSH_KEY
-                        StepSpec.CredentialsBinding.Kind.FILE -> BoundPurpose.FILE
-                        StepSpec.CredentialsBinding.Kind.CERTIFICATE -> BoundPurpose.CERTIFICATE
-                        StepSpec.CredentialsBinding.Kind.ZIP -> BoundPurpose.ZIP
-                        StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> BoundPurpose.USERNAME_COLON_PASSWORD
-                    }
-
-                    // Map DSL Kind to MaterializationKind (for file-based kinds)
-                    fun kindToMaterializationKind(kind: StepSpec.CredentialsBinding.Kind): MaterializationKind? = when (kind) {
-                        StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> MaterializationKind.SshPrivateKey
-                        StepSpec.CredentialsBinding.Kind.FILE -> MaterializationKind.SecretFile
-                        StepSpec.CredentialsBinding.Kind.CERTIFICATE -> MaterializationKind.Certificate
-                        StepSpec.CredentialsBinding.Kind.ZIP -> MaterializationKind.Zip
-                        else -> null
-                    }
-
-                    try {
-                        // Build credential env map from bindings
-                        val credentialEnv = mutableMapOf<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>()
-                        for (binding in step.bindings) {
+                        } catch (_: Exception) {}
+                        for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
                             try {
-                                val purpose = kindToPurpose(binding.kind)
-                                val materializationKind = kindToMaterializationKind(binding.kind)
-
-                                if (materializationKind != null) {
-                                    // File-based kinds: materialize to temp path and inject path (D11)
-                                    // Emit CredentialBound BEFORE materialization (INV-L10-CR-001)
-                                    // If materialization fails, the catch block will handle and return "failure"
-                                    eventSink.append(
-                                        CredentialBound(
-                                            eventId = UUID.randomUUID().toString(),
-                                            runId = runId,
-                                            sequence = 0L,
-                                            occurredAt = clock.now(),
-                                            credentialsId = binding.credentialsId,
-                                            purpose = purpose,
-                                        )
-                                    )
-                                    val credential = secretStore.get(binding.credentialsId)
-                                    val materialized = materializer.materialize(credential, materializationKind)
-                                    val path = materialized.path
-                                    if (path != null) {
-                                        // Inject path as masked handle (not subject to secret redaction)
-                                        when (binding.kind) {
-                                            StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> {
-                                                binding.keyFileVariable?.let { varName ->
-                                                    // Inject the path to the key file as a masked handle
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                                binding.passphraseVariable?.let { varName ->
-                                                    // The passphrase path is injected via the same mechanism
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                                binding.usernameVariable?.let { varName ->
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                            }
-                                            StepSpec.CredentialsBinding.Kind.FILE -> {
-                                                binding.variable?.let { varName ->
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                            }
-                                            StepSpec.CredentialsBinding.Kind.CERTIFICATE -> {
-                                                binding.keystoreVariable?.let { varName ->
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                                binding.aliasVariable?.let { varName ->
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                                binding.passwordVariable?.let { varName ->
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                            }
-                                            StepSpec.CredentialsBinding.Kind.ZIP -> {
-                                                binding.variable?.let { varName ->
-                                                    credentialEnv[varName] = dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                                                }
-                                            }
-                                            else -> { /* handled above */ }
-                                        }
-                                    }
-                                } else {
-                                    // Non-file kinds: use SecretHandle directly
-                                    // Emit CredentialBound BEFORE getAsSecretHandle (INV-L10-CR-001)
-                                    // If getAsSecretHandle fails, the catch block will handle and return "failure"
-                                    eventSink.append(
-                                        CredentialBound(
-                                            eventId = UUID.randomUUID().toString(),
-                                            runId = runId,
-                                            sequence = 0L,
-                                            occurredAt = clock.now(),
-                                            credentialsId = binding.credentialsId,
-                                            purpose = purpose,
-                                        )
-                                    )
-                                    val handle = secretStore.getAsSecretHandle(binding.credentialsId)
-                                    activeHandles.add(handle)
-                                    when (binding.kind) {
-                                        StepSpec.CredentialsBinding.Kind.STRING -> {
-                                            binding.variable?.let { varName ->
-                                                credentialEnv[varName] = handle
-                                            }
-                                        }
-                                        StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> {
-                                            binding.usernameVariable?.let { varName ->
-                                                credentialEnv[varName] = handle
-                                            }
-                                            binding.passwordVariable?.let { varName ->
-                                                credentialEnv[varName] = handle
-                                            }
-                                        }
-                                        StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> {
-                                            binding.variable?.let { varName ->
-                                                credentialEnv[varName] = handle
-                                            }
-                                        }
-                                        else -> { /* file-based handled above */ }
-                                    }
-                                }
-                            } catch (e: dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException) {
-                                // Credential resolution failed - propagate failure
-                                return "failure"
-                            } catch (e: Throwable) {
-                                // Materialization or other failures - prevent pipeline crash, return failure
-                                // This catches MaterializationKindUnsupportedException, LinkedSecretReferenceTypeMismatchException,
-                                // IOException from file operations, and any other unexpected errors
-                                return "failure"
-                            }
-                        }
-
-                        // Merge credential env into shOptions for inner step execution
-                        val effectiveShOptions = shOptions?.copy(
-                            env = (shOptions.env ?: emptyMap()) + credentialEnv
-                        ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
-                            workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
-                                ?: java.nio.file.Files.createTempDirectory("withcreds"),
-                            captureStdout = false,
-                            timeoutMs = stageTimeout,
-                            env = credentialEnv,
-                            sandbox = SandboxConfigResolver.resolve(sandboxProfile),
-                        )
-
-                        // CR-BD-026 fix: emit StepStarted AFTER all CredentialBound events.
-                        // This satisfies INV-L10-CR-001: CredentialBound before StepStarted.
-                        val outerStepStartedId = UUID.randomUUID().toString()
-                        val outerStepStartedAt = clock.now()
-                        eventSink.append(
-                            StepStarted(
-                                eventId = outerStepStartedId,
-                                runId = runId,
-                                sequence = 0L,
-                                occurredAt = outerStepStartedAt,
-                                stageIndex = stageIndex,
-                                stepIndex = stepIndex,
-                                stepName = step.name,
-                                stepType = step.type,
-                            )
-                        )
-
-                        // Execute inner steps with credential env injected
-                        var innerOutcome = "success"
-                        for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
+                                java.nio.file.Files.writeString(
+                                    java.nio.file.Paths.get("/tmp/uat008-debug/innerloop-${System.nanoTime()}.log"),
+                                    "WITH CREDS: iter=$innerStepIdx step=${innerStep::class.simpleName}\n",
+                                    java.nio.file.StandardOpenOption.CREATE,
+                                    java.nio.file.StandardOpenOption.APPEND,
+                                )
+                            } catch (_: Exception) {}
                             val innerStepOutcome = executeDurableStep(
                                 step = innerStep,
                                 stageIndex = stageIndex,
@@ -1063,6 +860,7 @@ private suspend fun executeDurableStepImpl(
                                 stageEnvironment = stageEnvironment,
                                 sandboxProfile = sandboxProfile,
                                 secretStore = secretStore,
+                                withCredentialsExecutor = withCredentialsExecutor,
                             )
                             // CR-BD-027 fix: emit CredentialUsed AFTER inner step execution.
                             // The credential was actually used only if the step succeeded.
@@ -1075,12 +873,20 @@ private suspend fun executeDurableStepImpl(
                                             sequence = 0L,
                                             occurredAt = clock.now(),
                                             credentialsId = binding.credentialsId,
-                                            purpose = kindToPurpose(binding.kind),
+                                            purpose = bindingKindToPurpose(binding.kind),
                                             stepIndex = innerStepIdx,
                                         )
                                     )
                                 }
                             }
+                            try {
+                                java.nio.file.Files.writeString(
+                                    java.nio.file.Paths.get("/tmp/uat008-debug/innerloop-${System.nanoTime()}.log"),
+                                    "WITH CREDS: iter=$innerStepIdx outcome=$innerStepOutcome\n",
+                                    java.nio.file.StandardOpenOption.CREATE,
+                                    java.nio.file.StandardOpenOption.APPEND,
+                                )
+                            } catch (_: Exception) {}
                             if (innerStepOutcome != "success") {
                                 innerOutcome = innerStepOutcome
                                 break
@@ -1088,40 +894,7 @@ private suspend fun executeDurableStepImpl(
                         }
                         innerOutcome
                     } finally {
-                        // Emit CredentialUnbound for all bindings (D3)
-                        for (binding in step.bindings) {
-                            eventSink.append(
-                                CredentialUnbound(
-                                    eventId = UUID.randomUUID().toString(),
-                                    runId = runId,
-                                    sequence = 0L,
-                                    occurredAt = clock.now(),
-                                    credentialsId = binding.credentialsId,
-                                )
-                            )
-                        }
-                        // Wipe materializer paths (INV-CR-CR7 + D4)
-                        try {
-                            materializer.close()
-                        } catch (t: Throwable) {
-                            if (firstException == null) {
-                                firstException = t
-                            } else {
-                                firstException.addSuppressed(t)
-                            }
-                        }
-                        // Wipe all active handles
-                        for (handle in activeHandles) {
-                            try {
-                                handle.close()
-                            } catch (t: Throwable) {
-                                if (firstException == null) {
-                                    firstException = t
-                                } else {
-                                    firstException.addSuppressed(t)
-                                }
-                            }
-                        }
+                        boundCredentials?.close()
                     }
                 } else {
                     // No secretStore available - execute inner steps without credential injection.
@@ -1141,9 +914,9 @@ private suspend fun executeDurableStepImpl(
                         )
                     )
                     var innerOutcome = "success"
-                    for (innerStep in step.steps) {
-                        val innerStepOutcome = executeDurableStep(
-                            step = innerStep,
+                    for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
+                            val innerStepOutcome = executeDurableStep(
+                                step = innerStep,
                             stageIndex = stageIndex,
                             stepIndex = stepIndex,
                             runId = runId,
@@ -2237,7 +2010,15 @@ private suspend fun executeDurableStepImpl(
                 lastOutcome
             }
         }
-    } catch (_: Throwable) {
+    } catch (e: Throwable) {
+        try {
+            java.nio.file.Files.writeString(
+                java.nio.file.Paths.get("/tmp/uat008-debug/throwable-${System.nanoTime()}.log"),
+                "OUTER CATCH: ${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString().take(2000)}\n",
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND,
+            )
+        } catch (_: Exception) {}
         runOutcomeRef.set("failure")
         "failure"
     }
@@ -2326,6 +2107,23 @@ private fun toSdkReplayPolicy(domain: DomainReplayPolicy): ReplayPolicy {
         DomainReplayPolicy.RERUN -> ReplayPolicy.RERUN
         DomainReplayPolicy.NEVER -> ReplayPolicy.NEVER
     }
+}
+
+/**
+ * Maps a DSL [StepSpec.CredentialsBinding.Kind] to a [BoundPurpose] for event emission
+ * (CredentialBound / CredentialUsed). Mirrors the domain projection in
+ * `DefaultCredentialProjector` (LF-0403) so that the journal sees the same purpose
+ * that the executor projected. The legacy inline switch this replaced is removed
+ * (LF-0404, see the executor path in `executeDurableStepImpl`).
+ */
+private fun bindingKindToPurpose(kind: StepSpec.CredentialsBinding.Kind): BoundPurpose = when (kind) {
+    StepSpec.CredentialsBinding.Kind.STRING -> BoundPurpose.API_KEY
+    StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD -> BoundPurpose.USERNAME_PASSWORD
+    StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> BoundPurpose.SSH_KEY
+    StepSpec.CredentialsBinding.Kind.FILE -> BoundPurpose.FILE
+    StepSpec.CredentialsBinding.Kind.CERTIFICATE -> BoundPurpose.CERTIFICATE
+    StepSpec.CredentialsBinding.Kind.ZIP -> BoundPurpose.ZIP
+    StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> BoundPurpose.USERNAME_COLON_PASSWORD
 }
 
 /**

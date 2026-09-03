@@ -1310,6 +1310,16 @@ pipeline {
         processes.add(process)
         val stdout = process.inputStream.bufferedReader().readText()
         process.waitFor(120, TimeUnit.SECONDS)
+        val stderr = process.errorStream.bufferedReader().readText()
+        if (stderr.isNotEmpty()) {
+            val errFile = java.nio.file.Paths.get("/tmp/uat008-debug/uat008-stderr-${System.nanoTime()}.log")
+            java.nio.file.Files.createDirectories(errFile.parent)
+            java.nio.file.Files.writeString(errFile, stderr)
+        }
+        val debugFile = java.nio.file.Paths.get("/tmp/uat008-debug/uat008-stdout-${System.nanoTime()}.json")
+        java.nio.file.Files.createDirectories(debugFile.parent)
+        java.nio.file.Files.writeString(debugFile, stdout)
+        System.err.println("DEBUG-UAT008-STDOUT: $debugFile")
         return stdout
     }
 

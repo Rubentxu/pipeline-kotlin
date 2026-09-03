@@ -1583,7 +1583,7 @@ class LocalSecretStore(
                 val metaNameLen = buf.get().toInt()
                 buf.position(buf.position() + metaNameLen)
                 buf.int // skip count
-                buf.get() // consume metadata content byte (1)
+                readPartMarker(buf) // consume metadata content int (1) — serialized as 4-byte int
                 val entries = mutableMapOf<String, ByteArray>()
                 repeat(partCount - 1) {
                     val entryNameLen = buf.get().toInt()

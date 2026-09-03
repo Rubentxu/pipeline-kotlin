@@ -101,4 +101,81 @@ class SecretHandleContractTest {
         val handle = SecretHandle.secret(bytes)
         assertEquals(13, handle.sizeBytes)
     }
+
+    // ───── LF-0402 — borrow{} / bytesView() non-destructive access ─────
+
+    @Test
+    fun `LF-0402 borrow does not wipe bytes after the block`() {
+        val bytes = "borrow-payload".toByteArray(StandardCharsets.UTF_8)
+        val handle = SecretHandle(bytes)
+
+        val inside = handle.borrow { it.contentEquals("borrow-payload".toByteArray(StandardCharsets.UTF_8)) }
+        assertTrue(inside, "borrow must hand the block the same payload bytes")
+
+        // The original byte array is untouched by borrow
+        assertTrue(
+            bytes.contentEquals("borrow-payload".toByteArray(StandardCharsets.UTF_8)),
+            "LF-0402: borrow must NOT wipe the handle's internal buffer",
+        )
+        // Subsequent materialize still returns the original payload
+        assertEquals("borrow-payload", handle.materialize())
+    }
+
+    @Test
+    fun `LF-0402 borrow can be invoked multiple times and always returns same original bytes`() {
+        val payload = "repeatable-payload".toByteArray(StandardCharsets.UTF_8)
+        val handle = SecretHandle(payload)
+
+        val firstSnapshot = handle.borrow { it.copyOf() }
+        val secondSnapshot = handle.borrow { it.copyOf() }
+        val thirdSnapshot = handle.bytesView()
+
+        assertTrue(firstSnapshot.contentEquals(payload), "first borrow snapshot")
+        assertTrue(secondSnapshot.contentEquals(payload), "second borrow snapshot")
+        assertTrue(thirdSnapshot.contentEquals(payload), "bytesView snapshot")
+
+        // Even after multiple borrows, the original bytes are still intact
+        assertTrue(
+            payload.contentEquals("repeatable-payload".toByteArray(StandardCharsets.UTF_8)),
+            "LF-0402: multiple borrow calls must leave the original bytes intact",
+        )
+        assertEquals("repeatable-payload", handle.materialize())
+    }
+
+    @Test
+    fun `LF-0402 borrow hands the block a defensive copy that the caller can mutate freely`() {
+        val handle = SecretHandle("defensive".toByteArray(StandardCharsets.UTF_8))
+
+        handle.borrow { view ->
+            view.fill(0x7F)
+            // The mutation is local to the defensive copy; the original is unaffected.
+        }
+
+        assertEquals("defensive", handle.materialize())
+    }
+
+    @Test
+    fun `LF-0402 bytesView returns a defensive copy`() {
+        val payload = "view-payload".toByteArray(StandardCharsets.UTF_8)
+        val handle = SecretHandle(payload)
+
+        val snapshot = handle.bytesView()
+        snapshot.fill(0)
+
+        // The mutation of the snapshot does not affect the handle
+        assertEquals("view-payload", handle.materialize())
+    }
+
+    @Test
+    fun `LF-0402 use still wipes bytes after the block (legacy destructive contract preserved)`() {
+        val bytes = "wipe-me".toByteArray(StandardCharsets.UTF_8)
+        val handle = SecretHandle(bytes)
+
+        handle.use { /* discard */ }
+
+        assertTrue(
+            bytes.contentEquals(ByteArray(7)),
+            "use{} must still wipe the buffer to preserve the destructive contract",
+        )
+    }
 }

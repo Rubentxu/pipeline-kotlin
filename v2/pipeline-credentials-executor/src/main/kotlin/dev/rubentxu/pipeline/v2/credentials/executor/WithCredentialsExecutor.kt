@@ -2,29 +2,44 @@ package dev.rubentxu.pipeline.v2.credentials.executor
 
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
-import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjector
+import dev.rubentxu.pipeline.v2.domain.credentials.DefaultCredentialProjector
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.dsl.StepSpec.CredentialsBinding
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialMaterializationDomain
 import dev.rubentxu.pipeline.v2.events.CredentialBound
 import dev.rubentxu.pipeline.v2.events.CredentialUnbound
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.dsl.StepSpec
+import dev.rubentxu.pipeline.v2.dsl.toSpec
 import java.util.UUID
 
 /**
  * Port-driven executor for withCredentials block execution.
  *
  * Design (design §8, research §4, erratum-1, ADR-0051 §D8):
- * - Takes SPI ports: [CredentialProvider], [CredentialMaterialization], [Clock]
- * - Does NOT take concrete implementations (LocalSecretStore, CredentialMaterializer)
- * - Returns [BoundCredentials] with env map and idempotent close
+ * - Takes SPI ports: [CredentialProvider], [Clock], and a [CredentialProjector].
+ * - Does NOT take concrete implementations (LocalSecretStore, CredentialMaterializer).
+ * - Returns [BoundCredentials] with env map and idempotent close.
+ *
+ * ## LF-0404 changes
+ *
+ *  - The executor now consumes the typed [CredentialBindingSpec] sealed shape
+ *    from `:pipeline-domain` (instead of the flat DSL `CredentialsBinding`).
+ *  - The per-kind env-var switch (`kindToPurpose`, `kindToMaterializationKind`,
+ *    `injectEnvVar`) is GONE. All binding→env mapping is delegated to the
+ *    injected [CredentialProjector] which produces a [dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult].
+ *  - The NUL-byte bug for STRING bindings (where the V2 envelope was forwarded
+ *    into env) is fixed in [DefaultCredentialProjector], which extracts inner
+ *    bytes via `resolveToCredential(id).bytes`.
  *
  * ## Responsibilities
  * - Resolves credentials via [CredentialProvider]
- * - Materializes file-based credentials via [CredentialMaterialization]
- * - Emits [CredentialBound] events BEFORE env injection (INV-L10-CR-001 ordering)
+ * - Delegates per-kind projection to [CredentialProjector]
+ * - Emits [CredentialBound] events BEFORE projection (INV-L10-CR-001 ordering)
  * - [BoundCredentials.close] is the SOLE owner of [CredentialUnbound] emission
  * - Reverse-LIFO cleanup with [addSuppressed] chaining
  *
@@ -34,45 +49,64 @@ import java.util.UUID
  * - No step execution
  *
  * @param provider The credential resolution port
- * @param materialization The credential materialization port
+ * @param projector The credential binding→env projection port (LF-0403)
  * @param clock The clock port for event timestamps
  */
 class WithCredentialsExecutor(
     private val provider: CredentialProvider,
-    private val materialization: CredentialMaterialization,
+    private val projector: CredentialProjector,
     private val clock: Clock,
 ) {
+
+    /**
+     * Convenience constructor: wires a [DefaultCredentialProjector] from the
+     * existing [CredentialMaterialization] SPI port.
+     *
+     * Existing call sites (composition root in `Main.kt`) construct
+     * `WithCredentialsExecutor(provider, materialization, clock)`. We keep
+     * that signature working by adapting the SPI port to the new domain port
+     * via a thin adapter that satisfies [CredentialMaterializationDomain].
+     */
+    constructor(
+        provider: CredentialProvider,
+        materialization: CredentialMaterialization,
+        clock: Clock,
+    ) : this(
+        provider = provider,
+        projector = DefaultCredentialProjector(SpiMaterializationAdapter(materialization)),
+        clock = clock,
+    )
 
     /**
      * Binds credentials to environment variables and returns a [BoundCredentials].
      *
      * Design (research §4 positive scope):
-     * - Emits [CredentialBound] for each binding BEFORE env injection
+     * - Emits [CredentialBound] for each binding BEFORE projection (INV-L10-CR-001 ordering)
      * - Returns [BoundCredentials] containing env map and idempotent close
      * - [BoundCredentials.close] is SOLE owner of [CredentialUnbound] emission
      *
-     * @param bindings The credential bindings to resolve
+     * @param bindings The credential bindings (DSL flat shape) to resolve
      * @param runId The pipeline run ID for event attribution
      * @param eventSink The event sink for audit trail events
      * @return [BoundCredentials] with env vars and close handler
      */
     suspend fun bind(
-        bindings: List<CredentialsBinding>,
+        bindings: List<StepSpec.CredentialsBinding>,
         runId: String,
         eventSink: EventSink,
     ): BoundCredentials {
         val env = mutableMapOf<String, SecretHandle>()
-        val closeables = mutableListOf<AutoCloseable>()
         val credentialIds = mutableListOf<CredentialsId>()
         var sequence = 1L
 
         try {
             for (binding in bindings) {
-                val credentialsId = binding.credentialsId
+                val spec: CredentialBindingSpec = binding.toSpec()
+                val credentialsId = spec.credentialsId
                 credentialIds.add(credentialsId)
-                val purpose = kindToPurpose(binding.kind)
+                val purpose = kindToPurpose(spec.kind)
 
-                // Emit CredentialBound BEFORE resolution (INV-L10-CR-001 ordering)
+                // Emit CredentialBound BEFORE projection (INV-L10-CR-001 ordering)
                 val boundEvent = CredentialBound(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId,
@@ -83,116 +117,39 @@ class WithCredentialsExecutor(
                 )
                 eventSink.append(boundEvent)
 
-                // Resolve credential via provider
-                val secretHandle = provider.resolve(credentialsId)
+                // Resolve credential via provider (typed — no envelope)
+                val credential = provider.resolveToCredential(credentialsId)
 
-                // Materialize if file-based kind, otherwise use handle directly
-                val materializationKind = kindToMaterializationKind(binding.kind)
-                val handleToInject: SecretHandle = if (materializationKind != null) {
-                    // File-based: materialize to temp file and inject path
-                    val credential = provider.resolveToCredential(credentialsId)
-                    val materialized = materialization.materialize(credential, materializationKind)
-                    closeables.add(materialized)
-                    // The temp file path is the env var value (masked, not redacted)
-                    val path = materialized.path
-                        ?: throw IllegalStateException("MaterializationKind.${materializationKind} must provide a path")
-                    dev.rubentxu.pipeline.v2.domain.SecretHandle.masked(path.toString())
-                } else {
-                    // Non-file-based: use the raw handle directly
-                    when (binding.kind) {
-                        CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> {
-                            val raw = provider.resolveToCredential(binding.credentialsId)
-                            val credential = raw as? UsernameColonPassword
-                                ?: throw IllegalStateException("UsernameColonPassword credential ${binding.credentialsId} resolved to ${raw?.javaClass?.simpleName ?: "null"} instead of UsernameColonPassword")
-                            val joinedBytes = credential.user.toByteArray(Charsets.UTF_8) + byteArrayOf(0x3A) + credential.pass
-                            closeables.add(secretHandle)
-                            SecretHandle.secret(joinedBytes)
-                        }
-                        else -> {
-                            closeables.add(secretHandle)
-                            secretHandle
-                        }
-                    }
-                }
-
-                // Inject into env map based on binding kind
-                injectEnvVar(env, binding, handleToInject)
+                // Delegate the per-kind projection to the port
+                val projection = projector.project(spec, credential, runId)
+                env.putAll(projection.bindings)
             }
 
             return BoundCredentials(env.toMap()) {
-                closeBoundCredentials(runId, credentialIds, eventSink, closeables)
+                closeBoundCredentials(runId, credentialIds, eventSink)
             }
         } catch (t: Throwable) {
             // On failure, close everything and rethrow
-            closeBoundCredentials(runId, credentialIds, eventSink, closeables, t)
+            closeBoundCredentials(runId, credentialIds, eventSink, t)
             throw t
         }
     }
 
     /**
-     * Maps DSL Kind to BoundPurpose (per ADR-0051 §D8).
+     * Maps a [CredentialBindingSpec] kind string to a [BoundPurpose] (per ADR-0051 §D8).
+     *
+     * Replaces the legacy 7-arm `when` that lived in the executor; the kind
+     * labels here match the new domain sealed type exactly.
      */
-    private fun kindToPurpose(kind: CredentialsBinding.Kind): BoundPurpose = when (kind) {
-        CredentialsBinding.Kind.STRING -> BoundPurpose.API_KEY
-        CredentialsBinding.Kind.USERNAME_PASSWORD -> BoundPurpose.USERNAME_PASSWORD
-        CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> BoundPurpose.SSH_KEY
-        CredentialsBinding.Kind.FILE -> BoundPurpose.FILE
-        CredentialsBinding.Kind.CERTIFICATE -> BoundPurpose.CERTIFICATE
-        CredentialsBinding.Kind.ZIP -> BoundPurpose.ZIP
-        CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> BoundPurpose.USERNAME_COLON_PASSWORD
-    }
-
-    /**
-     * Maps DSL Kind to MaterializationKind for file-based kinds.
-     * Returns null for non-file-based kinds.
-     */
-    private fun kindToMaterializationKind(kind: CredentialsBinding.Kind): dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind? = when (kind) {
-        CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.SshPrivateKey
-        CredentialsBinding.Kind.FILE -> dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.SecretFile
-        CredentialsBinding.Kind.CERTIFICATE -> dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.Certificate
-        CredentialsBinding.Kind.ZIP -> dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.Zip
-        else -> null
-    }
-
-    /**
-     * Injects environment variables based on binding kind.
-     */
-    private fun injectEnvVar(
-        env: MutableMap<String, SecretHandle>,
-        binding: CredentialsBinding,
-        handle: SecretHandle,
-    ) {
-        when (binding.kind) {
-            CredentialsBinding.Kind.STRING -> {
-                binding.variable?.let { env[it] = handle }
-            }
-            CredentialsBinding.Kind.USERNAME_PASSWORD -> {
-                binding.usernameVariable?.let { env[it] = handle }
-                binding.passwordVariable?.let { env[it] = handle }
-            }
-            CredentialsBinding.Kind.USERNAME_COLON_PASSWORD -> {
-                binding.variable?.let { env[it] = handle }
-            }
-            CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY -> {
-                binding.keyFileVariable?.let { env[it] = handle }
-                binding.passphraseVariable?.let { env[it] = handle }
-                binding.usernameVariable?.let { env[it] = handle }
-            }
-            CredentialsBinding.Kind.FILE -> {
-                binding.variable?.let { env[it] = handle }
-            }
-            CredentialsBinding.Kind.CERTIFICATE -> {
-                binding.keystoreVariable?.let { env[it] = handle }
-                binding.aliasVariable?.let { env[it] = handle }
-                binding.passwordVariable?.let { env[it] = handle }
-            }
-            CredentialsBinding.Kind.ZIP -> {
-                val zipVar = binding.variable
-                if (zipVar != null) {
-                    env[zipVar] = handle
-                }
-            }
-        }
+    private fun kindToPurpose(kind: String): BoundPurpose = when (kind) {
+        "string" -> BoundPurpose.API_KEY
+        "usernamePassword" -> BoundPurpose.USERNAME_PASSWORD
+        "sshUserPrivateKey" -> BoundPurpose.SSH_KEY
+        "file" -> BoundPurpose.FILE
+        "certificate" -> BoundPurpose.CERTIFICATE
+        "zip" -> BoundPurpose.ZIP
+        "usernameColonPassword" -> BoundPurpose.USERNAME_COLON_PASSWORD
+        else -> throw IllegalArgumentException("Unknown CredentialBindingSpec kind: $kind")
     }
 
     /**
@@ -203,24 +160,10 @@ class WithCredentialsExecutor(
         runId: String,
         credentialIds: List<CredentialsId>,
         eventSink: EventSink,
-        closeables: List<AutoCloseable>,
         primaryThrowable: Throwable? = null,
     ) {
         var firstThrowable = primaryThrowable
         var sequence = 1L
-
-        // Reverse-LIFO cleanup: close in reverse order of acquisition
-        for (closeable in closeables.reversed()) {
-            try {
-                closeable.close()
-            } catch (t: Throwable) {
-                if (firstThrowable == null) {
-                    firstThrowable = t
-                } else {
-                    firstThrowable.addSuppressed(t)
-                }
-            }
-        }
 
         // Emit CredentialUnbound for each binding (exactly once per binding)
         for (credentialsId in credentialIds) {
@@ -246,6 +189,53 @@ class WithCredentialsExecutor(
         if (firstThrowable != null) {
             throw firstThrowable
         }
+    }
+}
+
+/**
+ * Thin adapter that promotes the SPI [CredentialMaterialization] (which works
+ * in `(credential, kind)` pairs) to the LF-0403 domain [CredentialMaterializationDomain]
+ * (which dispatches on credential subtype only).
+ *
+ * The adapter derives the [dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind]
+ * from the credential's runtime type:
+ *  - SecretFile → MaterializationKind.SecretFile
+ *  - SshPrivateKey → MaterializationKind.SshPrivateKey
+ *  - Certificate → MaterializationKind.Certificate
+ *  - Zip → MaterializationKind.Zip
+ *
+ * Anything else throws [IllegalArgumentException] — the executor's per-kind
+ * switch is GONE so unsupported types fail loudly at the port boundary.
+ */
+private class SpiMaterializationAdapter(
+    private val delegate: CredentialMaterialization,
+) : CredentialMaterializationDomain {
+
+    override fun materialize(
+        credential: dev.rubentxu.pipeline.v2.domain.credentials.Credential,
+    ): dev.rubentxu.pipeline.v2.domain.credentials.MaterializedCredentialDomain {
+        val kind = when (credential) {
+            is dev.rubentxu.pipeline.v2.domain.credentials.SecretFile ->
+                dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.SecretFile
+            is dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey ->
+                dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.SshPrivateKey
+            is dev.rubentxu.pipeline.v2.domain.credentials.Certificate ->
+                dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.Certificate
+            is dev.rubentxu.pipeline.v2.domain.credentials.Zip ->
+                dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind.Zip
+            else -> throw IllegalArgumentException(
+                "Cannot materialize ${credential::class.simpleName} as a file-based credential",
+            )
+        }
+        val materialized = delegate.materialize(credential, kind)
+        return dev.rubentxu.pipeline.v2.domain.credentials.MaterializedCredentialDomain(
+            path = materialized.path,
+            handle = materialized.handle,
+        )
+    }
+
+    override fun close() {
+        delegate.close()
     }
 }
 
@@ -288,6 +278,13 @@ class BoundCredentials(
         if (!closed) {
             closed = true
             closeAction()
+            for (handle in env.values) {
+                try {
+                    handle.close()
+                } catch (_: Exception) {
+                    // Wipe failure is non-fatal (WS-S-024 invariant).
+                }
+            }
         }
     }
 }

@@ -106,24 +106,29 @@ object ShExecution {
                 executeDurableShell(controlDir, step.command, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env, effectiveOptions.sandbox, effectiveOptions.workspaceRoot)
             }
 
-            // Emit EchoOutputCaptured from jenkins-log.txt (stdout+stderr of the script)
-            // L1 constraint: output.txt is only read when captureStdout=true
-            var capturedOutput = ""
-            try {
-                val logFile = controlDir.resolve("jenkins-log.txt")
-                if (Files.exists(logFile)) {
-                    capturedOutput = Files.readString(logFile)
-                    eventSink.append(EchoOutputCaptured(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                        stepIndex = stepIndex,
-                        content = capturedOutput,
-                    ))
+            // Emit EchoOutputCaptured. Two paths:
+            //   1. captureStdout=true  → wrapper tees stdout to output.txt; executor reads it BEFORE cleanup
+            //      and stores it in result.capturedStdout. jenkins-log.txt in that mode contains only stderr.
+            //   2. captureStdout=false → wrapper writes stdout+stderr (2>&1) to jenkins-log.txt; cleanup
+            //      deletes the control dir on success BEFORE we get here, so we read result.capturedStdout
+            //      which executeDurableShell leaves null when captureStdout=false. As a fallback we try
+            //      to read jenkins-log.txt if it still exists (e.g. cleanupRetainOnFailure on error).
+            val capturedOutput: String = result.capturedStdout
+                ?: try {
+                    val logFile = controlDir.resolve("jenkins-log.txt")
+                    if (Files.exists(logFile)) Files.readString(logFile) else ""
+                } catch (_: Exception) {
+                    ""
                 }
-            } catch (_: Exception) {
-                // Don't fail the step if we can't read the log
+            if (capturedOutput.isNotEmpty()) {
+                eventSink.append(EchoOutputCaptured(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stepIndex = stepIndex,
+                    content = capturedOutput,
+                ))
             }
 
             when (result.state) {

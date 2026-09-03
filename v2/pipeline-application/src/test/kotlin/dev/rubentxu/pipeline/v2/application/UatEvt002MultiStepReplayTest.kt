@@ -87,12 +87,12 @@ class UatEvt002MultiStepReplayTest {
         val (stdout, events) = runAndDecode()
         // Durable-spine timeline (LF-0208: sh steps REALLY execute now):
         // 2 compilation events + 2 run events + 2x (StageStarted + 2x
-        // (StepStarted + EchoOutputCaptured for echo + StepFinished for
-        // echo + StepStarted + StepFinished for sh) + StageFinished) = 18.
+        // (StepStarted + EchoOutputCaptured + StepFinished) + StageFinished)
+        // = 20. Both echo and successful sh steps expose their real output.
         // INC-R8-ARC-001 historical note: under the legacy record-only
         // walker the make steps were simulated as StepFailed; under real
         // execution the fixture uses succeeding commands.
-        assertEquals(18, events.size, "Expected 18 events from multi-step fixture: $stdout")
+        assertEquals(20, events.size, "Expected 20 events from multi-step fixture: $stdout")
 
         assertTrue(events[0] is CompilationStarted, "events[0] must be CompilationStarted (durable spine)")
         assertTrue(events[1] is CompilationFinished, "events[1] must be CompilationFinished")
@@ -114,8 +114,14 @@ class UatEvt002MultiStepReplayTest {
         assertEquals(2, stageFinishedEvents.size, "Must have 2 StageFinished events")
         assertEquals(4, stepStartedEvents.size, "Must have 4 StepStarted events")
         assertEquals(4, stepFinishedEvents.size, "Must have 4 StepFinished events")
-        // EchoOutputCaptured is emitted for echo steps under the durable spine.
-        assertEquals(2, echoCapturedEvents.size, "Must have 2 EchoOutputCaptured events (one per echo step)")
+        // EchoOutputCaptured is emitted for both echo and successful sh steps.
+        // DurableShellExecutor captures the sh log before cleanup removes the
+        // control directory, so output is observable instead of being lost.
+        assertEquals(4, echoCapturedEvents.size, "Must have 4 EchoOutputCaptured events (one per step)")
+        val capturedContent = echoCapturedEvents.joinToString("\n") { it.content }
+        listOf("compiling", "build-ok", "testing", "test-ok").forEach { expected ->
+            assertTrue(capturedContent.contains(expected), "Captured output must contain `$expected`")
+        }
         // Real execution: succeeding commands produce no StepFailed events.
         assertEquals(0, stepFailedEvents.size, "No StepFailed events expected: ${stepFailedEvents.map { it.message }}")
 

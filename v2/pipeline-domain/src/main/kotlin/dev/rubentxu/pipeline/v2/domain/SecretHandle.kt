@@ -88,6 +88,38 @@ class SecretHandle private constructor(
     }
 
     /**
+     * LF-0402 — Non-destructive time-bounded access.
+     *
+     * Hands the secret bytes to [block] inside a defensive copy. After the block
+     * returns, the handle is NOT closed and the internal buffer is NOT wiped —
+     * the original bytes remain readable for subsequent [borrow] / [bytesView]
+     * calls. This is the LF-0402 fix for the legacy footgun where
+     * [CredentialScope.toEnvEntries][dev.rubentxu.pipeline.v2.credentials.api.CredentialScope.toEnvEntries]
+     * called `handle.use{}` (which wipes the cached handle in `activeHandles`)
+     * before `close()` ran.
+     *
+     * The block MAY mutate the bytes it receives; mutations apply only to the
+     * defensive copy and do NOT leak back into the handle.
+     *
+     * @param block The block to execute with access to a defensive copy of the bytes
+     * @return The result of the block
+     */
+    inline fun <R> borrow(block: (ByteArray) -> R): R {
+        val view = bytes.copyOf()
+        return block(view)
+    }
+
+    /**
+     * LF-0402 — Read-only inspection of the secret bytes.
+     *
+     * Returns a defensive copy of the internal byte array without touching the
+     * wipe state. Mirrors [borrow] without the block parameter; intended for
+     * callers that need to peek (e.g., to log a fingerprint) without taking
+     * ownership of the wipe lifecycle.
+     */
+    fun bytesView(): ByteArray = bytes.copyOf()
+
+    /**
      * Wipes the internal byte array by filling it with zeros.
      *
      * This method is idempotent - calling it multiple times is safe.

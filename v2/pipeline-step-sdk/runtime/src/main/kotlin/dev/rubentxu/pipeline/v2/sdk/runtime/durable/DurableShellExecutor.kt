@@ -287,14 +287,10 @@ class DurableShellExecutor : DurableShellLaunching {
 
             // WS-S-023: wipe handles after putAll
             // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
-            for (handle in transformedEnv.values) {
-                try {
-                    handle.close()
-                } catch (wipeError: Exception) {
-                    // Log but don't fail - wipe failure is non-fatal
-                    System.err.println("[DurableShellExecutor] Wipe warning: ${wipeError.message}")
-                }
-            }
+            // NOTE (M4): wipe intentionally OMITTED. WithCredentialsExecutor shares the
+            // env map across multiple inner sh invocations (outer sh → nested
+            // withCredentials → restored sh). Wiping here would corrupt the bytes for
+            // the third sh. The wipe is performed by BoundCredentials.close() instead.
         }
 
         // Redirect stdin to /dev/null to prevent blocking on input
@@ -1023,24 +1019,37 @@ fun executeDurableShell(
             state = DurableShellState.COMPLETE
         }
 
+        // Read jenkins-log.txt BEFORE cleanup deletes it. The wrapper writes
+        // stdout+stderr to jenkins-log.txt (captureStdout=false path), and
+        // cleanup() in the finally block deletes the control dir on success.
+        // Without this read here, callers (ShExecution.runShStep) would find
+        // the file gone by the time they try to emit EchoOutputCaptured.
+        val jenkinsLogText: String? = try {
+            val logFile = controlDir.resolve("jenkins-log.txt")
+            if (Files.exists(logFile)) Files.readString(logFile) else null
+        } catch (_: Exception) {
+            null
+        }
+
         return DurableShellResult(
             state = state,
             exitCode = exitCode,
             controlDir = controlDir,
+            capturedStdout = jenkinsLogText,
         )
     } catch (e: LinuxRequiredException) {
         state = DurableShellState.LAUNCH_FAILED
         throw e
-    } catch (e: Exception) {
-        // Unexpected error during launch/detach/poll
-        state = if (timedOut) DurableShellState.TIMED_OUT else DurableShellState.LOST
-        exitCode = -1
-        return DurableShellResult(
-            state = state,
-            exitCode = exitCode,
-            controlDir = controlDir,
-        )
-    } finally {
+} catch (e: Exception) {
+            // Unexpected error during launch/detach/poll
+            state = if (timedOut) DurableShellState.TIMED_OUT else DurableShellState.LOST
+            exitCode = -1
+            return DurableShellResult(
+                state = state,
+                exitCode = exitCode,
+                controlDir = controlDir,
+            )
+        } finally {
         // Cleanup based on final state
         executor.cleanup(controlDir, exitCode)
     }

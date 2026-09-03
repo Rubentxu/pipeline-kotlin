@@ -1715,3 +1715,65 @@ class StageBuilder(
 ) {
     fun build(): StageSpec = StageSpec(name, steps, options, agent, environment)
 }
+
+/**
+ * LF-0401 conversion: turn the DSL flat [StepSpec.CredentialsBinding] into
+ * the sealed-typed `:pipeline-domain` [dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec].
+ *
+ * The DSL type stays as-is (scripts and the binding-factory tests still
+ * produce it), but at the executor call site the conversion is performed
+ * once. This is the inversion that lets `:pipeline-credentials-executor`
+ * depend on `:pipeline-domain` (typed) instead of the DSL flat shape.
+ */
+fun StepSpec.CredentialsBinding.toSpec():
+    dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec =
+    when (kind) {
+        StepSpec.CredentialsBinding.Kind.STRING ->
+            dev.rubentxu.pipeline.v2.domain.credentials.StringBindingSpec(
+                credentialsId = credentialsId,
+                variable = variable
+                    ?: throw IllegalArgumentException("STRING binding requires a variable name"),
+            )
+        StepSpec.CredentialsBinding.Kind.USERNAME_PASSWORD ->
+            dev.rubentxu.pipeline.v2.domain.credentials.UsernamePasswordBindingSpec(
+                credentialsId = credentialsId,
+                usernameVariable = usernameVariable
+                    ?: throw IllegalArgumentException("USERNAME_PASSWORD binding requires usernameVariable"),
+                passwordVariable = passwordVariable
+                    ?: throw IllegalArgumentException("USERNAME_PASSWORD binding requires passwordVariable"),
+            )
+        StepSpec.CredentialsBinding.Kind.SSH_USER_PRIVATE_KEY ->
+            dev.rubentxu.pipeline.v2.domain.credentials.SshUserPrivateKeyBindingSpec(
+                credentialsId = credentialsId,
+                keyFileVariable = keyFileVariable
+                    ?: throw IllegalArgumentException("SSH_USER_PRIVATE_KEY binding requires keyFileVariable"),
+                passphraseVariable = passphraseVariable,
+                usernameVariable = usernameVariable,
+            )
+        StepSpec.CredentialsBinding.Kind.FILE ->
+            dev.rubentxu.pipeline.v2.domain.credentials.FileBindingSpec(
+                credentialsId = credentialsId,
+                variable = variable
+                    ?: throw IllegalArgumentException("FILE binding requires a variable name"),
+            )
+        StepSpec.CredentialsBinding.Kind.CERTIFICATE ->
+            dev.rubentxu.pipeline.v2.domain.credentials.CertificateBindingSpec(
+                keystoreVariable = keystoreVariable
+                    ?: throw IllegalArgumentException("CERTIFICATE binding requires keystoreVariable"),
+                credentialsId = credentialsId,
+                aliasVariable = aliasVariable,
+                passwordVariable = passwordVariable,
+            )
+        StepSpec.CredentialsBinding.Kind.ZIP ->
+            dev.rubentxu.pipeline.v2.domain.credentials.ZipBindingSpec(
+                variable = variable
+                    ?: throw IllegalArgumentException("ZIP binding requires a variable name"),
+                credentialsId = credentialsId,
+            )
+        StepSpec.CredentialsBinding.Kind.USERNAME_COLON_PASSWORD ->
+            dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPasswordBindingSpec(
+                variable = variable
+                    ?: throw IllegalArgumentException("USERNAME_COLON_PASSWORD binding requires a variable name"),
+                credentialsId = credentialsId,
+            )
+    }

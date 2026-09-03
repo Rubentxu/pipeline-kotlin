@@ -157,13 +157,14 @@ private class MockCredentialProvider : CredentialProvider {
 
     override fun resolveToCredential(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
         val handle = secrets[id] ?: throw Exception("Credential not found: ${id.value}")
-        return handle.use { bytes ->
-            dev.rubentxu.pipeline.v2.domain.credentials.SecretText(
-                id = id,
-                scope = dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL,
-                bytes = bytes
-            )
-        }
+        // LF-0402: use bytesView() to read the payload WITHOUT wiping the handle.
+        // The mock reuses the same handle across calls; use{} would zero it on first read.
+        val bytes = handle.bytesView()
+        return dev.rubentxu.pipeline.v2.domain.credentials.SecretText(
+            id = id,
+            scope = dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL,
+            bytes = bytes,
+        )
     }
 
     override fun close() {}

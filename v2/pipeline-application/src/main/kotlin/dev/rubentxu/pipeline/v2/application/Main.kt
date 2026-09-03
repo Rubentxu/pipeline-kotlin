@@ -391,8 +391,9 @@ fun main(args: Array<String>) {
             try {
                 val passphraseChars = PassphraseResolver.resolve()
                 val store = LocalSecretStore(credentialsStorePath, passphraseChars)
-                // Immediately wipe the passphrase from memory after use
-                passphraseChars.fill('\u0000')
+                // Do NOT wipe passphraseChars here — LocalSecretStore stores the
+                // same CharArray reference and would lose its own copy. The store
+                // zeros the passphrase in its own close().
                 store
             } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
                 System.err.println("Error: ${e.message}")

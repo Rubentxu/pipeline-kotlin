@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.Digest
+import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -106,5 +108,138 @@ class DslCompiledPipelineCompilerTest {
         val changedIds = (changed.stages.single().body as StageBody.Steps).steps.map { it.id.value }
         assertEquals(listOf("build/echo-0", "build/sh-0"), baselineIds)
         assertEquals(listOf("build/echo-0", "build/error-0", "build/sh-0"), changedIds)
+    }
+
+    @Test
+    fun `writeFile step compiles to core file writeFile with typed payload`() {
+        val spec = pipeline {
+            stages {
+                stage("Build") {
+                    writeFile("out.txt", "hello world", "utf-8")
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "build.pipeline.kts",
+            "writeFile pipeline",
+            Digest("lock-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        val step = body.steps.single() as OpaqueStepNode
+        assertEquals("core.file.writeFile", step.pluginStepId.value)
+        assertTrue(step.payload.encoded.contains("\"kind\":\"writeFile\""))
+        assertTrue(step.payload.encoded.contains("\"file\":\"out.txt\""))
+        assertTrue(step.payload.encoded.contains("\"text\":\"hello world\""))
+        assertTrue(step.payload.encoded.contains("\"encoding\":\"utf-8\""))
+    }
+
+    @Test
+    fun `catchError step compiles to emit-event enter marker + inner steps + shell + trigger marker`() {
+        val spec = pipeline {
+            stages {
+                stage("Build") {
+                    catchError(buildResult = "FAILURE", stageResult = "FAILURE") {
+                        sh("exit 1")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "build.pipeline.kts",
+            "catchError pipeline",
+            Digest("lock-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        val ids = body.steps.map { it.id.value }
+        val plugins = body.steps.map { it.pluginStepId.value }
+
+        // Must include the entry marker and trigger marker for CatchErrorTriggered
+        assertTrue(ids.any { it.contains("catch-error-enter-") }, "Should have catch-error-enter marker")
+        assertTrue(ids.any { it.contains("catch-error-trigger-") }, "Should have catch-error-trigger marker")
+        assertTrue(plugins.any { it == "core.emit.event" }, "Should have emit.event markers")
+        assertTrue(plugins.any { it == "core.sh" }, "Should have core.sh wrapper")
+    }
+
+    @Test
+    fun `unstable step compiles to StageMarkedUnstable event + exit-0 shell`() {
+        val spec = pipeline {
+            stages {
+                stage("Build") {
+                    unstable("something went wrong")
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "build.pipeline.kts",
+            "unstable pipeline",
+            Digest("lock-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        val ids = body.steps.map { it.id.value }
+        val plugins = body.steps.map { it.pluginStepId.value }
+
+        assertEquals(2, body.steps.size, "unstable should produce exactly 2 nodes")
+        assertTrue(ids.any { it.contains("unstable-") }, "Should have unstable marker node")
+        assertTrue(ids.any { it.contains("unstable-exit-0-") }, "Should have exit-0 shell node")
+        assertTrue(plugins.any { it == "core.emit.event" }, "Should emit StageMarkedUnstable event")
+        assertTrue(plugins.any { it == "core.sh" }, "Should emit exit-0 shell")
+    }
+
+    @Test
+    fun `warnError step compiles to CatchErrorTriggered with UNSTABLE buildResult`() {
+        val spec = pipeline {
+            stages {
+                stage("Build") {
+                    warnError("deprecation warning") {
+                        sh("exit 1")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "build.pipeline.kts",
+            "warnError pipeline",
+            Digest("lock-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        val plugins = body.steps.map { it.pluginStepId.value }
+
+        assertTrue(plugins.any { it == "core.emit.event" }, "Should have emit.event markers")
+        assertTrue(plugins.any { it == "core.sh" }, "Should have core.sh wrapper")
+
+        // The emit event payload for warnError should contain UNSTABLE
+        val emitSteps = body.steps.filter { it.pluginStepId.value == "core.emit.event" }
+        assertTrue(emitSteps.any { it.payload.encoded.contains("UNSTABLE") },
+            "warnError should force UNSTABLE buildResult")
+    }
+
+    @Test
+    fun `catchError preserves inner step identities`() {
+        val spec = pipeline {
+            stages {
+                stage("Build") {
+                    catchError {
+                        echo("inner")
+                        sh("echo hello")
+                    }
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec,
+            "build.pipeline.kts",
+            "catchError pipeline",
+            Digest("lock-v1"),
+        )
+        val body = compiled.stages.single().body as StageBody.Steps
+        // Inner steps must appear verbatim, not flattened/renamed beyond normal occurrence counting
+        val innerIds = body.steps.filter { it.id.value.contains("echo-") || it.id.value.contains("sh-") }
+            .map { it.id.value }
+        assertTrue(innerIds.isNotEmpty(), "Inner steps should be preserved in the output")
+        assertTrue(innerIds.all { it.startsWith("build/") }, "Inner steps should be under the correct parent token")
     }
 }

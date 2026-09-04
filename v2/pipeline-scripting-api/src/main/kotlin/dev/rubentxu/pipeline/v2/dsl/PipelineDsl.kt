@@ -497,6 +497,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * @param message User-visible message
      * @param steps Nested steps
      */
+    @Deprecated(
+        message = "LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. " +
+                "The canonical IR models this as a linear sequence of marker events + shell script. " +
+                "DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.",
+        replaceWith = ReplaceWith("StepSpec.CatchError"),
+    )
     data class CatchError(
         val buildResult: String? = null,
         val stageResult: String? = null,
@@ -519,6 +525,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * @param catchInterruptions If true, also catch Thread.interrupt()
      * @param steps Nested steps
      */
+    @Deprecated(
+        message = "LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. " +
+                "The canonical IR models this as a linear sequence of marker events + shell script. " +
+                "DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.",
+        replaceWith = ReplaceWith("StepSpec.WarnError"),
+    )
     data class WarnError(
         val message: String,
         val catchInterruptions: Boolean = true,
@@ -538,6 +550,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      *
      * @param message User-visible message describing the instability
      */
+    @Deprecated(
+        message = "LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). " +
+                "The canonical IR models this as two nodes. DSL use is deprecated; " +
+                "this class is retained for deserialization of legacy fixtures only.",
+        replaceWith = ReplaceWith("StepSpec.Unstable"),
+    )
     data class Unstable(
         val message: String,
     ) : StepSpec {
@@ -1345,6 +1363,10 @@ class StageScope(private val stageName: String) {
      * @param message User-visible message
      * @param block Nested steps
      */
+    @Deprecated(
+        message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
+        replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
+    )
     fun catchError(
         buildResult: String? = null,
         stageResult: String? = null,
@@ -1371,6 +1393,10 @@ class StageScope(private val stageName: String) {
      * @param catchInterruptions If true, also catch Thread.interrupt()
      * @param block Nested steps
      */
+    @Deprecated(
+        message = "LFC1-007: warnError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
+        replaceWith = ReplaceWith("warnError(message, catchInterruptions, block)"),
+    )
     fun warnError(
         message: String,
         catchInterruptions: Boolean = true,
@@ -1393,6 +1419,10 @@ class StageScope(private val stageName: String) {
      *
      * @param message User-visible message describing the instability
      */
+    @Deprecated(
+        message = "LFC1-007: unstable is pre-compiler-rewritten. Use emitEvent('StageMarkedUnstable', ...) instead.",
+        replaceWith = ReplaceWith("unstable(message)"),
+    )
     fun unstable(message: String) {
         steps.add(StepSpec.Unstable(message = message))
     }

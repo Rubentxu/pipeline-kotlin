@@ -86,8 +86,11 @@ class CanonicalDurableRunCoordinator(
             }
             val steps = (stage.body as? StageBody.Steps)?.steps
                 ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
+            // D5: Per-stage workspaceRoot override at dispatch boundary
+            val stageWorkspace: Path? = controlDirRoot?.let { WorkspaceResolver(it).resolve(stage.name, stageIndex) }
+            val stageShOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
             steps.forEachIndexed { stepIndex, step ->
-                val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex)
+                val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
                 // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
                 val finalOutcome = when {
                     outcome is StepOutcome.Failure -> {
@@ -107,7 +110,14 @@ class CanonicalDurableRunCoordinator(
         return RunOutcome.Success
     }
 
-    private suspend fun dispatch(step: StepNode, runId: RunId, stageName: String, stageIndex: Int, stepIndex: Int): StepOutcome {
+    private suspend fun dispatch(
+        step: StepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageShOptions: ShOptions,
+    ): StepOutcome {
         val typedCommand: CanonicalCoreStepCommand = try {
             CanonicalCoreStepDecoder.decode(step)
         } catch (e: IllegalArgumentException) {
@@ -197,7 +207,7 @@ class CanonicalDurableRunCoordinator(
                 stageName = stageName,
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
-                shOptions = shOptions,
+                shOptions = stageShOptions,
                 controlDirRoot = controlDirRoot,
                 eventSink = eventSink,
             ),

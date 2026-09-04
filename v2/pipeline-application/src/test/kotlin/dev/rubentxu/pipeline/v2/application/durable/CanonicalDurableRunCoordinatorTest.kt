@@ -143,7 +143,9 @@ class CanonicalDurableRunCoordinatorTest {
         assertEquals(RunOutcome.Success, resumedOutcome)
         assertEquals(1, journal.listForRun(runId.value).size)
         assertEquals("${runId.value}-s0-0", cursorStore.load(runId.value)?.lastOpId)
-        assertEquals(1, eventStore.eventsFor(runId.value).count())
+        // C3: run1 emits RunStarted+EchoOutputCaptured+RunFinished (3);
+        // run2 skips echo (replay) so emits RunStarted+RunFinished (2); total=5
+        assertEquals(5, eventStore.eventsFor(runId.value).count())
     }
 
     @Test

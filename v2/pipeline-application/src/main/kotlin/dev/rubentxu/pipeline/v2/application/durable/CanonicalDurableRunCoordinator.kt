@@ -27,6 +27,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.IOException
 import java.nio.file.Path
 
 /**
@@ -89,6 +90,19 @@ class CanonicalDurableRunCoordinator(
             // D5: Per-stage workspaceRoot override at dispatch boundary
             val stageWorkspace: Path? = controlDirRoot?.let { WorkspaceResolver(it).resolve(stage.name, stageIndex) }
             val stageShOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
+            // C1: ensure stage workspace exists before shell dispatch (once per stage, not per step)
+            if (stageWorkspace != null) {
+                try {
+                    WorkspaceResolver(controlDirRoot!!).ensureCreated(stageWorkspace)
+                } catch (e: IOException) {
+                    return@run RunOutcome.Failure(
+                        PipelineFailure(
+                            dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                            "workspace creation failed: ${e.message}",
+                        ),
+                    )
+                }
+            }
             steps.forEachIndexed { stepIndex, step ->
                 val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
                 // Scope-aware failure handling: downgrade Failure → Unstable when scope is active

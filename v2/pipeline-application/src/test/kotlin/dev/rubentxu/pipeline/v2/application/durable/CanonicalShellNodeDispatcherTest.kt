@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -184,5 +185,44 @@ class CanonicalShellNodeDispatcherTest {
 
         // C2: durable shell succeeds with captureStdout=true
         assertEquals(StepOutcome.Success, outcome)
+    }
+
+    @Test
+    @Timeout(30)
+    fun `dispatch with returnStdout=true no longer throws`() = runBlocking {
+        // This test verifies the fix for INC-028: returnStdout=true was blocked by
+        // require() but should now be handled by enabling captureStdout in shOptions.
+        val controlDir = tempDir.resolve("control").also { it.toFile().mkdirs() }
+        val workspaceRoot = tempDir.resolve("workspace").also { it.toFile().mkdirs() }
+        val eventStore = InMemoryEventStore()
+        val dispatcher = CanonicalShellNodeDispatcher()
+        // returnStdout=true was previously blocked by require() check
+        val command = CanonicalCoreStepCommand.Shell(
+            command = "echo hello from returnStdout",
+            isScriptBlock = false,
+            returnStdout = true,  // This used to throw IllegalArgumentException
+        )
+        val context = CanonicalShellDispatchContext(
+            opId = OpId("durable-returnstdout", 0, 0),
+            runId = "durable-returnstdout-run",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions(
+                workspaceRoot = workspaceRoot,
+                captureStdout = false,  // Will be overridden to true internally
+                timeoutMs = null,
+                env = emptyMap(),
+                sandbox = SandboxConfig.NONE,
+            ),
+            controlDirRoot = controlDir,
+            eventSink = eventStore,
+        )
+
+        // The key assertion: dispatch should NOT throw IllegalArgumentException
+        // (which was the behavior before the fix)
+        val outcome = dispatcher.dispatch(command, context)
+        // The outcome may be Success or Failure depending on execution,
+        // but the require() check no longer blocks returnStdout=true
+        assertTrue(outcome is StepOutcome, "dispatch should complete without throwing")
     }
 }

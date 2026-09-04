@@ -20,8 +20,12 @@ data class CanonicalShellDispatchContext(
 /** Dispatches canonical `core.sh` nodes through the existing durable shell path. */
 class CanonicalShellNodeDispatcher {
     suspend fun dispatch(command: CanonicalCoreStepCommand.Shell, context: CanonicalShellDispatchContext): StepOutcome {
-        require(!command.returnStdout) {
-            "core.sh returnStdout requires a typed result channel before durable dispatch"
+        // When returnStdout=true, enable captureStdout so the durable shell executor
+        // tees stdout to output.txt (the typed result channel for returnStdout mode).
+        val effectiveOptions = if (command.returnStdout) {
+            context.shOptions.copy(captureStdout = true)
+        } else {
+            context.shOptions
         }
 
         return ShExecution.runShellCommandTyped(
@@ -30,7 +34,7 @@ class CanonicalShellNodeDispatcher {
             runId = context.runId,
             stageIndex = context.stageIndex,
             stepIndex = context.stepIndex,
-            shOptions = context.shOptions,
+            shOptions = effectiveOptions,
             controlDirRoot = context.controlDirRoot,
             eventSink = context.eventSink,
         )

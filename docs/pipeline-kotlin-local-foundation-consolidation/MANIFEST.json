@@ -1,0 +1,422 @@
+[
+  {
+    "path": "MERGE_PLAN.md",
+    "bytes": 1827,
+    "sha256": "ce1bd6ab74041e90ecb1efba93c8ae83defd0b35e9878b5d091e97e5cf1e8e67"
+  },
+  {
+    "path": "README.md",
+    "bytes": 2645,
+    "sha256": "e888c8fbc6ad070bce170b9abcdf9fe7f5ae8a364f29d9bf99f382c0bff2df4d"
+  },
+  {
+    "path": "VALIDATION.txt",
+    "bytes": 3,
+    "sha256": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87"
+  },
+  {
+    "path": "docs/v2/00-governance/ARCHITECTURE_PRINCIPLES.md",
+    "bytes": 1663,
+    "sha256": "e2eba6503326fbc185ea3ba0d03558a9aec9c45447def4d79f2a3268e029e9b5"
+  },
+  {
+    "path": "docs/v2/00-governance/CURRENT_STATE.md",
+    "bytes": 2939,
+    "sha256": "79ac94d2d75d3d850af779eaa47c3ce1e85b30925250639fa33096c67e74162e"
+  },
+  {
+    "path": "docs/v2/00-governance/DEBT_REGISTER.md",
+    "bytes": 2174,
+    "sha256": "f1fe711d98862c62c265c41379e7490974e69efee61a50cbeb843e99eaf99476"
+  },
+  {
+    "path": "docs/v2/00-governance/DECISION_POLICY.md",
+    "bytes": 1399,
+    "sha256": "620d7ab8a49726f97bfd8475ac38aaff9fde24d4718b0d6af75b90be7e111dc0"
+  },
+  {
+    "path": "docs/v2/00-governance/DEFINITION_OF_DONE.md",
+    "bytes": 965,
+    "sha256": "e3bf374ad4ea9e6a9d63e423edffcf03b9b01f55c4cb88196367b0b6533e68f9"
+  },
+  {
+    "path": "docs/v2/00-governance/DOCUMENT_AUTHORITY.md",
+    "bytes": 1463,
+    "sha256": "52e03c9cba5245684f89fd2bd0a4b739c59c6a92c760cd37f2a42475da9ef379"
+  },
+  {
+    "path": "docs/v2/00-governance/INTEGRATION_MANIFEST.md",
+    "bytes": 1561,
+    "sha256": "3856e6305012579cf435736283bf28c37d9bd387cb5a7cb6a763c49911cbe821"
+  },
+  {
+    "path": "docs/v2/00-governance/RISK_REGISTER.md",
+    "bytes": 2073,
+    "sha256": "9d41653ecb2f49b2d6ff4616fae709974848671fe7bcf3f35117a9b06e61d207"
+  },
+  {
+    "path": "docs/v2/01-product/CLI_UX.md",
+    "bytes": 1314,
+    "sha256": "0fbafc6532919c54b9f00d3834566a2e76f695376dd2ad0a9286c440f78004ff"
+  },
+  {
+    "path": "docs/v2/01-product/JENKINS_FAMILIARITY_NORTH_STAR.md",
+    "bytes": 2034,
+    "sha256": "da958ac560bc81a422959f850a268fd911d26734640171cbef0967ecc468f2ab"
+  },
+  {
+    "path": "docs/v2/01-product/LOCAL_FIRST_PRODUCT.md",
+    "bytes": 1494,
+    "sha256": "86da6154409fafae241e7597b0dff759e184ec8e3f461f6467f42d545c9548b6"
+  },
+  {
+    "path": "docs/v2/01-product/REFERENCE_PIPELINE.md",
+    "bytes": 1775,
+    "sha256": "51e02463c4885a557885e573fd84d77a5958daa3c1f19a7adb20be5e437f2987"
+  },
+  {
+    "path": "docs/v2/02-architecture/ARCHITECTURE_FITNESS.md",
+    "bytes": 1734,
+    "sha256": "c7549fe1498560e9da48654f809aa65669512736cb4e07c18a577f60cdbe354f"
+  },
+  {
+    "path": "docs/v2/02-architecture/CONNASCENCE_AND_CODE_QUALITY.md",
+    "bytes": 1145,
+    "sha256": "668b738ff29c0a9b0ed44b3b63daa6a415df85fd28aef1cee0e192357dc3d939"
+  },
+  {
+    "path": "docs/v2/02-architecture/CURRENT_CODE_MAPPING.md",
+    "bytes": 3339,
+    "sha256": "dfa653be88f7f6ae7bf983601c5bccdcc96bed6d4bc6b70d8e4af272c197bb22"
+  },
+  {
+    "path": "docs/v2/02-architecture/DELETION_AND_MIGRATION_PLAN.md",
+    "bytes": 1700,
+    "sha256": "15ceab9385041929584a400bda6d3f6a64c5b3727b0ad3b2ca161930a30cb1f7"
+  },
+  {
+    "path": "docs/v2/02-architecture/EVOLUTIONARY_ARCHITECTURE.md",
+    "bytes": 1425,
+    "sha256": "d8659fb066766ca420cee952fcce65091d4f890c29336d64d2c46557e7cea10b"
+  },
+  {
+    "path": "docs/v2/02-architecture/MODULE_BOUNDARIES.md",
+    "bytes": 1445,
+    "sha256": "c1d4adff5af700f74e25c6b2164c12f08f9d0a6c42fe70f9b91de254e3249436"
+  },
+  {
+    "path": "docs/v2/02-architecture/SECURITY_MODEL.md",
+    "bytes": 929,
+    "sha256": "6ff7ced35929579c7f312654d2ed3ee06e2a2a1e1d9f2b4262c3b8d05d22f8d2"
+  },
+  {
+    "path": "docs/v2/02-architecture/TARGET_ARCHITECTURE.md",
+    "bytes": 2601,
+    "sha256": "90824665d39de4c5f0f45ee8f263bed56a592b0e560542c4f8af4058c5f547d2"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-001-CANONICAL_PIPELINE_IR.md",
+    "bytes": 2079,
+    "sha256": "5e32c7b87eb615f33dcf87f924b2e2dff530bc75f146bbf39afbc612950528e2"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-002-DSL_AND_SCRIPTING.md",
+    "bytes": 1587,
+    "sha256": "12dfec566a4961386e48fad1276f64d45d63a2781a4551bd399367464414f220"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-003-PLUGIN_SDK.md",
+    "bytes": 1901,
+    "sha256": "bb74067794d8432a132d411e7a9a925bb583d2ba2717b68328b9cfed755e8788"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-004-CAPABILITY_SERVICES.md",
+    "bytes": 1273,
+    "sha256": "0a8c5020af851ceab8d3d7c38dec6ae9d05852652059d5a710d61bfaf4b9bbdd"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-005-EXECUTION_RUNTIME.md",
+    "bytes": 1349,
+    "sha256": "9ffb49795d6d7a11b2f6f6ec731d4feb66bd42ca281edccfe9507f6e93581ba0"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-006-BLOCK_STEPS.md",
+    "bytes": 1115,
+    "sha256": "9b97c2c675ff7076a8948e08bb3d1750c52dcca690dbc6e10c9d7581bdfe2681"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-007-ENVIRONMENT_AND_CREDENTIALS.md",
+    "bytes": 1237,
+    "sha256": "b55361040054e626100de50b937cb9915874a11ce44c99d81a7bd9819819c00e"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-008-OUTPUT_EVENTS_JOURNAL.md",
+    "bytes": 1134,
+    "sha256": "81328d6904ae2cc6e3696637925c7cf54138a352678203ca94b1b7c9c82ad41b"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-009-GRAPH_PROJECTION.md",
+    "bytes": 775,
+    "sha256": "ce1cf8658a90149547ccf3e6d2286823b4cf5a640deaf80f549bcbd6fb2744b8"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-010-PLUGIN_RESOLUTION_AND_LOCKFILE.md",
+    "bytes": 1135,
+    "sha256": "00705288f03598dc8ba81c3621ad6f2ced4892a0047a16c768e37292997f0510"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-011-CLI_PROJECT_FORMAT.md",
+    "bytes": 727,
+    "sha256": "96c9f35c6308571e6c5f1d6119402afac6153cd57af5aa2d6024be7bbf67e774"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-012-JENKINS_COMPATIBILITY.md",
+    "bytes": 868,
+    "sha256": "92648e3c4fb3f09a9f9242da0fa727c3abe174f16dffe4d717bb9637d1a72d43"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-013-RELEASE_AND_DISTRIBUTION.md",
+    "bytes": 1302,
+    "sha256": "00f7283058a1429726be495aed0c9d0e8bc601be6d52de29199e29979a60215d"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-014-SANDBOX.md",
+    "bytes": 841,
+    "sha256": "4c6cd7eb519f13e0f8c40b61ac4c36faea2f23046323a6c5b83084bc2127ff88"
+  },
+  {
+    "path": "docs/v2/03-specifications/SPEC-LFC-015-PLUGIN_TESTKIT.md",
+    "bytes": 863,
+    "sha256": "614d59df48d52156fd4911e8fdc8f8f0553b0d9c4ba960010f3726c835c91365"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-001-v2-local-first-is-the-active-product.md",
+    "bytes": 993,
+    "sha256": "1ecf3092d46fc41c3dc9e2334cd31ca96a289cbfb6a9f0819224f040dfe1b555"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-002-one-canonical-executable-pipeline-ir.md",
+    "bytes": 664,
+    "sha256": "e4c72c6c06baa6c968224cfd6683f84a7e984f71572a86c0f64884df07cc831e"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-003-jenkins-like-type-safe-builder-dsl.md",
+    "bytes": 557,
+    "sha256": "c43de845cc4699a11b09845c873d121ddacd07417457d7be98cb26f717a322b1"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-004-explicit-declarative-versus-durable-scripted-boundary.md",
+    "bytes": 637,
+    "sha256": "b35d78bde1d0df889a8175467a5a524ab7b029c74fe01e7788cf5e4d34f5dbe4"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-005-generated-plugin-sdk-with-multiple-extension-kinds.md",
+    "bytes": 636,
+    "sha256": "b18f67a9802016a3e70459a257ecaecc7558b8ef2a8b91c44b8858b351716a06"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-006-typed-capabilities-replace-omnipotent-stepcontext.md",
+    "bytes": 521,
+    "sha256": "d8ea878dc8e81292e984db842fb0b122617c1897cc7994a396968fb339641674"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-007-single-suspend-execution-spine.md",
+    "bytes": 525,
+    "sha256": "0691a549e73d468666a12b27e47464bc86b681f54cc84a3f84beeedd46f2e18c"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-008-processdurabletaskruntime-is-the-canonical-subprocess-engine.md",
+    "bytes": 526,
+    "sha256": "901c5a5e3f0a8c498e3a4feefb656f9fc287cd4822b88efbd00cd1851e72f950"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-009-environmentcomposer-and-fail-closed-credentials-are-canonical.md",
+    "bytes": 520,
+    "sha256": "6c711b0da9b785df4eb022a51df338255a4ab365e828fbcac299f95a691df29c"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-010-separate-output-store-domain-events-and-operation-journal.md",
+    "bytes": 492,
+    "sha256": "3b2cfd78edfd8c15dc35ebdeed13b0165b9e69a37a1020b90824fbeaa89579fc"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-011-execution-graph-is-a-derived-local-projection.md",
+    "bytes": 491,
+    "sha256": "95c4742f482f3596d42817abd8c8ccbdc8c67f37c176e6cff52f3636d0b60f49"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-012-resolve-plugins-before-pipeline-compilation-and-lock-them.md",
+    "bytes": 560,
+    "sha256": "fa33d3c00c709dd3235eda649b3b4efa8cd564cbfe7f872ec29d00531f57c9fb"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-013-jlink-plus-jreleaser-is-the-primary-distribution-path.md",
+    "bytes": 835,
+    "sha256": "7be0f582ca01993e9090262ae62bf3de103ecf03587a93c6a6fb7d6e34499a8f"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-014-jenkins-compatibility-is-executable-metadata.md",
+    "bytes": 407,
+    "sha256": "1b6defa8f318a355df3c0f75fcfefe5394b18ded52b4bd16126881bcd8c6d162"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-015-sandbox-strength-is-explicit-and-layered.md",
+    "bytes": 468,
+    "sha256": "bf184ccc4e13c72000e79a364056b2fd54efeb6eb19abb001c4b918b91d626c1"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-016-plugin-testkit-is-a-supported-sdk-component.md",
+    "bytes": 451,
+    "sha256": "8b93d352bfb706e593d5ffe32083ff26c00e9163f02ba5d5176cd6fbf2897b7e"
+  },
+  {
+    "path": "docs/v2/04-adrs/ADR-LFC-017-remote-protocol-and-controller-work-is-deferred-not-designed-into-local-hot-paths.md",
+    "bytes": 632,
+    "sha256": "1fdcfccfb41f592693fc3177f0b61c315dd750f14ad545fd79996986202a3a71"
+  },
+  {
+    "path": "docs/v2/05-roadmap/DEFERRED_BACKLOG.md",
+    "bytes": 918,
+    "sha256": "8c5fba600dfb577301513013dac7959cd26607528bfe85fd1118229031533db6"
+  },
+  {
+    "path": "docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG.md",
+    "bytes": 4375,
+    "sha256": "68971e3d368cb3198455ce1f0151698511a7c8d1cb6d1787021643c4af647c44"
+  },
+  {
+    "path": "docs/v2/05-roadmap/MILESTONE_GATES.md",
+    "bytes": 1146,
+    "sha256": "70b335c19a1b051e3fd5171cfdf038c0c2dd1d93adc6fb843dfab8ad872d1e0b"
+  },
+  {
+    "path": "docs/v2/05-roadmap/ROADMAP.md",
+    "bytes": 5258,
+    "sha256": "9d512609b7cc7fb7891d09a51902c1186c258754c9bbb0cbc5d828436bfe0d74"
+  },
+  {
+    "path": "docs/v2/05-roadmap/SPIKE_REGISTER.md",
+    "bytes": 1724,
+    "sha256": "c47b254c7629fb75b0582968430e598fa6be3f76b1adb77f5102855301406cb5"
+  },
+  {
+    "path": "docs/v2/06-uat/PERFORMANCE_RELIABILITY_GATES.md",
+    "bytes": 994,
+    "sha256": "3a0cf83af4b5df9447b60038bf1b52a3625367abe0c7bef40db1b351e777687f"
+  },
+  {
+    "path": "docs/v2/06-uat/TEST_MATRIX.md",
+    "bytes": 938,
+    "sha256": "5aa8edf17e1dafbaca421df0a9d239c73e8857b9a93a34548a8ad955d7c36538"
+  },
+  {
+    "path": "docs/v2/06-uat/UAT_CATALOG.md",
+    "bytes": 3992,
+    "sha256": "bb879dd1fbf66d8f2702441df73357068786777ad8b873f48ccc429e9ab0f624"
+  },
+  {
+    "path": "docs/v2/06-uat/UAT_RUNBOOK.md",
+    "bytes": 1400,
+    "sha256": "4edfe4c113c1d7ed38c58dafbbb4a4ab3c0df906eba8da84dad7d4ca4e15f685"
+  },
+  {
+    "path": "docs/v2/06-uat/UAT_STRATEGY.md",
+    "bytes": 1305,
+    "sha256": "2df0e7fb75c89b050cee49b522d4e4afeab0418910087307c5a895c32afdd822"
+  },
+  {
+    "path": "docs/v2/07-distribution/CI_INTEGRATION.md",
+    "bytes": 861,
+    "sha256": "b22134cb127501f6b83b645e92a062cd2980c75b707ce058b6964390a484036d"
+  },
+  {
+    "path": "docs/v2/07-distribution/DISTRIBUTION_STRATEGY.md",
+    "bytes": 1652,
+    "sha256": "c3d6e54735b71323732e79c108306595900c825e54893799bb197cc5fe73a867"
+  },
+  {
+    "path": "docs/v2/07-distribution/INSTALLATION_EXPERIENCE.md",
+    "bytes": 1044,
+    "sha256": "45933f554b121e5506c1ed6c786ec9868bf88c2ac07d43796fe63637d0acd489"
+  },
+  {
+    "path": "docs/v2/07-distribution/JRELEASER_PLAN.md",
+    "bytes": 1348,
+    "sha256": "083f607590761824989c4cd555f48f4bfecb5e812f079c5076d076df7d335f91"
+  },
+  {
+    "path": "docs/v2/07-distribution/RELEASE_PIPELINE_BLUEPRINT.md",
+    "bytes": 1265,
+    "sha256": "43384d9283e89a7e3bfdcfc02ecf32618c92a42fd476538adf2fd65e1a047d92"
+  },
+  {
+    "path": "docs/v2/08-plugin-sdk/CAPABILITY_CATALOG.md",
+    "bytes": 1254,
+    "sha256": "43ae0271e0dc25d9e09f5d1beef014f558b15d56b66dee8858c187cf7571e951"
+  },
+  {
+    "path": "docs/v2/08-plugin-sdk/JENKINS_FAMILIARITY_GUIDE.md",
+    "bytes": 1003,
+    "sha256": "f5032cb238504e489a1e9a8aa13016d23c6808217d01edd72f72711fa3a703e1"
+  },
+  {
+    "path": "docs/v2/08-plugin-sdk/KSP_CODEGEN_CONTRACT.md",
+    "bytes": 1302,
+    "sha256": "cb9bc0679ef1be900d0c3288a8fa601bf99c3f57469a649f9facb11e160a3bc5"
+  },
+  {
+    "path": "docs/v2/08-plugin-sdk/PLUGIN_AUTHOR_GUIDE.md",
+    "bytes": 1337,
+    "sha256": "9bd42cf590e15567bd7c2d1d4a37999c0752ffca38967a92a29f5f42da84d072"
+  },
+  {
+    "path": "docs/v2/08-plugin-sdk/PLUGIN_COMPATIBILITY_POLICY.md",
+    "bytes": 1029,
+    "sha256": "8fd84ae7af5362ad43bf2ef768077384bc0bc5d673c2abfcf90500108f82b220"
+  },
+  {
+    "path": "docs/v2/08-plugin-sdk/PLUGIN_MANIFEST_SCHEMA.md",
+    "bytes": 877,
+    "sha256": "4da76138b6038aaace31ae29dc59f460b28f5e06c0cbad8f803b1315ac7565d6"
+  },
+  {
+    "path": "docs/v2/09-migration/JENKINS_SUPPORTED_SUBSET_V1.md",
+    "bytes": 1180,
+    "sha256": "6a250006ec8154f0c3205f6ac71c65efc788ece72bb56f8e268bacf124b29d4e"
+  },
+  {
+    "path": "docs/v2/09-migration/JENKINS_TO_PIPELINE_KOTLIN.md",
+    "bytes": 1112,
+    "sha256": "2775c477d849967b102cf24902386fd33cf17c9c98754d866ed68b05c2f90b87"
+  },
+  {
+    "path": "docs/v2/09-migration/MIGRATION_FROM_CURRENT_CODE.md",
+    "bytes": 1292,
+    "sha256": "bac1b81ddd4d4f766a843e2a26579b63882c3ce0b93ac19971d19dfd802a9851"
+  },
+  {
+    "path": "docs/v2/09-migration/REMOVAL_CHECKLIST.md",
+    "bytes": 602,
+    "sha256": "791e93fe10a3e8d68cbffbdc9792626a82d46f6c20e01899eb18d7e5eefc2f3a"
+  },
+  {
+    "path": "docs/v2/10-references/PROJECT_EVIDENCE_NOTES.md",
+    "bytes": 1537,
+    "sha256": "6cfff94f00350660a09456e54c149c552c475d21d0e4af979fc12c7e20d3f7c5"
+  },
+  {
+    "path": "docs/v2/10-references/RESEARCH_REFERENCES.md",
+    "bytes": 2246,
+    "sha256": "882300775ada91116159b4869dae37c975eada559e42e2b86bbf61fb46d39f4d"
+  },
+  {
+    "path": "docs/v2/10-references/TRACEABILITY_MATRIX.md",
+    "bytes": 1018,
+    "sha256": "f55c3930afbf6319efdab36ed4bcfd4161dba72de44b80c6b2efab520f562eb1"
+  },
+  {
+    "path": "docs/v2/INDEX_LFC.md",
+    "bytes": 1521,
+    "sha256": "b52b9f13511a52f4512d1819bff342ec30d775bb3322d32d8c58e9b50d9a8d51"
+  }
+]

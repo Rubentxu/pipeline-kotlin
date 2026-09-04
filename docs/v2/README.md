@@ -1,5 +1,10 @@
 # Pipeline Kotlin V2 — Architecture & Delivery Pack
 
+> **Scope notice (2026-09-03):** this delivery pack is retained as historical
+> evidence where it conflicts with the active
+> [Local Foundation Consolidation programme](05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md).
+> See [document authority](00-governance/DOCUMENT_AUTHORITY.md).
+
 **Estado:** Propuesta arquitectónica lista para ejecución incremental  
 **Fecha de referencia:** 2026-08-21  
 **Proyecto objetivo:** `Rubentxu/pipeline-kotlin`

@@ -1,0 +1,105 @@
+%% LFC0 Gradle module graph
+%% claims:
+%% - The root build includes the legacy/V1 graph and V2 as an included build.
+%% - At the LFC0-002 snapshot, :pipeline-application had no production dependency on :pipeline-protocol.
+%% - At that snapshot, :pipeline-protocol was observed by architecture tests, not consumed by the local application path.
+%% validated_against:
+%% - settings.gradle.kts
+%% - v2/settings.gradle.kts
+%% - v2/**/build.gradle.kts (LFC0-002 inventory, 2026-09-03)
+flowchart LR
+    ROOT["root build\npipeline-kotlin"]
+    V2["included build\npipeline-v2"]
+    ROOT -->|includeBuild| V2
+
+    subgraph V1["Root / legacy V1 graph"]
+        CORE[":core"]
+        CONFIG[":pipeline-config"] --> CORE
+        BACKEND[":pipeline-backend"] --> CONFIG
+        BACKEND --> CORE
+        CLI[":pipeline-cli"] --> BACKEND
+        CLI --> CONFIG
+        CLI --> CORE
+        LSP[":pipeline-lsp-server"] --> CORE
+        ANNO[":pipeline-steps-system:plugin-annotations"]
+        CORE --> ANNO
+        COMPILER[":pipeline-steps-system:compiler-plugin"]
+        GRADLE_PLUGIN[":pipeline-steps-system:gradle-plugin"] --> COMPILER
+        GRADLE_PLUGIN --> ANNO
+        GRADLE_PLUGIN -. compileOnly .-> CORE
+    end
+    ROOT --> V1
+
+    subgraph V2GRAPH["V2 local-first composite build"]
+        DOMAIN[":pipeline-domain"]
+        SCRIPT_API[":pipeline-scripting-api"] --> DOMAIN
+        EVENTS[":pipeline-events"] --> DOMAIN
+        EVENTS --> SCRIPT_API
+        SDK_API[":pipeline-step-sdk:api"] --> DOMAIN
+        SDK_API --> SCRIPT_API
+        PROCESSOR[":pipeline-step-sdk:processor"] --> SDK_API
+        RUNTIME[":pipeline-step-sdk:runtime"] --> DOMAIN
+        RUNTIME --> SDK_API
+        RUNTIME --> EVENTS
+        RUNTIME --> SCRIPT_API
+        RUNTIME -. KSP .-> PROCESSOR
+        FILES[":pipeline-step-sdk:files"] --> SDK_API
+        FILES --> RUNTIME
+        FILES --> DOMAIN
+        FILES --> EVENTS
+        FILES --> SCRIPT_API
+        SCM[":pipeline-step-sdk:scm-git"] --> DOMAIN
+        SCM --> EVENTS
+        SCM --> SDK_API
+        SCM --> RUNTIME
+        CREDS_API[":pipeline-credentials-api"] --> DOMAIN
+        CREDS_API --> EVENTS
+        CREDS_API --> SCRIPT_API
+        CREDS_LOCAL[":pipeline-credentials-local"] --> DOMAIN
+        CREDS_LOCAL --> CREDS_API
+        CREDS_MULTI[":pipeline-credentials-multipart"] --> DOMAIN
+        CREDS_MULTI --> CREDS_API
+        CREDS_EXEC[":pipeline-credentials-executor"] --> DOMAIN
+        CREDS_EXEC --> EVENTS
+        CREDS_EXEC --> CREDS_API
+        CREDS_EXEC --> SCRIPT_API
+        CREDS_EXEC --> SDK_API
+        ARTEFACTS[":pipeline-artefacts-local"] --> DOMAIN
+        ARTEFACTS --> EVENTS
+        ARTEFACTS --> RUNTIME
+        BINDING[":pipeline-binding-factory"] --> DOMAIN
+        BINDING --> EVENTS
+        SCRIPT_K24[":pipeline-scripting-kotlin24"] --> SCRIPT_API
+        SCRIPT_K24 --> EVENTS
+        SCRIPT_K24 --> DOMAIN
+        APP[":pipeline-application"] --> DOMAIN
+        APP --> EVENTS
+        APP --> SCRIPT_K24
+        APP --> SCRIPT_API
+        APP --> SDK_API
+        APP --> RUNTIME
+        APP --> FILES
+        APP --> SCM
+        APP --> CREDS_API
+        APP --> CREDS_LOCAL
+        APP --> CREDS_MULTI
+        APP --> CREDS_EXEC
+        APP --> ARTEFACTS
+        TESTKIT[":pipeline-testkit"] --> DOMAIN
+        TESTKIT --> APP
+        ARCH[":pipeline-architecture-tests"] -. test / boundary inspection .-> EVENTS
+        ARCH -. test / boundary inspection .-> SCRIPT_API
+        ARCH -. test / boundary inspection .-> SDK_API
+        ARCH -. test / boundary inspection .-> ARTEFACTS
+        ARCH -. test / boundary inspection .-> BINDING
+        PROTOCOL[":pipeline-protocol"] --> DOMAIN
+        ARCH -. verifies boundary .-> PROTOCOL
+    end
+    V2 --> V2GRAPH
+
+    classDef legacy fill:#f5f5f5,stroke:#6b7280,color:#111827;
+    classDef active fill:#dcfce7,stroke:#15803d,color:#14532d;
+    classDef deferred fill:#fef3c7,stroke:#b45309,color:#78350f;
+    class CORE,CONFIG,BACKEND,CLI,LSP,ANNO,COMPILER,GRADLE_PLUGIN legacy;
+    class DOMAIN,SCRIPT_API,EVENTS,SDK_API,PROCESSOR,RUNTIME,FILES,SCM,CREDS_API,CREDS_LOCAL,CREDS_MULTI,CREDS_EXEC,ARTEFACTS,BINDING,SCRIPT_K24,APP,TESTKIT,ARCH active;
+    class PROTOCOL deferred;

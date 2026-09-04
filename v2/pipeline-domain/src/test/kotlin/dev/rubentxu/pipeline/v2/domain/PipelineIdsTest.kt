@@ -3,9 +3,29 @@ package dev.rubentxu.pipeline.v2.domain
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class PipelineIdsTest {
+    @Test
+    fun `stable model identity types are available in the domain`() {
+        val expectedTypes = listOf("StageId", "StepId", "PluginStepId", "AttemptId", "OperationId")
+        val missingTypes = expectedTypes.filter { typeName ->
+            runCatching { Class.forName("${PipelineIdsTest::class.java.packageName}.$typeName") }.isFailure
+        }
+
+        assertTrue(missingTypes.isEmpty(), "Missing stable model identity types: $missingTypes")
+    }
+
+    @Test
+    fun `stable model identity types reject invalid values`() {
+        assertThrows(IllegalArgumentException::class.java) { StageId(" ") }
+        assertThrows(IllegalArgumentException::class.java) { StepId("") }
+        assertThrows(IllegalArgumentException::class.java) { PluginStepId("\t") }
+        assertThrows(IllegalArgumentException::class.java) { AttemptId(-1) }
+        assertThrows(IllegalArgumentException::class.java) { OperationId("\n") }
+    }
+
     @Test
     fun `run id generator seam supports deterministic adapters`() {
         val generator = object : RunIdGenerator {

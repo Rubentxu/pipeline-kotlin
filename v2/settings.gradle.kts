@@ -20,7 +20,6 @@ rootProject.name = "pipeline-v2"
 include(
     ":pipeline-domain",
     ":pipeline-application",
-    ":pipeline-protocol",
     ":pipeline-scripting-api",
     ":pipeline-scripting-kotlin24",
     ":pipeline-testkit",

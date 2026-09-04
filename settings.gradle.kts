@@ -17,31 +17,6 @@ pluginManagement {
 
 rootProject.name = "pipeline-kotlin"
 
-
-
-include(":core")
-include(":pipeline-cli")
-include(":pipeline-config")
-include(":pipeline-backend")
-include(":pipeline-lsp-server")
-// include(":lib-examples") // Disabled due to DSL dependencies on excluded classes
-// Consolidated all phases into core - phase modules no longer needed
-// include(":phase1-validation") 
-// include(":phase2-validation")
-// include(":phase3-validation")  
-// include(":phase4-step-migration")
-
-// Framework de testing organizado como módulo padre con submódulos
-// TODO: Fix testing framework compatibility with new StepsBlock
-// include(":pipeline-testing-framework")
-// include(":pipeline-testing-framework:annotations")
-// include(":pipeline-testing-framework:compiler-plugin")
-// include(":pipeline-testing-framework:runtime")
-
-// Sistema de @Step plugins con estructura K2 canónica
-include(":pipeline-steps-system")
-include(":pipeline-steps-system:plugin-annotations")
-include(":pipeline-steps-system:compiler-plugin")
-include(":pipeline-steps-system:gradle-plugin")
-
+// LFC0-004: V1 source remains in the repository as legacy/history, but is not
+// part of the active build. The local-first product is the V2 composite build.
 includeBuild("v2")

@@ -34,7 +34,7 @@ class DirExecutorTest {
     // =============================================================================
 
     @Test
-    fun `DIR-S-001 happy path enter plus exit restores cwd`(@TempDir tempDir: Path) {
+    fun `DIR-S-001 happy path returns workspace context without changing cwd`(@TempDir tempDir: Path) {
         val workspace = tempDir.resolve("workspace/build-0")
         Files.createDirectories(workspace)
         val executor = DirExecutor(workspaceResolver = { _, _ -> workspace })
@@ -54,8 +54,31 @@ class DirExecutorTest {
         assertEquals(prevDir, System.getProperty("user.dir"))
         assertTrue(result.currentPath.endsWith("sub") || result.currentPath.contains("sub"),
             "currentPath should contain 'sub': ${result.currentPath}")
-        assertEquals(prevDir, result.restoredPath, "restoredPath must equal previous path")
-        assertEquals(prevDir, result.previousPath, "previousPath must capture cwd before dir")
+        assertEquals(workspace.toString(), result.restoredPath, "restoredPath must equal workspace context")
+        assertEquals(workspace.toString(), result.previousPath, "previousPath must capture workspace context")
+    }
+
+    @Test
+    fun `DIR-S-001 keeps the JVM working-directory property unchanged while executing`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("workspace/build-0")
+        Files.createDirectories(workspace)
+        val executor = DirExecutor(workspaceResolver = { _, _ -> workspace })
+        val previousJvmDirectory = System.getProperty("user.dir")
+
+        executor.execute(
+            stageName = "TestStage",
+            stageIndex = 0,
+            stepIndex = 0,
+            step = StepSpec.Dir(path = "sub", steps = emptyList()),
+            action = {
+                assertEquals(
+                    previousJvmDirectory,
+                    System.getProperty("user.dir"),
+                    "dir context must not mutate the controller JVM working directory",
+                )
+                "success"
+            },
+        )
     }
 
     // =============================================================================
@@ -205,7 +228,7 @@ class DirExecutorTest {
             step = step,
             action = { "success" }
         )
-        assertEquals(prevDir, result1.restoredPath)
+        assertEquals(workspace.toString(), result1.restoredPath)
 
         // Simulate resume: re-enter same dir block (idempotent cd)
         val result2 = executor.execute(
@@ -216,10 +239,10 @@ class DirExecutorTest {
             action = { "success" }
         )
 
-        // Both must succeed and restore to prevDir
+        // Both must succeed without changing the controller JVM directory.
         assertEquals("success", result2.outcome)
         assertEquals(prevDir, System.getProperty("user.dir"))
-        assertEquals(prevDir, result2.restoredPath)
+        assertEquals(workspace.toString(), result2.restoredPath)
     }
 
     @Test

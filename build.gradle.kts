@@ -38,5 +38,13 @@ subprojects {
     }
 }
 
-// Dokka v2 configuration will be applied by default
-// Documentation will be generated to build/dokka/html
+// LFC0-004: root lifecycle tasks are the local-first V2 entry point. The
+// included build remains independently invokable with `-p v2` for the inner
+// loop, while `./gradlew check` is the repository-level V2 gate.
+tasks.named("check") {
+    dependsOn(gradle.includedBuild("v2").task(":check"))
+}
+
+tasks.named("build") {
+    dependsOn(tasks.named("check"))
+}

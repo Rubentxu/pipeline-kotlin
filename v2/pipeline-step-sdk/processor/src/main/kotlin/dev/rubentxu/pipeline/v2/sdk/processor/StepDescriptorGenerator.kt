@@ -9,11 +9,11 @@ import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.processing.SymbolProcessorProvider
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
-import dev.rubentxu.pipeline.v2.sdk.Effect
-import dev.rubentxu.pipeline.v2.sdk.ExecutionLocation
-import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.Step
-import dev.rubentxu.pipeline.v2.sdk.StepDescriptor
 
 /**
  * KSP SymbolProcessor that scans @Step-annotated functions and emits
@@ -100,10 +100,10 @@ class StepDescriptorGenerator(
         val content = buildString {
             appendLine("package $packageName")
             appendLine()
-            appendLine("import dev.rubentxu.pipeline.v2.sdk.Effect")
-            appendLine("import dev.rubentxu.pipeline.v2.sdk.ExecutionLocation")
-            appendLine("import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy")
-            appendLine("import dev.rubentxu.pipeline.v2.sdk.StepDescriptor")
+            appendLine("import dev.rubentxu.pipeline.v2.domain.durable.Effect")
+            appendLine("import dev.rubentxu.pipeline.v2.domain.ExecutionLocation")
+            appendLine("import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy")
+            appendLine("import dev.rubentxu.pipeline.v2.domain.StepDescriptor")
             appendLine()
             appendLine("public object GeneratedStepDescriptors {")
             appendLine("    public val all: List<StepDescriptor> = listOf(")

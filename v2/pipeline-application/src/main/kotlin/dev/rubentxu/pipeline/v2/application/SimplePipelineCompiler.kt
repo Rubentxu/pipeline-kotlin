@@ -98,7 +98,7 @@ class SimplePipelineCompiler : PipelineCompiler {
                         steps.any { it.id == id } -> diagnostics += PipelineDiagnostic(
                             lineNumber, 1, "duplicate step id '$id'"
                         )
-                        else -> steps += StepDescriptor(id = id, type = type, configRef = configRef!!)
+                        else -> steps += StepDescriptor(stepId = id, name = type, configRef = configRef!!)
                     }
                 }
                 "edge" -> {

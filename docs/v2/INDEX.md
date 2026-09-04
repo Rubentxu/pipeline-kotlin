@@ -2,6 +2,8 @@
 
 | Documento | Propósito / título |
 |---|---|
+| [`04-adrs/ADR-0064-local-foundation-consolidation-scope.md`](04-adrs/ADR-0064-local-foundation-consolidation-scope.md) | ADR-0064: V2 local-first is the active product line |
+| [`00-governance/DOCUMENT_AUTHORITY.md`](00-governance/DOCUMENT_AUTHORITY.md) | Autoridad documental y alcance activo de Local Foundation Consolidation |
 | [`00-context/CURRENT_STATE.md`](00-context/CURRENT_STATE.md) | Estado actual y deuda que V2 debe resolver |
 | [`00-context/GLOSSARY.md`](00-context/GLOSSARY.md) | Glosario |
 | [`00-context/OPEN_QUESTIONS.md`](00-context/OPEN_QUESTIONS.md) | Open Questions |
@@ -15,6 +17,7 @@
 | [`01-product/PRD_V2.md`](01-product/PRD_V2.md) | PRD — Pipeline Kotlin V2 |
 | [`02-architecture/ARCHITECTURE.md`](02-architecture/ARCHITECTURE.md) | Arquitectura V2 |
 | [`02-architecture/C4.md`](02-architecture/C4.md) | C4 Model |
+| [`02-architecture/GRADLE_GRAPH_INVENTORY.md`](02-architecture/GRADLE_GRAPH_INVENTORY.md) | Inventario LFC0-002 del grafo Gradle |
 | [`02-architecture/EVENT_GRAPH_ARCHITECTURE.md`](02-architecture/EVENT_GRAPH_ARCHITECTURE.md) | Event + Graph Architecture |
 | [`02-architecture/MODULES.md`](02-architecture/MODULES.md) | Module Boundaries |
 | [`02-architecture/OBSERVABILITY.md`](02-architecture/OBSERVABILITY.md) | Observability |
@@ -55,6 +58,7 @@
 | [`04-adrs/README.md`](04-adrs/README.md) | ADR Index |
 | [`05-roadmap/DEVELOPMENT_STRATEGY.md`](05-roadmap/DEVELOPMENT_STRATEGY.md) | Estrategia de desarrollo evolutivo |
 | [`05-roadmap/IMPLEMENTATION_BACKLOG.md`](05-roadmap/IMPLEMENTATION_BACKLOG.md) | Implementation Backlog |
+| [`05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md`](05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md) | Roadmap activo LFC-0 a LFC-10 |
 | [`05-roadmap/MIGRATION_PLAN.md`](05-roadmap/MIGRATION_PLAN.md) | Migration Plan V1 → V2 |
 | [`05-roadmap/MILESTONES.md`](05-roadmap/MILESTONES.md) | Milestone Gates y Definition of Done |
 | [`05-roadmap/RELEASE_STRATEGY.md`](05-roadmap/RELEASE_STRATEGY.md) | Release & Compatibility Strategy |

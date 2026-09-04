@@ -16,8 +16,8 @@ class MapPipelineCompilerTest {
             name = "hello",
             version = "0.0.0",
             steps = listOf(
-                StepDescriptor(id = "build", type = "sh", configRef = "build.config"),
-                StepDescriptor(id = "test", type = "sh", configRef = "test.config"),
+                StepDescriptor(stepId = "build", name = "sh", configRef = "build.config"),
+                StepDescriptor(stepId = "test", name = "sh", configRef = "test.config"),
             ),
             edges = listOf(Edge("build", "test")),
         )

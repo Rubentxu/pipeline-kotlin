@@ -140,7 +140,7 @@ class UatLocal011WorkflowControlTest {
                 stages {
                     stage("test") {
                         dir("/tmp") {
-                            sh("pwd")
+                            sh("test \${'$'}PWD = /tmp")
                         }
                     }
                 }

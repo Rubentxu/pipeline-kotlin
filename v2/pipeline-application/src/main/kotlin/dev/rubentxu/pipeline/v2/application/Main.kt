@@ -1,9 +1,15 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
 import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
@@ -15,6 +21,7 @@ import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import kotlinx.serialization.json.Json
@@ -28,6 +35,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfileUnsupportedException
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
@@ -202,9 +211,9 @@ fun main(args: Array<String>) {
     // "run" command.
     if (config.dbPath == null) {
         // LF-0208 (Single Runtime Spine): storage choice must not select a
-        // different execution algorithm. Without --db the run uses the SAME
-        // durable spine with volatile (in-memory) stores — same walker,
-        // same coordinator, same semantics; nothing survives the process.
+        // different execution algorithm. Without --db the run uses the
+        // canonical durable coordinator with volatile (in-memory) stores;
+        // nothing survives the process.
         // --resume is rejected: there is no durable state to resume from.
         if (config.resumeFlag) {
             System.err.println("Error: --resume requires --db (no durable state exists without a journal database)")
@@ -250,31 +259,22 @@ fun main(args: Array<String>) {
             dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore(clock)
 
         val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (pipelineSpec != null) {
-            val orchestrator = dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator(
+            val compiled = DslCompiledPipelineCompiler.compile(
+                spec = pipelineSpec,
+                sourcePath = scriptPath.toString(),
+                sourceContent = scriptContent,
+                pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
+            )
+            runCanonicalPipeline(
+                pipeline = compiled,
+                runId = RunId(runId),
                 journal = journal,
                 cursorStore = cursorStore,
-                divergenceDetector = dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector(),
-                effectReplayPolicy = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy(),
-                eventSink = eventStore,
                 clock = clock,
+                effectReplayPolicy = DefaultEffectReplayPolicy(),
+                eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
-                redactingEventSink = eventStore,
-                secretStore = null,
-                withCredentialsExecutor = null,
-            )
-            val specRegistry = SpecRegistry()
-            specRegistry.register(definitionId, pipelineSpec)
-            val definition = SpecDefinitionMapper.toDefinition(pipelineSpec, definitionId)
-            val coordinator: dev.rubentxu.pipeline.v2.domain.RunCoordinator = DurableRunCoordinator(
-                delegate = DurableRunDelegate(orchestrator::run),
-                specs = specRegistry,
-            )
-            coordinator.run(
-                dev.rubentxu.pipeline.v2.domain.RunRequest(
-                    definition = definition,
-                    runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
-                )
             )
         } else {
             null
@@ -360,6 +360,14 @@ fun main(args: Array<String>) {
             }
         }
     } else null
+    val compiledPipeline = pipelineSpec?.let { spec ->
+        DslCompiledPipelineCompiler.compile(
+            spec = spec,
+            sourcePath = scriptPath.toString(),
+            sourceContent = scriptContent,
+            pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
+        )
+    }
 
     // Build orchestrator with all durable dependencies
     val clock: Clock = SystemClock()
@@ -440,7 +448,19 @@ fun main(args: Array<String>) {
     // the RunCoordinator port. The orchestrator is constructed here (it is
     // the composition root) but handed in as a DurableRunDelegate; the
     // typed outcome returned by the coordinator drives the exit code.
-    val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (pipelineSpec != null) {
+    val runOutcome: RunOutcome? = when {
+        compiledPipeline?.supportsCanonicalDurableExecution() == true -> runCanonicalPipeline(
+            pipeline = compiledPipeline,
+            runId = RunId(runId),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = effectPolicy,
+            eventSink = eventStore,
+            controlDirRoot = controlDirRoot,
+            sandboxProfile = config.sandboxProfile,
+        )
+        pipelineSpec != null -> {
         val specRegistry = SpecRegistry()
         specRegistry.register(definitionId, pipelineSpec)
         val definition = SpecDefinitionMapper.toDefinition(pipelineSpec, definitionId)
@@ -455,8 +475,8 @@ fun main(args: Array<String>) {
                 resumeFromCursor = config.resumeFlag,
             )
         )
-    } else {
-        null
+        }
+        else -> null
     }
 
     val events = eventStore.eventsFor(runId).toList()
@@ -468,16 +488,16 @@ fun main(args: Array<String>) {
     // paths where no definition was produced.
     val exitFailure: Boolean = if (runOutcome != null) {
         when (runOutcome) {
-            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> {
+            is RunOutcome.Success -> {
                 System.err.println("Pipeline finished with SUCCESS"); false
             }
-            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> {
+            is RunOutcome.Unstable -> {
                 System.err.println("Pipeline finished with UNSTABLE"); false
             }
-            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> {
+            is RunOutcome.Failure -> {
                 System.err.println("Pipeline finished with FAILURE"); true
             }
-            is dev.rubentxu.pipeline.v2.domain.RunOutcome.Aborted -> {
+            is RunOutcome.Aborted -> {
                 System.err.println("Pipeline finished with FAILURE"); true
             }
         }
@@ -493,3 +513,31 @@ fun main(args: Array<String>) {
     if (exitFailure) System.exit(1)
 }
 
+private fun runCanonicalPipeline(
+    pipeline: CompiledPipeline,
+    runId: RunId,
+    journal: OperationJournal,
+    cursorStore: ReplayCursorStore,
+    clock: Clock,
+    effectReplayPolicy: EffectReplayPolicy,
+    eventSink: EventSink,
+    controlDirRoot: Path,
+    sandboxProfile: SandboxProfile,
+): RunOutcome = kotlinx.coroutines.runBlocking {
+    CanonicalDurableRunCoordinator(
+        dispatcher = CanonicalNodeDispatcher(),
+        journal = journal,
+        cursorStore = cursorStore,
+        clock = clock,
+        effectReplayPolicy = effectReplayPolicy,
+        eventSink = eventSink,
+        controlDirRoot = controlDirRoot,
+        shOptions = ShOptions(
+            workspaceRoot = controlDirRoot.resolve("workspace"),
+            captureStdout = false,
+            timeoutMs = null,
+            env = emptyMap(),
+            sandbox = SandboxConfigResolver.resolve(sandboxProfile),
+        ),
+    ).run(pipeline, runId)
+}

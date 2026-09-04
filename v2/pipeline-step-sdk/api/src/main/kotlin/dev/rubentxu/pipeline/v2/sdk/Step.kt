@@ -1,5 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk
 
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
+
 /**
  * Marks a function as a V2 pipeline step. KSP scans @Step-annotated functions
  * in the consuming module and emits GeneratedStepDescriptors.kt at compile time.

@@ -1,0 +1,14 @@
+diagrams:
+  - id: lfc0-gradle-module-graph
+    purpose: Inventory the root/V1/V2 Gradle graph and identify the protocol module's current position.
+    notation: mermaid
+    source: lfc0-gradle-module-graph.mmd
+    rendered: ../../build/diagrams/lfc0-gradle-module-graph.svg
+    claims:
+      - The root build includes the legacy/V1 graph and V2 as an included build.
+      - pipeline-application has no production dependency on pipeline-protocol.
+      - pipeline-protocol is observed by architecture tests, not consumed by the local application path.
+    validated_against:
+      - ../../../settings.gradle.kts
+      - ../../../v2/settings.gradle.kts
+      - ../../../v2/**/build.gradle.kts

@@ -24,3 +24,4 @@
 - [ADR-0044: Proto Package Structure Amendment](ADR-0044-proto-package-amendment.md)
 - [ADR-0045: Pipeline Protocol Boundary Rule Implementation](ADR-0045-pipeline-protocol-boundary-rule.md)
 - [ADR-0046: Local Execution Ecosystem First — Reprioritization and Durable sh Pattern](ADR-0046-local-ecosystem-first-reprioritization.md)
+- [ADR-0064: V2 local-first is the active product line](ADR-0064-local-foundation-consolidation-scope.md)

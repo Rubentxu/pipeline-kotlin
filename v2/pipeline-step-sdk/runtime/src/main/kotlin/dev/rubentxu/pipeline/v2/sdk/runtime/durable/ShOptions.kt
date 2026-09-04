@@ -21,6 +21,7 @@ import java.nio.file.Path
  * to the new typed form using [SecretHandle.plain].
  *
  * @property workspaceRoot Root directory for the stage workspace.
+ * @property workingDirectory Optional directory for the current nested execution context.
  * @property captureStdout If true, capture stdout to output.txt via tee wrapper.
  * @property timeoutMs Timeout in milliseconds, or null for no timeout.
  * @property env Environment variables to inject via pb.environment().putAll.
@@ -35,6 +36,7 @@ data class ShOptions(
     val timeoutMs: Long?,
     val env: Map<String, SecretHandle>,
     val sandbox: SandboxConfig = SandboxConfig.NONE,
+    val workingDirectory: Path? = null,
 ) {
     companion object {
         /**

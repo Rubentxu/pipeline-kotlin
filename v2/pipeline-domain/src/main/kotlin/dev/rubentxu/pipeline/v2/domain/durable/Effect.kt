@@ -3,10 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Side-effect classification for durable operations.
  *
- * Duplicated from [dev.rubentxu.pipeline.v2.sdk.Effect] to avoid circular dependency
- * between `:pipeline-domain` and `:pipeline-step-sdk:api`.
- *
- * M3-R2 should reconcile these into a single source of truth.
+ * This is the single canonical authority.
  *
  * @see <a href="design.md §E4-06">Design §E4-06</a>
  */

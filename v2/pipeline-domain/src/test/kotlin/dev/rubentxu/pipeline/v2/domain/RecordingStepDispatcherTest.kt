@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 
 class RecordingStepDispatcherTest {
 
-    private fun step(id: String) = StepDescriptor(id = id, type = "sh", configRef = "$id.config")
+    private fun step(id: String) = StepDescriptor(stepId = id, name = "sh", configRef = "$id.config")
 
     @Test
     fun `records dispatched step ids in order`() {

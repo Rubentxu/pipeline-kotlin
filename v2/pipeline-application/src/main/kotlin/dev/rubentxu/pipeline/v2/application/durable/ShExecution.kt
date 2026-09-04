@@ -28,6 +28,9 @@ import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
+/** Typed shell command accepted by the durable execution spine. */
+data class DurableShellCommand(val script: String)
+
 /**
  * Shell execution orchestration for durable steps.
  *
@@ -72,6 +75,27 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
+    ): String = runShellCommand(
+        command = DurableShellCommand(step.command),
+        opId = opId,
+        runId = runId,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        shOptions = shOptions,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+    )
+
+    /** Executes a typed shell command without requiring a DSL step object. */
+    suspend fun runShellCommand(
+        command: DurableShellCommand,
+        opId: OpId,
+        runId: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        shOptions: ShOptions,
+        controlDirRoot: java.nio.file.Path?,
+        eventSink: EventSink,
     ): String {
         // Use explicit controlDirRoot if provided; null means non-durable fallback
         // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
@@ -80,7 +104,7 @@ object ShExecution {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // P2: env injected via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(step.command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
         }
 
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
@@ -101,9 +125,9 @@ object ShExecution {
             // workspaceRoot threaded via effectiveOptions.workspaceRoot (DEC-1 cwd flip)
             val result: DurableShellResult = if (envOptions.captureStdout) {
                 val executor = DurableShellExecutor()
-                executor.execute(controlDir, step.command, opId.format(), envOptions)
+                executor.execute(controlDir, command.script, opId.format(), envOptions)
             } else {
-                executeDurableShell(controlDir, step.command, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env, effectiveOptions.sandbox, effectiveOptions.workspaceRoot)
+                executeDurableShell(controlDir, command.script, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env, effectiveOptions.sandbox, effectiveOptions.workspaceRoot)
             }
 
             // Emit EchoOutputCaptured. Two paths:
@@ -164,7 +188,7 @@ object ShExecution {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(step.command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
         } catch (e: Exception) {
             "failure"
         }

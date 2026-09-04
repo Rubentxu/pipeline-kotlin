@@ -42,7 +42,7 @@ object SpecDefinitionMapper {
             }
         }
         val steps = stepIds.map { stepId ->
-            StepDescriptor(id = stepId, type = "scripted", configRef = stepId)
+            StepDescriptor(stepId = stepId, name = "scripted", configRef = stepId)
         }
         val edges = stepIds.zipWithNext().map { (from, to) -> Edge(from = from, to = to) }
         return PipelineDefinition(

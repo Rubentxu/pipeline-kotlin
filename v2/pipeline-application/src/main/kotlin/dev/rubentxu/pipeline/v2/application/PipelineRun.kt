@@ -65,8 +65,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy as DomainReplayPolicy
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.sdk.Effect
-import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
 
@@ -665,7 +665,8 @@ private suspend fun executeDurableStepImpl(
                                 // LOST: return "lost" to signal to caller to journal LOST (not FAILED)
                                 // null: no pre-existing classification; proceed with normal durable execution
                                 // Build effective ShOptions from step configuration
-                                val workspaceRoot = workspaceResolver?.resolve(stageName, stageIndex)
+                                val workspaceRoot = shOptions?.workingDirectory
+                            ?: workspaceResolver?.resolve(stageName, stageIndex)
                             ?: java.nio.file.Files.createTempDirectory("shoptions")
                                 // WS-S-002: ensure workspace directory exists before sh execution
                                 // (ensureCreated was previously in ShExecution but must live here since
@@ -761,14 +762,6 @@ private suspend fun executeDurableStepImpl(
                 )
             }
             is StepSpec.WithCredentialsBlock -> {
-                try {
-                    java.nio.file.Files.writeString(
-                        java.nio.file.Paths.get("/tmp/uat008-debug/wcb-${System.nanoTime()}.log"),
-                        "WithCredentialsBlock ARM: bindings.size=${step.bindings.size} steps.size=${step.steps.size} wce=${withCredentialsExecutor != null}\n",
-                        java.nio.file.StandardOpenOption.CREATE,
-                        java.nio.file.StandardOpenOption.APPEND,
-                    )
-                } catch (_: Exception) {}
                 // LF-0404: Single withCredentials code path. The executor handles
                 // materialization, env injection, CredentialBound / CredentialUnbound
                 // event emission, and wipe-on-close. The legacy 250-line inline
@@ -786,14 +779,6 @@ private suspend fun executeDurableStepImpl(
                         )
 
                         val credentialEnv = boundCredentials.env()
-                        try {
-                            java.nio.file.Files.writeString(
-                                java.nio.file.Paths.get("/tmp/uat008-debug/wcb-postbind-${System.nanoTime()}.log"),
-                                "postbind: credentialEnv.keys=${credentialEnv.keys}\n",
-                                java.nio.file.StandardOpenOption.CREATE,
-                                java.nio.file.StandardOpenOption.APPEND,
-                            )
-                        } catch (_: Exception) {}
                         val effectiveShOptions = shOptions?.copy(
                             env = (shOptions.env ?: emptyMap()) + credentialEnv
                         ) ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
@@ -821,23 +806,7 @@ private suspend fun executeDurableStepImpl(
                         )
 
                         var innerOutcome = "success"
-                        try {
-                            java.nio.file.Files.writeString(
-                                java.nio.file.Paths.get("/tmp/uat008-debug/innerloop-${System.nanoTime()}.log"),
-                                "WITH CREDS: step.steps.size=${step.steps.size} env.keys=${credentialEnv.keys}\n",
-                                java.nio.file.StandardOpenOption.CREATE,
-                                java.nio.file.StandardOpenOption.APPEND,
-                            )
-                        } catch (_: Exception) {}
                         for ((innerStepIdx, innerStep) in step.steps.withIndex()) {
-                            try {
-                                java.nio.file.Files.writeString(
-                                    java.nio.file.Paths.get("/tmp/uat008-debug/innerloop-${System.nanoTime()}.log"),
-                                    "WITH CREDS: iter=$innerStepIdx step=${innerStep::class.simpleName}\n",
-                                    java.nio.file.StandardOpenOption.CREATE,
-                                    java.nio.file.StandardOpenOption.APPEND,
-                                )
-                            } catch (_: Exception) {}
                             val innerStepOutcome = executeDurableStep(
                                 step = innerStep,
                                 stageIndex = stageIndex,
@@ -879,14 +848,6 @@ private suspend fun executeDurableStepImpl(
                                     )
                                 }
                             }
-                            try {
-                                java.nio.file.Files.writeString(
-                                    java.nio.file.Paths.get("/tmp/uat008-debug/innerloop-${System.nanoTime()}.log"),
-                                    "WITH CREDS: iter=$innerStepIdx outcome=$innerStepOutcome\n",
-                                    java.nio.file.StandardOpenOption.CREATE,
-                                    java.nio.file.StandardOpenOption.APPEND,
-                                )
-                            } catch (_: Exception) {}
                             if (innerStepOutcome != "success") {
                                 innerOutcome = innerStepOutcome
                                 break
@@ -1085,7 +1046,7 @@ private suspend fun executeDurableStepImpl(
                 val workspaceStr = workspace.toString()
                 if (!step.path.startsWith("/") && !targetPath.toString().startsWith(workspaceStr)) {
                     // Relative path escaped workspace - reject
-                    val previousDir = System.getProperty("user.dir") ?: ""
+                    val previousDir = shOptions?.workingDirectory?.toString() ?: workspace.toString()
                     eventSink.append(
                         DirExited(
                             eventId = UUID.randomUUID().toString(),
@@ -1099,15 +1060,16 @@ private suspend fun executeDurableStepImpl(
                     return "failure"
                 }
 
-                val previousDir = System.getProperty("user.dir") ?: ""
-                val targetDirStr = targetPath.toUri().path
-
-                // Change to target directory
-                val targetDirFile = targetPath.toFile()
-                if (!targetDirFile.exists()) {
-                    targetDirFile.mkdirs()
-                }
-                System.setProperty("user.dir", targetDirStr)
+                val previousDir = shOptions?.workingDirectory?.toString() ?: workspace.toString()
+                java.nio.file.Files.createDirectories(targetPath)
+                val dirShOptions = shOptions?.copy(workingDirectory = targetPath)
+                    ?: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions(
+                        workspaceRoot = workspace,
+                        captureStdout = false,
+                        timeoutMs = stageTimeout,
+                        env = emptyMap(),
+                        workingDirectory = targetPath,
+                    )
 
                 // Emit DirEntered after successful directory change
                 eventSink.append(
@@ -1141,7 +1103,7 @@ private suspend fun executeDurableStepImpl(
                             reconciledBranches = reconciledBranches,
                             controlDirRoot = controlDirRoot,
                             workspaceResolver = workspaceResolver,
-                            shOptions = shOptions,
+                            shOptions = dirShOptions,
                             stepClassifications = stepClassifications,
                             stageTimeout = stageTimeout,
                             stageEnvironment = stageEnvironment,
@@ -1155,8 +1117,7 @@ private suspend fun executeDurableStepImpl(
                     }
                     outcome
                 } finally {
-                    // Always restore previous directory and emit DirExited
-                    System.setProperty("user.dir", previousDir)
+                    // The nested working-directory context ends here; the JVM is unchanged.
                     eventSink.append(
                         DirExited(
                             eventId = UUID.randomUUID().toString(),
@@ -2010,15 +1971,7 @@ private suspend fun executeDurableStepImpl(
                 lastOutcome
             }
         }
-    } catch (e: Throwable) {
-        try {
-            java.nio.file.Files.writeString(
-                java.nio.file.Paths.get("/tmp/uat008-debug/throwable-${System.nanoTime()}.log"),
-                "OUTER CATCH: ${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString().take(2000)}\n",
-                java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.APPEND,
-            )
-        } catch (_: Exception) {}
+    } catch (_: Throwable) {
         runOutcomeRef.set("failure")
         "failure"
     }
@@ -2938,10 +2891,7 @@ private suspend fun walkBranchDurable(
             }
             is StepSpec.Dir -> {
                 // Dir inside parallel branch - execute nested steps directly
-                val previousDir = System.getProperty("user.dir") ?: ""
-                System.setProperty("user.dir", step.path)
-                try {
-                    var outcome = "success"
+                var outcome = "success"
                     for (innerStep in step.steps) {
                         val innerStepOffset = step.steps.indexOf(innerStep)
                         val innerStepStartedId = UUID.randomUUID().toString()
@@ -2991,10 +2941,7 @@ private suspend fun walkBranchDurable(
                             break
                         }
                     }
-                    outcome
-                } finally {
-                    System.setProperty("user.dir", previousDir)
-                }
+                outcome
             }
             // ML-R9 T-08: output-decorators (simplified for branch context)
             is StepSpec.Timestamps,

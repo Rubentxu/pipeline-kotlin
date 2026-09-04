@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 class ConcurrentStepDispatcherTest {
 
-    private fun step(id: String) = StepDescriptor(id = id, type = "sh", configRef = "$id.config")
+    private fun step(id: String) = StepDescriptor(stepId = id, name = "sh", configRef = "$id.config")
 
     @Test
     fun `dispatches every wave step through the SAME delegate instance`() {

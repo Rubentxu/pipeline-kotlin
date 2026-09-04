@@ -11,17 +11,12 @@ class FArchM1CanonicalEffectsTest {
         "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/durable/Effect.kt"
     private val domainReplayPolicyRelativePath =
         "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy.kt"
-    private val legacyQuarantineEffectRelativePath =
-        "pipeline-step-sdk/api/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/Effect.kt"
-    private val legacyQuarantineReplayPolicyRelativePath =
-        "pipeline-step-sdk/api/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/ReplayPolicy.kt"
-
     private val allowedEffectDeclarations = mapOf(
-        "Effect" to listOf(domainEffectRelativePath, legacyQuarantineEffectRelativePath).sorted(),
+        "Effect" to listOf(domainEffectRelativePath),
     )
 
     private val allowedReplayPolicyDeclarations = mapOf(
-        "ReplayPolicy" to listOf(domainReplayPolicyRelativePath, legacyQuarantineReplayPolicyRelativePath).sorted(),
+        "ReplayPolicy" to listOf(domainReplayPolicyRelativePath),
     )
 
     @Test
@@ -58,48 +53,13 @@ class FArchM1CanonicalEffectsTest {
     }
 
     @Test
-    fun `Effect declarations match the canonical and legacy-quarantine allowlist exactly`() {
+    fun `Effect declarations have one canonical authority`() {
         assertEnumAllowlist("Effect", allowedEffectDeclarations)
     }
 
     @Test
-    fun `ReplayPolicy declarations match the canonical and legacy-quarantine allowlist exactly`() {
+    fun `ReplayPolicy declarations have one canonical authority`() {
         assertEnumAllowlist("ReplayPolicy", allowedReplayPolicyDeclarations)
-    }
-
-    @Test
-    fun `legacy sdk api duplicates remain quarantined until M3-R2 consolidation`() {
-        // The sdk:api duplicates are part of the explicit allowlist. Their
-        // presence in src/main/kotlin/ is intentional and tracked by
-        // ADR-0063 §D2. This test is the human-readable assertion of that
-        // quarantine so a future contributor cannot accidentally remove the
-        // sdk:api duplicates before M3-R2 (which would break every consumer
-        // that still imports sdk.Effect / sdk.ReplayPolicy).
-        val quarantineEffect = FitnessPaths.v2Root().resolve(legacyQuarantineEffectRelativePath)
-        val quarantineReplayPolicy = FitnessPaths.v2Root().resolve(legacyQuarantineReplayPolicyRelativePath)
-
-        assertTrue(
-            Files.isRegularFile(quarantineEffect),
-            "Legacy quarantine copy of Effect must remain in sdk:api until M3-R2 consolidates " +
-                "(ADR-0063 §D2 / §D5): $legacyQuarantineEffectRelativePath",
-        )
-        assertTrue(
-            Files.isRegularFile(quarantineReplayPolicy),
-            "Legacy quarantine copy of ReplayPolicy must remain in sdk:api until M3-R2 consolidates " +
-                "(ADR-0063 §D2 / §D5): $legacyQuarantineReplayPolicyRelativePath",
-        )
-
-        val quarantineEffectSource = sanitizedSource(quarantineEffect)
-        assertTrue(
-            enumClassPattern("Effect").containsMatchIn(quarantineEffectSource),
-            "Legacy sdk:api Effect duplicate must still declare `enum class Effect`",
-        )
-
-        val quarantineReplayPolicySource = sanitizedSource(quarantineReplayPolicy)
-        assertTrue(
-            enumClassPattern("ReplayPolicy").containsMatchIn(quarantineReplayPolicySource),
-            "Legacy sdk:api ReplayPolicy duplicate must still declare `enum class ReplayPolicy`",
-        )
     }
 
     private fun assertEnumAllowlist(name: String, allowlist: Map<String, List<String>>) {
@@ -114,9 +74,9 @@ class FArchM1CanonicalEffectsTest {
 
         assertTrue(
             actualByName == normalizedAllowlist,
-            "$name declarations must match the exact M1 allowlist (canonical + legacy quarantine). " +
+            "$name declarations must match the one-authority LFC1 allowlist. " +
                 "Expected: $normalizedAllowlist; actual: $actualByName; findings: $declarations. " +
-                "See ADR-0063 §D2 (quarantine) and §D5 (M3-R2 consolidation plan).",
+                "See ADR-0064 and LFC1-003.",
         )
     }
 

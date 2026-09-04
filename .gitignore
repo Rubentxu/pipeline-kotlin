@@ -1,3 +1,6 @@
+# Agent local state (per AGENTS.md § Persistent Testing State)
+.agent/
+
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar

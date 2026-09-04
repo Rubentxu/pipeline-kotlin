@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.durable.BranchSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
@@ -15,10 +16,9 @@ import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.CompatibilityLevel
-import dev.rubentxu.pipeline.v2.sdk.Effect
-import dev.rubentxu.pipeline.v2.sdk.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.sdk.JenkinsSurface
-import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.Step
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime

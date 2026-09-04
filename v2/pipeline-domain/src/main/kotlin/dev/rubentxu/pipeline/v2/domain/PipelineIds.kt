@@ -1,11 +1,13 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import kotlinx.serialization.Serializable
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
 
 /** Stable identity of one pipeline definition. */
 @JvmInline
+@Serializable
 value class DefinitionId(val value: String) {
     init {
         require(value.isNotBlank()) { "DefinitionId value must not be blank" }
@@ -14,9 +16,55 @@ value class DefinitionId(val value: String) {
 
 /** Identity of one invocation of a pipeline definition. */
 @JvmInline
+@Serializable
 value class RunId(val value: String) {
     init {
         require(value.isNotBlank()) { "RunId value must not be blank" }
+    }
+}
+
+/** Stable identity of one stage within a compiled pipeline definition. */
+@JvmInline
+@Serializable
+value class StageId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "StageId value must not be blank" }
+    }
+}
+
+/** Stable identity of one step node within a compiled pipeline definition. */
+@JvmInline
+@Serializable
+value class StepId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "StepId value must not be blank" }
+    }
+}
+
+/** Stable identity of the plugin-owned step kind represented by a step node. */
+@JvmInline
+@Serializable
+value class PluginStepId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "PluginStepId value must not be blank" }
+    }
+}
+
+/** Zero-based attempt identity attached to a runtime execution context. */
+@JvmInline
+@Serializable
+value class AttemptId(val value: Int) {
+    init {
+        require(value >= 0) { "AttemptId value must not be negative" }
+    }
+}
+
+/** Stable runtime operation identity, separate from definition-local node IDs. */
+@JvmInline
+@Serializable
+value class OperationId(val value: String) {
+    init {
+        require(value.isNotBlank()) { "OperationId value must not be blank" }
     }
 }
 

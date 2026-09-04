@@ -19,9 +19,9 @@ data class HelloPipeline(
  */
 object HelloPipelineFixture {
     val echoStep: StepDescriptor =
-        StepDescriptor(id = "hello-echo", type = "echo", configRef = "hello.echo.config")
+        StepDescriptor(stepId = "hello-echo", name = "echo", configRef = "hello.echo.config")
     val sleepStep: StepDescriptor =
-        StepDescriptor(id = "hello-sleep", type = "sleep", configRef = "hello.sleep.config")
+        StepDescriptor(stepId = "hello-sleep", name = "sleep", configRef = "hello.sleep.config")
 
     fun build(): HelloPipeline =
         HelloPipeline(

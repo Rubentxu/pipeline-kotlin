@@ -14,6 +14,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation("com.google.devtools.ksp:symbol-processing-api:2.3.11")
     testImplementation(libs.junit.jupiter)

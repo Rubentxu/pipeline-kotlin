@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
-import dev.rubentxu.pipeline.v2.sdk.Effect
-import dev.rubentxu.pipeline.v2.sdk.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*

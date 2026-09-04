@@ -17,6 +17,21 @@ class FArchM1CanonicalIdsTest {
         "DefinitionId" to listOf(domainRelativePath),
         // M1 legacy quarantine: remove this exact entry when LocalArtifactStore adopts the domain RunId.
         "RunId" to listOf(domainRelativePath, legacyRunIdRelativePath).sorted(),
+        "StageId" to listOf(domainRelativePath),
+        "StepId" to listOf(domainRelativePath),
+        "PluginStepId" to listOf(domainRelativePath),
+        "AttemptId" to listOf(domainRelativePath),
+        "OperationId" to listOf(domainRelativePath),
+    )
+
+    private val canonicalValueTypes = mapOf(
+        "DefinitionId" to "String",
+        "RunId" to "String",
+        "StageId" to "String",
+        "StepId" to "String",
+        "PluginStepId" to "String",
+        "AttemptId" to "Int",
+        "OperationId" to "String",
     )
 
     @Test
@@ -26,7 +41,7 @@ class FArchM1CanonicalIdsTest {
         assertTrue(Files.isRegularFile(canonicalIds), "Missing canonical domain source: $domainRelativePath")
 
         val canonicalSource = sanitizedSource(canonicalIds)
-        val missingDeclarations = setOf("DefinitionId", "RunId", "RunIdGenerator")
+        val missingDeclarations = (canonicalValueTypes.keys + "RunIdGenerator")
             .filterNot { name -> declarationPattern(name).containsMatchIn(canonicalSource) }
 
         assertTrue(
@@ -34,10 +49,10 @@ class FArchM1CanonicalIdsTest {
             "PipelineIds.kt must declare the canonical id contracts; missing: $missingDeclarations",
         )
 
-        setOf("DefinitionId", "RunId").forEach { name ->
+        canonicalValueTypes.forEach { (name, valueType) ->
             assertTrue(
-                inlineStringIdPattern(name).containsMatchIn(canonicalSource),
-                "PipelineIds.kt must declare @JvmInline value class $name(val value: String)",
+                inlineValueIdPattern(name, valueType).containsMatchIn(canonicalSource),
+                "PipelineIds.kt must declare @JvmInline value class $name(val value: $valueType)",
             )
         }
     }
@@ -57,7 +72,7 @@ class FArchM1CanonicalIdsTest {
 
         assertTrue(
             actualByName == normalizedAllowlist,
-            "DefinitionId/RunId declarations must match the exact M1 allowlist. " +
+            "Canonical ID declarations must match the exact LFC1 allowlist. " +
                 "Expected: $normalizedAllowlist; actual: $actualByName; findings: $declarations",
         )
     }
@@ -106,8 +121,8 @@ class FArchM1CanonicalIdsTest {
 
     private fun normalizedPath(path: String): String = path.replace('\\', '/')
 
-    private fun inlineStringIdPattern(name: String): Regex = Regex(
-        """(?m)^\s*@JvmInline\s+value\s+class\s+$name\s*\(\s*val\s+value\s*:\s*String\s*\)""",
+    private fun inlineValueIdPattern(name: String, valueType: String): Regex = Regex(
+        """(?m)^\s*@JvmInline\s+(?:@[\w.]+(?:\s*\([^)]*\))?\s+)*value\s+class\s+$name\s*\(\s*val\s+value\s*:\s*$valueType\s*\)""",
     )
 
     private fun scanIdDeclarations(root: Path, names: Set<String>): List<Finding> =

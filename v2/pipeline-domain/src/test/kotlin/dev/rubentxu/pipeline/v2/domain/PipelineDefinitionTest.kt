@@ -11,8 +11,8 @@ class PipelineDefinitionTest {
     @Test
     fun `step lookup returns the matching StepDescriptor`() {
         val steps = listOf(
-            StepDescriptor(id = "build", type = "sh", configRef = "build.config"),
-            StepDescriptor(id = "test", type = "sh", configRef = "test.config"),
+            StepDescriptor(stepId = "build", name = "sh", configRef = "build.config"),
+            StepDescriptor(stepId = "test", name = "sh", configRef = "test.config"),
         )
         val def = PipelineDefinition(
             id = DefinitionId("hello"),
@@ -44,8 +44,8 @@ class PipelineDefinitionTest {
                 name = "hello",
                 version = "0.0.0",
                 steps = listOf(
-                    StepDescriptor(id = "build", type = "sh", configRef = "build.config"),
-                    StepDescriptor(id = "build", type = "sh", configRef = "build.config"),
+                    StepDescriptor(stepId = "build", name = "sh", configRef = "build.config"),
+                    StepDescriptor(stepId = "build", name = "sh", configRef = "build.config"),
                 ),
             )
         }

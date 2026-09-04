@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.workflow
 
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -8,9 +9,9 @@ import java.nio.file.Paths
  * Result of a dir block execution.
  *
  * @property outcome The outcome of the nested steps ("success", "unstable", "failure")
- * @property previousPath The previous working directory before entering
- * @property currentPath The directory that was entered
- * @property restoredPath The directory after exit (should equal previousPath)
+ * @property previousPath The workspace context before entering
+ * @property currentPath The resolved directory context
+ * @property restoredPath The workspace context after exit (equals [previousPath])
  */
 data class DirResult(
     val outcome: String,
@@ -20,12 +21,12 @@ data class DirResult(
 )
 
 /**
- * Executor for [StepSpec.Dir] — changes working directory for nested steps.
+ * Executor for [StepSpec.Dir] — resolves working-directory context for nested steps.
  *
  * ## Behavior
  *
  * 1. Resolves the target path using workspace resolver lambda
- * 2. Changes working directory
+ * 2. Creates the target directory when needed
  * 3. Executes nested steps (caller handles nested execution)
  * 4. Restores previous working directory in finally block
  *
@@ -47,8 +48,8 @@ class DirExecutor(
     /**
      * Executes a dir block.
      *
-     * Changes to the target directory, executes the action, and restores the previous
-     * directory in all cases (normal return or exception).
+ * Resolves the target directory, executes the action, and returns the context paths.
+ * The controller JVM working directory is never mutated.
      *
      * @param stageName The current stage name
      * @param stageIndex The current stage index
@@ -65,25 +66,17 @@ class DirExecutor(
         step: StepSpec.Dir,
         action: () -> String,
     ): DirResult {
-        val previousPath = System.getProperty("user.dir") ?: "."
         val workspace = workspaceResolver(stageName, stageIndex)
         val targetPath = resolveTargetPath(step.path, workspace)
+        Files.createDirectories(targetPath)
 
-        // Change to target directory
-        changeDirectory(targetPath)
-
-        return try {
-            val outcome = action()
-            DirResult(
-                outcome = outcome,
-                previousPath = previousPath,
-                currentPath = targetPath.toString(),
-                restoredPath = previousPath,
-            )
-        } finally {
-            // Always restore previous directory
-            changeDirectory(Paths.get(previousPath))
-        }
+        val outcome = action()
+        return DirResult(
+            outcome = outcome,
+            previousPath = workspace.toString(),
+            currentPath = targetPath.toString(),
+            restoredPath = workspace.toString(),
+        )
     }
 
     private fun resolveTargetPath(path: String, workspace: Path): Path {
@@ -102,14 +95,6 @@ class DirExecutor(
         }
 
         return target
-    }
-
-    private fun changeDirectory(path: Path) {
-        val dir = path.toFile()
-        if (!dir.exists()) {
-            dir.mkdirs()
-        }
-        System.setProperty("user.dir", path.toUri().path)
     }
 }
 

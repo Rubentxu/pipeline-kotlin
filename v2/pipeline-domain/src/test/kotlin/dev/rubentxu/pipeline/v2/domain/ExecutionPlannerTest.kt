@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 
 class ExecutionPlannerTest {
 
-    private fun step(id: String) = StepDescriptor(id = id, type = "sh", configRef = "$id.config")
+    private fun step(id: String) = StepDescriptor(stepId = id, name = "sh", configRef = "$id.config")
 
     private fun definition(
         vararg stepIds: String,

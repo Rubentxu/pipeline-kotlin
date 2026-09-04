@@ -461,20 +461,10 @@ fun main(args: Array<String>) {
             sandboxProfile = config.sandboxProfile,
         )
         pipelineSpec != null -> {
-        val specRegistry = SpecRegistry()
-        specRegistry.register(definitionId, pipelineSpec)
-        val definition = SpecDefinitionMapper.toDefinition(pipelineSpec, definitionId)
-        val coordinator: dev.rubentxu.pipeline.v2.domain.RunCoordinator = DurableRunCoordinator(
-            delegate = DurableRunDelegate(orchestrator::run),
-            specs = specRegistry,
-        )
-        coordinator.run(
-            dev.rubentxu.pipeline.v2.domain.RunRequest(
-                definition = definition,
-                runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
-                resumeFromCursor = config.resumeFlag,
-            )
-        )
+            // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
+            System.err.println("Error: script uses non-canonical plugins; canonical bridge requires core.sh/core.echo/core.error/core.sleep.")
+            System.exit(2)
+            null // unreachable
         }
         else -> null
     }

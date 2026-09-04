@@ -218,7 +218,7 @@ class DslCompiledPipelineCompilerTest {
     }
 
     @Test
-    fun `catchError preserves inner step identities`() {
+    fun `catchError inlines inner steps into single shell wrapper`() {
         val spec = pipeline {
             stages {
                 stage("Build") {
@@ -236,10 +236,21 @@ class DslCompiledPipelineCompilerTest {
             Digest("lock-v1"),
         )
         val body = compiled.stages.single().body as StageBody.Steps
-        // Inner steps must appear verbatim, not flattened/renamed beyond normal occurrence counting
-        val innerIds = body.steps.filter { it.id.value.contains("echo-") || it.id.value.contains("sh-") }
-            .map { it.id.value }
-        assertTrue(innerIds.isNotEmpty(), "Inner steps should be preserved in the output")
-        assertTrue(innerIds.all { it.startsWith("build/") }, "Inner steps should be under the correct parent token")
+
+        // LFC1-007 remediation: catchError must emit exactly 3 nodes (enter marker,
+        // single shell wrapper, trigger marker). The previous implementation emitted
+        // inner steps as separate canonical nodes AND a shell wrapper containing the
+        // same steps, double-running the inner block. That broke catchError semantics
+        // (FIND-DV-DUPL-01).
+        assertEquals(3, body.steps.size, "catchError must produce exactly 3 nodes")
+        val plugins = body.steps.map { it.pluginStepId.value }
+        assertEquals(listOf("core.emit.event", "core.sh", "core.emit.event"), plugins,
+            "catchError must emit exactly: enter-marker + shell-wrapper + trigger-marker")
+
+        // The inner step commands must be inlined into the shell wrapper's script body
+        val shellNode = body.steps.single { it.pluginStepId.value == "core.sh" }
+        val shellPayload = shellNode.payload.encoded
+        assertTrue(shellPayload.contains("echo hello"),
+            "Shell wrapper must contain inner sh() command. Payload: $shellPayload")
     }
 }

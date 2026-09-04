@@ -186,10 +186,11 @@ object DslCompiledPipelineCompiler {
         val effectiveStageResult = stageResult?.uppercase() ?: effectiveBuildResult
         val tokenPrefix = stableToken(kind)
 
-        // Inner steps recursively compiled (supports nested workflow-control)
-        val innerNodes = stepNodes(innerSteps, parentToken)
-
-        // Build the shell script that wraps all inner steps with set +e
+        // Build a single shell script that runs ALL inner steps under `set +e` so failures are
+        // captured rather than aborting the script. The coordinator sees one `core.sh` node
+        // and its exit code; emitting the inner steps as separate canonical nodes would run
+        // them outside `set +e` and abort before the catchError trigger marker could fire
+        // (FIND-DV-DUPL-01).
         val innerScript = buildShellScript(innerSteps)
         val shellStepNode = OpaqueStepNode(
             id = StepId("$parentToken/${tokenPrefix}-body-$occurrence"),
@@ -211,8 +212,7 @@ object DslCompiledPipelineCompiler {
                     put("message", JsonNull) // null allowed
                 },
             ),
-            // [1] Inner steps wrapped in shell with set +e
-            *innerNodes.toTypedArray(),
+            // [1] Inner steps wrapped in shell with set +e (single node, no double-emission)
             shellStepNode,
             // [2] Exit marker (always emitted; shell exit code determines whether it "caught")
             emitStep(

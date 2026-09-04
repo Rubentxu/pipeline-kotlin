@@ -76,6 +76,7 @@ class CanonicalNodeDispatcher {
 
     private fun CanonicalRuntimeContext.emitEventContext() = CanonicalEmitEventDispatchContext(
         runId = runId,
+        stageName = stageName,
         eventSink = eventSink,
     )
 }

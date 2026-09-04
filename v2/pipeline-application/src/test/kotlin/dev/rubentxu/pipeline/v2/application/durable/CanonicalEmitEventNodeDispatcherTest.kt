@@ -27,8 +27,8 @@ import java.nio.file.Paths
  */
 class CanonicalEmitEventNodeDispatcherTest {
 
-    private fun makeEmitContext(runId: String, eventStore: InMemoryEventStore) =
-        CanonicalEmitEventDispatchContext(runId = runId, eventSink = eventStore)
+    private fun makeEmitContext(runId: String, eventStore: InMemoryEventStore, stageName: String = "test-stage") =
+        CanonicalEmitEventDispatchContext(runId = runId, stageName = stageName, eventSink = eventStore)
 
     @Test
     fun `CatchErrorTriggered kind emits matching DomainEvent`() = runBlocking {

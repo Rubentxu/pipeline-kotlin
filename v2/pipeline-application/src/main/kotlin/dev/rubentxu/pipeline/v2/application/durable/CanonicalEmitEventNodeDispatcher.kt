@@ -46,8 +46,7 @@ class CanonicalEmitEventNodeDispatcher {
                 runId = ctx.runId,
                 sequence = 0L,
                 occurredAt = Instant.now(),
-                stageName = command.payload["stageName"]
-                    ?: error("CatchErrorTriggered requires 'stageName' in payload"),
+                stageName = command.payload["stageName"] ?: ctx.stageName,
                 buildResult = command.payload["buildResult"],
                 stageResult = command.payload["stageResult"]
                     ?: error("CatchErrorTriggered requires 'stageResult' in payload"),
@@ -58,8 +57,7 @@ class CanonicalEmitEventNodeDispatcher {
                 runId = ctx.runId,
                 sequence = 0L,
                 occurredAt = Instant.now(),
-                stageName = command.payload["stageName"]
-                    ?: error("StageMarkedUnstable requires 'stageName' in payload"),
+                stageName = command.payload["stageName"] ?: ctx.stageName,
                 message = command.payload["message"]
                     ?: error("StageMarkedUnstable requires 'message' in payload"),
             )

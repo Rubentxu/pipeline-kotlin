@@ -32,6 +32,7 @@ data class CanonicalWriteFileDispatchContext(
  */
 data class CanonicalEmitEventDispatchContext(
     val runId: String,
+    val stageName: String,
     val eventSink: EventSink,
 )
 
@@ -47,18 +48,18 @@ class CanonicalWriteFileNodeDispatcher {
         val controlDirRoot = ctx.controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for writeFile")
 
-        val workspaceResolver = { name: String, idx: Int ->
-            controlDirRoot.resolve("workspace").resolve("${name.replace(Regex("[^a-zA-Z0-9._-]"), "_")}-${idx}")
-        }
+        // Reuse the canonical WorkspaceResolver instead of re-implementing the
+        // <root>/workspace/<safeName>-<idx> naming scheme inline (FIND-DV-COUP-01).
+        val workspaceResolver = WorkspaceResolver(controlDirRoot)
 
         val executor = dev.rubentxu.pipeline.v2.sdk.files.FileWriteExecutor(
-            workspaceResolver = workspaceResolver,
+            workspaceResolver = { name, idx -> workspaceResolver.resolve(name, idx) },
             eventSink = ctx.eventSink,
         )
 
         // Ensure the stage workspace directory exists before writing
-        val stageWorkspace = workspaceResolver(ctx.stageName, ctx.stageIndex)
-        java.nio.file.Files.createDirectories(stageWorkspace)
+        val stageWorkspace = workspaceResolver.resolve(ctx.stageName, ctx.stageIndex)
+        workspaceResolver.ensureCreated(stageWorkspace)
 
         val result = executor.execute(
             ctx.stageName,

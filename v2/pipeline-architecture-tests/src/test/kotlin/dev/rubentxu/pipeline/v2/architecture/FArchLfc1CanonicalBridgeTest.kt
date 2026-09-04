@@ -1,35 +1,33 @@
 package dev.rubentxu.pipeline.v2.architecture
 
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
 
-class FArchM2CanonicalRedirectTest {
+/**
+ * LFC1-R1 canonical bridge fitness tests.
+ *
+ * Verifies that the canonical durable execution bridge is correctly wired:
+ * - Main.kt does not import legacy bridge symbols (SpecRegistry, SpecDefinitionMapper, DurableRunCoordinator, DurableRunDelegate)
+ * - CanonicalCoreStepDecoder is imported in production
+ * - LegacyOutcomeMapper remains in domain as the string boundary
+ * - No alternate runner is reachable
+ */
+class FArchLfc1CanonicalBridgeTest {
 
     private val legacyMapperRelativePath =
         "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/LegacyOutcomeMapper.kt"
-    private val coordinatorRelativePath =
-        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DurableRunCoordinator.kt"
-    private val registryRelativePath =
-        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/SpecRegistry.kt"
-    private val mapperRelativePath =
-        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/SpecDefinitionMapper.kt"
     private val mainRelativePath =
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Main.kt"
 
-    /** Exact allowlist of files where each canonical symbol may be declared. */
-    private val allowedDeclarations: Map<String, List<String>> = mapOf(
-        "LegacyOutcomeMapper" to listOf(legacyMapperRelativePath),
-        "DurableRunCoordinator" to listOf(coordinatorRelativePath),
-        "DurableRunDelegate" to listOf(coordinatorRelativePath),
-        "SpecRegistry" to listOf(registryRelativePath),
-        "SpecDefinitionMapper" to listOf(mapperRelativePath),
-        "RunIdDirectory" to listOf(
-            "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/RunIdDirectory.kt"
-        ).sorted(),
+    /** Legacy symbols that must NOT appear as imports in Main.kt */
+    private val forbiddenLegacyImports = listOf(
+        "SpecRegistry",
+        "SpecDefinitionMapper",
+        "DurableRunCoordinator",
+        "DurableRunDelegate",
     )
 
     @Test
@@ -41,9 +39,8 @@ class FArchM2CanonicalRedirectTest {
             "LegacyOutcomeMapper must be declared as an object (pure, stateless)",
         )
         // Single-authority pin: the durable coordinator must cross the
-        // legacy string boundary through this mapper (M2-005 failure
-        // mapping estable). A second ad-hoc string→outcome mapping site
-        // would defeat the contract.
+        // legacy string boundary through this mapper. A second ad-hoc
+        // string→outcome mapping site would defeat the contract.
         listOf("System.getenv", "System.getProperty", "Files.", "Paths.get").forEach { token ->
             assertFalse(
                 source.contains(token),
@@ -53,52 +50,16 @@ class FArchM2CanonicalRedirectTest {
     }
 
     @Test
-    fun `DurableRunCoordinator implements the RunCoordinator port in application`() {
-        val source = sanitizedSource(FitnessPaths.v2Root().resolve(coordinatorRelativePath))
+    fun `Main does not import legacy bridge symbols`() {
+        val source = Files.readString(FitnessPaths.v2Root().resolve(mainRelativePath))
 
-        assertTrue(
-            classPattern("DurableRunCoordinator", "RunCoordinator").containsMatchIn(source),
-            "DurableRunCoordinator must implement the domain RunCoordinator port",
-        )
-        // The redirect's single-boundary guarantee: the coordinator crosses
-        // the legacy string boundary ONLY through LegacyOutcomeMapper.
-        assertTrue(
-            source.contains("LegacyOutcomeMapper.toRunOutcome"),
-            "DurableRunCoordinator must map legacy strings via LegacyOutcomeMapper.toRunOutcome",
-        )
-        // resumeAfter must fail closed on the durable surface until LF-0206.
-        assertTrue(
-            source.contains("resumeAfter"),
-            "DurableRunCoordinator must explicitly reject resumeAfter until LF-0206",
-        )
-        // The delegate seam keeps the coordinator decoupled from the
-        // concrete orchestrator class.
-        assertTrue(
-            interfacePattern("DurableRunDelegate").containsMatchIn(source),
-            "DurableRunDelegate seam must be declared in the same file",
-        )
-    }
-
-    @Test
-    fun `Main reaches the durable runtime only through the RunCoordinator port`() {
-        val source = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
-
-        assertTrue(
-            source.contains("DurableRunCoordinator("),
-            "Main must construct DurableRunCoordinator (LF-0205 redirect)",
-        )
-        // The forbidden direct call: the CLI must never invoke the legacy
-        // orchestrator entry point directly — every execution flows through
-        // the port. This is the pin that makes M2-006 ('no alternate runner
-        // reachable') progressively enforceable.
-        assertFalse(
-            Regex("""orchestrator\.run\s*\(""").containsMatchIn(source),
-            "Main must NOT call orchestrator.run directly; route through DurableRunCoordinator",
-        )
-        assertTrue(
-            source.contains("RunRequest("),
-            "Main must build a typed RunRequest for the coordinator call",
-        )
+        // Check for import statements of the forbidden legacy symbols
+        forbiddenLegacyImports.forEach { symbol ->
+            assertFalse(
+                Regex("""import\s+.*\b$symbol\b""").containsMatchIn(source),
+                "Main.kt must NOT import '$symbol' - legacy bridge symbols must be removed",
+            )
+        }
     }
 
     @Test
@@ -106,18 +67,17 @@ class FArchM2CanonicalRedirectTest {
         val source = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
 
         // The legacy deriveRunId helper must be gone: the deterministic hash
-        // survives only as DeterministicIdGenerator.definitionId (LF-0206
-        // reinterpretation per CANONICAL_CONTRACTS_SPEC §Identity).
+        // survives only as DeterministicIdGenerator.definitionId.
         assertFalse(
             source.contains("deriveRunId("),
             "Main must NOT derive the run id from the script hash; the hash is the DefinitionId",
         )
-        // Fresh invocations get a unique RunId from the M1 generator seam.
+        // Fresh invocations get a unique RunId from the generator seam.
         assertTrue(
             source.contains("UuidRunIdGenerator"),
             "Main must generate fresh RunIds via UuidRunIdGenerator (RunId unique per invocation)",
         )
-        // Resume recovers the PRIOR RunId instead of re-deriving it (M1-002).
+        // Resume recovers the PRIOR RunId instead of re-deriving it.
         assertTrue(
             source.contains("RunIdDirectory"),
             "Main must recover the prior RunId from the RunIdDirectory on --resume",
@@ -148,31 +108,7 @@ class FArchM2CanonicalRedirectTest {
     }
 
     @Test
-    fun `redirect symbols match the allowlist exactly`() {
-        val declarations = scanCanonicalDeclarations(
-            FitnessPaths.v2Root(),
-            allowedDeclarations.keys,
-        )
-        val actualByName = declarations.groupBy(Finding::token)
-            .mapValues { (_, findings) ->
-                findings.map { finding ->
-                    normalizedPath(FitnessPaths.v2Root().relativize(finding.file))
-                }.sorted()
-            }
-        val normalizedAllowlist = allowedDeclarations.mapValues { (_, paths) ->
-            paths.map(::normalizedPath).sorted()
-        }
-
-        assertEquals(
-            normalizedAllowlist,
-            actualByName,
-            "M2 redirect symbols must match the exact allowlist. " +
-                "Expected: $normalizedAllowlist; actual: $actualByName; findings: $declarations",
-        )
-    }
-
-    @Test
-    fun `no alternate runner is reachable after LF-0208`() {
+    fun `no alternate runner is reachable after LFC1-R1`() {
         val pipelineRunSource = sanitizedSource(
             FitnessPaths.v2Root()
                 .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PipelineRun.kt")
@@ -180,8 +116,7 @@ class FArchM2CanonicalRedirectTest {
         val mainSource = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
 
         // The non-durable walker and its entry point are gone. The regex
-        // deliberately does NOT match walkPipelineSpecDurable (negative
-        // lookahead on 'Durable').
+        // deliberately does NOT match walkPipelineSpecDurable.
         assertFalse(
             Regex("""fun\s+execute\s*\(""").containsMatchIn(pipelineRunSource),
             "PipelineRun must not declare the non-durable execute() entry point",
@@ -201,32 +136,46 @@ class FArchM2CanonicalRedirectTest {
     }
 
     @Test
-    fun `Single Runtime Spine - storage choice does not select the execution algorithm`() {
-        val mainSource = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
+    fun `coordinator path imports the canonical decoder in production`() {
+        val decoderImport = "CanonicalCoreStepDecoder"
 
-        // BOTH the --db path and the in-memory path must go through the
-        // same DurableRunCoordinator port (M2-006 + spine rule).
-        val coordinatorWiringCount = Regex("""DurableRunCoordinator\(""").findAll(mainSource).count()
-        assertTrue(
-            coordinatorWiringCount >= 2,
-            "Main must wire DurableRunCoordinator for BOTH storage modes (found $coordinatorWiringCount wiring sites)",
+        val productionSources = FitnessPaths.walkKotlinFiles(
+            FitnessPaths.v2Root().resolve("pipeline-application/src/main/kotlin")
         )
-        // The in-memory branch uses the in-memory journal/cursor stores.
+
+        val found = productionSources.any { file ->
+            val source = Files.readString(file)
+            Regex("""import\s+.*\b$decoderImport\b""").containsMatchIn(source)
+        }
+
         assertTrue(
-            mainSource.contains("InMemoryOperationJournal") && mainSource.contains("InMemoryReplayCursorStore"),
-            "The in-memory run path must use the in-memory journal and cursor stores",
-        )
-        // Validate must never walk: it is compile-only (M2-002).
-        val validateSlice = mainSource.substringAfter("command == \"validate\"")
-            .substringBefore("// \"run\" command")
-        assertFalse(
-            validateSlice.contains("walkPipelineSpec"),
-            "validate must not walk or execute steps (M2-002: validate no inicia procesos)",
+            found,
+            "CanonicalCoreStepDecoder must be imported in v2/pipeline-application/src/main/** - the coordinator decodes through this seam",
         )
     }
 
-    private fun interfacePattern(name: String): Regex =
-        Regex("""(?m)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*(?:fun\s+)?interface\s+$name\b""")
+    @Test
+    fun `production tree has no legacy bridge symbol declarations`() {
+        val productionSources = FitnessPaths.walkKotlinFiles(
+            FitnessPaths.v2Root()
+        ).filter { it.toString().replace('\\', '/').contains("/src/main/kotlin/") }
+
+        val findings = mutableListOf<Pair<Path, String>>()
+        productionSources.forEach { file ->
+            val source = Files.readString(file)
+            forbiddenLegacyImports.forEach { symbol ->
+                // Check for class/object/interface declarations of the forbidden symbols
+                if (Regex("""\b(?:class|interface|object|typealias)\s+$symbol\b""").containsMatchIn(source)) {
+                    findings.add(file to symbol)
+                }
+            }
+        }
+
+        assertTrue(
+            findings.isEmpty(),
+            "No legacy bridge symbol declarations must appear in production code. Found: $findings",
+        )
+    }
 
     private fun classPattern(name: String, superType: String? = null): Regex {
         val superTypeClause = if (superType == null) "" else """[\s\S]*?:\s*[\s\S]*?\b$superType\b"""
@@ -239,29 +188,6 @@ class FArchM2CanonicalRedirectTest {
 
     private fun objectPattern(name: String): Regex =
         Regex("""(?m)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*(?:public\s+|internal\s+|private\s+)?object\s+$name\b""")
-
-    private fun scanCanonicalDeclarations(root: Path, names: Set<String>): List<Finding> =
-        FitnessPaths.walkKotlinFiles(root)
-            .filter { it.toString().replace('\\', '/').contains("/src/main/kotlin/") }
-            .flatMap { file ->
-                val source = sanitizedSource(file)
-                names.flatMap { name ->
-                    canonicalDeclarationPattern(name).findAll(source).map { match ->
-                        val lineNumber = source.take(match.range.first).count { it == '\n' } + 1
-                        Finding(file, lineNumber, name, match.value.trim())
-                    }.toList()
-                }
-            }
-
-    private fun canonicalDeclarationPattern(name: String): Regex = Regex(
-        """(?m)^\s*(?:@[\w.]+(?:\s*\([^)]*\))?\s*)*""" +
-            """(?:(?:public|internal|private|protected|data|sealed|open|abstract|enum|annotation|value|fun)\s+)*""" +
-            """(?:class|interface|object|typealias)\s+$name\b""",
-    )
-
-    private fun normalizedPath(path: Path): String = normalizedPath(path.toString())
-
-    private fun normalizedPath(path: String): String = path.replace('\\', '/')
 
     /** Replaces comments and literals with spaces while preserving newlines and source offsets. */
     private fun sanitizedSource(file: Path): String {

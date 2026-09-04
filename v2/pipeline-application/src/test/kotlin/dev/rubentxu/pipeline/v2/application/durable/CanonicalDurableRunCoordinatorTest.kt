@@ -16,6 +16,8 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -240,6 +243,65 @@ class CanonicalDurableRunCoordinatorTest {
         val journalEntries = journal.listForRun(runId.value)
         assertEquals(1, journalEntries.size)
         assertEquals(OperationStatus.FAILED, journalEntries.single().status)
+    }
+
+    @Test
+    fun `emits exactly one RunFinished when exception is thrown mid-run`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("exception-run-finished-count")
+
+        // Pipeline with a NestedStages body triggers IllegalArgumentException in run():
+        // "Canonical durable coordinator supports only linear stage steps"
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("nested-stages-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(StageId("build"), "build", body = StageBody.Steps(listOf(
+                    OpaqueStepNode(
+                        id = StepId("build/echo"),
+                        pluginStepId = PluginStepId("core.echo"),
+                        payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"first"}"""),
+                    ),
+                ))),
+                // NestedStages body is not supported - triggers IllegalArgumentException
+                StageNode(StageId("test"), "test", body = StageBody.NestedStages(listOf(
+                    StageNode(StageId("test/inner"), "inner", body = StageBody.Steps(listOf(
+                        OpaqueStepNode(
+                            id = StepId("test/inner/echo"),
+                            pluginStepId = PluginStepId("core.echo"),
+                            payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"inner"}"""),
+                        ),
+                    ))),
+                ))),
+            ),
+        )
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+
+        try {
+            coordinator.run(pipeline, runId)
+            fail("Expected IllegalArgumentException to be thrown")
+        } catch (e: IllegalArgumentException) {
+            // Expected: "Canonical durable coordinator supports only linear stage steps"
+        }
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val runStartedCount = events.count { it is RunStarted }
+        val runFinishedCount = events.count { it is RunFinished }
+
+        assertEquals(1, runStartedCount, "Must have exactly 1 RunStarted")
+        assertEquals(1, runFinishedCount, "Must have exactly 1 RunFinished on exception path (no duplicate)")
     }
 
     private fun echoPipeline(text: String) = CompiledPipeline(

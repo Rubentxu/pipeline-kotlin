@@ -84,7 +84,7 @@ class CanonicalDurableRunCoordinator(
     private val activeScopes: ArrayDeque<ScopeFrame> = ArrayDeque()
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
-        var result: RunOutcome = RunOutcome.Success
+        var outcome: RunOutcome = RunOutcome.Success
         eventSink.append(
             RunStarted(
                 eventId = UUID.randomUUID().toString(),
@@ -111,7 +111,7 @@ class CanonicalDurableRunCoordinator(
                     try {
                         WorkspaceResolver(controlDirRoot!!).ensureCreated(stageWorkspace)
                     } catch (e: IOException) {
-                        result = RunOutcome.Failure(
+                        outcome = RunOutcome.Failure(
                             PipelineFailure(
                                 dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                                 "workspace creation failed: ${e.message}",
@@ -122,39 +122,34 @@ class CanonicalDurableRunCoordinator(
                 }
                 for (stepIndex in steps.indices) {
                     val step = steps[stepIndex]
-                    val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
+                    val stepOutcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
                     // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
-                    if (outcome is StepOutcome.Failure) {
+                    if (stepOutcome is StepOutcome.Failure) {
                         val top = activeScopes.lastOrNull()
                         if (top != null && top.buildResult != "FAILURE") {
-                            result = RunOutcome.Unstable
+                            outcome = RunOutcome.Unstable
                         } else {
-                            result = RunOutcome.Failure(outcome.failure)
+                            outcome = RunOutcome.Failure(stepOutcome.failure)
                         }
                         break@runLoop
                     }
-                    if (outcome is StepOutcome.Unstable) {
-                        result = RunOutcome.Unstable
+                    if (stepOutcome is StepOutcome.Unstable) {
+                        outcome = RunOutcome.Unstable
                         break@runLoop
                     }
                 }
             }
         } catch (e: Exception) {
-            // Emit RunFinished for exceptions from check/throw before rethrowing
-            val outcomeStr = "failure"
-            eventSink.append(
-                RunFinished(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId.value,
-                    sequence = 0L,
-                    occurredAt = clock.now(),
-                    outcome = outcomeStr,
-                    diagnostics = emptyList<ScriptingDiagnostic>(),
+            // Capture failure outcome before rethrowing; finally will emit RunFinished exactly once
+            outcome = RunOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                    e.message ?: "unknown exception",
                 ),
             )
             throw e
         } finally {
-            val outcomeStr = when (result) {
+            val outcomeStr = when (outcome) {
                 is RunOutcome.Success -> "success"
                 is RunOutcome.Unstable -> "unstable"
                 is RunOutcome.Failure -> "failure"
@@ -171,7 +166,7 @@ class CanonicalDurableRunCoordinator(
                 ),
             )
         }
-        return result
+        return outcome
     }
 
     private suspend fun dispatch(

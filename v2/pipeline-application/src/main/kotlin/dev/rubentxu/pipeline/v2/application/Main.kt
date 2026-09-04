@@ -150,6 +150,26 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     )
 }
 
+/**
+ * Validates and resolves the control-root path for in-memory runs.
+ * C5: rejects path-traversal (..) and system-root paths (/tmp, /home, /var, /).
+ * @throws IllegalArgumentException if the path is invalid
+ */
+fun validateControlRoot(path: String): Path {
+    val controlPath = Paths.get(path)
+    // C5: check original path for ".." before normalize() strips it
+    require(!path.contains("..")) {
+        "--control-root path must not contain '..' segments"
+    }
+    val normalized = controlPath.toAbsolutePath().normalize()
+    val systemRoots = listOf("/tmp", "/home", "/var", "/")
+    require(!(normalized.toString() in systemRoots)) {
+        "--control-root must not be a system root (/tmp, /home, /var, /)"
+    }
+    java.nio.file.Files.createDirectories(normalized)
+    return normalized
+}
+
 fun main(args: Array<String>) {
     // Credentials subcommand — delegated to MainCredentialsCli
     if (args.firstOrNull() == "credentials") {
@@ -228,7 +248,17 @@ fun main(args: Array<String>) {
             scriptPath.toString(),
             scriptContent,
         )
-        val controlDirRoot: Path = java.nio.file.Files.createTempDirectory("pipelinek-inmem-run")
+        val controlDirRoot: Path = if (config.controlRoot != null) {
+            try {
+                validateControlRoot(config.controlRoot)
+            } catch (e: IllegalArgumentException) {
+                System.err.println("Error: ${e.message}")
+                System.exit(2)
+                return@main
+            }
+        } else {
+            java.nio.file.Files.createTempDirectory("pipelinek-inmem-run")
+        }
         val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
         val fresh = UuidRunIdGenerator().next()
         runIdDirectory.record(definitionId, fresh)

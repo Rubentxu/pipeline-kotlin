@@ -1,8 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
-import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -26,25 +24,15 @@ class CanonicalShellNodeDispatcher {
             "core.sh returnStdout requires a typed result channel before durable dispatch"
         }
 
-        return when (
-            ShExecution.runShellCommand(
-                command = DurableShellCommand(command.command),
-                opId = context.opId,
-                runId = context.runId,
-                stageIndex = context.stageIndex,
-                stepIndex = context.stepIndex,
-                shOptions = context.shOptions,
-                controlDirRoot = context.controlDirRoot,
-                eventSink = context.eventSink,
-            )
-        ) {
-            "success" -> StepOutcome.Success
-            "timeout" -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${context.opId}'")
-            )
-            else -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.SCRIPT, "core.sh failed for '${context.opId}'")
-            )
-        }
+        return ShExecution.runShellCommandTyped(
+            command = DurableShellCommand(command.command),
+            opId = context.opId,
+            runId = context.runId,
+            stageIndex = context.stageIndex,
+            stepIndex = context.stepIndex,
+            shOptions = context.shOptions,
+            controlDirRoot = context.controlDirRoot,
+            eventSink = context.eventSink,
+        )
     }
 }

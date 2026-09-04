@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
@@ -87,7 +89,7 @@ object ShExecution {
     )
 
     /** Executes a typed shell command without requiring a DSL step object. */
-    suspend fun runShellCommand(
+    suspend fun runShellCommandTyped(
         command: DurableShellCommand,
         opId: OpId,
         runId: String,
@@ -96,7 +98,7 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
-    ): String {
+    ): StepOutcome {
         // Use explicit controlDirRoot if provided; null means non-durable fallback
         // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
         // we fall back to direct bash -c which works without filesystem privileges)
@@ -104,7 +106,11 @@ object ShExecution {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // P2: env injected via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            val result = executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return when (result) {
+                "success" -> StepOutcome.Success
+                else -> StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "non-durable shell failed"))
+            }
         }
 
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
@@ -144,6 +150,8 @@ object ShExecution {
                 } catch (_: Exception) {
                     ""
                 }
+            val truncatedOutput = capturedOutput.take(65536) // 64 KB limit
+
             if (capturedOutput.isNotEmpty()) {
                 eventSink.append(EchoOutputCaptured(
                     eventId = UUID.randomUUID().toString(),
@@ -151,7 +159,7 @@ object ShExecution {
                     sequence = 0L,
                     occurredAt = Instant.now(),
                     stepIndex = stepIndex,
-                    content = capturedOutput,
+                    content = truncatedOutput,
                 ))
             }
 
@@ -160,7 +168,7 @@ object ShExecution {
                     if (result.exitCode != 0) {
                         // Emit StepFailed for non-zero exit (INC-R8-ARC-001)
                         val message = "sh exited with code ${result.exitCode}" +
-                            if (capturedOutput.isNotBlank()) ": ${capturedOutput.take(256)}" else ""
+                            if (truncatedOutput.isNotBlank()) ": ${truncatedOutput.take(256)}" else ""
                         eventSink.append(StepFailed(
                             eventId = UUID.randomUUID().toString(),
                             runId = runId,
@@ -172,26 +180,55 @@ object ShExecution {
                             failureKind = FailureKind.SCRIPT,
                             message = message,
                         ))
-                        "failure"
-                    } else "success"
+                        StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, message))
+                    } else StepOutcome.Success
                 }
                 DurableShellState.TIMED_OUT -> {
                     // TMO-S-001: timeout is terminal - distinct from plain failure
-                    "timeout"
+                    StepOutcome.Failure(PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${opId.format()}'"))
                 }
-                DurableShellState.LOST,
-                DurableShellState.LAUNCH_FAILED,
+                DurableShellState.LOST -> {
+                    StepOutcome.Failure(PipelineFailure(FailureKind.INFRASTRUCTURE, "process lost for '${opId.format()}'"))
+                }
+                DurableShellState.LAUNCH_FAILED -> {
+                    StepOutcome.Failure(PipelineFailure(FailureKind.INFRASTRUCTURE, "launch failed for '${opId.format()}'"))
+                }
                 DurableShellState.LAUNCHING,
-                DurableShellState.RUNNING -> "failure"
+                DurableShellState.RUNNING -> {
+                    StepOutcome.Failure(PipelineFailure(FailureKind.SCHEMA, "internal: ${result.state} returned to caller"))
+                }
             }
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            val result = executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            when (result) {
+                "success" -> StepOutcome.Success
+                else -> StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "non-durable shell failed: ${e.toString()}"))
+            }
         } catch (e: Exception) {
-            "failure"
+            StepOutcome.Failure(PipelineFailure(FailureKind.INFRASTRUCTURE, "shell execution failed: ${e.toString()}"))
         }
+    }
+
+    /** Executes a typed shell command without requiring a DSL step object. */
+    suspend fun runShellCommand(
+        command: DurableShellCommand,
+        opId: OpId,
+        runId: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        shOptions: ShOptions,
+        controlDirRoot: java.nio.file.Path?,
+        eventSink: EventSink,
+    ): String = when (val outcome = runShellCommandTyped(command, opId, runId, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink)) {
+        is StepOutcome.Success -> "success"
+        is StepOutcome.Failure -> when (outcome.failure.kind) {
+            FailureKind.TIMEOUT -> "timeout"
+            else -> "failure"
+        }
+        is StepOutcome.Unstable -> "failure"
     }
 
     /**

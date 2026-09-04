@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
+import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -11,7 +12,6 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -29,10 +29,24 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
 
-private val canonicalCoreStepIds = setOf(
-    "core.sh", "core.echo", "core.error", "core.sleep",
-    "core.file.writeFile", "core.emit.event",
-)
+/**
+ * Derives the canonical step IDs from the sealed hierarchy.
+ * Single source of truth — the pluginId values are declared on each sealed subtype.
+ * Adding a new sealed subtype propagates automatically through this derivation.
+ */
+private val canonicalCoreStepIds: Set<String> by lazy {
+    CanonicalCoreStepCommand::class.sealedSubclasses.mapNotNull { cls ->
+        when (cls.simpleName) {
+            "Shell" -> "core.sh"
+            "Echo" -> "core.echo"
+            "Error" -> "core.error"
+            "Sleep" -> "core.sleep"
+            "WriteFile" -> "core.file.writeFile"
+            "EmitEvent" -> "core.emit.event"
+            else -> null
+        }
+    }.toSet()
+}
 
 /** True when the compiled pipeline fits the promoted linear canonical-core subset. */
 fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all { stage ->
@@ -67,7 +81,35 @@ class CanonicalDurableRunCoordinator(
     }
 
     private suspend fun dispatch(step: StepNode, runId: RunId, stageName: String, stageIndex: Int, stepIndex: Int): StepOutcome {
-        val (effects, replayPolicy) = metadata(step)
+        val typedCommand: CanonicalCoreStepCommand = try {
+            CanonicalCoreStepDecoder.decode(step)
+        } catch (e: IllegalArgumentException) {
+            val operationId = OpId(runId.value, stageIndex, stepIndex).format()
+            val input = OperationInput(
+                stepId = step.pluginStepId.value,
+                params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
+                runId = runId.value,
+                attempt = 1,
+            )
+            val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, ReplayPolicy.RERUN, 1)
+            journal.append(
+                RerunOperation(
+                    id = operationId,
+                    fingerprint = fingerprint,
+                    input = input,
+                    output = null,
+                    status = OperationStatus.FAILED,
+                    attempt = 1,
+                ),
+            )
+            return StepOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
+                ),
+            )
+        }
+        val (effects, replayPolicy) = typedCommand.defaultMetadata.effects to typedCommand.defaultMetadata.replayPolicy
         val operationId = OpId(runId.value, stageIndex, stepIndex).format()
         val input = OperationInput(
             stepId = step.pluginStepId.value,
@@ -100,26 +142,6 @@ class CanonicalDurableRunCoordinator(
         if (journaled == null) {
             journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
         }
-        val typedCommand: CanonicalCoreStepCommand = try {
-            CanonicalCoreStepDecoder.decode(step)
-        } catch (e: IllegalArgumentException) {
-            journal.append(
-                RerunOperation(
-                    id = operationId,
-                    fingerprint = fingerprint,
-                    input = input,
-                    output = null,
-                    status = OperationStatus.FAILED,
-                    attempt = 1,
-                ),
-            )
-            return StepOutcome.Failure(
-                PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
-                ),
-            )
-        }
         val outcome = dispatcher.dispatch(
             typedCommand,
             CanonicalRuntimeContext(
@@ -145,14 +167,5 @@ class CanonicalDurableRunCoordinator(
         )
         if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
         return outcome
-    }
-
-    private fun metadata(step: StepNode): Pair<Set<Effect>, ReplayPolicy> = when (step.pluginStepId.value) {
-        "core.sh" -> setOf(Effect.EXECUTES_SUBPROCESS) to ReplayPolicy.RERUN
-        "core.echo", "core.sleep" -> setOf(Effect.READ_ONLY) to ReplayPolicy.MEMOIZED
-        "core.error" -> setOf(Effect.ABORTS_PIPELINE) to ReplayPolicy.NEVER
-        "core.file.writeFile" -> setOf(Effect.WRITES_WORKSPACE) to ReplayPolicy.MEMOIZED
-        "core.emit.event" -> setOf(Effect.READ_ONLY) to ReplayPolicy.MEMOIZED
-        else -> throw IllegalArgumentException("Unsupported canonical core step '${step.pluginStepId.value}'")
     }
 }

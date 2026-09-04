@@ -2,38 +2,72 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.StepNode
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+/**
+ * Metadata bundle for a canonical step — carries the durable execution contract.
+ *
+ * @property effects The side-effect classification of the step.
+ * @property replayPolicy The replay strategy for the step.
+ */
+data class StepMetadata(
+    val effects: Set<Effect>,
+    val replayPolicy: ReplayPolicy,
+)
+
 /** Typed command decoded from the `dsl-v1` payloads owned by the canonical IR. */
 sealed interface CanonicalCoreStepCommand {
+    val pluginId: String
+    val defaultMetadata: StepMetadata
+
     data class Shell(
         val command: String,
         val isScriptBlock: Boolean,
         val returnStdout: Boolean,
-    ) : CanonicalCoreStepCommand
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.sh"
+        override val defaultMetadata = StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.RERUN)
+    }
 
-    data class Echo(val text: String) : CanonicalCoreStepCommand
+    data class Echo(val text: String) : CanonicalCoreStepCommand {
+        override val pluginId = "core.echo"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
 
-    data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand
+    data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand {
+        override val pluginId = "core.error"
+        override val defaultMetadata = StepMetadata(setOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER)
+    }
 
-    data class Sleep(val seconds: Long) : CanonicalCoreStepCommand
+    data class Sleep(val seconds: Long) : CanonicalCoreStepCommand {
+        override val pluginId = "core.sleep"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
 
     /** LFC1-007: typed-command for atomic file writes via the canonical bridge. */
     data class WriteFile(
         val file: String,
         val text: String,
         val encoding: String,
-    ) : CanonicalCoreStepCommand
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.file.writeFile"
+        override val defaultMetadata = StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED)
+    }
 
     /** LFC1-007: first-class workflow-event emitter for shell-rewrite path. */
     data class EmitEvent(
         val kind: String,
         val payload: Map<String, String?>,
-    ) : CanonicalCoreStepCommand
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.emit.event"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
 }
 
 /** Decodes a supported canonical core node without reconstructing the DSL model. */

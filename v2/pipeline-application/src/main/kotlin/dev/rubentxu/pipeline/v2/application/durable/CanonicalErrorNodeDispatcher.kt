@@ -1,9 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
-import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.StepContext
@@ -18,10 +16,7 @@ data class CanonicalErrorDispatchContext(
 
 /** Dispatches canonical `core.error` nodes through the existing failure event path. */
 class CanonicalErrorNodeDispatcher {
-    fun dispatch(node: StepNode, context: CanonicalErrorDispatchContext): StepOutcome {
-        val command = CanonicalCoreStepDecoder.decode(node) as? CanonicalCoreStepCommand.Error
-            ?: throw IllegalArgumentException("CanonicalErrorNodeDispatcher only accepts core.error nodes")
-
+    fun dispatch(command: CanonicalCoreStepCommand.Error, context: CanonicalErrorDispatchContext): StepOutcome {
         return try {
             executeError(
                 StepContext(runId = context.runId),

@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
+import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -95,8 +97,28 @@ class CanonicalDurableRunCoordinator(
         if (journaled == null) {
             journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
         }
+        val typedCommand: CanonicalCoreStepCommand = try {
+            CanonicalCoreStepDecoder.decode(step)
+        } catch (e: IllegalArgumentException) {
+            journal.append(
+                RerunOperation(
+                    id = operationId,
+                    fingerprint = fingerprint,
+                    input = input,
+                    output = null,
+                    status = OperationStatus.FAILED,
+                    attempt = 1,
+                ),
+            )
+            return StepOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
+                ),
+            )
+        }
         val outcome = dispatcher.dispatch(
-            step,
+            typedCommand,
             CanonicalRuntimeContext(
                 opId = OpId(runId.value, stageIndex, stepIndex),
                 runId = runId.value,

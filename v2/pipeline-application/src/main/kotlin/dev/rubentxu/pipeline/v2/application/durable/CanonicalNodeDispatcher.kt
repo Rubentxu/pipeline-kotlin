@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.domain.StepNode
+import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -24,13 +24,12 @@ class CanonicalNodeDispatcher {
     private val errorDispatcher = CanonicalErrorNodeDispatcher()
     private val sleepDispatcher = CanonicalSleepNodeDispatcher()
 
-    suspend fun dispatch(node: StepNode, context: CanonicalRuntimeContext): StepOutcome =
-        when (node.pluginStepId.value) {
-            "core.sh" -> shellDispatcher.dispatch(node, context.shellContext())
-            "core.echo" -> echoDispatcher.dispatch(node, context.echoContext())
-            "core.error" -> errorDispatcher.dispatch(node, context.errorContext())
-            "core.sleep" -> sleepDispatcher.dispatch(node, context.sleepContext())
-            else -> throw IllegalArgumentException("Unsupported canonical core step '${node.pluginStepId.value}'")
+    suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
+        when (command) {
+            is CanonicalCoreStepCommand.Shell -> shellDispatcher.dispatch(command, context.shellContext())
+            is CanonicalCoreStepCommand.Echo -> echoDispatcher.dispatch(command, context.echoContext())
+            is CanonicalCoreStepCommand.Error -> errorDispatcher.dispatch(command, context.errorContext())
+            is CanonicalCoreStepCommand.Sleep -> sleepDispatcher.dispatch(command, context.sleepContext())
         }
 
     private fun CanonicalRuntimeContext.shellContext() = CanonicalShellDispatchContext(

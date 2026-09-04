@@ -1,10 +1,8 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
-import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -23,9 +21,7 @@ data class CanonicalShellDispatchContext(
 
 /** Dispatches canonical `core.sh` nodes through the existing durable shell path. */
 class CanonicalShellNodeDispatcher {
-    suspend fun dispatch(node: StepNode, context: CanonicalShellDispatchContext): StepOutcome {
-        val command = CanonicalCoreStepDecoder.decode(node) as? CanonicalCoreStepCommand.Shell
-            ?: throw IllegalArgumentException("CanonicalShellNodeDispatcher only accepts core.sh nodes")
+    suspend fun dispatch(command: CanonicalCoreStepCommand.Shell, context: CanonicalShellDispatchContext): StepOutcome {
         require(!command.returnStdout) {
             "core.sh returnStdout requires a typed result channel before durable dispatch"
         }
@@ -44,10 +40,10 @@ class CanonicalShellNodeDispatcher {
         ) {
             "success" -> StepOutcome.Success
             "timeout" -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${node.id.value}'")
+                PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${context.opId}'")
             )
             else -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.SCRIPT, "core.sh failed for '${node.id.value}'")
+                PipelineFailure(FailureKind.SCRIPT, "core.sh failed for '${context.opId}'")
             )
         }
     }

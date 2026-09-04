@@ -23,6 +23,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -143,6 +144,100 @@ class CanonicalDurableRunCoordinatorTest {
         assertEquals(1, journal.listForRun(runId.value).size)
         assertEquals("${runId.value}-s0-0", cursorStore.load(runId.value)?.lastOpId)
         assertEquals(1, eventStore.eventsFor(runId.value).count())
+    }
+
+    @Test
+    fun `dispatch decodes each StepNode before delegating to the typed dispatcher`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("decoder-delegation-run")
+
+        // Pipeline with 2 echo steps - both must succeed for this test to pass.
+        // If the decoder was not called, the steps would fail to decode and we
+        // would get SCHEMA failures instead of success.
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("decoder-delegation-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(
+                    id = StageId("build"),
+                    name = "build",
+                    body = StageBody.Steps(
+                        listOf(
+                            OpaqueStepNode(
+                                id = StepId("build/echo1"),
+                                pluginStepId = PluginStepId("core.echo"),
+                                payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"first"}"""),
+                            ),
+                            OpaqueStepNode(
+                                id = StepId("build/echo2"),
+                                pluginStepId = PluginStepId("core.echo"),
+                                payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"second"}"""),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+        val outcome = coordinator.run(pipeline, runId)
+
+        // Both steps must succeed - this proves the decoder was called for each step
+        // because the typed dispatcher only receives properly decoded commands
+        assertEquals(RunOutcome.Success, outcome, "Both echo steps must succeed, proving decoder was invoked for each")
+        assertEquals(2, journal.listForRun(runId.value).size, "Both steps must be journaled")
+    }
+
+    @Test
+    fun `dispatch returns Failure SCHEMA and journals FAILED when decoder throws`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("schema-failure-run")
+
+        // Pipeline with invalid schema version - should trigger SCHEMA failure
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("schema-failure-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(StageNode(StageId("build"), "build", body = StageBody.Steps(listOf(
+                OpaqueStepNode(
+                    id = StepId("build/invalid"),
+                    pluginStepId = PluginStepId("core.sh"),
+                    payload = VersionedStepPayload("dsl-v0", """{"kind":"sh","command":"exit 0"}"""),
+                ),
+            )))),
+        )
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+        val outcome = coordinator.run(pipeline, runId)
+
+        assertTrue(outcome is RunOutcome.Failure, "Outcome must be Failure")
+        assertSame(FailureKind.SCHEMA, (outcome as RunOutcome.Failure).failure.kind, "Failure kind must be SCHEMA")
+
+        // Verify journal recorded FAILED status
+        val journalEntries = journal.listForRun(runId.value)
+        assertEquals(1, journalEntries.size)
+        assertEquals(OperationStatus.FAILED, journalEntries.single().status)
     }
 
     private fun echoPipeline(text: String) = CompiledPipeline(

@@ -15,6 +15,8 @@ enum class FailureKind {
     USER,
     /** Timeout exceeded */
     TIMEOUT,
+    /** The IR payload does not conform to the canonical `dsl-v1` contract */
+    SCHEMA,
     /** Unknown failure */
     UNKNOWN,
 }

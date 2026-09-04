@@ -4,6 +4,8 @@
 
 - **UAT-GOV-001:** default build and README identify V2 local-first path only.
 - **UAT-GOV-002:** no local product task depends on protocol/controller modules.
+- **UAT-GOV-003:** V1 line is quarantined (root settings excludes V1 line projects; V2 settings excludes `:pipeline-protocol`); root README + current roadmap are consistent with ADR-0064; UAT catalogue lists UAT-GOV-001..004. Evidence: `Lfc0V1QuarantineFitnessTest` (this cycle) + `Lfc0ProtocolScopeFitnessTest` + `Lfc0GlobalStateFitnessTest`.
+- **UAT-GOV-004:** production code under `v2/**/src/main/kotlin/**` does not access `System.setProperty("user.dir")`, does not read `System.getProperty("user.dir")`, and does not reference the removed debug directory `/tmp/uat008-debug`. Evidence: `Lfc0GlobalStateFitnessTest` (LFC0-006).
 - **UAT-IR-001:** identical source+lock compiles byte-for-byte/structurally identical IR.
 - **UAT-IR-002:** source locations survive into validation diagnostics.
 - **UAT-IR-003:** no synthetic registry is required to execute compiled IR.

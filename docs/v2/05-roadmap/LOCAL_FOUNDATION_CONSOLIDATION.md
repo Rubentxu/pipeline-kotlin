@@ -32,9 +32,10 @@ declared UAT and architecture gate.
 | LFC0-005 | complete | root README identifies the V2 local-first product and V1 quarantine |
 | LFC0-006 | complete | production debug writes and `user.dir` mutation removed; `dir` propagates an explicit workspace context through `ShOptions` |
 | LFC0-007 | complete | architecture fitness suite protects deferred protocol scope and the removed global-state/debug paths |
+| LFC0-008 | complete | UAT-GOV-003 + UAT-GOV-004 contracts defined; Lfc0V1QuarantineFitnessTest green; LFC-0 gate closes with UAT-GOV-001..004 + architecture baseline green |
 
-The LFC-0 gate remains open: the source UAT catalogue still lacks the
-roadmap-referenced `UAT-GOV-003` and `UAT-GOV-004` contracts.
+The LFC-0 gate closes with UAT-GOV-001..004 + architecture baseline green;
+`Lfc0V1QuarantineFitnessTest` and `Lfc0GlobalStateFitnessTest` are the evidence.
 
 ## LFC-1 progress
 

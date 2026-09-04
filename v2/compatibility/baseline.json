@@ -1263,5 +1263,6 @@
       "diagnostics": [],
       "descriptorProjection": {}
     }
-  }
+  },
+  "version": "1.4"
 }

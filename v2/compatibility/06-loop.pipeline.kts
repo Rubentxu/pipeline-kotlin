@@ -1,11 +1,7 @@
 pipeline {
     stages {
         stage("loop") {
-            script {
-                for (i in 1..3) {
-                    echo("iteration $i")
-                }
-            }
+            sh("""for i in 1 2 3; do echo "iteration $i"; done""", isScriptBlock = true, returnStdout = false)
         }
     }
 }

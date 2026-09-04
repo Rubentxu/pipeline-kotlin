@@ -462,7 +462,7 @@ fun main(args: Array<String>) {
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
-            System.err.println("Error: script uses non-canonical plugins; canonical bridge requires core.sh/core.echo/core.error/core.sleep.")
+            System.err.println("Error: script uses non-canonical plugins; canonical bridge requires core.sh/core.echo/core.error/core.sleep/core.file.writeFile/core.emit.event.")
             System.exit(2)
             null // unreachable
         }

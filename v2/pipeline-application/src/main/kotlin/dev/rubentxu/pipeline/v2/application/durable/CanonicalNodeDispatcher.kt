@@ -10,6 +10,7 @@ import java.nio.file.Path
 data class CanonicalRuntimeContext(
     val opId: OpId,
     val runId: String,
+    val stageName: String,
     val stageIndex: Int,
     val stepIndex: Int,
     val shOptions: ShOptions,
@@ -23,6 +24,8 @@ class CanonicalNodeDispatcher {
     private val echoDispatcher = CanonicalEchoNodeDispatcher()
     private val errorDispatcher = CanonicalErrorNodeDispatcher()
     private val sleepDispatcher = CanonicalSleepNodeDispatcher()
+    private val writeFileDispatcher = CanonicalWriteFileNodeDispatcher()
+    private val emitEventDispatcher = CanonicalEmitEventNodeDispatcher()
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
@@ -30,6 +33,8 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.Echo -> echoDispatcher.dispatch(command, context.echoContext())
             is CanonicalCoreStepCommand.Error -> errorDispatcher.dispatch(command, context.errorContext())
             is CanonicalCoreStepCommand.Sleep -> sleepDispatcher.dispatch(command, context.sleepContext())
+            is CanonicalCoreStepCommand.WriteFile -> writeFileDispatcher.dispatch(command, context.writeFileContext())
+            is CanonicalCoreStepCommand.EmitEvent -> emitEventDispatcher.dispatch(command, context.emitEventContext())
         }
 
     private fun CanonicalRuntimeContext.shellContext() = CanonicalShellDispatchContext(
@@ -57,6 +62,20 @@ class CanonicalNodeDispatcher {
     private fun CanonicalRuntimeContext.sleepContext() = CanonicalSleepDispatchContext(
         runId = runId,
         stepIndex = stepIndex,
+        eventSink = eventSink,
+    )
+
+    private fun CanonicalRuntimeContext.writeFileContext() = CanonicalWriteFileDispatchContext(
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+    )
+
+    private fun CanonicalRuntimeContext.emitEventContext() = CanonicalEmitEventDispatchContext(
+        runId = runId,
         eventSink = eventSink,
     )
 }

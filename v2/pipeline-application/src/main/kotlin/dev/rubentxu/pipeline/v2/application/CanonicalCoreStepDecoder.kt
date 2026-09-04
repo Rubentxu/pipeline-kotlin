@@ -21,6 +21,19 @@ sealed interface CanonicalCoreStepCommand {
     data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand
 
     data class Sleep(val seconds: Long) : CanonicalCoreStepCommand
+
+    /** LFC1-007: typed-command for atomic file writes via the canonical bridge. */
+    data class WriteFile(
+        val file: String,
+        val text: String,
+        val encoding: String,
+    ) : CanonicalCoreStepCommand
+
+    /** LFC1-007: first-class workflow-event emitter for shell-rewrite path. */
+    data class EmitEvent(
+        val kind: String,
+        val payload: Map<String, String?>,
+    ) : CanonicalCoreStepCommand
 }
 
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
@@ -30,6 +43,8 @@ object CanonicalCoreStepDecoder {
     private const val ECHO_PLUGIN_ID = "core.echo"
     private const val ERROR_PLUGIN_ID = "core.error"
     private const val SLEEP_PLUGIN_ID = "core.sleep"
+    private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
+    private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
 
     fun decode(node: StepNode): CanonicalCoreStepCommand {
         require(node.payload.schemaVersion == SCHEMA_VERSION) {
@@ -67,6 +82,24 @@ object CanonicalCoreStepDecoder {
                     "Payload kind must be 'sleep' for '${node.id.value}'"
                 }
                 CanonicalCoreStepCommand.Sleep(payload.requiredLong("seconds"))
+            }
+            WRITE_FILE_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "writeFile") {
+                    "Payload kind must be 'writeFile' for '${node.id.value}'"
+                }
+                CanonicalCoreStepCommand.WriteFile(
+                    file = payload.requiredString("file"),
+                    text = payload.requiredString("text"),
+                    encoding = payload.requiredString("encoding"),
+                )
+            }
+            EMIT_EVENT_PLUGIN_ID -> {
+                CanonicalCoreStepCommand.EmitEvent(
+                    kind = payload.requiredString("kind"),
+                    payload = payload.entries
+                        .filter { it.key != "kind" }
+                        .associate { it.key to it.value.jsonPrimitive.contentOrNull },
+                )
             }
             else -> throw IllegalArgumentException(
                 "Unsupported core plugin step '${node.pluginStepId.value}' for '${node.id.value}'"

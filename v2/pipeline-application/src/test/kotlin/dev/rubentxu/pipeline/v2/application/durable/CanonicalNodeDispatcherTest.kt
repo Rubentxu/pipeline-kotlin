@@ -23,6 +23,7 @@ class CanonicalNodeDispatcherTest {
             CanonicalRuntimeContext(
                 opId = OpId(runId, 0, 0),
                 runId = runId,
+                stageName = "test",
                 stageIndex = 0,
                 stepIndex = 0,
                 shOptions = ShOptions.EMPTY,

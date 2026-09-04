@@ -29,7 +29,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
 
-private val canonicalCoreStepIds = setOf("core.sh", "core.echo", "core.error", "core.sleep")
+private val canonicalCoreStepIds = setOf(
+    "core.sh", "core.echo", "core.error", "core.sleep",
+    "core.file.writeFile", "core.emit.event",
+)
 
 /** True when the compiled pipeline fits the promoted linear canonical-core subset. */
 fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all { stage ->
@@ -55,7 +58,7 @@ class CanonicalDurableRunCoordinator(
             val steps = (stage.body as? StageBody.Steps)?.steps
                 ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
             steps.forEachIndexed { stepIndex, step ->
-                val outcome = dispatch(step, runId, stageIndex, stepIndex)
+                val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex)
                 if (outcome is StepOutcome.Failure) return RunOutcome.Failure(outcome.failure)
                 if (outcome is StepOutcome.Unstable) return RunOutcome.Unstable
             }
@@ -63,7 +66,7 @@ class CanonicalDurableRunCoordinator(
         return RunOutcome.Success
     }
 
-    private suspend fun dispatch(step: StepNode, runId: RunId, stageIndex: Int, stepIndex: Int): StepOutcome {
+    private suspend fun dispatch(step: StepNode, runId: RunId, stageName: String, stageIndex: Int, stepIndex: Int): StepOutcome {
         val (effects, replayPolicy) = metadata(step)
         val operationId = OpId(runId.value, stageIndex, stepIndex).format()
         val input = OperationInput(
@@ -122,6 +125,7 @@ class CanonicalDurableRunCoordinator(
             CanonicalRuntimeContext(
                 opId = OpId(runId.value, stageIndex, stepIndex),
                 runId = runId.value,
+                stageName = stageName,
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
                 shOptions = shOptions,
@@ -147,6 +151,8 @@ class CanonicalDurableRunCoordinator(
         "core.sh" -> setOf(Effect.EXECUTES_SUBPROCESS) to ReplayPolicy.RERUN
         "core.echo", "core.sleep" -> setOf(Effect.READ_ONLY) to ReplayPolicy.MEMOIZED
         "core.error" -> setOf(Effect.ABORTS_PIPELINE) to ReplayPolicy.NEVER
+        "core.file.writeFile" -> setOf(Effect.WRITES_WORKSPACE) to ReplayPolicy.MEMOIZED
+        "core.emit.event" -> setOf(Effect.READ_ONLY) to ReplayPolicy.MEMOIZED
         else -> throw IllegalArgumentException("Unsupported canonical core step '${step.pluginStepId.value}'")
     }
 }

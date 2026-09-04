@@ -47,7 +47,11 @@ The LFC-0 gate closes with UAT-GOV-001..004 + architecture baseline green;
 | LFC1-004 | complete | representative DSL fixture compiles directly to `CompiledPipeline`; deterministic source/lock identity and node IDs verified |
 | LFC1-005 | complete | canonical validator rejects invalid IR and the deterministic planner represents sequential and one-step parallel execution; focused domain evidence green |
 | LFC1-006 | complete | reference adapter executes `CompiledPipeline` through `CompiledStepDispatcher` without a synthetic registry; typed outcome reduction and deterministic parallel flattening verified |
+| LFC1-007 | complete | legacy step migration off the synthetic registry; canonical durable-execution path owns step registration and dispatch; v0.27.0 released (sha `6c637d2`) |
+| LFC1-008 | complete | canonical step coverage for catchError / warnError / writeFile / dir / archive / withEnv; sealed-hierarchy registry, scope tracking, per-stage workspaceRoot; corpus fixtures 06/08/09 re-baselined to v1.4; v0.28.0 released (sha `830620d`) |
 
-`LFC1-R1` is next: establish the approved canonical durable-execution
-prerequisite for `LFC1-007`. LFC-1 remains open until the legacy model
-authorities and bridge are removed.
+`LFC1-R2` is next: address the deferred canonical step-kind backlog
+(INC-036, 12+ kinds enumerated by `FArchLfc1CanonicalCoverageTest`) and
+the canonical CLI path bug (INC-027/028/029/030 owned by the
+`lfc1-canonical-cli-path-bug` cycle). LFC-1 remains open until the
+legacy model authorities and bridge are removed.

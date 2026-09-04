@@ -1286,145 +1286,14 @@ private suspend fun executeDurableStepImpl(
                 )
                 "success"
             }
-            is StepSpec.Unstable -> {
-                eventSink.append(
-                    dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = runId,
-                        sequence = 0L,
-                        occurredAt = clock.now(),
-                        stageName = stageName,
-                        message = step.message,
-                    )
-                )
-                runOutcomeRef.set("unstable")
-                "success"
-            }
-            is StepSpec.CatchError -> {
-                // ML-R9 T-06: catchError block — execute nested steps, catch exceptions
-                var outcome = "success"
-                try {
-                    for (innerStep in step.steps) {
-                        val innerOutcome = executeDurableStep(
-                            step = innerStep,
-                            stageIndex = stageIndex,
-                            stepIndex = stepIndex,
-                            runId = runId,
-                            stageName = stageName,
-                            eventSink = eventSink,
-                            journal = journal,
-                            cursorStore = cursorStore,
-                            divergenceDetector = divergenceDetector,
-                            effectReplayPolicy = effectReplayPolicy,
-                            clock = clock,
-                            runOutcomeRef = runOutcomeRef,
-                            reconciledBranches = reconciledBranches,
-                            controlDirRoot = controlDirRoot,
-                            workspaceResolver = workspaceResolver,
-                            shOptions = shOptions,
-                            stepClassifications = stepClassifications,
-                            stageTimeout = stageTimeout,
-                            stageEnvironment = stageEnvironment,
-                            sandboxProfile = sandboxProfile,
-                            secretStore = secretStore,
-                        )
-                        if (innerOutcome != "success") {
-                            outcome = innerOutcome
-                            break
-                        }
-                    }
-                } catch (e: Throwable) {
-                    outcome = "failure"
-                }
-                if (outcome != "success") {
-                    val effectiveResult = step.buildResult?.uppercase() ?: "UNSTABLE"
-                    val effectiveStageResult = step.stageResult ?: effectiveResult
-                    eventSink.append(
-                        dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId,
-                            sequence = 0L,
-                            occurredAt = clock.now(),
-                            stageName = stageName,
-                            buildResult = effectiveResult,
-                            stageResult = effectiveStageResult,
-                            message = step.message,
-                        )
-                    )
-                    // Downgrade outcome per buildResult/stageResult
-                    if (effectiveResult == "UNSTABLE" || effectiveResult == "SUCCESS") {
-                        outcome = "success"  // Jenkins: catchError suppresses failure
-                        if (effectiveResult == "UNSTABLE") {
-                            runOutcomeRef.set("unstable")  // Stage/run outcome = unstable
-                        }
-                    }
-                }
-                outcome
-            }
-            is StepSpec.WarnError -> {
-                // ML-R9 T-06: warnError block — same as catchError but always UNSTABLE
-                var outcome = "success"
-                try {
-                    for (innerStep in step.steps) {
-                        val innerOutcome = executeDurableStep(
-                            step = innerStep,
-                            stageIndex = stageIndex,
-                            stepIndex = stepIndex,
-                            runId = runId,
-                            stageName = stageName,
-                            eventSink = eventSink,
-                            journal = journal,
-                            cursorStore = cursorStore,
-                            divergenceDetector = divergenceDetector,
-                            effectReplayPolicy = effectReplayPolicy,
-                            clock = clock,
-                            runOutcomeRef = runOutcomeRef,
-                            reconciledBranches = reconciledBranches,
-                            controlDirRoot = controlDirRoot,
-                            workspaceResolver = workspaceResolver,
-                            shOptions = shOptions,
-                            stepClassifications = stepClassifications,
-                            stageTimeout = stageTimeout,
-                            stageEnvironment = stageEnvironment,
-                            sandboxProfile = sandboxProfile,
-                            secretStore = secretStore,
-                        )
-                        if (innerOutcome != "success") {
-                            outcome = innerOutcome
-                            break
-                        }
-                    }
-                } catch (e: Throwable) {
-                    outcome = "failure"
-                }
-                if (outcome != "success") {
-                    eventSink.append(
-                        dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId,
-                            sequence = 0L,
-                            occurredAt = clock.now(),
-                            stageName = stageName,
-                            buildResult = "UNSTABLE",
-                            stageResult = "UNSTABLE",
-                            message = step.message,
-                        )
-                    )
-                    eventSink.append(
-                        dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId,
-                            sequence = 0L,
-                            occurredAt = clock.now(),
-                            stageName = stageName,
-                            message = step.message,
-                        )
-                    )
-                    runOutcomeRef.set("unstable")  // Stage/run outcome = unstable
-                    outcome = "success"  // warnError: suppress failure, mark unstable
-                }
-                outcome
-            }
+            // ML-R9 T-06: StepSpec.CatchError/WarnError/Unstable are pre-compiler-rewritten
+            // to canonical IR. These legacy branches are unreachable — LFC1-007 (commit 4).
+            is StepSpec.CatchError,
+            is StepSpec.WarnError,
+            is StepSpec.Unstable -> error(
+                "StepSpec.${step::class.simpleName} reached executeDurableStepImpl — " +
+                "it should have been pre-compiler-rewritten to canonical IR by LFC1-007"
+            )
             // ML-R9 T-07 workflow-utility steps
             is StepSpec.Pwd -> {
                 // Return workspace path (or temp subdir path if tmp=true)
@@ -2031,9 +1900,6 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         // ML-R9 T-06: new step kinds
         is StepSpec.DeleteDir -> Triple("deleteDir", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
         is StepSpec.CleanWs -> Triple("cleanWs", setOf(Effect.WRITES_WORKSPACE), DomainReplayPolicy.MEMOIZED)
-        is StepSpec.Unstable -> Triple("unstable", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
-        is StepSpec.CatchError -> Triple("catchError", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
-        is StepSpec.WarnError -> Triple("warnError", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         // ML-R9 T-07 workflow-utility steps
         is StepSpec.Pwd -> Triple("pwd", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
         is StepSpec.IsUnix -> Triple("isUnix", setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
@@ -2048,6 +1914,11 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         // ML-R9 T-10 timeout/retry blocks
         is StepSpec.TimeoutBlock -> Triple("timeout", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
         is StepSpec.RetryBlock -> Triple("retry", setOf(Effect.EXECUTES_SUBPROCESS), DomainReplayPolicy.RERUN)
+        // LFC1-007 (commit 4): CatchError/WarnError/Unstable are pre-compiler-rewritten.
+        // These cases are unreachable via the canonical path but remain for exhaustiveness.
+        is StepSpec.CatchError,
+        is StepSpec.WarnError,
+        is StepSpec.Unstable -> Triple(step.name, setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
     }
 }
 
@@ -2196,20 +2067,6 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
             "deleteDirs" to JsonPrimitive(step.deleteDirs),
             "patterns" to JsonPrimitive(step.patterns?.joinToString(",") ?: ""),
         )
-        is StepSpec.Unstable -> mapOf(
-            "message" to JsonPrimitive(step.message),
-        )
-        is StepSpec.CatchError -> mapOf(
-            "buildResult" to JsonPrimitive(step.buildResult ?: ""),
-            "stageResult" to JsonPrimitive(step.stageResult ?: ""),
-            "message" to JsonPrimitive(step.message ?: ""),
-            "stepCount" to JsonPrimitive(step.steps.size),
-        )
-        is StepSpec.WarnError -> mapOf(
-            "message" to JsonPrimitive(step.message),
-            "catchInterruptions" to JsonPrimitive(step.catchInterruptions),
-            "stepCount" to JsonPrimitive(step.steps.size),
-        )
         // ML-R9 T-07 workflow-utility steps
         is StepSpec.Pwd -> mapOf("tmp" to JsonPrimitive(step.tmp))
         is StepSpec.IsUnix -> mapOf()
@@ -2247,6 +2104,20 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
             "conditions" to JsonPrimitive(step.conditions?.joinToString(",") ?: ""),
             "stepCount" to JsonPrimitive(step.steps.size),
         )
+        // LFC1-007 (commit 4): CatchError/WarnError/Unstable are pre-compiler-rewritten.
+        // These cases are unreachable via the canonical path but remain for exhaustiveness.
+        is StepSpec.CatchError -> mapOf(
+            "buildResult" to JsonPrimitive(step.buildResult ?: ""),
+            "stageResult" to JsonPrimitive(step.stageResult ?: ""),
+            "message" to JsonPrimitive(step.message ?: ""),
+            "stepCount" to JsonPrimitive(step.steps.size),
+        )
+        is StepSpec.WarnError -> mapOf(
+            "message" to JsonPrimitive(step.message),
+            "catchInterruptions" to JsonPrimitive(step.catchInterruptions),
+            "stepCount" to JsonPrimitive(step.steps.size),
+        )
+        is StepSpec.Unstable -> mapOf("message" to JsonPrimitive(step.message))
     }
 }
 

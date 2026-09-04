@@ -60,7 +60,7 @@ class CanonicalEmitEventNodeDispatcherTest {
     }
 
     @Test
-    fun `StageMarkedUnstable kind emits matching DomainEvent`() = runBlocking {
+    fun `StageMarkedUnstable kind emits matching DomainEvent and returns Unstable`() = runBlocking {
         val eventStore = InMemoryEventStore()
         val dispatcher = CanonicalEmitEventNodeDispatcher()
         val command = CanonicalCoreStepCommand.EmitEvent(
@@ -73,7 +73,8 @@ class CanonicalEmitEventNodeDispatcherTest {
 
         val outcome = dispatcher.dispatch(command, makeEmitContext("unstable-run", eventStore))
 
-        assertEquals(StepOutcome.Success, outcome)
+        // D6: StageMarkedUnstable returns Unstable (not Success) to signal run-level unstable
+        assertEquals(StepOutcome.Unstable, outcome)
         val events = eventStore.eventsFor("unstable-run").toList()
         assertEquals(1, events.size)
         val unstableEvent = events.filterIsInstance<StageMarkedUnstable>().singleOrNull()
@@ -81,6 +82,27 @@ class CanonicalEmitEventNodeDispatcherTest {
         val evt = unstableEvent!!
         assertEquals("test", evt.stageName)
         assertEquals("flaky-network", evt.message)
+    }
+
+    @Test
+    fun `CatchErrorEntered kind validates kind and returns Success with no event`() = runBlocking {
+        val eventStore = InMemoryEventStore()
+        val dispatcher = CanonicalEmitEventNodeDispatcher()
+        val command = CanonicalCoreStepCommand.EmitEvent(
+            kind = "CatchErrorEntered",
+            payload = mapOf(
+                "buildResult" to "UNSTABLE",
+                "stageResult" to "UNSTABLE",
+                "enteredAt" to System.currentTimeMillis().toString(),
+            ),
+        )
+
+        val outcome = dispatcher.dispatch(command, makeEmitContext("catch-enter-run", eventStore))
+
+        // D1/D7: CatchErrorEntered is a scope-only signal — returns Success, emits NO event
+        assertEquals(StepOutcome.Success, outcome)
+        val events = eventStore.eventsFor("catch-enter-run").toList()
+        assertTrue(events.isEmpty(), "CatchErrorEntered must NOT emit any event. Found: ${events.map { it::class.simpleName }}")
     }
 
     @Test

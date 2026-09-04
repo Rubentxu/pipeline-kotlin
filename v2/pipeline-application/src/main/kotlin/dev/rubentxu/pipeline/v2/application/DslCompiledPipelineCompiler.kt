@@ -165,10 +165,9 @@ object DslCompiledPipelineCompiler {
      * Pre-compiler rewrite for catchError / warnError blocks.
      *
      * Produces a linear sequence of 3 nodes:
-     * 1. `core.emit.event(kind="CatchErrorTriggered", entered=true)` — entry marker
+     * 1. `core.emit.event(kind="CatchErrorEntered", buildResult, enteredAt)` — entry marker (scope push)
      * 2. `core.sh(isScriptBlock=true)` wrapping the inner steps — executed with `set +e`
-     * 3. `core.emit.event(kind="CatchErrorTriggered", emitted=true)` — exit marker (always emitted,
-     *    the shell script exit code determines whether the catch was triggered)
+     * 3. `core.emit.event(kind="CatchErrorTriggered", emitted=true)` — exit marker (scope pop, always emitted)
      *
      * The shell heredoc runs the inner steps with `set +e` so failures are captured rather than
      * aborting the script. The exit code is propagated so the coordinator sees the failure outcome.
@@ -202,14 +201,15 @@ object DslCompiledPipelineCompiler {
         )
 
         return listOfNotNull(
-            // [0] Entry marker
+            // [0] Entry marker — signals scope entry to the coordinator (no event emitted)
             emitStep(
                 stepId = "$parentToken/${tokenPrefix}-enter-$occurrence",
-                eventKind = "CatchErrorTriggered",
+                eventKind = "CatchErrorEntered",
                 payload = buildJsonObject {
                     put("buildResult", effectiveBuildResult)
                     put("stageResult", effectiveStageResult)
                     put("message", JsonNull) // null allowed
+                    put("enteredAt", System.currentTimeMillis().toString())
                 },
             ),
             // [1] Inner steps wrapped in shell with set +e (single node, no double-emission)

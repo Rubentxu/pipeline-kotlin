@@ -55,6 +55,14 @@ fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all {
     } == true
 }
 
+/**
+ * Represents an active error-handling scope (catchError / warnError block).
+ *
+ * @param buildResult The build result override for this scope (UNSTABLE or FAILURE).
+ * @param enteredAt Epoch milliseconds when the scope was entered.
+ */
+private data class ScopeFrame(val buildResult: String, val enteredAt: Long)
+
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
 class CanonicalDurableRunCoordinator(
     private val dispatcher: CanonicalNodeDispatcher,
@@ -67,14 +75,33 @@ class CanonicalDurableRunCoordinator(
     private val shOptions: ShOptions = ShOptions.EMPTY,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
 ) {
+    /** Active scope stack for catchError / warnError tracking. */
+    private val activeScopes: ArrayDeque<ScopeFrame> = ArrayDeque()
+
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
         pipeline.stages.forEachIndexed { stageIndex, stage ->
+            // Stage boundary: scope stack must be empty when entering a stage
+            check(activeScopes.isEmpty()) {
+                "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${activeScopes.size} frame(s) remaining"
+            }
             val steps = (stage.body as? StageBody.Steps)?.steps
                 ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
             steps.forEachIndexed { stepIndex, step ->
                 val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex)
-                if (outcome is StepOutcome.Failure) return RunOutcome.Failure(outcome.failure)
-                if (outcome is StepOutcome.Unstable) return RunOutcome.Unstable
+                // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
+                val finalOutcome = when {
+                    outcome is StepOutcome.Failure -> {
+                        val top = activeScopes.lastOrNull()
+                        if (top != null && top.buildResult != "FAILURE") {
+                            StepOutcome.Unstable
+                        } else {
+                            return@run RunOutcome.Failure(outcome.failure)
+                        }
+                    }
+                    outcome is StepOutcome.Unstable -> return@run RunOutcome.Unstable
+                    else -> outcome
+                }
+                if (finalOutcome is StepOutcome.Unstable) return@run RunOutcome.Unstable
             }
         }
         return RunOutcome.Success
@@ -109,6 +136,26 @@ class CanonicalDurableRunCoordinator(
                 ),
             )
         }
+
+        // Scope tracking: handle CatchErrorEntered (push) and CatchErrorTriggered with emitted=true (pop)
+        if (typedCommand is CanonicalCoreStepCommand.EmitEvent) {
+            when (typedCommand.kind) {
+                "CatchErrorEntered" -> {
+                    val buildResult = typedCommand.payload["buildResult"] ?: "UNSTABLE"
+                    val enteredAt = typedCommand.payload["enteredAt"]?.toLongOrNull() ?: System.currentTimeMillis()
+                    activeScopes.addLast(ScopeFrame(buildResult, enteredAt))
+                }
+                "CatchErrorTriggered" -> {
+                    if (typedCommand.payload["emitted"] == "true") {
+                        val popped = activeScopes.removeLastOrNull()
+                            ?: throw IllegalStateException(
+                                "Scope stack underflow: CatchErrorTriggered without matching CatchErrorEntered"
+                            )
+                    }
+                }
+            }
+        }
+
         val (effects, replayPolicy) = typedCommand.defaultMetadata.effects to typedCommand.defaultMetadata.replayPolicy
         val operationId = OpId(runId.value, stageIndex, stepIndex).format()
         val input = OperationInput(

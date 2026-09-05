@@ -41,6 +41,38 @@ import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.Files
+
+/**
+ * C5: Validates and creates the control root directory.
+ *
+ * Validation rules:
+ * - Path must not contain ".." (parent directory traversal)
+ * - Path must not be a system root (/tmp, /home, /var, etc.)
+ * - Directory is created if valid
+ *
+ * @param path The path string to validate
+ * @return The validated Path
+ * @throws IllegalArgumentException if validation fails
+ */
+fun validateControlRoot(path: String): Path {
+    require(!path.contains("..")) {
+        "control-root path must not contain '..' (parent directory traversal not allowed)"
+    }
+
+    val validatedPath = Paths.get(path).toAbsolutePath()
+
+    // Reject system roots (exact match only, not subdirectories)
+    val systemRoots = setOf("/", "/tmp", "/home", "/var", "/etc", "/usr", "/bin", "/sbin", "/proc", "/sys")
+    require(!systemRoots.contains(validatedPath.toString())) {
+        "control-root path must not be a system root: $validatedPath"
+    }
+
+    // Create directories if they don't exist
+    Files.createDirectories(validatedPath)
+
+    return validatedPath
+}
 
 /**
  * CLI entry point for the V2 pipeline runner.
@@ -328,9 +360,16 @@ fun main(args: Array<String>) {
     // ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
     // Can be overridden via --control-root flag for testing.
     // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
+    // C5: Validate control-root path before use
     val dbPath = Paths.get(config.dbPath!!)
     val controlDirRoot: Path = if (config.controlRoot != null) {
-        Paths.get(config.controlRoot)
+        try {
+            validateControlRoot(config.controlRoot)
+        } catch (e: IllegalArgumentException) {
+            System.err.println("Error: ${e.message}")
+            System.exit(2)
+            throw e // unreachable
+        }
     } else {
         dbPath.parent.resolve("durable-shell")
     }

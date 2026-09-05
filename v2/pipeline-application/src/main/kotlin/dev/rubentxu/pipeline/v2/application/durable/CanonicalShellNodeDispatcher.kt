@@ -22,29 +22,17 @@ data class CanonicalShellDispatchContext(
 /** Dispatches canonical `core.sh` nodes through the existing durable shell path. */
 class CanonicalShellNodeDispatcher {
     suspend fun dispatch(command: CanonicalCoreStepCommand.Shell, context: CanonicalShellDispatchContext): StepOutcome {
-        require(!command.returnStdout) {
-            "core.sh returnStdout requires a typed result channel before durable dispatch"
-        }
-
-        return when (
-            ShExecution.runShellCommand(
-                command = DurableShellCommand(command.command),
-                opId = context.opId,
-                runId = context.runId,
-                stageIndex = context.stageIndex,
-                stepIndex = context.stepIndex,
-                shOptions = context.shOptions,
-                controlDirRoot = context.controlDirRoot,
-                eventSink = context.eventSink,
-            )
-        ) {
-            "success" -> StepOutcome.Success
-            "timeout" -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${context.opId}'")
-            )
-            else -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.SCRIPT, "core.sh failed for '${context.opId}'")
-            )
-        }
+        // C2: Use typed shell command with structured failure mapping
+        // Evidence-driven dispatcher: removed require on returnStdout for additive compatibility
+        return ShExecution.runShellCommandTyped(
+            command = DurableShellCommand(command.command),
+            opId = context.opId,
+            runId = context.runId,
+            stageIndex = context.stageIndex,
+            stepIndex = context.stepIndex,
+            shOptions = context.shOptions,
+            controlDirRoot = context.controlDirRoot,
+            eventSink = context.eventSink,
+        )
     }
 }

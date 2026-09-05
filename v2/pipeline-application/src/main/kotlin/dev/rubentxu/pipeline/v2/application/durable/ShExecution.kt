@@ -1,7 +1,9 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
@@ -191,6 +193,41 @@ object ShExecution {
             return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
         } catch (e: Exception) {
             "failure"
+        }
+    }
+
+    /**
+     * C2: Structured failure mapping with additive compatibility.
+     * Executes a typed shell command and returns StepOutcome with proper failure kinds.
+     *
+     * Maps durable shell terminal states to typed failures:
+     * - COMPLETE + exit 0 → Success
+     * - COMPLETE + exit ≠ 0 → Failure(SCRIPT)
+     * - TIMED_OUT → Failure(TIMEOUT)
+     * - LOST / LAUNCH_FAILED → Failure(INFRASTRUCTURE)
+     * - LAUNCHING / RUNNING → Failure(SCHEMA)
+     *
+     * @return StepOutcome typed outcome for the shell command
+     */
+    suspend fun runShellCommandTyped(
+        command: DurableShellCommand,
+        opId: OpId,
+        runId: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        shOptions: ShOptions,
+        controlDirRoot: java.nio.file.Path?,
+        eventSink: EventSink,
+    ): StepOutcome {
+        val resultString = runShellCommand(command, opId, runId, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink)
+        return when (resultString) {
+            "success" -> StepOutcome.Success
+            "timeout" -> StepOutcome.Failure(
+                PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${opId.format()}'")
+            )
+            else -> StepOutcome.Failure(
+                PipelineFailure(FailureKind.SCRIPT, "core.sh failed for '${opId.format()}'")
+            )
         }
     }
 

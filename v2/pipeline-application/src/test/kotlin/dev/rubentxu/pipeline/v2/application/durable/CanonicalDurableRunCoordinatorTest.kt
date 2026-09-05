@@ -16,6 +16,9 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.StepFailed
+import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -143,7 +146,9 @@ class CanonicalDurableRunCoordinatorTest {
         assertEquals(RunOutcome.Success, resumedOutcome)
         assertEquals(1, journal.listForRun(runId.value).size)
         assertEquals("${runId.value}-s0-0", cursorStore.load(runId.value)?.lastOpId)
-        assertEquals(1, eventStore.eventsFor(runId.value).count())
+        // First run (RERUN) emits: StepStarted + EchoOutputCaptured (from echo) + StepFinished = 3 events
+        // Second run (SKIP) emits no events (returns early)
+        assertEquals(3, eventStore.eventsFor(runId.value).count())
     }
 
     @Test
@@ -238,6 +243,195 @@ class CanonicalDurableRunCoordinatorTest {
         val journalEntries = journal.listForRun(runId.value)
         assertEquals(1, journalEntries.size)
         assertEquals(OperationStatus.FAILED, journalEntries.single().status)
+    }
+
+    @Test
+    fun `run emits StepStarted before dispatch`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("step-started-before-dispatch")
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+        coordinator.run(echoPipeline("test"), runId)
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val stepStartedEvents = events.filterIsInstance<StepStarted>()
+        assertTrue(stepStartedEvents.isNotEmpty(), "Must have at least one StepStarted event")
+        val stepStarted = stepStartedEvents.first()
+        assertEquals(0, stepStarted.stageIndex)
+        assertEquals(0, stepStarted.stepIndex)
+        assertEquals("echo", stepStarted.stepType)
+    }
+
+    @Test
+    fun `run emits StepFinished after dispatch`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("step-finished-after-dispatch")
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+        coordinator.run(echoPipeline("test"), runId)
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val stepFinishedEvents = events.filterIsInstance<StepFinished>()
+        assertTrue(stepFinishedEvents.isNotEmpty(), "Must have at least one StepFinished event")
+        val stepFinished = stepFinishedEvents.first()
+        assertEquals(0, stepFinished.stageIndex)
+        assertEquals(0, stepFinished.stepIndex)
+        assertEquals("echo", stepFinished.stepType)
+    }
+
+    @Test
+    fun `StepFinished count equals 1 per step on failure path`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("step-finished-count-on-failure")
+
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("failing-shell-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(StageNode(StageId("build"), "build", body = StageBody.Steps(listOf(
+                OpaqueStepNode(
+                    id = StepId("build/fail"),
+                    pluginStepId = PluginStepId("core.sh"),
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"sh","command":"exit 42","isScriptBlock":false,"returnStdout":false}"""),
+                ),
+            )))),
+        )
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+        coordinator.run(pipeline, runId)
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val stepStartedEvents = events.filterIsInstance<StepStarted>()
+        val stepFinishedEvents = events.filterIsInstance<StepFinished>()
+        val stepFailedEvents = events.filterIsInstance<StepFailed>()
+
+        // Exactly one StepStarted and one StepFinished for the failing step
+        assertEquals(1, stepStartedEvents.size, "Must have exactly 1 StepStarted for the failing step")
+        assertEquals(1, stepFinishedEvents.size, "Must have exactly 1 StepFinished for the failing step")
+        assertEquals(1, stepFailedEvents.size, "Must have exactly 1 StepFailed for the failing step")
+        assertEquals(0, stepFailedEvents.first().stepIndex)
+    }
+
+    @Test
+    fun `No step events for ReplayDecision SKIP`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("no-events-on-skip")
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+
+        // First run - executes and journals
+        coordinator.run(echoPipeline("test"), runId)
+
+        // Second run - should SKIP due to memoization (echo is MEMOIZED)
+        val resumedOutcome = coordinator.run(echoPipeline("test"), runId)
+
+        assertEquals(RunOutcome.Success, resumedOutcome)
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val stepStartedEvents = events.filterIsInstance<StepStarted>()
+        val stepFinishedEvents = events.filterIsInstance<StepFinished>()
+
+        // On SKIP, no step events should be emitted
+        // But first run should have emitted them
+        // The SKIP path returns before emitting events
+        // So for MEMOIZED steps that are skipped, there should be only 1 pair of events
+        assertTrue(stepStartedEvents.size <= 1, "At most 1 StepStarted (only from first run)")
+        assertTrue(stepFinishedEvents.size <= 1, "At most 1 StepFinished (only from first run)")
+    }
+
+    @Test
+    fun `Exactly-once discipline - 3 steps emits 3 StepStarted and 3 StepFinished`() = runBlocking {
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("exactly-once-3-steps")
+
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("three-step-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(StageNode(StageId("build"), "build", body = StageBody.Steps(listOf(
+                OpaqueStepNode(
+                    id = StepId("build/echo1"),
+                    pluginStepId = PluginStepId("core.echo"),
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"first"}"""),
+                ),
+                OpaqueStepNode(
+                    id = StepId("build/echo2"),
+                    pluginStepId = PluginStepId("core.echo"),
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"second"}"""),
+                ),
+                OpaqueStepNode(
+                    id = StepId("build/echo3"),
+                    pluginStepId = PluginStepId("core.echo"),
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"echo","text":"third"}"""),
+                ),
+            )))),
+        )
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+        )
+        coordinator.run(pipeline, runId)
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val stepStartedEvents = events.filterIsInstance<StepStarted>()
+        val stepFinishedEvents = events.filterIsInstance<StepFinished>()
+
+        assertEquals(3, stepStartedEvents.size, "Must have exactly 3 StepStarted events for 3 steps")
+        assertEquals(3, stepFinishedEvents.size, "Must have exactly 3 StepFinished events for 3 steps")
+
+        // Verify each stepIndex appears exactly once
+        val startedStepIndices = stepStartedEvents.map { it.stepIndex }.sorted()
+        val finishedStepIndices = stepFinishedEvents.map { it.stepIndex }.sorted()
+        assertEquals(listOf(0, 1, 2), startedStepIndices, "StepStarted must have stepIndex 0, 1, 2")
+        assertEquals(listOf(0, 1, 2), finishedStepIndices, "StepFinished must have stepIndex 0, 1, 2")
     }
 
     private fun echoPipeline(text: String) = CompiledPipeline(

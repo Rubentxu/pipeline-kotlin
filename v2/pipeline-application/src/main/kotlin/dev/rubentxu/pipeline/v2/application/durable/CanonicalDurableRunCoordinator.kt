@@ -19,6 +19,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
@@ -28,6 +30,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
+import java.time.Instant
+import java.util.UUID
 
 /**
  * Derives the canonical step IDs from the sealed hierarchy.
@@ -46,6 +50,19 @@ private val canonicalCoreStepIds: Set<String> by lazy {
             else -> null
         }
     }.toSet()
+}
+
+/**
+ * Derives the canonical step type string from a typed command.
+ * Used for event emission to identify the step type in step-level lifecycle events.
+ */
+private fun canonicalCoreStepType(command: CanonicalCoreStepCommand): String = when (command) {
+    is CanonicalCoreStepCommand.Shell -> "sh"
+    is CanonicalCoreStepCommand.Echo -> "echo"
+    is CanonicalCoreStepCommand.Error -> "error"
+    is CanonicalCoreStepCommand.Sleep -> "sleep"
+    is CanonicalCoreStepCommand.WriteFile -> "writeFile"
+    is CanonicalCoreStepCommand.EmitEvent -> "emitEvent"
 }
 
 /** True when the compiled pipeline fits the promoted linear canonical-core subset. */
@@ -199,17 +216,65 @@ class CanonicalDurableRunCoordinator(
         if (journaled == null) {
             journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
         }
-        val outcome = dispatcher.dispatch(
-            typedCommand,
-            CanonicalRuntimeContext(
-                opId = OpId(runId.value, stageIndex, stepIndex),
+
+        // Emit StepStarted before dispatch (REQ-LFC1-009 requirement 9)
+        val stepType = canonicalCoreStepType(typedCommand)
+        eventSink.append(
+            StepStarted(
+                eventId = UUID.randomUUID().toString(),
                 runId = runId.value,
-                stageName = stageName,
+                sequence = 0L,
+                occurredAt = Instant.now(),
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
-                shOptions = stageShOptions,
-                controlDirRoot = controlDirRoot,
-                eventSink = eventSink,
+                stepName = step.id.value,
+                stepType = stepType,
+            ),
+        )
+
+        // Dispatch with error handling for step event emission
+        val outcome: StepOutcome = try {
+            dispatcher.dispatch(
+                typedCommand,
+                CanonicalRuntimeContext(
+                    opId = OpId(runId.value, stageIndex, stepIndex),
+                    runId = runId.value,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    shOptions = stageShOptions,
+                    controlDirRoot = controlDirRoot,
+                    eventSink = eventSink,
+                ),
+            )
+        } catch (e: Exception) {
+            // Emit StepFinished before propagating exception (REQ-LFC1-009 requirement 11)
+            eventSink.append(
+                StepFinished(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepName = step.id.value,
+                    stepType = stepType,
+                ),
+            )
+            throw e
+        }
+
+        // Emit StepFinished after dispatch (REQ-LFC1-009 requirement 10)
+        eventSink.append(
+            StepFinished(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                stepName = step.id.value,
+                stepType = stepType,
             ),
         )
         journal.append(

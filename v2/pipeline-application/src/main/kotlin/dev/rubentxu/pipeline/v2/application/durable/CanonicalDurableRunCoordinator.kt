@@ -19,6 +19,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
@@ -95,36 +97,113 @@ class CanonicalDurableRunCoordinator(
     /** Active scope stack for catchError / warnError tracking. */
     private val activeScopes: ArrayDeque<ScopeFrame> = ArrayDeque()
 
+    // C3: RunStarted/RunFinished state
+    private var currentOutcome: RunOutcome = RunOutcome.Success
+    // Track whether RunStarted was emitted (for RunFinished correlation)
+    private var runStartedEmitted = false
+
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
-        pipeline.stages.forEachIndexed { stageIndex, stage ->
-            // Stage boundary: scope stack must be empty when entering a stage
-            check(activeScopes.isEmpty()) {
-                "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${activeScopes.size} frame(s) remaining"
-            }
-            val steps = (stage.body as? StageBody.Steps)?.steps
-                ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
-            // D5: Per-stage workspaceRoot override at dispatch boundary
-            val stageWorkspace: Path? = controlDirRoot?.let { WorkspaceResolver(it).resolve(stage.name, stageIndex) }
-            val stageShOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
-            steps.forEachIndexed { stepIndex, step ->
-                val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
-                // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
-                val finalOutcome = when {
-                    outcome is StepOutcome.Failure -> {
-                        val top = activeScopes.lastOrNull()
-                        if (top != null && top.buildResult != "FAILURE") {
-                            StepOutcome.Unstable
-                        } else {
-                            return@run RunOutcome.Failure(outcome.failure)
-                        }
-                    }
-                    outcome is StepOutcome.Unstable -> return@run RunOutcome.Unstable
-                    else -> outcome
+        // Reset state for this run
+        currentOutcome = RunOutcome.Success
+        runStartedEmitted = false
+
+        // C3: Emit RunStarted at the beginning of the pipeline run
+        eventSink.append(
+            RunStarted(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                scriptPath = pipeline.source.path,
+            ),
+        )
+        runStartedEmitted = true
+
+        try {
+            for (stageIndex in pipeline.stages.indices) {
+                val stage = pipeline.stages[stageIndex]
+                // Stage boundary: scope stack must be empty when entering a stage
+                check(activeScopes.isEmpty()) {
+                    "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${activeScopes.size} frame(s) remaining"
                 }
-                if (finalOutcome is StepOutcome.Unstable) return@run RunOutcome.Unstable
+                val steps = (stage.body as? StageBody.Steps)?.steps
+                    ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
+                // D5: Per-stage workspaceRoot override at dispatch boundary
+                // C1: Workspace pre-creation - ensure stage workspace exists before shell dispatch
+                var stageWorkspace: Path? = null
+                if (controlDirRoot != null) {
+                    val resolver = WorkspaceResolver(controlDirRoot)
+                    val workspacePath = resolver.resolve(stage.name, stageIndex)
+                    try {
+                        resolver.ensureCreated(workspacePath)
+                        stageWorkspace = workspacePath
+                    } catch (e: java.io.IOException) {
+                        currentOutcome = RunOutcome.Failure(
+                            PipelineFailure(
+                                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                                "Failed to create stage workspace '${workspacePath}': ${e.message}"
+                            ),
+                        )
+                        return@run currentOutcome
+                    }
+                }
+                val stageShOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
+                for (stepIndex in steps.indices) {
+                    val step = steps[stepIndex]
+                    val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
+                    // stepEventsEmitted is set inside dispatch when StepStarted is actually emitted
+                    // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
+                    when {
+                        outcome is StepOutcome.Failure -> {
+                            val top = activeScopes.lastOrNull()
+                            if (top != null && top.buildResult != "FAILURE") {
+                                currentOutcome = RunOutcome.Unstable
+                                return@run RunOutcome.Unstable
+                            } else {
+                                currentOutcome = RunOutcome.Failure(outcome.failure)
+                                return@run currentOutcome
+                            }
+                        }
+                        outcome is StepOutcome.Unstable -> {
+                            currentOutcome = RunOutcome.Unstable
+                            return@run RunOutcome.Unstable
+                        }
+                        else -> { /* continue */ }
+                    }
+                }
+            }
+            // Success: fall through to finally and return
+        } catch (e: Exception) {
+            // Rethrow scope-related IllegalStateException to preserve test contracts
+            if (e is IllegalStateException) throw e
+            currentOutcome = RunOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                    "Unexpected error during pipeline run: ${e.message}"
+                ),
+            )
+        } finally {
+            // C3: Emit RunFinished in finally block, only if RunStarted was emitted
+            // This ensures SKIP replay paths still get proper bookend events
+            if (runStartedEmitted) {
+                eventSink.append(
+                    RunFinished(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                        outcome = when (currentOutcome) {
+                            is RunOutcome.Success -> "success"
+                            is RunOutcome.Unstable -> "unstable"
+                            is RunOutcome.Failure -> "failure"
+                            is RunOutcome.Aborted -> "aborted"
+                        },
+                        diagnostics = emptyList(),
+                    ),
+                )
             }
         }
-        return RunOutcome.Success
+        return currentOutcome
     }
 
     private suspend fun dispatch(

@@ -146,9 +146,10 @@ class CanonicalDurableRunCoordinatorTest {
         assertEquals(RunOutcome.Success, resumedOutcome)
         assertEquals(1, journal.listForRun(runId.value).size)
         assertEquals("${runId.value}-s0-0", cursorStore.load(runId.value)?.lastOpId)
-        // First run (RERUN) emits: StepStarted + EchoOutputCaptured (from echo) + StepFinished = 3 events
-        // Second run (SKIP) emits no events (returns early)
-        assertEquals(3, eventStore.eventsFor(runId.value).count())
+        // C3: First run (RERUN) emits: RunStarted + StepStarted + EchoOutputCaptured (from echo) + StepFinished + RunFinished = 5 events
+        // C3: Second run (SKIP) emits: RunStarted + RunFinished = 2 events (run completed, no step events)
+        // Total: 7 events
+        assertEquals(7, eventStore.eventsFor(runId.value).count())
     }
 
     @Test

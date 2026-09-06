@@ -1,7 +1,10 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.AgentSpec
+import dev.rubentxu.pipeline.v2.domain.BlockSegment
+import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.DefinitionIdentityInput
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -13,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
+import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
@@ -32,8 +36,13 @@ import java.security.MessageDigest
  * SpecDefinitionMapper; validator/planner migration is LFC1-005.
  *
  * LFC1-007: StepSpec.WriteFile is re-mapped to `core.file.writeFile` with typed payload.
- * StepSpec.CatchError / WarnError / Unstable are pre-compiler-rewritten to a linear sequence
- * of `core.emit.event` marker steps + `core.sh` composition + `core.emit.event` post-marker steps.
+ * Body-aware steps:
+ * - catchError / warnError: compiled via [rewriteWorkflowControl] to the legacy linear
+ *   sequence (core.emit.event enter + core.sh + core.emit.event trigger) until EM-5/EM-6
+ *   semantics (failure suppression, UNSTABLE classification) are fully implemented.
+ * - timeout / retry / dir / withCredentials: compiled to [BlockStepNode] with canonical
+ *   body-execution IR (EM-4 substrate, JEP-020/021/022/029).
+ * Unstable: compiled via [rewriteUnstable] to the legacy linear sequence.
  */
 object DslCompiledPipelineCompiler {
 
@@ -101,8 +110,9 @@ object DslCompiledPipelineCompiler {
 
     /**
      * Linearizes a list of step specs into a flat list of canonical step nodes.
-     * Workflow-control steps (catchError / warnError / unstable) are pre-compiler-rewritten
-     * into a linear sequence of `core.emit.event` + `core.sh` nodes.
+     * catchError/warnError/unstable → legacy linear sequence via rewriteWorkflowControl/rewriteUnstable.
+     * timeout/retry/dir/withCredentials → [BlockStepNode] (EM-4 body-execution IR).
+     * Terminal steps → [OpaqueStepNode].
      */
     private fun stepNodes(steps: List<StepSpec>, parentToken: String): List<StepNode> {
         val occurrences = mutableMapOf<String, Int>()
@@ -114,7 +124,7 @@ object DslCompiledPipelineCompiler {
 
     /**
      * Converts one StepSpec into one or more canonical StepNode IR nodes.
-     * Normal steps → 1 node; workflow-control steps → multiple nodes via rewrite.
+     * Body-aware steps → BlockStepNode; terminal steps → OpaqueStepNode.
      */
     private fun stepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
         return when (step) {
@@ -146,6 +156,26 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
+            is StepSpec.TimeoutBlock -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
+            is StepSpec.RetryBlock -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
+            is StepSpec.Dir -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
+            is StepSpec.WithCredentialsBlock -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -159,6 +189,44 @@ object DslCompiledPipelineCompiler {
                 ),
             )
         }
+    }
+
+    /**
+     * Compiles a body-aware StepSpec into a canonical [BlockStepNode].
+     *
+     * The body steps are compiled recursively via [stepNodes] to produce the flat
+     * canonical child sequence. The step's metadata (buildResult, time/unit, count, etc.)
+     * is not encoded in the BlockStepNode itself — it lives in the [StepDescriptor] looked
+     * up from [StepDescriptorRegistry.standard] and the runtime [ContextOverlay] pushed
+     * by the coordinator when dispatching the block.
+     *
+     * JEP-029 (body-execution IR): BlockStepNode is the canonical representation
+     * for all block-type steps. The coordinator's [CanonicalDurableRunCoordinator.dispatchBody]
+     * handles the body children with proper per-child journal rows and context-stack
+     * restoration.
+     */
+    private fun blockStepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
+        val tokenPrefix = stableToken(step.name)
+        val stepId = StepId("$parentToken/${tokenPrefix}-body-$occurrence")
+
+        val body = stepNodes(when (step) {
+            is StepSpec.CatchError -> step.steps
+            is StepSpec.WarnError -> step.steps
+            is StepSpec.TimeoutBlock -> step.steps
+            is StepSpec.RetryBlock -> step.steps
+            is StepSpec.Dir -> step.steps
+            is StepSpec.WithCredentialsBlock -> step.steps
+            else -> emptyList()
+        }, "$parentToken/${tokenPrefix}-body-$occurrence")
+
+        return listOf(
+            BlockStepNode(
+                id = stepId,
+                pluginStepId = PluginStepId("core.${step.name}"),
+                payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, "{}"),
+                body = body,
+            )
+        )
     }
 
     /**

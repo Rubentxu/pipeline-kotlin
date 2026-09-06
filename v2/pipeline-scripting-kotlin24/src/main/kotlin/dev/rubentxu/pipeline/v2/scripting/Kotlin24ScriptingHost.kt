@@ -9,6 +9,7 @@ import java.io.File
 import java.time.Instant
 import java.util.UUID
 import kotlin.script.experimental.api.ResultWithDiagnostics
+import kotlin.script.experimental.api.ResultValue
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptDiagnostic
 import kotlin.script.experimental.api.ScriptEvaluationConfiguration
@@ -125,6 +126,16 @@ class Kotlin24ScriptingHost(
                         "dev.rubentxu.pipeline.v2.dsl.StagesScope",
                         "dev.rubentxu.pipeline.v2.dsl.StageScope",
                         "dev.rubentxu.pipeline.v2.dsl.StageBuilder",
+                        "dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedStepFacade",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedDynamicScopeId",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedBlockName",
+                        "dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLocation",
+                        "dev.rubentxu.pipeline.v2.scripting.ReturnStdout",
+                        "dev.rubentxu.pipeline.v2.scripting.ReturnStatus",
                         "dev.rubentxu.pipeline.v2.domain.CredentialsId",
                         "dev.rubentxu.pipeline.v2.domain.CredentialsRef"
                     )
@@ -144,24 +155,27 @@ class Kotlin24ScriptingHost(
         val diagnostics = rwd.reports
             .filter { it.severity >= ScriptDiagnostic.Severity.INFO }
             .map(::mapDiagnostic)
-        val isSuccess = rwd is ResultWithDiagnostics.Success
-
         // scriptText is already captured at line 78; reuse it for the cache key.
         val cacheKey = CacheKey(
             CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion),
             CacheKey.V1,
         )
 
-        val result = ScriptCompilationResult(
-            isSuccess = isSuccess,
-            value = if (rwd is ResultWithDiagnostics.Success) {
-                @Suppress("UNCHECKED_CAST")
-                val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
-                evalResult.returnValue.scriptInstance
-            } else null,
-            diagnostics = diagnostics,
-            cacheKey = cacheKey,
-        )
+        val result = if (rwd is ResultWithDiagnostics.Success) {
+            @Suppress("UNCHECKED_CAST")
+            val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
+            ScriptCompilationResult.Success(
+                output = mapEvaluationOutput(evalResult.returnValue),
+                scriptInstance = evalResult.returnValue.scriptInstance,
+                diagnostics = diagnostics,
+                cacheKey = cacheKey,
+            )
+        } else {
+            ScriptCompilationResult.Failure(
+                diagnostics = diagnostics,
+                cacheKey = cacheKey,
+            )
+        }
 
         eventSink.append(
             CompilationFinished(
@@ -175,6 +189,16 @@ class Kotlin24ScriptingHost(
         )
 
         return result
+    }
+
+    private fun mapEvaluationOutput(returnValue: ResultValue): ScriptEvaluationOutput = when (returnValue) {
+        is ResultValue.Value -> when (val value = returnValue.value) {
+            is CompiledScriptedEntryPoint -> ScriptEvaluationOutput.CompiledEntryPoint(value)
+            null -> ScriptEvaluationOutput.ReturnedNull
+            else -> ScriptEvaluationOutput.ReturnedValue(value)
+        }
+        is ResultValue.Unit -> ScriptEvaluationOutput.Unit
+        else -> ScriptEvaluationOutput.NoValue
     }
 
     private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {

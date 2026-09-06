@@ -35,36 +35,9 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Derives the canonical step IDs from the sealed hierarchy.
- * Single source of truth — the pluginId values are declared on each sealed subtype.
- * Adding a new sealed subtype propagates automatically through this derivation.
+ * Canonical plugin IDs — sourced from the single registry in CanonicalCoreStepCommand.
  */
-private val canonicalCoreStepIds: Set<String> by lazy {
-    CanonicalCoreStepCommand::class.sealedSubclasses.mapNotNull { cls ->
-        when (cls.simpleName) {
-            "Shell" -> "core.sh"
-            "Echo" -> "core.echo"
-            "Error" -> "core.error"
-            "Sleep" -> "core.sleep"
-            "WriteFile" -> "core.file.writeFile"
-            "EmitEvent" -> "core.emit.event"
-            else -> null
-        }
-    }.toSet()
-}
-
-/**
- * Derives the canonical step type string from a typed command.
- * Used for event emission to identify the step type in step-level lifecycle events.
- */
-private fun canonicalCoreStepType(command: CanonicalCoreStepCommand): String = when (command) {
-    is CanonicalCoreStepCommand.Shell -> "sh"
-    is CanonicalCoreStepCommand.Echo -> "echo"
-    is CanonicalCoreStepCommand.Error -> "error"
-    is CanonicalCoreStepCommand.Sleep -> "sleep"
-    is CanonicalCoreStepCommand.WriteFile -> "writeFile"
-    is CanonicalCoreStepCommand.EmitEvent -> "emitEvent"
-}
+private val canonicalCoreStepIds: Set<String> = CanonicalCoreStepCommand.ALL_PLUGIN_IDS
 
 /** True when the compiled pipeline fits the promoted linear canonical-core subset. */
 fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all { stage ->
@@ -275,7 +248,7 @@ class CanonicalDurableRunCoordinator(
             stageIndex = stageIndex,
             stepIndex = stepIndex,
             stepName = step.id.value,
-            stepType = canonicalCoreStepType(typedCommand),
+            stepType = CanonicalCoreStepCommand.pluginIdToShortType(typedCommand.pluginId),
         )
         val journaled = journal.get(operationId, 1)
         val currentOperation = RerunOperation(

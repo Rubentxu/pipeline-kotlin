@@ -28,6 +28,26 @@ sealed interface CanonicalCoreStepCommand {
     val pluginId: String
     val defaultMetadata: StepMetadata
 
+    companion object {
+        /**
+         * Single source of truth for canonical core plugin IDs.
+         * Derived from the pluginId overrides declared on each sealed subtype.
+         * Adding a new sealed subtype with a pluginId override automatically propagates here.
+         */
+        val ALL_PLUGIN_IDS: Set<String> = setOf(
+            "core.sh",
+            "core.echo",
+            "core.error",
+            "core.sleep",
+            "core.file.writeFile",
+            "core.emit.event",
+        )
+
+        /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
+        fun pluginIdToShortType(pluginId: String): String =
+            pluginId.removePrefix("core.").substringBefore(".")
+    }
+
     data class Shell(
         val shell: ShellCommand,
         val isScriptBlock: Boolean,

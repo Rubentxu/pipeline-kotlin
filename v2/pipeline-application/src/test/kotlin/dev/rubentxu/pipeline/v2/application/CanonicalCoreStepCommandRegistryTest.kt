@@ -26,7 +26,7 @@ class CanonicalCoreStepCommandRegistryTest {
     }
 
     @Test
-    fun `derived canonicalCoreStepIds matches expected set`() {
+    fun `ALL_PLUGIN_IDS matches expected set`() {
         val expected = setOf(
             "core.sh",
             "core.echo",
@@ -35,19 +35,8 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.file.writeFile",
             "core.emit.event",
         )
-        // Access the private canonicalCoreStepIds via reflection
-        val derived = CanonicalCoreStepCommand::class.sealedSubclasses.mapNotNull { cls ->
-            when (cls.simpleName) {
-                "Shell" -> "core.sh"
-                "Echo" -> "core.echo"
-                "Error" -> "core.error"
-                "Sleep" -> "core.sleep"
-                "WriteFile" -> "core.file.writeFile"
-                "EmitEvent" -> "core.emit.event"
-                else -> null
-            }
-        }.toSet()
-        assertEquals(expected, derived, "Derived canonicalCoreStepIds must match expected set")
+        // Assert against the registry — single source of truth, no duplication
+        assertEquals(expected, CanonicalCoreStepCommand.ALL_PLUGIN_IDS, "ALL_PLUGIN_IDS must match expected set")
     }
 
     @Test

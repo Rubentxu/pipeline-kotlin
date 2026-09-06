@@ -15,8 +15,14 @@ enum class FailureKind {
     USER,
     /** Timeout exceeded */
     TIMEOUT,
+    /** A plugin could not execute its declared contract. */
+    PLUGIN,
     /** The IR payload does not conform to the canonical `dsl-v1` contract */
     SCHEMA,
+    /** A persisted operation cannot be safely replayed by this runtime. */
+    REPLAY_COMPATIBILITY,
+    /** An invariant of the execution engine was violated. */
+    ENGINE,
     /** Unknown failure */
     UNKNOWN,
 }

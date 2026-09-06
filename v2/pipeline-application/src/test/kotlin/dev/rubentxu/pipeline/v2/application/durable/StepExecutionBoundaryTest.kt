@@ -62,6 +62,32 @@ class StepExecutionBoundaryTest {
         assertEquals(FailureKind.PLUGIN, events.filterIsInstance<StepFailed>().single().failureKind)
     }
 
+    /**
+     * UAT-JEP-002: sh exit 42 default mode yields `Failed(SCRIPT, exitCode=42)` and exactly one `StepFailed(kind=SCRIPT)`.
+     */
+    @Test
+    fun `sh exit 42 in default mode emits exactly one StepFailed with SCRIPT kind`() = runBlocking {
+        val eventStore = InMemoryEventStore()
+        val context = StepLifecycleContext(
+            runId = "boundary-jep002-run",
+            stageIndex = 0,
+            stepIndex = 4,
+            stepName = "build/shell",
+            stepType = "sh",
+        )
+
+        val outcome = StepExecutionBoundary(eventStore).execute(context) {
+            StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 42"))
+        }
+
+        assertEquals(StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 42")), outcome)
+        val events = eventStore.eventsFor(context.runId).toList()
+        assertEquals(1, events.filterIsInstance<StepStarted>().size)
+        assertEquals(1, events.filterIsInstance<StepFailed>().size)
+        assertEquals(1, events.filterIsInstance<StepFinished>().size)
+        assertEquals(FailureKind.SCRIPT, events.filterIsInstance<StepFailed>().single().failureKind)
+    }
+
     @Test
     fun `an engine invariant propagates without a StepFailed event`() {
         val eventStore = InMemoryEventStore()

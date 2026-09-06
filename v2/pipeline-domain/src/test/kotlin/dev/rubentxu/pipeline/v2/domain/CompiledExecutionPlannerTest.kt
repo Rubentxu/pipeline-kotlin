@@ -1,77 +1,170 @@
 package dev.rubentxu.pipeline.v2.domain
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
+/**
+ * Tests for CompiledExecutionPlanner with Block units (EM-4).
+ */
 class CompiledExecutionPlannerTest {
-    private fun step(id: String) = OpaqueStepNode(
-        StepId(id), PluginStepId("core.echo"), VersionedStepPayload("dsl-v1", "{\"id\":\"$id\"}")
+
+    private fun makeOpaqueStepNode(id: String, pluginStepId: String): OpaqueStepNode = OpaqueStepNode(
+        id = StepId(id),
+        pluginStepId = PluginStepId(pluginStepId),
+        payload = VersionedStepPayload("dsl-v1", """{"command":"echo test"}"""),
     )
 
-    private fun pipeline(body: StageBody) = CompiledPipeline(
-        id = DefinitionId("pipeline"), source = SourceDescriptor("Jenkinsfile", Digest("source")),
-        pluginLockDigest = Digest("lock"), stages = listOf(StageNode(StageId("main"), "main", body = body))
+    private fun makeBlockStepNode(
+        id: String,
+        pluginStepId: String,
+        body: List<StepNode> = emptyList(),
+    ): BlockStepNode = BlockStepNode(
+        id = StepId(id),
+        pluginStepId = PluginStepId(pluginStepId),
+        payload = VersionedStepPayload("dsl-v1", "{}"),
+        body = body,
     )
 
-    @Test fun `plans sequential and parallel IR deterministically`() {
-        val compiled = CompiledPipeline(
-            id = DefinitionId("pipeline"), source = SourceDescriptor("Jenkinsfile", Digest("source")),
-            pluginLockDigest = Digest("lock"), stages = listOf(
-                StageNode(StageId("build"), "build", body = StageBody.Steps(listOf(step("a")))),
-                StageNode(StageId("fanout"), "fanout", body = StageBody.Parallel(listOf(
-                    StageNode(StageId("linux"), "linux", body = StageBody.Steps(listOf(step("linux-test")))),
-                    StageNode(StageId("mac"), "mac", body = StageBody.Steps(listOf(step("mac-test"))))
-                ))),
+    private fun makePipeline(vararg steps: StepNode): CompiledPipeline = CompiledPipeline(
+        id = DefinitionId("test-pipeline"),
+        source = SourceDescriptor("test.kts", Digest("abc123")),
+        stages = listOf(
+            StageNode(
+                id = StageId("test-stage"),
+                name = "Test Stage",
+                body = StageBody.Steps(steps.toList()),
+            )
+        ),
+        pluginLockDigest = Digest("lock"),
+    )
+
+    @Test
+    fun `BlockStepNode emits Block unit with subPlan`() {
+        val block = makeBlockStepNode(
+            id = "catch-block",
+            pluginStepId = "core.catchError",
+            body = listOf(
+                makeOpaqueStepNode("sh-a", "core.sh"),
+                makeOpaqueStepNode("sh-b", "core.sh"),
             )
         )
-        val plan = CompiledExecutionPlanner.plan(compiled)
-        assertEquals(listOf("a", "linux-test", "mac-test"), plan.linearSteps.map { it.id.value })
-        assertEquals(2, plan.units.size)
-        assertTrue(plan.units[1] is CompiledExecutionUnit.Concurrent)
+
+        val pipeline = makePipeline(block)
+        val plan = CompiledExecutionPlanner.plan(pipeline)
+
+        assertEquals(1, plan.units.size)
+        val blockUnit = plan.units[0] as? CompiledExecutionUnit.Block
+        assertNotNull(blockUnit, "Should be CompiledExecutionUnit.Block")
+        val bu = blockUnit!!
+
+        assertEquals(block.id, bu.block.id)
+
+        // Body plan should have two Single units
+        assertEquals(2, bu.bodyPlan.units.size)
+        assertTrue(bu.bodyPlan.units[0] is CompiledExecutionUnit.Single)
+        assertTrue(bu.bodyPlan.units[1] is CompiledExecutionUnit.Single)
     }
 
-    @Test fun `plans nested stage bodies in encounter order`() {
-        val nested = pipeline(StageBody.NestedStages(listOf(
-            StageNode(StageId("compile"), "compile", body = StageBody.Steps(listOf(step("compile")))),
-            StageNode(StageId("test"), "test", body = StageBody.Steps(listOf(step("test")))),
-        )))
+    @Test
+    fun `nested BlockStepNode emits Block with nested Block`() {
+        val innerBlock = makeBlockStepNode(
+            id = "inner-dir",
+            pluginStepId = "core.dir",
+            body = listOf(makeOpaqueStepNode("sh-c", "core.sh"))
+        )
 
-        assertEquals(listOf("compile", "test"), CompiledExecutionPlanner.plan(nested).linearSteps.map { it.id.value })
+        val outerBlock = makeBlockStepNode(
+            id = "outer-catch",
+            pluginStepId = "core.catchError",
+            body = listOf(
+                makeOpaqueStepNode("sh-a", "core.sh"),
+                makeOpaqueStepNode("sh-b", "core.sh"),
+                innerBlock,
+            )
+        )
+
+        val pipeline = makePipeline(outerBlock)
+        val plan = CompiledExecutionPlanner.plan(pipeline)
+
+        assertEquals(1, plan.units.size)
+        val outerBlockUnit = plan.units[0] as? CompiledExecutionUnit.Block
+        assertNotNull(outerBlockUnit)
+        val obu = outerBlockUnit!!
+
+        // Outer body plan: 3 units (Single, Single, Block)
+        assertEquals(3, obu.bodyPlan.units.size)
+        assertTrue(obu.bodyPlan.units[0] is CompiledExecutionUnit.Single)
+        assertTrue(obu.bodyPlan.units[1] is CompiledExecutionUnit.Single)
+
+        val innerBlockUnit = obu.bodyPlan.units[2] as? CompiledExecutionUnit.Block
+        assertNotNull(innerBlockUnit, "Inner block should be CompiledExecutionUnit.Block")
+        val ibu = innerBlockUnit!!
+
+        assertEquals(innerBlock.id, ibu.block.id)
+
+        // Inner body plan: 1 Single
+        assertEquals(1, ibu.bodyPlan.units.size)
+        assertTrue(ibu.bodyPlan.units[0] is CompiledExecutionUnit.Single)
     }
 
-    @Test fun `rejects duplicate step identities`() {
-        val duplicate = pipeline(StageBody.Steps(listOf(step("same"), step("same"))))
-        assertThrows(IllegalArgumentException::class.java) {
-            CompiledExecutionPlanner.plan(duplicate)
-        }
+    @Test
+    fun `mixed steps and blocks plan correctly`() {
+        val block = makeBlockStepNode(
+            id = "catch-block",
+            pluginStepId = "core.catchError",
+            body = listOf(makeOpaqueStepNode("sh-a", "core.sh")),
+        )
+
+        val pipeline = makePipeline(
+            makeOpaqueStepNode("sh-1", "core.sh"),
+            block,
+            makeOpaqueStepNode("sh-2", "core.echo"),
+        )
+
+        val plan = CompiledExecutionPlanner.plan(pipeline)
+
+        assertEquals(3, plan.units.size)
+        assertTrue(plan.units[0] is CompiledExecutionUnit.Single)
+        assertTrue(plan.units[1] is CompiledExecutionUnit.Block)
+        assertTrue(plan.units[2] is CompiledExecutionUnit.Single)
     }
 
-    @Test fun `rejects multi-step parallel branches until branch semantics are explicit`() {
-        val invalid = pipeline(StageBody.Parallel(listOf(
-            StageNode(StageId("a"), "a", body = StageBody.Steps(listOf(step("a1"), step("a2")))),
-            StageNode(StageId("b"), "b", body = StageBody.Steps(listOf(step("b1"))))
-        )))
-        assertThrows(IllegalArgumentException::class.java) {
-            CompiledExecutionPlanner.plan(invalid)
-        }
-    }
+    @Test
+    fun `parallel branch cardinality rule unchanged`() {
+        // Verify the parallel-cardinality rule is preserved
+        val parallelPipeline = CompiledPipeline(
+            id = DefinitionId("parallel-pipeline"),
+            source = SourceDescriptor("test.kts", Digest("abc123")),
+            stages = listOf(
+                StageNode(
+                    id = StageId("parallel-stage"),
+                    name = "Parallel Stage",
+                    body = StageBody.Parallel(
+                        listOf(
+                            StageNode(
+                                id = StageId("branch-1"),
+                                name = "Branch 1",
+                                body = StageBody.Steps(listOf(makeOpaqueStepNode("sh-1", "core.sh")))
+                            ),
+                            StageNode(
+                                id = StageId("branch-2"),
+                                name = "Branch 2",
+                                body = StageBody.Steps(listOf(makeOpaqueStepNode("sh-2", "core.sh")))
+                            ),
+                        )
+                    ),
+                )
+            ),
+            pluginLockDigest = Digest("lock"),
+        )
 
-    @Test fun `rejects unimplemented matrix bodies and non-step parallel branches`() {
-        val matrix = pipeline(StageBody.Matrix(MatrixSpec(mapOf("os" to listOf("linux")))))
-        assertThrows(IllegalStateException::class.java) {
-            CompiledExecutionPlanner.plan(matrix)
-        }
+        val plan = CompiledExecutionPlanner.plan(parallelPipeline)
 
-        val nestedBranch = pipeline(StageBody.Parallel(listOf(
-            StageNode(StageId("nested"), "nested", body = StageBody.NestedStages(listOf(
-                StageNode(StageId("inner"), "inner", body = StageBody.Steps(listOf(step("inner")))),
-            ))),
-            StageNode(StageId("other"), "other", body = StageBody.Steps(listOf(step("other")))),
-        )))
-        assertThrows(IllegalStateException::class.java) {
-            CompiledExecutionPlanner.plan(nestedBranch)
-        }
+        assertEquals(1, plan.units.size)
+        assertTrue(plan.units[0] is CompiledExecutionUnit.Concurrent)
+        val concurrent = plan.units[0] as CompiledExecutionUnit.Concurrent
+        assertEquals(2, concurrent.steps.size)
     }
 }

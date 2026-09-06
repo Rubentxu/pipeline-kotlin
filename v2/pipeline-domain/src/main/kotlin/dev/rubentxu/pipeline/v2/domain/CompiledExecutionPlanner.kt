@@ -11,6 +11,17 @@ sealed interface CompiledExecutionUnit {
     data class Concurrent(override val steps: List<StepNode>) : CompiledExecutionUnit {
         init { require(steps.size >= 2) { "Concurrent unit requires at least two steps" } }
     }
+
+    /**
+     * A block step with its compiled body plan.
+     * The block counts as ONE planning unit; its body is represented as a separate [CompiledExecutionPlan].
+     */
+    data class Block(
+        val block: BlockStepNode,
+        val bodyPlan: CompiledExecutionPlan,
+    ) : CompiledExecutionUnit {
+        override val steps: List<StepNode> = listOf(block)
+    }
 }
 
 data class CompiledExecutionPlan(val units: List<CompiledExecutionUnit>) {
@@ -25,7 +36,9 @@ object CompiledExecutionPlanner {
 
         fun append(stage: StageNode) {
             when (val body = stage.body) {
-                is StageBody.Steps -> body.steps.forEach { units += CompiledExecutionUnit.Single(it) }
+                is StageBody.Steps -> body.steps.forEach { step ->
+                    units += planStep(step)
+                }
                 is StageBody.NestedStages -> body.stages.forEach(::append)
                 is StageBody.Parallel -> {
                     val branchSteps = body.branches.map { branch ->
@@ -44,5 +57,25 @@ object CompiledExecutionPlanner {
 
         pipeline.stages.forEach(::append)
         return CompiledExecutionPlan(units)
+    }
+
+    /**
+     * Plans a single step, returning a [CompiledExecutionUnit].
+     * For [BlockStepNode], wraps in a [CompiledExecutionUnit.Block] with recursive body plan.
+     */
+    private fun planStep(step: StepNode): CompiledExecutionUnit = when (step) {
+        is OpaqueStepNode -> CompiledExecutionUnit.Single(step)
+        is BlockStepNode -> {
+            val bodyPlan = planBody(step.body)
+            CompiledExecutionUnit.Block(step, bodyPlan)
+        }
+    }
+
+    /**
+     * Plans a list of steps into a [CompiledExecutionPlan].
+     */
+    private fun planBody(steps: List<StepNode>): CompiledExecutionPlan {
+        val bodyUnits = steps.map { step -> planStep(step) }
+        return CompiledExecutionPlan(bodyUnits)
     }
 }

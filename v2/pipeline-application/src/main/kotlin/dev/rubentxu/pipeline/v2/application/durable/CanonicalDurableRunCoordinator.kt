@@ -3,7 +3,11 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadata
+import dev.rubentxu.pipeline.v2.domain.BlockSegment
+import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.ContextOverlay
+import dev.rubentxu.pipeline.v2.domain.ContextStack
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -46,14 +50,6 @@ fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all {
     } == true
 }
 
-/**
- * Represents an active error-handling scope (catchError / warnError block).
- *
- * @param buildResult The build result override for this scope (UNSTABLE or FAILURE).
- * @param enteredAt Epoch milliseconds when the scope was entered.
- */
-private data class ScopeFrame(val buildResult: String, val enteredAt: Long)
-
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
 class CanonicalDurableRunCoordinator(
     private val dispatcher: CanonicalNodeDispatcher,
@@ -66,8 +62,8 @@ class CanonicalDurableRunCoordinator(
     private val shOptions: ShOptions = ShOptions.EMPTY,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
 ) {
-    /** Active scope stack for catchError / warnError tracking. */
-    private val activeScopes: ArrayDeque<ScopeFrame> = ArrayDeque()
+    /** Active context stack for body scope tracking (EM-4). */
+    private var contextStack: ContextStack = ContextStack.EMPTY
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success
@@ -78,6 +74,7 @@ class CanonicalDurableRunCoordinator(
         // Reset state for this run
         currentOutcome = RunOutcome.Success
         runStartedEmitted = false
+        contextStack = ContextStack.EMPTY
 
         // C3: Emit RunStarted at the beginning of the pipeline run
         eventSink.append(
@@ -94,9 +91,9 @@ class CanonicalDurableRunCoordinator(
         try {
             for (stageIndex in pipeline.stages.indices) {
                 val stage = pipeline.stages[stageIndex]
-                // Stage boundary: scope stack must be empty when entering a stage
-                check(activeScopes.isEmpty()) {
-                    "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${activeScopes.size} frame(s) remaining"
+                // Stage boundary: context stack must be empty when entering a stage
+                check(contextStack.isEmpty) {
+                    "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${contextStack.size} frame(s) remaining"
                 }
                 val steps = (stage.body as? StageBody.Steps)?.steps
                     ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
@@ -123,12 +120,11 @@ class CanonicalDurableRunCoordinator(
                 for (stepIndex in steps.indices) {
                     val step = steps[stepIndex]
                     val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
-                    // stepEventsEmitted is set inside dispatch when StepStarted is actually emitted
                     // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
                     when {
                         outcome is StepOutcome.Failure -> {
-                            val top = activeScopes.lastOrNull()
-                            if (top != null && top.buildResult != "FAILURE") {
+                            val top = contextStack.peek()
+                            if (top is ContextOverlay.CatchErrorOverlay && top.buildResult != "FAILURE") {
                                 currentOutcome = RunOutcome.Unstable
                                 return@run RunOutcome.Unstable
                             } else {
@@ -178,6 +174,9 @@ class CanonicalDurableRunCoordinator(
         return currentOutcome
     }
 
+    /**
+     * Dispatches a step, routing BlockStepNode to [dispatchBody].
+     */
     private suspend fun dispatch(
         step: StepNode,
         runId: RunId,
@@ -186,10 +185,18 @@ class CanonicalDurableRunCoordinator(
         stepIndex: Int,
         stageShOptions: ShOptions,
     ): StepOutcome {
+        // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
+        // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
+        // timeout/retry. catchError and warnError remain on the legacy linear path
+        // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
+        if (step is BlockStepNode) {
+            return dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, emptyList())
+        }
+
         val typedCommand: CanonicalCoreStepCommand = try {
             CanonicalCoreStepDecoder.decode(step)
         } catch (e: IllegalArgumentException) {
-            val operationId = OpId(runId.value, stageIndex, stepIndex).format()
+            val operationId = OpId(runId.value, stageIndex, stepIndex).legacyFormat()
             val input = OperationInput(
                 stepId = step.pluginStepId.value,
                 params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
@@ -215,27 +222,31 @@ class CanonicalDurableRunCoordinator(
             )
         }
 
-        // Scope tracking: handle CatchErrorEntered (push) and CatchErrorTriggered with emitted=true (pop)
+        // Scope tracking via ContextOverlay (EM-4 migration from ScopeFrame)
         if (typedCommand is CanonicalCoreStepCommand.EmitEvent) {
             when (typedCommand.kind) {
                 "CatchErrorEntered" -> {
                     val buildResult = typedCommand.payload["buildResult"] ?: "UNSTABLE"
                     val enteredAt = typedCommand.payload["enteredAt"]?.toLongOrNull() ?: System.currentTimeMillis()
-                    activeScopes.addLast(ScopeFrame(buildResult, enteredAt))
+                    contextStack = contextStack.push(ContextOverlay.CatchErrorOverlay(buildResult, enteredAt))
                 }
                 "CatchErrorTriggered" -> {
                     if (typedCommand.payload["emitted"] == "true") {
-                        val popped = activeScopes.removeLastOrNull()
-                            ?: throw IllegalStateException(
-                                "Scope stack underflow: CatchErrorTriggered without matching CatchErrorEntered"
+                        val top = contextStack.peek()
+                        if (top is ContextOverlay.CatchErrorOverlay) {
+                            contextStack = contextStack.pop()
+                        } else {
+                            throw IllegalStateException(
+                                "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered"
                             )
+                        }
                     }
                 }
             }
         }
 
         val (effects, replayPolicy) = typedCommand.defaultMetadata.effects to typedCommand.defaultMetadata.replayPolicy
-        val operationId = OpId(runId.value, stageIndex, stepIndex).format()
+        val operationId = OpId(runId.value, stageIndex, stepIndex).legacyFormat()
         val input = OperationInput(
             stepId = step.pluginStepId.value,
             params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
@@ -308,4 +319,101 @@ class CanonicalDurableRunCoordinator(
         if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
         return outcome
     }
+
+    /**
+     * +1 helper for INC-007 (canonical coordinator dispatchBody sibling).
+     *
+     * Dispatches a BlockStepNode's body children with fresh per-child journal rows
+     * keyed by length-prefix bodyPath (JEP-029 exactly-once).
+     *
+     * @param block The BlockStepNode to dispatch
+     * @param parentStack The context stack at entry (restored in finally)
+     */
+    private suspend fun dispatchBody(
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+    ): StepOutcome {
+        // Capture parent stack for finally restoration (BLOCK_STEP_EXECUTION.md §4 invariant)
+        val parentStack = contextStack
+        var outcome: StepOutcome = StepOutcome.Success
+
+        try {
+            for ((childIndex, child) in block.body.withIndex()) {
+                val childOpId = OpId(
+                    runId.value,
+                    stageIndex,
+                    stepIndex,
+                    branchIndex = null,
+                    bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId)
+                )
+
+                // Fresh StepLifecycleContext per child (JEP-029)
+                val childContext = StepLifecycleContext(
+                    runId = runId.value,
+                    stageIndex = stageIndex,
+                    stepIndex = childIndex,
+                    stepName = child.id.value,
+                    stepType = child.pluginStepId.value,
+                )
+
+                // Check replay status for this child
+                val journaled = journal.get(childOpId.format(), 1)
+                val replayDecision = effectReplayPolicy.decide(
+                    ReplayPolicy.RERUN,
+                    emptySet(),
+                    journaled != null,
+                    journaled?.status
+                )
+
+                when (replayDecision) {
+                    ReplayDecision.SKIP -> continue // Child already succeeded, skip
+                    ReplayDecision.ABORT -> {
+                        outcome = StepOutcome.Failure(
+                            PipelineFailure(
+                                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                                "Replay aborted for body child '${child.id.value}'",
+                            ),
+                        )
+                        break
+                    }
+                    ReplayDecision.RERUN -> {
+                        // Execute child
+                        val childOutcome = dispatch(child, runId, stageName, stageIndex, childIndex, stageShOptions)
+                        when (childOutcome) {
+                            is StepOutcome.Failure -> {
+                                outcome = childOutcome
+                                break // Stop on first failure
+                            }
+                            is StepOutcome.Unstable -> {
+                                outcome = childOutcome
+                                break
+                            }
+                            else -> { /* continue */ }
+                        }
+                    }
+                }
+            }
+        } finally {
+            // Restore parent context stack in finally (BLOCK_STEP_EXECUTION.md §4 invariant)
+            contextStack = parentStack
+        }
+
+        return outcome
+    }
+
+    /**
+     * +1 sibling helper for INC-007 (canonical coordinator catchError overlay handler).
+     *
+     * catchError semantics: executes the body. If body fails and buildResult != "FAILURE",
+     * the failure is suppressed and the step succeeds (with UNSTABLE). If buildResult ==
+     * "FAILURE", the failure is propagated. If body succeeds, step succeeds.
+     *
+     * This is the EM-4 canonical body-execution IR replacement for the legacy
+     * rewriteWorkflowControl linearization (core.emit.event + shell + core.emit.event).
+     */
 }

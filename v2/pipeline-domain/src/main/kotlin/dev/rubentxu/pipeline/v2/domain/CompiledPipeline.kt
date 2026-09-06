@@ -118,6 +118,7 @@ sealed interface StageBody {
     data class Matrix(val matrix: MatrixSpec) : StageBody
 }
 
+@kotlinx.serialization.Polymorphic
 @Serializable
 sealed interface StepNode {
     val id: StepId
@@ -133,8 +134,72 @@ data class OpaqueStepNode(
 ) : StepNode
 
 @Serializable
+data class BlockStepNode(
+    override val id: StepId,
+    override val pluginStepId: PluginStepId,
+    override val payload: VersionedStepPayload,
+    val body: List<StepNode>,
+) : StepNode
+
+@Serializable
 data class VersionedStepPayload(val schemaVersion: String, val encoded: String) {
     init {
         require(schemaVersion.isNotBlank()) { "VersionedStepPayload.schemaVersion must not be blank" }
+    }
+}
+
+/**
+ * Typed overlay for body execution scope tracking.
+ *
+ * Replaces the untyped `ScopeFrame` marker stack in CanonicalDurableRunCoordinator
+ * with a sealed family of typed overlays. Each variant carries only the minimal
+ * metadata needed for scope restoration.
+ */
+@kotlinx.serialization.Polymorphic
+@Serializable
+sealed interface ContextOverlay {
+    @Serializable
+    data class Environment(val values: EnvironmentSpec) : ContextOverlay
+
+    @Serializable
+    data class Cwd(val path: String) : ContextOverlay
+
+    @Serializable
+    data class Credentials(val bindingId: String) : ContextOverlay
+
+    @Serializable
+    data class OutputDecorator(val kind: String) : ContextOverlay
+
+    @Serializable
+    data class CancellationScope(val scopeId: String) : ContextOverlay
+
+    // Legacy catch-error overlay for migration compatibility
+    @Serializable
+    data class CatchErrorOverlay(val buildResult: String, val enteredAt: Long) : ContextOverlay
+
+    @Serializable
+    data class TimeoutOverlay(val time: Long, val unit: String) : ContextOverlay
+
+    @Serializable
+    data class RetryOverlay(val count: Int, val conditions: List<String>?) : ContextOverlay
+}
+
+/**
+ * Immutable stack of [ContextOverlay] values.
+ *
+ * Used by CanonicalDurableRunCoordinator to track active scopes during body execution.
+ * The immutability guarantee ensures trivially correct `finally`-restoration:
+ * `val parentStack = contextStack; try { ... } finally { contextStack = parentStack }`.
+ */
+@Serializable
+data class ContextStack(val frames: List<ContextOverlay>) {
+    fun push(overlay: ContextOverlay): ContextStack = ContextStack(frames + overlay)
+    fun pop(): ContextStack = ContextStack(frames.dropLast(1))
+    fun peek(): ContextOverlay? = frames.lastOrNull()
+    val size: Int get() = frames.size
+    val isEmpty: Boolean get() = frames.isEmpty()
+
+    companion object {
+        val EMPTY = ContextStack(emptyList())
     }
 }

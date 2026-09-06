@@ -68,6 +68,20 @@ value class OperationId(val value: String) {
     }
 }
 
+/**
+ * Segment of a block's body path, encoding the child index and plugin step ID
+ * for length-prefix body dispatch (ADR-0066 §1).
+ *
+ * Format: "{index}:{pluginStepId.value}"
+ */
+@JvmInline
+@Serializable
+value class BlockSegment(val encoded: String) {
+    init { require(encoded.isNotBlank()) { "BlockSegment encoded must not be blank" } }
+
+    constructor(index: Int, pluginStepId: PluginStepId) : this("${index}:${pluginStepId.value}")
+}
+
 /** Generates a new identity for a pipeline invocation. */
 fun interface RunIdGenerator {
     fun next(): RunId

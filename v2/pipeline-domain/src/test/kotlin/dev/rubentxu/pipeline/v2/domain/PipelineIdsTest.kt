@@ -146,4 +146,26 @@ class PipelineIdsTest {
         assertEquals("2f797d972ecd2cd07d0959a263695ea80fec", id.value)
         assertEquals(36, id.value.length)
     }
+
+    @Test
+    fun `BlockSegment encodes index and pluginId in index-pluginId format`() {
+        val segment = BlockSegment(0, PluginStepId("core.sh"))
+        assertEquals("0:core.sh", segment.encoded)
+
+        val segment2 = BlockSegment(42, PluginStepId("core.catchError"))
+        assertEquals("42:core.catchError", segment2.encoded)
+    }
+
+    @Test
+    fun `BlockSegment rejects blank encoded string`() {
+        assertThrows(IllegalArgumentException::class.java) { BlockSegment("") }
+        assertThrows(IllegalArgumentException::class.java) { BlockSegment("   ") }
+    }
+
+    @Test
+    fun `BlockSegment round-trip via encoded constructor`() {
+        val original = BlockSegment(5, PluginStepId("core.dir"))
+        val reconstructed = BlockSegment(original.encoded)
+        assertEquals(original.encoded, reconstructed.encoded)
+    }
 }

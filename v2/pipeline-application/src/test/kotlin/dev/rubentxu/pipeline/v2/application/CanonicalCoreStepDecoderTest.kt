@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -26,6 +28,26 @@ class CanonicalCoreStepDecoderTest {
                 command = "make test",
                 isScriptBlock = true,
                 returnStdout = false,
+            ),
+            CanonicalCoreStepDecoder.decode(node),
+        )
+    }
+
+    @Test
+    fun `decodes returnStatus into the typed shell return mode`() {
+        val node = OpaqueStepNode(
+            id = StepId("build/sh-status"),
+            pluginStepId = PluginStepId("core.sh"),
+            payload = VersionedStepPayload(
+                "dsl-v1",
+                """{"kind":"sh","command":"exit 42","isScriptBlock":false,"returnStdout":false,"returnStatus":true}""",
+            ),
+        )
+
+        assertEquals(
+            CanonicalCoreStepCommand.Shell(
+                ShellCommand(script = "exit 42", returnMode = ShellReturnMode.STATUS),
+                isScriptBlock = false,
             ),
             CanonicalCoreStepDecoder.decode(node),
         )

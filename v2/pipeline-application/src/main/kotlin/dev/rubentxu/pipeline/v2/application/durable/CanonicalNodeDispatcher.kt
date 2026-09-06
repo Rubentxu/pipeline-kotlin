@@ -31,7 +31,7 @@ class CanonicalNodeDispatcher {
         when (command) {
             is CanonicalCoreStepCommand.Shell -> shellDispatcher.dispatch(command, context.shellContext())
             is CanonicalCoreStepCommand.Echo -> echoDispatcher.dispatch(command, context.echoContext())
-            is CanonicalCoreStepCommand.Error -> errorDispatcher.dispatch(command, context.errorContext())
+            is CanonicalCoreStepCommand.Error -> errorDispatcher.dispatch(command)
             is CanonicalCoreStepCommand.Sleep -> sleepDispatcher.dispatch(command, context.sleepContext())
             is CanonicalCoreStepCommand.WriteFile -> writeFileDispatcher.dispatch(command, context.writeFileContext())
             is CanonicalCoreStepCommand.EmitEvent -> emitEventDispatcher.dispatch(command, context.emitEventContext())
@@ -48,12 +48,6 @@ class CanonicalNodeDispatcher {
     )
 
     private fun CanonicalRuntimeContext.echoContext() = CanonicalEchoDispatchContext(
-        runId = runId,
-        stepIndex = stepIndex,
-        eventSink = eventSink,
-    )
-
-    private fun CanonicalRuntimeContext.errorContext() = CanonicalErrorDispatchContext(
         runId = runId,
         stepIndex = stepIndex,
         eventSink = eventSink,

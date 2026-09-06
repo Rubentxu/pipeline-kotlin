@@ -3,30 +3,9 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.sdk.StepContext
-import dev.rubentxu.pipeline.v2.sdk.runtime.error as executeError
 
-/** Runtime dependencies required to dispatch one canonical error node. */
-data class CanonicalErrorDispatchContext(
-    val runId: String,
-    val stepIndex: Int,
-    val eventSink: EventSink,
-)
-
-/** Dispatches canonical `core.error` nodes through the existing failure event path. */
+/** Decodes canonical `core.error` nodes into their typed step outcome. */
 class CanonicalErrorNodeDispatcher {
-    fun dispatch(command: CanonicalCoreStepCommand.Error, context: CanonicalErrorDispatchContext): StepOutcome {
-        return try {
-            executeError(
-                StepContext(runId = context.runId),
-                command.message,
-                command.failureKind,
-                context.eventSink,
-                context.stepIndex,
-            )
-        } catch (_: IllegalStateException) {
-            StepOutcome.Failure(PipelineFailure(command.failureKind, command.message))
-        }
-    }
+    fun dispatch(command: CanonicalCoreStepCommand.Error): StepOutcome =
+        StepOutcome.Failure(PipelineFailure(command.failureKind, command.message))
 }

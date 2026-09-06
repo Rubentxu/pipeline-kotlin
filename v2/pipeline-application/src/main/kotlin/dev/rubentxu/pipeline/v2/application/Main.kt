@@ -272,7 +272,7 @@ fun main(args: Array<String>) {
         val result = host.compile(definition0)
 
         val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
-            val scriptInstance = result.value
+            val scriptInstance = result.scriptInstance
             scriptInstance?.let { inst ->
                 try {
                     val resultMethod = inst.javaClass.getMethod("get\$\$result")
@@ -388,7 +388,7 @@ fun main(args: Array<String>) {
     val result = host.compile(definition)
 
     val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
-        val scriptInstance = result.value
+        val scriptInstance = result.scriptInstance
         scriptInstance?.let { inst ->
             try {
                 val resultMethod = inst.javaClass.getMethod("get\$\$result")

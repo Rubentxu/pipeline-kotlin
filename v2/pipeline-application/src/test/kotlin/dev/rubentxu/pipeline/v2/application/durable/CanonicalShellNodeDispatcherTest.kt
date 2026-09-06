@@ -2,6 +2,9 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -16,6 +19,62 @@ import kotlin.io.path.createTempDirectory
 
 @Timeout(10)
 class CanonicalShellNodeDispatcherTest {
+    @Test
+    fun `typed shell invocation retains the returnStatus exit code`() = runBlocking {
+        val result = ShExecution.invokeShell(
+            command = ShellCommand(script = "exit 42", returnMode = ShellReturnMode.STATUS),
+            opId = OpId("canonical-status-value", 0, 0),
+            runId = "canonical-status-value",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY,
+            controlDirRoot = null,
+            eventSink = InMemoryEventStore(),
+        )
+
+        assertEquals(ShellInvocationResult.Status(42), result)
+    }
+
+    @Test
+    fun `returnStatus keeps a nonzero exit as a successful canonical step`() = runBlocking {
+        val dispatcher = CanonicalShellNodeDispatcher()
+        val command = CanonicalCoreStepCommand.Shell(
+            shell = ShellCommand(script = "exit 42", returnMode = ShellReturnMode.STATUS),
+            isScriptBlock = false,
+        )
+        val context = CanonicalShellDispatchContext(
+            opId = OpId("canonical-status", 0, 0),
+            runId = "canonical-status",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY,
+            controlDirRoot = null,
+            eventSink = InMemoryEventStore(),
+        )
+
+        assertEquals(StepOutcome.Success, dispatcher.dispatch(command, context))
+    }
+
+    @Test
+    fun `returnStatus keeps a nonzero durable exit as a successful canonical step`(@TempDir tempDir: Path) = runBlocking {
+        val dispatcher = CanonicalShellNodeDispatcher()
+        val command = CanonicalCoreStepCommand.Shell(
+            shell = ShellCommand(script = "exit 42", returnMode = ShellReturnMode.STATUS),
+            isScriptBlock = false,
+        )
+        val context = CanonicalShellDispatchContext(
+            opId = OpId("canonical-durable-status", 0, 0),
+            runId = "canonical-durable-status",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions(workspaceRoot = tempDir, captureStdout = false, timeoutMs = null, env = emptyMap()),
+            controlDirRoot = tempDir,
+            eventSink = InMemoryEventStore(),
+        )
+
+        assertEquals(StepOutcome.Success, dispatcher.dispatch(command, context))
+    }
+
     @Test
     fun `dispatches a canonical shell node through the durable shell command path`() = runBlocking {
         val dispatcher = CanonicalShellNodeDispatcher()

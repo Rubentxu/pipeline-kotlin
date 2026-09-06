@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -27,10 +29,18 @@ sealed interface CanonicalCoreStepCommand {
     val defaultMetadata: StepMetadata
 
     data class Shell(
-        val command: String,
+        val shell: ShellCommand,
         val isScriptBlock: Boolean,
-        val returnStdout: Boolean,
     ) : CanonicalCoreStepCommand {
+        @Deprecated("Use ShellCommand.returnMode")
+        constructor(command: String, isScriptBlock: Boolean, returnStdout: Boolean) : this(
+            shell = ShellCommand(
+                script = command,
+                returnMode = if (returnStdout) ShellReturnMode.STDOUT else ShellReturnMode.NONE,
+            ),
+            isScriptBlock = isScriptBlock,
+        )
+
         override val pluginId = "core.sh"
         override val defaultMetadata = StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.RERUN)
     }
@@ -90,10 +100,21 @@ object CanonicalCoreStepDecoder {
                 require(payload.requiredString("kind") == "sh") {
                     "Payload kind must be 'sh' for '${node.id.value}'"
                 }
+                val returnStdout = payload.requiredBoolean("returnStdout")
+                val returnStatus = payload["returnStatus"]?.jsonPrimitive?.booleanOrNull ?: false
+                require(!(returnStdout && returnStatus)) {
+                    "Shell payload cannot enable both returnStdout and returnStatus for '${node.id.value}'"
+                }
                 CanonicalCoreStepCommand.Shell(
-                    command = payload.requiredString("command"),
+                    shell = ShellCommand(
+                        script = payload.requiredString("command"),
+                        returnMode = when {
+                            returnStatus -> ShellReturnMode.STATUS
+                            returnStdout -> ShellReturnMode.STDOUT
+                            else -> ShellReturnMode.NONE
+                        },
+                    ),
                     isScriptBlock = payload.requiredBoolean("isScriptBlock"),
-                    returnStdout = payload.requiredBoolean("returnStdout"),
                 )
             }
             ECHO_PLUGIN_ID -> {

@@ -3,6 +3,9 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
@@ -37,6 +40,7 @@ import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
@@ -67,21 +71,18 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
 
 import dev.rubentxu.pipeline.v2.sdk.runtime.error as sdkError
 import dev.rubentxu.pipeline.v2.sdk.runtime.sleep as sdkSleep
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
 import dev.rubentxu.pipeline.v2.sdk.files.FileExistsExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.FileReadExecutor
 import dev.rubentxu.pipeline.v2.sdk.files.FileWriteExecutor
@@ -651,7 +652,6 @@ private suspend fun executeDurableStepImpl(
                             }
                             is dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1.Classification.Reattach -> {
                                 // Step may still be running; poll existing control-dir result (no relaunch)
-                                val config = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig.fromSystemProperties()
                                 val executor = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor()
                                 val exitCode = executor.pollResult(classification.controlDir, timeoutMs = 60_000) ?: -1
                                 if (exitCode == 0) "success" else "failure"
@@ -710,7 +710,7 @@ private suspend fun executeDurableStepImpl(
                             // Override result to signal LOST to caller
                             "lost"
                         } else {
-                            result
+                            result.toPipelineLifecycleOutcome(eventSink, runId, stepIndex)
                         }
                     }
                 }
@@ -1371,7 +1371,7 @@ private suspend fun executeDurableStepImpl(
                 }
 
                 // Extract PipelineSpec from compiled script
-                val scriptInstance = compileResult.value
+                val scriptInstance = compileResult.scriptInstance
                 val pipelineSpec = scriptInstance?.let { inst ->
                     try {
                         val resultMethod = inst.javaClass.getMethod("get\$\$result")
@@ -1869,6 +1869,45 @@ private fun emitStepFinished(
             stepType = step.type,
         )
     )
+}
+
+/**
+ * Adapts a closed shell result to the legacy pipeline lifecycle vocabulary at
+ * the outer execution seam. Shell execution itself remains typed; this is the
+ * only place the legacy walker derives its string outcome.
+ */
+private fun ShellInvocationResult.toPipelineLifecycleOutcome(
+    eventSink: EventSink,
+    runId: String,
+    stepIndex: Int,
+): String = when (this) {
+    ShellInvocationResult.UnitValue,
+    is ShellInvocationResult.Stdout,
+    is ShellInvocationResult.Status,
+    -> "success"
+
+    is ShellInvocationResult.Failed -> {
+        eventSink.append(
+            StepFailed(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stepIndex = stepIndex,
+                stepName = "sh",
+                stepType = "sh",
+                failureKind = failure.kind,
+                message = failure.message,
+            ),
+        )
+        "failure"
+    }
+
+    is ShellInvocationResult.Interrupted -> if (interruption.kind == InterruptionKind.TIMEOUT) {
+        "timeout"
+    } else {
+        "failure"
+    }
 }
 
 /**
@@ -2510,11 +2549,14 @@ private suspend fun walkBranchDurable(
                     stepIndex = parentOpId.stepIndex + stepOffset,
                     branchOpId = branchOpId,
                     runId = runId,
-                    command = step.command,
+                    command = ShellCommand(
+                        script = step.command,
+                        returnMode = if (step.returnStdout) ShellReturnMode.STDOUT else ShellReturnMode.NONE,
+                    ),
                     shOptions = effectiveShOptions,
                     controlDirRoot = controlDirRoot,
                     eventSink = eventSink,
-                )
+                ).toPipelineLifecycleOutcome(eventSink, runId, parentOpId.stepIndex + stepOffset)
             }
             is StepSpec.Sleep -> {
                 dev.rubentxu.pipeline.v2.sdk.runtime.sleep(
@@ -2686,10 +2728,17 @@ private suspend fun walkBranchDurable(
                                 stepIndex = parentOpId.stepIndex + stepOffset + innerStepOffset + 1,
                                 branchOpId = OpId.forBranch(runId, parentOpId.stageIndex, parentOpId.stepIndex, branchIndex),
                                 runId = runId,
-                                command = innerStep.command,
+                                command = ShellCommand(
+                                    script = innerStep.command,
+                                    returnMode = if (innerStep.returnStdout) ShellReturnMode.STDOUT else ShellReturnMode.NONE,
+                                ),
                                 shOptions = effectiveShOptions,
                                 controlDirRoot = controlDirRoot,
                                 eventSink = eventSink,
+                            ).toPipelineLifecycleOutcome(
+                                eventSink,
+                                runId,
+                                parentOpId.stepIndex + stepOffset + innerStepOffset + 1,
                             )
                         }
                         is StepSpec.Echo -> {

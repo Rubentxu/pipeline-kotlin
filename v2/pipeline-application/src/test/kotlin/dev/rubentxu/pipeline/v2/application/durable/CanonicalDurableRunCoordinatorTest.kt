@@ -22,7 +22,11 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -378,6 +382,37 @@ class CanonicalDurableRunCoordinatorTest {
         // So for MEMOIZED steps that are skipped, there should be only 1 pair of events
         assertTrue(stepStartedEvents.size <= 1, "At most 1 StepStarted (only from first run)")
         assertTrue(stepFinishedEvents.size <= 1, "At most 1 StepFinished (only from first run)")
+    }
+
+    @Test
+    fun `ReplayDecision ABORT emits one failed lifecycle without dispatching`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("replay-abort-lifecycle")
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = InMemoryOperationJournal(clock),
+            cursorStore = InMemoryReplayCursorStore(clock),
+            clock = clock,
+            effectReplayPolicy = object : EffectReplayPolicy {
+                override fun decide(
+                    replayPolicy: ReplayPolicy,
+                    effects: Set<Effect>,
+                    hasJournalEntry: Boolean,
+                    journaledOutcome: OperationStatus?,
+                ) = ReplayDecision.ABORT
+            },
+            eventSink = eventStore,
+        )
+
+        val outcome = coordinator.run(echoPipeline("must-not-dispatch"), runId)
+
+        assertTrue(outcome is RunOutcome.Failure)
+        val events = eventStore.eventsFor(runId.value).toList()
+        assertEquals(1, events.filterIsInstance<StepStarted>().size)
+        assertEquals(1, events.filterIsInstance<StepFailed>().size)
+        assertEquals(1, events.filterIsInstance<StepFinished>().size)
+        assertEquals(FailureKind.INFRASTRUCTURE, events.filterIsInstance<StepFailed>().single().failureKind)
     }
 
     @Test

@@ -1,13 +1,22 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
+import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
+import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.InterpreterPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
@@ -16,12 +25,8 @@ import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellResult
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellState
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.executeDurableShell
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh as sdkSh
@@ -29,9 +34,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
-
-/** Typed shell command accepted by the durable execution spine. */
-data class DurableShellCommand(val script: String)
 
 /**
  * Shell execution orchestration for durable steps.
@@ -66,7 +68,8 @@ object ShExecution {
      * @param shOptions Shell execution options (workspaceRoot, captureStdout, timeoutMs, env).
      * @param controlDirRoot The explicit control directory root (null = non-durable fallback).
      * @param eventSink The event sink for emitting EchoOutputCaptured events.
-     * @return "success" if exit code is 0, "failure" otherwise.
+     * @return the closed shell invocation result. Lifecycle callers decide how
+     * terminal failure and interruption affect their own run state.
      */
     suspend fun runShStep(
         step: StepSpec.Shell,
@@ -77,8 +80,11 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
-    ): String = runShellCommand(
-        command = DurableShellCommand(step.command),
+    ): ShellInvocationResult = invokeShell(
+        command = ShellCommand(
+            script = step.command,
+            returnMode = if (step.returnStdout) ShellReturnMode.STDOUT else ShellReturnMode.NONE,
+        ),
         opId = opId,
         runId = runId,
         stageIndex = stageIndex,
@@ -88,9 +94,20 @@ object ShExecution {
         eventSink = eventSink,
     )
 
-    /** Executes a typed shell command without requiring a DSL step object. */
+    /**
+     * Executes a typed shell command without requiring a DSL step object.
+     *
+     * DEPRECATED (EM_DEAD_CODE_AUDIT A1): projects the typed result through a
+     * lossy legacy [String] status. Callers must classify from
+     * [invokeShell]'s closed semantic result instead; removal is scheduled
+     * for EM-10 once no compatibility caller remains.
+     */
+    @Deprecated(
+        message = "Legacy String status projection; use invokeShell() and classify the typed result",
+        replaceWith = ReplaceWith("invokeShell(command, opId, runId, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink)"),
+    )
     suspend fun runShellCommand(
-        command: DurableShellCommand,
+        command: ShellCommand,
         opId: OpId,
         runId: String,
         stageIndex: Int,
@@ -98,7 +115,33 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
-    ): String {
+    ): String = invokeShell(
+        command = command,
+        opId = opId,
+        runId = runId,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        shOptions = shOptions,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+    ).toLegacyStatus(eventSink, runId, stepIndex)
+
+    /**
+     * Invokes the durable shell substrate and returns its closed semantic result.
+     *
+     * Compatibility callers may project this result through [runShellCommand],
+     * but canonical callers must classify from this value rather than a string.
+     */
+    suspend fun invokeShell(
+        command: ShellCommand,
+        opId: OpId,
+        runId: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        shOptions: ShOptions,
+        controlDirRoot: java.nio.file.Path?,
+        eventSink: EventSink,
+    ): ShellInvocationResult {
         // Use explicit controlDirRoot if provided; null means non-durable fallback
         // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
         // we fall back to direct bash -c which works without filesystem privileges)
@@ -106,7 +149,7 @@ object ShExecution {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // P2: env injected via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
         }
 
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
@@ -116,30 +159,30 @@ object ShExecution {
         val controlDir = controlDirRoot.resolve(opId.format())
 
         return try {
-            val config = DurableShConfig.fromSystemProperties()
-
             // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH) (WS-S-006/WS-S-007)
-            val envOptions = effectiveOptions.copy(env = EnvModel.apply(effectiveOptions.env))
+            val envOptions = effectiveOptions.copy(
+                env = EnvModel.apply(effectiveOptions.env),
+                captureStdout = command.returnMode == ShellReturnMode.STDOUT,
+            )
 
             // Execute with tee-gated wrapper if captureStdout is enabled
             // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
             // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
             // workspaceRoot threaded via effectiveOptions.workspaceRoot (DEC-1 cwd flip)
-            val result: DurableShellResult = if (envOptions.captureStdout) {
-                val executor = DurableShellExecutor()
-                executor.execute(controlDir, command.script, opId.format(), envOptions)
-            } else {
-                executeDurableShell(controlDir, command.script, opId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env, effectiveOptions.sandbox, effectiveOptions.workspaceRoot)
-            }
+            val terminal = DurableShellExecutor().executeTerminal(
+                controlDir = controlDir,
+                scriptContent = command.script,
+                opId = opId.format(),
+                shOptions = envOptions,
+            )
 
             // Emit EchoOutputCaptured. Two paths:
             //   1. captureStdout=true  → wrapper tees stdout to output.txt; executor reads it BEFORE cleanup
             //      and stores it in result.capturedStdout. jenkins-log.txt in that mode contains only stderr.
             //   2. captureStdout=false → wrapper writes stdout+stderr (2>&1) to jenkins-log.txt; cleanup
-            //      deletes the control dir on success BEFORE we get here, so we read result.capturedStdout
-            //      which executeDurableShell leaves null when captureStdout=false. As a fallback we try
-            //      to read jenkins-log.txt if it still exists (e.g. cleanupRetainOnFailure on error).
-            val capturedOutput: String = result.capturedStdout
+            //      stores it in the typed terminal. For a retained failure control
+            //      directory, the log-file fallback preserves the existing event behavior.
+            val capturedOutput: String = (terminal as? DurableTaskTerminal.Exited)?.output?.capturedStdout
                 ?: try {
                     val logFile = controlDir.resolve("jenkins-log.txt")
                     if (Files.exists(logFile)) Files.readString(logFile) else ""
@@ -157,60 +200,24 @@ object ShExecution {
                 ))
             }
 
-            when (result.state) {
-                DurableShellState.COMPLETE -> {
-                    if (result.exitCode != 0) {
-                        // Emit StepFailed for non-zero exit (INC-R8-ARC-001)
-                        val message = "sh exited with code ${result.exitCode}" +
-                            if (capturedOutput.isNotBlank()) ": ${capturedOutput.take(256)}" else ""
-                        eventSink.append(StepFailed(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId,
-                            sequence = 0L,
-                            occurredAt = Instant.now(),
-                            stepIndex = stepIndex,
-                            stepName = "sh",
-                            stepType = "sh",
-                            failureKind = FailureKind.SCRIPT,
-                            message = message,
-                        ))
-                        "failure"
-                    } else "success"
-                }
-                DurableShellState.TIMED_OUT -> {
-                    // TMO-S-001: timeout is terminal - distinct from plain failure
-                    "timeout"
-                }
-                DurableShellState.LOST,
-                DurableShellState.LAUNCH_FAILED,
-                DurableShellState.LAUNCHING,
-                DurableShellState.RUNNING -> "failure"
-            }
+            classifyShellTerminal(terminal, command.returnMode)
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(command.script, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+        } catch (failure: EngineInvariantViolation) {
+            throw failure
         } catch (e: Exception) {
-            "failure"
+            ShellInvocationResult.Failed(
+                PipelineFailure(FailureKind.INFRASTRUCTURE, e.message ?: "core.sh could not execute"),
+            )
         }
     }
 
-    /**
-     * C2: Structured failure mapping with additive compatibility.
-     * Executes a typed shell command and returns StepOutcome with proper failure kinds.
-     *
-     * Maps durable shell terminal states to typed failures:
-     * - COMPLETE + exit 0 → Success
-     * - COMPLETE + exit ≠ 0 → Failure(SCRIPT)
-     * - TIMED_OUT → Failure(TIMEOUT)
-     * - LOST / LAUNCH_FAILED → Failure(INFRASTRUCTURE)
-     * - LAUNCHING / RUNNING → Failure(SCHEMA)
-     *
-     * @return StepOutcome typed outcome for the shell command
-     */
+    /** Maps the closed shell result to the lifecycle-only outcome contract. */
     suspend fun runShellCommandTyped(
-        command: DurableShellCommand,
+        command: ShellCommand,
         opId: OpId,
         runId: String,
         stageIndex: Int,
@@ -218,18 +225,16 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
-    ): StepOutcome {
-        val resultString = runShellCommand(command, opId, runId, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink)
-        return when (resultString) {
-            "success" -> StepOutcome.Success
-            "timeout" -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.TIMEOUT, "core.sh timed out for '${opId.format()}'")
-            )
-            else -> StepOutcome.Failure(
-                PipelineFailure(FailureKind.SCRIPT, "core.sh failed for '${opId.format()}'")
-            )
-        }
-    }
+    ): StepOutcome = invokeShell(
+        command = command,
+        opId = opId,
+        runId = runId,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        shOptions = shOptions,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+    ).toStepOutcome()
 
     /**
      * Executes a shell step within a parallel branch (W8 fold).
@@ -241,27 +246,35 @@ object ShExecution {
      * @param stepIndex The step index for event sequencing.
      * @param branchOpId The operation ID for this branch step.
      * @param runId The run identifier.
-     * @param command The shell command to execute.
+     * @param command The canonical shell command to execute.
      * @param shOptions Shell execution options.
      * @param controlDirRoot The control directory root (explicit, not derived).
      * @param eventSink The event sink for emitting EchoOutputCaptured events.
-     * @return "success" if exit code is 0, "failure" otherwise.
+     * @return the closed shell invocation result. This preserves a timeout or
+     * cancellation as [ShellInvocationResult.Interrupted] instead of
+     * collapsing it into a failure string.
      */
     suspend fun executeBranchStep(
         stageIndex: Int,
         stepIndex: Int,
         branchOpId: OpId,
         runId: String,
-        command: String,
+        command: ShellCommand,
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
-    ): String {
+    ): ShellInvocationResult {
         if (controlDirRoot == null) {
-            // Non-durable fallback for branch steps
-            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, branchOpId.format(), null)
+            return invokeShell(
+                command = command,
+                opId = branchOpId,
+                runId = runId,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                shOptions = shOptions,
+                controlDirRoot = null,
+                eventSink = eventSink,
+            )
         }
 
         val workspaceResolver = WorkspaceResolver(controlDirRoot)
@@ -271,41 +284,16 @@ object ShExecution {
         )
 
         val effectiveOptions = shOptions.copy(workspaceRoot = workspacePath)
-        // controlDir is sibling to workspace: {controlDirRoot}/{branchOpId}
-        val controlDir = controlDirRoot.resolve(branchOpId.format())
-
-        return try {
-            val config = DurableShConfig.fromSystemProperties()
-
-            // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH) (WS-S-006/WS-S-007)
-            val envOptions = effectiveOptions.copy(env = EnvModel.apply(effectiveOptions.env))
-
-            val result: DurableShellResult = if (envOptions.captureStdout) {
-                val executor = DurableShellExecutor()
-                executor.execute(controlDir, command, branchOpId.format(), envOptions)
-            } else {
-                // P2: env via pb.environment().putAll; timeout via timeoutMs parameter
-                executeDurableShell(controlDir, command, branchOpId.format(), config, envOptions.timeoutMs ?: 0L, envOptions.env)
-            }
-
-            when (result.state) {
-                DurableShellState.COMPLETE -> {
-                    if (result.exitCode != 0) "failure" else "success"
-                }
-                DurableShellState.TIMED_OUT -> "failure"
-                DurableShellState.LOST,
-                DurableShellState.LAUNCH_FAILED,
-                DurableShellState.LAUNCHING,
-                DurableShellState.RUNNING -> "failure"
-            }
-        } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
-            // Non-durable fallback for non-Linux platforms
-            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurable(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, branchOpId.format(), controlDirRoot)
-        } catch (e: Exception) {
-            "failure"
-        }
+        return invokeShell(
+            command = command,
+            opId = branchOpId,
+            runId = runId,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+            shOptions = effectiveOptions,
+            controlDirRoot = controlDirRoot,
+            eventSink = eventSink,
+        )
     }
 
     /**
@@ -344,15 +332,15 @@ object ShExecution {
      * @param controlDirRoot Optional stable control dir root; null = best-effort temp dir.
      * @return "success" if exit code is 0, "failure" otherwise.
      */
-    private suspend fun executeNonDurable(
-        scriptContent: String,
+    private suspend fun executeNonDurableInvocation(
+        command: ShellCommand,
         env: Map<String, SecretHandle>,
         eventSink: EventSink,
         stepIndex: Int,
         runId: String,
         opId: String,
         controlDirRoot: Path?,
-    ): String {
+    ): ShellInvocationResult {
         // Env flows typed through the runtime boundary (M3 invariant: secret
         // bytes never escape SecretHandle here). The runtime materialises them
         // at the moment it hands them to the OS env block, and never persists
@@ -361,7 +349,9 @@ object ShExecution {
         val controlDir: Path = try {
             controlDirRoot?.resolve(opId) ?: Files.createTempDirectory("pipeline-sh-non-durable")
         } catch (_: Exception) {
-            return "failure"
+            return ShellInvocationResult.Failed(
+                PipelineFailure(FailureKind.INFRASTRUCTURE, "core.sh could not create its control directory"),
+            )
         }
 
         val runtime = ProcessDurableTaskRuntime(
@@ -372,7 +362,7 @@ object ShExecution {
         )
         val request = TaskExecutionRequest(
             task = TaskSpec.ShellScriptTask(
-                script = scriptContent,
+                script = command.script,
                 interpreter = InterpreterPolicy.BASH,
             ),
             runId = RunId(runId),
@@ -394,8 +384,12 @@ object ShExecution {
 
         val result = try {
             runtime.execute(request, sink)
-        } catch (_: Exception) {
-            return "failure"
+        } catch (failure: EngineInvariantViolation) {
+            throw failure
+        } catch (failure: Exception) {
+            return ShellInvocationResult.Failed(
+                PipelineFailure(FailureKind.INFRASTRUCTURE, failure.message ?: "core.sh could not execute"),
+            )
         }
 
         // stdout + stderr merged into the single EchoOutputCaptured (matches
@@ -413,10 +407,52 @@ object ShExecution {
             ),
         )
 
-        if (result.exitCode != 0 || result.timedOut) {
-            val message = if (result.timedOut) "sh timed out"
-            else "sh exited with code ${result.exitCode}" +
-                if (output.isNotBlank()) ": ${output.take(256)}" else ""
+        val terminal = when {
+            result.timedOut -> DurableTaskTerminal.Cancelled(
+                InterruptionRecord(
+                    kind = InterruptionKind.TIMEOUT,
+                    message = "core.sh timed out",
+                    operationId = opId,
+                ),
+            )
+            result.cancelled -> DurableTaskTerminal.Cancelled(
+                InterruptionRecord(
+                    kind = InterruptionKind.PARENT_CANCELLED,
+                    message = "core.sh was cancelled",
+                    operationId = opId,
+                ),
+            )
+            else -> DurableTaskTerminal.Exited(
+                exitCode = result.exitCode,
+                output = DurableTaskOutput(controlDir.toString(), output),
+            )
+        }
+        return classifyShellTerminal(terminal, command.returnMode)
+    }
+
+    private fun ShellInvocationResult.toStepOutcome(): StepOutcome = when (this) {
+        ShellInvocationResult.UnitValue,
+        is ShellInvocationResult.Stdout,
+        is ShellInvocationResult.Status,
+        -> StepOutcome.Success
+
+        is ShellInvocationResult.Failed -> StepOutcome.Failure(failure)
+        is ShellInvocationResult.Interrupted -> StepOutcome.Failure(
+            PipelineFailure(FailureKind.TIMEOUT, interruption.message),
+        )
+    }
+
+    private fun ShellInvocationResult.toLegacyStatus(
+        eventSink: EventSink,
+        runId: String,
+        stepIndex: Int,
+    ): String = when (this) {
+        ShellInvocationResult.UnitValue,
+        is ShellInvocationResult.Stdout,
+        is ShellInvocationResult.Status,
+        -> "success"
+
+        is ShellInvocationResult.Failed -> {
             eventSink.append(
                 StepFailed(
                     eventId = UUID.randomUUID().toString(),
@@ -426,16 +462,17 @@ object ShExecution {
                     stepIndex = stepIndex,
                     stepName = "sh",
                     stepType = "sh",
-                    failureKind = FailureKind.SCRIPT,
-                    message = message,
+                    failureKind = failure.kind,
+                    message = failure.message,
                 ),
             )
+            "failure"
         }
 
-        return when {
-            result.timedOut -> "failure"
-            result.exitCode != 0 -> "failure"
-            else -> "success"
+        is ShellInvocationResult.Interrupted -> if (interruption.kind == InterruptionKind.TIMEOUT) {
+            "timeout"
+        } else {
+            "failure"
         }
     }
 }

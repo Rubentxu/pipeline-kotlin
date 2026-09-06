@@ -25,7 +25,7 @@ class CanonicalShellNodeDispatcher {
         // C2: Use typed shell command with structured failure mapping
         // Evidence-driven dispatcher: removed require on returnStdout for additive compatibility
         return ShExecution.runShellCommandTyped(
-            command = DurableShellCommand(command.command),
+            command = command.shell,
             opId = context.opId,
             runId = context.runId,
             stageIndex = context.stageIndex,

@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -21,8 +22,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetect
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
-import dev.rubentxu.pipeline.v2.events.StepFinished
-import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
@@ -174,8 +173,8 @@ class CanonicalDurableRunCoordinator(
             }
             // Success: fall through to finally and return
         } catch (e: Exception) {
-            // Rethrow scope-related IllegalStateException to preserve test contracts
-            if (e is IllegalStateException) throw e
+            // Invariants are engine failures, never ordinary infrastructure outcomes.
+            if (e is IllegalStateException || e is EngineInvariantViolation) throw e
             currentOutcome = RunOutcome.Failure(
                 PipelineFailure(
                     dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
@@ -271,6 +270,13 @@ class CanonicalDurableRunCoordinator(
             attempt = 1,
         )
         val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, replayPolicy, 1)
+        val lifecycleContext = StepLifecycleContext(
+            runId = runId.value,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+            stepName = step.id.value,
+            stepType = canonicalCoreStepType(typedCommand),
+        )
         val journaled = journal.get(operationId, 1)
         val currentOperation = RerunOperation(
             id = operationId,
@@ -287,32 +293,21 @@ class CanonicalDurableRunCoordinator(
         }
         when (effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status)) {
             ReplayDecision.SKIP -> return StepOutcome.Success
-            ReplayDecision.ABORT -> return StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, "Replay aborted for '$operationId'"),
-            )
+            ReplayDecision.ABORT -> return StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                        "Replay aborted for '$operationId'",
+                    ),
+                )
+            }
             ReplayDecision.RERUN -> Unit
         }
         if (journaled == null) {
             journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
         }
 
-        // Emit StepStarted before dispatch (REQ-LFC1-009 requirement 9)
-        val stepType = canonicalCoreStepType(typedCommand)
-        eventSink.append(
-            StepStarted(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId.value,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                stepName = step.id.value,
-                stepType = stepType,
-            ),
-        )
-
-        // Dispatch with error handling for step event emission
-        val outcome: StepOutcome = try {
+        val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
             dispatcher.dispatch(
                 typedCommand,
                 CanonicalRuntimeContext(
@@ -326,36 +321,7 @@ class CanonicalDurableRunCoordinator(
                     eventSink = eventSink,
                 ),
             )
-        } catch (e: Exception) {
-            // Emit StepFinished before propagating exception (REQ-LFC1-009 requirement 11)
-            eventSink.append(
-                StepFinished(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId.value,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    stageIndex = stageIndex,
-                    stepIndex = stepIndex,
-                    stepName = step.id.value,
-                    stepType = stepType,
-                ),
-            )
-            throw e
         }
-
-        // Emit StepFinished after dispatch (REQ-LFC1-009 requirement 10)
-        eventSink.append(
-            StepFinished(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId.value,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                stepName = step.id.value,
-                stepType = stepType,
-            ),
-        )
         journal.append(
             RerunOperation(
                 id = operationId,

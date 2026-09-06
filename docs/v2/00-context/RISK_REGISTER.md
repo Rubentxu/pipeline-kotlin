@@ -21,3 +21,8 @@
 ## Critical risk rule
 
 R3, R4 y R8 son release blockers independientemente de disponibilidad/performance. No pueden aceptarse mediante “known issue” para GA.
+| R12 | Identidad de operación aliasa bajo nombres adversariales (SPIKE-016-N2) | L | H | ADR-0066: componentes length-prefixed/hashed; input digest fail-closed | EM-8 |
+| R13 | Escritor nuevo corrompe reader viejo del journal | M | Critical | ADR-0067: schemaVersion + fail-closed reader (SPIKE-016-N3) | EM-8 |
+| R14 | Cancelación mal clasificada como fallo de paso | M | H | ADR-0068: INTERRUPTED canónico, rethrow verbatim (SPIKE-016-N4/N5) | EM-5 |
+| R15 | SPIKE-016 ampliado no ratifica ADR-0065 | L | Critical | stop condition de EXECUTION_MODEL_MIGRATION; no refactor amplio | EM-0 verify |
+| R16 | Los ~85 fallos sin clasificar del baseline EM-0 son regresiones del árbol EM | M | H | reconciliación base-vs-head obligatoria en verify (EM0_BASELINE_RECEIPT) | em-0 verify |

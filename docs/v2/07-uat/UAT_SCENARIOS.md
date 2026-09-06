@@ -1,5 +1,11 @@
 # UAT Scenarios
 
+## UAT-JEP-* — Jenkins Execution Parity (programa EM)
+Catálogo autoritativo de paridad de ejecución Jenkins-fiel bajo ADR-0065:
+[`UAT_JENKINS_EXECUTION_PARITY.md`](UAT_JENKINS_EXECUTION_PARITY.md).
+Sus escenarios UAT-JEP-001..030 son el gate de aceptación de las fases
+EM-1..EM-5 y EM-8 del [`../05-roadmap/EXECUTION_MODEL_MIGRATION.md`](../05-roadmap/EXECUTION_MODEL_MIGRATION.md).
+
 ## UAT-M0-001 — Baseline reproducible
 **Actor:** Developer  
 **Given:** checkout limpio y JDK soportado  

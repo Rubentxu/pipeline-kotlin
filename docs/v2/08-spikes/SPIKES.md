@@ -56,3 +56,10 @@ Definir qué effects permiten fork automatic, cuáles requieren simulate/approva
 
 ## SPIKE-014 — Jenkinsfile migrator
 Medir porcentaje de corpus declarative traducible por parser/rules antes de incorporar agentes IA para casos complejos.
+
+## SPIKE-016 — Durable scripted replay
+**Status:** PASS (test-only feasibility; not production evidence).
+
+Un journal serializado y un proceso durable test-only permiten reconstruir control
+flow Kotlin mediante replay sin serializar continuaciones. El receipt y sus límites
+están en [`SPIKE-016-DURABLE-SCRIPTED-REPLAY.md`](SPIKE-016-DURABLE-SCRIPTED-REPLAY.md).

@@ -72,6 +72,16 @@ suspend fun sh(...): ShellResult
 
 ### DEV-001 — `sh(timeoutMs, env)` (2026-08-26, ciclo ML-R2)
 
+> **Autoridad actual (ADR-0065, accepted 2026-09-05):** el contrato canónico
+> de `sh` es [`../03-specifications/JENKINS_SH_CONTRACT.md`](../03-specifications/JENKINS_SH_CONTRACT.md)
+> (firma Jenkins de 5 parámetros; `script` ejecutable, no acumulador). Bajo el
+> programa EM, `timeoutMs`/`env` en `sh` son **transicionales** en la fachada
+> declarativa legacy: `timeoutMs` migra a cancelación de bloque duradera (EM-5)
+> y el tipado del resultado a EM-1/EM-3. El contrato descriptivo de Jenkins
+> (compatibilidad familiar) y el contrato de paridad ejecutable (UAT-JEP) se
+> rigen por JENKINS_SH_CONTRACT; este apartado conserva el registro histórico
+> de la desviación y su plan de retirada.
+
 **REVERSED 2026-08-26 (cycle=ml-r3-sandbox-profile-local)** — actual signatures
 preserved; cite `3742ce1`. Los parámetros `timeoutMs` y `env` en `sh` fueron
 revertidos a sus formas originales tras la revisión de la especificación.

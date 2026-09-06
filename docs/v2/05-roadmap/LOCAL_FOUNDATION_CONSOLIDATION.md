@@ -55,3 +55,26 @@ The LFC-0 gate closes with UAT-GOV-001..004 + architecture baseline green;
 the canonical CLI path bug (INC-027/028/029/030 owned by the
 `lfc1-canonical-cli-path-bug` cycle). LFC-1 remains open until the
 legacy model authorities and bridge are removed.
+
+## EM ↔ LFC mapping (binding per cycle em-0 Amendment R1)
+
+The Execution Model programme (ADR-0065) is a **refinement of LFC-4/5/6**,
+not a parallel programme. The `EM-N` labels used across merged specs, vault
+entries and EXECUTION_MODEL_MIGRATION.md are retained to avoid churn; this
+table is the canonical mapping:
+
+| EM | LFC | Theme |
+|---|---|---|
+| EM-0 | LFC-4.0 | contract freeze, baseline, ADR-0065 acceptance |
+| EM-S0 | LFC-4.0a | SPIKE-016 durable scripted replay (widened 2026-09-06) |
+| EM-1 | LFC-4.1 | durable terminal-result contract |
+| EM-2 | LFC-4.2 | central StepExecutionBoundary |
+| EM-3 | LFC-4.3 | Jenkins-faithful `sh` (JENKINS_SH_CONTRACT) |
+| EM-4 | LFC-4.4 | first-class body execution + BlockStepNode |
+| EM-5 | LFC-5.1 | durable timeout/cancellation (ADR-0068) |
+| EM-6 | LFC-5.2 | real retry/catchError/warnError/unstable |
+| EM-7 | LFC-5.3 | context blocks (withEnv/withCredentials/dir/decorators) |
+| EM-8 | LFC-6.1 | production scripted runtime (compiler call-site IDs, ADR-0066) |
+| EM-9 | LFC-6.2 | Jenkins differential compatibility gate |
+| EM-10 | LFC-6.3 | legacy removal (see EM_DEAD_CODE_AUDIT.md) |
+| — | LFC-6.4 | deferred: FIRST_SUCCESS/ANY_COMPLETE in script {} (Q-16/Q-12) |

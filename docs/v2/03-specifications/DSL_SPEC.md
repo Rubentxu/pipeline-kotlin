@@ -34,7 +34,9 @@ Debe poder descubrirse/validarse sin ejecutar side effects:
 
 ```kotlin
 script {
-    val tag = sh(script = "git describe --tags", returnStdout = true).stdout.trim()
+    // Canonical `sh` returns String with returnStdout=true (JENKINS_SH_CONTRACT §9);
+    // there is no `.stdout` projection on the canonical sh (ADR-0065).
+    val tag = sh(script = "git describe --tags", returnStdout = true).trim()
     if (tag.startsWith("v")) {
         deploy(tag)
     }

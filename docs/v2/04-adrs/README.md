@@ -25,3 +25,7 @@
 - [ADR-0045: Pipeline Protocol Boundary Rule Implementation](ADR-0045-pipeline-protocol-boundary-rule.md)
 - [ADR-0046: Local Execution Ecosystem First — Reprioritization and Durable sh Pattern](ADR-0046-local-ecosystem-first-reprioritization.md)
 - [ADR-0064: V2 local-first is the active product line](ADR-0064-local-foundation-consolidation-scope.md)
+- [ADR-0065: Durable Kotlin execution uses runtime step invocation plus deterministic replay (accepted 2026-09-05)](ADR-0065-durable-kotlin-execution-semantics.md)
+- [ADR-0066: Call-site identity, determinism limits, and the script-host classpath deny-list (proposed)](ADR-0066-call-site-identity-determinism.md)
+- [ADR-0067: Persisted schema versioning: monotonic, forward-only, fail-closed readers (proposed)](ADR-0067-persisted-schema-versioning.md)
+- [ADR-0068: Cancellation exception mapping: canonical INTERRUPTED, verbatim rethrow, legacy FAILED_TIMEOUT adapter (proposed)](ADR-0068-cancellation-exception-mapping.md)

@@ -11,6 +11,7 @@
 | UAT-REC-* | M3/ML | yes | yes | operator review |
 | UAT-PROT-* | M4 | yes | yes | no |
 | UAT-LOCAL-* | ML | yes | yes | no |
+| UAT-JEP-* | EM | yes | yes | no |
 | UAT-K8S-* | M5 | yes | yes | platform review |
 | UAT-CRED-* | M5 | yes | partial | security review |
 | UAT-SEC-* | M5/M9 | yes | partial | security review |

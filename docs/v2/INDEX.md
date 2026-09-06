@@ -3,9 +3,15 @@
 | Documento | Propósito / título |
 |---|---|
 | [`04-adrs/ADR-0064-local-foundation-consolidation-scope.md`](04-adrs/ADR-0064-local-foundation-consolidation-scope.md) | ADR-0064: V2 local-first is the active product line |
+| [`04-adrs/ADR-0065-durable-kotlin-execution-semantics.md`](04-adrs/ADR-0065-durable-kotlin-execution-semantics.md) | ADR-0065: ejecución Kotlin durable mediante invocación runtime y replay determinista |
 | [`00-governance/DOCUMENT_AUTHORITY.md`](00-governance/DOCUMENT_AUTHORITY.md) | Autoridad documental y alcance activo de Local Foundation Consolidation |
 | [`00-context/CURRENT_STATE.md`](00-context/CURRENT_STATE.md) | Estado actual y deuda que V2 debe resolver |
+| [`00-context/EXECUTION_MODEL_DESIGN_SUMMARY.md`](00-context/EXECUTION_MODEL_DESIGN_SUMMARY.md) | Resumen del diseño de ejecución Kotlin durable propuesto |
+| [`00-context/EXECUTION_MODEL_INTEGRATION.md`](00-context/EXECUTION_MODEL_INTEGRATION.md) | Orden y límites de integración de ADR-0065 |
+| [`00-context/EXECUTION_MODEL_TRACEABILITY_DELTA.md`](00-context/EXECUTION_MODEL_TRACEABILITY_DELTA.md) | Delta de trazabilidad para el modelo de ejecución propuesto |
+| [`00-context/EM0_BASELINE_RECEIPT.md`](00-context/EM0_BASELINE_RECEIPT.md) | Receipt de baseline EM-0: gate fresca, inventario de fallos y clasificación |
 | [`00-context/GLOSSARY.md`](00-context/GLOSSARY.md) | Glosario |
+| [`00-context/JENKINS_REFERENCE_BASELINE.md`](00-context/JENKINS_REFERENCE_BASELINE.md) | Referencias primarias para semántica de ejecución Jenkins |
 | [`00-context/OPEN_QUESTIONS.md`](00-context/OPEN_QUESTIONS.md) | Open Questions |
 | [`00-context/PRINCIPLES.md`](00-context/PRINCIPLES.md) | Principios |
 | [`00-context/RISK_REGISTER.md`](00-context/RISK_REGISTER.md) | Risk Register |
@@ -24,10 +30,14 @@
 | [`02-architecture/RUNTIME_MODEL.md`](02-architecture/RUNTIME_MODEL.md) | Runtime Model — Durable Kotlin without CPS |
 | [`02-architecture/SECURITY.md`](02-architecture/SECURITY.md) | Security Architecture |
 | [`03-specifications/ARTIFACTS_SUPPLY_CHAIN.md`](03-specifications/ARTIFACTS_SUPPLY_CHAIN.md) | Artifacts & Software Supply Chain Specification |
+| [`03-specifications/BLOCK_STEP_EXECUTION.md`](03-specifications/BLOCK_STEP_EXECUTION.md) | Block Step Execution Specification (ADR-0065) |
 | [`03-specifications/CONFIG_MANIFESTS.md`](03-specifications/CONFIG_MANIFESTS.md) | Configuration Manifests Specification |
 | [`03-specifications/CREDENTIALS_PROVIDERS.md`](03-specifications/CREDENTIALS_PROVIDERS.md) | Credentials Provider Specification |
+| [`03-specifications/DURABLE_KOTLIN_EXECUTION.md`](03-specifications/DURABLE_KOTLIN_EXECUTION.md) | Durable Kotlin Execution Specification (ADR-0065) |
 | [`03-specifications/DSL_SPEC.md`](03-specifications/DSL_SPEC.md) | DSL Specification V2 |
 | [`03-specifications/EVENT_MODEL.md`](03-specifications/EVENT_MODEL.md) | Event Model Specification |
+| [`03-specifications/FAILURE_INTERRUPTION_MODEL.md`](03-specifications/FAILURE_INTERRUPTION_MODEL.md) | Failure and Interruption Model (ADR-0065) |
+| [`03-specifications/JENKINS_SH_CONTRACT.md`](03-specifications/JENKINS_SH_CONTRACT.md) | Jenkins-compatible sh contract (ADR-0065) |
 | [`03-specifications/GRAPH_MODEL.md`](03-specifications/GRAPH_MODEL.md) | Graph Model Specification |
 | [`03-specifications/JENKINS_PLUGIN.md`](03-specifications/JENKINS_PLUGIN.md) | Jenkins Workflow Plugin Specification |
 | [`03-specifications/KUBERNETES_WORKERS.md`](03-specifications/KUBERNETES_WORKERS.md) | Kubernetes Ephemeral Workers Specification |
@@ -60,6 +70,8 @@
 | [`05-roadmap/IMPLEMENTATION_BACKLOG.md`](05-roadmap/IMPLEMENTATION_BACKLOG.md) | Implementation Backlog |
 | [`05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md`](05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md) | Roadmap activo LFC-0 a LFC-10 |
 | [`05-roadmap/MIGRATION_PLAN.md`](05-roadmap/MIGRATION_PLAN.md) | Migration Plan V1 → V2 |
+| [`05-roadmap/EXECUTION_MODEL_MIGRATION.md`](05-roadmap/EXECUTION_MODEL_MIGRATION.md) | Roadmap de migración del modelo de ejecución (ADR-0065) |
+| [`05-roadmap/EM_DEAD_CODE_AUDIT.md`](05-roadmap/EM_DEAD_CODE_AUDIT.md) | Auditoría de código muerto/transicional del programa EM (borrar/deprecar/adaptador) |
 | [`05-roadmap/MILESTONES.md`](05-roadmap/MILESTONES.md) | Milestone Gates y Definition of Done |
 | [`05-roadmap/RELEASE_STRATEGY.md`](05-roadmap/RELEASE_STRATEGY.md) | Release & Compatibility Strategy |
 | [`05-roadmap/ROADMAP.md`](05-roadmap/ROADMAP.md) | Roadmap V2 — Desarrollo evolutivo guiado por UAT |
@@ -70,7 +82,9 @@
 | [`07-uat/UAT_ACCEPTANCE_MATRIX.md`](07-uat/UAT_ACCEPTANCE_MATRIX.md) | UAT Acceptance Matrix |
 | [`07-uat/UAT_MASTER_PLAN.md`](07-uat/UAT_MASTER_PLAN.md) | UAT Master Plan |
 | [`07-uat/UAT_SCENARIOS.md`](07-uat/UAT_SCENARIOS.md) | UAT Scenarios |
+| [`07-uat/UAT_JENKINS_EXECUTION_PARITY.md`](07-uat/UAT_JENKINS_EXECUTION_PARITY.md) | UAT de paridad Jenkins y ejecución Kotlin durable (ADR-0065) |
 | [`08-spikes/SPIKES.md`](08-spikes/SPIKES.md) | Spike Backlog |
+| [`08-spikes/SPIKE-016-DURABLE-SCRIPTED-REPLAY.md`](08-spikes/SPIKE-016-DURABLE-SCRIPTED-REPLAY.md) | Spike obligatorio de replay scripted durable (ADR-0065) |
 | [`09-operations/RUNBOOK.md`](09-operations/RUNBOOK.md) | Operations Runbook |
 | [`09-operations/SLO_SLA.md`](09-operations/SLO_SLA.md) | SLO / Reliability Targets |
 | [`10-templates/ADR_TEMPLATE.md`](10-templates/ADR_TEMPLATE.md) | ADR-NNNN: Título |

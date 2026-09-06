@@ -26,3 +26,13 @@
 | Sandbox local | `EXECUTION_SANDBOX` | [[ADR-0048-sandbox-profile-local]] | ML | UAT-LOCAL-003 + UAT-LOCAL-007 |
 | Credentials local + secret redaction | `CREDENTIALS_PROVIDERS` | [[ADR-0049-credentials-local]] | ML-R4 | UAT-LOCAL-008 |
 | Checkout / git step (L5) | `SCM_CHECKOUT` | [[ADR-0050-checkout-git-step]] | ML-R5 | UAT-LOCAL-005 |
+| Typed durable terminal result | `JENKINS_SH_CONTRACT` | ADR-0065 | EM-1 | UAT-JEP-008..010 |
+| Central step lifecycle | `FAILURE_INTERRUPTION_MODEL` | ADR-0065 | EM-2 | UAT-JEP-029..030 |
+| Jenkins sh parity | `JENKINS_SH_CONTRACT` | ADR-0065 | EM-3 | UAT-JEP-001..010 |
+| First-class body steps | `BLOCK_STEP_EXECUTION` | ADR-0065 | EM-4 | UAT-JEP-014..023 |
+| Durable timeout | `BLOCK_STEP_EXECUTION` | ADR-0065 | EM-5 | UAT-JEP-011..013 |
+| Scripted replay | `DURABLE_KOTLIN_EXECUTION` | ADR-0065 | EM-8 | UAT-JEP-024..028 + SPIKE-016 N1..N6 |
+| `schemaVersion` persisted records | `DURABLE_KOTLIN_EXECUTION` | ADR-0067 | EM-1/EM-8 | SPIKE-016-N3 |
+| `OperationStatus.INTERRUPTED` canonical terminal | `FAILURE_INTERRUPTION_MODEL` | ADR-0068 | EM-5 | SPIKE-016-N4/N5 |
+| `staticCallSiteId` compiler-derived identity | `DURABLE_KOTLIN_EXECUTION` | ADR-0066 | EM-8 | SPIKE-016-N2 + UAT-JEP-024..028 |
+| try/catch retry `attemptId` | `DURABLE_KOTLIN_EXECUTION` | ADR-0066 | EM-6 | SPIKE-016-E5c |

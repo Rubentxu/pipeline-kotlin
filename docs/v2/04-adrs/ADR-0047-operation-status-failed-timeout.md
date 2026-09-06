@@ -6,6 +6,14 @@
 - **Authority:** binds at apply phase T1; required before T1.1 so enum addition has documented provenance
 - **Related:** [[ADR-0046-local-ecosystem-first-reprioritization]] §D2 (kill ≠ LOST precedent), REQ-Durable-Shell-Timeout TMO-S-011, TMO-S-006, UAT-REC-002
 
+> **Nota actual (2026-09-06, ADR-0068 proposed):** `FAILED_TIMEOUT` permanece
+> como estado de **reporting externo** del watchdog (deadline) según esta ADR;
+> el control flow del runtime trata la expiración como
+> `InterruptionKind.TIMEOUT` y la cancelación cooperativa se journaliza como
+> `OperationStatus.INTERRUPTED` canónico (SPIKE-016 N4/N6). No se publica
+> ningún evento bajo ambas claves. Esta ADR no se retracta; su semántica se
+> acota a la ventana deadline del shell durable hasta que EM-5 la levante.
+
 ## Context
 
 ML-R1 (ADR-0046) established the durable `sh` pattern with 6 terminal states for `OperationStatus`: SUCCEEDED, FAILED, ABORTED, DIVERGENT, LOST.

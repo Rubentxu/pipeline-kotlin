@@ -73,3 +73,23 @@ No se promete exactly-once de side effects externos. Se ofrecen:
 - effect/replay policy;
 - transactional outbox donde aplique;
 - human approval para replay peligroso.
+
+## 8. Addendum EM (2026-09-06, cycle em-0 — ADR-0067/0068)
+
+- **Terminal canónico `INTERRUPTED`**: la cancelación cooperativa
+  (`CancellationException` en el boundary durable) se journaliza como
+  `OperationStatus.INTERRUPTED` con `InterruptionKind`
+  (`USER_ABORT`/`PARENT_CANCELLED`/`SUPERSEDED`/`SHUTDOWN`); el marcador
+  `PipelineInterruptedException` NO extiende `CancellationException`
+  (ADR-0068). Anclas: SPIKE-016 N4/N5.
+- **`FAILED_TIMEOUT` sigue siendo el estado de reporting** del watchdog de
+  deadline (ADR-0047/ADR-0028) con la causa original preservada; control flow
+  usa `InterruptionKind.TIMEOUT` (SPIKE-016 N6).
+- **`schemaVersion` en registros persistidos**: todo registro durable lleva
+  `schemaVersion` (default 1); los readers declaran un máximo y fallan
+  cerrados con `IncompatibleJournalSchema` ante versiones superiores
+  (ADR-0067). Ancla: SPIKE-016 N3.
+- **Gate nombrada `RECOVERY_DURABILITY`**: cubre los anclas UAT-REC-* más
+  SPIKE-016 N6 (crash del worker durante la ventana FAILED_TIMEOUT) y la
+  matriz de cortes SPIKE-016 E3/E3a. Gate de release para las fases
+  EM-1/EM-2/EM-5/EM-8.

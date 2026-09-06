@@ -1,6 +1,7 @@
 # Estado actual y deuda que V2 debe resolver
 
 > Snapshot de referencia: rama `main`, 2026-08-21.
+> **Addendum 2026-09-06 (cycle em-0):** ver sección "Estado EM" al final.
 
 ## Observaciones
 
@@ -40,3 +41,30 @@ Cada componente V1 se etiquetará:
 - **REWRITE**: semántica aprovechable, implementación inadecuada.
 - **RETIRE**: duplicado o incompatible con V2.
 - **SPIKE**: exploración sin compromiso de producción.
+
+## Estado EM (addendum 2026-09-06, cycle em-0)
+
+El programa **EM — Durable Kotlin Execution Model** (ADR-0065) es el track
+activo, como refinamiento de LFC-4/5/6 (mapeo en
+`05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md`). Estado:
+
+La línea actual y autoritativa está en `docs/v2/`; la disposición y la
+procedencia histórica del paquete absorbido están registradas en
+[`EXECUTION_MODEL_PROPOSAL_DISPOSITION.md`](EXECUTION_MODEL_PROPOSAL_DISPOSITION.md).
+
+- **EM-0/EM-S0**: contract freeze en curso; SPIKE-016 ampliado PASS 24/24
+  (2026-09-06); ADR-0065 aceptado; la expansión productiva sigue bloqueada
+  por verificación; ADR-0066/0067/0068 en `proposed`.
+- **EM-1/EM-2**: implementados (fuera de SDDK por un agente IDE externo;
+  incorporados y trazados por el ciclo em-0); pendientes de release gate.
+- **EM-3**: parcial — `ShExecution` tipado; matriz UAT-JEP y timeout-grammar
+  incompletos (`UatDsl005TimeoutGrammarTest` en el receipt).
+- **Deuda activa**: ~85 fallos de baseline sin clasificar
+  (`EM0_BASELINE_RECEIPT.md`) requieren reconciliación base-vs-head en
+  verify; el gate completo de verify no está green. La línea F-1..F-8 de withCredentials sigue abierta (8 UATs fallidos
+  conocidos, UAT008 19 PASS / 8 FAIL); deuda de código muerto/transicional
+  inventariada en `EM_DEAD_CODE_AUDIT.md` (borrar en EM-10, deprecar por
+  fase).
+
+El snapshot 2026-08-21 anterior se conserva como referencia histórica; sus
+12 puntos de deuda conceptual siguen siendo válidos como motivación de V2.

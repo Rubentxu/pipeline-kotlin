@@ -190,6 +190,36 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **E10-09** upgrade/rollback tests.
 - **E10-10** release provenance/SBOM.
 
+## Epic E-EM — Execution Model (ADR-0065; refinement of LFC-4/5/6)
+
+Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
+(successor of blocked `lfc4-000`). EM-N ↔ LFC-N.M mapping:
+`LOCAL_FOUNDATION_CONSOLIDATION.md §EM ↔ LFC mapping`. E4-25
+(UatDurable009) is preserved above as existing parallel durable evidence.
+
+- **E-EM-01 (EM-0/LFC-4.0)** — contract freeze: ADR-0065 accepted
+  (SPIKE-016 expanded 24/24 PASS 2026-09-06); production expansion remains
+  gated by verification; specs + UAT_JEP + ADR-0066/0067/0068 proposed;
+  EM0_BASELINE_RECEIPT recorded. The full verify gate is not green while ~85
+  failures await base-vs-head classification.
+- **E-EM-02 (EM-1/LFC-4.1)** — durable terminal contract: IMPLEMENTED
+  (DurableTaskTerminal/FailureRecord/InterruptionRecord/ShellInvocationResult
+  + SDK adapter); pending release gate.
+- **E-EM-03 (EM-2/LFC-4.2)** — central StepExecutionBoundary: IMPLEMENTED;
+  pending release gate.
+- **E-EM-04 (EM-3/LFC-4.3)** — Jenkins-faithful sh: PARTIAL (typed
+  ShExecution landed; UAT-JEP-001..010 matrix and timeout-grammar path
+  incomplete — see UatDsl005TimeoutGrammarTest in EM0_BASELINE_RECEIPT).
+- **E-EM-05 (EM-4..EM-10 / LFC-4.4..LFC-6.3)** — body steps, durable timeout,
+  real retry/catchError, context blocks, production scripted runtime,
+  differential gate, legacy removal per EM_DEAD_CODE_AUDIT.md. EM-10 has
+  completed its typed active-call-site slice: linear, parallel-branch, and
+  branch `withEnv` shell paths now carry `ShellInvocationResult`; only the
+  deprecated compatibility adapter remains, pending fixtures and the full
+  exit gate.
+- **E-EM-06** — verify-phase base-vs-head reconciliation of the ~85
+  unclassified baseline failures before any release claim.
+
 ## Dependency rule
 
 No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con el walking skeleton. Hacerlo produciría plugins sobre un runtime aún no validado.

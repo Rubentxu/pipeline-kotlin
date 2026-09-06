@@ -259,7 +259,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 | ML-R7 — L7 durable sh step-failure events (INC-R8-ARC-001/002) | ✅ CLOSED | **v0.21.1** | … | 2026-08-30 |
 | ML-R8 — smoke E2E on real open-source projects | ✅ CLOSED | **v0.22.0** | 0968a94… | 2026-08-30 |
 | ML-R9 — Jenkins catalog steps workflow-control + error-handling + milestone + 3-state outcome | ✅ CLOSED | **v0.23.0** | 1526711… | 2026-08-30 |
-| ML-R10 — H0 extract `WithCredentialsExecutor` to provider-agnostic hexagonal (zero behavior change) | 🔲 IN PROGRESS (replan addendum approved) | TBD | 0bfa876 | TBD | TBD |
+| ML-R10 — H0 extract `WithCredentialsExecutor` to provider-agnostic hexagonal (zero behavior change) | ✅ CLOSED (via follow-up cycle `ml-r10-2-5`, PASS_WITH_WARNINGS) | **v0.24.2+** | 7af9e95 | 2026-08-31 |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)
@@ -277,6 +277,38 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 - UAT-LOCAL-002..006: returnStdout, sandbox local, credenciales locales,
   checkout de repo real, smoke build de proyecto real.
 - 100% tests V2 green sin excludes.
+
+## EM — Durable Kotlin Execution Model (ADR-0065)
+
+> Programa activo intercalado tras cerrar ML, como **refinamiento de
+> LFC-4/5/6** (mapeo canónico: `LOCAL_FOUNDATION_CONSOLIDATION.md
+> §EM ↔ LFC mapping`). Gobernanza: ciclo
+> `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze` (sucesor del
+> bloqueado `lfc4-000-execution-model-contract-freeze`). Sustituye el parche
+> aislado INC-039: INC-039 es trazable como trabajo EM-1/EM-3. Fases, gates y
+> disciplina de entrega por fase en
+> [`EXECUTION_MODEL_MIGRATION.md`](EXECUTION_MODEL_MIGRATION.md).
+
+### Estado
+
+| Fase | Estado | Nota |
+|---|---|---|
+| EM-0 — contract freeze | 🟡 IN PROGRESS | ADR-0065 accepted; línea normativa en `docs/v2`; SPIKE-016 ampliado 24/24 PASS; el gate verify completo no está green (~85 fallos sin clasificar) |
+| EM-S0 — SPIKE-016 | ✅ PASS (test-only) | evidencia ampliada 24/24 PASS; receipt en `08-spikes/SPIKE-016-DURABLE-SCRIPTED-REPLAY.md` |
+| EM-1 — terminal contract | 🟡 CODE COMPLETE | `DurableTaskTerminal`/`FailureRecord`/`InterruptionRecord` + adapter SDK; pendiente gate de release |
+| EM-2 — StepExecutionBoundary | 🟡 CODE COMPLETE | boundary central + jerarquía tipada; pendiente gate de release |
+| EM-3 — sh Jenkins-fiel | 🟡 PARTIAL | `ShExecution` tipado; falta matriz UAT-JEP completa |
+| EM-4..EM-10 | 🔲 PENDING | block steps, timeout durable, retry/catchError, context, scripted runtime producción, paridad diferencial, legacy removal |
+
+### Notas
+
+- ML-R10 cierra 0 de los 8 UATs fallidos (F-1..F-8) de withCredentials; esa
+  línea continúa en su backlog propio, no dentro de EM.
+- Los 8 UATs fallidos F-1..F-8 son baseline conocida (19 PASS / 8 FAIL,
+  UAT008); no se debilitan tests para ponerlos en verde.
+- El paquete `docs/pipeline-kotlin-execution-model-proposal/` fue absorbido
+  como procedencia histórica; su disposición está en
+  `00-context/EXECUTION_MODEL_PROPOSAL_DISPOSITION.md` y no es fuente actual.
 
 ## M5 — Kubernetes ephemeral workers + credentials
 

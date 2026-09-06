@@ -1,0 +1,71 @@
+{
+  "package": "pipeline-kotlin-execution-model-proposal",
+  "date": "2026-09-05",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "57d588009a366e7bae5ace2cfa1eb2aa4923d36d33e81d418c50fdef4e20c48e",
+      "bytes": 3409
+    },
+    {
+      "path": "docs/v2/00-context/EXECUTION_MODEL_DESIGN_SUMMARY.md",
+      "sha256": "6241d32db2b5d0991af97ce306a2e7013a3059dd25ef97d4cbf0252cee1e7995",
+      "bytes": 3249
+    },
+    {
+      "path": "docs/v2/00-context/EXECUTION_MODEL_INTEGRATION.md",
+      "sha256": "848455bdd544bf2d1bfbe502915f878cab962a6dd597698dd2edd75512482852",
+      "bytes": 6854
+    },
+    {
+      "path": "docs/v2/00-context/EXECUTION_MODEL_TRACEABILITY_DELTA.md",
+      "sha256": "9b095c7a2c40f7032156bf689a693431c22cc9423ae3c463e07857886112675a",
+      "bytes": 5080
+    },
+    {
+      "path": "docs/v2/00-context/JENKINS_REFERENCE_BASELINE.md",
+      "sha256": "82abe60f11f39c05dd6417308764dd602641990f04ee8a765b10dbd909b19e08",
+      "bytes": 3233
+    },
+    {
+      "path": "docs/v2/03-specifications/BLOCK_STEP_EXECUTION.md",
+      "sha256": "25645ab60d97989032e854814c082cea3b022b662cf42912ad6a0c1f6b044fc3",
+      "bytes": 6533
+    },
+    {
+      "path": "docs/v2/03-specifications/DURABLE_KOTLIN_EXECUTION.md",
+      "sha256": "169b7637bb973f3507499f61746e1a8a65edb1244d34df6122f65bbb29085502",
+      "bytes": 9023
+    },
+    {
+      "path": "docs/v2/03-specifications/FAILURE_INTERRUPTION_MODEL.md",
+      "sha256": "7aa54db040be223b285518dc56e0d920d124674822af1d580e1b6333b9dbad7e",
+      "bytes": 6797
+    },
+    {
+      "path": "docs/v2/03-specifications/JENKINS_SH_CONTRACT.md",
+      "sha256": "445215e2945d09ee53a9696d57a38502435e6faf3966729aae81e7dd22cfc2bb",
+      "bytes": 7161
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-0065-durable-kotlin-execution-semantics.md",
+      "sha256": "d88f6e10c52f974066951ee083f9678d6fbc8d395a16c107fe3c96072fedc947",
+      "bytes": 10570
+    },
+    {
+      "path": "docs/v2/05-roadmap/EXECUTION_MODEL_MIGRATION.md",
+      "sha256": "a179544d34810596b3843625992e37fae4fb951e41fb5e051904a9fe81f65583",
+      "bytes": 8318
+    },
+    {
+      "path": "docs/v2/07-uat/UAT_JENKINS_EXECUTION_PARITY.md",
+      "sha256": "c86f5cbf7e00fc1b218a796b2fab76112db2e223e7ef52927a7133bdf970b544",
+      "bytes": 7984
+    },
+    {
+      "path": "docs/v2/08-spikes/SPIKE-016-DURABLE-SCRIPTED-REPLAY.md",
+      "sha256": "25f5fa6ac590ac753b26398eb1c44778832869a8d132a3ea1b6c6a6c1e74e1dd",
+      "bytes": 3747
+    }
+  ]
+}

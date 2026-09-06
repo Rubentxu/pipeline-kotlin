@@ -280,7 +280,7 @@ TIMEOUT ordering).
 before run). Command:
 `timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'Spike016DurableScriptedReplayTest'`
 exit 0. XML SHA-256:
-`add4d35ad514c58244fd17cba44b986ecd7ab4b537029da2cac2f19068fab9da`
+`675ee420613d8a1961e3d43fa707271375b788df83e7b49cf4a94a00188e4f25`
 (3 consecutive runs confirmed 24/24; SHA-256 of run 1).
 
 **Harness stability fix (apply correction 2026-09-06):** the setsid shell

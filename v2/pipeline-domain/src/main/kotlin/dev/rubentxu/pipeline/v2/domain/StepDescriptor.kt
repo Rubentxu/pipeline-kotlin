@@ -28,10 +28,40 @@ data class StepDescriptor(
     val jenkinsSurface: String = "",
     val securityProfile: String = "",
     val deprecation: String = "",
+    // EM-4 body metadata (safe defaults preserve backward compatibility)
+    val takesBody: Boolean = false,
+    val bodyInvocations: BodyInvocationPolicy = BodyInvocationPolicy.ONCE,
+    val introducesContext: ContextKind? = null,
+    val catchesInterruptions: Boolean = false,
 ) {
     /** Legacy terminology retained for consumers of the legacy definition model. */
     val id: String get() = stepId
 
     /** Legacy terminology retained for consumers of the legacy definition model. */
     val type: String get() = name
+}
+
+/**
+ * Policy for how many times body children may be invoked.
+ */
+sealed interface BodyInvocationPolicy {
+    /** Body children are invoked exactly once (e.g., catchError). */
+    data object ONCE : BodyInvocationPolicy
+
+    /** Body children may be invoked zero or more times (e.g., retry). */
+    data object ZERO_OR_MORE : BodyInvocationPolicy
+
+    /** Body children are invoked at most once (e.g., warnError). */
+    data object AT_MOST_ONCE : BodyInvocationPolicy
+}
+
+/**
+ * Kind of context introduced by a block step.
+ */
+sealed interface ContextKind {
+    data object ENVIRONMENT : ContextKind
+    data object CWD : ContextKind
+    data object CREDENTIALS : ContextKind
+    data object OUTPUT_DECORATOR : ContextKind
+    data object CANCELLATION : ContextKind
 }

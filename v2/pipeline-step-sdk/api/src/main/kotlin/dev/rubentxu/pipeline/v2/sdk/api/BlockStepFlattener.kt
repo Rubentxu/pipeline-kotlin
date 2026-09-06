@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.api
 
+import dev.rubentxu.pipeline.v2.domain.BlockNestingConstants
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 
 /**
@@ -7,7 +8,7 @@ import dev.rubentxu.pipeline.v2.dsl.StepSpec
  */
 class BlockNestingDepthExceededException(
     val depth: Int,
-    val maxDepth: Int = 3,
+    val maxDepth: Int = BlockNestingConstants.MAX_BLOCK_DEPTH,
 ) : RuntimeException("Block nesting depth $depth exceeds maximum $maxDepth")
 
 /**
@@ -61,8 +62,13 @@ data class IndexedStep(
  */
 object BlockStepFlattener {
 
-    /** Maximum block nesting depth per Jenkins CPS continuation limit. */
-    const val MAX_BLOCK_DEPTH = 3
+    /**
+     * Maximum block nesting depth per Jenkins CPS continuation limit.
+     *
+     * Delegates to [BlockNestingConstants.MAX_BLOCK_DEPTH] (single source of truth).
+     * Retained as const for binary compatibility with existing consumers.
+     */
+    const val MAX_BLOCK_DEPTH = BlockNestingConstants.MAX_BLOCK_DEPTH
 
     /**
      * Flattens a step tree into a list of [FlattenedStep].

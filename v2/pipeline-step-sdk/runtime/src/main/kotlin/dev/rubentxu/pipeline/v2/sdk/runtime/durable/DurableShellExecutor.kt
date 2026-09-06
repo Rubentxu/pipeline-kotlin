@@ -1,10 +1,15 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
+import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
+import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.withLock
 
 /**
@@ -30,6 +35,9 @@ import kotlin.concurrent.withLock
  * - **TIMED_OUT**: Watchdog killed the process via timeout.flag + SIGKILL.
  *                  Per TMO-S-005: timeout.flag written BEFORE kill.
  */
+@Deprecated(
+    message = "Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.",
+)
 enum class DurableShellState {
     /** ProcessHandle acquired but not yet confirmed detached. */
     LAUNCHING,
@@ -66,6 +74,9 @@ enum class DurableShellState {
  * @property controlDir The control directory path.
  * @property capturedStdout The captured stdout if returnStdout was enabled, or null.
  */
+@Deprecated(
+    message = "Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.",
+)
 data class DurableShellResult(
     val state: DurableShellState,
     val exitCode: Int,
@@ -788,7 +799,11 @@ class DurableShellExecutor : DurableShellLaunching {
      * @param controlDir The control directory path.
      */
     private fun writeTimeoutFlag(controlDir: Path) {
-        writeTimeoutFlagInternal(controlDir)
+        try {
+            Files.writeString(controlDir.resolve("timeout.flag"), System.currentTimeMillis().toString())
+        } catch (_: Exception) {
+            // The watchdog must still attempt process cleanup if its marker cannot be persisted.
+        }
     }
 
     /**
@@ -813,116 +828,236 @@ class DurableShellExecutor : DurableShellLaunching {
      * @param shOptions Shell execution options including timeout and capture settings.
      * @return The execution result with optional captured stdout.
      */
+    @Deprecated(
+        message = "Legacy durable-shell projection. Use executeTerminal() and consume DurableTaskTerminal; removal is scheduled for EM-10.",
+        replaceWith = ReplaceWith("executeTerminal(controlDir, scriptContent, opId, shOptions)"),
+    )
     fun execute(
         controlDir: Path,
         scriptContent: String,
         opId: String,
         shOptions: ShOptions,
-    ): DurableShellResult {
-        var state = DurableShellState.LAUNCHING
+    ): DurableShellResult = executeTerminal(
+        controlDir = controlDir,
+        scriptContent = scriptContent,
+        opId = opId,
+        shOptions = shOptions,
+    ).toLegacyShellResult(controlDir)
+
+    /**
+     * Canonical durable-shell execution seam. The closed return type permits
+     * only terminal outcomes; lifecycle snapshots never escape this module.
+     */
+    fun executeTerminal(
+        controlDir: Path,
+        scriptContent: String,
+        opId: String,
+        shOptions: ShOptions,
+        config: DurableShConfig = DurableShConfig.fromSystemProperties(),
+    ): DurableTaskTerminal = executeCore(
+        controlDir = controlDir,
+        scriptContent = scriptContent,
+        opId = opId,
+        config = config,
+        request = DurableShellExecutionRequest(
+            timeoutMs = shOptions.timeoutMs ?: 0L,
+            env = shOptions.env,
+            sandbox = shOptions.sandbox,
+            workspaceRoot = shOptions.workspaceRoot,
+            captureStdout = shOptions.captureStdout,
+            outputProjection = if (shOptions.captureStdout) {
+                DurableShellOutputProjection.CAPTURE_FILE
+            } else {
+                DurableShellOutputProjection.JENKINS_LOG
+            },
+            timeoutCompletion = DurableShellTimeoutCompletion.KILL_RESULT,
+        ),
+    )
+
+    /**
+     * Compatibility implementation detail retained while [PipelineRun] still
+     * consumes the pre-EM-1 string/status flow. It projects the typed terminal
+     * produced by the same core while retaining the legacy watchdog policy.
+     */
+    internal fun executeLegacyProjection(
+        controlDir: Path,
+        scriptContent: String,
+        opId: String,
+        config: DurableShConfig,
+        timeoutMs: Long,
+        env: Map<String, SecretHandle>,
+        sandbox: SandboxConfig,
+        workspaceRoot: Path?,
+    ): DurableShellResult = executeCore(
+        controlDir = controlDir,
+        scriptContent = scriptContent,
+        opId = opId,
+        config = config,
+        request = DurableShellExecutionRequest(
+            timeoutMs = timeoutMs,
+            env = env,
+            sandbox = sandbox,
+            workspaceRoot = workspaceRoot,
+            captureStdout = false,
+            outputProjection = DurableShellOutputProjection.JENKINS_LOG,
+            timeoutCompletion = DurableShellTimeoutCompletion.WATCHDOG_ATTEMPT,
+        ),
+    ).toLegacyShellResult(controlDir)
+
+    private fun executeCore(
+        controlDir: Path,
+        scriptContent: String,
+        opId: String,
+        config: DurableShConfig,
+        request: DurableShellExecutionRequest,
+    ): DurableTaskTerminal {
         var exitCode = -1
         var process: ProcessHandle? = null
-        var timedOut = false
-
-        val config = DurableShConfig.fromSystemProperties()
-        val timeoutMs = shOptions.timeoutMs ?: 0L
-        val captureStdout = shOptions.captureStdout
+        var launched = false
+        val timeoutTriggered = AtomicBoolean(false)
 
         try {
             // Step 1: Launch
-            // P2: shOptions.env is injected via pb.environment().putAll in launch()
-            process = launch(controlDir, scriptContent, opId, config, captureStdout, shOptions.env, shOptions.workspaceRoot, shOptions.sandbox)
-            state = DurableShellState.LAUNCHING
+            // P2: environment is injected via pb.environment().putAll in launch()
+            process = launch(
+                controlDir,
+                scriptContent,
+                opId,
+                config,
+                request.captureStdout,
+                request.env,
+                request.workspaceRoot,
+                request.sandbox,
+            )
+            launched = true
 
             // Step 2: Detach
             detach(process, controlDir)
-            state = DurableShellState.RUNNING
 
             // Step 3: Poll for result with optional timeout
             // If timeoutMs > 0, schedule watchdog thread
-            val watchdogThread = if (timeoutMs > 0) {
+            val watchdogThread = if (request.timeoutMs > 0) {
                 Thread {
                     try {
-                        Thread.sleep(timeoutMs)
+                        Thread.sleep(request.timeoutMs)
                         // Timeout triggered - write flag BEFORE kill (TMO-S-005)
                         writeTimeoutFlag(controlDir)
                         // Jenkins-faithful cookie scan kill
                         // DEVIATION: Jenkins core has no SIGKILL escalation; our FAILED_TIMEOUT
                         // determinism requires it per spec TMO-S-004 (process-tree kill, no zombies)
-                        timedOut = killWithCookieScan(process!!, opId)
+                        val killResult = killWithCookieScan(process!!, opId)
+                        timeoutTriggered.set(
+                            when (request.timeoutCompletion) {
+                                DurableShellTimeoutCompletion.KILL_RESULT -> killResult
+                                DurableShellTimeoutCompletion.WATCHDOG_ATTEMPT -> true
+                            },
+                        )
                     } catch (_: InterruptedException) {
                         // Normal interruption - timeout was cancelled
                     } catch (_: Exception) {
                         // Fallback to destroyForcibly if cookie scan fails
                         try { process?.destroyForcibly() } catch (_: Exception) {}
+                        timeoutTriggered.set(true)
                     }
                 }.apply { start() }
             } else null
 
-            // Poll for result
-            exitCode = pollResult(controlDir, timeoutMs = if (timeoutMs > 0) timeoutMs + 30_000 else 3600_000) ?: -1
+            // Poll in one interval slices so a watchdog kill does not leave us
+            // waiting for a result.txt that the killed wrapper cannot publish.
+            val pollDeadline = System.currentTimeMillis() + if (request.timeoutMs > 0) {
+                request.timeoutMs + 30_000
+            } else {
+                3600_000
+            }
+            while (System.currentTimeMillis() < pollDeadline && !timeoutTriggered.get()) {
+                val result = pollResult(controlDir, pollIntervalMs)
+                if (result != null) {
+                    exitCode = result
+                    break
+                }
+            }
 
             // Cancel watchdog if still running
             watchdogThread?.interrupt()
 
             // If we exited due to timeout
-            if (timedOut) {
-                state = DurableShellState.TIMED_OUT
+            if (timeoutTriggered.get()) {
                 // One grace poll cycle - late exit wins per TMO-S-009
                 val graceExitCode = pollResult(controlDir, 1000)
                 if (graceExitCode != null) {
                     exitCode = graceExitCode
-                    state = DurableShellState.COMPLETE
                 }
-            } else {
-                state = DurableShellState.COMPLETE
             }
 
-            // Read captured stdout if enabled
-            val capturedStdout = if (captureStdout) {
-                readOutputText(controlDir, config.captureRetainPolicy)
-            } else null
+            val capturedStdout = when (request.outputProjection) {
+                DurableShellOutputProjection.CAPTURE_FILE -> readOutputText(controlDir, config.captureRetainPolicy)
+                DurableShellOutputProjection.JENKINS_LOG -> readJenkinsLogText(controlDir)
+            }
 
-            return DurableShellResult(
-                state = state,
-                exitCode = exitCode,
-                controlDir = controlDir,
-                capturedStdout = capturedStdout,
-            )
+            return if (timeoutTriggered.get() && exitCode == -1) {
+                DurableTaskTerminal.Cancelled(
+                    InterruptionRecord(
+                        kind = InterruptionKind.TIMEOUT,
+                        message = "durable shell timed out",
+                        operationId = opId,
+                        details = mapOf("controlDir" to controlDir.toString()),
+                    ),
+                )
+            } else {
+                DurableTaskTerminal.Exited(
+                    exitCode = exitCode,
+                    output = DurableTaskOutput(controlDir.toString(), capturedStdout),
+                )
+            }
         } catch (e: LinuxRequiredException) {
-            state = DurableShellState.LAUNCH_FAILED
             throw e
         } catch (e: Exception) {
-            state = if (timedOut) DurableShellState.TIMED_OUT else DurableShellState.LOST
-            exitCode = -1
-            return DurableShellResult(
-                state = state,
-                exitCode = exitCode,
-                controlDir = controlDir,
-            )
+            return when {
+                !launched -> DurableTaskTerminal.LaunchFailed(e.launchFailureRecord(opId, controlDir))
+                timeoutTriggered.get() -> DurableTaskTerminal.Cancelled(
+                    InterruptionRecord(
+                        kind = InterruptionKind.TIMEOUT,
+                        message = "durable shell timed out",
+                        operationId = opId,
+                        details = mapOf("controlDir" to controlDir.toString()),
+                    ),
+                )
+                else -> DurableTaskTerminal.Lost(
+                    lostFailureRecord(opId, controlDir, e.message ?: "durable task could not be reconciled"),
+                )
+            }
         } finally {
             // Cleanup based on final state
             cleanup(controlDir, exitCode)
         }
     }
+
+    private fun readJenkinsLogText(controlDir: Path): String? = try {
+        val logFile = controlDir.resolve("jenkins-log.txt")
+        if (Files.exists(logFile)) Files.readString(logFile) else null
+    } catch (_: Exception) {
+        null
+    }
 }
 
-/**
- * Writes the timeout.flag file to signal that the watchdog triggered.
- * Top-level to be accessible from both DurableShellExecutor members and executeDurableShell.
- *
- * Per TMO-S-005: timeout.flag MUST be written BEFORE kill to ensure
- * the reconciler can distinguish TIMED_OUT from LOST.
- *
- * @param controlDir The control directory path.
- */
-private fun writeTimeoutFlagInternal(controlDir: Path) {
-    try {
-        val flagFile = controlDir.resolve("timeout.flag")
-        Files.writeString(flagFile, System.currentTimeMillis().toString())
-    } catch (_: Exception) {
-        // Don't fail if we can't write the flag
-    }
+private data class DurableShellExecutionRequest(
+    val timeoutMs: Long,
+    val env: Map<String, SecretHandle>,
+    val sandbox: SandboxConfig,
+    val workspaceRoot: Path?,
+    val captureStdout: Boolean,
+    val outputProjection: DurableShellOutputProjection,
+    val timeoutCompletion: DurableShellTimeoutCompletion,
+)
+
+private enum class DurableShellOutputProjection {
+    CAPTURE_FILE,
+    JENKINS_LOG,
+}
+
+private enum class DurableShellTimeoutCompletion {
+    KILL_RESULT,
+    WATCHDOG_ATTEMPT,
 }
 
 /**
@@ -953,6 +1088,12 @@ private fun writeTimeoutFlagInternal(controlDir: Path) {
  * @param workspaceRoot Root directory for the stage workspace (DEC-1 cwd flip). If null, defaults to controlDir.
  * @return The execution result.
  */
+@Deprecated(
+    message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; removal is scheduled for EM-10.",
+    replaceWith = ReplaceWith(
+        "DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))",
+    ),
+)
 fun executeDurableShell(
     controlDir: Path,
     scriptContent: String,
@@ -964,93 +1105,14 @@ fun executeDurableShell(
     workspaceRoot: Path? = null,
 ): DurableShellResult {
     val executor = DurableShellExecutor()
-    var state = DurableShellState.LAUNCHING
-    var exitCode = -1
-    var process: ProcessHandle? = null
-    var timedOut = false
-
-    // T2 migration: env is now typed Map<String, SecretHandle>
-    try {
-        // Step 1: Launch (P2: env injected via pb.environment().putAll in launch())
-        process = executor.launch(controlDir, scriptContent, opId, config, captureStdout = false, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot)
-        state = DurableShellState.LAUNCHING
-
-        // Step 2: Detach
-        executor.detach(process, controlDir)
-        state = DurableShellState.RUNNING
-
-        // Step 3: Poll for result with optional timeout
-        // If timeoutMs > 0, schedule watchdog thread (per TMO-S-005: flag BEFORE kill)
-        val watchdogThread = if (timeoutMs > 0) {
-            Thread {
-                try {
-                    Thread.sleep(timeoutMs)
-                    writeTimeoutFlagInternal(controlDir)
-                    // Jenkins-faithful cookie scan kill
-                    // DEVIATION: Jenkins core has no SIGKILL escalation; our FAILED_TIMEOUT
-                    // determinism requires it per spec TMO-S-004 (process-tree kill, no zombies)
-                    executor.killWithCookieScan(process!!, opId)
-                    timedOut = true
-                } catch (_: InterruptedException) {
-                    // Normal interruption - timeout was cancelled
-                } catch (_: Exception) {
-                    // Fallback to destroyForcibly if cookie scan fails
-                    try { process?.destroyForcibly() } catch (_: Exception) {}
-                }
-            }.apply { start() }
-        } else null
-
-        // Poll for result
-        exitCode = executor.pollResult(controlDir, timeoutMs = if (timeoutMs > 0) timeoutMs + 30_000 else 3600_000) ?: -1
-
-        // Cancel watchdog if still running
-        watchdogThread?.interrupt()
-
-        // If we exited due to timeout
-        if (timedOut) {
-            state = DurableShellState.TIMED_OUT
-            // One grace poll cycle - late exit wins per TMO-S-009
-            val graceExitCode = executor.pollResult(controlDir, 1000)
-            if (graceExitCode != null) {
-                exitCode = graceExitCode
-                state = DurableShellState.COMPLETE
-            }
-        } else {
-            state = DurableShellState.COMPLETE
-        }
-
-        // Read jenkins-log.txt BEFORE cleanup deletes it. The wrapper writes
-        // stdout+stderr to jenkins-log.txt (captureStdout=false path), and
-        // cleanup() in the finally block deletes the control dir on success.
-        // Without this read here, callers (ShExecution.runShStep) would find
-        // the file gone by the time they try to emit EchoOutputCaptured.
-        val jenkinsLogText: String? = try {
-            val logFile = controlDir.resolve("jenkins-log.txt")
-            if (Files.exists(logFile)) Files.readString(logFile) else null
-        } catch (_: Exception) {
-            null
-        }
-
-        return DurableShellResult(
-            state = state,
-            exitCode = exitCode,
-            controlDir = controlDir,
-            capturedStdout = jenkinsLogText,
-        )
-    } catch (e: LinuxRequiredException) {
-        state = DurableShellState.LAUNCH_FAILED
-        throw e
-} catch (e: Exception) {
-            // Unexpected error during launch/detach/poll
-            state = if (timedOut) DurableShellState.TIMED_OUT else DurableShellState.LOST
-            exitCode = -1
-            return DurableShellResult(
-                state = state,
-                exitCode = exitCode,
-                controlDir = controlDir,
-            )
-        } finally {
-        // Cleanup based on final state
-        executor.cleanup(controlDir, exitCode)
-    }
+    return executor.executeLegacyProjection(
+        controlDir = controlDir,
+        scriptContent = scriptContent,
+        opId = opId,
+        config = config,
+        timeoutMs = timeoutMs,
+        env = env,
+        sandbox = sandbox,
+        workspaceRoot = workspaceRoot,
+    )
 }

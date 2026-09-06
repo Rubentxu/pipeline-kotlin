@@ -8,6 +8,48 @@
 3. No V1 repair on the V2 critical path; classify + quarantine instead.
 4. No V2 dependency on :pipeline-steps-system:compiler-plugin.
 
+## HEXAGONAL ARCHITECTURE (MANDATORY)
+
+Every implementation MUST preserve hexagonal dependency direction:
+
+1. Domain and application contracts define the inner seams and MUST NOT depend
+   on infrastructure, process, persistence, UI/CLI, or framework adapters.
+2. Adapters (Kotlin scripting hosts, Gradle/CLI, SQL/journals, process runners,
+   network clients) depend on inner contracts and implement their interfaces;
+   dependencies MUST NOT point back from inner modules to adapters.
+3. Public ports expose explicit typed contracts, preferably sealed ADTs for
+   outcomes with distinct semantics. Do not coordinate a boolean with nullable
+   or `Any?` values when a closed result type can express the cases.
+4. Generated artifacts may depend only on their declared public port. They MUST
+   NOT name application runtime, journal, persistence, or process adapters.
+5. Before adding a dependency, identify the owning seam and verify that it
+   points inward. If it would reverse the direction, introduce or refine a
+   port instead of coupling layers.
+
+## STRICT TYPED FUNCTIONAL DESIGN (MANDATORY)
+
+Implement domain and application behavior in a Haskell-inspired functional
+style where it improves correctness and makes invalid states unrepresentable:
+
+1. Model finite business outcomes, lifecycle states, commands, and errors as
+   sealed ADTs. `when` over an ADT MUST be exhaustive; do not use an `else`
+   branch to hide an unhandled case.
+2. Prefer immutable data, pure functions, explicit inputs, and returned values.
+   Keep I/O, persistence, clocks, randomness, process execution, and framework
+   calls at adapter seams behind typed ports.
+3. Do not use `Any?`, nullable sentinels, booleans coupled to nullable values,
+   mutable flag bags, or stringly typed state when a value class, enum, sealed
+   ADT, or typed DSL can state the invariant directly.
+4. DSLs MUST be statically typed, preserve meaningful result types, and reject
+   unsupported combinations before effects are launched. A DSL MUST NOT mimic
+   dynamic behavior by erasing types at its public interface.
+5. Prefer total transformations over partial functions. Validate external input
+   at adapters and return a typed failure case; do not let unchecked parsing,
+   casts, or incidental exceptions become normal domain control flow.
+6. Exceptions remain appropriate at process/framework boundaries and for
+   irrecoverable programmer defects. Expected operational outcomes MUST use the
+   corresponding typed result algebra.
+
 ### Exceptions (require explicit human approval + new Milestone)
 
 A. Critical security fix on V1 with no V2 equivalent.

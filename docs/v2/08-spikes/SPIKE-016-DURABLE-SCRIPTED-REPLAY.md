@@ -276,11 +276,19 @@ constraints), ADR-0067 (schema downgrade refusal) and ADR-0068 (INTERRUPTED /
 TIMEOUT ordering).
 
 **Evidence:** `Spike016DurableScriptedReplayTest` — 24 tests, 0 failures,
-0 errors; fresh XML generated 2026-09-06T10:12:17Z (canary: prior XML deleted
+0 errors; fresh XML generated 2026-09-06T13:18:30Z (canary: prior XML deleted
 before run). Command:
 `timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'Spike016DurableScriptedReplayTest'`
 exit 0. XML SHA-256:
-`79a245f390977de87dbf470980bb13295d4492fdf1c144403e9646b36576fdd9`.
+`add4d35ad514c58244fd17cba44b986ecd7ab4b537029da2cac2f19068fab9da`
+(3 consecutive runs confirmed 24/24; SHA-256 of run 1).
+
+**Harness stability fix (apply correction 2026-09-06):** the setsid shell
+pipeline in `Executor.launch` wrote the Base64-encoded result file and exited
+without a flush barrier; `await()` could read an empty or partially-written
+file (race: `IndexOutOfBoundsException` in `decode`). Fix: the shell command
+now atomically signals completion via a `.done` file after flushing the result,
+and `await()` polls for `.done` before reading. No production code changed.
 
 **ADR-0065 ratification:** with the widened suite green, the acceptance of
 ADR-0065 satisfies the gate demanded by the blocked `lfc4-000` specification;

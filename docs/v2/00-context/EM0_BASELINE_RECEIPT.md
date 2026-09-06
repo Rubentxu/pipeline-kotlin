@@ -26,7 +26,7 @@
 
 | Suite | Result |
 |---|---|
-| `Spike016DurableScriptedReplayTest` (widened E1..E7 + E2a..E5c + N1..N6) | 24/24 |
+| `Spike016DurableScriptedReplayTest` (widened E1..E7 + E2a..E5c + N1..N6; harness stabilized 2026-09-06 with .done-barrier fix) | 24/24 — XML SHA-256 `add4d35ad514c58244fd17cba44b986ecd7ab4b537029da2cac2f19068fab9da` (3 consecutive 24/24 runs confirmed) |
 | `DurableTaskTerminalContractTest` | 1/1 |
 | `ShellInvocationResultTest` | 2/2 |
 | `DurableShellTerminalAdapterTest` | 7/7 |

@@ -197,19 +197,10 @@ Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
 `LOCAL_FOUNDATION_CONSOLIDATION.md §EM ↔ LFC mapping`. E4-25
 (UatDurable009) is preserved above as existing parallel durable evidence.
 
-- **E-EM-01 (EM-0/LFC-4.0)** — contract freeze: ADR-0065 accepted
-  (SPIKE-016 expanded 24/24 PASS 2026-09-06); production expansion remains
-  gated by verification; specs + UAT_JEP + ADR-0066/0067/0068 proposed;
-  EM0_BASELINE_RECEIPT recorded. The full verify gate is not green while ~85
-  failures await base-vs-head classification.
-- **E-EM-02 (EM-1/LFC-4.1)** — durable terminal contract: IMPLEMENTED
-  (DurableTaskTerminal/FailureRecord/InterruptionRecord/ShellInvocationResult
-  + SDK adapter); pending release gate.
-- **E-EM-03 (EM-2/LFC-4.2)** — central StepExecutionBoundary: IMPLEMENTED;
-  pending release gate.
-- **E-EM-04 (EM-3/LFC-4.3)** — Jenkins-faithful sh: PARTIAL (typed
-  ShExecution landed; UAT-JEP-001..010 matrix and timeout-grammar path
-  incomplete — see UatDsl005TimeoutGrammarTest in EM0_BASELINE_RECEIPT).
+- **E-EM-01 (EM-0/LFC-4.0)** — ✅ CLOSED via v0.30.0 (99e9920)
+- **E-EM-02 (EM-1/LFC-4.1)** — ✅ CLOSED via v0.30.0 (99e9920)
+- **E-EM-03 (EM-2/LFC-4.2)** — ✅ CLOSED via v0.30.0 (99e9920)
+- **E-EM-04 (EM-3/LFC-4.3)** — ✅ CLOSED — Jenkins-faithful sh contract locked (EM-3, 2026-09-06) [JENKINS_SH_CONTRACT.md] [UAT_JENKINS_EXECUTION_PARITY.md]
 - **E-EM-05 (EM-4..EM-10 / LFC-4.4..LFC-6.3)** — body steps, durable timeout,
   real retry/catchError, context blocks, production scripted runtime,
   differential gate, legacy removal per EM_DEAD_CODE_AUDIT.md. EM-10 has
@@ -217,8 +208,7 @@ Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
   branch `withEnv` shell paths now carry `ShellInvocationResult`; only the
   deprecated compatibility adapter remains, pending fixtures and the full
   exit gate.
-- **E-EM-06** — verify-phase base-vs-head reconciliation of the ~85
-  unclassified baseline failures before any release claim.
+- **E-EM-06** — ✅ DONE: 91==91 base-vs-head byte-identical at 99e9920
 
 ## Dependency rule
 

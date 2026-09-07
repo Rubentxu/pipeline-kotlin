@@ -39,7 +39,12 @@ class CliNonCanonicalInMemoryExitsTwoTest {
             pipeline {
                 stages {
                     stage("workspace") {
-                        timestamps {
+                        // Use `ansiColor` — a non-canonical decorator that the canonical bridge
+                        // fails closed on (AGENTS.md STEP SEMANTICS #3). `deleteDir()` became canonical
+                        // in v0.33.0 (P1a), `timestamps` and `withCredentials` became canonical in
+                        // v0.33.1 (P2 closures), so we use `ansiColor` which is intentionally left
+                        // non-canonical and exercises the per-step fail-closed gate end-to-end.
+                        ansiColor("red") {
                             echo("hello")
                         }
                     }

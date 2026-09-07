@@ -21,15 +21,15 @@ import java.util.concurrent.TimeUnit
 class UatCompat001CorpusSmokeRunTest {
 
     // Fixtures that currently fail at runtime (exit non-zero).
-    // After v0.33.0 (P1a/P1b): fixtures 11 (workflow-control) and 13 (workspace-helpers)
-    // now PASS because their step families have canonical implementations. Fixture 14 is
-    // non-canonical `withCredentials` and fails closed by design (AGENTS.md STEP SEMANTICS #3).
-    // Fixture 13 also exercises `timestamps` decorator — not in canonical scope yet, deferred.
+    // After v0.33.1 (corpus-closure cycle): fixtures 02 (withEnv canonical), 13 (pwd/isUnix/timestamps
+    // synchronous + canonical), 14 (withCredentials pluginId fix) now PASS. Fixture 10 exercises
+    // archiveArtifacts with no real build output — it intentionally fails with exit 1 and emits
+    // ArtifactArchiveFailed, which is correct canonical behaviour. Fixture 15 exercises the
+    // canonical `error()` step which by design fails the run with exit 1. All other fixtures
+    // exit 0.
     private val brokenFixtures = setOf(
-        "02-environment.pipeline.kts",        // runtime failure
-        "10-smoke-e2e.pipeline.kts",         // runtime failure
-        "13-workspace-helpers.pipeline.kts",  // timestamps decorator not yet canonical
-        "14-credentials-bindings.pipeline.kts" // non-canonical plugin (withCredentials) → exit 2 (fail-closed)
+        "10-smoke-e2e.pipeline.kts", // archiveArtifacts: no files matched → exit 1 (correct canonical behaviour)
+        "15-error.pipeline.kts",    // `error("test")` step is a deliberate failure path
     )
 
     private fun discoverFixtures(): List<Path> {
@@ -47,7 +47,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(13, fixtures.size, "Corpus must have 13 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources)")
+        assertEquals(17, fixtures.size, "Corpus must have 17 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources; v0.33.1 added fixtures 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo)")
 
         val appBin = AppBinSupport.discover()
         val failures = mutableListOf<String>()
@@ -90,7 +90,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(13, fixtures.size, "Corpus must have 13 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources)")
+        assertEquals(17, fixtures.size, "Corpus must have 17 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources; v0.33.1 added fixtures 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo)")
         val appBin = AppBinSupport.discover()
 
         fixtures.forEach { fixture ->

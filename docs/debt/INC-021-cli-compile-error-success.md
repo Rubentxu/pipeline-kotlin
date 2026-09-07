@@ -57,4 +57,20 @@ git checkout examples/03-shell.pipeline.kts        # restore
 $BIN run v2/pipeline-application/src/test/resources/broken/99-broken-compilation.pipeline.kts
 # Exit: 1
 # stderr: Pipeline finished with FAILURE
+
+## Regression detected in v0.33.1 (cycle `corpus-closure`)
+
+After commit `f36a0cb7` (P2 corpus-closure, reordered the `runOutcome` when-block
+to gate on per-step canonical analysis FIRST), compile failures with empty
+`nonCanonicalSteps` re-entered the run branch and NPE'd on `compiledPipeline!!`
+at `Main.kt:345`. The test `CliCompileErrorExitsOneTest.run exits one with
+FAILURE on broken compilation()` regressed from PASS (v0.33.0 baseline
+`202598e7`: tests=3 failures=0) to FAIL (v0.33.1 pre-fix: tests=3 failures=1).
+
+Fix: hoist the `compileOutcome != null` arm of the when-block to be the FIRST
+case so a compile failure is reported with exit 1 instead of NPE. Commit
+`e67c646f` restores PASS (v0.33.1 post-fix: tests=3 failures=0).
+
+Evidence: worktree method comparing base `202598e7` vs `f36a0cb7` vs `e67c646f`
+all running `--tests dev.rubentxu.pipeline.v2.application.CliCompileErrorExitsOneTest`.
 ```

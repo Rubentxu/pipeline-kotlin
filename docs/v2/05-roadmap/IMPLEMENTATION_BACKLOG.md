@@ -125,6 +125,30 @@ El backlog está ordenado por dependencia y riesgo. Los IDs pueden convertirse d
 - **L-09** ✅ CLOSED — Jenkins catalog steps: workflow-control (dir/deleteDir/cleanWs/timeout/retry), error-handling (catchError/warnError/unstable), milestone, utility (pwd/isUnix/load/waitUntil), decorators (timestamps/ansiColor), node no-op + 3-state outcome model. **Gate: UAT-LOCAL-011 + UAT-LOCAL-012 + UAT-LOCAL-013.** (ML-R9 — v0.23.0)
 - **L-10 (H0 extract)** — extract `WithCredentialsExecutor` to provider-agnostic hexagonal architecture (zero behavior change). Strategy: new module `:pipeline-credentials-executor` + 4 driven ports in `pipeline-credentials-api/spi/` + `LocalCredentialProvider` adapter wrapping `LocalSecretStore` + `LocalFileMaterialization` extracted from `CredentialMaterializer`. Exit criterion: UAT008 baseline preserved (19 PASS / 8 FAIL byte-identical to pre-H0 XML `579b7ffb…`); `./gradlew -p v2 check` incremental green; FArch001/002/003 continue GREEN; sealed-class counts preserved (StepSpec=28, DomainEvent=39, BoundPurpose=7). Source: cycle `p-733fb505b5a6bd2d/ml-r10-credentials-parity` proposal addendum (replan, 2026-08-30). Owner: apply phase post-replan. Note: closes 0 of the 8 failing UATs (F-1..F-8); H0 is necessary but not sufficient — per-binding-kind provider implementations + audit-emit re-introduction deferred to ml-r10.1.
 - Carry-in: FIND-M4R1-016/022 (roll-forward de M4-R2) si aplican al tocar protocol/step-sdk.
+
+### LFC1-followup — INC-021 debt closures (cycle `p-733fb505b5a6bd2d/lfc1-followup-direct`, B-direct, v0.32.2)
+
+Pre-existing follow-up incidences opened during INC-021 archive, plus adjacent canonical step support that the INC-021 release deferred. All CLOSED in v0.32.2 (2026-09-07, head `1b1a5a7c`). See `archive-manifest.md` in cycle artifacts dir.
+
+- **LFC1-01 (INC-022)** ✅ CLOSED — `UatStep003` diagnostics-empty failure: test now asserts exactly one `StepFailed` + empty `RunFinished.diagnostics` (typed runtime-failure contract). Commits: `e1ceca6`. Exit criterion: `UatStep003ErrorAbortTest` PASS.
+- **LFC1-02 (INC-023)** ✅ CLOSED — `UatLocal005 RG-004` timeout: canonical `timeout` projection added to `CanonicalDurableRunCoordinator` + `ShOptions.timeoutMs`. Commits: `70e29d4`. Exit criterion: `CanonicalDurableRunCoordinatorTest.timeout*` + `UatLocal005* RG-004` PASS.
+- **LFC1-03 (INC-026)** ✅ CLOSED — INC-021b CLI durable UX: `DurableRunPolicy` sealed algebra (`ReusePriorRun` default + `--rerun` flag, mutual-exclusion check), real CLI/SQLite acceptance test. Commits: `307cacc`. Exit criterion: `UatDurableDefaultReuseCliTest` + `MainCliParsingTest` + `FArchLfc1CanonicalBridgeTest` PASS.
+- **LFC1-04 (INC-027)** ✅ CLOSED — INC-021c corpus fixtures 06/08/09: `StageScope.sh` preserves `isScriptBlock = false` by default; fixture `06-loop.pipeline.kts` escapes `${'$'}i` per rule 13. Commits: `2fe96cf` (amended with CP-001 corpus-untouched test update). Exit criterion: `CompatibilityCorpusTest` 13/13 PASS + `PipelineDslTopStepsTest` PASS + `UatLocal005CorpusUntouchedTest` PASS.
+- **LFC1-05** ✅ CLOSED — canonical `dir` block + shell recovery + continuation: `BlockShellScope` + `CanonicalContinuation` added to `CanonicalDurableRunCoordinator`. Commit: `70e29d4`. Exit criterion: `UatLocal011 SC-011-01` pwd oracle + `CanonicalDurableRunCoordinatorTest` dir/timeout/milestone PASS.
+- **LFC1-06** ✅ CLOSED — `warnError`→`Unstable` projection + canonical milestone record-only + in-memory fail-closed gate: `WorkflowControlProjection` enum added; `core.milestone` registered in `ALL_PLUGIN_IDS`; `MilestoneAborted` typed event emitted on out-of-order ordinal; CLI in-memory path applies the same eligibility gate as the durable path. Commit: `78d5814`. Exit criterion: `UatLocal012 warnError` projection 8/0/0 PASS + `UatLocal013 SC-013-02` out-of-order milestone PASS + `CliNonCanonicalInMemoryExitsTwoTest` PASS + `DslCompiledPipelineCompilerTest` PASS + `CanonicalCoreStepCommandRegistryTest` PASS.
+- **LFC1-07** ✅ CLOSED — AGENTS.md STEP SEMANTICS (MANDATORY) section codified: Jenkins familiarity (per `docs/v2/00-context/JENKINS_REFERENCE_BASELINE.md`), per-step typed domain events (never return-value-only), fail-closed coverage on every run path (durable + in-memory). Commit: `741ebc0`. Follow-up: ADR draft for STEP SEMANTICS policy (INC-ADR-STEP-SEMANTICS, P2, follow-up cycle recommended).
+
+#### Quarantined observations carried forward (NOT regressed by LFC1-followup, NOT closed)
+
+- **INC-024** — UatLocal011WorkflowControlTest SC-011-04/05/09/10/11/12 (6/13 expected-red, Group F top steps: `load`/`deleteDir`/`pwd`/`cleanWs`/`waitUntil`/`isUnix`) at the eligibility gate. Separate slice required to add canonical step support for each family. **P1, owner: next LFC1.x cycle.**
+- **WS-S-006/007/008/009/010** (UatLocal005EnvSpecialCharsTest) — 5 environmental drift failures (asdf Java 24 PATH drift + shell metachars in env values). Pre-existing, not regressed by LFC1-followup.
+
+#### Verification evidence
+
+- 15 fresh JUnit XML canaries across 3 modules: 114 tests total, 108 PASS, 6 fail (= INC-024 quarantined), 0 errors.
+- Verdict: PASS (all 10 mandatory gates satisfied).
+- Archive manifest: `archive-manifest.md` (sha256 `a35c11d6…`).
+- Tag: `v0.32.2` annotated, peels to `1b1a5a7c`.
 - **INC-MLR9-BASELINE-DRIFT** (P3) — `v2/compatibility/baseline.json` has 10 `FixtureSnapshot` entries (01..06 + 10..13); missing 07/08/09 from ML-R7. Runtime tests pass: `UatLocal005CorpusUntouchedTest` CP-001 byte-identity + CP-002 fixture count = 13 both PASS — drift is documentation/inventory, NOT a runtime regression. Action (backlog): backfill `baseline.json` with real sha256sum entries for `07-writeFile-readFile.pipeline.kts` + `08-withEnv-pipeline.pipeline.kts` + `09-archive-artefacts.pipeline.kts`; re-run `UatLocal005CorpusUntouchedTest`, `CorpusNormalizerTest`, `CorpusSnapshotDifferTest`, `CompatibilityCorpusTest`, `UatCompat001CorpusSmokeRunTest`; update spec scenario `CB-L9-002` if count widening rationale changes (13 vs 12). Origin: FIND-MLR9-DV-001 (verify S-1).
 
 ## Epic E6 — Kubernetes/Credentials

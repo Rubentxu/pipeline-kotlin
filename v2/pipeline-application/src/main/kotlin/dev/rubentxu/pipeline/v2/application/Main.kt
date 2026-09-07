@@ -259,7 +259,14 @@ fun main(args: Array<String>) {
         val dslJar = ScriptDefinition.dslApiJar()
         val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
         val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
-        val compileResult = host.compile(definition)
+        // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
+        // return values reflect the host environment during validation.
+        dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
+        val compileResult = try {
+            host.compile(definition)
+        } finally {
+            dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
+        }
         val events = store.eventsFor(validateRunId).toList()
         println(JsonEventLog.encode(events))
         if (!compileResult.isSuccess) {
@@ -300,7 +307,16 @@ fun main(args: Array<String>) {
         val dslJar = ScriptDefinition.dslApiJar()
         val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
         val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
-        val result = host.compile(definition0)
+        // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
+        // return values reflect the host environment. Lfc0GlobalStateFitnessTest
+        // requires :pipeline-scripting-api to read no global state; this scope is
+        // the single bridge. Cleared in a finally block.
+        dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
+        val result = try {
+            host.compile(definition0)
+        } finally {
+            dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
+        }
 
         val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
             val scriptInstance = result.scriptInstance
@@ -440,7 +456,14 @@ fun main(args: Array<String>) {
     val dslJar = ScriptDefinition.dslApiJar()
     val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
     val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
-    val result = host.compile(definition)
+    // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
+    // return values reflect the host environment for the durable run path.
+    dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
+    val result = try {
+        host.compile(definition)
+    } finally {
+        dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
+    }
 
     val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
         val scriptInstance = result.scriptInstance

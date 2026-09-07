@@ -855,7 +855,59 @@ data class WhenCondition(
  * ```
  */
 fun pipeline(block: PipelineScope.() -> Unit): PipelineSpec {
-    val scope = PipelineScope()
+    val scope = PipelineScope(currentRuntimeConfig())
+    scope.block()
+    return PipelineSpec(stages = scope.buildStages())
+}
+
+/**
+ * Sets the [dev.rubentxu.pipeline.v2.domain.RuntimeConfig] the DSL `pwd()` /
+ * `isUnix()` synchronous helpers read from for the current thread.
+ *
+ * Production adapters (the `pipeline-application` CLI) call this before
+ * compiling and executing a user pipeline script so synchronous return
+ * values reflect the host environment instead of placeholder values. Tests
+ * can call it with a deterministic `MapRuntimeConfig`. Nested calls are
+ * supported via a stack; the previous config is restored on `clear()`.
+ */
+public object DslRuntimeConfigScope {
+    private val stack: ThreadLocal<ArrayDeque<dev.rubentxu.pipeline.v2.domain.RuntimeConfig>> =
+        ThreadLocal.withInitial { ArrayDeque() }
+
+    @JvmStatic
+    fun set(config: dev.rubentxu.pipeline.v2.domain.RuntimeConfig) {
+        stack.get().addLast(config)
+    }
+
+    @JvmStatic
+    fun clear() {
+        val q = stack.get()
+        if (q.isNotEmpty()) q.removeLast()
+        if (q.isEmpty()) stack.remove()
+    }
+
+    @JvmStatic
+    fun current(): dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
+        stack.get().lastOrNull() ?: StubRuntimeConfig
+}
+
+internal fun currentRuntimeConfig(): dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
+    DslRuntimeConfigScope.current()
+
+/**
+ * Variant of [pipeline] that accepts an explicit [RuntimeConfig] so the DSL
+ * stays decoupled from global JVM state (see
+ * `Lfc0GlobalStateFitnessTest`).
+ *
+ * Production callers (the `pipeline-application` CLI) should pass the
+ * `SystemRuntimeConfig` adapter. Tests can pass a deterministic
+ * `MapRuntimeConfig`.
+ */
+fun pipeline(
+    runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig,
+    block: PipelineScope.() -> Unit,
+): PipelineSpec {
+    val scope = PipelineScope(runtimeConfig)
     scope.block()
     return PipelineSpec(stages = scope.buildStages())
 }
@@ -863,11 +915,14 @@ fun pipeline(block: PipelineScope.() -> Unit): PipelineSpec {
 /**
  * Receiver scope for the `stages { }` block inside `pipeline { }`.
  */
-class PipelineScope {
+class PipelineScope(
+    private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
+        currentRuntimeConfig(),
+) {
     private val stageBuilders = mutableListOf<StageBuilder>()
 
     fun stages(block: StagesScope.() -> Unit) {
-        val scope = StagesScope()
+        val scope = StagesScope(runtimeConfig)
         scope.block()
         scope.buildStageBuilders().forEach { stageBuilders.add(it) }
     }
@@ -878,11 +933,14 @@ class PipelineScope {
 /**
  * Receiver scope for the `stage("name") { }` block inside `stages { }`.
  */
-class StagesScope {
+class StagesScope(
+    private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
+        currentRuntimeConfig(),
+) {
     private val stageBuilders = mutableListOf<StageBuilder>()
 
     fun stage(name: String, block: StageScope.() -> Unit) {
-        val scope = StageScope(name)
+        val scope = StageScope(name, runtimeConfig)
         scope.block()
         stageBuilders.add(scope.toStageBuilder())
     }
@@ -891,9 +949,28 @@ class StagesScope {
 }
 
 /**
+ * Stub RuntimeConfig used as a default when the DSL is constructed without
+ * one. Returns empty strings for OS-dependent queries so the DSL still
+ * compiles but `pwd()` / `isUnix()` will return the placeholder values used
+ * pre-v0.33.1. Production callers must pass an explicit config; see
+ * [pipeline] overload that accepts a [dev.rubentxu.pipeline.v2.domain.RuntimeConfig].
+ */
+internal object StubRuntimeConfig : dev.rubentxu.pipeline.v2.domain.RuntimeConfig {
+    override fun env(name: String): String? = null
+    override fun property(name: String): String? = null
+    override fun property(name: String, default: String): String = default
+    override fun osName(): String = ""
+    override fun userDir(): String = ""
+}
+
+/**
  * Receiver scope for the step block inside `stage("name") { }`.
  */
-class StageScope(private val stageName: String) {
+class StageScope(
+    private val stageName: String,
+    private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
+        currentRuntimeConfig(),
+) {
     private val steps = mutableListOf<StepSpec>()
     private var agent: AgentSpec? = null
     private var environment: EnvironmentSpec? = null
@@ -1067,7 +1144,7 @@ class StageScope(private val stageName: String) {
      * @see CredentialsBinding
      */
     fun withCredentials(bindings: List<StepSpec.CredentialsBinding>, block: StageScope.() -> Unit) {
-        val innerScope = StageScope(stageName)
+        val innerScope = StageScope(stageName, runtimeConfig)
         innerScope.block()
         // The primary credentialsId is the first binding's ID
         val primaryId = bindings.firstOrNull()?.credentialsId ?: CredentialsId("")
@@ -1162,7 +1239,7 @@ class StageScope(private val stageName: String) {
      */
     fun whenCondition(expression: String, block: StageScope.() -> Unit) {
         val condition = WhenCondition(expression)
-        val tempScope = StageScope(stageName)
+        val tempScope = StageScope(stageName, runtimeConfig)
         tempScope.block()
         for (step in tempScope.steps) {
             steps.add(step)
@@ -1245,7 +1322,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps executed with the overridden environment
      */
     fun withEnv(overrides: List<String>, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.WithEnv(overrides = overrides, steps = inner.steps.toList()))
     }
@@ -1313,7 +1390,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps executed in the changed directory
      */
     fun dir(path: String, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.Dir(path = path, steps = inner.steps.toList()))
     }
@@ -1384,7 +1461,7 @@ class StageScope(private val stageName: String) {
         message: String? = null,
         block: StageScope.() -> Unit,
     ) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.CatchError(
             buildResult = buildResult,
@@ -1413,7 +1490,7 @@ class StageScope(private val stageName: String) {
         catchInterruptions: Boolean = true,
         block: StageScope.() -> Unit,
     ) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.WarnError(
             message = message,
@@ -1449,8 +1526,13 @@ class StageScope(private val stageName: String) {
     fun pwd(tmp: Boolean = false): String {
         val step = StepSpec.Pwd(tmp = tmp)
         steps.add(step)
-        // Return real workspace path synchronously for in-memory scripting host
-        return System.getProperty("user.dir")
+        // Return real workspace path synchronously for in-memory scripting host.
+        // Reads through the RuntimeConfig port so :pipeline-scripting-api does
+        // not couple to global JVM state; Lfc0GlobalStateFitnessTest enforces
+        // this constraint. When invoked with no explicit config (StubRuntimeConfig)
+        // the placeholder is "<workspace>" — preserved for backward compatibility
+        // with scripts that do not inject a runtime config.
+        return runtimeConfig.userDir().ifEmpty { "<workspace>" }
     }
 
     /**
@@ -1463,8 +1545,14 @@ class StageScope(private val stageName: String) {
      */
     fun isUnix(): Boolean {
         steps.add(StepSpec.IsUnix())
-        // Return real OS detection synchronously for in-memory scripting host
-        val osName = System.getProperty("os.name").lowercase()
+        // Return real OS detection synchronously for in-memory scripting host.
+        // Reads through the RuntimeConfig port so :pipeline-scripting-api does
+        // not couple to global JVM state; Lfc0GlobalStateFitnessTest enforces
+        // this constraint. With no explicit config (StubRuntimeConfig) this
+        // returns true as a placeholder — preserved for backward compatibility
+        // with scripts that do not inject a runtime config.
+        val osName = runtimeConfig.osName().lowercase()
+        if (osName.isEmpty()) return true
         return osName in listOf("linux", "macos", "darwin", "sunos", "aix", "hp-ux", "freebsd", "openbsd", "netbsd")
     }
 
@@ -1524,7 +1612,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps to execute with timestamp decoration
      */
     fun timestamps(block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.Timestamps(steps = inner.steps.toList()))
     }
@@ -1538,7 +1626,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps to execute with ANSI color decoration
      */
     fun ansiColor(colorMapName: String = "xterm", block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.AnsiColor(colorMapName = colorMapName, steps = inner.steps.toList()))
     }
@@ -1552,7 +1640,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps to execute
      */
     fun node(label: String? = null, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.NodeNoOp(label = label, steps = inner.steps.toList()))
     }
@@ -1588,7 +1676,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps to execute with timeout
      */
     fun timeout(time: Long, unit: String, activity: String? = null, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, activity = activity, steps = inner.steps.toList()))
     }
@@ -1603,7 +1691,7 @@ class StageScope(private val stageName: String) {
      * @param block Nested steps to execute with retry
      */
     fun retry(count: Int, conditions: List<String>? = null, block: StageScope.() -> Unit) {
-        val inner = StageScope(stageName)
+        val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.RetryBlock(count = count, conditions = conditions, steps = inner.steps.toList()))
     }

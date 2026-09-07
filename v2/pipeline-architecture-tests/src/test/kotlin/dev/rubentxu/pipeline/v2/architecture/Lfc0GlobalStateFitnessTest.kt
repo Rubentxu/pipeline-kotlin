@@ -45,5 +45,14 @@ class Lfc0GlobalStateFitnessTest {
     }
 
     private fun Path.isProductionKotlinSource(): Boolean =
-        toString().contains("/src/main/") && fileName.toString().endsWith(".kt")
+        toString().contains("/src/main/") && fileName.toString().endsWith(".kt") &&
+            // The `SystemRuntimeConfig` adapter is the canonical bridge between
+            // the production runtime and JVM/OS global state. It is the ONLY
+            // site allowed to call `System.getenv` / `System.getProperty`; that
+            // invariant is enforced separately by
+            // `FArchM1CanonicalRuntimeConfigTest`. Excluding the adapter from
+            // this fitness scan keeps the two constraints coherent: the adapter
+            // is the allowlist for direct global-state access, every other
+            // production site must go through it.
+            !toString().endsWith("/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/SystemRuntimeConfig.kt")
 }

@@ -31,6 +31,8 @@ class MapRuntimeConfig(
 
     override fun osName(): String = propertiesView["os.name"] ?: ""
 
+    override fun userDir(): String = propertiesView["user.dir"] ?: ""
+
     /** Returns an empty [MapRuntimeConfig] for tests that need a no-op config. */
     companion object {
         fun empty(): MapRuntimeConfig = MapRuntimeConfig(emptyMap(), emptyMap())

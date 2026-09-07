@@ -27,4 +27,6 @@ class SystemRuntimeConfig : RuntimeConfig {
     override fun property(name: String, default: String): String = System.getProperty(name, default)
 
     override fun osName(): String = System.getProperty("os.name") ?: ""
+
+    override fun userDir(): String = System.getProperty("user.dir") ?: ""
 }

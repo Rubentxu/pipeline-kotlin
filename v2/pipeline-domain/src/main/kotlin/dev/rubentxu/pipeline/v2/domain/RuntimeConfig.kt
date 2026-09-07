@@ -78,4 +78,15 @@ interface RuntimeConfig {
      * dance that already lives in `PipelineRun.kt`.
      */
     fun osName(): String
+
+    /**
+     * Returns the current working directory of the user. Exposed as a port
+     * method so DSL `pwd()` / `isUnix()` synchronous return values do not
+     * couple the `:pipeline-scripting-api` adapter to global JVM state.
+     *
+     * The fitness test `Lfc0GlobalStateFitnessTest` enforces that no
+     * production site other than `SystemRuntimeConfig` reads the JVM
+     * user-dir property directly.
+     */
+    fun userDir(): String
 }

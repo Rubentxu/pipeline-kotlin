@@ -284,6 +284,15 @@ fun main(args: Array<String>) {
             }
         } else null
 
+        val compileOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
+            dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    message = "Kotlin compilation failed"
+                )
+            )
+        } else null
+
         val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
         val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal =
             dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal(clock)
@@ -309,7 +318,7 @@ fun main(args: Array<String>) {
                 sandboxProfile = config.sandboxProfile,
             )
         } else {
-            null
+            compileOutcome
         }
 
         val events = eventStore.eventsFor(runId).toList()
@@ -328,7 +337,7 @@ fun main(args: Array<String>) {
             }
         } else {
             val lastEvent = events.lastOrNull()
-            val legacyOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
+            val legacyOutcome = if (lastEvent is RunFinished && lastEvent.outcome == "success") "success" else "failure"
             when (legacyOutcome) {
                 "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
                 "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
@@ -399,6 +408,16 @@ fun main(args: Array<String>) {
             }
         }
     } else null
+
+    val compileOutcome: RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
+        RunOutcome.Failure(
+            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                message = "Kotlin compilation failed"
+            )
+        )
+    } else null
+
     val compiledPipeline = pipelineSpec?.let { spec ->
         DslCompiledPipelineCompiler.compile(
             spec = spec,
@@ -505,7 +524,7 @@ fun main(args: Array<String>) {
             System.exit(2)
             null // unreachable
         }
-        else -> null
+        else -> compileOutcome
     }
 
     val events = eventStore.eventsFor(runId).toList()
@@ -532,7 +551,7 @@ fun main(args: Array<String>) {
         }
     } else {
         val lastEvent = events.lastOrNull()
-        val legacyOutcome = if (lastEvent is RunFinished) lastEvent.outcome else "success"
+        val legacyOutcome = if (lastEvent is RunFinished && lastEvent.outcome == "success") "success" else "failure"
         when (legacyOutcome) {
             "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
             "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }

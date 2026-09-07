@@ -46,17 +46,15 @@ What these examples exercise **works today**: linear pipelines, stages, real
 `sh` processes with structured failures, Kotlin `script {}` control flow, and
 journaling with `--db`.
 
-Known CLI limitations discovered while authoring these examples
-(see `docs/debt/INC-021-cli-compile-error-success.md`):
+Known limitations (tracked in `docs/debt/`):
 
-- A script with a Kotlin **compilation error** reports `SUCCESS` with exit 0
-  and executes zero steps (INC-021, high). Escape shell `$` as `\$` in
-  regular strings.
-- `validate` compiles raw Kotlin without the pre-compiler rewrite, so it can
-  reject scripts that `run` fine (INC-021a).
+- Corpus fixtures `06-loop.pipeline.kts`, `08-withEnv-pipeline.pipeline.kts`,
+  `09-archive-artefacts.pipeline.kts` fail to compile due to a DSL surface
+  issue (missing `isScriptBlock` parameter on `StageScope.sh()`). Deferred to
+  INC-021c.
 - `--db` does not skip on re-run by itself and `--resume` output is a merged
-  stream (INC-021b). Memoized same-run replay is proven at coordinator level
-  and in SPIKE-016, not yet as one-command CLI resume.
+  stream. Memoized same-run replay is proven at coordinator level and in
+  SPIKE-016, not yet as one-command CLI resume. Deferred to INC-021d.
 
 Not yet implemented (tracked in `docs/v2/05-roadmap/`): timeout deadlines
 (EM-5), `retry`/`catchError`/`warnError` semantics (EM-6), `withCredentials`

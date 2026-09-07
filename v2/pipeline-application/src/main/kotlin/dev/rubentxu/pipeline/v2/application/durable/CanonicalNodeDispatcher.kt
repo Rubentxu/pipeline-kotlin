@@ -33,6 +33,7 @@ class CanonicalNodeDispatcher {
     private val pwdDispatcher = CanonicalPwdNodeDispatcher()
     private val isUnixDispatcher = CanonicalIsUnixNodeDispatcher()
     private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
+    private val archiveArtifactsDispatcher = CanonicalArchiveArtifactsNodeDispatcher()
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
@@ -51,6 +52,7 @@ class CanonicalNodeDispatcher {
             // waitUntil: condition is not serializable; emit stub events and return success
             // Full condition evaluation requires the in-memory path where lambdas are preserved
             is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
+            is CanonicalCoreStepCommand.ArchiveArtifacts -> archiveArtifactsDispatcher.dispatch(command, context.archiveArtifactsContext())
         }
 
     private fun CanonicalRuntimeContext.shellContext() = CanonicalShellDispatchContext(
@@ -141,6 +143,16 @@ class CanonicalNodeDispatcher {
         stepIndex = stepIndex,
         eventSink = eventSink,
         condition = { true }, // Stub: condition not serializable in canonical path
+    )
+
+    private fun CanonicalRuntimeContext.archiveArtifactsContext() = CanonicalArchiveArtifactsDispatchContext(
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+        workspaceRoot = shOptions.workspaceRoot,
     )
 
 }

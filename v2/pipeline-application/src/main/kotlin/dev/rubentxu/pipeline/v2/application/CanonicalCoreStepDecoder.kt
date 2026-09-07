@@ -49,6 +49,7 @@ sealed interface CanonicalCoreStepCommand {
             "core.pwd",
             "core.isUnix",
             "core.waitUntil",
+            "core.archiveArtifacts",
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
@@ -188,6 +189,23 @@ sealed interface CanonicalCoreStepCommand {
         override val pluginId = "core.waitUntil"
         override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
+
+    /**
+     * T-08: archiveArtifacts step — archives build artifacts for retention.
+     * @param artifacts Ant-style glob pattern for files to archive
+     * @param allowEmptyArchive If true, allow empty glob results
+     * @param excludes Ant-style pattern for files to exclude
+     * @param fingerprint If true, compute SHA-256 fingerprint of archived files
+     */
+    data class ArchiveArtifacts(
+        val artifacts: String,
+        val allowEmptyArchive: Boolean = false,
+        val excludes: String = "",
+        val fingerprint: Boolean = false,
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.archiveArtifacts"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
 }
 
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
@@ -206,6 +224,7 @@ object CanonicalCoreStepDecoder {
     private const val PWD_PLUGIN_ID = "core.pwd"
     private const val IS_UNIX_PLUGIN_ID = "core.isUnix"
     private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
+    private const val ARCHIVE_ARTIFACTS_PLUGIN_ID = "core.archiveArtifacts"
 
     fun decode(node: StepNode): CanonicalCoreStepCommand {
         require(node.payload.schemaVersion == SCHEMA_VERSION) {
@@ -340,6 +359,17 @@ object CanonicalCoreStepDecoder {
                 CanonicalCoreStepCommand.WaitUntil(
                     initialRecurrencePeriod = initialRecurrencePeriod,
                     quiet = quiet,
+                )
+            }
+            ARCHIVE_ARTIFACTS_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "archiveArtifacts") {
+                    "Payload kind must be 'archiveArtifacts' for '${node.id.value}'"
+                }
+                CanonicalCoreStepCommand.ArchiveArtifacts(
+                    artifacts = payload.requiredString("artifacts"),
+                    allowEmptyArchive = payload["allowEmptyArchive"]?.jsonPrimitive?.booleanOrNull ?: false,
+                    excludes = payload["excludes"]?.jsonPrimitive?.contentOrNull ?: "",
+                    fingerprint = payload["fingerprint"]?.jsonPrimitive?.booleanOrNull ?: false,
                 )
             }
             else -> throw IllegalArgumentException(

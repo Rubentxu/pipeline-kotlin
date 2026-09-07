@@ -10,8 +10,8 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 13 entries (Shell, Echo, Error, Sleep, WriteFile,
- *   EmitEvent, Milestone, DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil).
+ * - sealedSubclasses has exactly 14 entries (Shell, Echo, Error, Sleep, WriteFile,
+ *   EmitEvent, Milestone, DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
  * - canonicalCoreStepIds derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 13 entries`() {
+    fun `sealedSubclasses has exactly 14 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(13, subclasses.size, "Expected exactly 13 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(14, subclasses.size, "Expected exactly 14 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -44,6 +44,8 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.pwd",
             "core.isUnix",
             "core.waitUntil",
+            // P2 — archiveArtifacts (v0.33.1)
+            "core.archiveArtifacts",
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.ALL_PLUGIN_IDS, "ALL_PLUGIN_IDS must match expected set")
@@ -156,6 +158,21 @@ class CanonicalCoreStepCommandRegistryTest {
     fun `WaitUntil has correct pluginId and defaultMetadata`() {
         val instance = CanonicalCoreStepCommand.WaitUntil(initialRecurrencePeriod = 1000L, quiet = false)
         assertEquals("core.waitUntil", instance.pluginId)
+        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
+    }
+
+    // P2 — archiveArtifacts canonical step family (v0.33.1)
+
+    @Test
+    fun `ArchiveArtifacts has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.ArchiveArtifacts(
+            artifacts = "build/**/*.jar",
+            allowEmptyArchive = false,
+            excludes = "",
+            fingerprint = true,
+        )
+        assertEquals("core.archiveArtifacts", instance.pluginId)
         assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
         assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
     }

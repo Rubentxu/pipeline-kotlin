@@ -399,6 +399,13 @@ object JsonEventLog {
                 sb.append(",\"durationMs\":")
                 sb.append(event.durationMs)
             }
+            // ML-R9 T-08 timestamps decorator events
+            is TimestampsEntered -> {
+                // no extra fields
+            }
+            is TimestampsExited -> {
+                // no extra fields
+            }
         }
         sb.append("}")
         return sb.toString()

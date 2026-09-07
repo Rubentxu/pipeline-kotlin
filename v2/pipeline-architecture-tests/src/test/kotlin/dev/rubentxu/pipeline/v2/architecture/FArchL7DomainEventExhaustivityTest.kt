@@ -29,9 +29,9 @@ import kotlin.reflect.full.memberProperties
 class FArchL7DomainEventExhaustivityTest {
 
     /**
-     * Verifies DomainEvent sealed hierarchy contains exactly 41 variants.
+     * Verifies DomainEvent sealed hierarchy contains exactly 43 variants.
      *
-     * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9 T-06 + 3 ML-R9 T-07 + 2 ML-R9 T-07 + 2 ML-R9 T-09 + 1 ML-R9 T-10):
+     * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9 T-06 + 3 ML-R9 T-07 + 2 ML-R9 T-07 + 2 ML-R9 T-09 + 1 ML-R9 T-10 + 2 ML-R9 T-08):
      * 1. RunStarted
      * 2. CompilationStarted
      * 3. CompilationFinished
@@ -73,13 +73,15 @@ class FArchL7DomainEventExhaustivityTest {
      * 39. MilestoneReached (ML-R9 T-09)
      * 40. MilestoneAborted (ML-R9 T-09)
      * 41. TimeoutTriggered (ML-R9 T-10)
+     * 42. TimestampsEntered (ML-R9 T-08)
+     * 43. TimestampsExited (ML-R9 T-08)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_41_variants`() {
+    fun `domain_event_sealed_hierarchy_has_43_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 41
+        val expectedCount = 43
 
         assertEquals(
             expectedCount,

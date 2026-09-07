@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
+import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
@@ -337,9 +339,10 @@ fun main(args: Array<String>) {
             )
         }
 
+        val nonCanonicalSteps = compiledPipeline?.analyzeCanonicalDurableExecution().orEmpty()
         val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
-            compiledPipeline?.supportsCanonicalDurableExecution() == true -> runCanonicalPipeline(
-                pipeline = compiledPipeline,
+            nonCanonicalSteps.isEmpty() -> runCanonicalPipeline(
+                pipeline = compiledPipeline!!,
                 runId = RunId(runId),
                 journal = journal,
                 cursorStore = cursorStore,
@@ -353,6 +356,9 @@ fun main(args: Array<String>) {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
                 // Same gate and message as the durable path (STEP SEMANTICS: fail-closed on every run path).
                 System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
+                for (step in nonCanonicalSteps) {
+                    System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
+                }
                 System.exit(2)
                 null // unreachable
             }

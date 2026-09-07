@@ -24,8 +24,10 @@ import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -183,6 +185,16 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
+            is StepSpec.Timestamps -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
+            is StepSpec.WithEnv -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -250,6 +262,13 @@ object DslCompiledPipelineCompiler {
         is StepSpec.Dir -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
             put("kind", "dir")
             put("path", step.path)
+        })
+        is StepSpec.Timestamps -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("kind", "timestamps")
+        })
+        is StepSpec.WithEnv -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("kind", "withEnv")
+            put("overrides", JsonArray(step.overrides.map { JsonPrimitive(it) }))
         })
         else -> "{}"
     }
@@ -578,6 +597,13 @@ object DslCompiledPipelineCompiler {
                 is StepSpec.Unstable -> {
                     put("kind", "unstable")
                     put("message", step.message)
+                }
+                is StepSpec.ArchiveArtifacts -> {
+                    put("kind", "archiveArtifacts")
+                    put("artifacts", step.artifacts)
+                    put("allowEmptyArchive", step.allowEmptyArchive ?: false)
+                    put("excludes", step.excludes)
+                    put("fingerprint", step.fingerprint ?: false)
                 }
                 else -> put("declarativeValue", step.toString())
             }

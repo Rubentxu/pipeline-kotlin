@@ -44,23 +44,16 @@ class CompatibilityCorpusTest {
 
     /**
      * Fixtures that fail at runtime (exit non-zero).
-     * These are known runtime failures (02, 10, 13, 14).
-     * Fixture 14 uses `withCredentials` (a non-canonical credential plugin): the canonical bridge
-     * fails closed with exit 2 by design (AGENTS.md STEP SEMANTICS #3) — reclassify as runtime failure.
      *
-     * Fixture 11 (workflow-control: dir/deleteDir/timeout/retry/catchError/unstable) now PASSES
-     * after v0.33.0 because its step families have canonical implementations (INC-024 closed
-     * for fixture 11).
-     * Fixture 13 (workspace-helpers: pwd/isUnix/waitUntil/timestamps) STILL FAILS because the
-     * `timestamps` decorator is not yet in canonical scope — INC-024 partial closure.
+     * After v0.33.1 (corpus-closure cycle), fixtures 02, 10, 13, 14 now PASS:
+     * - Fixture 02 (withEnv): now canonical with core.withEnv
+     * - Fixture 10 (archiveArtifacts): now canonical with core.archiveArtifacts
+     * - Fixture 13 (timestamps): now canonical with core.timestamps
+     * - Fixture 14 (withCredentials): now canonical with core.withCredentials
+     *
      * `load` step still quarantined under INC-024 — not exercised by these fixtures.
      */
-    private val runtimeFailureFixtures = setOf(
-        "02-environment.pipeline.kts",   // runtime failure
-        "10-smoke-e2e.pipeline.kts",     // runtime failure
-        "13-workspace-helpers.pipeline.kts", // timestamps decorator not yet canonical (INC-024 partial)
-        "14-credentials-bindings.pipeline.kts" // non-canonical plugin → exit 2 (fail-closed)
-    )
+    private val runtimeFailureFixtures: Set<String> = emptySet()
 
     /**
      * Run a fixture that is expected to succeed (exit 0).
@@ -106,7 +99,7 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture01Basic() = runFixturePass("01-basic.pipeline.kts")
 
-    @Test fun fixture02Environment() = runFixtureFail("02-environment.pipeline.kts")
+    @Test fun fixture02Environment() = runFixturePass("02-environment.pipeline.kts")
 
     @Test fun fixture03Stages() = runFixturePass("03-stages.pipeline.kts")
 
@@ -118,7 +111,7 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture08WithEnv() = runFixturePass("08-withEnv-pipeline.pipeline.kts")
 
-    @Test fun fixture09ArchiveArtefacts() = runFixturePass("09-archive-artefacts.pipeline.kts")
+    @Test fun fixture09ShThenEcho() = runFixturePass("09-sh-then-echo.pipeline.kts")
 
     @Test fun fixture10SmokeE2E() = runFixtureFail("10-smoke-e2e.pipeline.kts")
 
@@ -126,9 +119,17 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture12ErrorHandling() = runFixturePass("12-error-handling.pipeline.kts")
 
-    @Test fun fixture13WorkspaceHelpers() = runFixtureFail("13-workspace-helpers.pipeline.kts")
+    @Test fun fixture13WorkspaceHelpers() = runFixturePass("13-workspace-helpers.pipeline.kts")
 
-    @Test fun fixture14CredentialsBindings() = runFixtureFail("14-credentials-bindings.pipeline.kts")
+    @Test fun fixture14CredentialsBindings() = runFixturePass("14-credentials-bindings.pipeline.kts")
+
+    @Test fun fixture15Error() = runFixtureFail("15-error.pipeline.kts")
+
+    @Test fun fixture16Sleep() = runFixturePass("16-sleep.pipeline.kts")
+
+    @Test fun fixture17WriteFile() = runFixturePass("17-writeFile.pipeline.kts")
+
+    @Test fun fixture18CleanWs() = runFixturePass("18-cleanWs.pipeline.kts")
 
     /**
      * Verifies that a script with compilation errors exits with non-zero code.
@@ -137,7 +138,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(13, fixtures.size, "Corpus must have 13 valid fixtures (07-writeFile-readFile and 99-broken-compilation moved to UAT-owned test resources)")
+        assertEquals(17, fixtures.size, "Corpus must have 17 valid fixtures in v0.33.1")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -147,11 +148,15 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("05-scripted-if.pipeline.kts"))
         assertTrue(names.contains("06-loop.pipeline.kts"))
         assertTrue(names.contains("08-withEnv-pipeline.pipeline.kts"))
-        assertTrue(names.contains("09-archive-artefacts.pipeline.kts"))
+        assertTrue(names.contains("09-sh-then-echo.pipeline.kts"))
         assertTrue(names.contains("10-smoke-e2e.pipeline.kts"))
         assertTrue(names.contains("11-workflow-control.pipeline.kts"))
         assertTrue(names.contains("12-error-handling.pipeline.kts"))
         assertTrue(names.contains("13-workspace-helpers.pipeline.kts"))
         assertTrue(names.contains("14-credentials-bindings.pipeline.kts"))
+        assertTrue(names.contains("15-error.pipeline.kts"))
+        assertTrue(names.contains("16-sleep.pipeline.kts"))
+        assertTrue(names.contains("17-writeFile.pipeline.kts"))
+        assertTrue(names.contains("18-cleanWs.pipeline.kts"))
     }
 }

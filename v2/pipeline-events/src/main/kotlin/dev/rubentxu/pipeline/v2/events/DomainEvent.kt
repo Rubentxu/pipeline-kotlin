@@ -835,3 +835,31 @@ data class TimeoutTriggered(
 ) : DomainEvent {
     override val kind: String get() = "TimeoutTriggered"
 }
+
+// =============================================================================
+// ML-R9 output-decorator events (T-08) — timestamps
+// =============================================================================
+
+/**
+ * Emitted when entering a timestamps block.
+ */
+data class TimestampsEntered(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+) : DomainEvent {
+    override val kind: String get() = "TimestampsEntered"
+}
+
+/**
+ * Emitted when exiting a timestamps block.
+ */
+data class TimestampsExited(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+) : DomainEvent {
+    override val kind: String get() = "TimestampsExited"
+}

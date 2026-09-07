@@ -41,6 +41,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
@@ -56,17 +57,77 @@ private val canonicalBodyStepIds: Set<String> = setOf(
     "core.dir",
     "core.timeout",
     "core.retry",
-    "core.withCredentialsBlock",
+    "core.withCredentials",
+    "core.timestamps",
+    "core.withEnv",
 )
 
-/** True when the compiled pipeline fits the promoted canonical execution subset. */
-fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all { stage ->
-    (stage.body as? StageBody.Steps)?.steps?.all(StepNode::supportsCanonicalExecution) == true
+/**
+ * Describes a non-canonical step detected during pipeline analysis.
+ *
+ * @property stageIndex Index of the stage containing the non-canonical step
+ * @property stepIndex Index of the step within the stage
+ * @property stepId Human-readable step ID (from the pipeline definition)
+ * @property pluginStepId The plugin step ID (e.g. "custom.step")
+ * @property reason Why the step is non-canonical (e.g. "not in canonical core step IDs")
+ */
+data class NonCanonicalStep(
+    val stageIndex: Int,
+    val stepIndex: Int,
+    val stepId: String,
+    val pluginStepId: String,
+    val reason: String,
+)
+
+/**
+ * Analyzes the compiled pipeline and returns the list of non-canonical steps.
+ * An empty list means the pipeline is fully canonical and eligible for canonical durable execution.
+ */
+fun CompiledPipeline.analyzeCanonicalDurableExecution(): List<NonCanonicalStep> {
+    val nonCanonical = mutableListOf<NonCanonicalStep>()
+    for ((stageIndex, stage) in stages.withIndex()) {
+        val steps = (stage.body as? StageBody.Steps)?.steps ?: continue
+        for ((stepIndex, step) in steps.withIndex()) {
+            val issue = step.checkCanonicalExecution()
+            if (issue != null) {
+                nonCanonical.add(NonCanonicalStep(
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepId = step.id.value,
+                    pluginStepId = step.pluginStepId.value,
+                    reason = issue,
+                ))
+            }
+        }
+    }
+    return nonCanonical
 }
 
-private fun StepNode.supportsCanonicalExecution(): Boolean = when (this) {
-    is BlockStepNode -> pluginStepId.value in canonicalBodyStepIds && body.all(StepNode::supportsCanonicalExecution)
-    is OpaqueStepNode -> pluginStepId.value in canonicalCoreStepIds
+/** True when the compiled pipeline fits the promoted canonical execution subset. */
+fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean =
+    analyzeCanonicalDurableExecution().isEmpty()
+
+private fun StepNode.checkCanonicalExecution(): String? {
+    return when (this) {
+        is BlockStepNode -> {
+            if (pluginStepId.value !in canonicalBodyStepIds) {
+                "block step plugin not in canonical body step IDs"
+            } else {
+                body.forEach { child ->
+                    val childIssue = child.checkCanonicalExecution()
+                    if (childIssue != null) return childIssue
+                }
+                null
+            }
+        }
+        is OpaqueStepNode -> {
+            if (pluginStepId.value !in canonicalCoreStepIds) {
+                "opaque step plugin not in canonical core step IDs"
+            } else {
+                null
+            }
+        }
+    }
 }
 
 private sealed interface StageTimeoutProjection {
@@ -139,6 +200,8 @@ private sealed interface RunningCanonicalShellRecovery {
 private sealed interface BlockShellScope {
     data object None : BlockShellScope
     data class Directory(val target: Path, val previous: Path) : BlockShellScope
+    data class TimestampsScope(val runId: String) : BlockShellScope
+    data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
 }
 
 private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope = when (pluginStepId.value) {
@@ -153,9 +216,18 @@ private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope
             if (candidate.isAbsolute) candidate else previous.resolve(candidate)
         }.normalize()
         require(Path.of(path).isAbsolute || target.startsWith(previous)) {
-            "core.dir path escapes the current workspace: $path"
+            "core.dir path escapes workspace: $path"
         }
         BlockShellScope.Directory(target, previous)
+    }
+    "core.timestamps" -> {
+        BlockShellScope.TimestampsScope(runId = "")
+    }
+    "core.withEnv" -> {
+        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+        val overridesArray = payload["overrides"]?.jsonArray
+        val overrides = overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+        BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env)
     }
     else -> BlockShellScope.None
 }
@@ -533,6 +605,32 @@ class CanonicalDurableRunCoordinator(
                 )
                 stageShOptions.copy(workingDirectory = scope.target)
             }
+            is BlockShellScope.TimestampsScope -> {
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.TimestampsEntered(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                    ),
+                )
+                stageShOptions
+            }
+            is BlockShellScope.EnvScope -> {
+                // Parse env overrides and merge into ShOptions.env
+                val envOverrides = scope.overrides.associate { override ->
+                    val parts = override.split("=", limit = 2)
+                    if (parts.size == 2) {
+                        parts[0] to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(parts[1])
+                    } else {
+                        override to dev.rubentxu.pipeline.v2.domain.SecretHandle.plain("")
+                    }
+                }
+                val mergedEnv = scope.parentEnv + envOverrides
+                val envSpecValues = envOverrides.mapValues { it.value.borrow { bytes -> String(bytes, Charsets.UTF_8) } }
+                contextStack = contextStack.push(ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)))
+                stageShOptions.copy(env = mergedEnv)
+            }
         }
 
         try {
@@ -585,6 +683,16 @@ class CanonicalDurableRunCoordinator(
                         occurredAt = Instant.now(),
                         path = scope.target.toString(),
                         restoredTo = scope.previous.toString(),
+                    ),
+                )
+            }
+            if (scope is BlockShellScope.TimestampsScope) {
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.TimestampsExited(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
                     ),
                 )
             }

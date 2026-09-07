@@ -1449,8 +1449,8 @@ class StageScope(private val stageName: String) {
     fun pwd(tmp: Boolean = false): String {
         val step = StepSpec.Pwd(tmp = tmp)
         steps.add(step)
-        // Return value is set by the executor; for now return workspace root placeholder
-        return "<workspace>"
+        // Return real workspace path synchronously for in-memory scripting host
+        return System.getProperty("user.dir")
     }
 
     /**
@@ -1463,8 +1463,9 @@ class StageScope(private val stageName: String) {
      */
     fun isUnix(): Boolean {
         steps.add(StepSpec.IsUnix())
-        // Return value is set by the executor
-        return true
+        // Return real OS detection synchronously for in-memory scripting host
+        val osName = System.getProperty("os.name").lowercase()
+        return osName in listOf("linux", "macos", "darwin", "sunos", "aix", "hp-ux", "freebsd", "openbsd", "netbsd")
     }
 
     /**
@@ -1498,11 +1499,17 @@ class StageScope(private val stageName: String) {
         quiet: Boolean = false,
         condition: () -> Boolean,
     ) {
+        // Evaluate condition synchronously for in-memory scripting host path.
+        // For durable (canonical coordinator) path, the condition is not serializable
+        // so dispatchStub emits events and returns success.
+        val result = condition()
         steps.add(StepSpec.WaitUntil(
             initialRecurrencePeriod = initialRecurrencePeriod,
             quiet = quiet,
         ))
-        // Note: condition is currently not journaled; waitUntil uses ReplayPolicy.NEVER
+        if (!result) {
+            throw RuntimeException("waitUntil condition evaluated to false")
+        }
     }
 
     // =============================================================================

@@ -72,6 +72,9 @@ class InMemoryEventStore : EventSink {
             is MilestoneAborted -> event.copy(sequence = assignedSequence)
             // ML-R9 T-10 timeout events
             is TimeoutTriggered -> event.copy(sequence = assignedSequence)
+            // ML-R9 T-08 timestamps decorator events
+            is TimestampsEntered -> event.copy(sequence = assignedSequence)
+            is TimestampsExited -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

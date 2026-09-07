@@ -175,6 +175,8 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is MilestoneReached -> event.copy(sequence = assignedSequence)
                 is MilestoneAborted -> event.copy(sequence = assignedSequence)
                 is TimeoutTriggered -> event.copy(sequence = assignedSequence)
+                is TimestampsEntered -> event.copy(sequence = assignedSequence)
+                is TimestampsExited -> event.copy(sequence = assignedSequence)
             }
 
             conn.prepareStatement(

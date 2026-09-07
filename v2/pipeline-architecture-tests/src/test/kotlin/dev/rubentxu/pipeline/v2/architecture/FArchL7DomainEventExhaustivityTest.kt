@@ -11,26 +11,27 @@ import kotlin.reflect.full.memberProperties
  *
  * Architecture test that enforces DomainEvent sealed hierarchy is complete.
  *
- * The sealed hierarchy must contain exactly 39 variants:
+ * The sealed hierarchy must contain exactly 41 variants:
  * - 23 existing (ML-R1 through ML-R6)
  * - 4 new for ML-R7 (FileWritten, FileRead, ArtifactArchived, ArtifactArchiveFailed)
  * - 6 new for ML-R9 T-06 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
  * - 3 new for ML-R9 T-07 (WorkflowLoaded, WaitUntilPolled, WaitUntilCompleted)
+ * - 2 new for ML-R9 T-07 (PwdResolved, UnixDetected)
  * - 2 new for ML-R9 T-09 (MilestoneReached, MilestoneAborted)
  * - 1 new for ML-R9 T-10 (TimeoutTriggered)
  * NOTE: ArtifactEntry is a nested data class, not a standalone DomainEvent
  *
  * This CLOSES the DomainEvent exhaustivity invariant from ADR-0046 §D2.
  *
- * RED: AssertionError (hierarchy count != 39)
- * GREEN: After T-10, hierarchy count == 39
+ * RED: AssertionError (hierarchy count != 41)
+ * GREEN: After ML-R9 T-07 utility-step additions, hierarchy count == 41
  */
 class FArchL7DomainEventExhaustivityTest {
 
     /**
-     * Verifies DomainEvent sealed hierarchy contains exactly 39 variants.
+     * Verifies DomainEvent sealed hierarchy contains exactly 41 variants.
      *
-     * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9 T-06 + 3 ML-R9 T-07 + 2 ML-R9 T-09 + 1 ML-R9 T-10):
+     * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9 T-06 + 3 ML-R9 T-07 + 2 ML-R9 T-07 + 2 ML-R9 T-09 + 1 ML-R9 T-10):
      * 1. RunStarted
      * 2. CompilationStarted
      * 3. CompilationFinished
@@ -67,16 +68,18 @@ class FArchL7DomainEventExhaustivityTest {
      * 34. WorkflowLoaded (ML-R9 T-07)
      * 35. WaitUntilPolled (ML-R9 T-07)
      * 36. WaitUntilCompleted (ML-R9 T-07)
-     * 37. MilestoneReached (ML-R9 T-09)
-     * 38. MilestoneAborted (ML-R9 T-09)
-     * 39. TimeoutTriggered (ML-R9 T-10)
+     * 37. PwdResolved (ML-R9 T-07 — utility-step pwd family)
+     * 38. UnixDetected (ML-R9 T-07 — utility-step isUnix family)
+     * 39. MilestoneReached (ML-R9 T-09)
+     * 40. MilestoneAborted (ML-R9 T-09)
+     * 41. TimeoutTriggered (ML-R9 T-10)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_39_variants`() {
+    fun `domain_event_sealed_hierarchy_has_41_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 39
+        val expectedCount = 41
 
         assertEquals(
             expectedCount,
@@ -117,7 +120,7 @@ class FArchL7DomainEventExhaustivityTest {
     }
 
     /**
-     * Verifies all 36 variants have the required DomainEvent interface fields.
+     * Verifies all 38 variants have the required DomainEvent interface fields.
      */
     @Test
     fun `all_domain_event_variants_implement_interface_fields`() {

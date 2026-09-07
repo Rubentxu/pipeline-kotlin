@@ -65,6 +65,8 @@ class InMemoryEventStore : EventSink {
             is WorkflowLoaded -> event.copy(sequence = assignedSequence)
             is WaitUntilPolled -> event.copy(sequence = assignedSequence)
             is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
+            is PwdResolved -> event.copy(sequence = assignedSequence)
+            is UnixDetected -> event.copy(sequence = assignedSequence)
             // ML-R9 T-09 milestone events
             is MilestoneReached -> event.copy(sequence = assignedSequence)
             is MilestoneAborted -> event.copy(sequence = assignedSequence)

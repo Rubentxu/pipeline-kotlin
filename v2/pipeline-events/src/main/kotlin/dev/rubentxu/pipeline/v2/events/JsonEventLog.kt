@@ -363,6 +363,22 @@ object JsonEventLog {
                 sb.append(",\"outcome\":")
                 sb.append(jsonString(event.outcome))
             }
+            is PwdResolved -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path))
+                sb.append(",\"workspaceRoot\":")
+                sb.append(jsonString(event.workspaceRoot))
+                sb.append(",\"sha256\":")
+                sb.append(jsonString(event.sha256))
+            }
+            is UnixDetected -> {
+                sb.append(",\"isUnix\":")
+                sb.append(event.isUnix)
+                sb.append(",\"osName\":")
+                sb.append(jsonString(event.osName))
+                sb.append(",\"sha256\":")
+                sb.append(jsonString(event.sha256))
+            }
             is MilestoneReached -> {
                 sb.append(",\"ordinal\":")
                 sb.append(event.ordinal)
@@ -930,6 +946,34 @@ object JsonEventLog {
                     totalAttempts = totalAttempts,
                     totalDurationMs = totalDurationMs,
                     outcome = outcome,
+                )
+            }
+            "PwdResolved" -> {
+                val path = stringField(s, "path") ?: ""
+                val workspaceRoot = stringField(s, "workspaceRoot") ?: ""
+                val sha256 = stringField(s, "sha256") ?: ""
+                PwdResolved(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    workspaceRoot = workspaceRoot,
+                    sha256 = sha256,
+                )
+            }
+            "UnixDetected" -> {
+                val isUnix = boolField(s, "isUnix") ?: false
+                val osName = stringField(s, "osName") ?: ""
+                val sha256 = stringField(s, "sha256") ?: ""
+                UnixDetected(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    isUnix = isUnix,
+                    osName = osName,
+                    sha256 = sha256,
                 )
             }
             "MilestoneReached" -> {

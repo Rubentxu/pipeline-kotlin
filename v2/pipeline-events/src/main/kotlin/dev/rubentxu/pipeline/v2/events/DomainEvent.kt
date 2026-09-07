@@ -731,6 +731,48 @@ data class WaitUntilCompleted(
 }
 
 // =============================================================================
+// ML-R9 T-07 utility-introspection events: pwd, isUnix, waitUntil
+// =============================================================================
+
+/**
+ * Emitted when `pwd()` resolves the current workspace path.
+ *
+ * @param path The resolved absolute path
+ * @param workspaceRoot The durable workspace root used for resolution
+ * @param sha256 SHA-256 of the resolved path string (for replay fingerprinting)
+ */
+data class PwdResolved(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: String,
+    val workspaceRoot: String,
+    val sha256: String,
+) : DomainEvent {
+    override val kind: String get() = "PwdResolved"
+}
+
+/**
+ * Emitted when `isUnix()` detects the operating system type.
+ *
+ * @param isUnix True if the OS is Unix-like (Linux, macOS, Darwin)
+ * @param osName The raw os.name system property value
+ * @param sha256 SHA-256 of the osName string (for replay fingerprinting)
+ */
+data class UnixDetected(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val isUnix: Boolean,
+    val osName: String,
+    val sha256: String,
+) : DomainEvent {
+    override val kind: String get() = "UnixDetected"
+}
+
+// =============================================================================
 // ML-R9 milestone events (T-09)
 // =============================================================================
 

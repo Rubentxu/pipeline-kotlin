@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -42,6 +43,12 @@ sealed interface CanonicalCoreStepCommand {
             "core.file.writeFile",
             "core.emit.event",
             "core.milestone",
+            "core.deleteDir",
+            "core.cleanWs",
+            "core.load",
+            "core.pwd",
+            "core.isUnix",
+            "core.waitUntil",
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
@@ -112,6 +119,75 @@ sealed interface CanonicalCoreStepCommand {
         override val pluginId = "core.milestone"
         override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
+
+    /**
+     * T-05: deleteDir step — recursively deletes workspace contents, leaves workspace intact.
+     * Idempotent: re-execution on already-deleted path emits DirDeleted with deletedCount=0.
+     */
+    data class DeleteDir(
+        val path: String = ".",
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.deleteDir"
+        override val defaultMetadata = StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED)
+    }
+
+    /**
+     * T-05: cleanWs step — cleans workspace with optional Ant-style glob filtering.
+     * @param deleteDirs If true, delete all subdirectories too
+     * @param patterns Additional glob patterns to delete
+     */
+    data class CleanWs(
+        val deleteDirs: Boolean = true,
+        val patterns: List<String> = emptyList(),
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.cleanWs"
+        override val defaultMetadata = StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED)
+    }
+
+    /**
+     * T-05: load step — reads and evaluates a pipeline script file in the workspace.
+     * Re-entrant: subsequent calls with same (path, sha256) are skipped.
+     */
+    data class Load(
+        val path: String,
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.load"
+        override val defaultMetadata = StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED)
+    }
+
+    /**
+     * T-07: pwd step — returns the current workspace directory as an absolute path.
+     * @param tmp If true, creates and returns a temp subdirectory path instead
+     */
+    data class Pwd(
+        val tmp: Boolean = false,
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.pwd"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
+
+    /**
+     * T-07: isUnix step — checks if the current OS is Unix-like (Linux/macOS/Darwin).
+     */
+    data class IsUnix(
+        val unused: Unit = Unit, // sealed class requires at least one field; no params from DSL
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.isUnix"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
+
+    /**
+     * T-07: waitUntil step — polls a condition lambda until it returns true or deadline elapses.
+     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000)
+     * @param quiet If true, suppress output during polling
+     */
+    data class WaitUntil(
+        val initialRecurrencePeriod: Long = 1000L,
+        val quiet: Boolean = false,
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.waitUntil"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
 }
 
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
@@ -124,6 +200,12 @@ object CanonicalCoreStepDecoder {
     private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
     private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
     private const val MILESTONE_PLUGIN_ID = "core.milestone"
+    private const val DELETE_DIR_PLUGIN_ID = "core.deleteDir"
+    private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
+    private const val LOAD_PLUGIN_ID = "core.load"
+    private const val PWD_PLUGIN_ID = "core.pwd"
+    private const val IS_UNIX_PLUGIN_ID = "core.isUnix"
+    private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
 
     fun decode(node: StepNode): CanonicalCoreStepCommand {
         require(node.payload.schemaVersion == SCHEMA_VERSION) {
@@ -202,6 +284,62 @@ object CanonicalCoreStepDecoder {
                 CanonicalCoreStepCommand.Milestone(
                     ordinal = ordinal,
                     label = payload["label"]?.jsonPrimitive?.contentOrNull,
+                )
+            }
+            DELETE_DIR_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "deleteDir") {
+                    "Payload kind must be 'deleteDir' for '${node.id.value}'"
+                }
+                CanonicalCoreStepCommand.DeleteDir(
+                    path = payload["path"]?.jsonPrimitive?.contentOrNull ?: ".",
+                )
+            }
+            CLEAN_WS_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "cleanWs") {
+                    "Payload kind must be 'cleanWs' for '${node.id.value}'"
+                }
+                val deleteDirs = payload["deleteDirs"]?.jsonPrimitive?.booleanOrNull ?: true
+                val patternsRaw = payload["patterns"]
+                val patterns = if (patternsRaw != null) {
+                    patternsRaw.jsonArray.map { it.jsonPrimitive.contentOrNull ?: "" }
+                } else {
+                    emptyList()
+                }
+                CanonicalCoreStepCommand.CleanWs(
+                    deleteDirs = deleteDirs,
+                    patterns = patterns,
+                )
+            }
+            LOAD_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "load") {
+                    "Payload kind must be 'load' for '${node.id.value}'"
+                }
+                CanonicalCoreStepCommand.Load(
+                    path = payload.requiredString("path"),
+                )
+            }
+            PWD_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "pwd") {
+                    "Payload kind must be 'pwd' for '${node.id.value}'"
+                }
+                val tmp = payload["tmp"]?.jsonPrimitive?.booleanOrNull ?: false
+                CanonicalCoreStepCommand.Pwd(tmp = tmp)
+            }
+            IS_UNIX_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "isUnix") {
+                    "Payload kind must be 'isUnix' for '${node.id.value}'"
+                }
+                CanonicalCoreStepCommand.IsUnix()
+            }
+            WAIT_UNTIL_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "waitUntil") {
+                    "Payload kind must be 'waitUntil' for '${node.id.value}'"
+                }
+                val initialRecurrencePeriod = payload["initialRecurrencePeriod"]?.jsonPrimitive?.content?.toLongOrNull() ?: 1000L
+                val quiet = payload["quiet"]?.jsonPrimitive?.booleanOrNull ?: false
+                CanonicalCoreStepCommand.WaitUntil(
+                    initialRecurrencePeriod = initialRecurrencePeriod,
+                    quiet = quiet,
                 )
             }
             else -> throw IllegalArgumentException(

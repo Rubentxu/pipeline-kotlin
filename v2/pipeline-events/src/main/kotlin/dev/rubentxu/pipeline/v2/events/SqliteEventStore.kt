@@ -170,6 +170,8 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is WorkflowLoaded -> event.copy(sequence = assignedSequence)
                 is WaitUntilPolled -> event.copy(sequence = assignedSequence)
                 is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
+                is PwdResolved -> event.copy(sequence = assignedSequence)
+                is UnixDetected -> event.copy(sequence = assignedSequence)
                 is MilestoneReached -> event.copy(sequence = assignedSequence)
                 is MilestoneAborted -> event.copy(sequence = assignedSequence)
                 is TimeoutTriggered -> event.copy(sequence = assignedSequence)

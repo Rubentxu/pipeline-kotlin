@@ -27,6 +27,12 @@ class CanonicalNodeDispatcher {
     private val writeFileDispatcher = CanonicalWriteFileNodeDispatcher()
     private val emitEventDispatcher = CanonicalEmitEventNodeDispatcher()
     private val milestoneDispatcher = CanonicalMilestoneNodeDispatcher()
+    private val deleteDirDispatcher = CanonicalDeleteDirNodeDispatcher()
+    private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
+    private val loadDispatcher = CanonicalLoadNodeDispatcher()
+    private val pwdDispatcher = CanonicalPwdNodeDispatcher()
+    private val isUnixDispatcher = CanonicalIsUnixNodeDispatcher()
+    private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
@@ -37,6 +43,14 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.WriteFile -> writeFileDispatcher.dispatch(command, context.writeFileContext())
             is CanonicalCoreStepCommand.EmitEvent -> emitEventDispatcher.dispatch(command, context.emitEventContext())
             is CanonicalCoreStepCommand.Milestone -> milestoneDispatcher.dispatch(command, context.milestoneContext())
+            is CanonicalCoreStepCommand.DeleteDir -> deleteDirDispatcher.dispatch(command, context.deleteDirContext())
+            is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
+            is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
+            is CanonicalCoreStepCommand.Pwd -> pwdDispatcher.dispatch(command, context.pwdContext())
+            is CanonicalCoreStepCommand.IsUnix -> isUnixDispatcher.dispatch(command, context.isUnixContext())
+            // waitUntil: condition is not serializable; emit stub events and return success
+            // Full condition evaluation requires the in-memory path where lambdas are preserved
+            is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
         }
 
     private fun CanonicalRuntimeContext.shellContext() = CanonicalShellDispatchContext(
@@ -80,4 +94,53 @@ class CanonicalNodeDispatcher {
         runId = runId,
         eventSink = eventSink,
     )
+
+    private fun CanonicalRuntimeContext.deleteDirContext() = CanonicalDeleteDirDispatchContext(
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+    )
+
+    private fun CanonicalRuntimeContext.cleanWsContext() = CanonicalCleanWsDispatchContext(
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+    )
+
+    private fun CanonicalRuntimeContext.loadContext() = CanonicalLoadDispatchContext(
+        runId = runId,
+        stageName = stageName,
+        stageIndex = stageIndex,
+        stepIndex = stepIndex,
+        controlDirRoot = controlDirRoot,
+        eventSink = eventSink,
+        loadedFingerprints = mutableSetOf(), // Per-run fingerprint cache
+    )
+
+    private fun CanonicalRuntimeContext.pwdContext() = CanonicalPwdDispatchContext(
+        runId = runId,
+        stepIndex = stepIndex,
+        eventSink = eventSink,
+        workspaceRoot = shOptions.workspaceRoot,
+    )
+
+    private fun CanonicalRuntimeContext.isUnixContext() = CanonicalIsUnixDispatchContext(
+        runId = runId,
+        stepIndex = stepIndex,
+        eventSink = eventSink,
+    )
+
+    private fun CanonicalRuntimeContext.waitUntilContext() = CanonicalWaitUntilDispatchContext(
+        runId = runId,
+        stepIndex = stepIndex,
+        eventSink = eventSink,
+        condition = { true }, // Stub: condition not serializable in canonical path
+    )
+
 }

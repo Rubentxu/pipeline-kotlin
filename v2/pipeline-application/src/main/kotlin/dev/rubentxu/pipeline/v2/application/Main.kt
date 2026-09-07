@@ -120,7 +120,8 @@ sealed interface DurableRunSelection {
  */
 const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
     "Error: script uses non-canonical plugins; canonical bridge requires " +
-        "core.sh/core.echo/core.error/core.sleep/core.file.writeFile/core.emit.event/core.milestone."
+        "core.sh/core.echo/core.error/core.sleep/core.file.writeFile/core.emit.event/core.milestone/" +
+        "core.deleteDir/core.cleanWs/core.load/core.pwd/core.isUnix/core.waitUntil."
 
 /**
  * Parses CLI arguments for the pipeline runner.

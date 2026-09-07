@@ -912,10 +912,21 @@ class StageScope(private val stageName: String) {
      * Shell step with full options.
      *
      * @param script The shell command to execute.
+     * @param isScriptBlock Whether the command is the body of a script block.
      * @param returnStdout If true, capture stdout to output.txt for return value access.
      */
-    fun sh(script: String, returnStdout: Boolean = false) {
-        steps.add(StepSpec.Shell(command = script, returnStdout = returnStdout))
+    fun sh(
+        script: String,
+        isScriptBlock: Boolean = false,
+        returnStdout: Boolean = false,
+    ) {
+        steps.add(
+            StepSpec.Shell(
+                command = script,
+                isScriptBlock = isScriptBlock,
+                returnStdout = returnStdout,
+            ),
+        )
     }
 
     /**

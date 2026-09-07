@@ -37,9 +37,10 @@ when a `RunFinished` event with `outcome == "success"` is present; otherwise
    appears to use a fresh RunId). `--resume` emits a merged stream (duplicated
    sequence numbers: partial journal replay + full re-execution). Deferred to
    INC-021d cycle.
-3. **INC-021c — corpus fixtures 06/08/09 fail to compile.** These fixtures
-   use `sh(..., isScriptBlock=true/false)` which is not a parameter on the
-   current `StageScope.sh()` overloads. Deferred to INC-021c cycle.
+3. **INC-021c — corpus fixtures 06/08/09 fail to compile.** Fixed directly:
+   `StageScope.sh()` accepts `isScriptBlock: Boolean = false` and preserves it
+   with `returnStdout` in `StepSpec.Shell`, restoring source compatibility for
+   the three fixtures without changing scripted runtime facades.
 
 ## Repro (pre-fix)
 

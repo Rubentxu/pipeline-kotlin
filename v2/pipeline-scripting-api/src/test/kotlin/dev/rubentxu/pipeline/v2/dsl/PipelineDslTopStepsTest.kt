@@ -22,6 +22,18 @@ import org.junit.jupiter.api.Test
 @DisplayName("PipelineDsl top-steps builders")
 class PipelineDslTopStepsTest {
 
+    @Test
+    fun `sh_builder_preserves_script_block_and_stdout_flags`() {
+        val scope = StageScope("test")
+
+        scope.sh("for i in 1 2; do echo \"${'$'}i\"; done", isScriptBlock = true, returnStdout = true)
+
+        val shell = scope.steps().last() as StepSpec.Shell
+        assertEquals("for i in 1 2; do echo \"${'$'}i\"; done", shell.command)
+        assertTrue(shell.isScriptBlock)
+        assertTrue(shell.returnStdout)
+    }
+
     // =============================================================================
     // writeFile
     // =============================================================================

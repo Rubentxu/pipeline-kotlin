@@ -143,6 +143,22 @@ Pre-existing follow-up incidences opened during INC-021 archive, plus adjacent c
 - **INC-024** — UatLocal011WorkflowControlTest SC-011-04/05/09/10/11/12 (6/13 expected-red, Group F top steps: `load`/`deleteDir`/`pwd`/`cleanWs`/`waitUntil`/`isUnix`) at the eligibility gate. Separate slice required to add canonical step support for each family. **P1, owner: next LFC1.x cycle.**
 - **WS-S-006/007/008/009/010** (UatLocal005EnvSpecialCharsTest) — 5 environmental drift failures (asdf Java 24 PATH drift + shell metachars in env values). Pre-existing, not regressed by LFC1-followup.
 
+### v0.33.0 — INC-024 partial closure + INC-baseline-env-drift (cycle `p-733fb505b5a6bd2d/p1a-workflow-control-steps` + `p-733fb505b5a6bd2d/p1b-utility-steps` + `p-733fb505b5a6bd2d/p3-env-drift-fix` + `p-733fb505b5a6bd2d/p2-adr-step-semantics`, B-direct)
+
+INC-024 closed for **5 of 6** Group F top step families; `load` step still quarantined (architectural gap: coordinator does not yet support step-yielding). INC-baseline-env-drift closed (5 of 5 env-special-chars tests). ADR-0069 codifies the STEP SEMANTICS policy that governed this slice. All four cycles on top of v0.32.2 (`c88d5c88`); tag `v0.33.0`.
+
+- **LFC1.1 (INC-024 partial, 5/6)** ✅ CLOSED — `deleteDir` + `cleanWs` + `load` (P1a) + `pwd` + `isUnix` + `waitUntil` (P1b) now have canonical implementations with typed domain events (`DirDeleted`, `WsCleaned`, `LoadEvaluated`, `PwdResolved`, `UnixDetected`, `WaitUntilPolled`, `WaitUntilCompleted`) registered in `CanonicalCoreStepCommand.ALL_PLUGIN_IDS` (7 → 13). UAT-LOCAL-011 SC-011-04/05/09/10/12 now PASS; SC-011-11 (`load`) remains @Disabled pending coordinator support for step-yielding. Commits: `81018559` (P1a + P1b bundled) + `7b76903c` (test alignment). Exit criterion: `CanonicalCoreStepCommandRegistryTest` 13 sealed subclasses + 15 tests PASS; `UatLocal011WorkflowControlTest` 12/12 non-disabled PASS; `CompatibilityCorpusTest` 14/14 PASS (fixture 11 moved from broken to expected-pass).
+- **LFC1.2 (INC-baseline-env-drift, 5/5)** ✅ CLOSED — `CanonicalDurableRunCoordinator.projectShellOptions` now merges `EnvironmentSpec.values` into `ShOptions.env`. Root cause: `withCredentials`/`environment { }` block env values were never reaching the subprocess (the stage's `environment` field was being silently ignored). Commit: `c45694b6`. Exit criterion: `UatLocal005EnvSpecialCharsTest` 5/5 PASS (WS-S-006/007/008/009/010).
+- **LFC1.3 (INC-ADR-STEP-SEMANTICS)** ✅ CLOSED — ADR-0069 documents the STEP SEMANTICS policy that AGENTS.md added in v0.32.2 as a formal architectural decision. Status: Accepted (2026-09-07). Commit: `f3d05931`. Exit criterion: `docs/v2/04-adrs/ADR-0069-step-semantics-policy.md` + README index entry.
+- **LFC1.4 (test alignment)** ✅ CLOSED — `CanonicalCoreStepCommandRegistryTest` bumped to 13 subclasses; `CompatibilityCorpusTest.fixture13` stays in `runtimeFailureFixtures` (timestamps decorator still non-canonical — INC-024 partial); `CliNonCanonicalInMemoryExitsTwoTest` uses `timestamps` instead of `deleteDir` as the non-canonical trigger (deleteDir is now canonical). Commit: `7b76903c`.
+
+#### Quarantined observations carried forward to v0.33.x
+
+- **INC-024 residual** — UAT-LOCAL-011 SC-011-11 (`load` step) remains @Disabled. Coordinator does not yet support step-yielding steps (a `load` step that produces child steps to be injected into the execution flow). Requires coordinator-level changes. **P1, separate slice.**
+- **`timestamps` decorator** (INC-024 partial) — fixture 13 stays in `runtimeFailureFixtures` because `timestamps {}` block is not yet canonical. **P2, separate slice.**
+- **UatLocal005CheckoutGitTest** — pre-existing git-wrapper fail-closed (no git identity configured in test environment). Not regressed by this slice. **P3.**
+- **INC-MLR9-BASELINE-DRIFT** — pre-existing documentation/inventory drift, not a runtime regression.
+
 #### Verification evidence
 
 - 15 fresh JUnit XML canaries across 3 modules: 114 tests total, 108 PASS, 6 fail (= INC-024 quarantined), 0 errors.

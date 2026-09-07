@@ -261,6 +261,7 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 | ML-R9 — Jenkins catalog steps workflow-control + error-handling + milestone + 3-state outcome | ✅ CLOSED | **v0.23.0** | 1526711… | 2026-08-30 |
 | ML-R10 — H0 extract `WithCredentialsExecutor` to provider-agnostic hexagonal (zero behavior change) | ✅ CLOSED (via follow-up cycle `ml-r10-2-5`, PASS_WITH_WARNINGS) | **v0.24.2+** | 7af9e95 | 2026-08-31 |
 | LFC1-followup — INC-021 follow-ups: canonical `dir` block, `timeout` projection, shell recovery, continuation; `warnError`→`Unstable` projection; milestone record-only (`MilestoneAborted`+`Unstable` on out-of-order); default durable policy reuses prior run id; in-memory path gains identical fail-closed eligibility gate as durable path; AGENTS.md STEP SEMANTICS (Jenkins familiarity + per-step typed events + fail-closed coverage on every run path); corpus fixture14 reclassified as expected-fail | ✅ CLOSED (cycle `p-733fb505b5a6bd2d/lfc1-followup-direct`, B-direct, verify PASS) | **v0.32.2** | 1b1a5a7c | 2026-09-07 |
+| v0.33.0 — INC-024 partial closure (5/6 Group F step families: `deleteDir`/`cleanWs`/`load`/`pwd`/`isUnix`/`waitUntil`) + INC-baseline-env-drift (5/5 env-special-chars) + ADR-0069 STEP SEMANTICS policy | ✅ CLOSED (cycles `p1a`+`p1b`+`p3`+`p2`, B-direct) | **v0.33.0** | 7b76903c | 2026-09-07 |
 
 **ML exit criteria status:**
 1. ✅ L1 — `sh` durable Jenkins-fiel (ADR-0046)

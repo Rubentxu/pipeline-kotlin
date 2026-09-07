@@ -159,6 +159,8 @@ class UatLocal012ErrorHandlingTest {
         val cet = catchErrorTriggered.first()
         assertEquals("UNSTABLE", cet.stageResult,
             "Default catchError should produce UNSTABLE stage result")
+        assertTrue(result.stdout.contains("after catchError"),
+            "Pipeline should continue after default catchError. stdout: ${result.stdout}")
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

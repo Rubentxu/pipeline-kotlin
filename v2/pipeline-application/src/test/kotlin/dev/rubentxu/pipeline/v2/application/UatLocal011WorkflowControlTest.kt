@@ -133,14 +133,16 @@ class UatLocal011WorkflowControlTest {
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `SC-011-01 dir basic emits DirEntered and DirExited`() {
+    fun `SC-011-01 dir changes the real child process working directory and emits scope events`() {
         val script = tempDir.resolve("sc-011-01.pipeline.kts")
+        val targetDirectory = tempDir.resolve("dir-target")
+        val pwdOracle = tempDir.resolve("child-pwd.txt")
         Files.writeString(script, """
             pipeline {
                 stages {
                     stage("test") {
-                        dir("/tmp") {
-                            sh("test \${'$'}PWD = /tmp")
+                        dir("$targetDirectory") {
+                            sh("pwd > '$pwdOracle'")
                         }
                     }
                 }
@@ -151,6 +153,11 @@ class UatLocal011WorkflowControlTest {
 
         assertEquals(0, result.exitCode,
             "Pipeline should exit 0. stdout: ${result.stdout}")
+        assertEquals(
+            targetDirectory.toString(),
+            Files.readString(pwdOracle).trim(),
+            "The child shell must observe dir's target as its working directory",
+        )
 
         val dirEntered = result.events.filterIsInstance<DirEntered>()
         val dirExited = result.events.filterIsInstance<DirExited>()

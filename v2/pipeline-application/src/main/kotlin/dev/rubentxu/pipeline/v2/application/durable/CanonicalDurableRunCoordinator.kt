@@ -9,10 +9,12 @@ import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.ContextStack
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
+import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.StageBody
+import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
@@ -24,17 +26,25 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.DirEntered
+import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
+import java.nio.file.Files
 import java.time.Instant
 import java.util.UUID
 
@@ -42,12 +52,101 @@ import java.util.UUID
  * Canonical plugin IDs — sourced from the single registry in CanonicalCoreStepCommand.
  */
 private val canonicalCoreStepIds: Set<String> = CanonicalCoreStepCommand.ALL_PLUGIN_IDS
+private val canonicalBodyStepIds: Set<String> = setOf(
+    "core.dir",
+    "core.timeout",
+    "core.retry",
+    "core.withCredentialsBlock",
+)
 
-/** True when the compiled pipeline fits the promoted linear canonical-core subset. */
+/** True when the compiled pipeline fits the promoted canonical execution subset. */
 fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean = stages.all { stage ->
-    (stage.body as? StageBody.Steps)?.steps?.all { step ->
-        step.pluginStepId.value in canonicalCoreStepIds
-    } == true
+    (stage.body as? StageBody.Steps)?.steps?.all(StepNode::supportsCanonicalExecution) == true
+}
+
+private fun StepNode.supportsCanonicalExecution(): Boolean = when (this) {
+    is BlockStepNode -> pluginStepId.value in canonicalBodyStepIds && body.all(StepNode::supportsCanonicalExecution)
+    is OpaqueStepNode -> pluginStepId.value in canonicalCoreStepIds
+}
+
+private sealed interface StageTimeoutProjection {
+    data object Absent : StageTimeoutProjection
+    data class Present(val milliseconds: Long) : StageTimeoutProjection
+}
+
+private fun StageNode.projectShellOptions(base: ShOptions): ShOptions =
+    when (val timeout = timeoutProjection()) {
+        StageTimeoutProjection.Absent -> base
+        is StageTimeoutProjection.Present -> base.copy(timeoutMs = base.timeoutMs ?: timeout.milliseconds)
+    }
+
+private fun StageNode.timeoutProjection(): StageTimeoutProjection {
+    val timeoutOptions = options.filter { it.name == "timeout" }
+    if (timeoutOptions.isEmpty()) return StageTimeoutProjection.Absent
+    require(timeoutOptions.size == 1) { "Stage '$name' has multiple timeout options" }
+
+    val seconds = timeoutOptions.single().value?.toLongOrNull()
+        ?: throw IllegalArgumentException("Stage '$name' has an invalid timeout option")
+    require(seconds > 0) { "Stage '$name' timeout must be positive" }
+    return StageTimeoutProjection.Present(Math.multiplyExact(seconds, 1_000L))
+}
+
+private fun StepOutcome.toOperationStatus(): OperationStatus = when (this) {
+    StepOutcome.Success -> OperationStatus.SUCCEEDED
+    StepOutcome.Unstable -> OperationStatus.FAILED
+    is StepOutcome.Failure -> if (failure.kind == dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT) {
+        OperationStatus.FAILED_TIMEOUT
+    } else {
+        OperationStatus.FAILED
+    }
+}
+
+private sealed interface CanonicalContinuation {
+    data object Continue : CanonicalContinuation
+    data object ContinueUnstable : CanonicalContinuation
+    data class Abort(val failure: PipelineFailure) : CanonicalContinuation
+}
+
+private fun StepOutcome.continuation(contextStack: ContextStack): CanonicalContinuation = when (this) {
+    StepOutcome.Success -> CanonicalContinuation.Continue
+    StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
+    is StepOutcome.Failure -> when (val overlay = contextStack.peek()) {
+        is ContextOverlay.CatchErrorOverlay -> when (overlay.buildResult) {
+            "FAILURE" -> CanonicalContinuation.Abort(failure)
+            "SUCCESS" -> CanonicalContinuation.Continue
+            else -> CanonicalContinuation.ContinueUnstable
+        }
+        else -> CanonicalContinuation.Abort(failure)
+    }
+}
+
+private sealed interface RunningCanonicalShellRecovery {
+    data object NotRunningShell : RunningCanonicalShellRecovery
+    data class Recovered(val outcome: StepOutcome, val status: OperationStatus) : RunningCanonicalShellRecovery
+}
+
+private sealed interface BlockShellScope {
+    data object None : BlockShellScope
+    data class Directory(val target: Path, val previous: Path) : BlockShellScope
+}
+
+private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope = when (pluginStepId.value) {
+    "core.dir" -> {
+        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+        val path = payload["path"]?.jsonPrimitive?.contentOrNull
+            ?: throw IllegalArgumentException("core.dir requires a path")
+        require(path.isNotBlank()) { "core.dir path must not be blank" }
+
+        val previous = options.workingDirectory ?: options.workspaceRoot
+        val target = Path.of(path).let { candidate ->
+            if (candidate.isAbsolute) candidate else previous.resolve(candidate)
+        }.normalize()
+        require(Path.of(path).isAbsolute || target.startsWith(previous)) {
+            "core.dir path escapes the current workspace: $path"
+        }
+        BlockShellScope.Directory(target, previous)
+    }
+    else -> BlockShellScope.None
 }
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
@@ -116,27 +215,18 @@ class CanonicalDurableRunCoordinator(
                         return@run currentOutcome
                     }
                 }
-                val stageShOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
+                val stageBaseOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
+                val stageShOptions = stage.projectShellOptions(stageBaseOptions)
                 for (stepIndex in steps.indices) {
                     val step = steps[stepIndex]
                     val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
-                    // Scope-aware failure handling: downgrade Failure → Unstable when scope is active
-                    when {
-                        outcome is StepOutcome.Failure -> {
-                            val top = contextStack.peek()
-                            if (top is ContextOverlay.CatchErrorOverlay && top.buildResult != "FAILURE") {
-                                currentOutcome = RunOutcome.Unstable
-                                return@run RunOutcome.Unstable
-                            } else {
-                                currentOutcome = RunOutcome.Failure(outcome.failure)
-                                return@run currentOutcome
-                            }
+                    when (val continuation = outcome.continuation(contextStack)) {
+                        CanonicalContinuation.Continue -> Unit
+                        CanonicalContinuation.ContinueUnstable -> currentOutcome = RunOutcome.Unstable
+                        is CanonicalContinuation.Abort -> {
+                            currentOutcome = RunOutcome.Failure(continuation.failure)
+                            return@run currentOutcome
                         }
-                        outcome is StepOutcome.Unstable -> {
-                            currentOutcome = RunOutcome.Unstable
-                            return@run RunOutcome.Unstable
-                        }
-                        else -> { /* continue */ }
                     }
                 }
             }
@@ -184,19 +274,20 @@ class CanonicalDurableRunCoordinator(
         stageIndex: Int,
         stepIndex: Int,
         stageShOptions: ShOptions,
+        bodyPath: List<BlockSegment> = emptyList(),
     ): StepOutcome {
         // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
         // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
         // timeout/retry. catchError and warnError remain on the legacy linear path
         // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
         if (step is BlockStepNode) {
-            return dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, emptyList())
+            return dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, bodyPath)
         }
 
         val typedCommand: CanonicalCoreStepCommand = try {
             CanonicalCoreStepDecoder.decode(step)
         } catch (e: IllegalArgumentException) {
-            val operationId = OpId(runId.value, stageIndex, stepIndex).legacyFormat()
+            val operationId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath).format()
             val input = OperationInput(
                 stepId = step.pluginStepId.value,
                 params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
@@ -246,7 +337,8 @@ class CanonicalDurableRunCoordinator(
         }
 
         val (effects, replayPolicy) = typedCommand.defaultMetadata.effects to typedCommand.defaultMetadata.replayPolicy
-        val operationId = OpId(runId.value, stageIndex, stepIndex).legacyFormat()
+        val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
+        val operationId = opId.format()
         val input = OperationInput(
             stepId = step.pluginStepId.value,
             params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
@@ -275,6 +367,24 @@ class CanonicalDurableRunCoordinator(
                 PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, "Canonical run diverged at '$operationId'"),
             )
         }
+        when (val recovery = recoverRunningShell(typedCommand, journaled, operationId)) {
+            RunningCanonicalShellRecovery.NotRunningShell -> Unit
+            is RunningCanonicalShellRecovery.Recovered -> {
+                val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) { recovery.outcome }
+                journal.append(
+                    RerunOperation(
+                        id = operationId,
+                        fingerprint = fingerprint,
+                        input = input,
+                        output = null,
+                        status = recovery.status,
+                        attempt = 1,
+                    ),
+                )
+                if (outcome is StepOutcome.Success) cursorStore.advance(runId.value, operationId, stageIndex)
+                return outcome
+            }
+        }
         when (effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status)) {
             ReplayDecision.SKIP -> return StepOutcome.Success
             ReplayDecision.ABORT -> return StepExecutionBoundary(eventSink).execute(lifecycleContext) {
@@ -295,7 +405,7 @@ class CanonicalDurableRunCoordinator(
             dispatcher.dispatch(
                 typedCommand,
                 CanonicalRuntimeContext(
-                    opId = OpId(runId.value, stageIndex, stepIndex),
+                    opId = opId,
                     runId = runId.value,
                     stageName = stageName,
                     stageIndex = stageIndex,
@@ -312,13 +422,60 @@ class CanonicalDurableRunCoordinator(
                 fingerprint = fingerprint,
                 input = input,
                 output = null,
-                status = if (outcome is StepOutcome.Success) OperationStatus.SUCCEEDED else OperationStatus.FAILED,
+                status = outcome.toOperationStatus(),
                 attempt = 1,
             ),
         )
         if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
         return outcome
     }
+
+    private fun recoverRunningShell(
+        command: CanonicalCoreStepCommand,
+        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
+        operationId: String,
+    ): RunningCanonicalShellRecovery {
+        if (command !is CanonicalCoreStepCommand.Shell || journaled?.status != OperationStatus.RUNNING || controlDirRoot == null) {
+            return RunningCanonicalShellRecovery.NotRunningShell
+        }
+
+        val reconciler = StepReconcilerL1(clock, controlDirRoot)
+        val classification = reconciler.classify(operationId)
+        return when (classification) {
+            is StepReconcilerL1.Classification.Complete -> completedShellOutcome(classification.exitCode)
+            is StepReconcilerL1.Classification.Reattach -> {
+                val exitCode = DurableShellExecutor().pollResult(classification.controlDir, REATTACH_TIMEOUT_MS)
+                if (exitCode == null) lostShellOutcome(operationId) else completedShellOutcome(exitCode)
+            }
+            is StepReconcilerL1.Classification.TimedOut -> RunningCanonicalShellRecovery.Recovered(
+                StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT, "Canonical shell '$operationId' timed out"),
+                ),
+                OperationStatus.FAILED_TIMEOUT,
+            )
+            StepReconcilerL1.Classification.Lost -> lostShellOutcome(operationId)
+        }
+    }
+
+    private fun completedShellOutcome(exitCode: Int): RunningCanonicalShellRecovery.Recovered =
+        if (exitCode == 0) {
+            RunningCanonicalShellRecovery.Recovered(StepOutcome.Success, OperationStatus.SUCCEEDED)
+        } else {
+            RunningCanonicalShellRecovery.Recovered(
+                StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT, "Canonical shell exited with code $exitCode"),
+                ),
+                OperationStatus.FAILED,
+            )
+        }
+
+    private fun lostShellOutcome(operationId: String): RunningCanonicalShellRecovery.Recovered =
+        RunningCanonicalShellRecovery.Recovered(
+            StepOutcome.Failure(
+                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, "Canonical shell '$operationId' could not be reconciled"),
+            ),
+            OperationStatus.LOST,
+        )
 
     /**
      * +1 helper for INC-007 (canonical coordinator dispatchBody sibling).
@@ -341,6 +498,31 @@ class CanonicalDurableRunCoordinator(
         // Capture parent stack for finally restoration (BLOCK_STEP_EXECUTION.md §4 invariant)
         val parentStack = contextStack
         var outcome: StepOutcome = StepOutcome.Success
+        val scope = try {
+            block.projectShellScope(stageShOptions)
+        } catch (error: IllegalArgumentException) {
+            return StepOutcome.Failure(
+                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, error.message ?: "Invalid block scope"),
+            )
+        }
+        val childShOptions = when (scope) {
+            BlockShellScope.None -> stageShOptions
+            is BlockShellScope.Directory -> {
+                Files.createDirectories(scope.target)
+                contextStack = contextStack.push(ContextOverlay.Cwd(scope.target.toString()))
+                eventSink.append(
+                    DirEntered(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                        path = scope.target.toString(),
+                        previousPath = scope.previous.toString(),
+                    ),
+                )
+                stageShOptions.copy(workingDirectory = scope.target)
+            }
+        }
 
         try {
             for ((childIndex, child) in block.body.withIndex()) {
@@ -361,49 +543,49 @@ class CanonicalDurableRunCoordinator(
                     stepType = child.pluginStepId.value,
                 )
 
-                // Check replay status for this child
-                val journaled = journal.get(childOpId.format(), 1)
-                val replayDecision = effectReplayPolicy.decide(
-                    ReplayPolicy.RERUN,
-                    emptySet(),
-                    journaled != null,
-                    journaled?.status
+                val childOutcome = dispatch(
+                    child,
+                    runId,
+                    stageName,
+                    stageIndex,
+                    stepIndex,
+                    childShOptions,
+                    childOpId.bodyPath,
                 )
-
-                when (replayDecision) {
-                    ReplayDecision.SKIP -> continue // Child already succeeded, skip
-                    ReplayDecision.ABORT -> {
-                        outcome = StepOutcome.Failure(
-                            PipelineFailure(
-                                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                                "Replay aborted for body child '${child.id.value}'",
-                            ),
-                        )
+                when (childOutcome) {
+                    is StepOutcome.Failure -> {
+                        outcome = childOutcome
+                        break // Stop on first failure
+                    }
+                    is StepOutcome.Unstable -> {
+                        outcome = childOutcome
                         break
                     }
-                    ReplayDecision.RERUN -> {
-                        // Execute child
-                        val childOutcome = dispatch(child, runId, stageName, stageIndex, childIndex, stageShOptions)
-                        when (childOutcome) {
-                            is StepOutcome.Failure -> {
-                                outcome = childOutcome
-                                break // Stop on first failure
-                            }
-                            is StepOutcome.Unstable -> {
-                                outcome = childOutcome
-                                break
-                            }
-                            else -> { /* continue */ }
-                        }
-                    }
+                    else -> { /* continue */ }
                 }
             }
         } finally {
+            if (scope is BlockShellScope.Directory) {
+                eventSink.append(
+                    DirExited(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                        path = scope.target.toString(),
+                        restoredTo = scope.previous.toString(),
+                    ),
+                )
+            }
             // Restore parent context stack in finally (BLOCK_STEP_EXECUTION.md §4 invariant)
             contextStack = parentStack
         }
 
         return outcome
+    }
+
+    private companion object {
+        const val REATTACH_TIMEOUT_MS = 60_000L
     }
 
     /**

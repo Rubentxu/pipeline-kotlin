@@ -154,7 +154,9 @@ object ShExecution {
 
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
         // ShExecution just passes it through; no recomputation needed.
-        val effectiveOptions = shOptions
+        // The SDK launch seam takes workspaceRoot as its process CWD. Preserve the
+        // stage workspace while projecting a scoped dir context for this child only.
+        val effectiveOptions = shOptions.copy(workspaceRoot = shOptions.workingDirectory ?: shOptions.workspaceRoot)
         // controlDir is sibling to workspace: {controlDirRoot}/{opId}
         val controlDir = controlDirRoot.resolve(opId.format())
 

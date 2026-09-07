@@ -29,3 +29,4 @@
 - [ADR-0066: Call-site identity, determinism limits, and the script-host classpath deny-list (proposed)](ADR-0066-call-site-identity-determinism.md)
 - [ADR-0067: Persisted schema versioning: monotonic, forward-only, fail-closed readers (proposed)](ADR-0067-persisted-schema-versioning.md)
 - [ADR-0068: Cancellation exception mapping: canonical INTERRUPTED, verbatim rethrow, legacy FAILED_TIMEOUT adapter (proposed)](ADR-0068-cancellation-exception-mapping.md)
+- [ADR-0069: Step semantics policy: Jenkins familiarity, per-step typed events, and fail-closed coverage on every run path (accepted 2026-09-07)](ADR-0069-step-semantics-policy.md)

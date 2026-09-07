@@ -25,9 +25,8 @@ import java.util.concurrent.TimeUnit
  * by AGENTS.md rule 11. Any future parallelization must be a measured,
  * explicit decision with a recorded baseline.
  *
- * Fixtures 06, 08, 09 currently fail to compile due to a DSL surface issue
- * (missing `isScriptBlock` parameter on `StageScope.sh()`). After INC-021 fix,
- * these correctly exit non-zero. They will be repaired in INC-021c.
+ * Fixtures use the public `StageScope.sh` options to preserve their declared
+ * script-block semantics through compilation and execution.
  */
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 class CompatibilityCorpusTest {
@@ -45,16 +44,16 @@ class CompatibilityCorpusTest {
 
     /**
      * Fixtures that fail at runtime (exit non-zero).
-     * These include both compilation failures (06, 08, 09) and runtime failures (02, 10, 11, 13).
+     * These are known runtime failures (02, 10, 11, 13).
+     * Fixture 14 uses `withCredentials` (a non-canonical credential plugin): the canonical bridge
+     * fails closed with exit 2 by design (AGENTS.md STEP SEMANTICS #3) — reclassify as runtime failure.
      */
     private val runtimeFailureFixtures = setOf(
         "02-environment.pipeline.kts",   // runtime failure
-        "06-loop.pipeline.kts",           // compilation error (INC-021c)
-        "08-withEnv-pipeline.pipeline.kts", // compilation error (INC-021c)
-        "09-archive-artefacts.pipeline.kts", // compilation error (INC-021c)
         "10-smoke-e2e.pipeline.kts",     // runtime failure
         "11-workflow-control.pipeline.kts", // runtime failure
-        "13-workspace-helpers.pipeline.kts" // runtime failure
+        "13-workspace-helpers.pipeline.kts", // runtime failure
+        "14-credentials-bindings.pipeline.kts" // non-canonical plugin → exit 2 (fail-closed)
     )
 
     /**
@@ -82,7 +81,7 @@ class CompatibilityCorpusTest {
 
     /**
      * Run a fixture that is expected to fail (exit non-zero).
-     * Used for fixtures 06, 08, 09 which have a DSL surface issue (INC-021c).
+     * Used for fixtures with known runtime failures.
      */
     private fun runFixtureFail(name: String) {
         val path = fixture(name)
@@ -109,23 +108,11 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture05ScriptedIf() = runFixturePass("05-scripted-if.pipeline.kts")
 
-    /**
-     * Fixture 06 fails to compile due to missing `isScriptBlock` parameter on `StageScope.sh()`.
-     * After INC-021 fix, correctly exits non-zero. Will be repaired in INC-021c.
-     */
-    @Test fun fixture06Loop() = runFixtureFail("06-loop.pipeline.kts")
+    @Test fun fixture06Loop() = runFixturePass("06-loop.pipeline.kts")
 
-    /**
-     * Fixture 08 fails to compile due to missing `isScriptBlock` parameter on `StageScope.sh()`.
-     * After INC-021 fix, correctly exits non-zero. Will be repaired in INC-021c.
-     */
-    @Test fun fixture08WithEnv() = runFixtureFail("08-withEnv-pipeline.pipeline.kts")
+    @Test fun fixture08WithEnv() = runFixturePass("08-withEnv-pipeline.pipeline.kts")
 
-    /**
-     * Fixture 09 fails to compile due to missing `isScriptBlock` parameter on `StageScope.sh()`.
-     * After INC-021 fix, correctly exits non-zero. Will be repaired in INC-021c.
-     */
-    @Test fun fixture09ArchiveArtefacts() = runFixtureFail("09-archive-artefacts.pipeline.kts")
+    @Test fun fixture09ArchiveArtefacts() = runFixturePass("09-archive-artefacts.pipeline.kts")
 
     @Test fun fixture10SmokeE2E() = runFixtureFail("10-smoke-e2e.pipeline.kts")
 
@@ -135,7 +122,7 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture13WorkspaceHelpers() = runFixtureFail("13-workspace-helpers.pipeline.kts")
 
-    @Test fun fixture14CredentialsBindings() = runFixturePass("14-credentials-bindings.pipeline.kts")
+    @Test fun fixture14CredentialsBindings() = runFixtureFail("14-credentials-bindings.pipeline.kts")
 
     /**
      * Verifies that a script with compilation errors exits with non-zero code.

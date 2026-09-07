@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 6 entries (Shell, Echo, Error, Sleep, WriteFile, EmitEvent).
+ * - sealedSubclasses has exactly 7 entries (Shell, Echo, Error, Sleep, WriteFile, EmitEvent, Milestone).
  * - canonicalCoreStepIds derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -20,9 +20,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 6 entries`() {
+    fun `sealedSubclasses has exactly 7 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(6, subclasses.size, "Expected exactly 6 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(7, subclasses.size, "Expected exactly 7 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -34,6 +34,7 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.sleep",
             "core.file.writeFile",
             "core.emit.event",
+            "core.milestone",
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.ALL_PLUGIN_IDS, "ALL_PLUGIN_IDS must match expected set")
@@ -88,5 +89,13 @@ class CanonicalCoreStepCommandRegistryTest {
         assertEquals("core.emit.event", emitInstance.pluginId)
         assertEquals(setOf(Effect.READ_ONLY), emitInstance.defaultMetadata.effects)
         assertEquals(ReplayPolicy.MEMOIZED, emitInstance.defaultMetadata.replayPolicy)
+    }
+
+    @Test
+    fun `Milestone has correct pluginId and defaultMetadata`() {
+        val milestoneInstance = CanonicalCoreStepCommand.Milestone(ordinal = 1, label = "post-error")
+        assertEquals("core.milestone", milestoneInstance.pluginId)
+        assertEquals(setOf(Effect.READ_ONLY), milestoneInstance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, milestoneInstance.defaultMetadata.replayPolicy)
     }
 }

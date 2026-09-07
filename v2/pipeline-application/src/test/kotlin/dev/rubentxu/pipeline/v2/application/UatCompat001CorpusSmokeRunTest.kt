@@ -15,24 +15,18 @@ import java.util.concurrent.TimeUnit
  * Verifies that all corpus fixtures compile and run successfully.
  * Closes E2-06 + M2 exit criterion.
  *
- * Fixtures 06, 08, 09 fail to compile due to a DSL surface issue
- * (missing `isScriptBlock` parameter on `StageScope.sh()`). After INC-021 fix,
- * these correctly exit non-zero. They will be repaired in INC-021c.
+ * Each fixture exercises the public compatibility DSL and produces events.
  */
 @Timeout(120)
 class UatCompat001CorpusSmokeRunTest {
 
-    // Fixtures that currently fail at runtime (compilation errors or runtime failures)
-    // - 06, 08, 09: compilation error (missing isScriptBlock, INC-021c)
-    // - 02, 10, 11, 13: runtime failures (exit non-zero)
+    // Fixtures that currently fail at runtime (exit non-zero).
     private val brokenFixtures = setOf(
         "02-environment.pipeline.kts",        // runtime failure
-        "06-loop.pipeline.kts",                // compilation error (INC-021c)
-        "08-withEnv-pipeline.pipeline.kts",   // compilation error (INC-021c)
-        "09-archive-artefacts.pipeline.kts",  // compilation error (INC-021c)
         "10-smoke-e2e.pipeline.kts",         // runtime failure
         "11-workflow-control.pipeline.kts",  // runtime failure
-        "13-workspace-helpers.pipeline.kts"   // runtime failure
+        "13-workspace-helpers.pipeline.kts",  // runtime failure
+        "14-credentials-bindings.pipeline.kts" // non-canonical plugin (withCredentials) → exit 2 (fail-closed)
     )
 
     private fun discoverFixtures(): List<Path> {
@@ -67,9 +61,8 @@ class UatCompat001CorpusSmokeRunTest {
             val isBroken = brokenFixtures.contains(fixture.fileName.toString())
 
             if (isBroken) {
-                // Fixtures 06, 08, 09 are expected to exit non-zero after INC-021 fix
                 if (exitCode == 0) {
-                    failures.add("${fixture.fileName}: expected non-zero exit but got 0 (INC-021 not fixed?)")
+                    failures.add("${fixture.fileName}: expected non-zero exit but got 0")
                 }
             } else {
                 // Other fixtures must exit 0
@@ -109,8 +102,6 @@ class UatCompat001CorpusSmokeRunTest {
             val isBroken = brokenFixtures.contains(fixture.fileName.toString())
 
             if (isBroken) {
-                // Fixtures 06, 08, 09 don't produce normal events after INC-021 fix
-                // Skip the event assertion for these
             } else {
                 val events = JsonEventLog.decode(stdout)
                 assertTrue(events.isNotEmpty(), "${fixture.fileName} must produce events")

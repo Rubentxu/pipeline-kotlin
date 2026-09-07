@@ -27,6 +27,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.security.MessageDigest
 
@@ -48,6 +50,11 @@ object DslCompiledPipelineCompiler {
 
     private const val COMPILER_VERSION = "dsl-compiler-v1"
     private const val PAYLOAD_SCHEMA_VERSION = "dsl-v1"
+
+    private enum class WorkflowControlProjection(val token: String) {
+        CatchError("catch-error"),
+        WarnError("warn-error"),
+    }
 
     fun compile(
         spec: PipelineSpec,
@@ -139,7 +146,7 @@ object DslCompiledPipelineCompiler {
                 ),
             )
             is StepSpec.CatchError -> rewriteWorkflowControl(
-                kind = "catch-error",
+                projection = WorkflowControlProjection.CatchError,
                 buildResult = step.buildResult,
                 stageResult = step.stageResult,
                 message = step.message,
@@ -148,7 +155,7 @@ object DslCompiledPipelineCompiler {
                 occurrence = occurrence,
             )
             is StepSpec.WarnError -> rewriteWorkflowControl(
-                kind = "warn-error",
+                projection = WorkflowControlProjection.WarnError,
                 buildResult = "UNSTABLE", // forced per ADR-0054 §D5
                 stageResult = "UNSTABLE",
                 message = step.message,
@@ -180,6 +187,16 @@ object DslCompiledPipelineCompiler {
                 message = step.message,
                 parentToken = parentToken,
                 occurrence = occurrence,
+            )
+            is StepSpec.Milestone -> listOf(
+                OpaqueStepNode(
+                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
+                    pluginStepId = PluginStepId("core.milestone"),
+                    payload = VersionedStepPayload(
+                        PAYLOAD_SCHEMA_VERSION,
+                        milestonePayload(step.ordinal, step.label),
+                    ),
+                ),
             )
             else -> listOf(
                 OpaqueStepNode(
@@ -223,25 +240,41 @@ object DslCompiledPipelineCompiler {
             BlockStepNode(
                 id = stepId,
                 pluginStepId = PluginStepId("core.${step.name}"),
-                payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, "{}"),
+                payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, blockPayload(step)),
                 body = body,
             )
         )
     }
 
+    private fun blockPayload(step: StepSpec): String = when (step) {
+        is StepSpec.Dir -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("kind", "dir")
+            put("path", step.path)
+        })
+        else -> "{}"
+    }
+
     /**
      * Pre-compiler rewrite for catchError / warnError blocks.
      *
-     * Produces a linear sequence of 3 nodes:
+     * Produces a linear sequence of nodes:
      * 1. `core.emit.event(kind="CatchErrorEntered", buildResult, enteredAt)` — entry marker (scope push)
-     * 2. `core.sh(isScriptBlock=true)` wrapping the inner steps — executed with `set +e`
+     * 2. the projected inner scope — plain steps inlined into `set +e` shell wrapper(s);
+     *    nested catchError/warnError children recursively rewritten INSIDE this scope
+     *    (between enter and trigger) so they inherit the parent overlay
      * 3. `core.emit.event(kind="CatchErrorTriggered", emitted=true)` — exit marker (scope pop, always emitted)
      *
-     * The shell heredoc runs the inner steps with `set +e` so failures are captured rather than
-     * aborting the script. The exit code is propagated so the coordinator sees the failure outcome.
+     * warnError is catchError(buildResult=UNSTABLE, stageResult=UNSTABLE) plus a
+     * visible StageMarkedUnstable projection after the scope closes.
+     *
+     * Bare unstable children keep their existing semantics: lifted after the trigger
+     * for catchError, projected as the warnError StageMarkedUnstable marker otherwise.
+     * A shell wrapper runs its inlined steps with `set +e` so failures are captured
+     * rather than aborting the script (FIND-DV-DUPL-01); segment boundaries between
+     * markers stay covered by the coordinator's catch-error overlay continuation.
      */
     private fun rewriteWorkflowControl(
-        kind: String,
+        projection: WorkflowControlProjection,
         buildResult: String?,
         stageResult: String?,
         message: String?,
@@ -251,26 +284,18 @@ object DslCompiledPipelineCompiler {
     ): List<StepNode> {
         val effectiveBuildResult = buildResult?.uppercase() ?: "UNSTABLE"
         val effectiveStageResult = stageResult?.uppercase() ?: effectiveBuildResult
-        val tokenPrefix = stableToken(kind)
+        val tokenPrefix = projection.token
+        val scopeToken = "$parentToken/${tokenPrefix}-body-$occurrence"
+        val liftedUnstable = when (projection) {
+            WorkflowControlProjection.CatchError -> innerSteps.filterIsInstance<StepSpec.Unstable>()
+            WorkflowControlProjection.WarnError -> emptyList()
+        }
+        val heredocSteps = innerSteps.filterNot { it is StepSpec.Unstable }
+        val scopeNodes = projectInnerScope(heredocSteps, scopeToken)
 
-        // Build a single shell script that runs ALL inner steps under `set +e` so failures are
-        // captured rather than aborting the script. The coordinator sees one `core.sh` node
-        // and its exit code; emitting the inner steps as separate canonical nodes would run
-        // them outside `set +e` and abort before the catchError trigger marker could fire
-        // (FIND-DV-DUPL-01).
-        val innerScript = buildShellScript(innerSteps)
-        val shellStepNode = OpaqueStepNode(
-            id = StepId("$parentToken/${tokenPrefix}-body-$occurrence"),
-            pluginStepId = PluginStepId("core.sh"),
-            payload = VersionedStepPayload(
-                PAYLOAD_SCHEMA_VERSION,
-                shellPayload(innerScript, isScriptBlock = true, returnStdout = false),
-            ),
-        )
-
-        return listOfNotNull(
+        return buildList {
             // [0] Entry marker — signals scope entry to the coordinator (no event emitted)
-            emitStep(
+            add(emitStep(
                 stepId = "$parentToken/${tokenPrefix}-enter-$occurrence",
                 eventKind = "CatchErrorEntered",
                 payload = buildJsonObject {
@@ -279,11 +304,11 @@ object DslCompiledPipelineCompiler {
                     put("message", JsonNull) // null allowed
                     put("enteredAt", System.currentTimeMillis().toString())
                 },
-            ),
-            // [1] Inner steps wrapped in shell with set +e (single node, no double-emission)
-            shellStepNode,
-            // [2] Exit marker (always emitted; shell exit code determines whether it "caught")
-            emitStep(
+            ))
+            // [1..n] Inner scope: plain shell segment(s) and nested catch groups in order
+            addAll(scopeNodes)
+            // [n+1] Exit marker (always emitted; shell exit code determines whether it "caught")
+            add(emitStep(
                 stepId = "$parentToken/${tokenPrefix}-trigger-$occurrence",
                 eventKind = "CatchErrorTriggered",
                 payload = buildJsonObject {
@@ -292,8 +317,113 @@ object DslCompiledPipelineCompiler {
                     put("message", message ?: "")
                     put("emitted", "true")
                 },
-            ),
-        )
+            ))
+            when (projection) {
+                WorkflowControlProjection.CatchError -> liftedUnstable.forEachIndexed { innerOccurrence, unstable ->
+                    addAll(
+                        rewriteUnstable(
+                            message = unstable.message,
+                            parentToken = scopeToken,
+                            occurrence = innerOccurrence,
+                        ),
+                    )
+                }
+                WorkflowControlProjection.WarnError -> add(emitStep(
+                    stepId = "$parentToken/${tokenPrefix}-unstable-$occurrence",
+                    eventKind = "StageMarkedUnstable",
+                    payload = buildJsonObject {
+                        put("message", message ?: "")
+                    },
+                ))
+            }
+        }
+    }
+
+    /**
+     * Projects the inner steps of a workflow-control scope into canonical nodes.
+     *
+     * Without structured children the plain steps are inlined into a single
+     * `set +e` shell wrapper with the scope's own step id, preserving the
+     * historical single-node shape (including the empty retained wrapper).
+     * With nested catchError/warnError children the scope is projected as ordered
+     * segments: each plain run becomes its own shell wrapper and each structured
+     * child is recursively rewritten inside the parent scope.
+     *
+     * Any other structured step kind fails compilation loudly — the compiler
+     * never emits a silent shell comment.
+     */
+    private fun projectInnerScope(innerSteps: List<StepSpec>, scopeToken: String): List<StepNode> {
+        val hasStructuredChild = innerSteps.any { it is StepSpec.CatchError || it is StepSpec.WarnError }
+        if (!hasStructuredChild) {
+            return listOf(
+                OpaqueStepNode(
+                    id = StepId(scopeToken),
+                    pluginStepId = PluginStepId("core.sh"),
+                    payload = VersionedStepPayload(
+                        PAYLOAD_SCHEMA_VERSION,
+                        shellPayload(buildShellScript(innerSteps), isScriptBlock = true, returnStdout = false),
+                    ),
+                ),
+            )
+        }
+
+        val nodes = mutableListOf<StepNode>()
+        val plainRun = mutableListOf<StepSpec>()
+        var shellSegment = 0
+        var structuredOccurrence = 0
+
+        fun flushPlainRun() {
+            if (plainRun.isEmpty()) return
+            nodes += OpaqueStepNode(
+                id = StepId("$scopeToken-shell-$shellSegment"),
+                pluginStepId = PluginStepId("core.sh"),
+                payload = VersionedStepPayload(
+                    PAYLOAD_SCHEMA_VERSION,
+                    shellPayload(buildShellScript(plainRun.toList()), isScriptBlock = true, returnStdout = false),
+                ),
+            )
+            shellSegment++
+            plainRun.clear()
+        }
+
+        innerSteps.forEach { step ->
+            when (step) {
+                is StepSpec.CatchError -> {
+                    flushPlainRun()
+                    nodes += rewriteWorkflowControl(
+                        projection = WorkflowControlProjection.CatchError,
+                        buildResult = step.buildResult,
+                        stageResult = step.stageResult,
+                        message = step.message,
+                        innerSteps = step.steps,
+                        parentToken = scopeToken,
+                        occurrence = structuredOccurrence,
+                    )
+                    structuredOccurrence++
+                }
+                is StepSpec.WarnError -> {
+                    flushPlainRun()
+                    nodes += rewriteWorkflowControl(
+                        projection = WorkflowControlProjection.WarnError,
+                        buildResult = "UNSTABLE", // forced per ADR-0054 §D5
+                        stageResult = "UNSTABLE",
+                        message = step.message,
+                        innerSteps = step.steps,
+                        parentToken = scopeToken,
+                        occurrence = structuredOccurrence,
+                    )
+                    structuredOccurrence++
+                }
+                is StepSpec.Shell, is StepSpec.Echo, is StepSpec.WriteFile -> plainRun += step
+                else -> throw IllegalStateException(
+                    "Workflow-control scope '$scopeToken' cannot compile structured step '${step.name}' " +
+                        "into its shell wrapper; only sh/echo/writeFile are embeddable and " +
+                        "catchError/warnError/unstable are rewritten. Refusing to emit a silent shell comment.",
+                )
+            }
+        }
+        flushPlainRun()
+        return nodes
     }
 
     /**
@@ -328,6 +458,10 @@ object DslCompiledPipelineCompiler {
     /**
      * Constructs a shell script heredoc that executes all inner steps sequentially
      * with `set +e` (continue on error) and explicit exit code propagation.
+     *
+     * Fail-closed: a structured step kind that reaches this function has bypassed
+     * the pre-compiler rewrite, so compilation fails loudly instead of emitting an
+     * invalid silent shell comment.
      */
     private fun buildShellScript(innerSteps: List<StepSpec>): String {
         val commands = innerSteps.map { step ->
@@ -345,7 +479,11 @@ object DslCompiledPipelineCompiler {
                     val text = step.text.replace("'", "'\\''")
                     "writeFile('$file', '$text', '${step.encoding}')"
                 }
-                else -> "// legacy step ${step.name} — pre-compiler should have rewritten this"
+                else -> throw IllegalStateException(
+                    "buildShellScript cannot embed structured step '${step.name}' into a " +
+                        "workflow-control shell wrapper; the pre-compiler rewrite must project it. " +
+                        "Refusing to emit a silent shell comment.",
+                )
             }
         }
         return sequenceOf(
@@ -358,7 +496,7 @@ object DslCompiledPipelineCompiler {
     }
 
     private fun emitStep(stepId: String, eventKind: String, payload: JsonObject): OpaqueStepNode {
-        val payloadMap = payload.entries.associate { it.key to (it.value.toString().let { v -> if (v == "null") null else v }) }
+        val payloadMap = payload.entries.associate { it.key to it.value.jsonPrimitive.contentOrNull }
         return OpaqueStepNode(
             id = StepId(stepId),
             pluginStepId = PluginStepId("core.emit.event"),
@@ -385,6 +523,15 @@ object DslCompiledPipelineCompiler {
             put("file", file)
             put("text", text)
             put("encoding", encoding)
+        })
+    }
+
+    /** ML-R9 T-09: typed canonical milestone payload (ordinal required, label optional). */
+    private fun milestonePayload(ordinal: Int, label: String?): String {
+        return Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("kind", "milestone")
+            put("ordinal", ordinal)
+            if (label != null) put("label", label)
         })
     }
 

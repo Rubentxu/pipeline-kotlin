@@ -26,6 +26,7 @@ class CanonicalNodeDispatcher {
     private val sleepDispatcher = CanonicalSleepNodeDispatcher()
     private val writeFileDispatcher = CanonicalWriteFileNodeDispatcher()
     private val emitEventDispatcher = CanonicalEmitEventNodeDispatcher()
+    private val milestoneDispatcher = CanonicalMilestoneNodeDispatcher()
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
@@ -35,6 +36,7 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.Sleep -> sleepDispatcher.dispatch(command, context.sleepContext())
             is CanonicalCoreStepCommand.WriteFile -> writeFileDispatcher.dispatch(command, context.writeFileContext())
             is CanonicalCoreStepCommand.EmitEvent -> emitEventDispatcher.dispatch(command, context.emitEventContext())
+            is CanonicalCoreStepCommand.Milestone -> milestoneDispatcher.dispatch(command, context.milestoneContext())
         }
 
     private fun CanonicalRuntimeContext.shellContext() = CanonicalShellDispatchContext(
@@ -71,6 +73,11 @@ class CanonicalNodeDispatcher {
     private fun CanonicalRuntimeContext.emitEventContext() = CanonicalEmitEventDispatchContext(
         runId = runId,
         stageName = stageName,
+        eventSink = eventSink,
+    )
+
+    private fun CanonicalRuntimeContext.milestoneContext() = CanonicalMilestoneDispatchContext(
+        runId = runId,
         eventSink = eventSink,
     )
 }

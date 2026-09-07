@@ -54,16 +54,22 @@ class UatLocal005CorpusUntouchedTest {
         val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
         val baseCommit = findBaseCommit()
 
-        // The original 6 files — but 02 and 04 have LEGITIMATE changes (INC-R10-ARC-001)
+        // The original 6 files — but 02, 04, and 06 have LEGITIMATE changes:
+        //   - 02 and 04: Groovy→Kotlin fix (INC-R10-ARC-001)
+        //   - 06: originally Groovy `script { for (i in 1..3) ... }`; migrated
+        //     to `sh("""for i in 1 2 3; do echo \"iteration ${'$'}i\"; done""",
+        //     isScriptBlock = true)` per INC-R10-ARC-001 + INC-027 (the
+        //     `${'$'}i` escape is rule 13 — Kotlin does not interpolate $i
+        //     at compile time).
         val unchangedFiles = listOf(
             "01-basic.pipeline.kts",
             "03-stages.pipeline.kts",
             "05-scripted-if.pipeline.kts",
-            "06-loop.pipeline.kts"
         )
         val changedFiles = setOf(
             "02-environment.pipeline.kts",  // Groovy→Kotlin fix
-            "04-sh.pipeline.kts"            // Array literal→string fix
+            "04-sh.pipeline.kts",           // Array literal→string fix
+            "06-loop.pipeline.kts",         // Escape ${'$'}i (INC-027 / INC-021c)
         )
 
         val compatibilityDir = projectRoot.resolve("v2/compatibility")

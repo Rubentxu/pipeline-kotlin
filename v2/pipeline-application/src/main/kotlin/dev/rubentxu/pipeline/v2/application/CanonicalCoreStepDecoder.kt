@@ -41,6 +41,7 @@ sealed interface CanonicalCoreStepCommand {
             "core.sleep",
             "core.file.writeFile",
             "core.emit.event",
+            "core.milestone",
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
@@ -98,6 +99,19 @@ sealed interface CanonicalCoreStepCommand {
         override val pluginId = "core.emit.event"
         override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
+
+    /**
+     * ML-R9 T-09: local single-run milestone marker (ADR-0046 §ML — no cross-build abort).
+     * Emits the typed MilestoneReached event; ordinal monotonicity is validated
+     * within the run by the dispatcher.
+     */
+    data class Milestone(
+        val ordinal: Int,
+        val label: String?,
+    ) : CanonicalCoreStepCommand {
+        override val pluginId = "core.milestone"
+        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
+    }
 }
 
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
@@ -109,6 +123,7 @@ object CanonicalCoreStepDecoder {
     private const val SLEEP_PLUGIN_ID = "core.sleep"
     private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
     private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
+    private const val MILESTONE_PLUGIN_ID = "core.milestone"
 
     fun decode(node: StepNode): CanonicalCoreStepCommand {
         require(node.payload.schemaVersion == SCHEMA_VERSION) {
@@ -176,6 +191,19 @@ object CanonicalCoreStepDecoder {
                         .associate { it.key to it.value.jsonPrimitive.contentOrNull },
                 )
             }
+            MILESTONE_PLUGIN_ID -> {
+                require(payload.requiredString("kind") == "milestone") {
+                    "Payload kind must be 'milestone' for '${node.id.value}'"
+                }
+                val ordinal = payload.requiredInt("ordinal")
+                require(ordinal > 0) {
+                    "dsl-v1 payload requires a positive milestone ordinal for '${node.id.value}': $ordinal"
+                }
+                CanonicalCoreStepCommand.Milestone(
+                    ordinal = ordinal,
+                    label = payload["label"]?.jsonPrimitive?.contentOrNull,
+                )
+            }
             else -> throw IllegalArgumentException(
                 "Unsupported core plugin step '${node.pluginStepId.value}' for '${node.id.value}'"
             )
@@ -194,6 +222,11 @@ object CanonicalCoreStepDecoder {
 
     private fun kotlinx.serialization.json.JsonObject.requiredLong(name: String): Long =
         requireNotNull(this[name]?.jsonPrimitive?.content?.toLongOrNull()) {
+            "dsl-v1 payload requires integer '$name'"
+        }
+
+    private fun kotlinx.serialization.json.JsonObject.requiredInt(name: String): Int =
+        requireNotNull(this[name]?.jsonPrimitive?.content?.toIntOrNull()) {
             "dsl-v1 payload requires integer '$name'"
         }
 }

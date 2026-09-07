@@ -26,13 +26,22 @@ class CliNonCanonicalInMemoryExitsTwoTest {
     fun `in-memory run rejects non-canonical pipelines with exit 2 before execution`() {
         val appBin = AppBinSupport.discover()
         val script = tempDir.resolve("non-canonical.pipeline.kts")
+        // Use `timestamps` — a non-canonical decorator that the canonical bridge
+        // fails closed on (AGENTS.md STEP SEMANTICS #3). `deleteDir()` was non-canonical at
+        // v0.32.2 (INC-021) but became canonical in v0.33.0 (P1a), and `withCredentials`
+        // is recognized as a canonical block-step id (`core.withCredentialsBlock`) by the
+        // canonical bridge — only its inner body is non-canonical when credential binding
+        // factories are referenced. `timestamps` is the cleanest non-canonical fixture that
+        // exercises the gate end-to-end without depending on plugin-shape evolution.
         Files.writeString(
             script,
             """
             pipeline {
                 stages {
                     stage("workspace") {
-                        deleteDir()
+                        timestamps {
+                            echo("hello")
+                        }
                     }
                 }
             }

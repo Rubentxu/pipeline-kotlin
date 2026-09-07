@@ -44,15 +44,21 @@ class CompatibilityCorpusTest {
 
     /**
      * Fixtures that fail at runtime (exit non-zero).
-     * These are known runtime failures (02, 10, 11, 13).
+     * These are known runtime failures (02, 10, 13, 14).
      * Fixture 14 uses `withCredentials` (a non-canonical credential plugin): the canonical bridge
      * fails closed with exit 2 by design (AGENTS.md STEP SEMANTICS #3) — reclassify as runtime failure.
+     *
+     * Fixture 11 (workflow-control: dir/deleteDir/timeout/retry/catchError/unstable) now PASSES
+     * after v0.33.0 because its step families have canonical implementations (INC-024 closed
+     * for fixture 11).
+     * Fixture 13 (workspace-helpers: pwd/isUnix/waitUntil/timestamps) STILL FAILS because the
+     * `timestamps` decorator is not yet in canonical scope — INC-024 partial closure.
+     * `load` step still quarantined under INC-024 — not exercised by these fixtures.
      */
     private val runtimeFailureFixtures = setOf(
         "02-environment.pipeline.kts",   // runtime failure
         "10-smoke-e2e.pipeline.kts",     // runtime failure
-        "11-workflow-control.pipeline.kts", // runtime failure
-        "13-workspace-helpers.pipeline.kts", // runtime failure
+        "13-workspace-helpers.pipeline.kts", // timestamps decorator not yet canonical (INC-024 partial)
         "14-credentials-bindings.pipeline.kts" // non-canonical plugin → exit 2 (fail-closed)
     )
 
@@ -116,7 +122,7 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture10SmokeE2E() = runFixtureFail("10-smoke-e2e.pipeline.kts")
 
-    @Test fun fixture11WorkflowControl() = runFixtureFail("11-workflow-control.pipeline.kts")
+    @Test fun fixture11WorkflowControl() = runFixturePass("11-workflow-control.pipeline.kts")
 
     @Test fun fixture12ErrorHandling() = runFixturePass("12-error-handling.pipeline.kts")
 

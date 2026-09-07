@@ -10,7 +10,8 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 7 entries (Shell, Echo, Error, Sleep, WriteFile, EmitEvent, Milestone).
+ * - sealedSubclasses has exactly 13 entries (Shell, Echo, Error, Sleep, WriteFile,
+ *   EmitEvent, Milestone, DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil).
  * - canonicalCoreStepIds derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -20,9 +21,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 7 entries`() {
+    fun `sealedSubclasses has exactly 13 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(7, subclasses.size, "Expected exactly 7 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(13, subclasses.size, "Expected exactly 13 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -35,6 +36,14 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.file.writeFile",
             "core.emit.event",
             "core.milestone",
+            // P1a — workflow-control (v0.33.0)
+            "core.deleteDir",
+            "core.cleanWs",
+            "core.load",
+            // P1b — utility (v0.33.0)
+            "core.pwd",
+            "core.isUnix",
+            "core.waitUntil",
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.ALL_PLUGIN_IDS, "ALL_PLUGIN_IDS must match expected set")
@@ -97,5 +106,57 @@ class CanonicalCoreStepCommandRegistryTest {
         assertEquals("core.milestone", milestoneInstance.pluginId)
         assertEquals(setOf(Effect.READ_ONLY), milestoneInstance.defaultMetadata.effects)
         assertEquals(ReplayPolicy.MEMOIZED, milestoneInstance.defaultMetadata.replayPolicy)
+    }
+
+    // P1a — workflow-control canonical step families
+
+    @Test
+    fun `DeleteDir has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.DeleteDir(path = ".")
+        assertEquals("core.deleteDir", instance.pluginId)
+        assertEquals(setOf(Effect.WRITES_WORKSPACE), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
+    }
+
+    @Test
+    fun `CleanWs has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.CleanWs(deleteDirs = true, patterns = emptyList())
+        assertEquals("core.cleanWs", instance.pluginId)
+        assertEquals(setOf(Effect.WRITES_WORKSPACE), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
+    }
+
+    @Test
+    fun `Load has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.Load(path = "loaded.pipeline.kts")
+        assertEquals("core.load", instance.pluginId)
+        assertEquals(setOf(Effect.EXECUTES_SUBPROCESS), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
+    }
+
+    // P1b — utility canonical step families
+
+    @Test
+    fun `Pwd has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.Pwd(tmp = false)
+        assertEquals("core.pwd", instance.pluginId)
+        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
+    }
+
+    @Test
+    fun `IsUnix has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.IsUnix()
+        assertEquals("core.isUnix", instance.pluginId)
+        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
+    }
+
+    @Test
+    fun `WaitUntil has correct pluginId and defaultMetadata`() {
+        val instance = CanonicalCoreStepCommand.WaitUntil(initialRecurrencePeriod = 1000L, quiet = false)
+        assertEquals("core.waitUntil", instance.pluginId)
+        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
+        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
     }
 }

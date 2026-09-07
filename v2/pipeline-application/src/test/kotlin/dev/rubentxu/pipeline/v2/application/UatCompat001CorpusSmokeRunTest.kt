@@ -21,11 +21,14 @@ import java.util.concurrent.TimeUnit
 class UatCompat001CorpusSmokeRunTest {
 
     // Fixtures that currently fail at runtime (exit non-zero).
+    // After v0.33.0 (P1a/P1b): fixtures 11 (workflow-control) and 13 (workspace-helpers)
+    // now PASS because their step families have canonical implementations. Fixture 14 is
+    // non-canonical `withCredentials` and fails closed by design (AGENTS.md STEP SEMANTICS #3).
+    // Fixture 13 also exercises `timestamps` decorator — not in canonical scope yet, deferred.
     private val brokenFixtures = setOf(
         "02-environment.pipeline.kts",        // runtime failure
         "10-smoke-e2e.pipeline.kts",         // runtime failure
-        "11-workflow-control.pipeline.kts",  // runtime failure
-        "13-workspace-helpers.pipeline.kts",  // runtime failure
+        "13-workspace-helpers.pipeline.kts",  // timestamps decorator not yet canonical
         "14-credentials-bindings.pipeline.kts" // non-canonical plugin (withCredentials) → exit 2 (fail-closed)
     )
 

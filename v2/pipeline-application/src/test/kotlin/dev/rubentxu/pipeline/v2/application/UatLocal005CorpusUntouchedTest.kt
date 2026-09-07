@@ -116,20 +116,25 @@ class UatLocal005CorpusUntouchedTest {
             .sorted()
             .toList()
 
-        assertEquals(13, pipelineFiles.size,
-            "Corpus must have exactly 13 valid pipeline fixtures (07 and 99 moved to broken/). Found: " +
+        assertEquals(17, pipelineFiles.size,
+            "Corpus must have exactly 17 valid pipeline fixtures (07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo). Found: " +
             pipelineFiles.joinToString { it.fileName.toString() })
 
-        // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2)
+        // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E)
         // Note: 07-writeFile-readFile and 99-broken-compilation moved to broken/
+        // Note: 09 renamed archive-artefacts -> sh-then-echo (F10) in v0.33.1
         val newFiles = setOf(
             "08-withEnv-pipeline.pipeline.kts",
-            "09-archive-artefacts.pipeline.kts",
+            "09-sh-then-echo.pipeline.kts",
             "10-smoke-e2e.pipeline.kts",
             "11-workflow-control.pipeline.kts",
             "12-error-handling.pipeline.kts",
             "13-workspace-helpers.pipeline.kts",
-            "14-credentials-bindings.pipeline.kts"
+            "14-credentials-bindings.pipeline.kts",
+            "15-error.pipeline.kts",
+            "16-sleep.pipeline.kts",
+            "17-writeFile.pipeline.kts",
+            "18-cleanWs.pipeline.kts"
         )
         val actualNames = pipelineFiles.map { it.fileName.toString() }.toSet()
         assertTrue(actualNames.containsAll(newFiles),

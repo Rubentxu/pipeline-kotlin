@@ -341,6 +341,12 @@ fun main(args: Array<String>) {
 
         val nonCanonicalSteps = compiledPipeline?.analyzeCanonicalDurableExecution().orEmpty()
         val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
+            // Compilation must be checked FIRST. If the script failed to compile there is no
+            // compiled pipeline to run; jumping to runCanonicalPipeline would NPE on `!!`. This
+            // regression was introduced when the per-step canonical gate was added (v0.33.1 P2
+            // corpus-closure) but the compile-failure branch was left inside `else -> compileOutcome`
+            // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
+            compileOutcome != null -> compileOutcome
             nonCanonicalSteps.isEmpty() -> runCanonicalPipeline(
                 pipeline = compiledPipeline!!,
                 runId = RunId(runId),
@@ -352,7 +358,7 @@ fun main(args: Array<String>) {
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
             )
-            pipelineSpec != null -> {
+            else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
                 // Same gate and message as the durable path (STEP SEMANTICS: fail-closed on every run path).
                 System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
@@ -362,7 +368,6 @@ fun main(args: Array<String>) {
                 System.exit(2)
                 null // unreachable
             }
-            else -> compileOutcome
         }
 
         val events = eventStore.eventsFor(runId).toList()

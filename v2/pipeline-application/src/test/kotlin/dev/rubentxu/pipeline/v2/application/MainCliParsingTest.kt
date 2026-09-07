@@ -8,31 +8,40 @@ import org.junit.jupiter.api.Test
  * Unit tests for CLI argument parsing (C-029).
  *
  * Verifies:
- * - C-029.1: --resume absent → resumeFlag = false
- * - C-029.2: --resume present → resumeFlag = true
+ * - C-029.1: no durable selection flag → ReusePriorRun
+ * - C-029.2: --resume → ResumePriorRun
+ * - C-029.3: --rerun → StartFreshRun
  */
 class MainCliParsingTest {
 
     @Test
-    fun `C-029-1 resume absent yields resumeFlag false`() {
+    fun `C-029-1 durable run defaults to reuse prior run`() {
         val args = arrayOf("run", "--db", "/tmp/test.db", "/path/to/script.kts")
         val config = parseCliArgs(args)
 
         assertEquals("run", config?.command)
         assertEquals("/tmp/test.db", config?.dbPath)
-        assertEquals(false, config?.resumeFlag, "--resume absent should yield resumeFlag=false")
+        assertEquals(DurableRunPolicy.ReusePriorRun, config?.durableRunPolicy)
         assertEquals("/path/to/script.kts", config?.scriptPath)
     }
 
     @Test
-    fun `C-029-2 resume present yields resumeFlag true`() {
+    fun `C-029-2 resume selects prior run`() {
         val args = arrayOf("run", "--db", "/tmp/test.db", "--resume", "/path/to/script.kts")
         val config = parseCliArgs(args)
 
         assertEquals("run", config?.command)
         assertEquals("/tmp/test.db", config?.dbPath)
-        assertEquals(true, config?.resumeFlag, "--resume present should yield resumeFlag=true")
+        assertEquals(DurableRunPolicy.ResumePriorRun, config?.durableRunPolicy)
         assertEquals("/path/to/script.kts", config?.scriptPath)
+    }
+
+    @Test
+    fun `C-029-3 rerun starts a fresh run`() {
+        val args = arrayOf("run", "--db", "/tmp/test.db", "--rerun", "/path/to/script.kts")
+        val config = parseCliArgs(args)
+
+        assertEquals(DurableRunPolicy.StartFreshRun, config?.durableRunPolicy)
     }
 
     @Test
@@ -58,7 +67,7 @@ class MainCliParsingTest {
 
         assertEquals("validate", config?.command)
         assertNull(config?.dbPath)
-        assertEquals(false, config?.resumeFlag)
+        assertEquals(DurableRunPolicy.ReusePriorRun, config?.durableRunPolicy)
         assertEquals("/path/to/script.kts", config?.scriptPath)
     }
 
@@ -69,7 +78,7 @@ class MainCliParsingTest {
 
         assertEquals("validate", config?.command)
         assertNull(config?.dbPath)
-        assertEquals(true, config?.resumeFlag, "--resume with validate should yield resumeFlag=true")
+        assertEquals(DurableRunPolicy.ResumePriorRun, config?.durableRunPolicy)
         assertEquals("/path/to/script.kts", config?.scriptPath)
     }
 }

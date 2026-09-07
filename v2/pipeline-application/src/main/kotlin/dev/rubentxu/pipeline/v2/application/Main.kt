@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
 import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
@@ -94,11 +95,32 @@ fun validateControlRoot(path: String): Path {
 data class PipelineCliConfig(
     val command: String,
     val dbPath: String?,
-    val resumeFlag: Boolean,
+    val durableRunPolicy: DurableRunPolicy,
     val scriptPath: String?,
     val controlRoot: String? = null,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
 )
+
+sealed interface DurableRunPolicy {
+    data object ReusePriorRun : DurableRunPolicy
+    data object ResumePriorRun : DurableRunPolicy
+    data object StartFreshRun : DurableRunPolicy
+}
+
+sealed interface DurableRunSelection {
+    val runId: RunId
+
+    data class Reused(override val runId: RunId) : DurableRunSelection
+    data class StartedFresh(override val runId: RunId) : DurableRunSelection
+}
+
+/**
+ * Fail-closed rejection message shared by BOTH run paths (in-memory and durable):
+ * a non-canonical pipeline must be rejected up front, never partially executed.
+ */
+const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
+    "Error: script uses non-canonical plugins; canonical bridge requires " +
+        "core.sh/core.echo/core.error/core.sleep/core.file.writeFile/core.emit.event/core.milestone."
 
 /**
  * Parses CLI arguments for the pipeline runner.
@@ -117,9 +139,9 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         return null
     }
 
-    // Parse --db, --resume, --control-root, and --sandbox-profile flags.
+    // Parse --db, --resume, --rerun, --control-root, and --sandbox-profile flags.
     var dbPath: String? = null
-    var resumeFlag = false
+    var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun
     var controlRoot: String? = null
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE
     var scriptArgIndex = 1
@@ -134,7 +156,13 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
                 i += 2
             }
             "--resume" -> {
-                resumeFlag = true
+                if (durableRunPolicy != DurableRunPolicy.ReusePriorRun) return null
+                durableRunPolicy = DurableRunPolicy.ResumePriorRun
+                i++
+            }
+            "--rerun" -> {
+                if (durableRunPolicy != DurableRunPolicy.ReusePriorRun) return null
+                durableRunPolicy = DurableRunPolicy.StartFreshRun
                 i++
             }
             "--control-root" -> {
@@ -175,7 +203,7 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     return PipelineCliConfig(
         command = command,
         dbPath = dbPath,
-        resumeFlag = resumeFlag,
+        durableRunPolicy = durableRunPolicy,
         scriptPath = scriptPath,
         controlRoot = controlRoot,
         sandboxProfile = sandboxProfile,
@@ -191,7 +219,7 @@ fun main(args: Array<String>) {
     }
 
     val config = parseCliArgs(args) ?: run {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume] [--control-root <path>] <script>")
+        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume|--rerun] [--control-root <path>] <script>")
         System.exit(1)
         return
     }
@@ -246,9 +274,9 @@ fun main(args: Array<String>) {
         // different execution algorithm. Without --db the run uses the
         // canonical durable coordinator with volatile (in-memory) stores;
         // nothing survives the process.
-        // --resume is rejected: there is no durable state to resume from.
-        if (config.resumeFlag) {
-            System.err.println("Error: --resume requires --db (no durable state exists without a journal database)")
+        // Durable run selection flags are rejected without persistent state.
+        if (config.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
+            System.err.println("Error: --resume and --rerun require --db (no durable state exists without a journal database)")
             System.exit(2)
             return
         }
@@ -299,15 +327,18 @@ fun main(args: Array<String>) {
         val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore =
             dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore(clock)
 
-        val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (pipelineSpec != null) {
-            val compiled = DslCompiledPipelineCompiler.compile(
-                spec = pipelineSpec,
+        val compiledPipeline = pipelineSpec?.let { spec ->
+            DslCompiledPipelineCompiler.compile(
+                spec = spec,
                 sourcePath = scriptPath.toString(),
                 sourceContent = scriptContent,
                 pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
             )
-            runCanonicalPipeline(
-                pipeline = compiled,
+        }
+
+        val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
+            compiledPipeline?.supportsCanonicalDurableExecution() == true -> runCanonicalPipeline(
+                pipeline = compiledPipeline,
                 runId = RunId(runId),
                 journal = journal,
                 cursorStore = cursorStore,
@@ -317,8 +348,14 @@ fun main(args: Array<String>) {
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
             )
-        } else {
-            compileOutcome
+            pipelineSpec != null -> {
+                // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
+                // Same gate and message as the durable path (STEP SEMANTICS: fail-closed on every run path).
+                System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
+                System.exit(2)
+                null // unreachable
+            }
+            else -> compileOutcome
         }
 
         val events = eventStore.eventsFor(runId).toList()
@@ -356,11 +393,8 @@ fun main(args: Array<String>) {
     val dbPathStr = rawEventStore.databasePath()
     val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
 
-    // LF-0206 identity reinterpretation per CANONICAL_CONTRACTS_SPEC §Identity:
-    // the script-derived hash is the DefinitionId; the RunId is unique per
-    // invocation (UuidRunIdGenerator); --resume recovers the PRIOR RunId from
-    // the RunIdDirectory instead of re-deriving it. The record is written
-    // BEFORE the run starts so a run killed mid-flight is still resumable.
+    // The script-derived hash is the DefinitionId. Durable policy decides
+    // whether its persisted RunId is reused or intentionally replaced.
     val scriptContent = scriptPath.toFile().readText()
     val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
         scriptPath.toString(),
@@ -383,13 +417,13 @@ fun main(args: Array<String>) {
         dbPath.parent.resolve("durable-shell")
     }
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-    val runId: String = if (config.resumeFlag) {
-        runIdDirectory.lastRunId(definitionId).value
-    } else {
-        val fresh = UuidRunIdGenerator().next()
-        runIdDirectory.record(definitionId, fresh)
-        fresh.value
-    }
+    val runSelection = selectDurableRun(
+        policy = config.durableRunPolicy,
+        runIdDirectory = runIdDirectory,
+        definitionId = definitionId,
+        runIdGenerator = UuidRunIdGenerator(),
+    )
+    val runId = runSelection.runId.value
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslJar = ScriptDefinition.dslApiJar()
     val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
@@ -520,7 +554,7 @@ fun main(args: Array<String>) {
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
-            System.err.println("Error: script uses non-canonical plugins; canonical bridge requires core.sh/core.echo/core.error/core.sleep/core.file.writeFile/core.emit.event.")
+            System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
             System.exit(2)
             null // unreachable
         }
@@ -559,6 +593,30 @@ fun main(args: Array<String>) {
         }
     }
     if (exitFailure) System.exit(1)
+}
+
+private fun selectDurableRun(
+    policy: DurableRunPolicy,
+    runIdDirectory: RunIdDirectory,
+    definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
+    runIdGenerator: RunIdGenerator,
+): DurableRunSelection = when (policy) {
+    DurableRunPolicy.ReusePriorRun -> when (val stored = runIdDirectory.findLastRunId(definitionId)) {
+        is StoredRunId.Found -> DurableRunSelection.Reused(stored.runId)
+        StoredRunId.Missing -> startFreshRun(runIdDirectory, definitionId, runIdGenerator)
+    }
+    DurableRunPolicy.ResumePriorRun -> DurableRunSelection.Reused(runIdDirectory.lastRunId(definitionId))
+    DurableRunPolicy.StartFreshRun -> startFreshRun(runIdDirectory, definitionId, runIdGenerator)
+}
+
+private fun startFreshRun(
+    runIdDirectory: RunIdDirectory,
+    definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
+    runIdGenerator: RunIdGenerator,
+): DurableRunSelection.StartedFresh {
+    val runId = runIdGenerator.next()
+    runIdDirectory.record(definitionId, runId)
+    return DurableRunSelection.StartedFresh(runId)
 }
 
 private fun runCanonicalPipeline(

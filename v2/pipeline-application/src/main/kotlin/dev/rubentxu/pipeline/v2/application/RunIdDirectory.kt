@@ -5,6 +5,11 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import java.nio.file.Files
 import java.nio.file.Path
 
+sealed interface StoredRunId {
+    data class Found(val runId: RunId) : StoredRunId
+    data object Missing : StoredRunId
+}
+
 /**
  * Persistent mapping from a pipeline [DefinitionId] to the [RunId] of its
  * most recent invocation (LF-0206).
@@ -58,12 +63,19 @@ class RunIdDirectory(private val root: Path) {
      *         fresh run.
      */
     fun lastRunId(definitionId: DefinitionId): RunId {
-        val file = root.resolve(fileNameFor(definitionId))
-        if (!Files.isRegularFile(file)) {
-            throw IllegalArgumentException(
+        return when (val stored = findLastRunId(definitionId)) {
+            is StoredRunId.Found -> stored.runId
+            StoredRunId.Missing -> throw IllegalArgumentException(
                 "No prior run recorded for this pipeline definition; " +
                     "--resume requires a previous run executed with the same --db/--control-root"
             )
+        }
+    }
+
+    fun findLastRunId(definitionId: DefinitionId): StoredRunId {
+        val file = root.resolve(fileNameFor(definitionId))
+        if (!Files.isRegularFile(file)) {
+            return StoredRunId.Missing
         }
         val recorded = Files.readString(file).trim()
         if (recorded.isBlank()) {
@@ -72,7 +84,7 @@ class RunIdDirectory(private val root: Path) {
                     "delete the corrupted record $file or run without --resume"
             )
         }
-        return RunId(recorded)
+        return StoredRunId.Found(RunId(recorded))
     }
 
     private fun fileNameFor(definitionId: DefinitionId): String {

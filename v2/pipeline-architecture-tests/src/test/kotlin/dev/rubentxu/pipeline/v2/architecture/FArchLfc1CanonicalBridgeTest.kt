@@ -80,7 +80,11 @@ class FArchLfc1CanonicalBridgeTest {
         // Resume recovers the PRIOR RunId instead of re-deriving it.
         assertTrue(
             source.contains("RunIdDirectory"),
-            "Main must recover the prior RunId from the RunIdDirectory on --resume",
+            "Main must recover or reuse the prior RunId from the RunIdDirectory",
+        )
+        assertTrue(
+            source.contains("DurableRunPolicy"),
+            "Main must select durable runs through an explicit policy",
         )
         assertTrue(
             Regex("""DeterministicIdGenerator\.definitionId""").containsMatchIn(source),

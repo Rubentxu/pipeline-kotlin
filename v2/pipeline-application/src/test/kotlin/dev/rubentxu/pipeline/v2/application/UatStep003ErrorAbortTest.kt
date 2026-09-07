@@ -49,13 +49,9 @@ class UatStep003ErrorAbortTest {
     }
 
     @Test
-    fun `error step fails the run with failure outcome and diagnostics`() {
+    fun `error step fails the run with one typed failure and empty diagnostics`() {
         val (stdout, events) = runAndDecodeExpectingFailure()
 
-        // Durable-spine contract (LF-0208, verified parity in-memory vs --db):
-        // an error() step emits StepStarted/StepFinished and the failure is
-        // carried by RunFinished.outcome=failure with diagnostics; the legacy
-        // walker's dedicated StepFailed event is not part of the spine.
         val stepStartedEvents = events.filter { it is StepStarted }
         assertTrue(
             stepStartedEvents.any { (it as StepStarted).stepType == "error" },
@@ -78,9 +74,8 @@ class UatStep003ErrorAbortTest {
         assertEquals("failure", runFinished.outcome,
             "RunFinished.outcome must be 'failure' when error step runs")
 
-        // The failure carries diagnostics (divergence-gated failure record).
-        assertTrue(runFinished.diagnostics.isNotEmpty(),
-            "RunFinished must carry failure diagnostics: ${runFinished.diagnostics}")
+        assertEquals(1, events.count { it is StepFailed }, "Must emit exactly one StepFailed event")
+        assertTrue(runFinished.diagnostics.isEmpty(), "RunFinished diagnostics must be empty")
         assertTrue(stdout.isNotEmpty(), "stdout must still carry the full timeline")
     }
 

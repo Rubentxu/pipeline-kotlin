@@ -57,6 +57,22 @@ B. INC reclassification promoting a QUARANTINED component.
 C. Compatibility shim required by an in-flight UAT.
 D. Backlog item with documented Exit criterion + Gate owner.
 
+## STEP SEMANTICS (MANDATORY)
+
+1. Jenkins familiarity: step names, parameters, semantics, and outcomes MUST
+   match Jenkins behavior (see `docs/v2/00-context/JENKINS_REFERENCE_BASELINE.md`)
+   so Jenkins users can adopt pipelines without relearning — e.g. `dir`,
+   `timeout`, `retry`, `catchError`, `warnError`, `unstable`, `milestone`,
+   `deleteDir`, `cleanWs`, `pwd`, `isUnix`, `load`, `waitUntil`.
+2. Per-step observability: every step MUST emit its own typed domain events
+   (e.g. `DirEntered`/`DirExited`, `DirDeleted`, `WsCleaned`,
+   `WaitUntilPolled`/`WaitUntilCompleted`, `MilestoneReached`) so external
+   systems can observe and react from separate processes. A step whose only
+   observable effect is its return value is incomplete.
+3. Fail-closed coverage: a step family without canonical decoder/dispatcher
+   support MUST be rejected before execution on EVERY run path — never silently
+   converted to a comment, no-op, or empty shell.
+
 ## V2 TESTING RULES
 
 ### Execution economics ( Gradle )

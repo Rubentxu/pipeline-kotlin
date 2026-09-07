@@ -74,11 +74,22 @@ private sealed interface StageTimeoutProjection {
     data class Present(val milliseconds: Long) : StageTimeoutProjection
 }
 
-private fun StageNode.projectShellOptions(base: ShOptions): ShOptions =
-    when (val timeout = timeoutProjection()) {
-        StageTimeoutProjection.Absent -> base
-        is StageTimeoutProjection.Present -> base.copy(timeoutMs = base.timeoutMs ?: timeout.milliseconds)
+private fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
+    // WS-S-005: merge stage environment (EnvironmentSpec.values: Map<String, String>)
+    // into ShOptions.env (Map<String, SecretHandle>)
+    val stageEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> =
+        environment.values
+            .mapValues { dev.rubentxu.pipeline.v2.domain.SecretHandle.plain(it.value) }
+    val mergedEnv = base.env + stageEnv
+
+    return when (val timeout = timeoutProjection()) {
+        StageTimeoutProjection.Absent -> base.copy(env = mergedEnv)
+        is StageTimeoutProjection.Present -> base.copy(
+            timeoutMs = base.timeoutMs ?: timeout.milliseconds,
+            env = mergedEnv,
+        )
     }
+}
 
 private fun StageNode.timeoutProjection(): StageTimeoutProjection {
     val timeoutOptions = options.filter { it.name == "timeout" }

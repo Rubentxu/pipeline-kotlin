@@ -589,39 +589,43 @@ class CanonicalDurableRunCoordinator(
                         ),
                     )
                 }
-            InvocationReconciliation.Execute -> Unit
-        }
-        if (journaled == null) {
-            journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
-        }
+            // Execute is the ONLY resolution that reaches the effective executor. beginOperation, the
+            // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
+            // live here, so the concrete semantics are invoked exclusively under this decision.
+            InvocationReconciliation.Execute -> {
+                if (journaled == null) {
+                    journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
+                }
 
-        val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-            stepExecutor.invoke(
-                typedCommand,
-                CanonicalRuntimeContext(
-                    opId = opId,
-                    runId = runId.value,
-                    stageName = stageName,
-                    stageIndex = stageIndex,
-                    stepIndex = stepIndex,
-                    shOptions = stageShOptions,
-                    controlDirRoot = controlDirRoot,
-                    eventSink = eventSink,
-                ),
-            )
+                val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                    stepExecutor.invoke(
+                        typedCommand,
+                        CanonicalRuntimeContext(
+                            opId = opId,
+                            runId = runId.value,
+                            stageName = stageName,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                            shOptions = stageShOptions,
+                            controlDirRoot = controlDirRoot,
+                            eventSink = eventSink,
+                        ),
+                    )
+                }
+                journal.append(
+                    RerunOperation(
+                        id = operationId,
+                        fingerprint = fingerprint,
+                        input = input,
+                        output = null,
+                        status = outcome.toOperationStatus(),
+                        attempt = 1,
+                    ),
+                )
+                if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
+                return outcome
+            }
         }
-        journal.append(
-            RerunOperation(
-                id = operationId,
-                fingerprint = fingerprint,
-                input = input,
-                output = null,
-                status = outcome.toOperationStatus(),
-                attempt = 1,
-            ),
-        )
-        if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
-        return outcome
     }
 
     /**

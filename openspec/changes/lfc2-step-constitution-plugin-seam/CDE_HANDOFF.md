@@ -675,12 +675,28 @@ All seam tests green (characterization 8, dual 5, adapter 2, router 2, registry 
 6, outcome 4, capability bridge 4, echo seam 6) and architecture fitness 165/0/0 fresh. CDE.3-b/c laws
 unchanged.
 
-### 12.7 d5 starting point (next slice — CDE.3-d gate)
+### 12.7 d5 starting point (next slice — CDE.3-d gate) + d5a grounding finding
 
-Remaining is the durable-spine proof: wire `CanonicalDurableRunCoordinator` to (a) the CDE.3-c slice-2
-prepare selector by structural step key (registry vs legacy prepare) and (b) route Ready prepared executions
-through `SeamedExecutionRouter.route(legacyAdapter, RegistryExecutionBoundary.adapt())`, then demonstrate
-through the REAL spine: fresh registry prepare=1 common=1 handler=1; replay reuse registry all 0;
-divergence registry all 0; typed-invalid registry prepare=1 common=0 handler=0; missing capability handler=0
-fail-closed. Cross-cutting coordinator change: run L4 module suites + architecture fitness + durable/replay
-as the gate. Open CDE.3-e only if residual fitness/output/capability contract work remains.
+**d5a grounding (evidence-based, coordinator read):** `CanonicalDurableRunCoordinator.dispatch` is
+hardwired to the canonical-core world. It resolves `stepMetadataResolver.resolve(step.pluginStepId)`
+(default `CoreLegacyStepMetadataResolver` = `CanonicalCoreStepMetadata.metadata(key)`, which fails fast
+on a non-core key), fingerprints via `StepMetadata.replayPolicy`, and prepares through
+`LegacyExecutionBoundary.prepare(step)` (`CanonicalCoreStepDecoder`). `StepMetadataResolver.kt` doc
+states explicitly that the registry/definition metadata composite (migrated definitions + legacy table)
+"belongs to CDE.3/CDE.5". So a registry step today cannot even reach the coordinator Execute branch
+without: (a) a registry/definition `StepMetadataResolver` composite, (b) a registry step present as a
+`StepNode` in the compiled pipeline (`StepNode.payload.encoded` + `pluginStepId`), and (c) the
+prepare-selector by structural step key. The d1–d4 registry EXECUTE seams (capability bridge, sealed
+families, router, registry prepare/execute, output normalization) are complete and ready; the durable
+spine proof is gated by the metadata composite + registry-node representation, which the roadmap places
+nearer core.echo-by-Registry.
+
+Remaining spine work when the composite is available: wire `CanonicalDurableRunCoordinator` to (a) the
+CDE.3-c slice-2 prepare selector by structural step key (registry when the key resolves in a
+`StepRegistry`, else legacy), feeding `RegistryExecutionPreparation.prepare` the runtime's available
+capabilities, and (b) route Ready prepared executions through
+`SeamedExecutionRouter.route(legacyAdapter, RegistryExecutionBoundary.adapt())`; then demonstrate through
+the REAL spine: fresh registry prepare=1 common=1 handler=1; replay reuse registry all 0; divergence
+registry all 0; typed-invalid registry prepare=1 common=0 handler=0; missing capability handler=0
+fail-closed. Cross-cutting coordinator change: run L4 module suites + architecture fitness + durable/
+replay as the gate. Open CDE.3-e only if residual fitness/output/capability contract work remains.

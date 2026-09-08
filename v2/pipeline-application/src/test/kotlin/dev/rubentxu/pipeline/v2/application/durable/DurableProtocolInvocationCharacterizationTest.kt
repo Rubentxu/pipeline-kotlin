@@ -111,6 +111,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(echoPipeline("hola"), runId)
@@ -165,6 +166,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -215,6 +217,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -258,6 +261,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(malformed, runId)
@@ -337,6 +341,7 @@ class DurableProtocolInvocationCharacterizationTest {
             credentialScopePort = noOpCredentialScopePort(),
             controlDirRoot = controlRoot,
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -409,6 +414,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -494,6 +500,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             commonExecutionBoundary = recorder,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         val outcome = coordinator.run(pipeline, runId)

@@ -191,6 +191,24 @@ private sealed interface RunningCanonicalShellRecovery {
     data class Recovered(val outcome: StepOutcome, val status: OperationStatus) : RunningCanonicalShellRecovery
 }
 
+/**
+ * Outcome of turning a [StepNode] into a canonical command (B1.2c2-a2.1).
+ *
+ * Makes the decode bifurcation explicit: the invocation is either ready to enter the durable protocol
+ * with a decoded [CanonicalCoreStepCommand], or it was rejected before execution (schema mismatch). A
+ * rejected invocation must never reach the effective executor.
+ */
+private sealed interface InvocationPreparation {
+    /** Decode succeeded; the protocol proceeds with the typed command. */
+    data class Ready(val command: CanonicalCoreStepCommand) : InvocationPreparation
+
+    /**
+     * Decode was rejected before execution. Carries the terminal [StepOutcome] (a SCHEMA failure) that
+     * `dispatch` must return without invoking the executor.
+     */
+    data class Rejected(val failure: StepOutcome) : InvocationPreparation
+}
+
 private sealed interface BlockShellScope {
     data object None : BlockShellScope
     data class Directory(val target: Path, val previous: Path) : BlockShellScope
@@ -452,33 +470,9 @@ class CanonicalDurableRunCoordinator(
             return dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, bodyPath)
         }
 
-        val typedCommand: CanonicalCoreStepCommand = try {
-            CanonicalCoreStepDecoder.decode(step)
-        } catch (e: IllegalArgumentException) {
-            val operationId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath).format()
-            val input = OperationInput(
-                stepId = step.pluginStepId.value,
-                params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
-                runId = runId.value,
-                attempt = 1,
-            )
-            val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, ReplayPolicy.RERUN, 1)
-            journal.append(
-                RerunOperation(
-                    id = operationId,
-                    fingerprint = fingerprint,
-                    input = input,
-                    output = null,
-                    status = OperationStatus.FAILED,
-                    attempt = 1,
-                ),
-            )
-            return StepOutcome.Failure(
-                PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
-                ),
-            )
+        val typedCommand = when (val preparation = prepareInvocation(step, runId, stageIndex, stepIndex, bodyPath)) {
+            is InvocationPreparation.Rejected -> return preparation.failure
+            is InvocationPreparation.Ready -> preparation.command
         }
 
         // Scope tracking via ContextOverlay (EM-4 migration from ScopeFrame)
@@ -600,6 +594,53 @@ class CanonicalDurableRunCoordinator(
         )
         if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
         return outcome
+    }
+
+    /**
+     * Decodes a [StepNode] into a canonical command, making the pre-execution rejection explicit.
+     *
+     * A rejected (schema-mismatch) invocation records a FAILED journal entry and yields the terminal
+     * [StepOutcome] that `dispatch` returns without invoking the executor. A ready invocation carries the
+     * typed command for the rest of the durable protocol. (B1.2c2-a2.1)
+     */
+    private fun prepareInvocation(
+        step: StepNode,
+        runId: RunId,
+        stageIndex: Int,
+        stepIndex: Int,
+        bodyPath: List<BlockSegment>,
+    ): InvocationPreparation {
+        val typedCommand = try {
+            CanonicalCoreStepDecoder.decode(step)
+        } catch (e: IllegalArgumentException) {
+            val operationId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath).format()
+            val input = OperationInput(
+                stepId = step.pluginStepId.value,
+                params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
+                runId = runId.value,
+                attempt = 1,
+            )
+            val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, ReplayPolicy.RERUN, 1)
+            journal.append(
+                RerunOperation(
+                    id = operationId,
+                    fingerprint = fingerprint,
+                    input = input,
+                    output = null,
+                    status = OperationStatus.FAILED,
+                    attempt = 1,
+                ),
+            )
+            return InvocationPreparation.Rejected(
+                StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
+                    ),
+                ),
+            )
+        }
+        return InvocationPreparation.Ready(typedCommand)
     }
 
     private fun recoverRunningShell(

@@ -833,3 +833,16 @@ plugins share the durable protocol (journal/replay/fingerprint) with NO special 
 **CDE.3-e effectively DONE.** Remaining for e5 DONE formality (optional follow-up): 8 architecture
 fitness rules the user listed + L4 module suite + migrating core.echo to the registry family (B1.2c3).
 Journal schema / fingerprint / cursor / lifecycle: no regression (legacy 1:1). d5c/d5d closed honestly.
+
+## CDE.3-e CLOSED — fitness guardrail added (`049e8b08`)
+
+`Lfc2RegistryFamilyFitnessTest` (architecture) 3/0/0 locks the structural-family routing form: the
+coordinator classifies via `StructuralFamilyResolver` and switches prepare on the closed
+`StructuralStepFamily` token; the family file is closed over LegacyCore|Registry driven by
+`ALL_PLUGIN_IDS` + registry membership (no concrete name enumeration); registry prepare is reachable
+only under the Registry family. Existing `Lfc2DurableCoordinatorScopeFitnessTest` (no concrete command/
+decoder/step routing in the coordinator) plus DREG-1..5 (replay/divergence no codec+handler, capability
+admission, ephemeral PreparedExecution, output normalization) together cover the e5 fitness list.
+Architecture module total now 168 tests (165 prior + 3). **CDE.3 (a..e) = DONE.** d5c/d5d closed.
+Next observable milestone (separate, not started): B1.2c3 — migrate core.echo off its concrete legacy
+dispatch onto the registry family, then StepContractSuite / core.echo CERTIFIED.

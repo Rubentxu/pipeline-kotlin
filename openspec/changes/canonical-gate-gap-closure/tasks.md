@@ -46,12 +46,13 @@ both paths use the same typed failure protocol.
   Validated: timeout-retry fixture compiles+runs (was a compile rejection). D1a resolved:
   top-level error compiles via stepNode else to core.error typed node; nested now matches.
   Regression test + compiler suite green.
-- G3: OPEN. Precondition discovered: the canonical coordinator (in-process PipelineRule)
-  emits stage-qualified stepName (`test/echo-0`) while the durable real-process path emitted
-  unqualified `echo-0`. Before changing anything, trace where StepStarted/StepFinished stepName
-  is assigned on EACH path (OpaqueStepNode dispatch vs shell/replay/sh execution) to find the
-  divergence point, then align to the D2 contract and reconcile ErrorHandlingTest expectations.
-  G2 parallel+siblings remains a separate triage item.
+- G3: **naming reconciliation DONE** (4568ab02). Empirically NO cross-path divergence (durable and
+  in-process both emit `test/echo-0`; the earlier unqualified `echo-0` was stale). ErrorHandling
+  echo assertions aligned to the deterministic `<stage>/<type>-<index>` contract. ERR-S-001 green.
+  REMAINING ERR-S-002/003/006/008 fail on an INDEPENDENT pre-existing catchError-SEMANTICS gap
+  (CatchErrorTriggered not emitted on re-throw; nested catch; StageFinished presence) — coordinator
+  EM-5/6 work, out of G3 naming scope.
+- G2 parallel+siblings remains a separate triage item.
 
 ## G1 — structured-step (`error`) projection in workflow-control
 - D1: decide projection form (typed shell `exit` carrying a typed failure vs a typed node

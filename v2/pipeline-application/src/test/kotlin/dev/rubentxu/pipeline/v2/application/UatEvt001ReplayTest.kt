@@ -111,7 +111,8 @@ class UatEvt001ReplayTest {
         val stepStarted = events[4] as StepStarted
         assertEquals(0, stepStarted.stageIndex, "step stageIndex must be 0")
         assertEquals(0, stepStarted.stepIndex, "stepIndex must be 0")
-        assertEquals("echo", stepStarted.stepName, "stepName must be echo")
+        // G3: auto-named DSL steps are `<stage>/<type>-<index>` (DslCompiledPipelineCompilerTest).
+        assertEquals("hello/echo-0", stepStarted.stepName, "stepName must follow the G3 contract")
         assertEquals("echo", stepStarted.stepType, "stepType must be echo")
     }
 

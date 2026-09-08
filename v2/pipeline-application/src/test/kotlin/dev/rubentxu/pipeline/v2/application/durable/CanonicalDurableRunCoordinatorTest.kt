@@ -426,10 +426,11 @@ class CanonicalDurableRunCoordinatorTest {
         assertEquals(RunOutcome.Success, resumedOutcome)
         assertEquals(1, journal.listForRun(runId.value).size)
         assertEquals("${runId.value}-s0-0", cursorStore.load(runId.value)?.lastOpId)
-        // C3: First run (RERUN) emits: RunStarted + StepStarted + EchoOutputCaptured (from echo) + StepFinished + RunFinished = 5 events
-        // C3: Second run (SKIP) emits: RunStarted + RunFinished = 2 events (run completed, no step events)
-        // Total: 7 events
-        assertEquals(7, eventStore.eventsFor(runId.value).count())
+        // LFC-2 / ERR-S-004: the canonical coordinator now emits stage bookends.
+        // First run (RERUN): RunStarted + StageStarted + StepStarted + EchoOutputCaptured + StepFinished + StageFinished + RunFinished = 7
+        // Second run (SKIP): RunStarted + StageStarted + StageFinished + RunFinished = 4
+        // Total: 11 events
+        assertEquals(11, eventStore.eventsFor(runId.value).count())
     }
 
     @Test

@@ -295,18 +295,47 @@ class CanonicalDurableRunCoordinator(
                 }
                 val stageBaseOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
                 val stageShOptions = stage.projectShellOptions(stageBaseOptions)
+                // LFC-2 / ERR-S-004: restore stage bookends lost in the LF-0208 spine migration.
+                // The canonical coordinator emits StageStarted at entry and StageFinished on normal
+                // completion (success/unstable). An aborting stage returns before StageFinished;
+                // RunFinished carries the failure.
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.StageStarted(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                        stageIndex = stageIndex,
+                        stageName = stage.name,
+                    ),
+                )
+                var stageUnstable = false
                 for (stepIndex in steps.indices) {
                     val step = steps[stepIndex]
                     val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
                     when (val continuation = decideContinuation(outcome, stage.name, runId.value)) {
                         CanonicalContinuation.Continue -> Unit
-                        CanonicalContinuation.ContinueUnstable -> currentOutcome = RunOutcome.Unstable
+                        CanonicalContinuation.ContinueUnstable -> {
+                            currentOutcome = RunOutcome.Unstable
+                            stageUnstable = true
+                        }
                         is CanonicalContinuation.Abort -> {
                             currentOutcome = RunOutcome.Failure(continuation.failure)
                             return@run currentOutcome
                         }
                     }
                 }
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.StageFinished(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = Instant.now(),
+                        stageIndex = stageIndex,
+                        stageName = stage.name,
+                        outcome = if (stageUnstable) "unstable" else "success",
+                    ),
+                )
             }
             // Success: fall through to finally and return
         } catch (e: Exception) {

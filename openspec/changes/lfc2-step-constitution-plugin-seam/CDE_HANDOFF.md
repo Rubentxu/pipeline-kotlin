@@ -330,3 +330,88 @@ is **CDE.3-b: adapt the legacy path behind the new common seam** (legacy produce
 representation and still executes through the single executor), with the full suite staying identical.
 CDE.3-b requires its own characterization cycle (the 42 frozen + durable/replay), so it opens a dedicated
 implementation round rather than being rushed here.
+
+---
+
+## 9. CDE.3-b1 — Characterization of the current executor contract (2026-09-08)
+
+Scoped to the exact frontier that CDE.3-b will rewire. Sources read in full:
+`CanonicalInvocationExecutor.kt`, `LegacyExecutionBoundary.kt`,
+`CanonicalDurableRunCoordinator.kt`, `CanonicalNodeDispatcher.kt`,
+`CanonicalCoreStepDecoder.kt`, and every `RecordingInvocationExecutor` site in
+`DurableProtocolInvocationCharacterizationTest.kt`.
+
+### 9.1 What actually enters the executor
+
+The durable coordinator reaches the executor ONLY under
+`InvocationReconciliation.Execute` (`CanonicalDurableRunCoordinator.kt:572`). Nothing else can reach it.
+Inside that branch, in frozen order:
+
+1. **Typed decode** (`LegacyExecutionBoundary.decode(step)`, line 577): a `Rejected` returns
+   `rejectSchema(...)` (SCHEMA Failure journaled, executor NEVER invoked); a `Ready(command)` unwraps a
+   concrete `CanonicalCoreStepCommand`.
+2. **`journal.beginOperation`** if the journal row is fresh (line 586).
+3. **Executor call** `stepExecutor.invoke(typedCommand, CanonicalRuntimeContext(...))` (line 591),
+   wrapped by `StepExecutionBoundary(eventSink).execute(lifecycleContext) { ... }`.
+4. **Terminal journal append** of the resulting `RerunOperation` (status from `outcome.toOperationStatus()`).
+5. **Cursor advance** only when the outcome is not a `Failure` (line 615).
+
+The executor's real arguments:
+- `command: CanonicalCoreStepCommand` — a closed sealed of 14 subtypes, produced by
+  `CanonicalCoreStepDecoder.decode`, which is the ONLY producer. `LegacyExecutionBoundary` catches
+  `IllegalArgumentException` from every decode `require(...)` / `throw` and turns it into `Rejected`;
+  there is no other Rejected producer today.
+- `context: CanonicalRuntimeContext` — a data class the coordinator builds inline at the single call
+  site (line 593): `opId, runId, stageName, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink`.
+  Built at exactly 3 sites total (this one is the only production Execute site).
+
+### 9.2 Ownership
+
+- `CanonicalCoreStepCommand` is owned by the closed legacy world. `CanonicalNodeDispatcher.dispatch`
+  is the sole consumer and is a `when(command)` over the 14 closed subtypes routing to the narrow
+  per-step `*NodeDispatcher`. That `when` is LEGACY-INTERNAL and stays put; the new common seam must not
+  add a second one.
+- **The coordinator names the concrete command transitively only through the executor seam's signature.**
+  Its own class signature imports `CanonicalCoreStepCommand`? It does not (checked the import list), but
+  the local `typedCommand` is that concrete type and is passed to `stepExecutor.invoke`, so the Execute
+  branch is coupled to the concrete command through `CanonicalInvocationExecutor`. This is exactly what
+  CDE.3-b5 (gate item 4) must remove: the coordinator will hand an opaque `PreparedExecution` to the new
+  common executor and never name `CanonicalCoreStepCommand`.
+
+### 9.3 Context / capabilities used
+
+`CanonicalRuntimeContext` is the durable runtime the coordinator owns. Per-step dispatchers derive a
+narrow `*DispatchContext` from it (e.g. `echoContext()` uses `eventSink`; `shellContext()` uses
+`opId/runId/shOptions/controlDirRoot/eventSink/...`). No step receives the whole coordinator, journal,
+cursor, lifecycle, credential port or context stack. Capabilities are already narrow per step via the
+`*DispatchContext` derivation; they are NOT inside the executor seam's command payload.
+
+### 9.4 Result & failure contract
+
+- Output is always `StepOutcome` (closed Success/Unstable/Failure). The executor seam returns
+  `StepOutcome`; there is no `Any`/`Result<*>` anywhere on the durable path.
+- A returned `Failure` is journaled and the cursor is NOT advanced; the coordinator's
+  `decideContinuation` walks the catchError chain. Rejection (`rejectSchema`) is a distinct terminal:
+  SCHEMA Failure journaled under a RERUN fingerprint, executor never called.
+
+### 9.5 Existing characterization adequacy (what protects the frontier)
+
+The `RecordingInvocationExecutor` freezes the "executor == effective side-effect execution" signal across
+the whole durable protocol: C1 fresh=1; C2 reuse=0; C4 divergence=0; C3 decode-failure=0; C5
+decode-first precedence over a matching journaled success=0; S1 running-shell recovery=0; C6 reused
+CatchErrorEntered overlay still pushed (failing sh fresh=1, outcome Unstable); a1-4 lifecycle
+`StepStarted < semantic < StepFinished` ordering.
+
+**Gap for CDE.3-b, and only that gap:** the recorder counts the executor seam alone; it CANNOT yet
+distinguish `prepare` from `execute`. The law `fresh typed-invalid legacy -> prepare=1, Ready=0,
+executor=0` therefore has no current oracle. A prepare-vs-executor split measurement is impossible until
+the b2/b3 prepare seam exists, so that recorder is introduced WITH b3 (not in b1). No executor-counting
+or ordering property is missing today; none of the existing tests need to be weakened.
+
+### 9.6 What must be invariant across b2-b5
+
+The one non-negotiable semantic (user law + a1): **"Rejected during preparation -> executor = 0;
+Ready -> executor = 1".** The executor seam must keep meaning effective side-effect execution; b3 must
+not move the rejection count onto the executor to make the abstraction fit. The durable lifecycle,
+journal, replay, cursor and failure persistence stay owned by the spine (`StepExecutionBoundary` +
+coordinator), never duplicated into the new seam.

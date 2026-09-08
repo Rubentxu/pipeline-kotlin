@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.domain.AgentSpec
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
@@ -23,6 +24,7 @@ import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
+import dev.rubentxu.pipeline.v2.dsl.toSpec
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -270,6 +272,9 @@ object DslCompiledPipelineCompiler {
             put("kind", "withEnv")
             put("overrides", JsonArray(step.overrides.map { JsonPrimitive(it) }))
         })
+        is StepSpec.WithCredentialsBlock -> CredentialBindingsPayload.encode(
+            step.bindings.map { it.toSpec() },
+        )
         else -> "{}"
     }
 

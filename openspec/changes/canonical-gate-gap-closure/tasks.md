@@ -40,6 +40,19 @@ both paths use the same typed failure protocol.
 > These decisions are recorded pending a design/ADR review; production mutation of the
 > compiler (G1) and coordinator (G3) is the apply step that follows.
 
+## Status
+- G1: **DONE** (8dc1cfde). StepSpec.Error treated as structured in projectInnerScope -> typed
+  core.error abort node; coordinator dispatches Failure, catchError suppresses (UNSTABLE).
+  Validated: timeout-retry fixture compiles+runs (was a compile rejection). D1a resolved:
+  top-level error compiles via stepNode else to core.error typed node; nested now matches.
+  Regression test + compiler suite green.
+- G3: OPEN. Precondition discovered: the canonical coordinator (in-process PipelineRule)
+  emits stage-qualified stepName (`test/echo-0`) while the durable real-process path emitted
+  unqualified `echo-0`. Before changing anything, trace where StepStarted/StepFinished stepName
+  is assigned on EACH path (OpaqueStepNode dispatch vs shell/replay/sh execution) to find the
+  divergence point, then align to the D2 contract and reconcile ErrorHandlingTest expectations.
+  G2 parallel+siblings remains a separate triage item.
+
 ## G1 — structured-step (`error`) projection in workflow-control
 - D1: decide projection form (typed shell `exit` carrying a typed failure vs a typed node
   the coordinator dispatches); ADR entry. Keep fail-closed, never a silent comment.

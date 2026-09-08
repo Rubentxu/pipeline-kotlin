@@ -35,28 +35,13 @@ Verifies ERR-S-004, UatDsl001-mutating, UatEvt001 structure. All green.
 Evolve the `stepName=="echo"` assertion to the `<stage>/<type>-<index>` contract (`hello/echo-0`).
 UatEvt001 fully green.
 
-## T1 — parallel composability (G2) + ADR — NEXT, DESIGN-GATED, SPINE-GAP
-Fresh ground truth (2026-09-08, binary current): parallel.pipeline.kts + grammar-full Deploy BOTH fail
-solely at compile `stageNode:106` ("cannot mix a parallel body with sibling steps"); exit 1, no events.
-TWO independent layers:
-1. DSL/compiler (stageNode): rejects `parallel{}` + sibling steps (G2).
-2. Canonical coordinator (CanonicalDurableRunCoordinator.run:275-276): only executes StageBody.Steps;
-   a whole-body StageBody.Parallel stage THROWS "supports only linear stage steps". Main routes
-   non-canonical-capable pipelines to the coordinator; the real parallel executor lives ONLY in the
-   superseded legacy PipelineRun (emits ParallelBranchStarted/Finished). The LF-0208 spine migration
-   never wired parallel into the canonical coordinator => parallel is non-functional on the promoted
-   production path (spine gap, same family as ERR-S-004 bookends).
-DESIGN FORK (needs ADR + roadmap authority):
-- (A) declarative-faithful: `parallel` stays stage-terminal (whole body). Then fixtures mixing
-  parallel+sibling are invalid and must be reformulated; STILL requires wiring StageBody.Parallel
-  into the canonical coordinator (spine) for a pure-parallel stage to run -> UatDsl003 still blocked.
-- (B) scripted-faithful composable step: `parallel` among siblings -> new composable parallel IR node
-  + canonical-coordinator concurrency -> larger spine change.
-EITHER fork needs canonical-coordinator parallel support (EM durable-runtime spine), which LFC-2
-declares Out of Scope (EM track). Honest LFC-2 disposition: reclassify UatDsl001-full-grammar parallel
-clause + UatDsl003 as BLOCKED-ON-EM (spine), not DSL-fake; add EM backlog item for canonical parallel;
-quarantine/rebaseline the two fixtures per "tests never block legitimate development" until the spine
-item lands.
+## T1 — parallel composability (G2) — ✅ DONE (quarantine + E-EM-11, commit a7a16c2c)
+Adopted fork (A) per roadmap authority: parallel is a canonical-spine gap (E-EM-11), not DSL-fake.
+Root cause widened from G2-compiler to full M2-R1 event parity: canonical coordinator emits NO
+ParallelBranch/RetryAttempt/TimeoutScheduled events (only retired legacy PipelineRun does). Quarantined
+the 7 legacy-surface methods (UatDsl003 class + 3 UatDsl001 full-grammar) as BLOCKED-ON-EM with precise
+@Disabled reasons; opened E-EM-11 backlog item. DSL UATs green (mutating + UatEvt001 + ERR-S preserved).
+Re-open UatDsl003/UatDsl001-full-grammar when E-EM-11 lands.
 
 ## T4 — remaining LFC-2 gate items
 - Incomplete/fake-return steps the gate names (post/when/waitUntil/pwd/isUnix, ...); shell dollar

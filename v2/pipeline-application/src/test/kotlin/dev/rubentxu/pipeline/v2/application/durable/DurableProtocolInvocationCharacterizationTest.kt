@@ -353,6 +353,84 @@ class DurableProtocolInvocationCharacterizationTest {
     }
 
     @Test
+    fun `C5 malformed payload with a matching journaled success preserves decode-first precedence`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("a1-2-c5-malformed-journaled")
+        // A malformed (schema-invalid) echo payload whose fingerprint DOES match a pre-seeded SUCCEEDED
+        // journal row: decode-first would reject as SCHEMA; reuse-first would skip to Success. This
+        // freezes which precedence the durable protocol has today (decode failure vs replay reuse).
+        val malformedPayload = "{not-valid-json"
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("a1-2-c5-malformed-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(
+                    StageId("build"),
+                    "build",
+                    body = StageBody.Steps(
+                        listOf(
+                            OpaqueStepNode(
+                                id = StepId("build/echo"),
+                                pluginStepId = PluginStepId("core.echo"),
+                                payload = VersionedStepPayload("dsl-v1", malformedPayload),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val operationId = "${runId.value}-s0-0"
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = "core.echo",
+            params = mapOf("payload" to kotlinx.serialization.json.JsonPrimitive(malformedPayload)),
+            runId = runId.value,
+            attempt = 1,
+        )
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = operationId,
+                fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+                    input,
+                    "core.echo",
+                    ReplayPolicy.MEMOIZED,
+                    1,
+                ),
+                input = input,
+                output = null,
+                status = OperationStatus.SUCCEEDED,
+                attempt = 1,
+            ),
+        )
+        val recorder = RecordingInvocationExecutor(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            journal,
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+            invocationExecutor = recorder,
+        )
+
+        val outcome = coordinator.run(pipeline, runId)
+
+        // Freeze: the durable protocol is DECODE-FIRST. A malformed payload is rejected as SCHEMA even
+        // when a matching SUCCEEDED journal row exists (reuse-eligible): schema validation currently
+        // precedes replay/reuse and must not be skipped by a reuse. executor stays 0.
+        assertTrue(
+            outcome is RunOutcome.Failure && outcome.failure.kind == dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+            "malformed payload must reject as SCHEMA (decode-first), got: $outcome",
+        )
+        assertEquals(0, recorder.calls, "a malformed payload must never reach the effective executor")
+    }
+
+    @Test
     fun `a1-4 lifecycle spine owns StepStarted and StepFinished around the semantic event`() = runBlocking {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()

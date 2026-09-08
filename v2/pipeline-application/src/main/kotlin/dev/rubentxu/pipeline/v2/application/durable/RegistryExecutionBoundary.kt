@@ -25,8 +25,15 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
  * A normal typed handler return is a durable [StepOutcome.Success]: the step's observable meaning is
  * the effects it emits through its declared capabilities (echo emits [EchoOutputCaptured] into the
  * event sink it received). A thrown handler is an adapter/engine defect, so it fails closed as a typed
- * [StepOutcome.Failure] (ENGINE). Generic handler-output normalization (typed/void output, output
- * encode) is owned by CDE.3-d4.
+ * [StepOutcome.Failure] (ENGINE).
+ *
+ * Output normalization (CDE.3-d4): the durable [StepOutcome] carries NO generic output slot and the
+ * journal schema is unchanged, so the handler's typed `O` is never stuffed into a [StepOutcome] and
+ * never crosses to the durable coordinator (no `Any` as a durable contract). Grounding: a registry
+ * Step's durable-observable output is realized as an effect the handler emits through its declared
+ * capabilities (the echo pattern); the coordinator only ever sees [StepOutcome]. Typed `O`, void/Unit
+ * `O` and a thrown handler all reduce to [StepOutcome] here; output *encoding* only matters when a
+ * step chooses to persist its result, which this spine does not do silently.
  */
 object RegistryExecutionBoundary {
 

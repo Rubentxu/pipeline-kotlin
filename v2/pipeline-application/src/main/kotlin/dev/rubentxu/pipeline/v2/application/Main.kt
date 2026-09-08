@@ -684,5 +684,9 @@ private fun runCanonicalPipeline(
             env = emptyMap(),
             sandbox = SandboxConfigResolver.resolve(sandboxProfile),
         ),
+        // B1.2c3-S2.3: production composition supplies the core StepRegistry (echo today). Behavior is
+        // unchanged while echo still routes via the legacy structural family; this makes the later flip
+        // to registry-routed echo a small, single-authority change.
+        stepRegistry = CoreStepRegistryFactory.registry(),
     ).run(pipeline, runId)
 }

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.support
 
+import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.DslCompiledPipelineCompiler
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
@@ -89,6 +90,9 @@ object PipelineRule {
                 timeoutMs = null,
                 env = emptyMap(),
             ),
+            // B1.2c3-S2.3: the test harness converges on the same core registry authority as production,
+            // so the later flip to registry-routed echo is single-authority and deterministic in tests.
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
         val runId = RunId(runIdValue)
         val started = System.nanoTime()

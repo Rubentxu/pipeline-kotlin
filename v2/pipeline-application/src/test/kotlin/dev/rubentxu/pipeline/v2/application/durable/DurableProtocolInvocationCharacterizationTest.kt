@@ -116,4 +116,152 @@ class DurableProtocolInvocationCharacterizationTest {
         )
         assertTrue(recorder.calls >= 1, "the executor signal is located on the real execution path")
     }
+
+    @Test
+    fun `C2 replay reuse of a completed echo does not invoke the executor`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("a1-2-c2-reuse")
+        // Seed a completed (SUCCEEDED) echo operation so the durable protocol reuses it.
+        val pipeline = echoPipeline("reuse me")
+        val payload = (pipeline.stages.single().body as StageBody.Steps).steps.single().payload.encoded
+        val operationId = "${runId.value}-s0-0"
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = "core.echo",
+            params = mapOf("payload" to kotlinx.serialization.json.JsonPrimitive(payload)),
+            runId = runId.value,
+            attempt = 1,
+        )
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = operationId,
+                fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+                    input,
+                    "core.echo",
+                    ReplayPolicy.MEMOIZED,
+                    1,
+                ),
+                input = input,
+                output = null,
+                status = OperationStatus.SUCCEEDED,
+                attempt = 1,
+            ),
+        )
+        val recorder = RecordingInvocationExecutor(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            journal,
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+            invocationExecutor = recorder,
+        )
+
+        val outcome = coordinator.run(pipeline, runId)
+
+        assertEquals(RunOutcome.Success, outcome)
+        assertEquals(0, recorder.calls, "replay reuse (SKIP) must not invoke the effective executor")
+    }
+
+    @Test
+    fun `C4 fingerprint divergence does not invoke the executor`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("a1-2-c4-divergence")
+        val pipeline = echoPipeline("real payload")
+        // Seed a journal row whose fingerprint does NOT match the current invocation's, forcing
+        // divergence before the executor is reached.
+        val payload = (pipeline.stages.single().body as StageBody.Steps).steps.single().payload.encoded
+        val operationId = "${runId.value}-s0-0"
+        val staleInput = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = "core.echo",
+            params = mapOf("payload" to kotlinx.serialization.json.JsonPrimitive("a-different-payload")),
+            runId = runId.value,
+            attempt = 1,
+        )
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = operationId,
+                fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+                    staleInput,
+                    "core.echo",
+                    ReplayPolicy.MEMOIZED,
+                    1,
+                ),
+                input = staleInput,
+                output = null,
+                status = OperationStatus.SUCCEEDED,
+                attempt = 1,
+            ),
+        )
+        val recorder = RecordingInvocationExecutor(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            journal,
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+            invocationExecutor = recorder,
+        )
+
+        val outcome = coordinator.run(pipeline, runId)
+
+        assertTrue(outcome is RunOutcome.Failure, "divergence must fail closed, got $outcome")
+        assertEquals(0, recorder.calls, "divergence must not invoke the effective executor")
+    }
+
+    @Test
+    fun `C3 decode failure does not invoke the executor`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("a1-2-c3-decode")
+        val malformed = CompiledPipeline(
+            id = DefinitionId("a1-2-c3-decode-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(
+                    StageId("build"),
+                    "build",
+                    body = StageBody.Steps(
+                        listOf(
+                            OpaqueStepNode(
+                                id = StepId("build/echo"),
+                                pluginStepId = PluginStepId("core.echo"),
+                                payload = VersionedStepPayload("dsl-v1", "{not-valid-json"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val recorder = RecordingInvocationExecutor(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            InMemoryOperationJournal(clock),
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+            invocationExecutor = recorder,
+        )
+
+        val outcome = coordinator.run(malformed, runId)
+
+        assertTrue(outcome is RunOutcome.Failure, "decode failure must produce a typed failure, got $outcome")
+        assertEquals(0, recorder.calls, "decode failure must not invoke the effective executor")
+    }
 }

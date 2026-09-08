@@ -300,3 +300,9 @@ Online scenarios and offline canaries have different timing semantics:
 
 Offline canaries REQUIRE the online class to run FIRST to warm the Gradle/Maven caches.
 Running offline class standalone will produce different (cache-cold) timings.
+
+## HF mapping (2026-09-08) — ADR-0072
+
+Tagged under the layered test-harness fidelity taxonomy (`ADR-0072`): this smoke E2E sandbox
+corresponds to **HF5** (Service Sandbox) and **HF6** (Online Smoke / ecosystem). No behavioral
+change; naming only.

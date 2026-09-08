@@ -137,3 +137,9 @@ TRACEABILITY.md appended with:
 ## Changelog
 
 - 2026-08-26 | created | status=accepted | valid_from=2026-08-26 | stale_after=2027-08-26
+
+## HF mapping (2026-09-08) — ADR-0072
+
+Tagged under the layered test-harness fidelity taxonomy (`ADR-0072`): this LOCAL sandbox profile
+corresponds to **HF4** (Rootless Sandbox) and supports **HF5** (Service Sandbox) when isolated
+services are added. No behavioral change; naming only.

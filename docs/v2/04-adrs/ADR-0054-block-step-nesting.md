@@ -7,7 +7,7 @@ cycle: "p-733fb505b5a6bd2d/ml-r9-jenkins-catalog-steps"
 date: 2026-08-30
 deciders: "sddk-design (sddk.cli)"
 supersedes: null
-superseded_by: null
+superseded_by: "ADR-0073 (block-step child re-entry model)"
 related:
   - ADR-0046  # §ML/L7 — local-ecosystem-first
   - ADR-0048  # sandbox-profile-local
@@ -15,6 +15,7 @@ related:
   - ADR-0051  # credentials-parity
   - ADR-0052  # jenkins top-steps
   - ADR-0053  # smoke-e2e-sandbox
+  - ADR-0073  # block Steps re-enter the engine through BodyInvoker/BranchInvoker
 ---
 
 # ADR-0054 — ML-R9 Workflow-control and error-handling step tier

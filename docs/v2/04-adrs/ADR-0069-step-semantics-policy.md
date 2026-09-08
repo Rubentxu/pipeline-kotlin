@@ -12,6 +12,7 @@ related:
   - ADR-0007
   - ADR-0054
   - ADR-0068
+  - ADR-0070  # open step registry: fail-closed enforcement becomes registry-driven admission
   - docs/v2/00-context/JENKINS_REFERENCE_BASELINE.md
   - docs/v2/03-specifications/FAILURE_INTERRUPTION_MODEL.md
   - docs/v2/03-specifications/RECOVERY_DURABILITY.md
@@ -115,6 +116,15 @@ AGENTS.md section provides day-to-day developer orientation.
 - Jenkins familiarity ensures that users familiar with Jenkins step semantics
   can adopt the pipeline DSL without relearning parameter names, outcome
   semantics, or behavioral defaults.
+
+## Update (2026-09-08) — ADR-0070 makes enforcement registry-driven
+
+ADR-0070 (closed execution structure with an open Step registry; one core/plugin path) keeps the
+fail-closed invariant of this ADR but changes the **mechanism**: the closed
+`CanonicalCoreStepCommand.ALL_PLUGIN_IDS` registry becomes registry-driven admission over an open
+`StepRegistry`. Unregistered or unknown/incompatible Step families must still fail before effects on
+every run path (durable and in-memory). The registry test is retained as the admission regression
+safety net. See `ADR-0070`.
 
 ## References
 

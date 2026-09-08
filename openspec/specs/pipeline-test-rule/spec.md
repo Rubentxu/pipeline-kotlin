@@ -1,5 +1,7 @@
 # Spec: pipeline-test-rule
 
+**Harness Fidelity: HF1 (In-Process)** per ADR-0072.
+
 In-process test harness capability (JenkinsRule-style) for DSL-semantics UATs.
 Consumed by `:pipeline-application` test sources. Pure test-support; no runtime/process
 adapter changes. Derived from SPIKE-017 and the `pipeline-rule-inprocess-harness` proposal.

@@ -301,3 +301,11 @@ Plugin metadata must declare whether a step:
 
 This allows generated documentation, validators and the LSP to understand block
 semantics without plugin-specific hardcoding.
+
+## Update (2026-09-08) — ADR-0073 BodyInvoker / BranchInvoker
+
+Block Steps re-enter the engine through the injected `BodyInvoker.invoke(body, patch)` /
+`BranchInvoker.invokeAll(branches, policy, patch)` capabilities (ADR-0073), not through one-off
+per-block dispatcher methods. Every child re-enters `Invoke → Registry → capability admission →
+handler → journal/events`. `parallel` is a composable Named Body via `BranchInvoker`, not a
+permanent stage-terminal special case. The ADR-0054 flattening taxonomy is retained.

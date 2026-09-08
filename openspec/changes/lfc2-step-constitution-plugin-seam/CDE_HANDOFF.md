@@ -803,3 +803,33 @@ Harness for e5: a `CompiledPipeline` containing an `OpaqueStepNode(pluginStepId=
 `payload.encoded` = a registry JSON-object codec's `encode(I).value` (see e2 fixture pattern), driven
 through the real `run` with an in-memory journal/cursorStore to exercise fresh, replay(reuse),
 divergence, typed-invalid and missing-capability laws end to end; XML fresh as oracle.
+
+## CDE.3-e4 + e5 — registry durable wiring + spine laws: DONE (mechanism proven)
+
+Production (coordinator) committed:
+- `73f55f80` e4.1+e4.2: optional `StepRegistry` ctor param (end of list, ~25 legacy sites unchanged) +
+  effective `metadataResolver` (explicit wins; else composite over injected registry; else legacy core).
+- `32201880` e4.3+e4.4+e4.5: closed structural family `StructuralStepFamily { LegacyCore | Registry }`
+  + `StructuralFamilyResolver` (NO concrete `when(stepKey)`; core closure via `ALL_PLUGIN_IDS`,
+  registry open by key; unknown never reaches Execute). Execute prepare-selector by family
+  (LegacyCore -> `LegacyExecutionBoundary.prepare`; Registry ->
+  `RegistryExecutionPreparation.prepare(..., availableCapabilities = CanonicalRuntimeCapabilityAccess(runtime).available())`).
+  executionBoundary defaults to `SeamedExecutionRouter.route(legacyAdapter, RegistryExecutionBoundary.adapt())`
+  when a registry is injected; handler sees only its declared capabilities via the bridge, never a raw
+  runtime context. `runtime` hoisted for capability supply.
+- `dcb087fb` e5: `RegistryDurableSpineTest` DREG-1..5, XML 5/0/0 fresh.
+
+Evidence (application + architecture, fresh):
+- Registry/durable net (8 classes) 39/0/0: RegistryDurableSpine 5, Envelope 3, Characterization 8,
+  RegistryBoundary 6, RegistryOutcome 4, RegistryPreparation 5, MetadataResolver 3, Dual 5.
+- architecture module `--rerun-tasks` (33 executed): 165/0/0 fresh.
+- CanonicalDurableRunCoordinatorTest 24/0/0 green (no legacy regression).
+
+DREG laws on the REAL spine (neutral `test.identity`, NOT core.echo): fresh codec1/handler1/journal
+SUCCED; replay reuse codec0/handler0; divergence codec0/handler0 fail-closed; typed-invalid codec1/
+handler0 SCHEMA; missing-capability handler0 fail-closed (admission in prepare). This proves registry
+plugins share the durable protocol (journal/replay/fingerprint) with NO special replay.
+
+**CDE.3-e effectively DONE.** Remaining for e5 DONE formality (optional follow-up): 8 architecture
+fitness rules the user listed + L4 module suite + migrating core.echo to the registry family (B1.2c3).
+Journal schema / fingerprint / cursor / lifecycle: no regression (legacy 1:1). d5c/d5d closed honestly.

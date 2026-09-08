@@ -3,6 +3,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadata
+import dev.rubentxu.pipeline.v2.application.StructuralPreparation
+import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
@@ -634,6 +636,12 @@ class CanonicalDurableRunCoordinator(
      * A rejected (schema-mismatch) invocation records a FAILED journal entry and yields the terminal
      * [StepOutcome] that `dispatch` returns without invoking the executor. A ready invocation carries the
      * typed command for the rest of the durable protocol. (B1.2c2-a2.1)
+     *
+     * CDE.2-a: the structural phase ([CanonicalStructuralPreparation]) runs first and decides the
+     * `SCHEMA` rejection for an envelope-invalid node (schema version, JSON parse) WITHOUT entering the
+     * typed decoder. Only a structurally-ready node proceeds to [CanonicalCoreStepDecoder.decode] for
+     * typed field extraction; a field-level failure still folds to the same terminal `SCHEMA` rejection,
+     * so observable outcomes are unchanged (C3/C5: decode failures never reach the executor).
      */
     private fun prepareInvocation(
         step: StepNode,
@@ -642,37 +650,47 @@ class CanonicalDurableRunCoordinator(
         stepIndex: Int,
         bodyPath: List<BlockSegment>,
     ): InvocationPreparation {
+        val operationId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath).format()
+        val input = OperationInput(
+            stepId = step.pluginStepId.value,
+            params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
+            runId = runId.value,
+            attempt = 1,
+        )
+        val structural = CanonicalStructuralPreparation.prepare(step)
+        if (structural is StructuralPreparation.Rejected) {
+            return rejectSchema(operationId, input, structural.reason)
+        }
         val typedCommand = try {
             CanonicalCoreStepDecoder.decode(step)
         } catch (e: IllegalArgumentException) {
-            val operationId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath).format()
-            val input = OperationInput(
-                stepId = step.pluginStepId.value,
-                params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
-                runId = runId.value,
-                attempt = 1,
-            )
-            val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, ReplayPolicy.RERUN, 1)
-            journal.append(
-                RerunOperation(
-                    id = operationId,
-                    fingerprint = fingerprint,
-                    input = input,
-                    output = null,
-                    status = OperationStatus.FAILED,
-                    attempt = 1,
-                ),
-            )
-            return InvocationPreparation.Rejected(
-                StepOutcome.Failure(
-                    PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
-                    ),
-                ),
+            return rejectSchema(
+                operationId,
+                input,
+                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
             )
         }
         return InvocationPreparation.Ready(typedCommand)
+    }
+
+    /** Records a FAILED journal row and returns the terminal `SCHEMA` rejection (executor never runs). */
+    private fun rejectSchema(operationId: String, input: OperationInput, message: String): InvocationPreparation.Rejected {
+        val fingerprint = Fingerprint.compute(input, input.stepId, ReplayPolicy.RERUN, 1)
+        journal.append(
+            RerunOperation(
+                id = operationId,
+                fingerprint = fingerprint,
+                input = input,
+                output = null,
+                status = OperationStatus.FAILED,
+                attempt = 1,
+            ),
+        )
+        return InvocationPreparation.Rejected(
+            StepOutcome.Failure(
+                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, message),
+            ),
+        )
     }
 
     /**

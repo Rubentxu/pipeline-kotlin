@@ -238,9 +238,20 @@ class CanonicalDurableRunCoordinator(
     private val controlDirRoot: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
+    // B1.2c2-a1: temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
+    // existing ~25 construction sites compile unchanged; production default delegates to the legacy
+    // dispatcher. Not the final DI architecture.
+    invocationExecutor: CanonicalInvocationExecutor? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
     private var contextStack: ContextStack = ContextStack.EMPTY
+
+    /**
+     * Effective step executor. Injectable for characterization (RecordingInvocationExecutor); the
+     * production default calls exactly the legacy [CanonicalNodeDispatcher], preserving behaviour.
+     */
+    private val stepExecutor: CanonicalInvocationExecutor = invocationExecutor
+        ?: CanonicalInvocationExecutor { command, context -> dispatcher.dispatch(command, context) }
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success
@@ -563,7 +574,7 @@ class CanonicalDurableRunCoordinator(
         }
 
         val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-            dispatcher.dispatch(
+            stepExecutor.invoke(
                 typedCommand,
                 CanonicalRuntimeContext(
                     opId = opId,

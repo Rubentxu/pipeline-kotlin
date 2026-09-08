@@ -47,4 +47,11 @@ object CanonicalCoreStepMetadata {
 
     /** All canonical core plugin ids known to this legacy metadata authority. */
     val pluginIds: Set<String> = table.keys
+
+    /**
+     * Short display type derived from a plugin id (e.g. `core.sh` -> `sh`, `core.file.writeFile` ->
+     * `file`). Single source of truth for event/step-type naming so the durable protocol never needs
+     * the decoded command world to derive a label.
+     */
+    fun shortType(pluginId: String): String = pluginId.removePrefix("core.").substringBefore(".")
 }

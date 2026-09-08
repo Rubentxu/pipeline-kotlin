@@ -1,13 +1,12 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
 import dev.rubentxu.pipeline.v2.application.StructuralOverlay
 import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
+import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
@@ -65,9 +64,10 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Canonical plugin IDs — sourced from the single registry in CanonicalCoreStepCommand.
+ * Canonical plugin IDs — sourced from the single legacy metadata authority (CDE.2-d). The durable
+ * coordinator derives eligibility from metadata, never from the decoded command world.
  */
-private val canonicalCoreStepIds: Set<String> = CanonicalCoreStepCommand.ALL_PLUGIN_IDS
+private val canonicalCoreStepIds: Set<String> = CanonicalCoreStepMetadata.pluginIds
 private val canonicalBodyStepIds: Set<String> = setOf(
     "core.dir",
     "core.timeout",
@@ -522,7 +522,7 @@ class CanonicalDurableRunCoordinator(
             stageIndex = stageIndex,
             stepIndex = stepIndex,
             stepName = step.id.value,
-            stepType = CanonicalCoreStepCommand.pluginIdToShortType(step.pluginStepId.value),
+            stepType = CanonicalCoreStepMetadata.shortType(step.pluginStepId.value),
         )
         val journaled = journal.get(operationId, 1)
         val currentOperation = RerunOperation(
@@ -570,18 +570,17 @@ class CanonicalDurableRunCoordinator(
             // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
             // live here, so the concrete semantics are invoked exclusively under this decision.
             InvocationReconciliation.Execute -> {
-                // CDE.2-c: typed decode runs ONLY on actual execution. Reuse/divergence/recover never
-                // decode. Structural validity is already proven pre-reconcile, so a failure here is a
-                // typed field / unsupported-command error that folds to the terminal SCHEMA rejection
-                // (journal FAILED, executor never runs): fresh typed-invalid -> decode 1, executor 0.
-                val typedCommand = try {
-                    CanonicalCoreStepDecoder.decode(step)
-                } catch (e: IllegalArgumentException) {
-                    return rejectSchema(
+                // CDE.2-c/d: typed decode runs ONLY on actual execution, behind the legacy boundary.
+                // Reuse/divergence/recover never decode. A Rejected admission (typed field /
+                // unsupported command) is a terminal SCHEMA rejection (journal FAILED, executor never
+                // runs): fresh typed-invalid -> decode 1, executor 0.
+                val typedCommand = when (val admission = LegacyExecutionBoundary.decode(step)) {
+                    is LegacyExecution.Rejected -> return rejectSchema(
                         operationId,
                         input,
-                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
+                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
                     )
+                    is LegacyExecution.Ready -> admission.command
                 }
 
                 if (journaled == null) {

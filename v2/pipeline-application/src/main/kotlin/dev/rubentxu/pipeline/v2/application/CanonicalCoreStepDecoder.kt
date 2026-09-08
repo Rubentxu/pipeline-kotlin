@@ -63,8 +63,7 @@ sealed interface CanonicalCoreStepCommand {
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
-        fun pluginIdToShortType(pluginId: String): String =
-            pluginId.removePrefix("core.").substringBefore(".")
+        fun pluginIdToShortType(pluginId: String): String = CanonicalCoreStepMetadata.shortType(pluginId)
     }
 
     data class Shell(

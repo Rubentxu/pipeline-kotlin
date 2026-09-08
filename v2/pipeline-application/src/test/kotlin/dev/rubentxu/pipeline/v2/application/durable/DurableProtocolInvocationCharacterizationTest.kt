@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
@@ -38,28 +37,29 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * B1.2c2-a1.2: freezes the durable protocol's effective-invocation signal using a
- * [RecordingInvocationExecutor]. The signal means "the concrete Step will actually execute and may
- * produce side effects" (distinct from StepExecutionBoundary/lifecycle and replay/journal machinery).
+ * B1.2c2-a1.2 / CDE.3-b4: freezes the durable protocol's effective-invocation signal on the new
+ * authority seam [CommonExecutionBoundary] using a [RecordingBoundary]. The signal means "the
+ * concrete Step will actually execute and may produce side effects" (distinct from
+ * StepExecutionBoundary/lifecycle and replay/journal machinery). Equivalence with the old
+ * [CanonicalInvocationExecutor] was proven in DualExecutionSeamCharacterizationTest before this
+ * migration (CDE.3-b3); the old seam is now a compatibility detail behind the adapter.
  *
- * C1: fresh execution -> executor.calls == 1.
+ * C1: fresh execution -> boundary.calls == 1.
  */
 @Timeout(10)
 class DurableProtocolInvocationCharacterizationTest {
 
-    /** Counts effective step invocations; delegates to the real production executor. */
-    private class RecordingInvocationExecutor(
-        private val delegate: CanonicalInvocationExecutor,
-    ) : CanonicalInvocationExecutor {
+    /** Counts effective step executions observed on the new common seam (CDE.3-b4). */
+    private class RecordingBoundary : CommonExecutionBoundary {
         var calls: Int = 0
             private set
+        private val delegate = LegacyExecutionAdapter.adapt(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
 
-        override suspend fun invoke(
-            command: CanonicalCoreStepCommand,
-            context: CanonicalRuntimeContext,
-        ): StepOutcome {
+        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
             calls++
-            return delegate.invoke(command, context)
+            return delegate.execute(prepared, context)
         }
     }
 
@@ -96,9 +96,7 @@ class DurableProtocolInvocationCharacterizationTest {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()
         val runId = RunId("a1-2-c1-fresh")
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             InMemoryOperationJournal(clock),
@@ -107,7 +105,7 @@ class DurableProtocolInvocationCharacterizationTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(echoPipeline("hola"), runId)
@@ -152,9 +150,7 @@ class DurableProtocolInvocationCharacterizationTest {
                 attempt = 1,
             ),
         )
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             journal,
@@ -163,7 +159,7 @@ class DurableProtocolInvocationCharacterizationTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -204,9 +200,7 @@ class DurableProtocolInvocationCharacterizationTest {
                 attempt = 1,
             ),
         )
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             journal,
@@ -215,7 +209,7 @@ class DurableProtocolInvocationCharacterizationTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -249,9 +243,7 @@ class DurableProtocolInvocationCharacterizationTest {
                 ),
             ),
         )
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             InMemoryOperationJournal(clock),
@@ -260,7 +252,7 @@ class DurableProtocolInvocationCharacterizationTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(malformed, runId)
@@ -329,9 +321,7 @@ class DurableProtocolInvocationCharacterizationTest {
         Files.createDirectories(controlRoot.resolve(operationId))
         Files.writeString(controlRoot.resolve(operationId).resolve("result.txt"), "0")
 
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             journal,
@@ -341,7 +331,7 @@ class DurableProtocolInvocationCharacterizationTest {
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             controlDirRoot = controlRoot,
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -404,9 +394,7 @@ class DurableProtocolInvocationCharacterizationTest {
                 attempt = 1,
             ),
         )
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             journal,
@@ -415,7 +403,7 @@ class DurableProtocolInvocationCharacterizationTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -491,9 +479,7 @@ class DurableProtocolInvocationCharacterizationTest {
                 ),
             ),
         )
-        val recorder = RecordingInvocationExecutor(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
-        )
+        val recorder = RecordingBoundary()
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(),
             journal,
@@ -502,7 +488,7 @@ class DurableProtocolInvocationCharacterizationTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = noOpCredentialScopePort(),
-            invocationExecutor = recorder,
+            commonExecutionBoundary = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)

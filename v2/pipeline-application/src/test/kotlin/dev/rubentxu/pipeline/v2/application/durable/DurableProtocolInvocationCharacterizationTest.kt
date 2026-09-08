@@ -431,6 +431,89 @@ class DurableProtocolInvocationCharacterizationTest {
     }
 
     @Test
+    fun `C6 EmitEvent CatchErrorEntered overlay is applied on replay reuse`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("a1-2-c6-overlay-reuse")
+        // [0] CatchErrorEntered(UNSTABLE) will be REUSED (journaled SUCCESS); [1] sh "exit 1" runs fresh.
+        // If the overlay is still pushed when the CatchErrorEntered step is reused, the sh failure is
+        // downgraded to Unstable. If the overlay is NOT pushed on reuse, the sh failure propagates as
+        // Failure. This freezes whether EmitEvent overlay resolution precedes durable reconciliation.
+        val enterPayload = """{"kind":"CatchErrorEntered","buildResult":"UNSTABLE","stageResult":"UNSTABLE","enteredAt":"${System.currentTimeMillis()}"}"""
+        val enterOp = "${runId.value}-s0-0"
+        val enterInput = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = "core.emit.event",
+            params = mapOf("payload" to kotlinx.serialization.json.JsonPrimitive(enterPayload)),
+            runId = runId.value,
+            attempt = 1,
+        )
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = enterOp,
+                fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+                    enterInput,
+                    "core.emit.event",
+                    ReplayPolicy.MEMOIZED,
+                    1,
+                ),
+                input = enterInput,
+                output = null,
+                status = OperationStatus.SUCCEEDED,
+                attempt = 1,
+            ),
+        )
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("a1-2-c6-overlay-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(
+                    StageId("build"),
+                    "build",
+                    body = StageBody.Steps(
+                        listOf(
+                            OpaqueStepNode(
+                                id = StepId("build/catch-enter"),
+                                pluginStepId = PluginStepId("core.emit.event"),
+                                payload = VersionedStepPayload("dsl-v1", enterPayload),
+                            ),
+                            OpaqueStepNode(
+                                id = StepId("build/sh"),
+                                pluginStepId = PluginStepId("core.sh"),
+                                payload = VersionedStepPayload(
+                                    "dsl-v1",
+                                    """{"kind":"sh","command":"exit 1","isScriptBlock":false,"returnStdout":false}""",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val recorder = RecordingInvocationExecutor(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            journal,
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+            invocationExecutor = recorder,
+        )
+
+        val outcome = coordinator.run(pipeline, runId)
+
+        // The reused CatchErrorEntered (executor 0) must still push the overlay, so the fresh failing sh
+        // (executor 1) is downgraded to Unstable rather than propagating as a Failure.
+        assertEquals(1, recorder.calls, "reused CatchErrorEntered executor=0; fresh failing sh executor=1")
+        assertEquals(RunOutcome.Unstable, outcome, "CatchErrorEntered overlay must be applied even on reuse")
+    }
+
+    @Test
     fun `a1-4 lifecycle spine owns StepStarted and StepFinished around the semantic event`() = runBlocking {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()

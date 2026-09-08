@@ -29,9 +29,13 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeP
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * B1.2c2-a1.2: freezes the durable protocol's effective-invocation signal using a
@@ -263,5 +267,88 @@ class DurableProtocolInvocationCharacterizationTest {
 
         assertTrue(outcome is RunOutcome.Failure, "decode failure must produce a typed failure, got $outcome")
         assertEquals(0, recorder.calls, "decode failure must not invoke the effective executor")
+    }
+
+    private fun shellPipeline(command: String, stepId: String = "build/sh"): CompiledPipeline =
+        CompiledPipeline(
+            id = DefinitionId("a1-3-shell-$stepId"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(
+                    StageId("build"),
+                    "build",
+                    body = StageBody.Steps(
+                        listOf(
+                            OpaqueStepNode(
+                                id = StepId(stepId),
+                                pluginStepId = PluginStepId("core.sh"),
+                                payload = VersionedStepPayload(
+                                    "dsl-v1",
+                                    """{"kind":"sh","command":"$command","isScriptBlock":false,"returnStdout":false}""",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    @Test
+    fun `S1 running shell recovery reuses the completed result without relaunching or invoking the executor`(@TempDir tempDir: Path) = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("a1-3-s1-recovery")
+        val command = "echo relaunched > '${tempDir.resolve("relaunched.txt")}'"
+        val pipeline = shellPipeline(command)
+        val operationId = "${runId.value}-s0-0"
+        val payload = (pipeline.stages.single().body as StageBody.Steps).steps.single().payload.encoded
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = "core.sh",
+            params = mapOf("payload" to kotlinx.serialization.json.JsonPrimitive(payload)),
+            runId = runId.value,
+            attempt = 1,
+        )
+        journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = operationId,
+                fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+                    input,
+                    "core.sh",
+                    ReplayPolicy.RERUN,
+                    1,
+                ),
+                input = input,
+                output = null,
+                status = OperationStatus.RUNNING,
+                attempt = 1,
+            ),
+        )
+        val controlRoot = tempDir.resolve("control")
+        Files.createDirectories(controlRoot.resolve(operationId))
+        Files.writeString(controlRoot.resolve(operationId).resolve("result.txt"), "0")
+
+        val recorder = RecordingInvocationExecutor(
+            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            journal,
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+            controlDirRoot = controlRoot,
+            invocationExecutor = recorder,
+        )
+
+        val outcome = coordinator.run(pipeline, runId)
+
+        assertEquals(RunOutcome.Success, outcome)
+        assertFalse(Files.exists(tempDir.resolve("relaunched.txt")), "A reconciled result must not relaunch the shell")
+        assertEquals(0, recorder.calls, "shell recovery must not invoke the effective executor (no fresh relaunch)")
+        assertEquals(OperationStatus.SUCCEEDED, journal.get(operationId)?.status)
     }
 }

@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
@@ -314,9 +315,18 @@ class CanonicalDurableRunCoordinator(
      * to this seam and never names a decoded command type.
      */
     private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
-        ?: LegacyExecutionAdapter.adapt(
-            invocationExecutor ?: CanonicalInvocationExecutor { command, context -> dispatcher.dispatch(command, context) },
-        )
+        ?: run {
+            val legacy = LegacyExecutionAdapter.adapt(
+                invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
+                    dispatcher.dispatch(command, context)
+                },
+            )
+            // CDE.3-e4.5: with an injected registry, route by PreparedExecution family through the single
+            // common seam (legacy-compatible vs registry). Without a registry the legacy adapter alone
+            // is the boundary, behaviour exactly unchanged.
+            if (stepRegistry != null) SeamedExecutionRouter.route(legacy, RegistryExecutionBoundary.adapt())
+            else legacy
+        }
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success
@@ -597,19 +607,53 @@ class CanonicalDurableRunCoordinator(
             // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
             // live here, so the concrete semantics are invoked exclusively under this decision.
             InvocationReconciliation.Execute -> {
-                // CDE.2-c/d + CDE.3-b3: strategy preparation runs ONLY on actual execution, behind the
-                // legacy boundary, and NEVER produces Step side effects. Reuse/divergence/recover never
-                // prepare. A Rejected admission (typed field / unsupported command) is a terminal SCHEMA
-                // rejection (journal FAILED, common executor never runs): fresh typed-invalid ->
-                // prepare 1, commonExecution 0. On Ready the coordinator holds an opaque PreparedExecution
-                // it never inspects; effective effects flow only through the common execution seam.
-                val prepared = when (val admission = LegacyExecutionBoundary.prepare(step)) {
-                    is ExecutionPreparation.Rejected -> return rejectSchema(
-                        operationId,
-                        input,
-                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
-                    )
-                    is ExecutionPreparation.Ready -> admission.prepared
+                // CDE.3-e4.3: runtime context is hoisted here so registry prepare can derive the
+                // available capabilities from the capability bridge (never the raw context to a handler).
+                val runtime = CanonicalRuntimeContext(
+                    opId = opId,
+                    runId = runId.value,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    shOptions = stageShOptions,
+                    controlDirRoot = controlDirRoot,
+                    eventSink = eventSink,
+                )
+
+                // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
+                // produces Step side effects. Selection is by the CLOSED structural family (LegacyCore vs
+                // Registry), never by concrete step name. Reuse/divergence/recover never prepare. A
+                // Rejected admission (typed field / unsupported command / missing capability) is a
+                // terminal SCHEMA rejection (journal FAILED, common executor never runs).
+                val family = StructuralFamilyResolver.classify(step.pluginStepId, stepRegistry)
+                val prepared = when (family) {
+                    StructuralStepFamily.LegacyCore -> when (val admission = LegacyExecutionBoundary.prepare(step)) {
+                        is ExecutionPreparation.Rejected -> return rejectSchema(
+                            operationId,
+                            input,
+                            "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
+                        )
+                        is ExecutionPreparation.Ready -> admission.prepared
+                    }
+                    StructuralStepFamily.Registry -> {
+                        val registry = stepRegistry ?: throw EngineInvariantViolation(
+                            "registry family step '${step.pluginStepId.value}' reached Execute without a StepRegistry",
+                        )
+                        val admission = RegistryExecutionPreparation.prepare(
+                            registry = registry,
+                            key = step.pluginStepId,
+                            encodedInput = EncodedStepValue(step.payload.encoded),
+                            availableCapabilities = CanonicalRuntimeCapabilityAccess(runtime).available(),
+                        )
+                        when (admission) {
+                            is ExecutionPreparation.Rejected -> return rejectSchema(
+                                operationId,
+                                input,
+                                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
+                            )
+                            is ExecutionPreparation.Ready -> admission.prepared
+                        }
+                    }
                 }
 
                 if (journaled == null) {
@@ -617,19 +661,7 @@ class CanonicalDurableRunCoordinator(
                 }
 
                 val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                    executionBoundary.execute(
-                        prepared,
-                        CanonicalRuntimeContext(
-                            opId = opId,
-                            runId = runId.value,
-                            stageName = stageName,
-                            stageIndex = stageIndex,
-                            stepIndex = stepIndex,
-                            shOptions = stageShOptions,
-                            controlDirRoot = controlDirRoot,
-                            eventSink = eventSink,
-                        ),
-                    )
+                    executionBoundary.execute(prepared, runtime)
                 }
                 journal.append(
                     RerunOperation(

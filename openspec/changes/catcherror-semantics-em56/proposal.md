@@ -79,6 +79,9 @@ unconditional marker publication + immediate abort. Resolve nested failures LIFO
   UAT_JENKINS_EXECUTION_PARITY + per-step observability (AGENTS step semantics).
 
 ## Success Criteria
-- [ ] ERR-S-002/004/007/008 green via real `ErrorHandlingTest`.
-- [ ] ERR-S-001/003/006 (suppress, warnError, pipeline unstable) remain green.
-- [ ] No new DomainEvent subtypes; no weakened assertions.
+- [x] ERR-S-002/007/008 green via real `ErrorHandlingTest` (landed 2026-09-08, commit 6e9bd4ac).
+- [x] ERR-S-001/003/006 (suppress, warnError, pipeline unstable) remain green.
+- [x] No new DomainEvent subtype, no weakened assertions (the existing marker→dispatcher contract
+  test evolved to the new pop-only contract, per the "tests evolve with legitimate changes" rule).
+- [ ] ERR-S-004 (stage observability) — split into a separate change with corpus/event-baseline
+  rebaseline; see `tasks.md` "Split — ERR-S-004 stage bookends".

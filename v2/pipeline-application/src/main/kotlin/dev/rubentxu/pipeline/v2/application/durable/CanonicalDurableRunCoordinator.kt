@@ -315,18 +315,10 @@ class CanonicalDurableRunCoordinator(
      * to this seam and never names a decoded command type.
      */
     private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
-        ?: run {
-            val legacy = LegacyExecutionAdapter.adapt(
-                invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
-                    dispatcher.dispatch(command, context)
-                },
-            )
-            // CDE.3-e4.5: with an injected registry, route by PreparedExecution family through the single
-            // common seam (legacy-compatible vs registry). Without a registry the legacy adapter alone
-            // is the boundary, behaviour exactly unchanged.
-            if (stepRegistry != null) SeamedExecutionRouter.route(legacy, RegistryExecutionBoundary.adapt())
-            else legacy
-        }
+        // CDE.3-e4.5 / B1.2c3-S2.5.2: the default is the single production routing authority (legacy
+        // adapter alone, or the family router when a registry is injected), built by one helper both the
+        // coordinator and recording test decorators share.
+        ?: buildDefaultExecutionBoundary(dispatcher, invocationExecutor, stepRegistry)
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success

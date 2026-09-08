@@ -64,3 +64,26 @@ object SeamedExecutionRouter {
         }
     }
 }
+
+/**
+ * Single production authority that builds the default [CommonExecutionBoundary] a coordinator (or a
+ * recording test decorator) should route through (B1.2c3-S2.5.2).
+ *
+ * Without a registry it is the legacy adapter over the legacy executor; with a [StepRegistry] it is the
+ * family router ([SeamedExecutionRouter.route]) over the legacy adapter + the registry boundary. Test
+ * recorders MUST wrap this authority (observing effective execution and delegating to the real routing),
+ * never reimplement family routing themselves.
+ */
+fun buildDefaultExecutionBoundary(
+    dispatcher: CanonicalNodeDispatcher,
+    invocationExecutor: CanonicalInvocationExecutor?,
+    stepRegistry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry?,
+): CommonExecutionBoundary = run {
+    val legacy = LegacyExecutionAdapter.adapt(
+        invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
+            dispatcher.dispatch(command, context)
+        },
+    )
+    if (stepRegistry != null) SeamedExecutionRouter.route(legacy, RegistryExecutionBoundary.adapt())
+    else legacy
+}

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
@@ -49,12 +50,16 @@ import java.nio.file.Path
 @Timeout(10)
 class DurableProtocolInvocationCharacterizationTest {
 
-    /** Counts effective step executions observed on the new common seam (CDE.3-b4). */
+    /** Counts effective step executions observed on the common seam, delegating to the REAL production
+     * routing authority (B1.2c3-S2.5.2). Family-agnostic: it observes [CommonExecutionBoundary] and wraps
+     * [buildDefaultExecutionBoundary] (legacy adapter or family router), never reimplementing routing. */
     private class RecordingBoundary : CommonExecutionBoundary {
         var calls: Int = 0
             private set
-        private val delegate = LegacyExecutionAdapter.adapt(
-            CanonicalInvocationExecutor { command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) },
+        private val delegate = buildDefaultExecutionBoundary(
+            dispatcher = CanonicalNodeDispatcher(),
+            invocationExecutor = null,
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
         override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {

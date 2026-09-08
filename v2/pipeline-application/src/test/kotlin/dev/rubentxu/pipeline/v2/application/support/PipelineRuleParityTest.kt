@@ -1,8 +1,10 @@
 package dev.rubentxu.pipeline.v2.application.support
 
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -66,5 +68,30 @@ class PipelineRuleParityTest {
 
         // G3 divergence is logged above as evidence (test/<type>-0 vs DSL contract 'echo'); it is
         // tracked in UAT_GATE_GAPS_DIAGNOSIS, not asserted green here.
+    }
+
+    @Test
+    fun `withCredentials with no store fails closed and never dispatches body`(@TempDir workDir: Path) {
+        // R2 / S3: no store -> the coordinator's CredentialScopePort stub returns Unavailable, so the
+        // run must fail closed and the withCredentials body must NOT dispatch.
+        val spec = pipeline {
+            stages {
+                stage("test") {
+                    environment(credentialsId = "no-store-key", variable = "SECRET") {
+                        echo("in-scope-must-not-run")
+                    }
+                }
+            }
+        }
+        val result = PipelineRule.run(
+            spec, "fail-closed.pipeline.kts", "withCredentials no store",
+            "wc-inprocess-failclosed", workDir,
+        )
+
+        assertTrue(result.outcome is RunOutcome.Failure, "no store must fail closed, got ${result.outcome}")
+        assertTrue(
+            result.events.filterIsInstance<StepStarted>().none { it.stepName.contains("echo") },
+            "withCredentials body must not be dispatched when the store is unavailable",
+        )
     }
 }

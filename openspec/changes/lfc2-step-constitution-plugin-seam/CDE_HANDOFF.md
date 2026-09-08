@@ -750,3 +750,16 @@ Next slices: **e2** (generic lossless round-trip codec `EncodedStepValue(json-ob
 + deterministic fingerprint rep + malformed-envelope tests), **e3** (StructuralPreparation yields a
 registry structural invocation, codec calls = 0), **e4** (registry prepare wiring through Execute),
 **e5** (full durable registry laws; closes d5c/d5d). No production code changed in e1.
+
+## CDE.3-e2 — Durable registry input envelope boundary: FROZEN (test-only)
+
+`RegistryDurableInputEnvelopeTest` (application, durable) freezes the CDE.3-e1 boundary with NO
+production change. New XML 3/0/0 fresh:
+1. JSON-object registry input (`inputCodec.encode` -> JSON object) round-trips losslessly through the
+   spine gate (`CanonicalStructuralPreparation.Ready` carries the payload verbatim) then through
+   `RegistryExecutionPreparation.prepare` to a decoded `PingInput`, handler 0.
+2. Raw-text payload (`"hi"`, the CoreEchoStep-style non-JSON codec shape) is rejected as SCHEMA by the
+   gate before any decode, and even a registered JSON-object codec rejects it at prepare (decode fails),
+   handler 0 -> durable-spine ineligibility of raw-text codecs is the frozen boundary.
+3. Identical payload string -> identical deterministic `Fingerprint` over `OperationInput(params.payload)`.
+Confirms no `RegistryDurableInput` type is needed (decision A): `payload.encoded` IS the durable form.

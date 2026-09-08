@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 
 /**
@@ -34,6 +35,34 @@ value class StepCapability(val key: String) {
 }
 
 /**
+ * Typed access to the capabilities the engine supplied for one handler invocation.
+ *
+ * NOT an omnipotent context: a handler may request only a capability it declared in its
+ * [StepContract.requiredCapabilities], and only through its own typed key.
+ */
+interface StepCapabilityAccess {
+    /** Capabilities actually available to this invocation (for fail-closed admission). */
+    fun available(): Set<StepCapability>
+
+    /** Returns the typed value bound to [key]. Fails if [key] is not available. */
+    fun <T : Any> get(key: StepCapability): T
+}
+
+/**
+ * Narrow execution identity handed to a [StepHandler] for one invocation (B1.2a).
+ *
+ * Deliberately carries only execution identity plus explicit capability access. It is NOT a
+ * [dev.rubentxu.pipeline.v2.domain.StepExecutionContext]-style catch-all and MUST NOT grow into an
+ * omnipotent `PipelineContext`: a handler declares its minimal capabilities in its contract and
+ * receives only those through [capabilities].
+ */
+data class StepHandlerContext(
+    val runId: RunId,
+    val stepIndex: Int,
+    val capabilities: StepCapabilityAccess,
+)
+
+/**
  * Symmetric typed codec between a Step payload type and its encoded wire form.
  *
  * Implementations MAY use a serialization library; the seam only requires symmetry.
@@ -62,11 +91,12 @@ data class StepContract<I : Any, O : Any>(
 /**
  * Typed handler adapter for one Step family.
  *
- * MUST NOT throw to signal a step failure; it returns a typed result instead. Throwable
- * exceptions signal an adapter/engine bug and are treated as fail-closed upstream.
+ * Receives the decoded input and a narrow [StepHandlerContext]. MUST NOT throw to signal a step
+ * failure; it returns a typed result instead. Throwable exceptions signal an adapter/engine bug and
+ * are treated as fail-closed upstream.
  */
 fun interface StepHandler<I : Any, O : Any> {
-    fun execute(input: I): O
+    fun execute(input: I, context: StepHandlerContext): O
 }
 
 /**
@@ -140,7 +170,7 @@ interface StepInvoker {
     fun <I : Any, O : Any> invoke(
         key: PluginStepId,
         encodedInput: EncodedStepValue,
-        availableCapabilities: Set<StepCapability>,
+        context: StepHandlerContext,
     ): StepInvocationOutcome<O>
 }
 
@@ -151,7 +181,7 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
     override fun <I : Any, O : Any> invoke(
         key: PluginStepId,
         encodedInput: EncodedStepValue,
-        availableCapabilities: Set<StepCapability>,
+        context: StepHandlerContext,
     ): StepInvocationOutcome<O> {
         val raw = registry.definition(key) ?: return StepInvocationOutcome.UnknownStep(key)
 
@@ -159,7 +189,7 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
         val definition = raw as StepDefinition<Any, Any>
         val contract = definition.contract
 
-        val missing = contract.requiredCapabilities - availableCapabilities
+        val missing = contract.requiredCapabilities - context.capabilities.available()
         if (missing.isNotEmpty()) {
             return StepInvocationOutcome.MissingCapability(key, missing)
         }
@@ -170,7 +200,7 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
             return StepInvocationOutcome.DecodeFailure(key, e.message ?: "decode failed")
         }
 
-        val output = definition.handler.execute(input)
+        val output = definition.handler.execute(input, context)
         return StepInvocationOutcome.Success(output as O)
     }
 }

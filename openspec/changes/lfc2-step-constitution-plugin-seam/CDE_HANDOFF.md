@@ -763,3 +763,16 @@ production change. New XML 3/0/0 fresh:
    handler 0 -> durable-spine ineligibility of raw-text codecs is the frozen boundary.
 3. Identical payload string -> identical deterministic `Fingerprint` over `OperationInput(params.payload)`.
 Confirms no `RegistryDurableInput` type is needed (decision A): `payload.encoded` IS the durable form.
+
+## CDE.3-e3 — SUPERSEDED by the CDE.3-e1 decision (no dead type)
+
+The proposed "StructuralPreparation yields a StructuralRegistryInvocation subtype" would branch the
+step-agnostic gate core-vs-registry. Under decision A the structural phase is deliberately key-agnostic
+(any JSON-object payload -> `Ready(invocation)`), the gate never calls a codec, and core-vs-registry
+classification is done downstream purely by stepKey membership via the composite metadata resolver (d5b).
+A separate `StructuralRegistryInvocation` would reintroduce routing into the structural phase and is NOT
+created. e2 test 2 already freezes the gate rejects non-JSON with decode 0. Remaining substantive work:
+**e4** (coordinator wiring: optional stepRegistry -> composite default + prepare selector +
+`SeamedExecutionRouter.route`) and **e5** (full durable registry laws on the real spine -> closes
+d5c/d5d), which are the cross-cutting coordinator slices and are intentionally deferred as a dedicated,
+carefully-harnessed increment.

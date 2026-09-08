@@ -485,3 +485,74 @@ coordinator frontier is expected (it already routes by opaque `PreparedExecution
 registry strategy selection by structural step key and proves `fresh typed-invalid registry
 prepare=1 Ready=0 commonExecution=0` and `fresh valid registry prepare=1 Ready=1 commonExecution=1`
 without touching legacy.
+
+---
+
+## 11. CDE.3-c grounding — registry prepare seam (2026-09-08)
+
+Grounding of the second implementation of the contract demonstrated in CDE.3-b. Sources read in
+full: `domain/step/StepRegistry.kt`, `application/CoreEchoStep.kt`, `CoreEchoSeamTest.kt`.
+
+### 11.1 Registry real signature table (contrasted)
+
+| Concept | Registry (domain/step) | Common frontier (CDE.3-b) |
+|---|---|---|
+| Identity | `PluginStepId` key | coordinator routes by structural step key; legacy metadata already keyed by `PluginStepId` |
+| Registration | `StepRegistry.register(StepDefinition<I,O>)`, deterministic duplicate rejection | open, no privileged path |
+| Typed contract | `StepContract<I,O>` (descriptor + inputCodec + outputCodec + requiredCapabilities) | — |
+| Typed decode | `contract.inputCodec.decode(EncodedStepValue)` | == prepare (no side effects) |
+| Capability admission | `StepInvocationOutcome.MissingCapability` (before handler) | == prepare rejection (executor 0) |
+| Handler | `StepHandler.execute(input, StepHandlerContext)` `fun`, returns `O` | == execute (effects) |
+| Runtime for handler | `StepHandlerContext(runId, stepIndex, StepCapabilityAccess)` — NARROW | must be derived from `CanonicalRuntimeContext` (NOT the whole coordinator) |
+| Erased adapter | `RegistryStepInvoker` (domain/step) | per-bridge erased seam |
+| Output | `O: Any` via `outputCodec` | **no O→StepOutcome mapping exists (CDE.3-e)** |
+
+### 11.2 Key finding: RegistryStepInvoker FUSES decode and handler
+
+`RegistryStepInvoker.invoke` (StepRegistry.kt:178-205) does capability admission + decode + handler in
+one call, returning `StepInvocationOutcome<O>`. There is NO codec-only prepare path today: a
+`DecodeFailure` or `MissingCapability` aborts before the handler, but the caller cannot observe
+"decoded-and-admitted-but-not-run" as a distinct state. CDE.3-c therefore needs a registry PREPARE
+boundary that returns `Rejected | Ready(PreparedRegistryExecution)` and never calls `handler.execute`.
+This mirrors exactly the legacy split in CDE.3-b3 (decode→prepare vs execute→boundary).
+
+### 11.3 Design constraints for the registry prepare seam
+
+- A registry `prepare` must produce an opaque `PreparedRegistryExecution : PreparedExecution` that
+  carries the admitted contract + decoded input, is runtime-ephemeral, never persisted / fingerprinted
+  / replayed, and exposes no durable state. Only the registry execution path reads it.
+- `StepRegistry` is in `pipeline-domain` (inward). `CommonExecutionBoundary`/`PreparedExecution` are in
+  `pipeline-application` durable. `pipeline-application` already depends on `pipeline-domain`, so an
+  application-own registry prepare adapter may reference `domain.step` types; dependency direction stays
+  inward (domain.step never names application.durable).
+- `PreparedRegistryExecution` cannot be a subtype of a sealed-in-application `PreparedExecution` if
+  registry lives in another module, but here both the adapter and PreparedExecution live in
+  `pipeline-application` (the registry SELECTION and PREPARE are engine-side; only the contract/codec
+  are domain). `PreparedExecution` is an open interface precisely so an application-side
+  `PreparedRegistryExecution` can be added without editing legacy.
+
+### 11.4 Coordinator strategy selection (the CDE.3-c integration point)
+
+The durable coordinator's Execute branch currently calls `LegacyExecutionBoundary.prepare(step)`
+unconditionally. To route a registry step through the SAME `ExecutionPreparation`/boundary contract, the
+PREPARE must be strategy-dispatched by structural step key (registry-owned key -> registry prepare;
+otherwise -> legacy prepare). The EXECUTION authority seam is untouched: it already receives an opaque
+`PreparedExecution` and the coordinator never names a strategy payload. CDE.3-c introduces the prepare
+selector; the registry EXECUTE path (capability admission from `CanonicalRuntimeContext` ->
+`StepCapabilityAccess`, handler.run, O->StepOutcome) is CDE.3-d/e.
+
+### 11.5 Capability bridge (deferred to CDE.3-d/e, must not be decided here)
+
+Legacy derives narrow per-step `*DispatchContext` from `CanonicalRuntimeContext`. A registry handler
+needs `StepHandlerContext(runId, stepIndex, StepCapabilityAccess)` where capabilities come from the
+engine runtime. The CDE.3-b executor receives `CanonicalRuntimeContext`; registry execute must derive
+`StepCapabilityAccess` from it (eventSink today) WITHOUT handing the whole coordinator. This is a
+distinct design (CDE.3-d/e), not part of prepare.
+
+### 11.6 Next real code slice for CDE.3-c
+
+Add the registry PREPARE seam + `PreparedRegistryExecution`, exercised by a focused unit test that
+proves decode-only admission (handler NOT run) for fresh valid vs fresh typed-invalid, reusing
+`ExecutionPreparation`. Then wire the coordinator prepare selector by structural step key and prove the
+registry laws. Requires its own compile -> focused -> characterization cycle in a dedicated round; not
+rushed here.

@@ -14,6 +14,12 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Typed input payload of `core.echo`. */
 data class EchoInput(val text: String)
@@ -30,10 +36,30 @@ object CoreEchoStep {
 
     val KEY: PluginStepId = PluginStepId("core.echo")
 
+    /**
+     * B1.2c3-slice1: echo's durable input codec emits the SAME canonical dsl-v1 envelope the compiler
+     * produces for `core.echo` (`{"kind":"echo","text":...}`, byte-identical via the same kotlinx JSON
+     * serializer). This makes the registry definition durable-spine eligible (a well-formed JSON-object
+     * payload, per the CDE.3-e1/e2 boundary) AND keeps fingerprint/journal identity continuous across
+     * the eventual echo migration (legacy-routed today and registry-routed after the flip share the
+     * exact durable payload string). Round-trip `encode(I) -> payload.encoded -> decode` is lossless.
+     */
     private val inputCodec = object : StepCodec<EchoInput> {
-        override fun encode(value: EchoInput): EncodedStepValue = EncodedStepValue(value.text)
+        override fun encode(value: EchoInput): EncodedStepValue =
+            EncodedStepValue(
+                Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+                    put("kind", JsonPrimitive("echo"))
+                    put("text", JsonPrimitive(value.text))
+                }),
+            )
 
-        override fun decode(encoded: EncodedStepValue): EchoInput = EchoInput(encoded.value)
+        override fun decode(encoded: EncodedStepValue): EchoInput {
+            val objectValue = Json.parseToJsonElement(encoded.value).jsonObject
+            require(objectValue["kind"]?.jsonPrimitive?.content == "echo") {
+                "echo payload kind must be 'echo'"
+            }
+            return EchoInput(objectValue.getValue("text").jsonPrimitive.content)
+        }
     }
 
     private val outputCodec = object : StepCodec<String> {

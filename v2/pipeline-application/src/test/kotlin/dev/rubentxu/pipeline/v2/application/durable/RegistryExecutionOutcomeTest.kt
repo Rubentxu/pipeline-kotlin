@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CoreEchoStep
+import dev.rubentxu.pipeline.v2.application.EchoInput
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
@@ -114,7 +115,17 @@ class RegistryExecutionOutcomeTest {
         val registry = InMemoryStepRegistry().apply {
             CoreEchoStep.registerInto(this)
         }
-        val prepared = prepareValid(registry, CoreEchoStep.KEY)
+        // Echo's durable input is the byte-identical dsl-v1 envelope (B1.2c3-slice1); author it via the
+        // codec so the migrated echo definition decodes it, exactly as the spine will on a registry run.
+        val encoded = CoreEchoStep.definition.contract.inputCodec.encode(EchoInput("1"))
+        val ready = RegistryExecutionPreparation.prepare(
+            registry = registry,
+            key = CoreEchoStep.KEY,
+            encodedInput = encoded,
+            availableCapabilities = CanonicalRuntimeCapabilityAccess(runtime(InMemoryEventStore())).available(),
+        )
+        assertTrue(ready is ExecutionPreparation.Ready, "echo envelope input must prepare Ready, got $ready")
+        val prepared = (ready as ExecutionPreparation.Ready).prepared as PreparedRegistryExecution
 
         val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(store))
 

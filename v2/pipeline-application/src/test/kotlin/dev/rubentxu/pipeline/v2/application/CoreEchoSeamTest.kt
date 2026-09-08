@@ -56,6 +56,16 @@ class CoreEchoSeamTest {
     }
 
     @Test
+    fun `echo input codec emits the byte-identical durable dsl-v1 envelope the compiler produces`() {
+        // B1.2c3-slice1: the registry echo codec must emit the exact payload the compiler writes for
+        // core.echo so a migrated registry-routed echo shares fingerprint/journal identity with the
+        // legacy-routed echo. Also proves the payload is a well-formed JSON object (durable eligibility).
+        val encoded = CoreEchoStep.definition.contract.inputCodec.encode(EchoInput("hola structural"))
+        assertEquals("""{"kind":"echo","text":"hola structural"}""", encoded.value)
+    }
+
+
+    @Test
     fun `seam handler emits EchoOutputCaptured and returns the echo payload`() {
         val store = InMemoryEventStore()
         val runId = RunId("b1-2b-run")

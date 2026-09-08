@@ -38,6 +38,18 @@ import java.util.concurrent.TimeUnit
  */
 @DisplayName("Error handling — ERR-S-001..009")
 @Timeout(600)
+
+/** G3/D2: auto-named DSL steps are `<stage>/<type>-<index>` (DslCompiledPipelineCompilerTest).
+ * A top-level echo sibling is not nested under a catch-error body token. */
+private fun List<String>.hasTopLevelEcho(): Boolean =
+    any { it.contains("/echo-") && !it.contains("catch-error") }
+
+private fun List<String>.lastIsTopLevelEcho(): Boolean =
+    lastOrNull()?.let { it.contains("/echo-") && !it.contains("catch-error") } == true
+
+private fun List<String>.noneTopLevelEcho(): Boolean =
+    none { it.contains("/echo-") && !it.contains("catch-error") }
+
 class ErrorHandlingTest {
 
     private val processes = mutableListOf<Process>()
@@ -161,8 +173,8 @@ class ErrorHandlingTest {
         // echo("after-failure") should NOT run (sh exits immediately on failure)
         // echo("after-catch") MUST run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
-        assertTrue(stepNames.contains("echo") && stepNames.last() == "echo",
-            "echo after catchError should run. Steps: $stepNames")
+        assertTrue(stepNames.lastIsTopLevelEcho(),
+            "echo after catchError should run last. Steps: $stepNames")
     }
 
     // =============================================================================
@@ -201,7 +213,7 @@ class ErrorHandlingTest {
 
         // echo("after-catch") should NOT run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
-        assertTrue(!stepNames.contains("echo") || stepNames.last() != "echo",
+        assertTrue(stepNames.noneTopLevelEcho(),
             "echo after catchError should NOT run. Steps: $stepNames")
     }
 
@@ -285,7 +297,7 @@ class ErrorHandlingTest {
 
         // echo("continues") MUST run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
-        assertTrue(stepNames.contains("echo"),
+        assertTrue(stepNames.hasTopLevelEcho(),
             "echo after unstable must run. Steps: $stepNames")
     }
 
@@ -353,7 +365,7 @@ class ErrorHandlingTest {
 
         // echo("after-nested") MUST run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
-        assertTrue(stepNames.last() == "echo",
+        assertTrue(stepNames.lastIsTopLevelEcho(),
             "echo after nested catchError must run. Steps: $stepNames")
     }
 
@@ -396,7 +408,7 @@ class ErrorHandlingTest {
 
         // echo("after-unstable") MUST run
         val stepNames = result.events.filterIsInstance<StepFinished>().map { it.stepName }
-        assertTrue(stepNames.contains("echo"),
+        assertTrue(stepNames.any { it.contains("/echo-") },
             "echo after unstable inside catchError must run. Steps: $stepNames")
     }
 

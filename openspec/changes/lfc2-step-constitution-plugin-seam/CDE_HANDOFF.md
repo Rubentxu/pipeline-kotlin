@@ -153,6 +153,13 @@ reuse (decode-first is structural). If no, envelope-validation-before-reconcile 
 is behaviour-preserving for the frozen suite. **Characterization #2 (EmitEvent/CatchError timing under
 reuse) remains pending.**
 
+**C6 result (frozen 503c5556):** a reused `CatchErrorEntered(UNSTABLE)` (journaled SUCCESS) still pushes
+the context overlay pre-reconcile, so a fresh failing `sh "exit 1"` inside it downgrades to `Unstable`
+(executor: reused emit 0, fresh sh 1). EmitEvent/CatchError overlay resolution therefore happens before
+durable reconciliation even under reuse (consistent with C5 decode-first) and must live in
+StructuralPreparation or a neighbouring explicit pre-durable phase, NOT in TypedInputDecode.
+**Both pending characterizations (#1 C5, #2 C6) are now complete.**
+
 ### 3.2 CDE.2 open question — ANSWERED (no test freezes field-invalid + reuse as SCHEMA)
 
 Scanned the durable/UAT/coordinator/dispatcher tests: every SCHEMA case is structural or fresh — C3/C5

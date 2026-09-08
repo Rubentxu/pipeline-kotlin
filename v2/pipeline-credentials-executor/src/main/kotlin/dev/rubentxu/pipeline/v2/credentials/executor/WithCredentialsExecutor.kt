@@ -94,6 +94,31 @@ class WithCredentialsExecutor(
         bindings: List<StepSpec.CredentialsBinding>,
         runId: String,
         eventSink: EventSink,
+    ): BoundCredentials = bindSpecs(
+        specs = bindings.map { it.toSpec() },
+        runId = runId,
+        eventSink = eventSink,
+    )
+
+    /**
+     * Binds credentials to environment variables directly from the typed domain
+     * [CredentialBindingSpec] sealed shape.
+     *
+     * EM-7 / LFC-5.3 — this is the entry point consumed by the canonical
+     * `CredentialScopePort` adapter. It shares the same acquire/emit/retain
+     * core as [bind], but receives already-validated domain specs (no DSL
+     * round-trip), so the coordinator can pass through the sealed specs it
+     * decoded from the compiled node payload.
+     *
+     * @param specs The typed credential binding specifications (domain sealed shape)
+     * @param runId The pipeline run ID for event attribution
+     * @param eventSink The event sink for audit trail events
+     * @return [BoundCredentials] with env vars and close handler
+     */
+    suspend fun bindSpecs(
+        specs: List<CredentialBindingSpec>,
+        runId: String,
+        eventSink: EventSink,
     ): BoundCredentials {
         val env = mutableMapOf<String, SecretHandle>()
         val credentialIds = mutableListOf<CredentialsId>()
@@ -101,8 +126,7 @@ class WithCredentialsExecutor(
         var sequence = 1L
 
         try {
-            for (binding in bindings) {
-                val spec: CredentialBindingSpec = binding.toSpec()
+            for (spec in specs) {
                 val credentialsId = spec.credentialsId
                 credentialIds.add(credentialsId)
                 val purpose = kindToPurpose(spec.kind)

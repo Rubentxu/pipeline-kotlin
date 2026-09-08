@@ -776,3 +776,30 @@ created. e2 test 2 already freezes the gate rejects non-JSON with decode 0. Rema
 `SeamedExecutionRouter.route`) and **e5** (full durable registry laws on the real spine -> closes
 d5c/d5d), which are the cross-cutting coordinator slices and are intentionally deferred as a dedicated,
 carefully-harnessed increment.
+
+## CDE.3-e4 wiring spec (seams located, NOT landed)
+
+Localized in `CanonicalDurableRunCoordinator.kt` for the dedicated e4/e5 slice. All additive, default
+preserves the ~25 legacy call-sites (only changes when a registry is injected):
+- Add `private val stepRegistry: StepRegistry? = null` to the ctor (~line 265).
+- Metadata default: change `stepMetadataResolver: StepMetadataResolver = CoreLegacyStepMetadataResolver`
+  to nullable-default null and compute `stepRegistry != null && explicitResolver==null ->
+  RegistryStepMetadataResolver.composite(stepRegistry)` (else CoreLegacy). Behavior identical when no
+  registry injected.
+- Execution-boundary default (~line 299): when `stepRegistry != null` and no explicit
+  `commonExecutionBoundary`, default to `SeamedExecutionRouter.route(legacyAdapter,
+  RegistryExecutionBoundary.adapt())` so registry-prepared items flow to the registry executor.
+- Prepare selector in the Execute branch (~lines 590-601): discriminator
+  `step.pluginStepId.value in CanonicalCoreStepMetadata.pluginIds -> LegacyExecutionBoundary.prepare`;
+  `else if stepRegistry?.definition(key)!=null -> RegistryExecutionPreparation.prepare(registry, key,
+  EncodedStepValue(step.payload.encoded), availableCapabilities)`; else EngineInvariantViolation.
+- Capability supply: registry prepare needs `availableCapabilities`. Hoist `CanonicalRuntimeContext`
+  construction before prepare and derive via
+  `CanonicalRuntimeCapabilityAccess(context).available()` (>= {EVENT_SINK_CAPABILITY}), so prepare is
+  fail-closed on a missing capability with handler=0 and journal FAILED/SCHEMA.
+Note: `CanonicalCoreStepMetadata.shortType` on a registry key yields a coarse display label only; it is
+NOT semantic routing (routing is by stepKey membership per decision A).
+Harness for e5: a `CompiledPipeline` containing an `OpaqueStepNode(pluginStepId=<non-core key>)` whose
+`payload.encoded` = a registry JSON-object codec's `encode(I).value` (see e2 fixture pattern), driven
+through the real `run` with an in-memory journal/cursorStore to exercise fresh, replay(reuse),
+divergence, typed-invalid and missing-capability laws end to end; XML fresh as oracle.

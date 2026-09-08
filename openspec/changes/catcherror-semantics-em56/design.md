@@ -51,3 +51,24 @@ UAT_JENKINS_EXECUTION_PARITY.
 2. D3 nested LIFO. Verify ERR-S-007 (+ ERR-S-001 nested-catch not present, but ERR-S-007).
 3. D4 StageFinished. Verify ERR-S-004 + full ErrorHandlingTest + coordinator suites green.
 Each step keeps ERR-S-001/003/006 green before moving on.
+
+## Design refinement D5 — publication must move into the fold-walk, not the markers
+Traced consequence (2026-09-08, apply prep): the linear IR markers cannot remain the sole
+publisher of CatchErrorTriggered.
+- ERR-S-007 nests: outer-enter, inner-enter, body(sh exit 1), inner-trigger, outer-trigger. The body
+  Failure must pass through the inner FAILURE overlay (re-throw) to the outer UNSTABLE overlay, which
+  suppresses; ≥2 triggers (inner FAILURE + outer UNSTABLE). A single fold over one `StepOutcome` cannot
+  produce two marker-published events cleanly, and the current Abort returns too early.
+- ERR-S-008: the marker currently publishes after a non-failing body (unstable is lifted past the
+  trigger), so it cannot distinguish "real inner failure" from "unstable/success".
+Therefore publication belongs in the run() fold: on a real `StepOutcome.Failure`, walk the
+`ContextStack` from innermost outward, publishing one CatchErrorTriggered per enclosing
+CatchErrorOverlay (its own buildResult/stageResult/message), stopping at the first overlay that
+suppresses (FAILURE-overlays re-throw upward; SUCCESS/UNSTABLE overlay → Continue/ContinueUnstable), or
+aborting when none remains. The IR CatchErrorTriggered markers then become pop-only and MUST NOT
+separately publish (avoid double-count). The overlay currently stores only buildResult+enteredAt; the
+fold needs stageResult+message per scope — resolve by carrying them on the CatchErrorOverlay (typed
+fields) rather than parsing IR markers at runtime. This re-shapes D1-D4 and keeps ERR-S-001 (single
+suppress) emitting at the fold.
+Open: confirm whether `StepOutcome.Unstable` from `unstable()` must be excluded from the walk (it is
+not a Failure, so it never enters the walk — resolves ERR-S-008 without a separate gate).

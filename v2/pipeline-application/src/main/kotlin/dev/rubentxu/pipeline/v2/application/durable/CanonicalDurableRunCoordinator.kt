@@ -2,9 +2,10 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
-import dev.rubentxu.pipeline.v2.application.StepMetadata
+import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
+import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
@@ -286,6 +287,9 @@ class CanonicalDurableRunCoordinator(
     private val controlDirRoot: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
+    // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). The default is the
+    // legacy core catalog; a registry/definition composite implements this seam in CDE.3/CDE.5.
+    private val stepMetadataResolver: StepMetadataResolver = CoreLegacyStepMetadataResolver,
     // B1.2c2-a1: temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
     // existing ~25 construction sites compile unchanged; production default delegates to the legacy
     // dispatcher. Not the final DI architecture.
@@ -532,7 +536,11 @@ class CanonicalDurableRunCoordinator(
             }
         }
 
-        val (effects, replayPolicy) = typedCommand.defaultMetadata.effects to typedCommand.defaultMetadata.replayPolicy
+        // CDE.2-b2: durable metadata (effects + replayPolicy) is resolved by structural step key
+        // BEFORE any typed decode, so fingerprint and reconcile never depend on the decoded command.
+        val metadata = stepMetadataResolver.resolve(step.pluginStepId)
+            ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
+        val (effects, replayPolicy) = metadata.effects to metadata.replayPolicy
         val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
         val operationId = opId.format()
         val input = OperationInput(

@@ -120,6 +120,39 @@ step-agnostic, lossless adapter (`persisted canonical payload -> EncodedStepValu
   effective-executor seam (decode-fail returns the terminal SCHEMA outcome and FAILED journal write
   without invoking stepExecutor -> C3 stays 0; metadata stays stepKey-resolved). Confirm the malformed+
   journaled classification and EmitEvent-overlay timing against Uat/durable suite before committing.
+
+### 3.1 CDE.2 pending characterizations — C5 result (frozen 18920b9a)
+
+**C5 (malformed payload + matching journaled SUCCESS), observed from current code (not assumed):** the
+durable protocol is **DECODE-FIRST**. A malformed payload `{not-valid-json` is rejected as `SCHEMA`
+Failure with `executor=0` even when a pre-seeded SUCCEEDED journal row has a fingerprint matching the
+malformed payload (reuse-eligible). Schema validation therefore **precedes** replay/reuse; a reuse must
+not skip it.
+
+**Exact current state machine (non-block canonical step), from code + C3/C4/C5/S1/C1:**
+```
+decode (prepareInvocation): parse dsl-v1 envelope + typed field extraction
+   FAIL -> journal FAILED + return SCHEMA Failure   (executor=0)   [C3, C5]
+   OK   -> typedCommand
+      -> reconcile: divergence (INFRA fail) -> shell recover -> effectReplayPolicy
+            Diverged       -> INFRA fail (executor=0)              [C4]
+            RecoverRunning -> recovered outcome (executor=0)       [S1]
+            ReuseCompleted -> Success (executor=0)                 [C2]
+            RejectedAbort  -> INFRA fail (executor=0)
+            Execute        -> stepExecutor.invoke(decodedCommand) (executor=1)  [C1]
+```
+
+**Implication for CDE.2 (the validation-vs-decode refinement):** typed semantic decode cannot move behind
+Execute while preserving C3/C5 unless a **schema/envelope validation phase precedes durable resolution**.
+The current codec couples (a) generic envelope validation (JSON parse, `kind`) and (b) typed semantic
+field extraction (`EchoInput`). C5/C3 only prove (a) must precede reuse. Whether (b) a field-invalid but
+envelope-valid payload must also precede reuse is NOT frozen by any test yet: moving (b) into Execute
+would let it be REUSED (Success) where today it rejects SCHEMA. **Open question for the next pass:** does
+any Uat/durable test freeze field-invalid + reuse-eligible as SCHEMA? If yes, full validation stays before
+reuse (decode-first is structural). If no, envelope-validation-before-reconcile + typed-decode-in-Execute
+is behaviour-preserving for the frozen suite. **Characterization #2 (EmitEvent/CatchError timing under
+reuse) remains pending.**
+
 - **CDE.3 — RegistryExecutionAdapter.** `generic invocation -> StepRegistry -> RegistryStepInvoker ->
   codec.decode(raw input) -> typed handler`, no Step-name cases. Proven in isolation AND under the
   durable protocol with a **generic fixture** (not echo). Missing key / missing capability / decode

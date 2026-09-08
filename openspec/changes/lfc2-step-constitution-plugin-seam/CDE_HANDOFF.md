@@ -724,3 +724,29 @@ it is a design decision (durable payload envelope for registered steps), likely 
 should not be invented silently. The mechanical coordinator wiring (optional `stepRegistry` param ->
 composite metadata default + prepare selector + `SeamedExecutionRouter.route`) is feasible but would be
 unexercised end-to-end until that envelope mapping exists, so it is NOT landed as dead wiring.
+
+## CDE.3-e1 — Registry Durable Input Envelope: DECIDED
+
+Opened and resolved in `CDE_3e_REGISTRY_INPUT_ENVELOPE.md` (mini-ADR). Grounded on the real types:
+`EncodedStepValue` is a single `@JvmInline value class(value: String)`, authoritative-as-JSON; the spine
+gate `CanonicalStructuralPreparation` demands `schemaVersion=="dsl-v1"` AND `payload.encoded` parse as a
+JSON object for EVERY step; `CanonicalInvocation.fromNode` feeds `EncodedStepValue(payload.encoded)`
+unchanged to `inputCodec.decode`; fingerprint is over `OperationInput.params["payload"]=<string>`; the
+real blocker is registry codecs that emit raw non-JSON text (e.g. CoreEchoStep -> `"hi"`).
+
+**Decision:** durable registry input IS the registry `StepCodec<I>.encode(I).value`, stored verbatim as
+`StepNode.payload.encoded` under `dsl-v1`, and durable-spine eligibility REQUIRES that `EncodedStepValue`
+be a well-formed JSON object. No wrapper, no tagged union (single real variant), no JSON->String->JSON,
+no dsl-v2 (compatible: `dsl-v1` keeps meaning "JSON-object canonical payload"; semantic schema is
+plugin-owned). Core-vs-registry routing stays purely by stepKey membership via the composite resolver
+(d5b), never inferred from payload shape. Seam-level raw-text codecs remain valid off-spine but are NOT
+durable-spine-eligible (documented constraint, plugin author's contract).
+
+Consequence check against stop criteria: this does NOT change journal schema, fingerprint semantics,
+replay of persisted executions, or canonical identity for existing (legacy core) steps; it constrains
+plugin durable codecs going forward. No breaking migration needed. Rewiring remains deferred to e4/e5.
+
+Next slices: **e2** (generic lossless round-trip codec `EncodedStepValue(json-object) <-> payload.encoded`
++ deterministic fingerprint rep + malformed-envelope tests), **e3** (StructuralPreparation yields a
+registry structural invocation, codec calls = 0), **e4** (registry prepare wiring through Execute),
+**e5** (full durable registry laws; closes d5c/d5d). No production code changed in e1.

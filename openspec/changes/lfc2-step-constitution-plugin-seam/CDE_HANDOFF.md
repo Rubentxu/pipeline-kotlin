@@ -99,6 +99,13 @@ step-agnostic, lossless adapter (`persisted canonical payload -> EncodedStepValu
 - **CDE.2 — Legacy adapter behind the new seam.** Express the existing path as `pre-decode invocation ->
   legacy adapter -> existing decoder/CanonicalCoreStepCommand -> existing execution`, registry absent.
   Proves the new frontier changes nothing. Gate: 42 characterization + durable/replay + CLI.
+  **Grounding (2026-09-08):** `effects`/`replayPolicy` that feed fingerprint/reconcile are CONSTANT per
+  `pluginId` (`CanonicalCoreStepCommand` subtypes hardcode `defaultMetadata`: Echo→(READ_ONLY,MEMOIZED),
+  Shell→(EXECUTES_SUBPROCESS,RERUN), Error→(ABORTS_PIPELINE,NEVER), ...) and pluginId is already on the
+  node (`node.pluginStepId`, 1:1 with the sealed subtype). So metadata is resolvable by `stepKey`
+  WITHOUT decode. The only decode-dependent pre-execution concern is the EmitEvent context-overlay
+  (`core.emit.event` CatchErrorEntered/Triggered), which stays a coordinator concern on the legacy path.
+  CDE.2 therefore does NOT change durable inputs.
 - **CDE.3 — RegistryExecutionAdapter.** `generic invocation -> StepRegistry -> RegistryStepInvoker ->
   codec.decode(raw input) -> typed handler`, no Step-name cases. Proven in isolation AND under the
   durable protocol with a **generic fixture** (not echo). Missing key / missing capability / decode

@@ -27,7 +27,13 @@ data class StepMetadata(
 /** Typed command decoded from the `dsl-v1` payloads owned by the canonical IR. */
 sealed interface CanonicalCoreStepCommand {
     val pluginId: String
+
+    /**
+     * Durable metadata for this command, resolved from [pluginId] by the single legacy authority
+     * [CanonicalCoreStepMetadata] (CDE.2-b1). Constant per plugin, so it needs no decoded field.
+     */
     val defaultMetadata: StepMetadata
+        get() = CanonicalCoreStepMetadata.metadata(pluginId)
 
     companion object {
         /**
@@ -71,22 +77,18 @@ sealed interface CanonicalCoreStepCommand {
         )
 
         override val pluginId = "core.sh"
-        override val defaultMetadata = StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.RERUN)
     }
 
     data class Echo(val text: String) : CanonicalCoreStepCommand {
         override val pluginId = "core.echo"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand {
         override val pluginId = "core.error"
-        override val defaultMetadata = StepMetadata(setOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER)
     }
 
     data class Sleep(val seconds: Long) : CanonicalCoreStepCommand {
         override val pluginId = "core.sleep"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     /** LFC1-007: typed-command for atomic file writes via the canonical bridge. */
@@ -96,7 +98,6 @@ sealed interface CanonicalCoreStepCommand {
         val encoding: String,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.file.writeFile"
-        override val defaultMetadata = StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED)
     }
 
     /** LFC1-007: first-class workflow-event emitter for shell-rewrite path. */
@@ -105,7 +106,6 @@ sealed interface CanonicalCoreStepCommand {
         val payload: Map<String, String?>,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.emit.event"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -118,7 +118,6 @@ sealed interface CanonicalCoreStepCommand {
         val label: String?,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.milestone"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -129,7 +128,6 @@ sealed interface CanonicalCoreStepCommand {
         val path: String = ".",
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.deleteDir"
-        override val defaultMetadata = StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -142,7 +140,6 @@ sealed interface CanonicalCoreStepCommand {
         val patterns: List<String> = emptyList(),
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.cleanWs"
-        override val defaultMetadata = StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -153,7 +150,6 @@ sealed interface CanonicalCoreStepCommand {
         val path: String,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.load"
-        override val defaultMetadata = StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -164,7 +160,6 @@ sealed interface CanonicalCoreStepCommand {
         val tmp: Boolean = false,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.pwd"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -174,7 +169,6 @@ sealed interface CanonicalCoreStepCommand {
         val unused: Unit = Unit, // sealed class requires at least one field; no params from DSL
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.isUnix"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -187,7 +181,6 @@ sealed interface CanonicalCoreStepCommand {
         val quiet: Boolean = false,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.waitUntil"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 
     /**
@@ -204,7 +197,6 @@ sealed interface CanonicalCoreStepCommand {
         val fingerprint: Boolean = false,
     ) : CanonicalCoreStepCommand {
         override val pluginId = "core.archiveArtifacts"
-        override val defaultMetadata = StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED)
     }
 }
 

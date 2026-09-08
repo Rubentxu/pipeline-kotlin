@@ -26,6 +26,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
+import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
@@ -207,6 +208,33 @@ private sealed interface InvocationPreparation {
      * `dispatch` must return without invoking the executor.
      */
     data class Rejected(val failure: StepOutcome) : InvocationPreparation
+}
+
+/**
+ * Resolution of the durable replay/reconcile decision (B1.2c2-a2.2), derived from the real branches
+ * in `dispatch`: divergence detection, running-shell recovery and the effect-aware replay policy.
+ *
+ * These are genuinely distinct protocol states with distinct terminal semantics, so each carries only
+ * the data its own handling needs; incoherent combinations (e.g. a reuse that also re-executes) are not
+ * representable.
+ *
+ * @property operationId Reproduced for error messages only; no journal/cursor is touched by the resolver.
+ */
+private sealed interface InvocationReconciliation {
+    /** Fingerprint divergence was detected; the invocation must fail closed without executing. */
+    data class Diverged(val operationId: String) : InvocationReconciliation
+
+    /** A RUNNING shell was recovered to a concrete outcome+terminal status without re-invoking it. */
+    data class RecoverRunning(val outcome: StepOutcome, val status: OperationStatus) : InvocationReconciliation
+
+    /** The journaled result is reusable; return the cached success without executing. */
+    data object ReuseCompleted : InvocationReconciliation
+
+    /** The replay policy rejected re-execution; the pipeline must abort via the lifecycle boundary. */
+    data class RejectedAbort(val operationId: String) : InvocationReconciliation
+
+    /** Fresh/re-run: the invocation is cleared to execute through the effective executor. */
+    data object Execute : InvocationReconciliation
 }
 
 private sealed interface BlockShellScope {
@@ -528,40 +556,40 @@ class CanonicalDurableRunCoordinator(
             status = OperationStatus.PENDING,
             attempt = 1,
         )
-        if (divergenceDetector.check(currentOperation, journaled).isFailure) {
-            return StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, "Canonical run diverged at '$operationId'"),
-            )
-        }
-        when (val recovery = recoverRunningShell(typedCommand, journaled, operationId)) {
-            RunningCanonicalShellRecovery.NotRunningShell -> Unit
-            is RunningCanonicalShellRecovery.Recovered -> {
-                val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) { recovery.outcome }
+        when (val resolution = reconcileInvocation(typedCommand, journaled, currentOperation, operationId, effects, replayPolicy)) {
+            is InvocationReconciliation.Diverged ->
+                return StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                        "Canonical run diverged at '${resolution.operationId}'",
+                    ),
+                )
+            is InvocationReconciliation.RecoverRunning -> {
+                val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) { resolution.outcome }
                 journal.append(
                     RerunOperation(
                         id = operationId,
                         fingerprint = fingerprint,
                         input = input,
                         output = null,
-                        status = recovery.status,
+                        status = resolution.status,
                         attempt = 1,
                     ),
                 )
                 if (outcome is StepOutcome.Success) cursorStore.advance(runId.value, operationId, stageIndex)
                 return outcome
             }
-        }
-        when (effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status)) {
-            ReplayDecision.SKIP -> return StepOutcome.Success
-            ReplayDecision.ABORT -> return StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                StepOutcome.Failure(
-                    PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                        "Replay aborted for '$operationId'",
-                    ),
-                )
-            }
-            ReplayDecision.RERUN -> Unit
+            InvocationReconciliation.ReuseCompleted -> return StepOutcome.Success
+            is InvocationReconciliation.RejectedAbort ->
+                return StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                    StepOutcome.Failure(
+                        PipelineFailure(
+                            dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                            "Replay aborted for '${resolution.operationId}'",
+                        ),
+                    )
+                }
+            InvocationReconciliation.Execute -> Unit
         }
         if (journaled == null) {
             journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
@@ -641,6 +669,36 @@ class CanonicalDurableRunCoordinator(
             )
         }
         return InvocationPreparation.Ready(typedCommand)
+    }
+
+    /**
+     * Resolves the durable replay/reconcile decision for a decoded invocation (B1.2c2-a2.2).
+     *
+     * This reproduces the exact precedence of the frozen a1 control flow: fingerprint divergence first,
+     * then running-shell recovery, then the effect-aware replay policy. It is decision-only: it touches no
+     * journal, cursor, event or executor. Terminal resolutions carry only what their own handling needs.
+     */
+    private fun reconcileInvocation(
+        typedCommand: CanonicalCoreStepCommand,
+        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
+        currentOperation: RerunOperation,
+        operationId: String,
+        effects: Set<Effect>,
+        replayPolicy: ReplayPolicy,
+    ): InvocationReconciliation {
+        if (divergenceDetector.check(currentOperation, journaled).isFailure) {
+            return InvocationReconciliation.Diverged(operationId)
+        }
+        when (val recovery = recoverRunningShell(typedCommand, journaled, operationId)) {
+            RunningCanonicalShellRecovery.NotRunningShell -> Unit
+            is RunningCanonicalShellRecovery.Recovered ->
+                return InvocationReconciliation.RecoverRunning(recovery.outcome, recovery.status)
+        }
+        return when (effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status)) {
+            ReplayDecision.SKIP -> InvocationReconciliation.ReuseCompleted
+            ReplayDecision.ABORT -> InvocationReconciliation.RejectedAbort(operationId)
+            ReplayDecision.RERUN -> InvocationReconciliation.Execute
+        }
     }
 
     private fun recoverRunningShell(

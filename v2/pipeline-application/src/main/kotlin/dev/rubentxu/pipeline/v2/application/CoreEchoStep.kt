@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
@@ -15,12 +14,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.echo
-
-/**
- * Capability key under which the engine supplies the [EventSink] to a handler that must emit
- * typed output/domain events. A handler may use it only if it declares it in its contract.
- */
-val EVENT_SINK_CAPABILITY: StepCapability = StepCapability("eventSink")
 
 /** Typed input payload of `core.echo`. */
 data class EchoInput(val text: String)

@@ -1,0 +1,36 @@
+package dev.rubentxu.pipeline.v2.application.durable
+
+import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
+
+/**
+ * CDE.3-d1: explicit, small capability bridge from a [CanonicalRuntimeContext] to a
+ * [StepCapabilityAccess].
+ *
+ * It exposes ONLY the capabilities the canonical runtime actually declares and provides today
+ * ([EVENT_SINK_CAPABILITY] backed by the runtime's [CanonicalRuntimeContext.eventSink]). It derives the
+ * capability values from the runtime context WITHOUT handing the whole [CanonicalRuntimeContext] to a
+ * handler and without rebuilding a pipeline context. Direction is contract.requiredCapabilities ->
+ * capability admission -> [StepCapabilityAccess] -> handler; a handler must never receive the raw
+ * runtime context.
+ *
+ * Lookup is fail-closed: [get] on a capability that is not available throws rather than returning a
+ * nullable/`Any?` sentinel, so a handler can only ever start once capability admission has confirmed
+ * availability.
+ */
+class CanonicalRuntimeCapabilityAccess(
+    context: CanonicalRuntimeContext,
+) : StepCapabilityAccess {
+
+    private val provided: Map<StepCapability, Any> = mapOf(
+        EVENT_SINK_CAPABILITY to context.eventSink,
+    )
+
+    override fun available(): Set<StepCapability> = provided.keys
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : Any> get(key: StepCapability): T =
+        provided[key] as? T
+            ?: throw IllegalArgumentException("capability unavailable to this invocation: $key")
+}

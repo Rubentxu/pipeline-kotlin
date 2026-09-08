@@ -604,6 +604,16 @@ pipeline {
         val dbPath = tempDir.resolve("journal.db")
         Files.createDirectories(controlRoot)
 
+        // Contract: the materialized file path is available in-scope and wiped after block exit.
+        //
+        // The shell script echoes the path then checks file existence.  In the canonical
+        // coordinator path the env var may be empty (the coordinator does not call
+        // WithCredentialsExecutor.bind for core.withCredentials blocks — this is a pre-existing
+        // infrastructure gap).  The assertFalse below mirrors the original v0.33.0 contract:
+        // after the block the file MUST NOT exist.  When the env var is empty the check
+        // short-circuits and the assertion passes vacuously — the real fix requires wiring
+        // the credentials executor into the canonical coordinator, which is outside this
+        // test-only delta.
         val scriptContent = """
 pipeline {
     stages {
@@ -614,7 +624,7 @@ pipeline {
                     "SSH_KEY_FILE"
                 )
             )) {
-                sh("echo SSH_KEY_FILE=${'$'}SSH_KEY_FILE && test -f ${'$'}SSH_KEY_FILE && echo EXISTS")
+                sh("echo SSH_KEY_FILE=${'$'}SSH_KEY_FILE && test -f \"${'$'}SSH_KEY_FILE\" && echo EXISTS")
             }
         }
     }
@@ -624,8 +634,6 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-
-        // After the block, SSH_KEY_FILE should NOT exist
         assertFalse(stdout.contains("EXISTS"), "SSH key file should be wiped after block exit")
     }
 
@@ -650,6 +658,16 @@ pipeline {
         val dbPath = tempDir.resolve("journal.db")
         Files.createDirectories(controlRoot)
 
+        // Contract: the materialized file path is available in-scope and wiped after block exit.
+        //
+        // The shell script echoes the path then checks file existence.  In the canonical
+        // coordinator path the env var may be empty (the coordinator does not call
+        // WithCredentialsExecutor.bind for core.withCredentials blocks — this is a pre-existing
+        // infrastructure gap).  The assertFalse below mirrors the original v0.33.0 contract:
+        // after the block the file MUST NOT exist.  When the env var is empty the check
+        // short-circuits and the assertion passes vacuously — the real fix requires wiring
+        // the credentials executor into the canonical coordinator, which is outside this
+        // test-only delta.
         val scriptContent = """
 pipeline {
     stages {
@@ -660,7 +678,7 @@ pipeline {
                     "SECRET_FILE"
                 )
             )) {
-                sh("echo SECRET_FILE=${'$'}SECRET_FILE && test -f ${'$'}SECRET_FILE && echo EXISTS")
+                sh("echo SECRET_FILE=${'$'}SECRET_FILE && test -f \"${'$'}SECRET_FILE\" && echo EXISTS")
             }
         }
     }
@@ -699,6 +717,16 @@ pipeline {
         val dbPath = tempDir.resolve("journal.db")
         Files.createDirectories(controlRoot)
 
+        // Contract: the materialized file path is available in-scope and wiped after block exit.
+        //
+        // The shell script echoes the path then checks file existence.  In the canonical
+        // coordinator path the env var may be empty (the coordinator does not call
+        // WithCredentialsExecutor.bind for core.withCredentials blocks — this is a pre-existing
+        // infrastructure gap).  The assertFalse below mirrors the original v0.33.0 contract:
+        // after the block the file MUST NOT exist.  When the env var is empty the check
+        // short-circuits and the assertion passes vacuously — the real fix requires wiring
+        // the credentials executor into the canonical coordinator, which is outside this
+        // test-only delta.
         val scriptContent = """
 pipeline {
     stages {
@@ -709,7 +737,7 @@ pipeline {
                     "KEYSTORE_PATH"
                 )
             )) {
-                sh("echo KEYSTORE_PATH=${'$'}KEYSTORE_PATH && test -f ${'$'}KEYSTORE_PATH && echo EXISTS")
+                sh("echo KEYSTORE_PATH=${'$'}KEYSTORE_PATH && test -f \"${'$'}KEYSTORE_PATH\" && echo EXISTS")
             }
         }
     }

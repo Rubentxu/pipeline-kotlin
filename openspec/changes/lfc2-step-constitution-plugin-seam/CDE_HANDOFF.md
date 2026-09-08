@@ -5,6 +5,16 @@ Status: produced 2026-09-08 after B1.2c2-a2 closed (`2a5e32f9`, tree clean). The
 `↔` structural pre-decode routing) that the implementation surfaced. c/d/e are one architectural
 unit and one gate. **No ceremonial commit for `c`.**
 
+**CDE.1 + CDE.2 DONE (2026-09-08).** Commits `a05682ec` (CDE.1/grounding) then CDE.2-a `d93f6b23`,
+b1 `2ac3ce0e`, b2+b3 `32d83315`, b4 `0bd247e6`, c0 `014f4859`, c `eba47525`, d `11736960`, e
+`f595503a`. The durable coordinator is now structural-only: `CanonicalCoreStepCommand`/
+`CanonicalCoreStepDecoder` are confined behind `LegacyExecutionBoundary`; eligibility/labels come
+from `CanonicalCoreStepMetadata`; the overlay is a structural ADT; recovery is decided by
+`metadata.recoveryPolicy`, never a Step name; typed decode runs only on Execute. Fitness
+`Lfc2DurableCoordinatorScopeFitnessTest` (F1/F2/F3) + 81 relevant + architecture module 165/0.
+Next: **CDE.3** — a `RegistryExecutionAdapter` must occupy the same frontier as
+`LegacyExecutionBoundary` WITHOUT modifying journal/replay/fingerprint/cursor/lifecycle.
+
 ## 0. Why c/d/e merged (evidence, not preference)
 
 The durable envelope extracted in a2 calls its execution callback with an already-decoded

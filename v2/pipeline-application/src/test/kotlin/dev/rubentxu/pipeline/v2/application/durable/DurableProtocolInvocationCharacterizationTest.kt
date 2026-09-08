@@ -351,4 +351,31 @@ class DurableProtocolInvocationCharacterizationTest {
         assertEquals(0, recorder.calls, "shell recovery must not invoke the effective executor (no fresh relaunch)")
         assertEquals(OperationStatus.SUCCEEDED, journal.get(operationId)?.status)
     }
+
+    @Test
+    fun `a1-4 lifecycle spine owns StepStarted and StepFinished around the semantic event`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("a1-4-lifecycle-order")
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            InMemoryOperationJournal(clock),
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+        )
+        val outcome = coordinator.run(echoPipeline("ordered"), runId)
+        assertEquals(RunOutcome.Success, outcome)
+
+        val events = eventStore.eventsFor(runId.value).toList()
+        val started = events.indexOfFirst { it is dev.rubentxu.pipeline.v2.events.StepStarted && it.stepName == "build/echo" }
+        val semantic = events.indexOfFirst { it is EchoOutputCaptured && it.content == "ordered\n" }
+        val finished = events.indexOfFirst { it is dev.rubentxu.pipeline.v2.events.StepFinished && it.stepName == "build/echo" }
+        assertTrue(started >= 0, "StepStarted must be emitted")
+        assertTrue(semantic >= 0, "semantic EchoOutputCaptured must be emitted")
+        assertTrue(finished >= 0, "StepFinished must be emitted")
+        assertTrue(started < semantic && semantic < finished, "expected StepStarted < semantic event < StepFinished")
+    }
 }

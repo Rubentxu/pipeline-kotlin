@@ -59,7 +59,10 @@ boundary); (6) record the LFC-2 item list + gate + closure in `docs/v2/05-roadma
 - The EM-5/6 catchError milestone (closed) so this does not overlap it.
 
 ## Success Criteria
-- [ ] LFC-2 itemized list + exit gate recorded in the roadmap.
-- [ ] Confirmed DSL gaps green (parallel G2, UatDsl001 full grammar, UatEvt001 naming, ERR-S-004).
-- [ ] Gate: representative Jenkins fixtures compile to expected IR; no fake-return DSL fitness violation.
-- [ ] No unjustified regression in coordinator/EM suites.
+- [x] LFC-2 itemized list + exit gate recorded in the roadmap (`LFC2_HONEST_DSL_CLOSURE.md` + backlog).
+- [x] Confirmed DSL gaps green (stage bookends ERR-S-004, UatEvt001 G3 naming, DSL UATs).
+- [x] Legacy-surface parallel/retry/timeout UATs quarantined and traceable to E-EM-11 (not DSL-fake).
+- [ ] Gate: representative Jenkins fixtures compile to expected IR; no fake-return DSL fitness violation
+      (honest linear subset green; DSL debt rows tracked as follow-ups, no silent placeholder on canonical path).
+- [x] No unjustified regression in coordinator/EM suites.
+- [ ] Full-grammar + parallel UATs re-open and green on canonical path once E-EM-11 lands.

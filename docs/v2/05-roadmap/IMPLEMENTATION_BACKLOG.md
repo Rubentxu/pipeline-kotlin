@@ -249,6 +249,9 @@ Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
   deprecated compatibility adapter remains, pending fixtures and the full
   exit gate.
 - **E-EM-06** — ✅ DONE: 91==91 base-vs-head byte-identical at 99e9920
+- **LFC-2 (Honest Jenkins-like DSL closure)** — 🟡 IN PROGRESS — itemized list + exit gate in
+  `LFC2_HONEST_DSL_CLOSURE.md`; DSL-surface closures landed (stage bookends, G3 naming, ERR-S). Parallel/
+  retry/timeout canonical parity deferred to E-EM-11; DSL debt rows tracked there.
 - **E-EM-11 (canonical M2-R1 event parity)** — 🔲 BLOCKED-ON-EM. The canonical coordinator
   (`CanonicalDurableRunCoordinator`) only executes linear `StageBody.Steps`; it emits NO
   `ParallelBranchStarted/Finished`, `RetryAttempt*`, or `TimeoutScheduled` events and cannot run a

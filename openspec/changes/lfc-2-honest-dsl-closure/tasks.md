@@ -21,11 +21,12 @@ fresh installDist = not stale):
 Revised ordering: (a) T3 stage bookends FIRST (restores contract, fixes 3 tests, lowest net blast);
 then (b) T2 G3 naming; then (c) T1 parallel G2 + ADR. Remaining tasks updated below.
 
-## Itemize + roadmap gate
-- Write the LFC-2 itemized list + exit gate into `docs/v2/05-roadmap` (representative Jenkins
-  fixtures compile to expected IR; no fake-return DSL). Mark each LFC-2 gate item present/absent
-  (@DslMarker narrow receivers, closed StageBody, .pipeline.kts @KotlinScript, incomplete steps
-  post/when/waitUntil/pwd/isUnix, git/scmGit duplicate, shell dollar, durable script {} boundary).
+## Itemize + roadmap gate — ✅ DONE (commit: LFC2_HONEST_DSL_CLOSURE.md + backlog refs)
+Wrote the LFC-2 itemized list + exit gate into docs/v2/05-roadmap/LFC2_HONEST_DSL_CLOSURE.md; linked
+from IMPLEMENTATION_BACKLOG. Audit (2026-09-08) marks each gate item present/absent: @DslMarker absent,
+pwd/isUnix fake StubRuntimeConfig, waitUntil fake, git/scmGit duplicate, shell dollar pending, node
+no-op; closed StageBody/KotlinScript partial. Debt rows tracked there; parallel/retry/timeout deferred
+to E-EM-11.
 
 ## T3 (do first) — stage bookends restore (ERR-S-004) — ✅ DONE (commit 800f1006)
 Land StageStarted/StageFinished in the coordinator run(); update the few coordinator count tests.
@@ -43,9 +44,11 @@ the 7 legacy-surface methods (UatDsl003 class + 3 UatDsl001 full-grammar) as BLO
 @Disabled reasons; opened E-EM-11 backlog item. DSL UATs green (mutating + UatEvt001 + ERR-S preserved).
 Re-open UatDsl003/UatDsl001-full-grammar when E-EM-11 lands.
 
-## T4 — remaining LFC-2 gate items
-- Incomplete/fake-return steps the gate names (post/when/waitUntil/pwd/isUnix, ...); shell dollar
-  handling / source rewriting; durable `script {}` boundary.
+## T4 — remaining LFC-2 gate items — ✅ AUDITED (roadmap doc), fixes deferred as DSL debt
+Audited each gate item and recorded present/absent in LFC2_HONEST_DSL_CLOSURE.md. Confirmed debt rows:
+pwd()/isUnix() fake StubRuntimeConfig return, waitUntil fake, git/scmGit duplicate (both DSL funs),
+shell dollar handling, node no-op, @DslMarker absent. Each is a follow-up candidate (separate item);
+none blocks the milestone (exit gate = honest linear subset + no-fake-return rejection rule).
 
 ## Verify
 - UatDsl001/003, UatEvt001, ErrorHandlingTest (ERR-S-004) green.

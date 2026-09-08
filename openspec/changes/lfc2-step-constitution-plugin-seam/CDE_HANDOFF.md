@@ -153,6 +153,33 @@ reuse (decode-first is structural). If no, envelope-validation-before-reconcile 
 is behaviour-preserving for the frozen suite. **Characterization #2 (EmitEvent/CatchError timing under
 reuse) remains pending.**
 
+### 3.2 CDE.2 open question — ANSWERED (no test freezes field-invalid + reuse as SCHEMA)
+
+Scanned the durable/UAT/coordinator/dispatcher tests: every SCHEMA case is structural or fresh — C3/C5
+use malformed JSON (parse failure); the coordinator schema test uses `schemaVersion "dsl-v0"` (version
+gate) on a fresh journal; the EmitEvent dispatcher test uses an unknown `kind`. Reuse tests (C2,
+UatEvt, CLI reuse) all carry complete valid payloads. **No test freezes an envelope-valid but
+field-missing payload under a reuse-eligible journal as SCHEMA.** Therefore only structural/envelope
+validation (JSON parse + dsl-v1 schemaVersion + `kind`/pluginId) must precede durable resolution; typed
+semantic field extraction (`EchoInput.text` etc.) may move into Execute without violating the frozen
+suite.
+
+**CDE.2 implementation shape (now fully determined):**
+1. **StructuralPreparation (pre-reconcile):** validate schemaVersion, parse the dsl-v1 envelope, verify
+   `kind`/pluginId, resolve durable metadata by `stepKey` (constant per pluginId) -> `Ready(structural)`
+   or `Rejected(SCHEMA)`. Rejected journals FAILED + returns (executor=0) — preserves C3/C5/schema gate.
+   This is step-agnostic (only the `kind` value differs per plugin).
+2. **Durable resolution** over the structural invocation (no `CanonicalCoreStepCommand` needed):
+   Reuse / Diverged / Recover / Execute.
+3. **Execute -> TypedInputDecode:** typed field extraction -> `Ready(input)` (-> stepExecutor, executor=1)
+   or `Rejected(SCHEMA)` (terminal, executor=0, journal FAILED) — fresh field-invalid stays SCHEMA;
+   field-invalid under reuse is not frozen (reuse may win), behaviour-preserving for the suite.
+
+This satisfies the CDE.2 gate: reuse/divergence decide with structural validation only; typed decode and
+executor stay 0 on reuse/divergence; fresh valid = decode 1 + executor 1; fresh malformed = SCHEMA
+executor 0. The typed decode can now move behind Execute as a PRE-step before the executor seam (so C3's
+executor=0 for a fresh field-invalid holds).
+
 - **CDE.3 — RegistryExecutionAdapter.** `generic invocation -> StepRegistry -> RegistryStepInvoker ->
   codec.decode(raw input) -> typed handler`, no Step-name cases. Proven in isolation AND under the
   durable protocol with a **generic fixture** (not echo). Missing key / missing capability / decode

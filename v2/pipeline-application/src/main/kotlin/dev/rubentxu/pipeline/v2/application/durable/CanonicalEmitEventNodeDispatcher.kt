@@ -72,18 +72,16 @@ class CanonicalEmitEventNodeDispatcher {
             return StepOutcome.Unstable
         }
 
+        // EM-5/EM-6 (catcherror-semantics-em56, D5): CatchErrorTriggered is now a scope-only
+        // exit marker — the coordinator pops the scope and publishes NO domain event here. The
+        // CatchErrorTriggered event is published by the coordinator's catchError fold-walk at the
+        // point of the real inner failure (re-throw/suppress decision). Keeping the marker silent
+        // prevents the spurious publish on a non-failing body (ERR-S-008) and double-counting.
+        if (command.kind == "CatchErrorTriggered") {
+            return StepOutcome.Success
+        }
+
         val event: dev.rubentxu.pipeline.v2.events.DomainEvent = when (command.kind) {
-            "CatchErrorTriggered" -> dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
-                eventId = UUID.randomUUID().toString(),
-                runId = ctx.runId,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                stageName = command.payload["stageName"] ?: ctx.stageName,
-                buildResult = command.payload["buildResult"],
-                stageResult = command.payload["stageResult"]
-                    ?: error("CatchErrorTriggered requires 'stageResult' in payload"),
-                message = command.payload["message"],
-            )
             "FileWritten" -> dev.rubentxu.pipeline.v2.events.FileWritten(
                 eventId = UUID.randomUUID().toString(),
                 runId = ctx.runId,

@@ -325,8 +325,10 @@ object DslCompiledPipelineCompiler {
                 payload = buildJsonObject {
                     put("buildResult", effectiveBuildResult)
                     put("stageResult", effectiveStageResult)
-                    put("message", JsonNull) // null allowed
                     put("enteredAt", System.currentTimeMillis().toString())
+                    // EM-5/EM-6: carry the message so the coordinator's overlay can publish the
+                    // CatchErrorTriggered event at the real-failure fold (D5). Nullable/absent OK.
+                    message?.let { put("message", it) }
                 },
             ))
             // [1..n] Inner scope: plain shell segment(s) and nested catch groups in order

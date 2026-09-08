@@ -31,7 +31,7 @@ class CanonicalEmitEventNodeDispatcherTest {
         CanonicalEmitEventDispatchContext(runId = runId, stageName = stageName, eventSink = eventStore)
 
     @Test
-    fun `CatchErrorTriggered kind emits matching DomainEvent`() = runBlocking {
+    fun `CatchErrorTriggered kind is a scope-only marker and emits no event`() = runBlocking {
         val eventStore = InMemoryEventStore()
         val dispatcher = CanonicalEmitEventNodeDispatcher()
         val command = CanonicalCoreStepCommand.EmitEvent(
@@ -46,17 +46,14 @@ class CanonicalEmitEventNodeDispatcherTest {
 
         val outcome = dispatcher.dispatch(command, makeEmitContext("catch-run", eventStore))
 
+        // EM-5/EM-6 (D5): CatchErrorTriggered is now pop-only — the coordinator's fold-walk
+        // publishes the domain event at the point of the real failure, not here.
         assertEquals(StepOutcome.Success, outcome)
         val events = eventStore.eventsFor("catch-run").toList()
-        assertEquals(1, events.size, "Exactly one event must be emitted")
-        val catchEvent = events.filterIsInstance<CatchErrorTriggered>().singleOrNull()
-        assertNotNull(catchEvent, "Must emit CatchErrorTriggered. Events: ${events.map { it::class.simpleName }}")
-        val evt = catchEvent!!
-        assertEquals("catch-run", evt.runId)
-        assertEquals("build", evt.stageName)
-        assertEquals("FAILURE", evt.buildResult)
-        assertEquals("FAILURE", evt.stageResult)
-        assertEquals("tolerated failure", evt.message)
+        assertTrue(
+            events.none { it is CatchErrorTriggered },
+            "CatchErrorTriggered marker must NOT publish. Events: ${events.map { it::class.simpleName }}",
+        )
     }
 
     @Test

@@ -186,19 +186,6 @@ private sealed interface CanonicalContinuation {
     data class Abort(val failure: PipelineFailure) : CanonicalContinuation
 }
 
-private fun StepOutcome.continuation(contextStack: ContextStack): CanonicalContinuation = when (this) {
-    StepOutcome.Success -> CanonicalContinuation.Continue
-    StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
-    is StepOutcome.Failure -> when (val overlay = contextStack.peek()) {
-        is ContextOverlay.CatchErrorOverlay -> when (overlay.buildResult) {
-            "FAILURE" -> CanonicalContinuation.Abort(failure)
-            "SUCCESS" -> CanonicalContinuation.Continue
-            else -> CanonicalContinuation.ContinueUnstable
-        }
-        else -> CanonicalContinuation.Abort(failure)
-    }
-}
-
 private sealed interface RunningCanonicalShellRecovery {
     data object NotRunningShell : RunningCanonicalShellRecovery
     data class Recovered(val outcome: StepOutcome, val status: OperationStatus) : RunningCanonicalShellRecovery
@@ -311,7 +298,7 @@ class CanonicalDurableRunCoordinator(
                 for (stepIndex in steps.indices) {
                     val step = steps[stepIndex]
                     val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
-                    when (val continuation = outcome.continuation(contextStack)) {
+                    when (val continuation = decideContinuation(outcome, stage.name, runId.value)) {
                         CanonicalContinuation.Continue -> Unit
                         CanonicalContinuation.ContinueUnstable -> currentOutcome = RunOutcome.Unstable
                         is CanonicalContinuation.Abort -> {
@@ -353,6 +340,56 @@ class CanonicalDurableRunCoordinator(
             }
         }
         return currentOutcome
+    }
+
+    /**
+     * EM-5/EM-6 (catcherror-semantics-em56, D1/D2/D3/D5): folds a step outcome into a
+     * continuation, publishing CatchErrorTriggered events at the point of a real failure.
+     *
+     * A real `StepOutcome.Failure` walks the active context stack from the innermost
+     * CatchErrorOverlay outward: every enclosing catchError scope that observes the failure
+     * publishes its own CatchErrorTriggered (its buildResult/stageResult/message). FAILURE
+     * overlays re-throw outward (ERR-S-002 records then aborts at the outermost; ERR-S-007 lets
+     * an enclosing default-UNSTABLE overlay re-catch). The first SUCCESS/UNSTABLE overlay
+     * suppresses and stops the walk. An unstable()-only outcome is never a failure, so it never
+     * enters the walk (ERR-S-008 emits no trigger).
+     */
+    private fun decideContinuation(outcome: StepOutcome, stageName: String, runIdValue: String): CanonicalContinuation =
+        when (outcome) {
+            StepOutcome.Success -> CanonicalContinuation.Continue
+            StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
+            is StepOutcome.Failure -> walkCatchErrorChain(outcome.failure, stageName, runIdValue)
+        }
+
+    private fun walkCatchErrorChain(
+        failure: PipelineFailure,
+        stageName: String,
+        runIdValue: String,
+    ): CanonicalContinuation {
+        val frames = contextStack.frames
+        var i = frames.size - 1
+        while (i >= 0 && frames[i] is ContextOverlay.CatchErrorOverlay) {
+            val overlay = frames[i] as ContextOverlay.CatchErrorOverlay
+            eventSink.append(
+                dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runIdValue,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stageName = stageName,
+                    buildResult = overlay.buildResult,
+                    stageResult = overlay.stageResult,
+                    message = overlay.message,
+                ),
+            )
+            when (overlay.buildResult) {
+                "FAILURE" -> i-- // re-throw outward to the next enclosing catch scope
+                "SUCCESS" -> return CanonicalContinuation.Continue
+                else -> return CanonicalContinuation.ContinueUnstable
+            }
+        }
+        // Exhausted enclosing catch scopes (or no catch overlay) without a suppressor: abort.
+        return CanonicalContinuation.Abort(failure)
     }
 
     /**
@@ -409,8 +446,12 @@ class CanonicalDurableRunCoordinator(
             when (typedCommand.kind) {
                 "CatchErrorEntered" -> {
                     val buildResult = typedCommand.payload["buildResult"] ?: "UNSTABLE"
+                    val stageResult = typedCommand.payload["stageResult"] ?: buildResult
+                    val message = typedCommand.payload["message"]
                     val enteredAt = typedCommand.payload["enteredAt"]?.toLongOrNull() ?: System.currentTimeMillis()
-                    contextStack = contextStack.push(ContextOverlay.CatchErrorOverlay(buildResult, enteredAt))
+                    contextStack = contextStack.push(
+                        ContextOverlay.CatchErrorOverlay(buildResult, stageResult, message, enteredAt),
+                    )
                 }
                 "CatchErrorTriggered" -> {
                     if (typedCommand.payload["emitted"] == "true") {

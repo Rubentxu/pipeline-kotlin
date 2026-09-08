@@ -68,7 +68,7 @@ class ContextStackImmutabilityTest {
             ContextOverlay.Credentials("secret-id"),
             ContextOverlay.OutputDecorator("ansi"),
             ContextOverlay.CancellationScope("scope-123"),
-            ContextOverlay.CatchErrorOverlay("FAILURE", System.currentTimeMillis()),
+            ContextOverlay.CatchErrorOverlay("FAILURE", "FAILURE", "msg", System.currentTimeMillis()),
             ContextOverlay.TimeoutOverlay(30, "MINUTES"),
             ContextOverlay.RetryOverlay(3, listOf("SCRIPT_FAILURE")),
         )

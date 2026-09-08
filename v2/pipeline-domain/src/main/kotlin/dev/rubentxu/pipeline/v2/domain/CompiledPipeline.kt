@@ -173,9 +173,17 @@ sealed interface ContextOverlay {
     @Serializable
     data class CancellationScope(val scopeId: String) : ContextOverlay
 
-    // Legacy catch-error overlay for migration compatibility
+    // Legacy catch-error overlay for migration compatibility.
+    // EM-5/EM-6 (catcherror-semantics-em56): carries stageResult + message so the coordinator's
+    // catchError fold-walk can publish the CatchErrorTriggered domain event at the point of the
+    // real failure (re-throw/suppress decision) instead of at a later IR marker step.
     @Serializable
-    data class CatchErrorOverlay(val buildResult: String, val enteredAt: Long) : ContextOverlay
+    data class CatchErrorOverlay(
+        val buildResult: String,
+        val stageResult: String,
+        val message: String?,
+        val enteredAt: Long,
+    ) : ContextOverlay
 
     @Serializable
     data class TimeoutOverlay(val time: Long, val unit: String) : ContextOverlay

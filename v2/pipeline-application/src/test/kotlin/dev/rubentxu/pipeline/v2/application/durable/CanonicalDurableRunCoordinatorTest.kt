@@ -532,6 +532,51 @@ class CanonicalDurableRunCoordinatorTest {
     }
 
     @Test
+    fun `dispatch returns SCHEMA for a fresh structurally-valid but typed-invalid payload without executor`() = runBlocking {
+        // CDE.2-c: typed decode runs only on Execute. A fresh step whose envelope is structurally valid
+        // (dsl-v1 JSON object) but missing a required typed field is rejected as SCHEMA with the
+        // executor never invoked. The dsl-v0/malformed cases are structural and rejected pre-reconcile.
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val cursorStore = InMemoryReplayCursorStore(clock)
+        val eventStore = InMemoryEventStore()
+        val runId = RunId("typed-invalid-fresh-run")
+
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("typed-invalid-fresh-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(StageNode(StageId("build"), "build", body = StageBody.Steps(listOf(
+                OpaqueStepNode(
+                    id = StepId("build/typed-invalid"),
+                    pluginStepId = PluginStepId("core.echo"),
+                    // envelope is dsl-v1 and parses, but the required typed field `text` is missing.
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"echo"}"""),
+                ),
+            )))),
+        )
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = cursorStore,
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+
+    credentialScopePort = noOpCredentialScopePort(),
+)
+        val outcome = coordinator.run(pipeline, runId)
+
+        assertTrue(outcome is RunOutcome.Failure, "Outcome must be Failure")
+        assertSame(FailureKind.SCHEMA, (outcome as RunOutcome.Failure).failure.kind, "Failure kind must be SCHEMA")
+
+        val journalEntries = journal.listForRun(runId.value)
+        assertEquals(1, journalEntries.size)
+        assertEquals(OperationStatus.FAILED, journalEntries.single().status)
+    }
+
+    @Test
     fun `run emits StepStarted before dispatch`() = runBlocking {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)

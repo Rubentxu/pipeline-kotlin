@@ -516,19 +516,6 @@ class CanonicalDurableRunCoordinator(
         val metadata = stepMetadataResolver.resolve(step.pluginStepId)
             ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
 
-        // Typed decode of the actual execution command. Structural validity is already proven, so a
-        // failure here is a typed field / unsupported-command error; it folds to the same terminal
-        // SCHEMA rejection (journal FAILED, executor never runs). The decoded command is consumed only
-        // by the Execute path below.
-        val typedCommand = try {
-            CanonicalCoreStepDecoder.decode(step)
-        } catch (e: IllegalArgumentException) {
-            return rejectSchema(
-                operationId,
-                input,
-                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
-            )
-        }
         val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, metadata.replayPolicy, 1)
         val lifecycleContext = StepLifecycleContext(
             runId = runId.value,
@@ -583,6 +570,20 @@ class CanonicalDurableRunCoordinator(
             // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
             // live here, so the concrete semantics are invoked exclusively under this decision.
             InvocationReconciliation.Execute -> {
+                // CDE.2-c: typed decode runs ONLY on actual execution. Reuse/divergence/recover never
+                // decode. Structural validity is already proven pre-reconcile, so a failure here is a
+                // typed field / unsupported-command error that folds to the terminal SCHEMA rejection
+                // (journal FAILED, executor never runs): fresh typed-invalid -> decode 1, executor 0.
+                val typedCommand = try {
+                    CanonicalCoreStepDecoder.decode(step)
+                } catch (e: IllegalArgumentException) {
+                    return rejectSchema(
+                        operationId,
+                        input,
+                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
+                    )
+                }
+
                 if (journaled == null) {
                     journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
                 }

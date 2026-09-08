@@ -106,6 +106,20 @@ step-agnostic, lossless adapter (`persisted canonical payload -> EncodedStepValu
   WITHOUT decode. The only decode-dependent pre-execution concern is the EmitEvent context-overlay
   (`core.emit.event` CatchErrorEntered/Triggered), which stays a coordinator concern on the legacy path.
   CDE.2 therefore does NOT change durable inputs.
+  **STOP-CRITERION FINDING (2026-09-08, from real code + frozen a1 laws):** "decode fully behind the
+  Execute executor seam" is NOT behaviour-preserving against the frozen characterization. C3 asserts
+  `decode-fail -> stepExecutor.calls == 0`, and `RecordingInvocationExecutor` counts calls to the
+  `CanonicalInvocationExecutor` invoked in the Execute branch. Today decode fails in prepareInvocation
+  BEFORE that seam, so a malformed fresh step never reaches it. If decode moved inside a
+  `LegacyExecutionAdapter` invoked by stepExecutor within Execute, C3 flips to 1. Also decode currently
+  runs before reconcile, so a malformed payload with a diverged/valid journal row classifies SCHEMA today
+  but would classify INFRASTRUCTURE "diverged" (divergence runs first) under the new order; and the
+  EmitEvent/CatchError context-overlay is applied in prepare (pre-reconcile) on decode, so moving decode
+  changes overlay timing for a reused EmitEvent. Each is an observable failure-classification / frozen-law
+  change. **Reachable satisfiable form:** move decode into the Execute branch but as a PRE-step before the
+  effective-executor seam (decode-fail returns the terminal SCHEMA outcome and FAILED journal write
+  without invoking stepExecutor -> C3 stays 0; metadata stays stepKey-resolved). Confirm the malformed+
+  journaled classification and EmitEvent-overlay timing against Uat/durable suite before committing.
 - **CDE.3 — RegistryExecutionAdapter.** `generic invocation -> StepRegistry -> RegistryStepInvoker ->
   codec.decode(raw input) -> typed handler`, no Step-name cases. Proven in isolation AND under the
   durable protocol with a **generic fixture** (not echo). Missing key / missing capability / decode

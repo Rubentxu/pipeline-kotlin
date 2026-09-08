@@ -8,13 +8,16 @@ package dev.rubentxu.pipeline.v2.application.durable
  *  - Never persisted, never serialized, never part of fingerprint or replay identity.
  *  - Opaque to the durable coordinator: it carries no Step semantics the coordinator can interpret
  *    and exposes no durable state.
- *  - NOT a closed ADT over concrete Steps (never `Echo`/`Sh`/...). It is OPEN to strategy subtypes:
- *    legacy today ([PreparedLegacyExecution]); registry later, extensible across modules.
+ *  - Sealed ONLY over the two TEMPORAL structural execution-strategy families (CDE.3-d2):
+ *    legacy-compatible ([PreparedLegacyExecution]) and registry ([PreparedRegistryExecution]). This is
+ *    NOT a closed ADT over concrete Steps (never `Echo`/`Sh`/...): each family stays OPEN to many
+ *    concrete plugin steps (e.g. every registered step becomes a [PreparedRegistryExecution] without
+ *    adding a subtype). The boundary selects by strategy family, never by step key.
  *
  * The effect capabilities live in the executor's runtime, not inside this marker. Constructing a
  * [PreparedExecution] never produces Step side effects; only [CommonExecutionBoundary.execute] does.
  */
-interface PreparedExecution
+sealed interface PreparedExecution
 
 /**
  * Result of an invocation's strategy preparation / admission / decode (CDE.3-b3). Distinct phases,

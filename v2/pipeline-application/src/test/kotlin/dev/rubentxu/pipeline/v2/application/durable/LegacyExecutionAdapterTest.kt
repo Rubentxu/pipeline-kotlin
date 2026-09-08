@@ -1,7 +1,11 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
+import dev.rubentxu.pipeline.v2.application.CoreEchoStep
+import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -69,12 +73,20 @@ class LegacyExecutionAdapterTest {
         val legacy = RecordingLegacyExecutor()
         val boundary = LegacyExecutionAdapter.adapt(legacy)
         val store = InMemoryEventStore()
-        // An unknown future strategy payload must never reach the legacy old executor.
-        val foreign: PreparedExecution = object : PreparedExecution {}
+        // A registry-family payload must never reach the legacy old executor: CDE.3-d2 families are
+        // distinct structural strategy kinds and the legacy adapter only routes legacy ones.
+        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
+        val ready = RegistryExecutionPreparation.prepare(
+            registry = registry,
+            key = CoreEchoStep.KEY,
+            encodedInput = CoreEchoStep.definition.contract.inputCodec.encode(dev.rubentxu.pipeline.v2.application.EchoInput("x")),
+            availableCapabilities = setOf(EVENT_SINK_CAPABILITY),
+        )
+        val registryPrepared = (ready as ExecutionPreparation.Ready).prepared
 
         org.junit.jupiter.api.Assertions.assertThrows(dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation::class.java) {
-            kotlinx.coroutines.runBlocking { boundary.execute(foreign, runtime(store)) }
+            kotlinx.coroutines.runBlocking { boundary.execute(registryPrepared, runtime(store)) }
         }
-        assertEquals(0, legacy.calls, "a non-legacy payload must never be routed to the old executor")
+        assertEquals(0, legacy.calls, "a registry-family payload must never be routed to the old executor")
     }
 }

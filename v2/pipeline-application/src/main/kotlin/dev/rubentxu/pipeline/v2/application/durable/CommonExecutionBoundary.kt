@@ -43,3 +43,24 @@ object LegacyExecutionAdapter {
             legacy.invoke(legacyPrepared.command, context)
         }
 }
+
+/**
+ * Composes the two structural execution-strategy families behind a single [CommonExecutionBoundary]
+ * (CDE.3-d2).
+ *
+ * Selection is by the PreparedExecution strategy kind (legacy-compatible vs registry), NEVER by step
+ * key and NEVER over concrete plugin steps, so no concrete handler is special-cased. The [when] is
+ * exhaustive over the two sealed structural forms. Each family is backed by its own executor boundary
+ * ([legacy] for [PreparedLegacyExecution], [registry] for [PreparedRegistryExecution]).
+ */
+object SeamedExecutionRouter {
+    fun route(
+        legacy: CommonExecutionBoundary,
+        registry: CommonExecutionBoundary,
+    ): CommonExecutionBoundary = CommonExecutionBoundary { prepared, context ->
+        when (prepared) {
+            is PreparedLegacyExecution -> legacy.execute(prepared, context)
+            is PreparedRegistryExecution -> registry.execute(prepared, context)
+        }
+    }
+}

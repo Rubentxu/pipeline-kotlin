@@ -672,11 +672,18 @@ class CanonicalDurableRunCoordinator(
     }
 
     /**
-     * Resolves the durable replay/reconcile decision for a decoded invocation (B1.2c2-a2.2).
+     * Resolves the durable replay/reconcile decision for a decoded invocation (B1.2c2-a2.3).
      *
-     * This reproduces the exact precedence of the frozen a1 control flow: fingerprint divergence first,
-     * then running-shell recovery, then the effect-aware replay policy. It is decision-only: it touches no
-     * journal, cursor, event or executor. Terminal resolutions carry only what their own handling needs.
+     * The decision has two purity domains, kept separate:
+     *  - [deterministicGate] is pure: fingerprint divergence and the effect-aware replay policy decide
+     *    from their inputs alone.
+     *  - running-shell detection ([recoverRunningShell]) is the sole effectful part: it inspects and
+     *    reattaches to a real external process. It is an explicit a2 compatibility hook, NOT generic
+     *    durable-protocol semantics; only Shell + RUNNING journaled + a control dir trigger it.
+     *
+     * Precedence reproduces the frozen a1 flow exactly: divergence first, then recovery, then replay.
+     * No journal, cursor, event or executor is touched here; terminal resolutions carry only the data
+     * their own handling needs.
      */
     private fun reconcileInvocation(
         typedCommand: CanonicalCoreStepCommand,
@@ -686,20 +693,43 @@ class CanonicalDurableRunCoordinator(
         effects: Set<Effect>,
         replayPolicy: ReplayPolicy,
     ): InvocationReconciliation {
-        if (divergenceDetector.check(currentOperation, journaled).isFailure) {
-            return InvocationReconciliation.Diverged(operationId)
-        }
+        deterministicGate(currentOperation, journaled, operationId, effects, replayPolicy)?.let { return it }
         when (val recovery = recoverRunningShell(typedCommand, journaled, operationId)) {
             RunningCanonicalShellRecovery.NotRunningShell -> Unit
             is RunningCanonicalShellRecovery.Recovered ->
                 return InvocationReconciliation.RecoverRunning(recovery.outcome, recovery.status)
         }
-        return when (effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status)) {
+        return replayResolution(effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status), operationId)
+    }
+
+    /**
+     * Pure, deterministic part of the reconciliation: the fingerprint-divergence gate (B1.2c2-a2.3).
+     * Returns a terminal divergence resolution when the fingerprints diverge, otherwise `null` so the
+     * recovery hook and replay kernel can run in the frozen order. Never touches a journal, cursor,
+     * process, event or executor.
+     */
+    private fun deterministicGate(
+        currentOperation: RerunOperation,
+        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
+        operationId: String,
+        effects: Set<Effect>,
+        replayPolicy: ReplayPolicy,
+    ): InvocationReconciliation? {
+        if (divergenceDetector.check(currentOperation, journaled).isFailure) {
+            return InvocationReconciliation.Diverged(operationId)
+        }
+        return null
+    }
+
+    /**
+     * Pure mapping of the effect-aware replay policy onto the reconciliation resolutions (B1.2c2-a2.3).
+     */
+    private fun replayResolution(decision: ReplayDecision, operationId: String): InvocationReconciliation =
+        when (decision) {
             ReplayDecision.SKIP -> InvocationReconciliation.ReuseCompleted
             ReplayDecision.ABORT -> InvocationReconciliation.RejectedAbort(operationId)
             ReplayDecision.RERUN -> InvocationReconciliation.Execute
         }
-    }
 
     private fun recoverRunningShell(
         command: CanonicalCoreStepCommand,

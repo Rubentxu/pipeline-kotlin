@@ -236,3 +236,97 @@ generic view/adaptation over the existing representation, continue.
 > over the REAL payload types (`VersionedStepPayload` / `EncodedStepValue`), behaviour-preserving,
 > legacy still sole productive execution. Compile -> focused coordinator -> 42 characterization ->
 > durable/replay -> full `:pipeline-application:test` -> fresh XML -> atomic commit.
+
+---
+
+## 8. CDE.3 grounding — PreparedExecution / common execution seam (2026-09-08)
+
+Grounding of CDE.3, per the pre-authorized next-pass scope: contrast the real legacy and registry
+signatures to find the minimal common abstraction that preserves `prepare/decode -> Rejected | Ready ->
+único executor -> effects`, keeping replay/reuse/divergence outside both decode and handler.
+
+### 8.1 Real-signature table (contrasted from source)
+
+| Phase | Legacy (today, productive) | Registry (`domain/step`, isolated) | Common frontier |
+|---|---|---|---|
+| Structural identity | `CanonicalStructuralPreparation.prepare(node)` → `Ready(CanonicalInvocation(stepKey,schemaVersion,encodedInput)+envelope)` | same structural invocation (`CanonicalInvocation.fromNode`) | yes — CDE.1 |
+| Durable metadata | `stepMetadataResolver.resolve(stepKey)` (legacy table default) | `StepContract.descriptor.effects/replayPolicy` (registry bridge not yet wired) | resolvable by stepKey (CDE.2-b2/b3) |
+| Typed decode | `LegacyExecutionBoundary.decode(step)` → `Rejected(reason)` \| `Ready(command: CanonicalCoreStepCommand)` | `codec.decode(EncodedStepValue)` (via `RegistryStepInvoker`) — no handler yet | prepare (no side effects) |
+| Prepared execution | `CanonicalCoreStepCommand` (closed sealed, 14 subtypes) | nothing yet; would be erased decoded input + handler ref | NEEDS abstraction |
+| Effects | `CanonicalNodeDispatcher.dispatch(command, CanonicalRuntimeContext)` → legacy per-step `*NodeDispatcher` (`suspend`) | `StepHandler.execute(input, StepHandlerContext)` (`fun`, non-suspend) → `O` | common executor seam |
+| Output | `StepOutcome` (Success/Unstable/Failure) directly | `O: Any` then `outputCodec` — **no O→StepOutcome mapping exists** | must converge to `StepOutcome` |
+
+### 8.2 Stop-criterion finding (evidence, from real code)
+
+`CanonicalInvocationExecutor` (the frozen a1 seam, `CanonicalInvocationExecutor.kt:19`) is a
+`fun interface suspend invoke(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext):
+StepOutcome`. It is intrinsically coupled to BOTH the closed command world AND the rich
+`CanonicalRuntimeContext` (opId/runId/stage/shOptions/controlDirRoot/eventSink). Its construction sites
+are all `{ command, ctx -> CanonicalNodeDispatcher().dispatch(command, ctx) }`:
+the coordinator production default (`CanonicalDurableRunCoordinator.kt:292`) and 7 lambdas in
+`DurableProtocolInvocationCharacterizationTest.kt` (lines 100/156/208/253/333/408/495). `CanonicalRuntimeContext`
+is built at only 3 sites.
+
+**Conclusion: the user's stop criterion fires.** `CanonicalInvocationExecutor` cannot accept a common
+`PreparedExecution` without either (a) the coordinator still naming `CanonicalCoreStepCommand` (breaks
+F1) or (b) rewriting the ~8 executor construction sites AND the runtime-context shape (big-bang). Do NOT
+mutate it in place.
+
+Deeper structural fact: legacy and registry have **different effect models** and **different result
+types**. Legacy dispatchers are `suspend` and each take a narrow per-step `*DispatchContext` derived from
+the rich `CanonicalRuntimeContext`, returning `StepOutcome` directly. Registry handlers are non-`suspend`
+`fun`, take `StepHandlerContext` + `StepCapabilityAccess`, and return a typed `O` that is NOT `StepOutcome`.
+Forcing both behind one `PreparedExecution.execute(): StepOutcome` would require an O→StepOutcome
+normalization that does not exist yet (that is CDE.3-e) and an async handler surface that registry does
+not yet have (a B1.3 finding, must not be decided here).
+
+### 8.3 Grounded decision
+
+Follow the user's stop-criterion remediation: a **parallel/temporary common seam**, legacy adapted behind
+it, no big-bang. Shape (the "opaque data" option, not the execute-lambda option — keeps capabilities out
+of the prepared object and out of the durable protocol):
+
+```
+StructuralInvocation
+   -> strategy.prepare(...)                    // NO side effects
+        -> ExecutionPreparation { Rejected(StepFailure) | Ready(prepared: PreparedExecution) }
+   -> common executor  (the single a1 "effect" seam)
+        -> when(strategyKind)                  // sealed over 2 strategy kinds, never N plugins
+             legacy    -> existing legacy dispatcher path (still needs its rich runtime)
+             registry  -> capability admission + typed handler + O->StepOutcome normalization
+        -> StepOutcome
+```
+
+- `PreparedExecution` is an **opaque runtime-ephemeral marker**: it carries already-admitted, decoded data
+  (or a strategy ref); it is never constructed with side effects, never inspected semantically by the
+  durable protocol, never persisted/replayed (replay re-prepares only when Durable Resolution says
+  Execute).
+- The **prepare side already exists for legacy** (`LegacyExecutionBoundary.decode` == legacy prepare:
+  `Rejected|Ready`). Registry prepare = resolve + capability admission + `codec.decode` (handler still not
+  run). So the gap is entirely on the execute side.
+- The single executor must internally route to **exactly two** strategy kinds (legacy/registry), never a
+  `when(stepName)`. Capabilities live in the executor's runtime, not inside `PreparedExecution`.
+- `O` must never escape to the durable protocol as `Any`; the strategy normalizes it to `StepOutcome`
+  behind the seam (CDE.3-e). A generic fixture whose handler returns only a success marker proves only the
+  success subset until CDE.3-e lands; that is accepted and must be documented, not silently generalised.
+
+### 8.4 Laws the common seam must preserve (frozen authority)
+
+```
+reuse                        prepare = 0, executor = 0
+divergence                   prepare = 0, executor = 0
+recover                      prepare = 0, executor = 0 (legacy shell recovery intact)
+fresh structural-invalid     prepare = 0, executor = 0
+fresh typed-invalid          prepare = 1, executor = 0
+fresh valid legacy           prepare = 1, executor = 1
+fresh valid registry         prepare = 1, executor = 1
+replay reusable registry     codec = 0, handler = 0   (Durable Resolution cuts before prepare)
+```
+
+### 8.5 CDE.3-a outcome and the next real code slice
+
+CDE.3-a (this grounding) is design only, per the plan; no production change yet. The next real code slice
+is **CDE.3-b: adapt the legacy path behind the new common seam** (legacy produces the prepared
+representation and still executes through the single executor), with the full suite staying identical.
+CDE.3-b requires its own characterization cycle (the 42 frozen + durable/replay), so it opens a dedicated
+implementation round rather than being rushed here.

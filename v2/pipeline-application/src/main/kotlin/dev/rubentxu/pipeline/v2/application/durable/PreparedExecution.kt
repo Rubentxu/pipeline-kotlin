@@ -15,3 +15,17 @@ package dev.rubentxu.pipeline.v2.application.durable
  * [PreparedExecution] never produces Step side effects; only [CommonExecutionBoundary.execute] does.
  */
 interface PreparedExecution
+
+/**
+ * Result of an invocation's strategy preparation / admission / decode (CDE.3-b3). Distinct phases,
+ * never conflated:
+ *  - [Rejected] is admission failure BEFORE any effect; the common executor must NOT run.
+ *  - [Ready] carries an opaque [PreparedExecution] that HAS passed preparation/admission/decode and
+ *    is ready to be executed through [CommonExecutionBoundary].
+ *
+ * Producing a [Ready] never runs the Step; only [CommonExecutionBoundary.execute] produces effects.
+ */
+sealed interface ExecutionPreparation {
+    data class Rejected(val reason: String) : ExecutionPreparation
+    data class Ready(val prepared: PreparedExecution) : ExecutionPreparation
+}

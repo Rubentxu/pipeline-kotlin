@@ -280,16 +280,26 @@ class CanonicalDurableRunCoordinator(
     // existing ~25 construction sites compile unchanged; production default delegates to the legacy
     // dispatcher. Not the final DI architecture.
     invocationExecutor: CanonicalInvocationExecutor? = null,
+    // CDE.3-b3: the new authority seam for effective execution. Optional for dual characterization;
+    // when absent it defaults to the legacy adapter over [invocationExecutor] (or the legacy
+    // dispatcher), preserving behaviour exactly. Existing callers that inject the old executor keep
+    // working unchanged because the default boundary routes to it.
+    commonExecutionBoundary: CommonExecutionBoundary? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
     private var contextStack: ContextStack = ContextStack.EMPTY
 
     /**
-     * Effective step executor. Injectable for characterization (RecordingInvocationExecutor); the
-     * production default calls exactly the legacy [CanonicalNodeDispatcher], preserving behaviour.
+     * Effective step executor, routed through the new common seam (CDE.3-b3). The production default
+     * adapts the injected legacy [invocationExecutor] (or the legacy dispatcher) behind
+     * [CommonExecutionBoundary], preserving behaviour exactly; a caller may inject its own boundary
+     * for dual characterization. The durable coordinator only ever hands an opaque [PreparedExecution]
+     * to this seam and never names a decoded command type.
      */
-    private val stepExecutor: CanonicalInvocationExecutor = invocationExecutor
-        ?: CanonicalInvocationExecutor { command, context -> dispatcher.dispatch(command, context) }
+    private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
+        ?: LegacyExecutionAdapter.adapt(
+            invocationExecutor ?: CanonicalInvocationExecutor { command, context -> dispatcher.dispatch(command, context) },
+        )
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success
@@ -570,17 +580,19 @@ class CanonicalDurableRunCoordinator(
             // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
             // live here, so the concrete semantics are invoked exclusively under this decision.
             InvocationReconciliation.Execute -> {
-                // CDE.2-c/d: typed decode runs ONLY on actual execution, behind the legacy boundary.
-                // Reuse/divergence/recover never decode. A Rejected admission (typed field /
-                // unsupported command) is a terminal SCHEMA rejection (journal FAILED, executor never
-                // runs): fresh typed-invalid -> decode 1, executor 0.
-                val typedCommand = when (val admission = LegacyExecutionBoundary.decode(step)) {
-                    is LegacyExecution.Rejected -> return rejectSchema(
+                // CDE.2-c/d + CDE.3-b3: strategy preparation runs ONLY on actual execution, behind the
+                // legacy boundary, and NEVER produces Step side effects. Reuse/divergence/recover never
+                // prepare. A Rejected admission (typed field / unsupported command) is a terminal SCHEMA
+                // rejection (journal FAILED, common executor never runs): fresh typed-invalid ->
+                // prepare 1, commonExecution 0. On Ready the coordinator holds an opaque PreparedExecution
+                // it never inspects; effective effects flow only through the common execution seam.
+                val prepared = when (val admission = LegacyExecutionBoundary.prepare(step)) {
+                    is ExecutionPreparation.Rejected -> return rejectSchema(
                         operationId,
                         input,
                         "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
                     )
-                    is LegacyExecution.Ready -> admission.command
+                    is ExecutionPreparation.Ready -> admission.prepared
                 }
 
                 if (journaled == null) {
@@ -588,8 +600,8 @@ class CanonicalDurableRunCoordinator(
                 }
 
                 val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                    stepExecutor.invoke(
-                        typedCommand,
+                    executionBoundary.execute(
+                        prepared,
                         CanonicalRuntimeContext(
                             opId = opId,
                             runId = runId.value,

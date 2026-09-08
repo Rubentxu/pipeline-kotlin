@@ -1,0 +1,140 @@
+# CDE — Structural pre-decode routing seam (B1.2c2-cde merged)
+
+Status: produced 2026-09-08 after B1.2c2-a2 closed (`2a5e32f9`, tree clean). The original
+`c -> d -> e` decomposition is withdrawn: it encoded a circular dependency (registry adapter
+`↔` structural pre-decode routing) that the implementation surfaced. c/d/e are one architectural
+unit and one gate. **No ceremonial commit for `c`.**
+
+## 0. Why c/d/e merged (evidence, not preference)
+
+The durable envelope extracted in a2 calls its execution callback with an already-decoded
+`CanonicalCoreStepCommand` (`Execute -> stepExecutor.invoke(typedCommand, ...)`). That type is the
+closed, decoded legacy/core world. A registry strategy cannot cleanly consume it: reconstructing an
+`EncodedStepValue` from `Echo.command.text` / `Sh.command.script` would reintroduce concrete semantics
+into the adapter and merely relocate the hardcoded dispatcher. Therefore the **registry-vs-legacy
+decision must happen before the concrete Step decode**, on the raw encoded node. The replay-invariant
+(reuse decides before any handler runs) is only naturally expressible on that pre-decode form.
+
+## 1. CDE.1 grounding — data-flow map (real types)
+
+```
+source DSL/IR
+  -> StepNode : OpaqueStepNode | BlockStepNode        (domain/CompiledPipeline.kt)
+       - id: StepId
+       - pluginStepId: PluginStepId                    ("core.echo")
+       - payload: VersionedStepPayload(schemaVersion, encoded)
+  -> coordinator.dispatch (CanonicalDurableRunCoordinator.kt)
+       - prepareInvocation (a2.1): CanonicalCoreStepDecoder.decode(node)
+           require(node.payload.schemaVersion == "dsl-v1")   [SCHEMA_VERSION]
+           Json.parseToJsonElement(node.payload.encoded).jsonObject
+           when (pluginStepId.value) { "core.echo" -> Echo(requiredString("text")) ... }
+       -> CanonicalCoreStepCommand (sealed, closed legacy world)
+  -> durable protocol (a2): prepare -> reconcile(InvocationReconciliation) ->
+       Execute { StepExecutionBoundary { stepExecutor.invoke(typedCommand, CanonicalRuntimeContext) } }
+       -> journal.append(RerunOperation(status=outcome.toOperationStatus())) -> cursor advance
+  -> stepExecutor default = CanonicalNodeDispatcher.dispatch -> concrete `when(command)`
+       -> Echo case -> CanonicalEchoNodeDispatcher / SDK echo() -> EchoOutputCaptured
+```
+
+### 1.1 The two representations (do NOT conflate)
+
+| Concern | Real holder | Value for echo |
+|---|---|---|
+| **Durable identity / replay / fingerprint / journal** | `node.payload.encoded` (`VersionedStepPayload`), wrapped by coordinator as `OperationInput(params={"payload": JsonPrimitive(encoded)})` then `Fingerprint.compute` | `{"kind":"echo","text":"hi"}` (dsl-v1 JSON object; compiler `DslCompiledPipelineCompiler.encodePayload`) |
+| **Plugin input representation** (`StepCodec<I>`) | `EncodedStepValue` decoded by `StepDefinition.inputCodec` | Today, `CoreEchoStep.inputCodec.decode` returns `EchoInput(encoded.value)` = **plain text** |
+
+`EncodedStepValue` is a bare non-empty string; `payload.encoded` is a JSON-object string. They are
+structurally both `String` but **semantically different contracts**.
+
+### 1.2 Where decoder selection happens today
+
+`CanonicalCoreStepDecoder.decode` (application/CanonicalCoreStepDecoder.kt) is the single selection
+point: `when (pluginStepId.value) { "core.echo" -> ... }` over the **name string** + the dsl-v1
+`schemaVersion` gate. No reusable canonical/plugin invocation abstraction exists above it.
+
+### 1.3 Who feeds CoreEchoStep today
+
+Only `CoreEchoSeamTest` (B1.2b), via its own codec round-trip (`encode(EchoInput("hi")) ->
+EncodedStepValue("hi")`). It is **never** fed a real dsl-v1 payload. So today the registry echo input
+contract is an independent, invented plain-text form, unexercised by the engine.
+
+## 2. Payload mismatch — A/B/C determination (evidence)
+
+The mismatch:
+```
+envelope durable payload   : {"kind":"echo","text":"hi"}   (dsl-v1 object)
+CoreEchoStep.inputCodec    : EncodedStepValue == plain "hi" -> EchoInput("hi")
+```
+
+- **A (redundant generic wrapper)? NO.** Unwrapping `{"kind":"echo", ...}` down to the *text value* is
+  echo-semantic (it extracts the `text` field), not a generic envelope strip. A step-agnostic
+  normalization cannot produce echo's bare text.
+- **B (CoreEchoStep codec over the wrong type)? Predominantly YES.** The registry contract must decode
+  the durable canonical payload the engine actually holds, otherwise routing forces the forbidden
+  `decode -> encode -> decode`. `CoreEchoStep`'s plain-text codec encodes a contract that does not match
+  `node.payload.encoded`; it sits over the wrong representation. Its correction (decode the dsl-v1 echo
+  object it will receive) belongs to **B1.2c3 (echo migration)**, not CDE.
+- **C (distinct contracts, needs new canonical encoded invocation contract)? PARTIAL / deferred.** For
+  core steps we own both sides, so B keeps durable identity == plugin input. Whether *external* plugin
+  nodes carry the dsl-v1 `{"kind":...}` envelope or their own clean schema is an open, explicit
+  architecture/versioning question that CDE's generic fixture must not silently decide. If the generic
+  seam requires a common pre-decode form that diverges from `VersionedStepPayload`, that is a durable/
+  versioning decision needing an ADR/amendment (stop criterion).
+
+### CDE.1 conclusion (design principle)
+
+Introduce a pre-decode **structural invocation** that carries the durable canonical payload **unchanged**
+(`pluginStepId` + `schemaVersion` + `encoded`), so fingerprint/journal/operation identity are untouched.
+The registry strategy feeds that same encoded string to `StepDefinition.inputCodec`; the durable
+authority stays a single protocol. Reuse/divergence/abort are decided before any handler runs. A
+step-agnostic, lossless adapter (`persisted canonical payload -> EncodedStepValue`) is valid; a
+`when(key){ Echo->text ... }` re-encode bridge is forbidden.
+
+## 3. CDE decomposition (revised, sub-slices, single gate)
+
+- **CDE.1 — Ground + structural invocation model.** Identify the pre-decode seam; introduce/adapt the
+  minimal structural representation (`CanonicalInvocation`: stepKey + encoded input + schemaVersion, or
+  an equivalent structural ADT over the REAL payload types). Behaviour-preserving; legacy remains the
+  only productive execution. Gate complete.
+- **CDE.2 — Legacy adapter behind the new seam.** Express the existing path as `pre-decode invocation ->
+  legacy adapter -> existing decoder/CanonicalCoreStepCommand -> existing execution`, registry absent.
+  Proves the new frontier changes nothing. Gate: 42 characterization + durable/replay + CLI.
+- **CDE.3 — RegistryExecutionAdapter.** `generic invocation -> StepRegistry -> RegistryStepInvoker ->
+  codec.decode(raw input) -> typed handler`, no Step-name cases. Proven in isolation AND under the
+  durable protocol with a **generic fixture** (not echo). Missing key / missing capability / decode
+  failure fail closed before the handler.
+- **CDE.4 — Registry injection / composition.** Inject `StepRegistry` at composition roots
+  (`Main.kt`, `PipelineRule.kt`) as the minimal compatible dependency. No general DI cleanup.
+- **CDE.5 — Structural routing.** Select generic-vs-legacy by node form/schema/type, never a
+  `when(stepName)`.
+
+## 4. CDE architectural gate
+
+| Scenario | Required |
+|---|---|
+| Fresh generic invocation | registry handler executions == 1 |
+| Replay-reuse generic invocation | registry handler executions == 0 |
+| Divergence | registry handler executions == 0 |
+| Decode rejection | typed handler executions == 0; current durable failure semantics preserved |
+| Legacy steps (not yet migrated) | still function via compatibility path |
+| Durable protocol | single authority for journal/replay/fingerprint/divergence/cursor/lifecycle; no parallel durable path for plugins |
+
+## 5. Echo deferred on purpose
+
+No Echo-specific semantics in CDE; the seam must be provable with a generic definition/fixture. After
+CDE, **B1.2c3** (register/route `core.echo` via the generic structural invocation) is the definitive
+test that the seam was not shaped for Echo.
+
+## 6. Stop criterion (unchanged)
+
+If grounding shows a common pre-decode representation forces a change to journal schema / persisted
+payload / fingerprint semantics / operation identity / replay compatibility, stop with evidence (it is a
+new durable/versioning decision needing an ADR/amendment). If it is expressible as a behaviour-preserving
+generic view/adaptation over the existing representation, continue.
+
+## 7. First action, next pass
+
+> CDE.1 — with the map above: introduce/adapt the minimal structural (pre-decode) invocation model
+> over the REAL payload types (`VersionedStepPayload` / `EncodedStepValue`), behaviour-preserving,
+> legacy still sole productive execution. Compile -> focused coordinator -> 42 characterization ->
+> durable/replay -> full `:pipeline-application:test` -> fresh XML -> atomic commit.

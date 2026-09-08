@@ -82,6 +82,11 @@ Single durable protocol. Journal/replay/cursor are never duplicated by a strateg
 
 ## 4. B1.2c2 decomposition (run in order; each atomically committed, green)
 
+> **SUPERSEDED (2026-09-08):** items `c`, `d`, `e` below shared a single missing architectural frontier
+> (pre-decode structural routing) and were circularly dependent. They are withdrawn and replaced by one
+> merged slice **B1.2c2-CDE** (`CDE_HANDOFF.md`), decomposed internally into CDE.1..CDE.5. No ceremonial
+> commit for `c`.
+
 - **B1.2c2-a** — behaviour-preserving durable envelope extraction (Extract Function/Component).
   NO registry, NO echo migration, NO legacy deletion, NO payload/ID/replay/event-order change.
 - **B1.2c2-b** — legacy `CanonicalNodeDispatcher.dispatch` becomes the callback/strategy of the

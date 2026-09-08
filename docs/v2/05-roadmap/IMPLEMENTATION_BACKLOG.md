@@ -249,6 +249,16 @@ Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
   deprecated compatibility adapter remains, pending fixtures and the full
   exit gate.
 - **E-EM-06** — ✅ DONE: 91==91 base-vs-head byte-identical at 99e9920
+- **E-EM-11 (canonical M2-R1 event parity)** — 🔲 BLOCKED-ON-EM. The canonical coordinator
+  (`CanonicalDurableRunCoordinator`) only executes linear `StageBody.Steps`; it emits NO
+  `ParallelBranchStarted/Finished`, `RetryAttempt*`, or `TimeoutScheduled` events and cannot run a
+  `StageBody.Parallel` stage (throws "supports only linear stage steps"). The M2-R1 parallel/retry/
+  timeout event surface lives only in the superseded legacy `PipelineRun`, which Main no longer
+  routes to (fail-closed). This is a LF-0208 spine-migration gap (same family as ERR-S-004 bookends),
+  not a DSL-surface defect. Wiring canonical parallel (composable-or-stage-body ADR pending) +
+  per-step event projection for retry/timeout unblocks quarantined `UatDsl003ParallelTest` and the
+  three `UatDsl001JenkinsFamiliarityTest` full-grammar methods (LFC-2 T1). Exit: those UATs green on
+  the canonical path; per-step observability (mandate) for retry/timeout/parallel.
 
 ## Dependency rule
 

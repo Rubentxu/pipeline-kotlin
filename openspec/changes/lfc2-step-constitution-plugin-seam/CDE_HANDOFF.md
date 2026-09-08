@@ -700,3 +700,16 @@ the REAL spine: fresh registry prepare=1 common=1 handler=1; replay reuse regist
 registry all 0; typed-invalid registry prepare=1 common=0 handler=0; missing capability handler=0
 fail-closed. Cross-cutting coordinator change: run L4 module suites + architecture fitness + durable/
 replay as the gate. Open CDE.3-e only if residual fitness/output/capability contract work remains.
+
+**d5b progress (committed):** `RegistryStepMetadataResolver.composite(registry)` (`d7d2972e`) resolves
+durable StepMetadata from a registered definition's descriptor for non-core keys, delegates core keys to
+the legacy core authority unchanged, and fails hard on a key neither core nor registered. Test 3/0/0,
+architecture 165/0/0.
+
+**d5c feasibility finding (evidence, CanonicalInvocation.kt read):** `CanonicalStructuralPreparation.prepare`
+does NOT restrict to core keys; it accepts any `StepNode` whose payload schemaVersion is `dsl-v1` and
+whose encoded payload parses as a JSON object. So an `OpaqueStepNode(pluginStepId=<registry key>,
+payload=dsl-v1)` passes the structural gate and can reach the Execute branch once the coordinator is
+wired to (a) the composite metadata resolver, (b) a registry-aware prepare selector, and (c) the
+SeamedExecutionRouter. No structural-preparation change is needed. Remaining is the coordinator wiring +
+durable characterization, which is the next slice.

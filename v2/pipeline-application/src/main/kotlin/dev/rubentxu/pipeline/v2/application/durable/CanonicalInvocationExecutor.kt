@@ -4,18 +4,25 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
 /**
- * Seam for the EFFECTIVE invocation of a Step's concrete semantics (B1.2c2-a1).
+ * LEGACY COMPATIBILITY SEAM for the effective invocation of a Step's concrete semantics
+ * (B1.2c2-a1 / CDE.3-b5).
  *
- * Deliberately NOT [StepExecutionBoundary] (which also wraps recovery/abort and lifecycle) and NOT
- * the journal/replay machinery. A call to [invoke] means "the concrete Step will actually execute and
- * may produce side effects". The durable protocol decides whether to call it: a fresh/re-run path
- * invokes it; replay reuse, decode failure and divergence return before it is reached; running-shell
- * recovery produces an outcome without re-invoking it.
+ * @Deprecated Architectural authority moved to [CommonExecutionBoundary] (CDE.3-b4). This
+ * command-typed seam is retained ONLY as a compatibility detail behind [LegacyExecutionAdapter]
+ * while the legacy dispatcher still exists. It must NOT:
+ *  - appear in new a1/replay law statements (those observe [CommonExecutionBoundary]);
+ *  - be referenced by future registry architecture or new TestKit contracts;
+ *  - receive new responsibilities.
  *
- * The production default delegates to the legacy [CanonicalNodeDispatcher]. This is a temporary
- * compatibility seam so a recording executor can freeze the durable protocol (B1.2c2-a1) before a
- * generic execution strategy lands; it is NOT the final DI architecture.
+ * Retire this seam together with the legacy [CanonicalNodeDispatcher] dispatcher (see the CDE.3-b5
+ * task). A call to it means "the concrete Step will actually execute and may produce side effects";
+ * the durable protocol decides whether to reach it (fresh/re-run executes; replay reuse, decode
+ * rejection and divergence return before it is reached).
  */
+@Deprecated(
+    "Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.",
+    level = DeprecationLevel.WARNING,
+)
 fun interface CanonicalInvocationExecutor {
     suspend fun invoke(
         command: CanonicalCoreStepCommand,

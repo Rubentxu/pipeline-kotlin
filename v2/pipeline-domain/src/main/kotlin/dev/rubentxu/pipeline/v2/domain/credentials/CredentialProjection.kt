@@ -10,11 +10,76 @@ import java.nio.charset.StandardCharsets
  * the actual materialization / String conversion happens at the ProcessBuilder
  * choke point ([SecretHandle.materialize]).
  *
+ * ## EM-7 materialization retention
+ *
+ * File-based bindings (SSH/FILE/CERT/ZIP) are no longer closed eagerly.
+ * Instead, the [MaterializedCredentialDomain] instances are retained in
+ * [retainedMaterializations]. Callers MUST call [close] when the scope exits
+ * to securely wipe the materialized files in reverse-LIFO order.
+ *
  * @property bindings The set of env var entries this binding contributes.
+ * @property retainedMaterializations File-based materializations retained for
+ *   deferred cleanup. Empty for string-based bindings. Must be closed via
+ *   [close] when the scope exits.
  */
 data class ProjectionResult(
     val bindings: Map<String, SecretHandle>,
-)
+    val retainedMaterializations: List<MaterializedCredentialDomain> = emptyList(),
+) {
+    private @Volatile var closed = false
+
+    /**
+     * Idempotent cleanup: securely wipes all retained materializations
+     * in reverse-LIFO order (last acquired → first wiped).
+     *
+     * Accumulated wipe failures are surfaced as a single [WipeException]
+     * rather than being silently swallowed.
+     *
+     * Safe to call multiple times (idempotent).
+     *
+     * @throws ProjectionResult.WipeException if any materialization could not be wiped.
+     *   The exception carries all orphan paths.
+     */
+    fun close() {
+        if (closed) return
+        closed = true
+        val orphans = mutableListOf<java.nio.file.Path>()
+        var firstThrowable: Throwable? = null
+
+        // Reverse-LIFO: wipe last materialization first
+        for (materialized in retainedMaterializations.asReversed()) {
+            try {
+                materialized.close()
+            } catch (t: Throwable) {
+                materialized.path?.let { orphans.add(it) }
+                if (firstThrowable == null) {
+                    firstThrowable = t
+                } else {
+                    firstThrowable.addSuppressed(t)
+                }
+            }
+        }
+
+        if (firstThrowable != null) {
+            throw WipeException(orphans, firstThrowable)
+        }
+    }
+
+    class WipeException(
+        val orphanPaths: List<java.nio.file.Path>,
+        cause: Throwable,
+    ) : RuntimeException(
+        buildString {
+            append("Failed to wipe ${orphanPaths.size} materialization(s)")
+            if (orphanPaths.isNotEmpty()) {
+                append(": ")
+                append(orphanPaths.joinToString(", ") { it.toString() })
+            }
+            append(". Original cause: ${cause.message}")
+        },
+        cause,
+    )
+}
 
 /**
  * LF-0403 — Port that maps a typed [CredentialBindingSpec] + resolved
@@ -85,6 +150,7 @@ class DefaultCredentialProjector(
         runId: String,
     ): ProjectionResult {
         val env = LinkedHashMap<String, SecretHandle>()
+        val retainedMaterializations = mutableListOf<MaterializedCredentialDomain>()
 
         when (spec) {
             is StringBindingSpec -> {
@@ -130,7 +196,8 @@ class DefaultCredentialProjector(
                 spec.usernameVariable?.let { varName ->
                     env[varName] = SecretHandle.masked(ssh.username)
                 }
-                materialized.close()
+                // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
+                retainedMaterializations.add(materialized)
             }
             is FileBindingSpec -> {
                 val file = credential as? SecretFile
@@ -144,7 +211,8 @@ class DefaultCredentialProjector(
                         "FILE materialization must produce a path",
                     )
                 env[spec.variable] = SecretHandle.masked(filePath.toString())
-                materialized.close()
+                // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
+                retainedMaterializations.add(materialized)
             }
             is CertificateBindingSpec -> {
                 val cert = credential as? Certificate
@@ -168,7 +236,8 @@ class DefaultCredentialProjector(
                     // present so the binding shape stays total.
                     env[varName] = SecretHandle.masked("")
                 }
-                materialized.close()
+                // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
+                retainedMaterializations.add(materialized)
             }
             is ZipBindingSpec -> {
                 val zip = credential as? Zip
@@ -182,7 +251,8 @@ class DefaultCredentialProjector(
                         "ZIP materialization must produce a path",
                     )
                 env[spec.variable] = SecretHandle.masked(zipPath.toString())
-                materialized.close()
+                // EM-07: retain for deferred cleanup — do NOT call materialized.close() here
+                retainedMaterializations.add(materialized)
             }
             is UsernameColonPasswordBindingSpec -> {
                 val ucp = credential as? UsernameColonPassword
@@ -198,6 +268,6 @@ class DefaultCredentialProjector(
             }
         }
 
-        return ProjectionResult(env)
+        return ProjectionResult(env.toMap(), retainedMaterializations)
     }
 }

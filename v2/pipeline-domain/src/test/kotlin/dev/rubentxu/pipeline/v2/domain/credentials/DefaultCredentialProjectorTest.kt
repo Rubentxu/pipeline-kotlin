@@ -264,4 +264,173 @@ class DefaultCredentialProjectorTest {
         assertTrue(handle!!.materialize().startsWith("/"))
         assertTrue(handle.isMasked)
     }
+
+    // ─── EM-7 materialization retention tests ─────────────────────────────────
+
+    @Test
+    fun `SSH FILE CERT ZIP bindings retain their materialized paths`(@TempDir tempDir: Path) {
+        val capturing = CapturingMaterialization()
+        val projector = DefaultCredentialProjector(capturing)
+
+        val ssh = SshPrivateKey(
+            id = CredentialsId("ssh-key"),
+            username = "git",
+            privateKey = "fake-key".toByteArray(),
+        )
+        val sshResult = projector.project(
+            SshUserPrivateKeyBindingSpec(CredentialsId("ssh-key"), "SSH_KEY_FILE"),
+            ssh, "run-1",
+        )
+        assertEquals(1, sshResult.retainedMaterializations.size, "SSH should retain one materialization")
+        assertTrue(Files.exists(sshResult.retainedMaterializations.single().path), "SSH path must still exist")
+
+        val file = SecretFile(
+            id = CredentialsId("file-key"),
+            bytes = "secret".toByteArray(),
+        )
+        val fileResult = projector.project(
+            FileBindingSpec(CredentialsId("file-key"), "SECRET_FILE"),
+            file, "run-1",
+        )
+        assertEquals(1, fileResult.retainedMaterializations.size, "FILE should retain one materialization")
+        assertTrue(Files.exists(fileResult.retainedMaterializations.single().path), "FILE path must still exist")
+
+        val cert = Certificate(
+            id = CredentialsId("cert-key"),
+            keystore = byteArrayOf(0x01),
+        )
+        val certResult = projector.project(
+            CertificateBindingSpec("KEYSTORE", CredentialsId("cert-key")),
+            cert, "run-1",
+        )
+        assertEquals(1, certResult.retainedMaterializations.size, "CERT should retain one materialization")
+        assertTrue(Files.exists(certResult.retainedMaterializations.single().path), "CERT path must still exist")
+
+        val zip = Zip(
+            id = CredentialsId("zip-key"),
+            entries = mapOf("a.txt" to "content".toByteArray()),
+        )
+        val zipResult = projector.project(
+            ZipBindingSpec("ZIP_PATH", CredentialsId("zip-key")),
+            zip, "run-1",
+        )
+        assertEquals(1, zipResult.retainedMaterializations.size, "ZIP should retain one materialization")
+        assertTrue(Files.exists(zipResult.retainedMaterializations.single().path), "ZIP path must still exist")
+    }
+
+    @Test
+    fun `STRING USERNAME_PASSWORD USERNAME_COLON_PASSWORD bindings retain no materializations`(@TempDir tempDir: Path) {
+        val projector = DefaultCredentialProjector(CapturingMaterialization())
+
+        val stringResult = projector.project(
+            StringBindingSpec(CredentialsId("k"), "VAR"),
+            SecretText(CredentialsId("k"), bytes = "secret".toByteArray()),
+            "run-1",
+        )
+        assertTrue(stringResult.retainedMaterializations.isEmpty(), "STRING should retain no materializations")
+
+        val upResult = projector.project(
+            UsernamePasswordBindingSpec(CredentialsId("k"), "USER", "PASS"),
+            UsernamePassword(CredentialsId("k"), username = "u", password = "p".toByteArray()),
+            "run-1",
+        )
+        assertTrue(upResult.retainedMaterializations.isEmpty(), "USERNAME_PASSWORD should retain no materializations")
+
+        val ucpResult = projector.project(
+            UsernameColonPasswordBindingSpec("CREDS", CredentialsId("k")),
+            UsernameColonPassword(CredentialsId("k"), user = "u", pass = "p".toByteArray()),
+            "run-1",
+        )
+        assertTrue(ucpResult.retainedMaterializations.isEmpty(), "USERNAME_COLON_PASSWORD should retain no materializations")
+    }
+
+    @Test
+    fun `ProjectionResult close wipes paths in reverse-LIFO order`(@TempDir tempDir: Path) {
+        val capturing = CapturingMaterialization()
+        val projector = DefaultCredentialProjector(capturing)
+
+        // Project two file-based bindings
+        val ssh = SshPrivateKey(
+            id = CredentialsId("ssh-key"),
+            username = "git",
+            privateKey = "key1".toByteArray(),
+        )
+        val sshResult = projector.project(
+            SshUserPrivateKeyBindingSpec(CredentialsId("ssh-key"), "K1"),
+            ssh, "run-1",
+        )
+
+        val file = SecretFile(
+            id = CredentialsId("file-key"),
+            bytes = "key2".toByteArray(),
+        )
+        val fileResult = projector.project(
+            FileBindingSpec(CredentialsId("file-key"), "K2"),
+            file, "run-1",
+        )
+
+        val sshPath = sshResult.retainedMaterializations.single().path
+        val filePath = fileResult.retainedMaterializations.single().path
+
+        assertTrue(Files.exists(sshPath), "SSH path must exist before close")
+        assertTrue(Files.exists(filePath), "FILE path must exist before close")
+
+        // Close file result first (LIFO: inner scope closes before outer)
+        fileResult.close()
+        assertFalse(Files.exists(filePath), "FILE path must be wiped after close")
+        assertTrue(Files.exists(sshPath), "SSH path must still exist (not yet closed)")
+
+        // Close ssh result (outer scope)
+        sshResult.close()
+        assertFalse(Files.exists(sshPath), "SSH path must be wiped after close")
+
+        capturing.close()
+    }
+
+    @Test
+    fun `ProjectionResult close is idempotent`(@TempDir tempDir: Path) {
+        val capturing = CapturingMaterialization()
+        val projector = DefaultCredentialProjector(capturing)
+
+        val file = SecretFile(
+            id = CredentialsId("file-key"),
+            bytes = "secret".toByteArray(),
+        )
+        val result = projector.project(
+            FileBindingSpec(CredentialsId("file-key"), "SECRET_FILE"),
+            file, "run-1",
+        )
+        val path = result.retainedMaterializations.single().path
+
+        // Close multiple times — must not throw
+        result.close()
+        result.close()
+        result.close()
+
+        assertFalse(Files.exists(path), "Path must be absent after first close (and subsequent calls must be no-ops)")
+        capturing.close()
+    }
+
+    @Test
+    fun `ProjectionResult close surfaces wipe failure as WipeException with orphan paths`(@TempDir tempDir: Path) {
+        // MaterializedCredentialDomain is now open, so we can subclass it
+        // to simulate a wipe failure without needing root privileges.
+        val failingPath = tempDir.resolve("unwipeable")
+        Files.writeString(failingPath, "secret")
+        val failingMaterialization = object : MaterializedCredentialDomain(failingPath, null) {
+            override fun close() {
+                throw RuntimeException("Simulated wipe failure")
+            }
+        }
+
+        val result = ProjectionResult(
+            bindings = mapOf("VAR" to SecretHandle.masked(failingPath.toString())),
+            retainedMaterializations = listOf(failingMaterialization),
+        )
+
+        val exception = runCatching { result.close() }.exceptionOrNull()
+        assertTrue(exception is ProjectionResult.WipeException, "close() must throw WipeException on wipe failure, got: ${exception?.javaClass?.simpleName}")
+        val wipeException = exception as ProjectionResult.WipeException
+        assertTrue(failingPath in wipeException.orphanPaths, "Failed path must be in orphan list")
+    }
 }

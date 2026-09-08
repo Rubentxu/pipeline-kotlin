@@ -97,6 +97,7 @@ class WithCredentialsExecutor(
     ): BoundCredentials {
         val env = mutableMapOf<String, SecretHandle>()
         val credentialIds = mutableListOf<CredentialsId>()
+        val retainedProjections = mutableListOf<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>()
         var sequence = 1L
 
         try {
@@ -106,7 +107,7 @@ class WithCredentialsExecutor(
                 credentialIds.add(credentialsId)
                 val purpose = kindToPurpose(spec.kind)
 
-                // Emit CredentialBound BEFORE projection (INV-L10-CR-001 ordering)
+                // Emit CredentialBound BEFORE projection (ADR-0051 D8 ordering)
                 val boundEvent = CredentialBound(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId,
@@ -123,13 +124,23 @@ class WithCredentialsExecutor(
                 // Delegate the per-kind projection to the port
                 val projection = projector.project(spec, credential, runId)
                 env.putAll(projection.bindings)
+                // EM-7: retain materializations for deferred cleanup
+                retainedProjections.add(projection)
             }
 
-            return BoundCredentials(env.toMap()) {
-                closeBoundCredentials(runId, credentialIds, eventSink)
-            }
+            return BoundCredentials(
+                env = env.toMap(),
+                credentials = credentialIds.toList(),
+                retainedProjections = retainedProjections.toList(),
+                closeAction = {
+                    closeBoundCredentials(runId, credentialIds, eventSink)
+                },
+            )
         } catch (t: Throwable) {
-            // On failure, close everything and rethrow
+            // On failure: close any already-created projections (reverse-LIFO), then emit events
+            for (projection in retainedProjections.asReversed()) {
+                try { projection.close() } catch (_: Throwable) { /* swallow: best-effort cleanup */ }
+            }
             closeBoundCredentials(runId, credentialIds, eventSink, t)
             throw t
         }
@@ -155,6 +166,7 @@ class WithCredentialsExecutor(
     /**
      * Closes all bound credentials in reverse-LIFO order.
      * This is the SOLE owner of [CredentialUnbound] emission (erratum-1, design E-19).
+     * On failure path: also closes any already-created projections.
      */
     private fun closeBoundCredentials(
         runId: String,
@@ -240,21 +252,25 @@ private class SpiMaterializationAdapter(
 }
 
 /**
- * Result of [WithCredentialsExecutor.bind] — contains env vars and close handler.
+ * Result of [WithCredentialsExecutor.bind] — contains env vars, acquired credential IDs,
+ * and idempotent close handler.
  *
- * Design (research §4 positive scope):
+ * Design (research §4 positive scope, EM-7 §Scoped acquisition):
  * - [env]: Map of environment variable names to secret handles
- * - [close]: Idempotent close handler that emits [CredentialUnbound] events
- *
- * ## Idempotency
- * The [close] handler is idempotent — multiple calls are safe.
- * Uses [@Volatile][volatile] marker for visibility across threads.
+ * - [credentials]: the credential IDs that were acquired
+ * - [retainedProjections]: retained [ProjectionResult] objects whose [ProjectionResult.close]
+ *   performs secure file wipe in reverse-LIFO order
+ * - [close]: Idempotent close handler that wipes materializations, emits
+ *   [CredentialUnbound] events, and closes handles. Non-silent: accumulated
+ *   wipe exceptions are thrown as [CredentialScopeCleanup.Failed].
  *
  * ## Thread Safety
- * [close] is safe to call from any thread.
+ * [close] is safe to call from any thread. Idempotent — multiple calls are safe.
  */
 class BoundCredentials(
     private val env: Map<String, SecretHandle>,
+    private val credentials: List<CredentialsId>,
+    private val retainedProjections: List<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>,
     private val closeAction: () -> Unit,
 ) {
     @Volatile
@@ -267,24 +283,87 @@ class BoundCredentials(
     fun env(): Map<String, SecretHandle> = env
 
     /**
+     * The credential IDs that were acquired by this binding.
+     */
+    fun credentials(): List<CredentialsId> = credentials
+
+    /**
      * Closes all bound credentials and emits [CredentialUnbound] events.
      *
-     * This is the SOLE owner of [CredentialUnbound] emission (design E-19).
-     * Idempotent — calling multiple times is safe.
+     * Ordering (per ADR-0051 D8):
+     * 1. Close retained [ProjectionResult]s (secure file wipe, reverse-LIFO)
+     * 2. Emit [CredentialUnbound] for each binding
+     * 3. Close [SecretHandle]s
      *
-     * @throws Throwable if cleanup throws; suppressed exceptions are chained via [addSuppressed]
+     * Non-silent: wipe failures are accumulated and thrown as [CleanupException]
+     * wrapping a [CredentialScopeCleanup.Failed] for the application adapter
+     * to map to a typed [StepOutcome].
+     *
+     * Idempotent — calling multiple times is safe.
      */
     fun close() {
         if (!closed) {
             closed = true
-            closeAction()
-            for (handle in env.values) {
+
+            // 1. Close retained projections (secure file wipe, reverse-LIFO)
+            // This may throw CleanupException
+            val failedWipes = mutableListOf<java.nio.file.Path>()
+            var firstWipeThrowable: Throwable? = null
+            for (projection in retainedProjections.asReversed()) {
                 try {
-                    handle.close()
-                } catch (_: Exception) {
-                    // Wipe failure is non-fatal (WS-S-024 invariant).
+                    projection.close()
+                } catch (t: Throwable) {
+                    // Collect orphan paths from WipeException; others contribute nothing
+                    if (t is dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult.WipeException) {
+                        failedWipes.addAll(t.orphanPaths)
+                    }
+                    if (firstWipeThrowable == null) {
+                        firstWipeThrowable = t
+                    } else {
+                        firstWipeThrowable.addSuppressed(t)
+                    }
                 }
+            }
+
+            // If wipe failed, propagate as CleanupException
+            if (firstWipeThrowable != null) {
+                // Emit unbound events even on wipe failure (audit trail)
+                closeAction()
+                // Then close handles
+                closeHandles()
+                // Then propagate
+                throw CleanupException(
+                    orphanPaths = failedWipes.distinct(),
+                    detail = "Secure wipe failed: ${firstWipeThrowable.message}",
+                    cause = firstWipeThrowable,
+                )
+            }
+
+            // 2. Emit CredentialUnbound events
+            closeAction()
+
+            // 3. Close secret handles
+            closeHandles()
+        }
+    }
+
+    private fun closeHandles() {
+        for (handle in env.values) {
+            try {
+                handle.close()
+            } catch (_: Exception) {
+                // SecretHandle wipe failure is non-fatal (WS-S-024 invariant)
             }
         }
     }
+
+    /**
+     * Thrown when secure wipe fails. The application adapter maps this to
+     * [dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup.Failed].
+     */
+    class CleanupException(
+        val orphanPaths: List<java.nio.file.Path>,
+        val detail: String,
+        override val cause: Throwable,
+    ) : RuntimeException("Credential cleanup failed: $detail", cause)
 }

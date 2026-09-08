@@ -51,12 +51,26 @@ interface CredentialMaterializationDomain : AutoCloseable {
  * - [handle]: the in-memory handle for non-file payloads (or `null`)
  *
  * The result implements [AutoCloseable] so it can be composed with `use{}`
- * blocks at the call site.
+ * blocks at the call site. The class is [open] so test doubles can override
+ * [close] to simulate wipe failures without needing root privileges.
+ *
+ * NOTE: intentionally not a `data class` because `open` and `data` are
+ * incompatible modifiers in Kotlin. [equals] and [hashCode] are implemented
+ * explicitly to preserve value semantics.
  */
-data class MaterializedCredentialDomain(
+open class MaterializedCredentialDomain(
     val path: Path?,
     val handle: SecretHandle?,
 ) : AutoCloseable {
+    override fun equals(other: Any?): Boolean = other is MaterializedCredentialDomain &&
+        other.path == this.path && other.handle == this.handle
+
+    override fun hashCode(): Int {
+        var result = path?.hashCode() ?: 0
+        result = 31 * result + (handle?.hashCode() ?: 0)
+        return result
+    }
+
     override fun close() {
         path?.let { p ->
             if (java.nio.file.Files.isDirectory(p)) {

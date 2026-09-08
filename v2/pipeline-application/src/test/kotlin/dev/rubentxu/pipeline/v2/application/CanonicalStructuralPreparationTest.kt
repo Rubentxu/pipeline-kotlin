@@ -59,3 +59,53 @@ class CanonicalStructuralPreparationTest {
         assertInstanceOf(StructuralPreparation.Rejected::class.java, result)
     }
 }
+
+/**
+ * B1.2c2-CDE.2-c0: the control overlay is projected from the structural envelope (a closed ADT), so a
+ * reused CatchErrorEntered can establish its scope pre-reconcile (C6) without any typed decode.
+ */
+@Timeout(10)
+class StructuralOverlayProjectionTest {
+
+    private fun emitNode(encoded: String) = OpaqueStepNode(
+        id = StepId("stage-0-step-0"),
+        pluginStepId = PluginStepId("core.emit.event"),
+        payload = VersionedStepPayload(schemaVersion = "dsl-v1", encoded = encoded),
+    )
+
+    private fun echoNode(encoded: String) = OpaqueStepNode(
+        id = StepId("stage-0-step-0"),
+        pluginStepId = PluginStepId("core.echo"),
+        payload = VersionedStepPayload(schemaVersion = "dsl-v1", encoded = encoded),
+    )
+
+    private fun project(node: OpaqueStepNode): StructuralOverlay {
+        val prepared = CanonicalStructuralPreparation.prepare(node)
+        val ready = assertInstanceOf(StructuralPreparation.Ready::class.java, prepared)
+        return StructuralOverlayProjection.project(ready.invocation.stepKey, ready.envelope)
+    }
+
+    @Test
+    fun `emit CatchErrorEntered projects an entered overlay with structural fields`() {
+        val overlay = project(
+            emitNode("""{"kind":"CatchErrorEntered","buildResult":"FAILURE","stageResult":"FAILURE","message":"tolerated"}"""),
+        ) as StructuralOverlay.CatchErrorEntered
+        assertEquals("FAILURE", overlay.buildResult)
+        assertEquals("FAILURE", overlay.stageResult)
+        assertEquals("tolerated", overlay.message)
+    }
+
+    @Test
+    fun `emit CatchErrorTriggered projects an emitted overlay`() {
+        val overlay = project(
+            emitNode("""{"kind":"CatchErrorTriggered","emitted":"true"}"""),
+        ) as StructuralOverlay.CatchErrorTriggered
+        assertEquals(true, overlay.emitted)
+    }
+
+    @Test
+    fun `non-catch or non-emit envelopes project no overlay`() {
+        assertEquals(StructuralOverlay.None, project(emitNode("""{"kind":"SomeOtherKind"}""")))
+        assertEquals(StructuralOverlay.None, project(echoNode("""{"kind":"echo","text":"hi"}""")))
+    }
+}

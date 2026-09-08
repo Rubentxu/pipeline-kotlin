@@ -6,6 +6,8 @@ import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Structural, pre-decode canonical invocation (B1.2c2-CDE.1).
@@ -51,7 +53,17 @@ data class CanonicalInvocation(
  * the envelope gate rejected the node (terminal `SCHEMA`, never the executor).
  */
 sealed interface StructuralPreparation {
-    data class Ready(val invocation: CanonicalInvocation) : StructuralPreparation
+    /**
+     * Envelope validation succeeded. [invocation] is the structural (pre-decode) invocation and
+     * [envelope] is the structurally-validated dsl-v1 JSON object, so pre-reconcile control
+     * projection never needs a typed command. The envelope is NOT a typed Step input: consuming it
+     * for concrete Step semantics is the later TypedInputDecode's job.
+     */
+    data class Ready(
+        val invocation: CanonicalInvocation,
+        val envelope: JsonObject,
+    ) : StructuralPreparation
+
     data class Rejected(val reason: String) : StructuralPreparation
 }
 
@@ -82,6 +94,63 @@ object CanonicalStructuralPreparation {
                 "Canonical payload for '${node.id.value}' must be a JSON object",
             )
         }
-        return StructuralPreparation.Ready(CanonicalInvocation.fromNode(node))
+        return StructuralPreparation.Ready(CanonicalInvocation.fromNode(node), element)
+    }
+}
+
+/**
+ * Structural, closed overlay descriptor for this invocation (B1.2c2-CDE.2-c0).
+ *
+ * Expresses exactly the pre-reconcile control context an invocation contributes, derived from the
+ * structural envelope WITHOUT building a typed command. It is NOT Step metadata (stable per plugin:
+ * [StepMetadata]) and NOT a typed Step input (post-reconcile): it is the structural control info of
+ * this particular invocation that the coordinator must apply to its context before durable
+ * resolution (frozen by C6: a reused CatchErrorEntered still pushes its overlay pre-reconcile).
+ *
+ * Only the control boundaries that actually affect pre-reconcile context are represented. Full
+ * runtime emission semantics belong to the later TypedInputDecode/executor, not here.
+ */
+sealed interface StructuralOverlay {
+    /** No pre-reconcile control context to apply for this invocation. */
+    data object None : StructuralOverlay
+
+    /** A catchError scope is entered; the coordinator pushes the matching context frame. */
+    data class CatchErrorEntered(
+        val buildResult: String,
+        val stageResult: String,
+        val message: String?,
+        val enteredAt: String?,
+    ) : StructuralOverlay
+
+    /** A catchError scope is (possibly) exited; the coordinator pops it only when [emitted]. */
+    data class CatchErrorTriggered(val emitted: Boolean) : StructuralOverlay
+}
+
+/**
+ * Projects the pre-reconcile control overlay from a structurally-validated envelope (CDE.2-c0).
+ *
+ * This is the structural-overlay boundary: it reads only the known control-emission envelope shape
+ * (the legacy `core.emit.event` CatchErrorEntered/Triggered) and yields a closed [StructuralOverlay].
+ * It deliberately does not decode full Step input; everything else is [StructuralOverlay.None] and
+ * handled by the typed decode that runs only when the operation actually executes.
+ */
+object StructuralOverlayProjection {
+    private const val EMIT_EVENT_PLUGIN = "core.emit.event"
+
+    fun project(stepKey: PluginStepId, envelope: JsonObject): StructuralOverlay {
+        if (stepKey.value != EMIT_EVENT_PLUGIN) return StructuralOverlay.None
+        val buildResult = envelope["buildResult"]?.jsonPrimitive?.contentOrNull ?: "UNSTABLE"
+        return when (val kind = envelope["kind"]?.jsonPrimitive?.contentOrNull) {
+            "CatchErrorEntered" -> StructuralOverlay.CatchErrorEntered(
+                buildResult = buildResult,
+                stageResult = envelope["stageResult"]?.jsonPrimitive?.contentOrNull ?: buildResult,
+                message = envelope["message"]?.jsonPrimitive?.contentOrNull,
+                enteredAt = envelope["enteredAt"]?.jsonPrimitive?.contentOrNull,
+            )
+            "CatchErrorTriggered" -> StructuralOverlay.CatchErrorTriggered(
+                emitted = envelope["emitted"]?.jsonPrimitive?.contentOrNull == "true",
+            )
+            else -> StructuralOverlay.None
+        }
     }
 }

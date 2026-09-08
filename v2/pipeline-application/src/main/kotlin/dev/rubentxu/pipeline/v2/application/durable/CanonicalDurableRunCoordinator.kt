@@ -5,6 +5,8 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
+import dev.rubentxu.pipeline.v2.application.StructuralOverlay
+import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
@@ -195,24 +197,6 @@ private sealed interface CanonicalContinuation {
 private sealed interface RunningCanonicalShellRecovery {
     data object NotRunningShell : RunningCanonicalShellRecovery
     data class Recovered(val outcome: StepOutcome, val status: OperationStatus) : RunningCanonicalShellRecovery
-}
-
-/**
- * Outcome of turning a [StepNode] into a canonical command (B1.2c2-a2.1).
- *
- * Makes the decode bifurcation explicit: the invocation is either ready to enter the durable protocol
- * with a decoded [CanonicalCoreStepCommand], or it was rejected before execution (schema mismatch). A
- * rejected invocation must never reach the effective executor.
- */
-private sealed interface InvocationPreparation {
-    /** Decode succeeded; the protocol proceeds with the typed command. */
-    data class Ready(val command: CanonicalCoreStepCommand) : InvocationPreparation
-
-    /**
-     * Decode was rejected before execution. Carries the terminal [StepOutcome] (a SCHEMA failure) that
-     * `dispatch` must return without invoking the executor.
-     */
-    data class Rejected(val failure: StepOutcome) : InvocationPreparation
 }
 
 /**
@@ -506,42 +490,7 @@ class CanonicalDurableRunCoordinator(
             return dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, bodyPath)
         }
 
-        val typedCommand = when (val preparation = prepareInvocation(step, runId, stageIndex, stepIndex, bodyPath)) {
-            is InvocationPreparation.Rejected -> return preparation.failure
-            is InvocationPreparation.Ready -> preparation.command
-        }
-
-        // Scope tracking via ContextOverlay (EM-4 migration from ScopeFrame)
-        if (typedCommand is CanonicalCoreStepCommand.EmitEvent) {
-            when (typedCommand.kind) {
-                "CatchErrorEntered" -> {
-                    val buildResult = typedCommand.payload["buildResult"] ?: "UNSTABLE"
-                    val stageResult = typedCommand.payload["stageResult"] ?: buildResult
-                    val message = typedCommand.payload["message"]
-                    val enteredAt = typedCommand.payload["enteredAt"]?.toLongOrNull() ?: System.currentTimeMillis()
-                    contextStack = contextStack.push(
-                        ContextOverlay.CatchErrorOverlay(buildResult, stageResult, message, enteredAt),
-                    )
-                }
-                "CatchErrorTriggered" -> {
-                    if (typedCommand.payload["emitted"] == "true") {
-                        val top = contextStack.peek()
-                        if (top is ContextOverlay.CatchErrorOverlay) {
-                            contextStack = contextStack.pop()
-                        } else {
-                            throw IllegalStateException(
-                                "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered"
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // CDE.2-b2: durable metadata (effects + replayPolicy) is resolved by structural step key
-        // BEFORE any typed decode, so fingerprint and reconcile never depend on the decoded command.
-        val metadata = stepMetadataResolver.resolve(step.pluginStepId)
-            ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
+        // CDE.2-c0: durable opId/input are needed by every rejection path, so derive them first.
         val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
         val operationId = opId.format()
         val input = OperationInput(
@@ -550,13 +499,43 @@ class CanonicalDurableRunCoordinator(
             runId = runId.value,
             attempt = 1,
         )
+
+        // CDE.2-c0: structural phase (envelope gate + control overlay projection) precedes any typed
+        // decode. A structurally-invalid node is a terminal SCHEMA rejection (C3/C5), executor never runs.
+        val structural = CanonicalStructuralPreparation.prepare(step)
+        val structuralReady = when (structural) {
+            is StructuralPreparation.Rejected -> return rejectSchema(operationId, input, structural.reason)
+            is StructuralPreparation.Ready -> structural
+        }
+        applyOverlay(
+            StructuralOverlayProjection.project(structuralReady.invocation.stepKey, structuralReady.envelope),
+        )
+
+        // CDE.2-b2: durable metadata resolved by structural step key BEFORE typed semantics, so
+        // fingerprint and reconcile never depend on the decoded command.
+        val metadata = stepMetadataResolver.resolve(step.pluginStepId)
+            ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
+
+        // Typed decode of the actual execution command. Structural validity is already proven, so a
+        // failure here is a typed field / unsupported-command error; it folds to the same terminal
+        // SCHEMA rejection (journal FAILED, executor never runs). The decoded command is consumed only
+        // by the Execute path below.
+        val typedCommand = try {
+            CanonicalCoreStepDecoder.decode(step)
+        } catch (e: IllegalArgumentException) {
+            return rejectSchema(
+                operationId,
+                input,
+                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
+            )
+        }
         val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, metadata.replayPolicy, 1)
         val lifecycleContext = StepLifecycleContext(
             runId = runId.value,
             stageIndex = stageIndex,
             stepIndex = stepIndex,
             stepName = step.id.value,
-            stepType = CanonicalCoreStepCommand.pluginIdToShortType(typedCommand.pluginId),
+            stepType = CanonicalCoreStepCommand.pluginIdToShortType(step.pluginStepId.value),
         )
         val journaled = journal.get(operationId, 1)
         val currentOperation = RerunOperation(
@@ -640,50 +619,44 @@ class CanonicalDurableRunCoordinator(
     }
 
     /**
-     * Decodes a [StepNode] into a canonical command, making the pre-execution rejection explicit.
-     *
-     * A rejected (schema-mismatch) invocation records a FAILED journal entry and yields the terminal
-     * [StepOutcome] that `dispatch` returns without invoking the executor. A ready invocation carries the
-     * typed command for the rest of the durable protocol. (B1.2c2-a2.1)
-     *
-     * CDE.2-a: the structural phase ([CanonicalStructuralPreparation]) runs first and decides the
-     * `SCHEMA` rejection for an envelope-invalid node (schema version, JSON parse) WITHOUT entering the
-     * typed decoder. Only a structurally-ready node proceeds to [CanonicalCoreStepDecoder.decode] for
-     * typed field extraction; a field-level failure still folds to the same terminal `SCHEMA` rejection,
-     * so observable outcomes are unchanged (C3/C5: decode failures never reach the executor).
+     * Applies the pre-reconcile control overlay projected from the structural envelope (CDE.2-c0),
+     * establishing or closing a CatchError context frame. This runs BEFORE durable resolution, so a
+     * reused CatchErrorEntered still establishes its scope without re-executing (C6: executor stays 0).
+     * Only the structural overlay descriptor is consumed; no typed command is built here.
      */
-    private fun prepareInvocation(
-        step: StepNode,
-        runId: RunId,
-        stageIndex: Int,
-        stepIndex: Int,
-        bodyPath: List<BlockSegment>,
-    ): InvocationPreparation {
-        val operationId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath).format()
-        val input = OperationInput(
-            stepId = step.pluginStepId.value,
-            params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
-            runId = runId.value,
-            attempt = 1,
-        )
-        val structural = CanonicalStructuralPreparation.prepare(step)
-        if (structural is StructuralPreparation.Rejected) {
-            return rejectSchema(operationId, input, structural.reason)
+    private fun applyOverlay(overlay: StructuralOverlay) {
+        when (overlay) {
+            StructuralOverlay.None -> Unit
+            is StructuralOverlay.CatchErrorEntered -> {
+                contextStack = contextStack.push(
+                    ContextOverlay.CatchErrorOverlay(
+                        overlay.buildResult,
+                        overlay.stageResult,
+                        overlay.message,
+                        overlay.enteredAt?.toLongOrNull() ?: System.currentTimeMillis(),
+                    ),
+                )
+            }
+            is StructuralOverlay.CatchErrorTriggered -> {
+                if (overlay.emitted) {
+                    val top = contextStack.peek()
+                    if (top is ContextOverlay.CatchErrorOverlay) {
+                        contextStack = contextStack.pop()
+                    } else {
+                        throw IllegalStateException(
+                            "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered",
+                        )
+                    }
+                }
+            }
         }
-        val typedCommand = try {
-            CanonicalCoreStepDecoder.decode(step)
-        } catch (e: IllegalArgumentException) {
-            return rejectSchema(
-                operationId,
-                input,
-                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${e.message}",
-            )
-        }
-        return InvocationPreparation.Ready(typedCommand)
     }
 
-    /** Records a FAILED journal row and returns the terminal `SCHEMA` rejection (executor never runs). */
-    private fun rejectSchema(operationId: String, input: OperationInput, message: String): InvocationPreparation.Rejected {
+    /**
+     * Records a FAILED journal row and returns the terminal `SCHEMA` [StepOutcome]; the effective
+     * executor is never invoked (C3/C5). Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path.
+     */
+    private fun rejectSchema(operationId: String, input: OperationInput, message: String): StepOutcome {
         val fingerprint = Fingerprint.compute(input, input.stepId, ReplayPolicy.RERUN, 1)
         journal.append(
             RerunOperation(
@@ -695,10 +668,8 @@ class CanonicalDurableRunCoordinator(
                 attempt = 1,
             ),
         )
-        return InvocationPreparation.Rejected(
-            StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, message),
-            ),
+        return StepOutcome.Failure(
+            PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, message),
         )
     }
 

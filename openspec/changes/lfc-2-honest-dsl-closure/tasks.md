@@ -1,5 +1,12 @@
 # Tasks: lfc-2-honest-dsl-closure (LFC-2)
 
+## Current disposition (2026-09-08, `7c9ce5c7`)
+
+OPEN. Historical DONE/green statements below for T1/T4 and aggregate Verify are superseded:
+quarantining seven UAT methods is not completion, and an audit is not a no-fake-return gate.
+First implementable slice: LFC2-H01 in `design.md`. Follow-up slices and evidence are recorded in
+`evidence-2026-09-08.md`. No implementation, test edits, unskips or commits in this diagnostic round.
+
 Evidence: HEAD 65f75fcc (EM-5/6 catchError closed). Confirmed pre-existing DSL failures on clean
 Part B: UatDsl001 (full-grammar CLI exit 1 + fixture timeline), UatEvt001 (G3 naming), UatDsl003
 (parallel G2 compiler), ERR-S-004 (stage bookends folded). Base = clean Part B (65f75fcc).
@@ -36,7 +43,7 @@ Verifies ERR-S-004, UatDsl001-mutating, UatEvt001 structure. All green.
 Evolve the `stepName=="echo"` assertion to the `<stage>/<type>-<index>` contract (`hello/echo-0`).
 UatEvt001 fully green.
 
-## T1 — parallel composability (G2) — ✅ DONE (quarantine + E-EM-11, commit a7a16c2c)
+## T1 — parallel composability (G2) — OPEN (quarantine only, commit a7a16c2c)
 Adopted fork (A) per roadmap authority: parallel is a canonical-spine gap (E-EM-11), not DSL-fake.
 Root cause widened from G2-compiler to full M2-R1 event parity: canonical coordinator emits NO
 ParallelBranch/RetryAttempt/TimeoutScheduled events (only retired legacy PipelineRun does). Quarantined
@@ -44,13 +51,14 @@ the 7 legacy-surface methods (UatDsl003 class + 3 UatDsl001 full-grammar) as BLO
 @Disabled reasons; opened E-EM-11 backlog item. DSL UATs green (mutating + UatEvt001 + ERR-S preserved).
 Re-open UatDsl003/UatDsl001-full-grammar when E-EM-11 lands.
 
-## T4 — remaining LFC-2 gate items — ✅ AUDITED (roadmap doc), fixes deferred as DSL debt
+## T4 — remaining LFC-2 gate items — OPEN (inventory recorded, fixes not complete)
 Audited each gate item and recorded present/absent in LFC2_HONEST_DSL_CLOSURE.md. Confirmed debt rows:
 pwd()/isUnix() fake StubRuntimeConfig return, waitUntil fake, git/scmGit duplicate (both DSL funs),
 shell dollar handling, node no-op, @DslMarker absent. Each is a follow-up candidate (separate item);
 none blocks the milestone (exit gate = honest linear subset + no-fake-return rejection rule).
 
 ## Verify
-- UatDsl001/003, UatEvt001, ErrorHandlingTest (ERR-S-004) green.
+- Historical focused green: UatDsl001 mutating, UatEvt001, ErrorHandlingTest (ERR-S-004).
+  UatDsl003 and three UatDsl001 methods are disabled and cannot count as green.
 - Gate: representative Jenkins fixtures compile to expected IR; no fake-return DSL fitness violation.
 - Coordinator/EM suites stay green — no unjustified regression.

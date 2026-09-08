@@ -1,5 +1,9 @@
 # Proposal: LFC-2 — honest Jenkins-like DSL closure
 
+> Status correction at `7c9ce5c7` (2026-09-08): OPEN. Seven disabled UAT methods are not PASS.
+> The historical ground-truth claims below are not fresh base-vs-head evidence for this round.
+> `design.md` and `evidence-2026-09-08.md` describe recovery without narrowing the original gate.
+
 ## Intent
 Close LFC-2 ("Honest Jenkins-like DSL: familiar DSL with no fake runtime values") as a tracked
 milestone with an itemized list and an explicit exit gate. LFC-2 was worked via the M2/ML/EM lines
@@ -60,7 +64,7 @@ boundary); (6) record the LFC-2 item list + gate + closure in `docs/v2/05-roadma
 
 ## Success Criteria
 - [x] LFC-2 itemized list + exit gate recorded in the roadmap (`LFC2_HONEST_DSL_CLOSURE.md` + backlog).
-- [x] Confirmed DSL gaps green (stage bookends ERR-S-004, UatEvt001 G3 naming, DSL UATs).
+- [ ] Confirmed DSL gaps green (stage bookends/G3 focused evidence exists; seven DSL UATs remain disabled).
 - [x] Legacy-surface parallel/retry/timeout UATs quarantined and traceable to E-EM-11 (not DSL-fake).
 - [ ] Gate: representative Jenkins fixtures compile to expected IR; no fake-return DSL fitness violation
       (honest linear subset green; DSL debt rows tracked as follow-ups, no silent placeholder on canonical path).

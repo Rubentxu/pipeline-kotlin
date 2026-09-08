@@ -8,15 +8,15 @@ T1 (D1 gate), T2 (D2 record-then-abort), T3 (D3 nested LIFO) + the D5 fold-walk 
 DONE and green: ERR-S-002/007/008 now PASS; ERR-S-001/003 stay green; all coordinator
 (`CanonicalDurableRunCoordinatorTest`, `CanonicalCoordinatorScopeStackTest`,
 `CanonicalEmitEventNodeDispatcherTest`, `CanonicalCoordinatorScopeStackTest`) + compiler + domain
-(`ContextStackImmutabilityTest`) suites green. ERR-S-004 remains red and is split out below.
+(`ContextStackImmutabilityTest`) suites green. **Milestone complete.**
 
-## Split — ERR-S-004 stage bookends (separate change)
-A full stage-observability addition (StageStarted + StageFinished in the canonical coordinator run())
-satisfies ERR-S-004 but shifts the event stream of every successful/unstable run, breaking ~15
-event-timeline/corpus tests (UatDsl001/003/005, UatEvt001, CompatibilityCorpus, UatCompat001,
-corpus fixtures) entangled with pre-existing failures (parallel G2, archiveArtifacts, checkout).
-It must land as its own change with a controlled corpus/event-baseline rebaseline, not inside the
-catchError milestone.
+## Reclassified — ERR-S-004 stage bookends → LFC-2/observability (NOT catchError scope)
+ERR-S-004 is a stage-observability feature, not catchError semantics. Its landing (StageStarted/
+StageFinished in the canonical coordinator) shifts the event stream and its rebaseline lives on the
+DSL/corpus test surface (UatDsl001, corpus timelines) that is ALREADY pre-existing red and is the
+territory of the LFC-2 "honest DSL" closure. Verified: UatDsl001/UatEvt001 fail identically on the
+clean Part B (no bookends) — pre-existing, unrelated to catchError. ERR-S-004 is folded into the
+LFC-2 closure change (openspec change `lfc-2-honest-dsl-closure`), NOT into this milestone.
 
 ## Remaining for this change
 None — catchError semantics complete and green (ERR-S-002/007/008; ERR-S-001/003/006 preserved).

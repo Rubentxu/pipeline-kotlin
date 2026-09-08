@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
@@ -18,10 +19,13 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * @property effects The side-effect classification of the step.
  * @property replayPolicy The replay strategy for the step.
+ * @property recoveryPolicy Declared recovery behaviour of the operation (CDE.2-b4); the durable
+ *   protocol reads this typed property and never a concrete Step name.
  */
 data class StepMetadata(
     val effects: Set<Effect>,
     val replayPolicy: ReplayPolicy,
+    val recoveryPolicy: RecoveryPolicy = RecoveryPolicy.None,
 )
 
 /** Typed command decoded from the `dsl-v1` payloads owned by the canonical IR. */

@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -27,6 +28,23 @@ class CoreLegacyStepMetadataResolverTest {
         val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sh"))
         val decoded = CanonicalCoreStepCommand.Shell("exit 0", false, false).defaultMetadata
         assertEquals(decoded, resolved)
+    }
+
+    @Test
+    fun `shell declares external-subprocess recovery, ordinary steps declare none`() {
+        // CDE.2-b4: the durable protocol decides recovery from metadata.recoveryPolicy, never a Step name.
+        assertEquals(
+            RecoveryPolicy.ExternalSubprocess,
+            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sh")).recoveryPolicy,
+        )
+        assertEquals(
+            RecoveryPolicy.None,
+            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.echo")).recoveryPolicy,
+        )
+        assertEquals(
+            RecoveryPolicy.None,
+            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.load")).recoveryPolicy,
+        )
     }
 
     @Test

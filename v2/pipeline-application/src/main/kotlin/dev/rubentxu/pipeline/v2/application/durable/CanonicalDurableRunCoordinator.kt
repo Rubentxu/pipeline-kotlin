@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
+import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
@@ -33,6 +34,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
@@ -540,7 +542,6 @@ class CanonicalDurableRunCoordinator(
         // BEFORE any typed decode, so fingerprint and reconcile never depend on the decoded command.
         val metadata = stepMetadataResolver.resolve(step.pluginStepId)
             ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
-        val (effects, replayPolicy) = metadata.effects to metadata.replayPolicy
         val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
         val operationId = opId.format()
         val input = OperationInput(
@@ -549,7 +550,7 @@ class CanonicalDurableRunCoordinator(
             runId = runId.value,
             attempt = 1,
         )
-        val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, replayPolicy, 1)
+        val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, metadata.replayPolicy, 1)
         val lifecycleContext = StepLifecycleContext(
             runId = runId.value,
             stageIndex = stageIndex,
@@ -566,7 +567,7 @@ class CanonicalDurableRunCoordinator(
             status = OperationStatus.PENDING,
             attempt = 1,
         )
-        when (val resolution = reconcileInvocation(typedCommand, journaled, currentOperation, operationId, effects, replayPolicy)) {
+        when (val resolution = reconcileInvocation(metadata, journaled, currentOperation, operationId)) {
             is InvocationReconciliation.Diverged ->
                 return StepOutcome.Failure(
                     PipelineFailure(
@@ -702,34 +703,36 @@ class CanonicalDurableRunCoordinator(
     }
 
     /**
-     * Resolves the durable replay/reconcile decision for a decoded invocation (B1.2c2-a2.3).
+     * Resolves the durable replay/reconcile decision for an invocation (B1.2c2-a2.3, CDE.2-b4).
      *
      * The decision has two purity domains, kept separate:
      *  - [deterministicGate] is pure: fingerprint divergence and the effect-aware replay policy decide
      *    from their inputs alone.
-     *  - running-shell detection ([recoverRunningShell]) is the sole effectful part: it inspects and
+     *  - running-process detection ([recoverRunningShell]) is the sole effectful part: it inspects and
      *    reattaches to a real external process. It is an explicit a2 compatibility hook, NOT generic
-     *    durable-protocol semantics; only Shell + RUNNING journaled + a control dir trigger it.
+     *    durable-protocol semantics; it triggers only when the operation declares
+     *    [RecoveryPolicy.ExternalSubprocess] AND the journal is RUNNING AND a control dir exists.
+     *
+     * The durable decision consumes only the typed [StepMetadata] properties resolved by step key
+     * (CDE.2-b2/b4); it never selects behaviour by a concrete Step name.
      *
      * Precedence reproduces the frozen a1 flow exactly: divergence first, then recovery, then replay.
      * No journal, cursor, event or executor is touched here; terminal resolutions carry only the data
      * their own handling needs.
      */
     private fun reconcileInvocation(
-        typedCommand: CanonicalCoreStepCommand,
+        metadata: StepMetadata,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
         currentOperation: RerunOperation,
         operationId: String,
-        effects: Set<Effect>,
-        replayPolicy: ReplayPolicy,
     ): InvocationReconciliation {
-        deterministicGate(currentOperation, journaled, operationId, effects, replayPolicy)?.let { return it }
-        when (val recovery = recoverRunningShell(typedCommand, journaled, operationId)) {
+        deterministicGate(currentOperation, journaled, operationId, metadata.effects, metadata.replayPolicy)?.let { return it }
+        when (val recovery = recoverRunningShell(metadata.recoveryPolicy, journaled, operationId)) {
             RunningCanonicalShellRecovery.NotRunningShell -> Unit
             is RunningCanonicalShellRecovery.Recovered ->
                 return InvocationReconciliation.RecoverRunning(recovery.outcome, recovery.status)
         }
-        return replayResolution(effectReplayPolicy.decide(replayPolicy, effects, journaled != null, journaled?.status), operationId)
+        return replayResolution(effectReplayPolicy.decide(metadata.replayPolicy, metadata.effects, journaled != null, journaled?.status), operationId)
     }
 
     /**
@@ -762,11 +765,11 @@ class CanonicalDurableRunCoordinator(
         }
 
     private fun recoverRunningShell(
-        command: CanonicalCoreStepCommand,
+        recoveryPolicy: RecoveryPolicy,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
         operationId: String,
     ): RunningCanonicalShellRecovery {
-        if (command !is CanonicalCoreStepCommand.Shell || journaled?.status != OperationStatus.RUNNING || controlDirRoot == null) {
+        if (recoveryPolicy != RecoveryPolicy.ExternalSubprocess || journaled?.status != OperationStatus.RUNNING || controlDirRoot == null) {
             return RunningCanonicalShellRecovery.NotRunningShell
         }
 

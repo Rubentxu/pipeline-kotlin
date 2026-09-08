@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
@@ -8,6 +9,7 @@ import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
@@ -273,9 +275,10 @@ class CanonicalDurableRunCoordinator(
     private val controlDirRoot: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
-    // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). The default is the
-    // legacy core catalog; a registry/definition composite implements this seam in CDE.3/CDE.5.
-    private val stepMetadataResolver: StepMetadataResolver = CoreLegacyStepMetadataResolver,
+    // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). Nullable default so a
+    // registry-injected constructor can opt into the composite (CDE.3-e4.2); legacy call-sites that do
+    // not pass a resolver keep the [CoreLegacyStepMetadataResolver] authority exactly as before.
+    private val stepMetadataResolver: StepMetadataResolver? = null,
     // B1.2c2-a1: temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
     // existing ~25 construction sites compile unchanged; production default delegates to the legacy
     // dispatcher. Not the final DI architecture.
@@ -285,9 +288,23 @@ class CanonicalDurableRunCoordinator(
     // dispatcher), preserving behaviour exactly. Existing callers that inject the old executor keep
     // working unchanged because the default boundary routes to it.
     commonExecutionBoundary: CommonExecutionBoundary? = null,
+    // CDE.3-e4.1: optional open StepRegistry (plugin definitions) for registry-driven metadata and,
+    // later, execution. Additive at the end of the ctor so the ~25 legacy call-sites (positional or
+    // named) compile unchanged. No global registry, no service locator, no singleton.
+    private val stepRegistry: StepRegistry? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
     private var contextStack: ContextStack = ContextStack.EMPTY
+
+    /**
+     * Effective pre-decode metadata authority (CDE.3-e4.2). An explicit [stepMetadataResolver] wins;
+     * otherwise an injected [stepRegistry] opts into the composite (core keys -> legacy authority,
+     * other keys -> registry metadata, unknown -> hard defect); otherwise the legacy core authority.
+     * The durable coordinator only ever consumes [StepMetadata]; it does not know where it came from.
+     */
+    private val metadataResolver: StepMetadataResolver = stepMetadataResolver
+        ?: if (stepRegistry != null) RegistryStepMetadataResolver.composite(stepRegistry)
+        else CoreLegacyStepMetadataResolver
 
     /**
      * Effective step executor, routed through the new common seam (CDE.3-b3). The production default
@@ -523,7 +540,7 @@ class CanonicalDurableRunCoordinator(
 
         // CDE.2-b2: durable metadata resolved by structural step key BEFORE typed semantics, so
         // fingerprint and reconcile never depend on the decoded command.
-        val metadata = stepMetadataResolver.resolve(step.pluginStepId)
+        val metadata = metadataResolver.resolve(step.pluginStepId)
             ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
 
         val fingerprint = Fingerprint.compute(input, step.pluginStepId.value, metadata.replayPolicy, 1)

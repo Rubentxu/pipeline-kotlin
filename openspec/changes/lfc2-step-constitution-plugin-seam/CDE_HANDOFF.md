@@ -415,3 +415,73 @@ Ready -> executor = 1".** The executor seam must keep meaning effective side-eff
 not move the rejection count onto the executor to make the abstraction fit. The durable lifecycle,
 journal, replay, cursor and failure persistence stay owned by the spine (`StepExecutionBoundary` +
 coordinator), never duplicated into the new seam.
+
+---
+
+## 10. CDE.3-b DONE — legacy behind the common seam (2026-09-08)
+
+Executed b1–b6. `CommonExecutionBoundary` is now the authority the a1 law observes; the old
+command-typed `CanonicalInvocationExecutor` is a deprecated legacy compatibility detail behind
+`LegacyExecutionAdapter`.
+
+### 10.1 What landed (per slice)
+
+| Slice | Commit | Result |
+|---|---|---|
+| b1 characterize | `22a5c7d0` | executor frontier documented (§9); no test needed (prepare counter belongs to b3) |
+| b2 additive seam | `ea47e52a` | `PreparedExecution` (opaque open marker), `CommonExecutionBoundary` (fun interface `execute(prepared, CanonicalRuntimeContext): StepOutcome`), `PreparedLegacyExecution`, `LegacyExecutionAdapter`; production untouched; adapter test |
+| b3 rewire + dual | `9eec3f90` | `LegacyExecutionBoundary.decode`→`prepare: ExecutionPreparation{Rejected|Ready}`; coordinator Execute prepares opaque `PreparedExecution` then calls the common seam; trailing `commonExecutionBoundary` param defaults to the adapter over the injected old executor (existing callers unchanged); `DualExecutionSeamCharacterizationTest` proves `commonCalls==legacyCalls` |
+| b4 migrate law | `3450df59` | frozen `DurableProtocolInvocationCharacterizationTest` observes `CommonExecutionBoundary`; `RecordingBoundary` replaces `RecordingInvocationExecutor`; assertion values unchanged |
+| b5 retire | `fdc21da3` | old seam `@Deprecated` as compatibility detail; explicit retire-with-legacy-dispatcher task |
+| b6 proof | gate runs | below |
+
+### 10.2 CDE.3-b gate evidence
+
+- Coordinator reaches the effective seam ONLY under Execute, and now names neither
+  `CanonicalCoreStepCommand` nor the retired `LegacyExecution` ADT (gate items 4, 5, 6 verified).
+- `DurableProtocolInvocationCharacterizationTest` 8/0/0 (fresh XML) — now on `CommonExecutionBoundary`:
+  fresh=1, reuse=0, divergence=0, decode/schema=0, shell recovery=0, C5 decode-first=0, C6 overlay
+  reuse executor=1, a1-4 lifecycle order.
+- `DualExecutionSeamCharacterizationTest` 5/0/0 — equivalence law holds across all legacy resolution
+  families (1==1 and 0==0).
+- `LegacyExecutionAdapterTest` 2/0/0; full durable package 114/0/0.
+- `:pipeline-architecture-tests --rerun-tasks` 165/0/0 fresh XML.
+- Full `:pipeline-application:test` + UatLocal NOT run (scoped verification per change-scoped rule;
+  pre-existing UatLocal failures fail at base `a05682ec`, not this change). Full verification = NO.
+
+### 10.3 Laws now stated on the common seam (frozen authority)
+
+```
+structural-invalid        prepare = 0, commonExecution = 0
+reuse                     prepare = 0, commonExecution = 0
+divergence                prepare = 0, commonExecution = 0
+recover                   fresh prepare = 0, commonExecution = 0 (legacy shell recovery intact)
+fresh typed-invalid legacy prepare = 1, Ready = 0, commonExecution = 0  (SCHEMA)
+fresh valid legacy        prepare = 1, Ready = 1, commonExecution = 1  (same StepOutcome)
+```
+Note: `prepare` counters (distinct from `commonExecution`) are introduced WITH the registry prepare
+seam (CDE.3-c), which is where the dual-seam equivalence becomes a common-vs-registry frontier.
+
+### 10.4 Result shape
+
+```
+Durable Protocol
+      |   (opaque PreparedExecution)
+      v
+CommonExecutionBoundary            <- new authority (a1 law, both legacy & future registry)
+      |
+      +---- LegacyExecutionAdapter -------> CanonicalInvocationExecutor (@Deprecated compat)
+      |                                           |
+      |                                           v
+      |                                   legacy dispatcher
+      `---- (future) registry strategy -> typed handler -> output normalization
+```
+
+### 10.5 Next pass — CDE.3-c
+
+Registry prepare: `StepRegistry -> ErasedStepAdapter -> codec -> Rejected | Ready(PreparedRegistryExecution)`,
+reusing the SAME `ExecutionPreparation`/`CommonExecutionBoundary` contract. No change to the durable
+coordinator frontier is expected (it already routes by opaque `PreparedExecution`); CDE.3-c wires the
+registry strategy selection by structural step key and proves `fresh typed-invalid registry
+prepare=1 Ready=0 commonExecution=0` and `fresh valid registry prepare=1 Ready=1 commonExecution=1`
+without touching legacy.

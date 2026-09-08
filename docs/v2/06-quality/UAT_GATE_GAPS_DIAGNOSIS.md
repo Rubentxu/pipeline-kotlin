@@ -39,9 +39,13 @@ typed event divergence (coordinator). Working fixtures: `error-abort`, `sleep-ti
 - Repro: `ErrorHandlingTest` ERR-S-001.
 - Failure: coordinator emits indexed step names (`[... echo-0]`) but the DSL
   contract/test expects `echo`; real-process path and canonical coordinator diverge.
+- In-process evidence (PipelineRuleParityTest, ~431ms): `StepFinished` names are
+  `test/<type>-0` (stage-prefixed, e.g. `test/catch-error-enter-0`, `test/echo-0`);
+  the durable subprocess path observed non-prefixed `echo-0`. Both diverge from `echo`,
+  and the two paths also differ in stage prefix — a naming inconsistency to resolve.
 - Effect: catchError/ordering assertions fail.
 - Needs: confirm whether stepName should be the DSL-declared step id (Jenkins parity)
-  in the canonical coordinator.
+  in the canonical coordinator and across both paths.
 
 ## Cross-cutting enabler
 

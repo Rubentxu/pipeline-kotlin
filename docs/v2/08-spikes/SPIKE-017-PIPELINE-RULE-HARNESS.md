@@ -2,7 +2,7 @@
 type: spike
 id: SPIKE-017
 title: "Prove an in-process PipelineRule harness (JenkinsRule-style) for fast, deterministic DSL-semantics UATs"
-status: proposed
+status: passed
 date: 2026-09-08
 related:
   - docs/v2/06-quality/TEST_STRATEGY.md
@@ -72,3 +72,18 @@ semantics, matching the AGENTS "change-scoped, fast, evidence-driven" rule.
 - accept: promote `PipelineRule` to a shared `test-support` module + adopt for the
   DSL-semantics UAT families.
 - reject: document why the subprocess harness must stay for these cases.
+
+## Result (2026-09-08) — PASSED
+
+Implemented `PipelineRule` (v2/pipeline-application test-support:
+`support/PipelineRule.kt`) + `PipelineRuleParityTest`. ERR-S-001 catchError semantics
+reproduce in-process:
+- elapsed ~431ms vs >=300s subprocess path (exit criterion met: <5s).
+- outcome `Unstable` with `CatchErrorTriggered` present (same typed semantics).
+- G3 confirmed precisely: `StepFinished` names are `test/<type>-0`
+  (e.g. `test/echo-0`), not the DSL-contract `echo`. Logged as evidence; tracked in
+  UAT_GATE_GAPS_DIAGNOSIS (not asserted green).
+- XML canary: 1 test, 0 failures.
+
+Promotion to a shared test-support module + adoption for DSL-semantics UAT families is
+the follow-up (openspec change `pipeline-rule-inprocess-harness`).

@@ -556,3 +556,22 @@ proves decode-only admission (handler NOT run) for fresh valid vs fresh typed-in
 `ExecutionPreparation`. Then wire the coordinator prepare selector by structural step key and prove the
 registry laws. Requires its own compile -> focused -> characterization cycle in a dedicated round; not
 rushed here.
+
+### 11.7 CDE.3-c slice 1 LANDED — registry prepare seam (2026-09-08)
+
+`RegistryExecutionPreparation.prepare(registry, key, encodedInput, availableCapabilities)` returns
+`ExecutionPreparation { Rejected | Ready(PreparedRegistryExecution) }`, additive (no coordinator/legacy
+change), commit `58f63a37`. Frozen by `RegistryExecutionPreparationTest` 5/0/0: Ready-on-valid handler=0;
+typed-invalid Reject handler=0; unknown-key Reject; missing-capability Reject BEFORE decode handler=0;
+supplied-capability Ready. `PreparedRegistryExecution` carries the admitted `StepDefinition<*,*>` and the
+erased decoded input for the CDE.3-d execute path.
+
+**Dependency boundary (why the coordinator registry law proof is NOT slice 1):** proving
+`fresh valid registry prepare=1 Ready=1 commonExecution=1` and the selector by structural step key
+requires a registry EXECUTE path on [CommonExecutionBoundary]. A registry-prepared execution routed to
+the boundary today has no executor (the legacy adapter rejects non-legacy prepared with
+`EngineInvariantViolation`). So the coordinator selector + the registry `commonExecution` laws are
+inherently coupled to CDE.3-d/e (registry execute: capability bridge `CanonicalRuntimeContext` ->
+`StepCapabilityAccess`, `handler.execute`, O->StepOutcome). They are therefore opened TOGETHER with the
+CDE.3-d round; wiring the selector now would leave an unrunnable path. CDE.3-c slice 1 stands as the
+independently verifiable decode-only registry prepare contract.

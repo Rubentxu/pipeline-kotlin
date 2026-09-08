@@ -650,3 +650,37 @@ DONE when registry traverses StructuralInvocation -> Registry prepare -> Ready(P
 StepOutcome, protected by frozen characterization, durable/replay suite, architecture fitness, registry
 focused tests, fresh XML and a clean tree. Then open CDE.3-e only if residual fitness/output/capability
 contract work remains.
+
+### 12.6 Progress record (committed) — frontier clean
+
+- d1 `132f4e68` — capability bridge. `EVENT_SINK_CAPABILITY` relocated to neutral `application/Capabilities.kt`;
+  `CanonicalRuntimeCapabilityAccess` (durable) exposes ONLY EVENT_SINK from `CanonicalRuntimeContext.eventSink`,
+  fail-closed get. Gate: CanonicalRuntimeCapabilityAccessTest 4/0/0, CoreEchoSeamTest 6/0/0, seam 20/0/0,
+  architecture 165/0/0.
+- d2 `69bc1ff0` — `PreparedExecution` sealed over the two TEMPORAL structural strategy families
+  (PreparedLegacyExecution | PreparedRegistryExecution), NOT over plugins; `SeamedExecutionRouter.route`
+  selects by strategy family (exhaustive `when`, no stepKey, no concrete-step special-case).
+  LegacyExecutionAdapterTest non-legacy case now uses a real PreparedRegistryExecution. Gate: router 2,
+  adapter 2, dual 5, characterization 8, registry prepare 5, arch 165/0/0.
+- d3 `507c76c1` — `RegistryExecutionBoundary.adapt()` executes a PreparedRegistryExecution's typed handler
+  WITHOUT re-decoding, after a hard capability re-check against the runtime access; handler gets a narrow
+  StepHandlerContext (runtime identity + declared capabilities), never a CanonicalRuntimeContext. Gate:
+  RegistryExecutionBoundaryTest 6/0/0, seam 38/0/0, arch 165/0/0.
+- d4 `d4bd984c` — grounded output normalization: StepOutcome carries no generic output slot and the journal
+  schema is unchanged, so the handler's typed O is never stuffed into StepOutcome and never crosses to the
+  coordinator (no Any as durable contract); durable-observable output is an effect emitted via declared
+  capabilities (echo). Gate: RegistryExecutionOutcomeTest 4/0/0, arch 165/0/0.
+
+All seam tests green (characterization 8, dual 5, adapter 2, router 2, registry prepare 5, registry execute
+6, outcome 4, capability bridge 4, echo seam 6) and architecture fitness 165/0/0 fresh. CDE.3-b/c laws
+unchanged.
+
+### 12.7 d5 starting point (next slice — CDE.3-d gate)
+
+Remaining is the durable-spine proof: wire `CanonicalDurableRunCoordinator` to (a) the CDE.3-c slice-2
+prepare selector by structural step key (registry vs legacy prepare) and (b) route Ready prepared executions
+through `SeamedExecutionRouter.route(legacyAdapter, RegistryExecutionBoundary.adapt())`, then demonstrate
+through the REAL spine: fresh registry prepare=1 common=1 handler=1; replay reuse registry all 0;
+divergence registry all 0; typed-invalid registry prepare=1 common=0 handler=0; missing capability handler=0
+fail-closed. Cross-cutting coordinator change: run L4 module suites + architecture fitness + durable/replay
+as the gate. Open CDE.3-e only if residual fitness/output/capability contract work remains.

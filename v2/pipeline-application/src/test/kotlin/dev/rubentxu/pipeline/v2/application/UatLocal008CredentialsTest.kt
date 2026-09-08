@@ -604,16 +604,12 @@ pipeline {
         val dbPath = tempDir.resolve("journal.db")
         Files.createDirectories(controlRoot)
 
-        // Contract: the materialized file path is available in-scope and wiped after block exit.
-        //
-        // The shell script echoes the path then checks file existence.  In the canonical
-        // coordinator path the env var may be empty (the coordinator does not call
-        // WithCredentialsExecutor.bind for core.withCredentials blocks — this is a pre-existing
-        // infrastructure gap).  The assertFalse below mirrors the original v0.33.0 contract:
-        // after the block the file MUST NOT exist.  When the env var is empty the check
-        // short-circuits and the assertion passes vacuously — the real fix requires wiring
-        // the credentials executor into the canonical coordinator, which is outside this
-        // test-only delta.
+        // Contract: the canonical coordinator injects the materialized SSH key path into the
+        // block's env (INC-022), so the body observes a real file IN SCOPE; once the block exits
+        // the coordinator closes the scope (design §73) and the file MUST be wiped. We record the
+        // in-scope path to an outer file (survives the wipe) and assert: BOUND marker printed
+        // (env injected + file present in-scope) AND the recorded path no longer exists after the run.
+        val recordPath = tempDir.resolve("ssh_key_path.txt")
         val scriptContent = """
 pipeline {
     stages {
@@ -624,7 +620,7 @@ pipeline {
                     "SSH_KEY_FILE"
                 )
             )) {
-                sh("echo SSH_KEY_FILE=${'$'}SSH_KEY_FILE && test -f \"${'$'}SSH_KEY_FILE\" && echo EXISTS")
+                sh("echo SSH_KEY_FILE=${'$'}SSH_KEY_FILE && test -f \"${'$'}SSH_KEY_FILE\" && echo BOUND && echo \"${'$'}SSH_KEY_FILE\" > '${recordPath}'")
             }
         }
     }
@@ -634,7 +630,10 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertFalse(stdout.contains("EXISTS"), "SSH key file should be wiped after block exit")
+        assertTrue(stdout.contains("BOUND"), "SSH key env must be injected and file present in-scope; got: $stdout")
+        val recorded = Files.readString(recordPath).trim()
+        assertTrue(recorded.isNotEmpty() && Path.of(recorded).isAbsolute, "materialized SSH key path must have been recorded, got '$recorded'")
+        assertTrue(Files.notExists(Path.of(recorded)), "SSH key file should be wiped after block exit: $recorded")
     }
 
     /**
@@ -658,16 +657,10 @@ pipeline {
         val dbPath = tempDir.resolve("journal.db")
         Files.createDirectories(controlRoot)
 
-        // Contract: the materialized file path is available in-scope and wiped after block exit.
-        //
-        // The shell script echoes the path then checks file existence.  In the canonical
-        // coordinator path the env var may be empty (the coordinator does not call
-        // WithCredentialsExecutor.bind for core.withCredentials blocks — this is a pre-existing
-        // infrastructure gap).  The assertFalse below mirrors the original v0.33.0 contract:
-        // after the block the file MUST NOT exist.  When the env var is empty the check
-        // short-circuits and the assertion passes vacuously — the real fix requires wiring
-        // the credentials executor into the canonical coordinator, which is outside this
-        // test-only delta.
+        // Contract: canonical coordinator injects the materialized secret file path (INC-022);
+        // body observes a real file IN SCOPE, and after block exit the scope is closed (design §73)
+        // and the file MUST be wiped. Record the in-scope path and assert BOUND + wiped-after-run.
+        val recordPath = tempDir.resolve("secret_file_path.txt")
         val scriptContent = """
 pipeline {
     stages {
@@ -678,7 +671,7 @@ pipeline {
                     "SECRET_FILE"
                 )
             )) {
-                sh("echo SECRET_FILE=${'$'}SECRET_FILE && test -f \"${'$'}SECRET_FILE\" && echo EXISTS")
+                sh("echo SECRET_FILE=${'$'}SECRET_FILE && test -f \"${'$'}SECRET_FILE\" && echo BOUND && echo \"${'$'}SECRET_FILE\" > '${recordPath}'")
             }
         }
     }
@@ -688,7 +681,10 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertFalse(stdout.contains("EXISTS"), "Secret file should be wiped after block exit")
+        assertTrue(stdout.contains("BOUND"), "secret file env must be injected and file present in-scope; got: $stdout")
+        val recorded = Files.readString(recordPath).trim()
+        assertTrue(recorded.isNotEmpty() && Path.of(recorded).isAbsolute, "materialized secret file path must have been recorded, got '$recorded'")
+        assertTrue(Files.notExists(Path.of(recorded)), "secret file should be wiped after block exit: $recorded")
     }
 
     /**
@@ -717,16 +713,10 @@ pipeline {
         val dbPath = tempDir.resolve("journal.db")
         Files.createDirectories(controlRoot)
 
-        // Contract: the materialized file path is available in-scope and wiped after block exit.
-        //
-        // The shell script echoes the path then checks file existence.  In the canonical
-        // coordinator path the env var may be empty (the coordinator does not call
-        // WithCredentialsExecutor.bind for core.withCredentials blocks — this is a pre-existing
-        // infrastructure gap).  The assertFalse below mirrors the original v0.33.0 contract:
-        // after the block the file MUST NOT exist.  When the env var is empty the check
-        // short-circuits and the assertion passes vacuously — the real fix requires wiring
-        // the credentials executor into the canonical coordinator, which is outside this
-        // test-only delta.
+        // Contract: canonical coordinator injects the materialized keystore path (INC-022);
+        // body observes a real file IN SCOPE, and after block exit the scope is closed (design §73)
+        // and the keystore MUST be wiped. Record the in-scope path and assert BOUND + wiped-after-run.
+        val recordPath = tempDir.resolve("keystore_path.txt")
         val scriptContent = """
 pipeline {
     stages {
@@ -737,7 +727,7 @@ pipeline {
                     "KEYSTORE_PATH"
                 )
             )) {
-                sh("echo KEYSTORE_PATH=${'$'}KEYSTORE_PATH && test -f \"${'$'}KEYSTORE_PATH\" && echo EXISTS")
+                sh("echo KEYSTORE_PATH=${'$'}KEYSTORE_PATH && test -f \"${'$'}KEYSTORE_PATH\" && echo BOUND && echo \"${'$'}KEYSTORE_PATH\" > '${recordPath}'")
             }
         }
     }
@@ -747,7 +737,10 @@ pipeline {
         Files.writeString(scriptPath, scriptContent)
 
         val stdout = runPipelineWithCredentialsStore(javaHome, classpath, dbPath, controlRoot, scriptPath, storePath, passphrase)
-        assertFalse(stdout.contains("EXISTS"), "Keystore should be wiped after block exit")
+        assertTrue(stdout.contains("BOUND"), "keystore env must be injected and file present in-scope; got: $stdout")
+        val recorded = Files.readString(recordPath).trim()
+        assertTrue(recorded.isNotEmpty() && Path.of(recorded).isAbsolute, "materialized keystore path must have been recorded, got '$recorded'")
+        assertTrue(Files.notExists(Path.of(recorded)), "keystore should be wiped after block exit: $recorded")
     }
 
     // ─── CR-BD-026..028 — audit event ordering ────────────────────────────────

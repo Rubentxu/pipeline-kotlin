@@ -1,0 +1,176 @@
+package dev.rubentxu.pipeline.v2.domain.step
+
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+
+/**
+ * Canonical serialized form of a step input/output payload (JSON today).
+ *
+ * Carried across the registry seam so the engine and a plugin can exchange a
+ * step payload without sharing a concrete Kotlin type. Reconciles the stringly
+ * `StepDescriptor.inputSchema`/`outputSchema` fields with a typed transport form.
+ */
+@JvmInline
+value class EncodedStepValue(val value: String) {
+    init {
+        require(value.isNotEmpty()) { "EncodedStepValue must not be empty" }
+    }
+}
+
+/**
+ * A capability a Step declares and the engine MUST supply before its handler runs.
+ *
+ * Reconciles the stringly `StepDescriptor.requiredCapabilities` list with a typed
+ * capability token. A handler never runs when a declared capability is unavailable
+ * (fail-closed admission, ADR-0070).
+ */
+@JvmInline
+value class StepCapability(val key: String) {
+    init {
+        require(key.isNotBlank()) { "StepCapability key must not be blank" }
+    }
+
+    override fun toString(): String = key
+}
+
+/**
+ * Symmetric typed codec between a Step payload type and its encoded wire form.
+ *
+ * Implementations MAY use a serialization library; the seam only requires symmetry.
+ */
+interface StepCodec<T : Any> {
+    fun encode(value: T): EncodedStepValue
+
+    fun decode(encoded: EncodedStepValue): T
+
+    /** JSON Schema fragment describing the payload. Reconciles descriptor input/output schema. */
+    fun schema(): String = "{}"
+}
+
+/**
+ * Static contract of one Step family: descriptor metadata plus typed input/output
+ * codecs and the capabilities the handler requires.
+ */
+data class StepContract<I : Any, O : Any>(
+    val key: PluginStepId,
+    val descriptor: StepDescriptor,
+    val inputCodec: StepCodec<I>,
+    val outputCodec: StepCodec<O>,
+    val requiredCapabilities: Set<StepCapability> = emptySet(),
+)
+
+/**
+ * Typed handler adapter for one Step family.
+ *
+ * MUST NOT throw to signal a step failure; it returns a typed result instead. Throwable
+ * exceptions signal an adapter/engine bug and are treated as fail-closed upstream.
+ */
+fun interface StepHandler<I : Any, O : Any> {
+    fun execute(input: I): O
+}
+
+/**
+ * A registered, executable Step family: a typed contract plus its typed handler.
+ */
+interface StepDefinition<I : Any, O : Any> {
+    val contract: StepContract<I, O>
+    val handler: StepHandler<I, O>
+}
+
+/**
+ * Closed outcome algebra of a typed generic invocation through the seam.
+ *
+ * Distinct semantics, never a boolean-plus-null: a successful typed value, an unknown
+ * Step, a decode failure, or a missing capability (rejected before the handler runs).
+ */
+sealed interface StepInvocationOutcome<out O : Any> {
+    data class Success<out O : Any>(val value: O) : StepInvocationOutcome<O>
+    data class UnknownStep(val key: PluginStepId) : StepInvocationOutcome<Nothing>
+    data class DecodeFailure(val key: PluginStepId, val reason: String) : StepInvocationOutcome<Nothing>
+    data class MissingCapability(val key: PluginStepId, val missing: Set<StepCapability>) : StepInvocationOutcome<Nothing>
+}
+
+/**
+ * Open registry of Step families (ADR-0070).
+ *
+ * Registration is open to core Steps and external plugins alike; there is no privileged
+ * registration path. A duplicate key MUST fail deterministically so a plugin cannot
+ * silently shadow a core Step.
+ */
+interface StepRegistry {
+    /** Registers a Step family. Throws [IllegalArgumentException] if the key is already present. */
+    fun register(definition: StepDefinition<*, *>)
+
+    /** Returns the registered definition for [key], or null. */
+    fun definition(key: PluginStepId): StepDefinition<*, *>?
+
+    fun contains(key: PluginStepId): Boolean
+
+    fun keys(): Set<PluginStepId>
+}
+
+/** Default in-memory [StepRegistry] with deterministic duplicate-key rejection. */
+class InMemoryStepRegistry : StepRegistry {
+    private val definitions = linkedMapOf<PluginStepId, StepDefinition<*, *>>()
+
+    override fun register(definition: StepDefinition<*, *>) {
+        val key = definition.contract.key
+        if (definitions.containsKey(key)) {
+            throw IllegalArgumentException("Duplicate StepKey '${key.value}'")
+        }
+        definitions[key] = definition
+    }
+
+    override fun definition(key: PluginStepId): StepDefinition<*, *>? = definitions[key]
+
+    override fun contains(key: PluginStepId): Boolean = definitions.containsKey(key)
+
+    override fun keys(): Set<PluginStepId> = definitions.keys
+}
+
+/**
+ * Generic canonical invocation seam (ADR-0070 / ADR-0073).
+ *
+ * Resolves [StepRegistry] → capability admission → typed decode → [StepHandler].
+ * Unknown step, decode failure and missing capability all fail closed BEFORE the handler
+ * runs, on every invocation path. This is the erased runtime adapter boundary: the engine
+ * holds only an [EncodedStepValue]; the concrete payload type lives behind the codec.
+ */
+interface StepInvoker {
+    fun <I : Any, O : Any> invoke(
+        key: PluginStepId,
+        encodedInput: EncodedStepValue,
+        availableCapabilities: Set<StepCapability>,
+    ): StepInvocationOutcome<O>
+}
+
+/** [StepInvoker] over an open [StepRegistry], erasing payload types at the seam. */
+class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <I : Any, O : Any> invoke(
+        key: PluginStepId,
+        encodedInput: EncodedStepValue,
+        availableCapabilities: Set<StepCapability>,
+    ): StepInvocationOutcome<O> {
+        val raw = registry.definition(key) ?: return StepInvocationOutcome.UnknownStep(key)
+
+        // Erasure boundary: the payload type lives behind the codec, not in the engine.
+        val definition = raw as StepDefinition<Any, Any>
+        val contract = definition.contract
+
+        val missing = contract.requiredCapabilities - availableCapabilities
+        if (missing.isNotEmpty()) {
+            return StepInvocationOutcome.MissingCapability(key, missing)
+        }
+
+        val input = try {
+            contract.inputCodec.decode(encodedInput)
+        } catch (e: Exception) {
+            return StepInvocationOutcome.DecodeFailure(key, e.message ?: "decode failed")
+        }
+
+        val output = definition.handler.execute(input)
+        return StepInvocationOutcome.Success(output as O)
+    }
+}

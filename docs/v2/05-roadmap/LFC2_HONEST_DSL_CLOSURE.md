@@ -24,6 +24,28 @@ no-fake-return gate. See the native change's `design.md` for first bounded slice
 - [ ] Legacy-event-surface failures (M2-R1 parallel/retry/timeout) are NOT conflated with DSL-fake;
       quarantined and traceable to E-EM-11 (DONE).
 
+## Reconstitution (2026-09-08) — extensibility is part of the LFC-2 gate
+
+Change: `openspec/changes/lfc2-step-constitution-plugin-seam` (Phase B, APPROVED). Authority:
+ADR-0070..0074 + specs (STEP_CONSTITUTION, EXECUTABLE_SCENARIO_CORPUS, PIPELINE_TEST_HARNESS,
+STEP_PLUGIN_CERTIFICATION, TEST_SANDBOX_PROFILES). LFC-2 does not close only because the DSL surface
+is honest; it must also be **demonstrably extensible**: a Step is not done because a façade returns
+values, it is done when it is CERTIFIED.
+
+Reconstitution itemized list:
+| Item | Status | Evidence |
+|------|--------|----------|
+| Open StepRegistry + closed ExecutionNode structure (ADR-0070) | 🔲 pending (B1) | — |
+| generic Step seam: Invoke → Registry → typed adapter → handler | 🔲 pending (B4) | — |
+| migrate `echo` + `sh` onto the seam | 🔲 pending (B5) | — |
+| RealPipelineExtension (HF2) | 🔲 pending (B6) | — |
+| external reference plugin proof (zero core change) | 🔲 pending (B7) — extensibility gate | — |
+| StepContractSuite / certification (ADR-0074) | 🔲 pending (B8) | — |
+
+Reconstitution gate (added to Exit gate): `lfc-2-honest-dsl-closure` green AND the extensibility
+proof CERTIFIED (external plugin runs through the same path as `echo`/`sh` with no core edit, on a
+real distribution, via the common StepContractSuite). Until then LFC-2 stays OPEN.
+
 ## Itemized list (audit 2026-09-08, status legend: ✅ closed · 🟡 partial/debt · 🔲 pending · ⏭ deferred)
 | Item | Status | Evidence |
 |------|--------|----------|

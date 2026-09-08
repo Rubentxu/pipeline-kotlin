@@ -73,6 +73,50 @@ D. Backlog item with documented Exit criterion + Gate owner.
    support MUST be rejected before execution on EVERY run path — never silently
    converted to a comment, no-op, or empty shell.
 
+## STEP CONSTITUTION & EXTENSIBILITY (MANDATORY)
+
+Authority: ADR-0070..0074 + STEP_CONSTITUTION / STEP_PLUGIN_CERTIFICATION / PIPELINE_TEST_HARNESS.
+This is the operative translation; the ADRs/specs are the architectural authority. Openspec change:
+`openspec/changes/lfc2-step-constitution-plugin-seam`.
+
+4. **Closed execution structure, open Step registry.** The engine exhaustively matches a closed
+   structural ADT (`ExecutionNode`/`StepBodies`); it MUST NOT `when` over plugin Step classes.
+   `StepKey → StepDefinition → StepHandler` resolves via an open registry.
+5. **One execution path.** Core Steps are a standard bundled plugin set; core and external plugins
+   run the exact same path (`Invoke → Registry → erased adapter → StepHandler → declared
+   capabilities → durable engine → typed result/events`). No privileged core path.
+6. **Fail-closed admission is registry-driven** (ADR-0069 invariant preserved): unknown/incompatible
+   `StepKey`, schema mismatch and body-shape mismatch are rejected before effects on every run path.
+7. **Forbidden** (fitness-gated): concrete-Step switches in a central dispatcher; KSP with
+   `when(stepName)`; core privileged paths; fake runtime returns; a `Map<String, Any?>` public Step
+   contract; a plugin requiring changes in domain/application/compiler/dispatcher; declaring
+   capabilities broader than those actually used.
+8. **Block Steps re-enter the engine** through `BodyInvoker.invoke`/`BranchInvoker.invokeAll`
+   (ADR-0073). Never add a `dispatchRetryBlock`/`dispatchTimeoutBlock`/… collection; route
+   control-flow Steps through the shared body machinery. `parallel` is composable Named Bodies, not a
+   permanent stage-terminal.
+9. **A Step is done only when CERTIFIED** (ADR-0074). States: DESIGNED /
+   IMPLEMENTED_UNCERTIFIED / CERTIFIED / QUARANTINED / RETIRED. Never record `DONE/PASS` for an
+   uncertified Step; quarantine or mark `IMPLEMENTED_UNCERTIFIED` instead.
+10. **Harness fidelity HF0..HF6** (ADR-0072): test at the minimum faithful level (HF0 Pure Contract,
+    HF1 In-Process, HF2 Forked Real Distribution, HF3 Restart/Resume, HF4 Rootless Sandbox,
+    HF5 Service Sandbox, HF6 Online Smoke). The canonical LFC-2 `T0..T4` items are NOT renamed.
+11. **Executable scenarios** (ADR-0071): the shown `.pipeline.kts` is the file the harness runs; the
+    same file is executed by ScenarioRunner, TestKit, Just and CI. Invalid programs are first-class
+    fixtures.
+
+### Fitness tests (mechanically checkable)
+
+- runtime does not depend on the DSL `StepSpec`;
+- no central concrete-Step switch (fitness scans for per-step dispatcher cases);
+- KSP has no semantic `when(stepName)`;
+- no declarative fake-return path (no silent placeholder return);
+- no global cwd/env mutation (dir/withEnv propagate an explicit context);
+- declared capability == used capability;
+- an external plugin adds a Step with zero core changes.
+
+
+
 ## V2 TESTING RULES
 
 ### Execution economics ( Gradle )

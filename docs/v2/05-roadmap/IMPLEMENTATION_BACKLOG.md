@@ -282,6 +282,35 @@ Design: `openspec/changes/lfc-2-honest-dsl-closure/design.md` (repository-root r
 
 These are design work units, not authorization to change production in the current diagnostic round.
 
+### LFC-2 reconstitution (step constitution / plugin seam / certification; 2026-09-08, APPROVED)
+
+Change: `openspec/changes/lfc2-step-constitution-plugin-seam`. Authority: ADR-0070..0074 + specs.
+This is the extensibility half of the LFC-2 gate; the DSL-surface honesty half stays with
+`lfc-2-honest-dsl-closure`. Full slice order/gates in that change's `tasks.md`.
+
+| Slice | Milestone → exit criterion | Gate / owner |
+|---|---|---|
+| B1 Step Constitution | LFC-2 → sealed `ExecutionNode` + open `StepRegistry` (`StepDefinition`/`StepContract`); fail-closed admission; no per-Step switch | HF0; STEP_CONSTITUTION / ADR-0070 |
+| B2 ScenarioRunner | LFC-2 → `.pipeline.kts` executable by ScenarioRunner; four inventories converge | HF1; EXECUTABLE_SCENARIO_CORPUS / ADR-0071 |
+| B3 PipelineExtension (HF1) | LFC-2 → pipeline-test-rule tagged HF1 + `StepContractSuite` | HF1; PIPELINE_TEST_HARNESS / ADR-0072 |
+| B4 generic Step seam | LFC-2 → Invoke → Registry → typed adapter → handler; capability admission | HF0/HF1; ADR-0070 |
+| B5 migrate `echo`+`sh` | LFC-2 → both run via the seam; concrete dispatcher cases deleted | HF1/HF2; ADR-0070 |
+| B6 RealPipelineExtension | LFC-2 → HF2 forked real distribution | HF2; ADR-0072 |
+| B7 external plugin proof | LFC-2 → external plugin runs with **zero core change** (extensibility gate) | HF2; ADR-0070/0071 |
+| B8 Step certification | LFC-2 → StepContractSuite/PluginContractSuite; Step reaches CERTIFIED | HF0..HF2; ADR-0074 / STEP_PLUGIN_CERTIFICATION |
+| B9 strict DSL | LFC-2 → DslMarker/scopes/smart constructors; fake-return closure; source fidelity | HF1; DSL_SPEC |
+| B10 BodyInvoker/BranchInvoker | LFC-2 → block Steps re-enter engine; no `dispatch*Block` collection | HF1/HF3; ADR-0073 / BLOCK_STEP_EXECUTION |
+| B11 dir/withEnv/timestamps | LFC-2 → context-only blocks via BodyInvoker | HF1; ADR-0073 |
+| B12 retry/timeout | LFC-2 → real semantics over BodyInvoker (steers E-EM-11 D1/D2) | HF3; E-EM-11 + ADR-0073 |
+| B13 composable parallel | LFC-2 → Named Bodies + BranchInvoker; durable branch machinery | HF3; E-EM-11 D3 + ADR-0073 |
+| B14 durable scripted runtime values | LFC-2 → real pwd/isUnix; no fake returns | HF1/HF3; ADR-0070/0074 |
+| B15 typed when/post | LFC-2 → conditions/post on typed outcomes | HF1; ADR-0074 |
+| B16 formal `@KotlinScript` + source fidelity | LFC-2 → formal scripting, source mapping, final corpus | HF1/HF2; ADR-0071 |
+| B17 LFC-2 GATE | LFC-2 → `lfc-2-honest-dsl-closure` green AND extensibility proof CERTIFIED | all HF; LFC2_HONEST_DSL_CLOSURE |
+
+These are approved Phase B design/implementation work units (change `lfc2-step-constitution-plugin-seam`,
+APPROVED 2026-09-08), executed with per-slice gates per `tasks.md`. LFC-2 stays OPEN until B17.
+
 ## Dependency rule
 
 No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con el walking skeleton. Hacerlo produciría plugins sobre un runtime aún no validado.

@@ -575,3 +575,78 @@ inherently coupled to CDE.3-d/e (registry execute: capability bridge `CanonicalR
 `StepCapabilityAccess`, `handler.execute`, O->StepOutcome). They are therefore opened TOGETHER with the
 CDE.3-d round; wiring the selector now would leave an unrunnable path. CDE.3-c slice 1 stands as the
 independently verifiable decode-only registry prepare contract.
+
+---
+
+## 12. CDE.3-d ACCEPTED — registry execute through the common seam (plan for the next pass)
+
+Accepted checkpoint (frontier clean): CDE.3-b DONE + CDE.3-c slice 1 DONE. CDE.3-d is the next real
+slice, to start directly from §11.7 — do NOT re-plan B1/CDE.1/CDE.2/CDE.3-a/b/c.
+
+### 12.1 Goal
+
+A `PreparedRegistryExecution` must traverse the SAME authoritative [CommonExecutionBoundary] as legacy
+and land on a `StepOutcome`, preserving: prepare-rejected -> commonExecution = 0; prepare-ready ->
+commonExecution = 1; replay reuse -> registry prepare = 0, commonExecution = 0, handler = 0;
+divergence -> registry prepare = 0, commonExecution = 0, handler = 0.
+
+### 12.2 Decomposition (d1–d5, one behavior per commit)
+
+**d1 — Capability bridge.** Only `CanonicalRuntimeContext -> StepCapabilityAccess`, explicit and small.
+Expose ONLY known+declared capabilities (`EVENT_SINK_CAPABILITY` today). Never hand the full
+`CanonicalRuntimeContext` to a handler; never rebuild a PipelineContext. Direction:
+`StepContract.requiredCapabilities -> admission -> StepCapabilityAccess -> handler`, never the reverse.
+Gate: capability lookup focused tests; missing capability fail-closed; existing legacy behaviour intact;
+durable + architecture green. Atomic commit.
+
+**d2 — CommonExecutionBoundary strategy routing.** Route at least two PreparedExecution classes
+(`PreparedLegacyExecution`, `PreparedRegistryExecution`) by strategy kind / representation, NOT by
+stepKey and NOT by a sealed hierarchy over concrete plugins. Acceptable structural categories:
+Legacy-compatible form | Registry form. Not acceptable: `PreparedExecution.Echo/.Sh/.Uppercase`. Gate:
+legacy common execution stays 1:1; a registry prepared fixture crosses the boundary; no concrete handler
+needs special-casing. Commit.
+
+**d3 — Registry handler execution.** `PreparedRegistryExecution -> capability admission -> erased
+adapter -> typed handler.execute(input)`. Prepare/codec already happened BEFORE the boundary; handler
+must NOT re-decode. Demonstrate fresh valid registry prepare=1 commonExecution=1 handler=1;
+typed-invalid registry prepare=1 commonExecution=0 handler=0; missing capability handler=0 with
+admission semantics clearly characterized (decide with evidence whether admission is in prepare or
+immediately before the handler inside the boundary, but a handler must never start with missing
+capabilities). Commit green.
+
+**d4 — O -> StepOutcome normalization.** Do not let `Any?` escape to the durable coordinator. Path:
+`handler: I -> O -> output codec/adapter -> canonical encoded result -> StepOutcome`. If `StepOutcome`
+cannot represent generic output correctly, ground the gap first; do NOT deform it with casts; do NOT
+silently change the journal schema. Gate: typed output, void/unit output, handler failure, output-encode
+failure (typed), durable coordinator sees only StepOutcome. Commit.
+
+**d5 — Registry durable proof (the real CDE.3-d gate).** Run registry through the real spine:
+fresh registry prepare=1 commonExecution=1 handler=1; replay reuse registry all 0; divergence registry
+all 0; typed-invalid registry prepare=1 commonExecution=0 handler=0; missing capability handler=0
+fail-closed.
+
+### 12.3 Mandatory invariants (d1–d5)
+
+- one single durable spine;
+- `CommonExecutionBoundary` remains the authority for effective execution;
+- no `when(stepName)`; no `core.echo` special-case;
+- no handler before capability admission;
+- no omnipotent `CanonicalRuntimeContext` handed to the plugin;
+- no repeated decode inside the handler path;
+- no `Any` as a durable contract;
+- no journal / fingerprint / cursor changes;
+- legacy stays green.
+
+### 12.4 EVENT_SINK_CAPABILITY is a real capability, not global access
+
+`echo` requiring an output/event sink must stay DECLARED in its `StepContract` and SUPPLIED through
+`StepCapabilityAccess`. Do not resolve it by turning events into global access. This is the proof the
+capability model is real, not documentary.
+
+### 12.5 Final CDE.3-d gate
+
+DONE when registry traverses StructuralInvocation -> Registry prepare -> Ready(PreparedRegistryExecution)
+-> CommonExecutionBoundary -> capability admission -> typed handler -> output normalization ->
+StepOutcome, protected by frozen characterization, durable/replay suite, architecture fitness, registry
+focused tests, fresh XML and a clean tree. Then open CDE.3-e only if residual fitness/output/capability
+contract work remains.

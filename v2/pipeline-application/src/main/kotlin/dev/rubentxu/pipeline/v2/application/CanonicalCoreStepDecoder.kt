@@ -41,13 +41,14 @@ sealed interface CanonicalCoreStepCommand {
 
     companion object {
         /**
-         * Single source of truth for canonical core plugin IDs.
-         * Derived from the pluginId overrides declared on each sealed subtype.
-         * Adding a new sealed subtype with a pluginId override automatically propagates here.
+         * Closed legacy-core canonical COMMAND plugin IDs (the execution-structure world routed to the
+         * legacy decode family). B1.2c3: `core.echo` is deliberately NOT here — echo has migrated to the
+         * open StepRegistry (CoreStepRegistryFactory), so with a registry injected it is classified as
+         * StructuralRegistry. Other legacy commands (sh, ...) remain closed legacy-core until they too
+         * migrate. NOTE: this is the legacy authority only; it no longer means "all core plugin IDs".
          */
         val ALL_PLUGIN_IDS: Set<String> = setOf(
             "core.sh",
-            "core.echo",
             "core.error",
             "core.sleep",
             "core.file.writeFile",

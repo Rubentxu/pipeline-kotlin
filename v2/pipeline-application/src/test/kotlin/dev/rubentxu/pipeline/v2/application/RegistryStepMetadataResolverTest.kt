@@ -64,12 +64,13 @@ class RegistryStepMetadataResolverTest {
 
     @Test
     fun `a core key delegates to the legacy core authority even when absent from the registry`() {
-        // The composite delegates core keys to the legacy core catalog, NOT to any registry definition,
-        // so core semantics (echo/sh behaviour) cannot be shadowed by a definition.
+        // The composite delegates still-legacy core keys to the legacy core catalog, NOT to any registry
+        // definition, so core semantics (sh) cannot be shadowed by a definition. B1.2c3: core.echo has
+        // migrated out of the legacy set, so it is no longer a "core delegates" key here.
         val resolver = RegistryStepMetadataResolver.composite(registry())
-        val metadata = resolver.resolve(PluginStepId("core.echo"))
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.echo").replayPolicy, metadata!!.replayPolicy)
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.echo").effects, metadata.effects)
+        val metadata = resolver.resolve(PluginStepId("core.sh"))
+        assertEquals(CanonicalCoreStepMetadata.metadata("core.sh").replayPolicy, metadata!!.replayPolicy)
+        assertEquals(CanonicalCoreStepMetadata.metadata("core.sh").effects, metadata.effects)
     }
 
     @Test

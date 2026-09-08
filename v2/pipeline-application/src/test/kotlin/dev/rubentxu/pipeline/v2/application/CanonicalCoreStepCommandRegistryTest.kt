@@ -30,7 +30,7 @@ class CanonicalCoreStepCommandRegistryTest {
     fun `ALL_PLUGIN_IDS matches expected set`() {
         val expected = setOf(
             "core.sh",
-            "core.echo",
+            // B1.2c3: core.echo is deliberately NOT in the legacy set (migrated to the StepRegistry).
             "core.error",
             "core.sleep",
             "core.file.writeFile",

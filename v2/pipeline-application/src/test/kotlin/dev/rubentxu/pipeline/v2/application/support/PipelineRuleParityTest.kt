@@ -94,4 +94,30 @@ class PipelineRuleParityTest {
             "withCredentials body must not be dispatched when the store is unavailable",
         )
     }
+
+    @Test
+    fun `G1 catchError wrapping a structured error compiles and is caught`(@TempDir workDir: Path) {
+        // Regression for UAT_GATE_GAPS_DIAGNOSIS G1: catchError { error("..") } used to fail
+        // compilation ("cannot embed structured step 'error' into a workflow-control shell wrapper").
+        // It must now project `error` as a typed core.error abort node; the coordinator dispatches a
+        // Failure and the catchError overlay (default UNSTABLE) suppresses it, continuing to after-catch.
+        val spec = pipeline {
+            stages {
+                stage("test") {
+                    catchError(message = "caught") {
+                        error("Simulated build error", "SCRIPT")
+                    }
+                    echo("after-catch")
+                }
+            }
+        }
+        val result = PipelineRule.run(spec, "g1.pipeline.kts", "catchError{error}", "wc-g1-error", workDir)
+
+        assertTrue(
+            result.outcome !is RunOutcome.Failure,
+            "catchError must catch a nested structured error (default UNSTABLE), got ${result.outcome}",
+        )
+        val names = result.events.filterIsInstance<StepFinished>().map { it.stepName }
+        assertTrue(names.any { it.contains("echo") }, "after-catch echo must run; names=$names")
+    }
 }

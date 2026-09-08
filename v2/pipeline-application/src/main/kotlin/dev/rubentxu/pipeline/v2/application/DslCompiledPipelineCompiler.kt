@@ -377,7 +377,12 @@ object DslCompiledPipelineCompiler {
      * never emits a silent shell comment.
      */
     private fun projectInnerScope(innerSteps: List<StepSpec>, scopeToken: String): List<StepNode> {
-        val hasStructuredChild = innerSteps.any { it is StepSpec.CatchError || it is StepSpec.WarnError }
+        // G1 (INC gate): `error` is also structured — it must abort the inner scope as a typed
+        // core.error node so the coordinator's catchError overlay can catch it, never be inlined
+        // as a silent shell comment by buildShellScript.
+        val hasStructuredChild = innerSteps.any {
+            it is StepSpec.CatchError || it is StepSpec.WarnError || it is StepSpec.Error
+        }
         if (!hasStructuredChild) {
             return listOf(
                 OpaqueStepNode(
@@ -439,6 +444,18 @@ object DslCompiledPipelineCompiler {
                     structuredOccurrence++
                 }
                 is StepSpec.Shell, is StepSpec.Echo, is StepSpec.WriteFile -> plainRun += step
+                is StepSpec.Error -> {
+                    // G1: project a structured `error` to a typed core.error abort node so the
+                    // coordinator dispatches a Failure and the enclosing catchError overlay decides
+                    // whether to suppress (default UNSTABLE) or propagate. Never a silent shell comment.
+                    flushPlainRun()
+                    nodes += OpaqueStepNode(
+                        id = StepId("$scopeToken/error-$structuredOccurrence"),
+                        pluginStepId = PluginStepId("core.error"),
+                        payload = VersionedStepPayload(PAYLOAD_SCHEMA_VERSION, encodePayload(step)),
+                    )
+                    structuredOccurrence++
+                }
                 else -> throw IllegalStateException(
                     "Workflow-control scope '$scopeToken' cannot compile structured step '${step.name}' " +
                         "into its shell wrapper; only sh/echo/writeFile are embeddable and " +

@@ -1,32 +1,34 @@
 # Tasks: catcherror-semantics-em56 (EM-5/EM-6)
 
-Evidence: `ErrorHandlingTest` ERR-S-002/003/006/008 (red, roadmap-deferred, pre-existing).
-Harness: PipelineRule (SPIKE-017, passed). Base: `a8a12e02`.
-> Production coordinator change — follow design/ADR for the catchError re-throw + nesting
-> contract before apply (per AGENTS v2 prime directive).
+Evidence: fresh real `ErrorHandlingTest` run (HEAD `f13d02a2`) — ERR-S-002/004/007/008 red,
+ERR-S-001/003/006 green. Design: `design.md` (D1-D4). Apply is gated per AGENTS V2; verify each step
+keeps ERR-S-001/003/006 green before advancing. Fast gate: real `ErrorHandlingTest` (~39 s).
 
-## Design
-- D: trace the catchError overlay continuation in `CanonicalDurableRunCoordinator.dispatch()`
-  + `StepExecutionBoundary`; record ADR entry for: re-throw on `buildResult==FAILURE` (emit
-  CatchErrorTriggered then propagate Failure), LIFO nested-overlay resolution (inner wins), and
-  `unstable`/StageMarkedUnstable not being a catchable failure. Reconcile ADR-0054 +
-  UAT_JENKINS_EXECUTION_PARITY.
+## T1 — Gate the CatchErrorTriggered marker on a real inner failure (D1)
+- Track the inner-scope terminal `StepOutcome` at the CatchErrorTriggered boundary; publish the
+  `CatchErrorTriggered` domain event only when the inner scope actually failed.
+- Fixes ERR-S-008 (no event when only `unstable()` fired). Verify ERR-S-008 green, ERR-S-001 stays
+  green (real failure still emits).
 
-## T1 — ERR-S-002 re-throw (buildResult FAILURE)
-- Emit `CatchErrorTriggered` on the FAILURE path and propagate the Failure (do not suppress).
-- Regression via PipelineRule: buildResult FAILURE inner `sh exit 1` => RunOutcome.Failure,
-  CatchErrorTriggered present, sibling echo not run.
+## T2 — FAILURE re-throw records the catch then aborts (D2)
+- On `CatchErrorOverlay(buildResult==FAILURE)` fold of a real inner failure, publish
+  `CatchErrorTriggered(buildResult=FAILURE, stageResult=FAILURE)` before aborting.
+- Fixes ERR-S-002. Verify ERR-S-002 green (event present + exit 1 + no after-catch echo).
 
-## T2 — ERR-S-003 warnError UNSTABLE
-- warnError inner failure => StageMarkedUnstable present and StageFinished present; pipeline
-  exits 0 (UNSTABLE not abort).
+## T3 — Nested overlay re-throw resolves LIFO (D3)
+- Inner FAILURE re-throws to the next enclosing overlay; enclosing default (UNSTABLE) overlay catches
+  and downgrades to ContinueUnstable; abort only at the outermost FAILURE / no overlay.
+- Fixes ERR-S-007. Verify ERR-S-007 green (exit 0, >=2 CatchErrorTriggered, after-nested echo runs).
 
-## T3 — ERR-S-006 nested catchError (outer catches inner)
-- Nested overlays resolve LIFO; outer catchError re-catches inner outcome; pipeline continues.
-
-## T4 — ERR-S-008 unstable override
-- `unstable` inside catchError must NOT fire CatchErrorTriggered (no failure to catch).
+## T4 — StageFinished at the stage boundary (D4)
+- Emit `StageFinished` (outcome success/unstable) as each stage's linear steps fold in the canonical
+  coordinator.
+- Fixes ERR-S-004. Verify ERR-S-004 green + no regression to ERR-S-001/003/006/007 + coordinator
+  scope/event suites.
 
 ## Verify
-- L1/L2 via PipelineRule (fast) per case + ERR-S real-process parity.
-- ERR-S-001 (default UNSTABLE suppress) and ERR-S-007 nested-catch continue green.
+- After T1-T3: run `ErrorHandlingTest` fully; all ERR-S-001..008 green.
+- Coordinator unit suites (`CanonicalDurableRunCoordinatorTest`, `CanonicalCoordinatorScopeStackTest`,
+  `CanonicalEmitEventNodeDispatcherTest`, `CanonicalCoordinatorScopeStackTest`) stay green.
+- Compiler suite (`DslCompiledPipelineCompilerTest`) stays green.
+- No new DomainEvent subtype, no `ContextOverlay.Credentials` change, no IR secret leak.

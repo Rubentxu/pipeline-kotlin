@@ -28,6 +28,9 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 
 /**
  * UAT-LFC1-008-SCOPE-STACK: Coordinator scope tracking for catchError/warnError.
@@ -50,7 +53,9 @@ class CanonicalCoordinatorScopeStackTest {
             clock,
             DefaultEffectReplayPolicy(),
             InMemoryEventStore(),
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
     }
 
     /**
@@ -277,4 +282,13 @@ class CanonicalCoordinatorScopeStackTest {
                 "Error message should mention underflow: ${e.message}")
         }
     }
+}
+
+/** EM-7 test seam: a fail-closed credential scope port. Coordinator tests that do not
+ * exercise withCredentials must never dispatch a credential body, so this stub returns
+ * Unavailable(StoreUnavailable) (the coordinator maps it to an INFRASTRUCTURE Failure). */
+private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
+    CredentialScopeOutcome.Unavailable(
+        CredentialScopeFailure.StoreUnavailable("No credential store in this coordinator unit test"),
+    )
 }

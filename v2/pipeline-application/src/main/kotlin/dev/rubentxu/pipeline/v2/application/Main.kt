@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinat
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
 import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
 import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
@@ -586,6 +587,7 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
+            withCredentialsExecutor = withCredentialsExecutor,
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
@@ -664,6 +666,7 @@ private fun runCanonicalPipeline(
     eventSink: EventSink,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
+    withCredentialsExecutor: WithCredentialsExecutor? = null,
 ): RunOutcome = kotlinx.coroutines.runBlocking {
     CanonicalDurableRunCoordinator(
         dispatcher = CanonicalNodeDispatcher(),
@@ -672,6 +675,7 @@ private fun runCanonicalPipeline(
         clock = clock,
         effectReplayPolicy = effectReplayPolicy,
         eventSink = eventSink,
+        credentialScopePort = WithCredentialsExecutorScopeAdapter(withCredentialsExecutor, eventSink),
         controlDirRoot = controlDirRoot,
         shOptions = ShOptions(
             workspaceRoot = controlDirRoot.resolve("workspace"),

@@ -45,6 +45,15 @@ import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import java.nio.file.Files
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
+import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.domain.credentials.StringBindingSpec
 
 @Timeout(10)
 class CanonicalDurableRunCoordinatorTest {
@@ -74,7 +83,9 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), eventStore,
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         assertEquals(RunOutcome.Unstable, outcome)
         assertEquals(1, eventStore.eventsFor(runId.value).filterIsInstance<CatchErrorTriggered>().count())
@@ -121,7 +132,9 @@ class CanonicalDurableRunCoordinatorTest {
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = InMemoryEventStore(),
             controlDirRoot = tempDir.resolve("control"),
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         assertEquals(RunOutcome.Success, outcome)
         assertFalse(Files.exists(tempDir.resolve("relaunched.txt")), "A reconciled result must not relaunch the shell")
@@ -164,7 +177,9 @@ class CanonicalDurableRunCoordinatorTest {
             eventSink = InMemoryEventStore(),
             controlDirRoot = tempDir.resolve("control"),
             shOptions = ShOptions(tempDir.resolve("workspace"), false, null, emptyMap()),
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         assertTrue(outcome is RunOutcome.Failure)
         assertEquals(FailureKind.TIMEOUT, (outcome as RunOutcome.Failure).failure.kind)
@@ -268,7 +283,9 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), journal, InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), InMemoryEventStore(),
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         assertEquals(RunOutcome.Success, outcome)
         assertEquals(
@@ -307,7 +324,9 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), InMemoryEventStore(), controlDirRoot = tempDir.resolve("control"),
-        ).run(pipeline, RunId("canonical-dir-working-directory"))
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, RunId("canonical-dir-working-directory"))
 
         assertEquals(RunOutcome.Success, outcome)
         assertEquals(targetDirectory.toString(), Files.readString(pwdOracle).trim())
@@ -322,7 +341,9 @@ class CanonicalDurableRunCoordinatorTest {
         val coordinator = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), journal, cursorStore, clock,
             DefaultEffectReplayPolicy(), InMemoryEventStore(),
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
 
         coordinator.run(echoPipeline("original"), runId)
         val outcome = coordinator.run(echoPipeline("changed"), runId)
@@ -351,7 +372,9 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), journal, InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), InMemoryEventStore(),
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         assertTrue(outcome is RunOutcome.Failure)
         assertEquals(FailureKind.SCRIPT, (outcome as RunOutcome.Failure).failure.kind)
@@ -393,7 +416,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         val outcome = coordinator.run(pipeline, runId)
         val resumedOutcome = coordinator.run(pipeline, runId)
 
@@ -451,7 +476,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         val outcome = coordinator.run(pipeline, runId)
 
         // Both steps must succeed - this proves the decoder was called for each step
@@ -489,7 +516,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         val outcome = coordinator.run(pipeline, runId)
 
         assertTrue(outcome is RunOutcome.Failure, "Outcome must be Failure")
@@ -516,7 +545,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         coordinator.run(echoPipeline("test"), runId)
 
         val events = eventStore.eventsFor(runId.value).toList()
@@ -543,7 +574,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         coordinator.run(echoPipeline("test"), runId)
 
         val events = eventStore.eventsFor(runId.value).toList()
@@ -583,7 +616,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         coordinator.run(pipeline, runId)
 
         val events = eventStore.eventsFor(runId.value).toList()
@@ -613,7 +648,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
 
         // First run - executes and journals
         coordinator.run(echoPipeline("test"), runId)
@@ -654,7 +691,9 @@ class CanonicalDurableRunCoordinatorTest {
                 ) = ReplayDecision.ABORT
             },
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
 
         val outcome = coordinator.run(echoPipeline("must-not-dispatch"), runId)
 
@@ -704,7 +743,9 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        )
+        
+    credentialScopePort = noOpCredentialScopePort(),
+)
         coordinator.run(pipeline, runId)
 
         val events = eventStore.eventsFor(runId.value).toList()
@@ -739,7 +780,9 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), eventStore,
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         assertEquals(RunOutcome.Success, outcome)
         val reached = eventStore.eventsFor(runId.value)
@@ -767,7 +810,9 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), eventStore,
-        ).run(pipeline, runId)
+        
+    credentialScopePort = noOpCredentialScopePort(),
+).run(pipeline, runId)
 
         // ML-R9 T-09 local single-run semantics: record-only, never abort the run.
         // Jenkins verbatim: in local single-run there is no cross-build coordination;
@@ -787,6 +832,143 @@ class CanonicalDurableRunCoordinatorTest {
             "The older ordinal must produce a typed MilestoneAborted event for observability")
         assertNotNull(aborted.first().reason, "MilestoneAborted must carry a reason")
     }
+
+    @Test
+    fun `withCredentials acquires scope overlays env and always closes`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        var closeCount = 0
+        val port: CredentialScopePort = CredentialScopePort { bindings, _ ->
+            assertEquals(1, bindings.size)
+            assertEquals("secret-id", bindings.single().credentialsId.value)
+            CredentialScopeOutcome.Acquired(
+                object : AcquiredCredentialScope {
+                    override val env: Map<String, SecretHandle> =
+                        mapOf("MY_SECRET" to SecretHandle.plain("s3cr3t"))
+                    override val credentials: List<CredentialsId> =
+                        listOf(CredentialsId("secret-id"))
+                    override fun close(): CredentialScopeCleanup {
+                        closeCount++
+                        return CredentialScopeCleanup.Cleaned
+                    }
+                },
+            )
+        }
+        val bindingsJson = CredentialBindingsPayload.encode(
+            listOf(StringBindingSpec(credentialsId = CredentialsId("secret-id"), variable = "MY_SECRET")),
+        )
+        val pipeline = withCredentialsPipeline(
+            bindingsJson,
+            echoStep("creds/echo", "ran under scope"),
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            InMemoryOperationJournal(clock),
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = port,
+        )
+        val outcome = coordinator.run(pipeline, RunId("wc-acquired"))
+
+        assertEquals(RunOutcome.Success, outcome)
+        assertEquals(1, closeCount, "acquired scope must be closed exactly once after the body")
+        assertTrue(
+            eventStore.eventsFor("wc-acquired").filterIsInstance<StepStarted>().any { it.stepName == "creds/echo" },
+            "the withCredentials body must be dispatched under the acquired scope",
+        )
+    }
+
+    @Test
+    fun `withCredentials unavailable fails closed and never dispatches body`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        val bindingsJson = CredentialBindingsPayload.encode(
+            listOf(StringBindingSpec(credentialsId = CredentialsId("secret-id"), variable = "MY_SECRET")),
+        )
+        val pipeline = withCredentialsPipeline(bindingsJson, echoStep("creds/never", "must not run"))
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            InMemoryOperationJournal(clock),
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = noOpCredentialScopePort(),
+        )
+        val outcome = coordinator.run(pipeline, RunId("wc-unavailable"))
+
+        assertTrue(outcome is RunOutcome.Failure, "unavailable scope must fail closed, got $outcome")
+        assertTrue(
+            eventStore.eventsFor("wc-unavailable").filterIsInstance<StepStarted>().none { it.stepName == "creds/never" },
+            "body must not run when the credential scope is unavailable",
+        )
+    }
+
+    @Test
+    fun `withCredentials cleanup failure folds a successful body to failure`() = runBlocking {
+        val clock = SystemClock()
+        val eventStore = InMemoryEventStore()
+        var closeCount = 0
+        val port: CredentialScopePort = CredentialScopePort { _, _ ->
+            CredentialScopeOutcome.Acquired(
+                object : AcquiredCredentialScope {
+                    override val env: Map<String, SecretHandle> =
+                        mapOf("MY_SECRET" to SecretHandle.plain("s3cr3t"))
+                    override val credentials: List<CredentialsId> = emptyList()
+                    override fun close(): CredentialScopeCleanup {
+                        closeCount++
+                        return CredentialScopeCleanup.Failed(
+                            orphanPaths = listOf(Path.of("/tmp/leaked")),
+                            message = "secure wipe failed",
+                        )
+                    }
+                },
+            )
+        }
+        val bindingsJson = CredentialBindingsPayload.encode(
+            listOf(StringBindingSpec(credentialsId = CredentialsId("secret-id"), variable = "MY_SECRET")),
+        )
+        val pipeline = withCredentialsPipeline(bindingsJson, echoStep("creds/echo", "succeeded body"))
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(),
+            InMemoryOperationJournal(clock),
+            InMemoryReplayCursorStore(clock),
+            clock,
+            DefaultEffectReplayPolicy(),
+            eventStore,
+            credentialScopePort = port,
+        )
+        val outcome = coordinator.run(pipeline, RunId("wc-cleanup-failed"))
+
+        assertTrue(outcome is RunOutcome.Failure, "cleanup failure must fold to Failure, got $outcome")
+        assertEquals(FailureKind.INFRASTRUCTURE, (outcome as RunOutcome.Failure).failure.kind)
+        assertEquals(1, closeCount, "scope close must still have run")
+    }
+
+    private fun withCredentialsPipeline(bindingsJson: String, vararg children: OpaqueStepNode): CompiledPipeline =
+        CompiledPipeline(
+            id = DefinitionId("canonical-withcredentials-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(
+                StageNode(
+                    id = StageId("build"),
+                    name = "build",
+                    body = StageBody.Steps(
+                        listOf(
+                            BlockStepNode(
+                                id = StepId("build/withCredentials"),
+                                pluginStepId = PluginStepId("core.withCredentials"),
+                                payload = VersionedStepPayload("dsl-v1", bindingsJson),
+                                body = children.toList(),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
 
     private fun milestoneStep(id: String, ordinal: Int, label: String) = OpaqueStepNode(
         id = StepId(id),
@@ -854,5 +1036,14 @@ class CanonicalDurableRunCoordinatorTest {
                 append('}')
             },
         ),
+    )
+}
+
+/** EM-7 test seam: a fail-closed credential scope port. Coordinator tests that do not
+ * exercise withCredentials must never dispatch a credential body, so this stub returns
+ * Unavailable(StoreUnavailable) (the coordinator maps it to an INFRASTRUCTURE Failure). */
+private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
+    CredentialScopeOutcome.Unavailable(
+        CredentialScopeFailure.StoreUnavailable("No credential store in this coordinator unit test"),
     )
 }

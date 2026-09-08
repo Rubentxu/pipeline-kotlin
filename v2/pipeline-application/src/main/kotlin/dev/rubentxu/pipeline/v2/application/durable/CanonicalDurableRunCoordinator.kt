@@ -3,6 +3,12 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.application.StepMetadata
+import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
@@ -17,6 +23,7 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
@@ -240,6 +247,7 @@ class CanonicalDurableRunCoordinator(
     private val clock: Clock,
     private val effectReplayPolicy: EffectReplayPolicy,
     private val eventSink: EventSink,
+    private val credentialScopePort: CredentialScopePort,
     private val controlDirRoot: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
@@ -578,6 +586,21 @@ class CanonicalDurableRunCoordinator(
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
     ): StepOutcome {
+        // EM-7/LFC-5.3 (INC-022): withCredentials has its own scope lifecycle
+        // (acquire -> env overlay -> always close), so it bypasses the generic
+        // dir/env/timestamps scope machinery entirely. Never dispatched as an
+        // empty shell.
+        if (block.pluginStepId.value == "core.withCredentials") {
+            return dispatchWithCredentialsBlock(
+                block,
+                runId,
+                stageName,
+                stageIndex,
+                stepIndex,
+                stageShOptions,
+                parentBodyPath,
+            )
+        }
         // Capture parent stack for finally restoration (BLOCK_STEP_EXECUTION.md §4 invariant)
         val parentStack = contextStack
         var outcome: StepOutcome = StepOutcome.Success
@@ -701,6 +724,144 @@ class CanonicalDurableRunCoordinator(
         }
 
         return outcome
+    }
+
+    /**
+     * EM-7/LFC-5.3 (INC-022) — resolves and acquires the withCredentials scope.
+     *
+     * Decodes the typed [CredentialBindingSpec] list from the node payload
+     * (fail-closed on malformed input -> schema Failure) and acquires a scope via
+     * [credentialScopePort]. On Unavailable/Invalid the body is NEVER dispatched
+     * (fail-closed). On Acquired the body runs with the env overlay and the scope
+     * is always closed; a scope whose cleanup fails folds the block outcome to a
+     * typed operational Failure per design §73.
+     */
+    private suspend fun dispatchWithCredentialsBlock(
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+    ): StepOutcome {
+        val bindings: List<CredentialBindingSpec> = try {
+            CredentialBindingsPayload.decode(block.payload.encoded)
+        } catch (e: IllegalArgumentException) {
+            return StepOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    "withCredentials bindings invalid: ${e.message}",
+                ),
+            )
+        }
+        return when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
+            is CredentialScopeOutcome.Unavailable -> StepOutcome.Failure(
+                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, acquisition.failure.describe()),
+            )
+            is CredentialScopeOutcome.Invalid -> StepOutcome.Failure(
+                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, acquisition.failure.describe()),
+            )
+            is CredentialScopeOutcome.Acquired -> dispatchAcquiredWithCredentialsBody(
+                scope = acquisition.scope,
+                block = block,
+                runId = runId,
+                stageName = stageName,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                stageShOptions = stageShOptions,
+                parentBodyPath = parentBodyPath,
+            )
+        }
+    }
+
+    /**
+     * EM-7/LFC-5.3 (INC-022) — executes the withCredentials body under the acquired env
+     * overlay and always releases the scope (idempotent, reverse-LIFO).
+     *
+     * Mirrors the generic block child loop (fail-on-first Failure/Unstable) but under
+     * `childShOptions` whose env is `stageShOptions.env + scope.env`. The acquired
+     * env is tracked on the context stack (like core.withEnv) and restored in finally.
+     * Cleanup runs in the same finally that restores the parent stack.
+     */
+    private suspend fun dispatchAcquiredWithCredentialsBody(
+        scope: AcquiredCredentialScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+    ): StepOutcome {
+        val parentStack = contextStack
+        val childShOptions = stageShOptions.copy(env = stageShOptions.env + scope.env)
+        val envSpecValues = scope.env.mapValues { (_, handle) ->
+            handle.borrow { bytes -> String(bytes, Charsets.UTF_8) }
+        }
+        contextStack = contextStack.push(
+            ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)),
+        )
+        var bodyOutcome: StepOutcome = StepOutcome.Success
+        val cleanup: CredentialScopeCleanup = try {
+            for ((childIndex, child) in block.body.withIndex()) {
+                val childOpId = OpId(
+                    runId.value,
+                    stageIndex,
+                    stepIndex,
+                    branchIndex = null,
+                    bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId),
+                )
+                val childOutcome = dispatch(
+                    child,
+                    runId,
+                    stageName,
+                    stageIndex,
+                    stepIndex,
+                    childShOptions,
+                    childOpId.bodyPath,
+                )
+                when (childOutcome) {
+                    is StepOutcome.Failure -> {
+                        bodyOutcome = childOutcome
+                        break // Stop on first failure
+                    }
+                    is StepOutcome.Unstable -> {
+                        bodyOutcome = childOutcome
+                        break
+                    }
+                    else -> { /* continue */ }
+                }
+            }
+            scope.close()
+        } finally {
+            // Restore parent context stack in finally (BLOCK_STEP_EXECUTION.md §4 invariant)
+            contextStack = parentStack
+        }
+        return mergeBodyAndCleanup(bodyOutcome, cleanup)
+    }
+
+    /**
+     * EM-7/LFC-5.3 — folds a body outcome and the scope cleanup outcome into a single
+     * total StepOutcome per design §73. Cleanup is idempotent and never throws.
+     *
+     * Total algebra: cleanup Failed over Success, Unstable or Failure always yields a
+     * typed operational Failure (INFRASTRUCTURE). Cleaned leaves the body outcome intact.
+     */
+    private fun mergeBodyAndCleanup(bodyOutcome: StepOutcome, cleanup: CredentialScopeCleanup): StepOutcome =
+        when (cleanup) {
+            CredentialScopeCleanup.Cleaned -> bodyOutcome
+            is CredentialScopeCleanup.Failed -> StepOutcome.Failure(
+                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, cleanup.message),
+            )
+        }
+
+    private fun CredentialScopeFailure.describe(): String = when (this) {
+        is CredentialScopeFailure.StoreUnavailable -> message
+        is CredentialScopeFailure.CredentialMissing -> "Credential '${credentialsId.value}' is not present in the store"
+        is CredentialScopeFailure.BindingMismatch -> message
+        is CredentialScopeFailure.AcquisitionFailed -> message
+        CredentialScopeFailure.ReplayUnsupported -> "Replay of an in-flight credential scope is not supported"
     }
 
     private companion object {

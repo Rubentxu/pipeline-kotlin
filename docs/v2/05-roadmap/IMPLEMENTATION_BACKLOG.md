@@ -252,16 +252,19 @@ Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
 - **LFC-2 (Honest Jenkins-like DSL closure)** — 🟡 IN PROGRESS — itemized list + exit gate in
   `LFC2_HONEST_DSL_CLOSURE.md`; DSL-surface closures landed (stage bookends, G3 naming, ERR-S). Parallel/
   retry/timeout canonical parity deferred to E-EM-11; DSL debt rows tracked there.
-- **E-EM-11 (canonical M2-R1 event parity)** — 🔲 BLOCKED-ON-EM. The canonical coordinator
-  (`CanonicalDurableRunCoordinator`) only executes linear `StageBody.Steps`; it emits NO
-  `ParallelBranchStarted/Finished`, `RetryAttempt*`, or `TimeoutScheduled` events and cannot run a
-  `StageBody.Parallel` stage (throws "supports only linear stage steps"). The M2-R1 parallel/retry/
-  timeout event surface lives only in the superseded legacy `PipelineRun`, which Main no longer
-  routes to (fail-closed). This is a LF-0208 spine-migration gap (same family as ERR-S-004 bookends),
-  not a DSL-surface defect. Wiring canonical parallel (composable-or-stage-body ADR pending) +
-  per-step event projection for retry/timeout unblocks quarantined `UatDsl003ParallelTest` and the
-  three `UatDsl001JenkinsFamiliarityTest` full-grammar methods (LFC-2 T1). Exit: those UATs green on
-  the canonical path; per-step observability (mandate) for retry/timeout/parallel.
+- **E-EM-11 (canonical M2-R1 event parity + retry/timeout/parallel semantics)** — 🔲 BLOCKED-ON-EM.
+  Evidence 2026-09-08: `dispatchBody` treats `core.retry`/`core.timeout` as generic block bodies —
+  iterated ONCE, no retry loop, no deadline, no `RetryAttempt*`/`TimeoutScheduled`. It emits NO
+  `ParallelBranchStarted/Finished` and cannot run a `StageBody.Parallel` stage (throws "supports only
+  linear stage steps" L276). So the M2-R1 parallel/retry/timeout surface (events AND runtime semantics)
+  lives only in the superseded legacy `PipelineRun`, which Main no longer routes to. This is a LF-0208
+  spine-migration gap (same family as ERR-S-004 bookends), NOT a DSL-surface defect, and overlaps the
+  EM-4..EM-10 "durable timeout, real retry" backlog. Requires real retry/timeout/parallel semantics +
+  per-step event projection in the canonical coordinator, plus the composable-vs-stage-body parallel ADR.
+  Unblocks quarantined `UatDsl003ParallelTest` + three `UatDsl001JenkinsFamiliarityTest` full-grammar
+  methods (LFC-2 T1). Exit: those UATs green on the canonical path; per-step observability (mandate)
+  for retry/timeout/parallel. This is a design-gated EM milestone (own ADR/spec change), NOT a bounded
+  LFC-2 slice.
 
 ## Dependency rule
 

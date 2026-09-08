@@ -27,16 +27,18 @@ then (b) T2 G3 naming; then (c) T1 parallel G2 + ADR. Remaining tasks updated be
   (@DslMarker narrow receivers, closed StageBody, .pipeline.kts @KotlinScript, incomplete steps
   post/when/waitUntil/pwd/isUnix, git/scmGit duplicate, shell dollar, durable script {} boundary).
 
-## T3 (do first) — stage bookends restore (ERR-S-004)
-- Land StageStarted/StageFinished in the coordinator run(); update the few coordinator count tests.
-  Verifies ERR-S-004, UatDsl001-mutating, UatEvt001 structure.
+## T3 (do first) — stage bookends restore (ERR-S-004) — ✅ DONE (commit 800f1006)
+Land StageStarted/StageFinished in the coordinator run(); update the few coordinator count tests.
+Verifies ERR-S-004, UatDsl001-mutating, UatEvt001 structure. All green.
 
-## T2 — step-naming reconciliation (G3, UatEvt001 line ~114)
-- Evolve the `stepName=="echo"` assertion to the `<stage>/<type>-<index>` contract (`hello/echo-0`).
+## T2 — step-naming reconciliation (G3, UatEvt001 line ~114) — ✅ DONE (commit 800f1006)
+Evolve the `stepName=="echo"` assertion to the `<stage>/<type>-<index>` contract (`hello/echo-0`).
+UatEvt001 fully green.
 
-## T1 — parallel composability (G2) + ADR
-- Open `parallel` + sibling steps in the DSL compiler (stageNode). Add ADR for parallel-as-composable.
-  Verifies UatDsl001 full-grammar + UatDsl003.
+## T1 — parallel composability (G2) + ADR — NEXT
+Open `parallel` + sibling steps in the DSL compiler (stageNode). Add ADR for parallel-as-composable.
+Verifies UatDsl001 full-grammar + UatDsl003. Design-gated: needs ADR first (parallel as a composable
+step, Jenkins-scripted style, vs stage-terminal).
 
 ## T4 — remaining LFC-2 gate items
 - Incomplete/fake-return steps the gate names (post/when/waitUntil/pwd/isUnix, ...); shell dollar

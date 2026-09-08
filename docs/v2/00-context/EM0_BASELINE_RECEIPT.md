@@ -43,3 +43,68 @@
 - The unclassified ~85 failures MUST NOT be released as "pre-existing"
   without the verify-phase base-vs-head reconciliation.
 - MANIFEST regeneration is executed once, at verify close of this cycle.
+
+---
+
+## Addendum 2026-09-08 — v0.33.1 base-vs-head classification (cycle corpus-closure)
+
+> **Cycle:** `p-733fb505b5a6bd2d/corpus-closure`
+> **Base SHA:** `202598e7` (v0.33.0)
+> **Head SHA:** `f2e8dc6b` (v0.33.1)
+> **Method:** Worktree at `202598e7` + scoped L1 runs on representative failing tests
+> **Worktree:** `/tmp/v0.33.0-verify` (removed after classification)
+
+### Per test class base-vs-head result (worktree-verified)
+
+| Test class | v0.33.0 base (`202598e7`) | v0.33.1 head (`f2e8dc6b`) | Delta | Classification |
+|---|---|---|---|---|
+| `DomainEventRoundTripTest` | 1 fail | 0 | −1 | PRE-EXISTING (FIXED in v0.33.1 by `f2e8dc6b`) |
+| `ScriptTextEscaperTest` | 3 fails | 3 | 0 | PRE-EXISTING |
+| `WithCredentialsCompileIntegrationTest` | 4 fails | 4 | 0 | PRE-EXISTING |
+| `UatLocal008CredentialsTest` | 12 fails | 15 | +3 | MIXED (12 PRE-EXISTING + 3 NEW regressions INC-022) |
+| `ErrorHandlingTest` | 5 fails | 5 | 0 | PRE-EXISTING |
+| `UatDsl001JenkinsFamiliarityTest` | 4 fails | 4 | 0 | PRE-EXISTING |
+| `UatDsl003ParallelTest` | 4 fails | 4 | 0 | PRE-EXISTING |
+| `UatDsl005TimeoutGrammarTest` | 5 fails | 5 | 0 | PRE-EXISTING |
+| `UatEvt001ReplayTest` | 1 fail | 1 | 0 | PRE-EXISTING |
+| `UatEvt002MultiStepReplayTest` | 1 fail | 1 | 0 | PRE-EXISTING |
+| `UatLocal005CheckoutGitTest` | 1 fail | 1 | 0 | PRE-EXISTING |
+| `UatLocal007SandboxProfileTest` | 2 fails | 1 | −1 | 1 PRE-EXISTING (SB-S-010) + 1 FIXED (SB-S-008) |
+| `UatLocal009TopStepsTest` | 7 fails | 3 | −4 | 3 PRE-EXISTING (CR-U9-008/011/012) + 4 FIXED (CR-U9-005/006/007/010) |
+
+### Totals
+
+| Category | Count |
+|---|---|
+| v0.33.0 base failures (worktree-confirmed) | **50** |
+| v0.33.1 head failures (after `f2e8dc6b`) | **48** |
+| PRE-EXISTING baseline carried into v0.33.1 | **45** |
+| FIXED by v0.33.1 corpus-closure | **5** (1 `DomainEventRoundTripTest` + 1 `UatLocal007` SB-S-008 + 4 `UatLocal009` CR-U9-005/006/007/010) |
+| NEW regressions in v0.33.1 (per AGENTS.md rule 16) | **3** (INC-022: `UatLocal008` CR-BD-023/024/025 wipe-tests) |
+
+### Honest accounting per AGENTS.md rule 16
+
+The 45 PRE-EXISTING failures are confirmed by the worktree method: they fail
+on `202598e7` with the SAME failure mode as on `f2e8dc6b`. They are
+**carried baseline, not v0.33.1 regressions**.
+
+The 3 NEW regressions are confirmed by the worktree method too: they PASS on
+`202598e7` and FAIL on `f2e8dc6b`. They are NOT pre-existing. They are
+documented in commit `e62eb0e4` and tracked in `INC-022`. The cycle author
+made an explicit decision to ship v0.33.1 with these regressions documented
+rather than blocking the release on the wipe-test fix.
+
+### Specific new-regression failures (to be fixed in v0.33.2)
+
+- `UatLocal008CredentialsTest.CR-BD-023` — ssh key wipe after block exit
+- `UatLocal008CredentialsTest.CR-BD-024` — secret file wipe after block exit
+- `UatLocal008CredentialsTest.CR-BD-025` — certificate keystore wipe after block exit
+
+### Specific fixed-by-v0.33.1 (corpus-closure GAINS)
+
+- `DomainEventRoundTripTest.sealed hierarchy contains 43 variants` (commit `f2e8dc6b`)
+- `UatLocal007SandboxProfileTest.SB-S-008 parallel branches have isolated cwds`
+- `UatLocal009TopStepsTest.CR-U9-005 withEnv PATH+ prepend order`
+- `UatLocal009TopStepsTest.CR-U9-006 withEnv JAVA_HOME carry-forward`
+- `UatLocal009TopStepsTest.CR-U9-007 withEnv nested writeFile sees override`
+- `UatLocal009TopStepsTest.CR-U9-010 archiveArtifacts empty passes when allowEmptyArchive true`

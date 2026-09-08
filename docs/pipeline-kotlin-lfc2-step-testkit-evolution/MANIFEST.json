@@ -1,0 +1,137 @@
+{
+  "package": "pipeline-kotlin-lfc2-step-testkit-evolution",
+  "created": "2026-09-08",
+  "baseline": "Rubentxu/pipeline-kotlin@5af901c75782cfdbd35bb24e0fb52f6d088addc1",
+  "documents": [
+    {
+      "path": "MERGE_ORDER.md",
+      "bytes": 1812,
+      "sha256": "3147f250cb1f49723497ecfae648599f23ca503071e86a3abc8eaa70b04ae22b"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2756,
+      "sha256": "6ba3a87240f3c1e343298dbd7abc2844708c0c0a1701ad84eb3f1ed7df45d843"
+    },
+    {
+      "path": "docs/v2/03-specifications/SPEC-LFC-016-STEP_CONSTITUTION.md",
+      "bytes": 3916,
+      "sha256": "8e67c80382692c32c8c100e2724d92a122caf1d3e0df0e65a5d5daa862c111f9"
+    },
+    {
+      "path": "docs/v2/03-specifications/SPEC-LFC-017-EXECUTABLE_SCENARIO_CORPUS.md",
+      "bytes": 2703,
+      "sha256": "14d5bf7e94584dc2051536d8de388617946471e4ec9a74231c6bf67aae9d7f83"
+    },
+    {
+      "path": "docs/v2/03-specifications/SPEC-LFC-018-PIPELINE_TEST_HARNESS.md",
+      "bytes": 3082,
+      "sha256": "13c16fac3381f855e2fbb5522ccc11b2df5de65bf1fc81da6ff951034e2cb73e"
+    },
+    {
+      "path": "docs/v2/03-specifications/SPEC-LFC-019-STEP_PLUGIN_CERTIFICATION.md",
+      "bytes": 2729,
+      "sha256": "10f155b9a1bfbf03d552f0b12149ece65f65dc5c9cca5f1311b89d28ebb5db7c"
+    },
+    {
+      "path": "docs/v2/03-specifications/SPEC-LFC-020-GENERIC_BODY_EXECUTION.md",
+      "bytes": 2093,
+      "sha256": "ef96ea7ebef070a3a8ccdc37cf8befd58f1b257e8d56e21676d5a29999eb20fa"
+    },
+    {
+      "path": "docs/v2/03-specifications/SPEC-LFC-021-TEST_SANDBOX_PROFILES.md",
+      "bytes": 1472,
+      "sha256": "42ecebb80e23345c53dd5aa40ab1fdc700e5004310a90ea8357de62313313289"
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-LFC-018-closed-structure-open-step-registry.md",
+      "bytes": 2457,
+      "sha256": "bfbc2f5799b758a5e8223b62dad0b34a2305828ce43a092cdcc8bbb9c8bb229c"
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-LFC-019-core-and-external-steps-share-one-path.md",
+      "bytes": 1247,
+      "sha256": "34748770a9f668e7b075620ba3445ed9423e74902126a482c1e7bb675e002e70"
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-LFC-020-examples-are-executable-specifications.md",
+      "bytes": 1393,
+      "sha256": "a7d17e1dd9e2355d582bf4b0438334c1a12546caed82a22b924326c7b0b50c44"
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-LFC-021-layered-test-harness-fidelity.md",
+      "bytes": 1366,
+      "sha256": "d410006845eb51ee6a2bb6f6eaaecff4280993ad8cba84e52407694f872307de"
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-LFC-022-block-steps-reenter-engine-through-body-invoker.md",
+      "bytes": 1632,
+      "sha256": "70dc1b2f8d09029039df312dd321c33d048e3eab0b8cef628715dcc8067e762d"
+    },
+    {
+      "path": "docs/v2/04-adrs/ADR-LFC-023-step-done-means-certified.md",
+      "bytes": 959,
+      "sha256": "99496781a105e6c0f6712489be2f853d080907ac9d54702e0d4d73f6e89f4e8e"
+    },
+    {
+      "path": "docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG_DELTA.md",
+      "bytes": 3265,
+      "sha256": "df35f5ff7f11f41e6a7bf995243011c712445835e06e70796783ae8cd2217596"
+    },
+    {
+      "path": "docs/v2/05-roadmap/LFC2_STEP_TESTKIT_EVOLUTION.md",
+      "bytes": 2149,
+      "sha256": "a40ba74a7050a08cec6821520fb9bc7af80d90dc5d8d4cb571ef87480b244bbf"
+    },
+    {
+      "path": "docs/v2/05-roadmap/ROADMAP_DELTA.md",
+      "bytes": 3859,
+      "sha256": "3ef6db8fe15f4368206f3b19768299f3729a1dcd506de36912740b86eab0d4de"
+    },
+    {
+      "path": "docs/v2/06-uat/TEST_MATRIX_DELTA.md",
+      "bytes": 1375,
+      "sha256": "6322c65ffb84493a01ccd505ca09cd532735ef7ad7f98dc8ac274424e026a71e"
+    },
+    {
+      "path": "docs/v2/06-uat/UAT_CATALOG_DELTA.md",
+      "bytes": 2558,
+      "sha256": "dfcc62d219f7ac5e3ba51174c274b26e567e36301b27ddbc93394006528f4277"
+    },
+    {
+      "path": "docs/v2/06-uat/UAT_RUNBOOK_DELTA.md",
+      "bytes": 1251,
+      "sha256": "e738a7695291f9ea0b7c2b375b674a5bab064004f292b07e9dc0cc867b553ff8"
+    },
+    {
+      "path": "docs/v2/10-references/TRACEABILITY_MATRIX_DELTA.md",
+      "bytes": 862,
+      "sha256": "529040c3d69406cf99297f3ac2e1d931eb5a44115f888cefa0f45e37c96dc027"
+    },
+    {
+      "path": "integration/AGENTS_STEP_PLUGIN_CONSTITUTION.md",
+      "bytes": 3120,
+      "sha256": "c77697459474aa0a50c5bcfa5d7ee836bf4fd00877ebd7b918bc1745ab7b3eda"
+    },
+    {
+      "path": "integration/EXAMPLES_LAYOUT_MIGRATION.md",
+      "bytes": 1700,
+      "sha256": "18ce7c0159ccc6aa4a91c7c2efe8102fb85b8fdc53107e99ac43107c1621e127"
+    },
+    {
+      "path": "integration/FILES_TO_UPDATE.md",
+      "bytes": 995,
+      "sha256": "23d0cd1f5b7d7fe4e542ad188bb301e35a374723067159fb420baea49f809f1c"
+    },
+    {
+      "path": "reference/reference-plugin-contract.md",
+      "bytes": 1015,
+      "sha256": "dfb7f7c44f00f4ffc6df26ccadc58eadb37ff9631de2d952212b875f40042331"
+    },
+    {
+      "path": "reference/scenario-example.yaml",
+      "bytes": 378,
+      "sha256": "82b234042528e1555ca57acffa01a4e6c2f6e9bd39cc0fa6a51a940f1104f258"
+    }
+  ]
+}

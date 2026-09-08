@@ -713,3 +713,14 @@ payload=dsl-v1)` passes the structural gate and can reach the Execute branch onc
 wired to (a) the composite metadata resolver, (b) a registry-aware prepare selector, and (c) the
 SeamedExecutionRouter. No structural-preparation change is needed. Remaining is the coordinator wiring +
 durable characterization, which is the next slice.
+
+**d5c REFINED blocker (evidence, codec vs envelope):** the structural gate requires
+`StepNode.payload.encoded` to be a well-formed `dsl-v1` JSON OBJECT, but a registry definition's
+`inputCodec.encode` produces an ARBITRARY [EncodedStepValue] (CoreEchoStep encodes `EchoInput("hi")` to the
+plain string `"hi"`, not a JSON object). So a registry step cannot round-trip through the coordinator
+until the durable representation of a registered step's input is defined: how the registry `EncodedStepValue`
+maps into/out of the `dsl-v1` envelope. This is the `StructuralInvocation` -> Registry-prepare input gap;
+it is a design decision (durable payload envelope for registered steps), likely owned by CDE.3-e, and
+should not be invented silently. The mechanical coordinator wiring (optional `stepRegistry` param ->
+composite metadata default + prepare selector + `SeamedExecutionRouter.route`) is feasible but would be
+unexercised end-to-end until that envelope mapping exists, so it is NOT landed as dead wiring.

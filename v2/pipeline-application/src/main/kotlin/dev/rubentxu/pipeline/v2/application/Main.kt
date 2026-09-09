@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
@@ -102,6 +103,8 @@ data class PipelineCliConfig(
     val scriptPath: String?,
     val controlRoot: String? = null,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
+    /** External plugin JARs: same list feeds script-compile classpath and runtime discovery. */
+    val pluginJars: List<String> = emptyList(),
 )
 
 sealed interface DurableRunPolicy {
@@ -148,6 +151,7 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun
     var controlRoot: String? = null
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE
+    val pluginJars = mutableListOf<String>()
     var scriptArgIndex = 1
     var i = 1
     while (i < args.size && args[i].startsWith("--")) {
@@ -193,6 +197,16 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
                 }
                 i += 2
             }
+            // LB-02 / EP-6: ONE flag feeds ONE classpath to BOTH the .pipeline.kts
+            // script compiler AND the runtime ServiceLoader discovery — no split
+            // runtimePluginJars/scriptPluginJars configuration exists.
+            "--plugin-jar" -> {
+                if (i + 1 >= args.size) {
+                    return null
+                }
+                pluginJars.add(args[i + 1])
+                i += 2
+            }
             else -> break
         }
     }
@@ -211,6 +225,7 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         scriptPath = scriptPath,
         controlRoot = controlRoot,
         sandboxProfile = sandboxProfile,
+        pluginJars = pluginJars.toList(),
     )
 }
 
@@ -258,7 +273,10 @@ fun main(args: Array<String>) {
         val validateRunId = java.util.UUID.randomUUID().toString()
         val host = Kotlin24ScriptingHost(store, validateRunId)
         val dslJar = ScriptDefinition.dslApiJar()
-        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val dslClasspath = buildList {
+            dslJar?.let(::add)
+            addAll(config.pluginJars)
+        }
         val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
         // return values reflect the host environment during validation.
@@ -306,7 +324,10 @@ fun main(args: Array<String>) {
         val runId: String = fresh.value
         val host = Kotlin24ScriptingHost(eventStore, runId)
         val dslJar = ScriptDefinition.dslApiJar()
-        val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+        val dslClasspath = buildList {
+            dslJar?.let(::add)
+            addAll(config.pluginJars)
+        }
         val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
         // return values reflect the host environment. Lfc0GlobalStateFitnessTest
@@ -356,7 +377,23 @@ fun main(args: Array<String>) {
             )
         }
 
-        val nonCanonicalSteps = compiledPipeline?.analyzeCanonicalDurableExecution().orEmpty()
+        // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
+        val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
+        val composedStepRegistry = CoreStepRegistryFactory.registry()
+        if (pluginClassLoader != null) {
+            val previousTccl = Thread.currentThread().contextClassLoader
+            Thread.currentThread().contextClassLoader = pluginClassLoader
+            try {
+                val contributed = ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+                if (contributed.isNotEmpty()) {
+                    System.err.println("Discovered external Step plugins: " + contributed.joinToString(", "))
+                }
+            } finally {
+                Thread.currentThread().contextClassLoader = previousTccl
+            }
+        }
+        val nonCanonicalSteps = compiledPipeline
+            ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
         val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
             // Compilation must be checked FIRST. If the script failed to compile there is no
             // compiled pipeline to run; jumping to runCanonicalPipeline would NPE on `!!`. This
@@ -374,6 +411,7 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
+                stepRegistry = composedStepRegistry,
             )
             else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
@@ -455,7 +493,10 @@ fun main(args: Array<String>) {
     val runId = runSelection.runId.value
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslJar = ScriptDefinition.dslApiJar()
-    val dslClasspath = if (dslJar != null) listOf(dslJar) else emptyList()
+    val dslClasspath = buildList {
+        dslJar?.let(::add)
+        addAll(config.pluginJars)
+    }
     val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
     // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
     // return values reflect the host environment for the durable run path.
@@ -576,8 +617,26 @@ fun main(args: Array<String>) {
     // the RunCoordinator port. The orchestrator is constructed here (it is
     // the composition root) but handed in as a DurableRunDelegate; the
     // typed outcome returned by the coordinator drives the exit code.
+    // LB-02 / EP-6: compose the registry BEFORE the canonical-eligibility gate —
+    // eligibility is registry-derived, so external plugin contributions must be
+    // visible to the gate or a contributed key would be wrongly rejected as
+    // non-canonical. Same composed registry is handed to the coordinator below.
+    val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
+    val composedStepRegistry = CoreStepRegistryFactory.registry()
+    val contributedPlugins = if (pluginClassLoader != null) {
+        val previousTccl = Thread.currentThread().contextClassLoader
+        Thread.currentThread().contextClassLoader = pluginClassLoader
+        try {
+            ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+        } finally {
+            Thread.currentThread().contextClassLoader = previousTccl
+        }
+    } else emptyList()
+    if (contributedPlugins.isNotEmpty()) {
+        System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
+    }
     val runOutcome: RunOutcome? = when {
-        compiledPipeline?.supportsCanonicalDurableExecution() == true -> runCanonicalPipeline(
+        compiledPipeline?.supportsCanonicalDurableExecution(composedStepRegistry) == true -> runCanonicalPipeline(
             pipeline = compiledPipeline,
             runId = RunId(runId),
             journal = journal,
@@ -588,6 +647,7 @@ fun main(args: Array<String>) {
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
             withCredentialsExecutor = withCredentialsExecutor,
+            stepRegistry = composedStepRegistry,
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
@@ -656,6 +716,20 @@ private fun startFreshRun(
     return DurableRunSelection.StartedFresh(runId)
 }
 
+/**
+ * Single classloader for the plugin JAR list (LB-02 / EP-6): parented on the
+ * application classloader so the plugin sees the SDK contracts; installed as
+ * the thread-context classloader during composition so ServiceLoader discovery
+ * finds the contributed descriptors. The SAME jars are also given to the Kotlin
+ * script compiler via ScriptDefinition.classpath — one flag, one classpath,
+ * two consumers.
+ */
+private fun pluginClassLoaderFor(jars: List<String>): ClassLoader =
+    java.net.URLClassLoader(
+        jars.map { java.io.File(it).toURI().toURL() }.toTypedArray(),
+        Thread.currentThread().contextClassLoader,
+    )
+
 private fun runCanonicalPipeline(
     pipeline: CompiledPipeline,
     runId: RunId,
@@ -667,6 +741,10 @@ private fun runCanonicalPipeline(
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
     withCredentialsExecutor: WithCredentialsExecutor? = null,
+    // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
+    // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
+    // gate, so contributed keys participate in the gate (eligibility is registry-derived).
+    stepRegistry: InMemoryStepRegistry = CoreStepRegistryFactory.registry(),
 ): RunOutcome = kotlinx.coroutines.runBlocking {
     CanonicalDurableRunCoordinator(
         dispatcher = CanonicalNodeDispatcher(),
@@ -684,9 +762,7 @@ private fun runCanonicalPipeline(
             env = emptyMap(),
             sandbox = SandboxConfigResolver.resolve(sandboxProfile),
         ),
-        // B1.2c3-S2.3: production composition supplies the core StepRegistry (echo today). Behavior is
-        // unchanged while echo still routes via the legacy structural family; this makes the later flip
-        // to registry-routed echo a small, single-authority change.
-        stepRegistry = CoreStepRegistryFactory.registry(),
+        // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
+        stepRegistry = stepRegistry,
     ).run(pipeline, runId)
 }

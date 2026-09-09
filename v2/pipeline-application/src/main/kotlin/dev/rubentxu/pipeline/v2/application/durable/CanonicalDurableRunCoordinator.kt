@@ -111,12 +111,22 @@ data class NonCanonicalStep(
  * Analyzes the compiled pipeline and returns the list of non-canonical steps.
  * An empty list means the pipeline is fully canonical and eligible for canonical durable execution.
  */
-fun CompiledPipeline.analyzeCanonicalDurableExecution(): List<NonCanonicalStep> {
+fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): List<NonCanonicalStep> {
+    // LB-02 / EP-6: eligibility is registry-derived. When the caller has already
+    // composed the production registry (core + external plugin contributions),
+    // its keys participate in the gate; when null, the default derivation (core
+    // metadata + the production core factory) applies — behaviour unchanged for
+    // callers that do not supply a registry.
+    val eligibleStepIds: Set<String> = if (effectiveRegistry != null) {
+        CanonicalCoreStepMetadata.pluginIds + effectiveRegistry.keys().map { it.value }
+    } else {
+        canonicalStepIds
+    }
     val nonCanonical = mutableListOf<NonCanonicalStep>()
     for ((stageIndex, stage) in stages.withIndex()) {
         val steps = (stage.body as? StageBody.Steps)?.steps ?: continue
         for ((stepIndex, step) in steps.withIndex()) {
-            val issue = step.checkCanonicalExecution()
+            val issue = step.checkCanonicalExecution(eligibleStepIds)
             if (issue != null) {
                 nonCanonical.add(NonCanonicalStep(
                     stageIndex = stageIndex,
@@ -132,24 +142,24 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(): List<NonCanonicalStep> 
 }
 
 /** True when the compiled pipeline fits the promoted canonical execution subset. */
-fun CompiledPipeline.supportsCanonicalDurableExecution(): Boolean =
-    analyzeCanonicalDurableExecution().isEmpty()
+fun CompiledPipeline.supportsCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): Boolean =
+    analyzeCanonicalDurableExecution(effectiveRegistry).isEmpty()
 
-private fun StepNode.checkCanonicalExecution(): String? {
+private fun StepNode.checkCanonicalExecution(eligibleStepIds: Set<String> = canonicalStepIds): String? {
     return when (this) {
         is BlockStepNode -> {
             if (pluginStepId.value !in canonicalBodyStepIds) {
                 "block step plugin not in canonical body step IDs"
             } else {
                 body.forEach { child ->
-                    val childIssue = child.checkCanonicalExecution()
+                    val childIssue = child.checkCanonicalExecution(eligibleStepIds)
                     if (childIssue != null) return childIssue
                 }
                 null
             }
         }
         is OpaqueStepNode -> {
-            if (pluginStepId.value !in canonicalStepIds) {
+            if (pluginStepId.value !in eligibleStepIds) {
                 "opaque step plugin not in canonical core step IDs"
             } else {
                 null

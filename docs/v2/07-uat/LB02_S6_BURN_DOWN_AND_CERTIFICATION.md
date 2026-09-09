@@ -75,3 +75,13 @@ core.sh:
 When the stderr row is closed, `core.sh = CERTIFIED`, `LB-02 = REMOVED`, and the
 AGENTS.md reference rule (`core.echo = atomic/simple`, `core.sh =
 effectful/recoverable`) may be added.
+
+## S6.7 update — stderr row is a contract gap
+
+Grounding (`LB02_S6_7_STDERR_GROUNDING.md`) through the installed registry path
+found the plain-`sh` output substrate is **inconsistent**: when both stdout and
+stderr are present, only stderr reaches `EchoOutputCaptured` and stdout is
+silently dropped. This is a contract gap requiring a deliberate substrate design
+decision, not a stable certifiable row, so `core.sh` stays `IMPLEMENTED_UNCERTIFIED`.
+A real regression fix (`8c4cbbae`) made the canonical-core gate registry-aware,
+restoring installed `core.sh`/`core.echo` execution after the S6 metadata removal.

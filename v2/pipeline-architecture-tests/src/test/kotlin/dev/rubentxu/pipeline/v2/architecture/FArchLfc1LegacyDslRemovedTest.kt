@@ -105,62 +105,36 @@ class FArchLfc1LegacyDslRemovedTest {
 
     @Test
     fun `PipelineRun executeDurableStepImpl stubs throw for legacy workflow-control kinds`() {
-        val source = Files.readString(pipelineRunPath)
-
-        // The combined when branch should throw an error if reached
-        assertTrue(
-            Regex("""is\s+StepSpec\.CatchError""").containsMatchIn(source),
-            "PipelineRun must still reference StepSpec.CatchError in when (for exhaustiveness)",
-        )
-        assertTrue(
-            source.contains("should have been pre-compiler-rewritten"),
-            "PipelineRun when branch must throw error indicating pre-compiler rewrite is expected",
+        // LEG-1.3: PipelineRun.kt is deleted entirely. The legacy stub branches
+        // (and every other direct-exec branch) cannot reappear while the file is
+        // absent; the canonical compiler rewrite + dispatchers own these kinds.
+        assertFalse(
+            java.nio.file.Files.exists(pipelineRunPath),
+            "PipelineRun.kt must not exist (LEG-1.3): legacy workflow-control stubs are gone with it",
         )
     }
 
     @Test
     fun `stepClassifications no longer maps CatchError WarnError Unstable`() {
-        val source = sanitizedSource(pipelineRunPath)
-
-        // Extract the stepClassifications function content
-        val funStart = source.indexOf("fun stepClassifications")
-        val funEnd = source.indexOf("fun stepTypeMetadata")
-        if (funStart == -1 || funEnd == -1) {
-            // function may have been removed or renamed; this test verifies it no longer exists
-            assertTrue(
-                !source.contains("fun stepClassifications"),
-                "stepClassifications function should be removed (now handled by canonical dispatcher)",
-            )
-            return
-        }
-        val classificationsBody = source.substring(funStart, funEnd)
-
-        listOf("CatchError", "WarnError", "Unstable").forEach { kind ->
-            assertFalse(
-                Regex("""is\s+StepSpec\.$kind""").containsMatchIn(classificationsBody),
-                "stepClassifications must NOT have entry for StepSpec.$kind — it is pre-compiler-rewritten",
-            )
-        }
+        // LEG-1.3: with PipelineRun.kt deleted, no stepClassifications mapping can
+        // exist anywhere in production; classification is registry/descriptor-driven.
+        assertFalse(
+            java.nio.file.Files.exists(pipelineRunPath),
+            "PipelineRun.kt must not exist (LEG-1.3): stepClassifications is gone with it",
+        )
     }
 
     @Test
     fun `PipelineRun has no live execution branches for CatchError or WarnError`() {
-        val source = sanitizedSource(pipelineRunPath)
-
-        // After the stub change, there should NOT be the old try/catch block bodies
-        // for CatchError/WarnError. Check for absence of the old pattern.
-        val hasCatchErrorTryBlock = Regex("""is\s+StepSpec\.CatchError[^}]*\{[^}]*try\s*\{""").containsMatchIn(source)
-        val hasWarnErrorTryBlock = Regex("""is\s+StepSpec\.WarnError[^}]*\{[^}]*try\s*\{""").containsMatchIn(source)
-
+        // LEG-1.3: the whole second execution algorithm is deleted; there are no
+        // CatchError/WarnError execution branches in production outside the
+        // canonical spine's typed dispatchers.
         assertFalse(
-            hasCatchErrorTryBlock,
-            "PipelineRun must NOT have a live try/catch block for CatchError execution",
-        )
-        assertFalse(
-            hasWarnErrorTryBlock,
-            "PipelineRun must NOT have a live try/catch block for WarnError execution",
+            java.nio.file.Files.exists(pipelineRunPath),
+            "PipelineRun.kt must not exist (LEG-1.3): no live legacy execution branches can exist",
         )
     }
+
 
     private fun sanitizedSource(file: Path): String {
         val source = Files.readString(file)

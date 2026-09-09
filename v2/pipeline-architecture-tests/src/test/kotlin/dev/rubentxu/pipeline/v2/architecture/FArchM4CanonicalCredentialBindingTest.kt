@@ -132,17 +132,13 @@ class FArchM4CanonicalCredentialBindingTest {
 
     @Test
     fun `PipelineRun delegates withCredentials to the executor (single code path, no inline projection)`() {
-        val runSource = sanitizedSource(FitnessPaths.v2Root().resolve(runRelativePath))
-
-        assertTrue(
-            runSource.contains("withCredentialsExecutor.bind("),
-            "PipelineRun must route withCredentials through the executor's bind (LF-0404 single path)",
-        )
-        // The deleted inline carbon-copy branch must not reappear: projection
-        // code (and its helper site) lives only in the executor path.
+        // LEG-1.3: PipelineRun.kt is deleted. The invariant becomes structural:
+        // the file must not reappear, so the inline projection branch cannot
+        // revive either. The single withCredentials code path is the executor's bind().
+        val runPath = FitnessPaths.v2Root().resolve(runRelativePath)
         assertFalse(
-            runSource.contains("DefaultCredentialProjector"),
-            "PipelineRun must not inline credential projection — bind() via the executor is the only path",
+            java.nio.file.Files.exists(runPath),
+            "PipelineRun.kt must not exist (LEG-1.3); credential projection lives only in WithCredentialsExecutor",
         )
     }
 

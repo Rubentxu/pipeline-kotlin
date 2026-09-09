@@ -113,14 +113,14 @@ class FArchLfc1CanonicalBridgeTest {
 
     @Test
     fun `no alternate runner is reachable after LFC1-R1`() {
-        val pipelineRunSource = sanitizedSource(
-            FitnessPaths.v2Root()
-                .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PipelineRun.kt")
-        )
+        val pipelineRunPath = FitnessPaths.v2Root()
+            .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PipelineRun.kt")
+        val pipelineRunSource = if (java.nio.file.Files.exists(pipelineRunPath)) sanitizedSource(pipelineRunPath) else ""
         val mainSource = sanitizedSource(FitnessPaths.v2Root().resolve(mainRelativePath))
 
-        // The non-durable walker and its entry point are gone. The regex
-        // deliberately does NOT match walkPipelineSpecDurable.
+        // The non-durable walker and its entry point are gone. The legacy
+        // durable walker (walkPipelineSpecDurable) is also GONE as of LEG-1.3:
+        // the canonical coordinator is the single production execution path.
         assertFalse(
             Regex("""fun\s+execute\s*\(""").containsMatchIn(pipelineRunSource),
             "PipelineRun must not declare the non-durable execute() entry point",
@@ -129,9 +129,9 @@ class FArchLfc1CanonicalBridgeTest {
             Regex("""private\s+fun\s+walkPipelineSpec\(""").containsMatchIn(pipelineRunSource),
             "PipelineRun must not declare the non-durable walkPipelineSpec walker",
         )
-        assertTrue(
-            Regex("""internal\s+suspend\s+fun\s+walkPipelineSpecDurable\(""").containsMatchIn(pipelineRunSource),
-            "The durable walker must remain (it IS the single execution algorithm)",
+        assertFalse(
+            java.nio.file.Files.exists(pipelineRunPath),
+            "PipelineRun.kt must not exist at all (LEG-1.3 burn-down): no second execution algorithm may survive",
         )
         assertFalse(
             Regex("""\bexecute\s*\(\s*scriptPath""").containsMatchIn(mainSource),

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.step
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -93,7 +94,7 @@ class StepRegistryTest {
     }
 
     @Test
-    fun `invoke returns typed output on success`() {
+    fun `invoke returns typed output on success`() = runBlocking {
         val registry = InMemoryStepRegistry().apply { register(definition()) }
         val invoker = RegistryStepInvoker(registry)
         val outcome = invoker.invoke<TInput, TOutput>(key, codec.encode(TInput("hola")), context())
@@ -102,7 +103,7 @@ class StepRegistryTest {
     }
 
     @Test
-    fun `handler receives the narrow execution context`() {
+    fun `handler receives the narrow execution context`() = runBlocking {
         var seenRunId: RunId? = null
         var seenIndex = -1
         val contract = StepContract(key, descriptor, codec, outCodec)
@@ -121,7 +122,7 @@ class StepRegistryTest {
     }
 
     @Test
-    fun `invoke unknown step returns UnknownStep`() {
+    fun `invoke unknown step returns UnknownStep`() = runBlocking {
         val registry = InMemoryStepRegistry().apply { register(definition()) }
         val invoker = RegistryStepInvoker(registry)
         val outcome = invoker.invoke<TInput, TOutput>(
@@ -133,7 +134,7 @@ class StepRegistryTest {
     }
 
     @Test
-    fun `missing capability fails before handler runs`() {
+    fun `missing capability fails before handler runs`() = runBlocking {
         val required = setOf(StepCapability("process"))
         val registry = InMemoryStepRegistry().apply { register(definition(capabilities = required)) }
         val invoker = RegistryStepInvoker(registry)
@@ -143,7 +144,7 @@ class StepRegistryTest {
     }
 
     @Test
-    fun `handler can resolve a declared available capability`() {
+    fun `handler can resolve a declared available capability`() = runBlocking {
         val processCap = StepCapability("process")
         val required = setOf(processCap)
         var resolved: String? = null
@@ -167,7 +168,7 @@ class StepRegistryTest {
     }
 
     @Test
-    fun `decode failure returns DecodeFailure and does not run handler`() {
+    fun `decode failure returns DecodeFailure and does not run handler`() = runBlocking {
         var handlerCalls = 0
         val contract = StepContract(key, descriptor, codec, outCodec)
         val definition = object : StepDefinition<TInput, TOutput> {

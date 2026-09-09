@@ -104,7 +104,9 @@ class RegistryExecutionBoundaryTest {
         val outcome = RegistryExecutionBoundary.adapt()
             .execute((prepared as ExecutionPreparation.Ready).prepared, runtime(store))
 
-        assertEquals(StepOutcome.Success, outcome)
+        // LB-02 / G3-A3: the boundary returns CommonExecutionResult atomically; project
+        // the closed StepOutcome from the carrier (typed O lives in encodedOutput).
+        assertEquals(StepOutcome.Success, outcome.outcome)
         assertEquals(1, counter.get(), "a single boundary.execute must run the typed handler exactly once")
     }
 
@@ -196,7 +198,8 @@ class RegistryExecutionBoundaryTest {
         val outcome = RegistryExecutionBoundary.adapt()
             .execute((prepared as ExecutionPreparation.Ready).prepared, runtime)
 
-        assertEquals(StepOutcome.Success, outcome)
+        // LB-02 / G3-A3: the boundary returns CommonExecutionResult atomically.
+        assertEquals(StepOutcome.Success, outcome.outcome)
         val captured = store.eventsFor("registry-exec").single() as EchoOutputCaptured
         assertEquals("hi registry\n", captured.content)
         assertEquals(4, captured.stepIndex, "the narrow StepHandlerContext must carry the runtime step index")

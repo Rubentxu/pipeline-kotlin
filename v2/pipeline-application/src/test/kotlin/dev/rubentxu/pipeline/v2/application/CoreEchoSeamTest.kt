@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepInvocationOutcome
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -66,7 +67,7 @@ class CoreEchoSeamTest {
 
 
     @Test
-    fun `seam handler emits EchoOutputCaptured and returns the echo payload`() {
+    fun `seam handler emits EchoOutputCaptured and returns the echo payload`() = runBlocking {
         val store = InMemoryEventStore()
         val runId = RunId("b1-2b-run")
         val registry = registry()
@@ -88,7 +89,7 @@ class CoreEchoSeamTest {
     }
 
     @Test
-    fun `missing event sink capability fails closed before the handler`() {
+    fun `missing event sink capability fails closed before the handler`() = runBlocking {
         val registry = registry()
         val invoker = RegistryStepInvoker(registry)
         val context = StepHandlerContext(

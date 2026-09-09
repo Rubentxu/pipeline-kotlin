@@ -71,8 +71,14 @@ class StepDescriptorBodyMetadataTest {
     }
 
     @Test
-    fun `existing 14-field StepDescriptor constructor still compiles`() {
-        // Regression guard: existing consumers with 14 positional arguments still work
+    fun `existing StepDescriptor constructor still compiles after A4-1 added recoveryPolicy`() {
+        // Regression guard: a consumer that supplies positional arguments up to the
+        // `recoveryPolicy` slot (added by G3-A4.1.1) must still compile and produce a
+        // descriptor with sensible defaults. The named-only fields after recoveryPolicy
+        // (`idempotencyModel`, `timeoutModel`, `jenkinsSurface`, `securityProfile`,
+        // `deprecation`, `takesBody`, `bodyInvocations`, `introducesContext`,
+        // `catchesInterruptions`) all keep defaults; this regression guard exercises the
+        // pre-A4.1 prefix through the post-A4.1 fields.
         @Suppress("DEPRECATION")
         val descriptor = StepDescriptor(
             "step-id",
@@ -87,6 +93,7 @@ class StepDescriptorBodyMetadataTest {
             listOf("cap1"),
             emptyList(),
             dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+            dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy.None,
             "idempotent",
             "timeout-model",
             "jenkins-surface",
@@ -100,5 +107,7 @@ class StepDescriptorBodyMetadataTest {
         // New fields should have defaults
         assertFalse(descriptor.takesBody)
         assertEquals(BodyInvocationPolicy.ONCE, descriptor.bodyInvocations)
+        // A4-1: pre-decode recovery policy defaults to None.
+        assertEquals(dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy.None, descriptor.recoveryPolicy)
     }
 }

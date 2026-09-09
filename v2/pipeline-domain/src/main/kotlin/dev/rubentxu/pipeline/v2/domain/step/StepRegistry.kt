@@ -94,9 +94,15 @@ data class StepContract<I : Any, O : Any>(
  * Receives the decoded input and a narrow [StepHandlerContext]. MUST NOT throw to signal a step
  * failure; it returns a typed result instead. Throwable exceptions signal an adapter/engine bug and
  * are treated as fail-closed upstream.
+ *
+ * The execute signature is `suspend` (LB-02 / G3-A4.2) so that handlers can reach suspend
+ * capability seams (e.g. `ShellOperations.invoke` which delegates to the suspend
+ * `ShExecution.invokeShell` substrate). The boundary (`CommonExecutionBoundary.coexecute`)
+ * is suspend and runs the handler directly; pure-function handlers simply ignore the suspend
+ * modifier.
  */
 fun interface StepHandler<I : Any, O : Any> {
-    fun execute(input: I, context: StepHandlerContext): O
+    suspend fun execute(input: I, context: StepHandlerContext): O
 }
 
 /**
@@ -167,7 +173,7 @@ class InMemoryStepRegistry : StepRegistry {
  * holds only an [EncodedStepValue]; the concrete payload type lives behind the codec.
  */
 interface StepInvoker {
-    fun <I : Any, O : Any> invoke(
+    suspend fun <I : Any, O : Any> invoke(
         key: PluginStepId,
         encodedInput: EncodedStepValue,
         context: StepHandlerContext,
@@ -178,7 +184,7 @@ interface StepInvoker {
 class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
 
     @Suppress("UNCHECKED_CAST")
-    override fun <I : Any, O : Any> invoke(
+    override suspend fun <I : Any, O : Any> invoke(
         key: PluginStepId,
         encodedInput: EncodedStepValue,
         context: StepHandlerContext,

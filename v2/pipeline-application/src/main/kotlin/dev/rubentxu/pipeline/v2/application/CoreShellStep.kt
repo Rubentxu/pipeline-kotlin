@@ -31,42 +31,47 @@ import kotlinx.serialization.json.jsonPrimitive
  * required capabilities, replay policy on the contract, and the handler
  * returns a typed [CoreShellOutput].
  *
- * ## G1 — registry seam proof (this slice)
+ * ## G1 — registry seam proof
  *
- * The handler body is a deterministic stub returning
- * [ShellInvocationResult.UnitValue]. It proves the typed I/O shape, codec
- * round-trip, key uniqueness, and required-capabilities contract all hold
- * without depending on `ShExecution.invokeShell` or the legacy canonical-core
+ * The codec round-trip, key uniqueness, and required-capabilities contract
+ * hold without depending on `ShExecution.invokeShell` or the legacy canonical-core
  * decode/dispatch path. The codec encodes well-formed JSON objects, fulfilling
  * durable-spine eligibility CDE.3-e1/e2.
  *
- * ## G3 — REGISTRY_PRIMARY (next slice)
+ * ## G3 — REGISTRY_PRIMARY (this slice, A4.2)
  *
- * Real sh execution lands in [CoreShellStep.handler] at G3 by introducing
- * a new `SHELL_OPERATIONS` capability (mirrors how [CoreEchoStep.handler]
- * reaches `EVENT_SINK` from the canonical runtime context). The handler
- * MUST NOT re-implement process launching; it adapts to a typed
- * `ShellOperations` seam which proxies to `ShExecution.invokeShell`.
+ * Real sh execution is reached through the declared
+ * `SHELL_OPERATIONS_CAPABILITY`. The handler:
  *
- * ## Invariants preserved
+ *  1. Asks the [StepHandlerContext.capabilities] for `ShellOperations`.
+ *     This is the ONLY runtime side a handler holds for shell execution.
+ *  2. Invokes the typed seam once per call and returns a typed
+ *     [CoreShellOutput]. It MUST NOT re-implement process launching.
+ *
+ * The [ShellOperations] implementation is wired by the runtime bridge
+ * (canonical seam binds it to `ShExecution.invokeShell` via
+ * [ShOperationsAdapter]). Capability admission is fail-closed at prepare-time:
+ * `RegistryExecutionPreparation.prepare()` rejects with the missing capability
+ * before the handler ever runs.
+ *
+ * ## A4.2 invariants preserved
  *
  * - Closed execution structure, open Step registry: the canonical
  *   coordinator and dispatcher are unchanged in this slice; legacy decode /
  *   dispatch / metadata row for `core.sh` are intact.
  * - No `Any` as a durable contract: typed I/O crosses as [EncodedStepValue].
- * - Required capability == used capability: the G1 stub declares no
- *   required capabilities because the G1 body does not reach any capability.
- *
- * ## Open contract gap (deferred to G3)
- *
- * `StepContract` does not currently carry a `recoveryPolicy` field; the
- * canonical command path declares it on `StepMetadata` (CDE.2-b4). For sh
- * the recovery policy is `ExternalSubprocess`. G3 lifts this into the
- * registry contract. Until then, only `effects` and `replayPolicy` are
- * available on the descriptor.
+ * - Required capability == used capability: handler asks only for
+ *   `SHELL_OPERATIONS_CAPABILITY` and never reaches another capability.
+ * - Process-engine authority lives in [ShExecution] (single emitter of
+ *   `EchoOutputCaptured`). The adapter delegates; the handler MUST NOT
+ *   emit.
+ * - Recovery stays at the descriptor (A4.1.3 declares `recoveryPolicy`); this
+ *   slice does NOT touch the recovery substrate.
  *
  * @see docs/v2/00-context/LB02_CORE_SH_CONTRACT_DRAFT.md
  * @see docs/v2/00-context/LB02_TYPED_OUTPUT_DECISION.md
+ * @see docs/v2/07-uat/LB02_G3_A4_1_DESCRIPTOR_RECOVERY.md
+ * @see docs/v2/07-uat/LB02_G3_A4_2_SHELL_OPERATIONS_CAPABILITY.md
  */
 object CoreShellStep {
 
@@ -167,18 +172,48 @@ object CoreShellStep {
     )
 
     /**
-     * G1 (registry seam proof) handler: deterministic
-     * [ShellInvocationResult.UnitValue] with a 0ms duration. NO process launch,
-     * NO shell invocation. Real launch lands at G3 with the `SHELL_OPERATIONS`
-     * capability adapter.
+     * G3-A4.2 capability-routed handler: delegates to the typed
+     * [ShellOperations] seam reached through [SHELL_OPERATIONS_CAPABILITY].
+     *
+     * The handler:
+     * - asks the runtime capability access for the seam (fail-closed admission
+     *   is the engine's responsibility — `RegistryExecutionPreparation` rejects
+     *   before this point if the runtime cannot supply the capability),
+     * - invokes the seam exactly once with the typed `command` and execution
+     *   identity (`runId`, `stepIndex`),
+     * - projects the typed `ShellInvocationResult` into a [CoreShellOutput] with
+     *   `capturedStdout` lifted from the [ShellInvocationResult.Stdout] case (no
+     *   string parsing; no event emission; the [ShExecution] substrate is the
+     *   single authority for `EchoOutputCaptured`).
+     *
+     * It MUST NOT:
+     * - reach `CanonicalRuntimeContext`,
+     * - reach the journal,
+     * - call `eventSink` directly,
+     * - reach the durable-shell substrate (that is the adapter's authority),
+     * - read or write filesystem state.
      */
-    private val g1StubHandler = StepHandler { _: CoreShellInput, _: StepHandlerContext ->
-        CoreShellOutput(
-            result = ShellInvocationResult.UnitValue,
-            capturedStdout = "",
-            durationMs = 0L,
-        )
-    }
+    private val capabilityRoutedHandler: StepHandler<CoreShellInput, CoreShellOutput> =
+        StepHandler { input, ctx ->
+            val ops: ShellOperations = ctx.capabilities.get(SHELL_OPERATIONS_CAPABILITY)
+            val result: ShellInvocationResult = ops.invoke(
+                command = input.command,
+                runId = ctx.runId,
+                stepIndex = ctx.stepIndex,
+            )
+            val captured = when (result) {
+                is ShellInvocationResult.Stdout -> result.value
+                ShellInvocationResult.UnitValue,
+                is ShellInvocationResult.Status,
+                is ShellInvocationResult.Failed,
+                is ShellInvocationResult.Interrupted -> ""
+            }
+            CoreShellOutput(
+                result = result,
+                capturedStdout = captured,
+                durationMs = 0L, // A4.2: timing fields populated at A4.3 from the typed terminal.
+            )
+        }
 
     val definition: StepDefinition<CoreShellInput, CoreShellOutput> = object : StepDefinition<CoreShellInput, CoreShellOutput> {
         override val contract: StepContract<CoreShellInput, CoreShellOutput> = StepContract(
@@ -186,10 +221,13 @@ object CoreShellStep {
             descriptor = descriptor,
             inputCodec = inputCodec,
             outputCodec = outputCodec,
-            requiredCapabilities = emptySet(),
+            // LB-02 / G3-A4.2: capability declaration. The handler reaches
+            // shell execution ONLY through this token; admission is fail-closed
+            // at prepare-time when the runtime bridge does not provide it.
+            requiredCapabilities = setOf(SHELL_OPERATIONS_CAPABILITY),
         )
 
-        override val handler: StepHandler<CoreShellInput, CoreShellOutput> = g1StubHandler
+        override val handler: StepHandler<CoreShellInput, CoreShellOutput> = capabilityRoutedHandler
     }
 
     fun registerInto(registry: StepRegistry) {

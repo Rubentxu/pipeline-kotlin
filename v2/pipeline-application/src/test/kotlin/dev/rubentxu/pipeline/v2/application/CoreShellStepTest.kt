@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -42,17 +43,32 @@ class CoreShellStepTest {
         CoreShellStep.registerInto(this)
     }
 
-    private fun noOpCapabilities(): StepCapabilityAccess = object : StepCapabilityAccess {
-        override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> = emptySet()
-        override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T =
-            throw IllegalStateException("no capabilities exposed in G1 stub")
+    private fun fakeCapabilities(ops: ShellOperations): StepCapabilityAccess = object : StepCapabilityAccess {
+        override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> = setOf(SHELL_OPERATIONS_CAPABILITY)
+        override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T {
+            check(key == SHELL_OPERATIONS_CAPABILITY) { "unexpected capability $key" }
+            @Suppress("UNCHECKED_CAST")
+            return ops as T
+        }
     }
 
-    private fun noOpContext() = StepHandlerContext(
-        runId = RunId("g1"),
-        stepIndex = 0,
-        capabilities = noOpCapabilities(),
-    )
+    private fun shellOpsReturning(result: ShellInvocationResult) = object : ShellOperations {
+        var callCount = 0
+        var lastCommand: ShellCommand? = null
+        var lastRunId: RunId? = null
+        var lastStepIndex: Int = -1
+        override suspend fun invoke(
+            command: dev.rubentxu.pipeline.v2.domain.ShellCommand,
+            runId: RunId,
+            stepIndex: Int,
+        ): ShellInvocationResult {
+            callCount += 1
+            lastCommand = command
+            lastRunId = runId
+            lastStepIndex = stepIndex
+            return result
+        }
+    }
 
     @Test
     fun `identity — KEY is core dot sh and unique within the registry`() {
@@ -78,8 +94,12 @@ class CoreShellStepTest {
         assertEquals(ReplayPolicy.RERUN, d.replayPolicy)
         assertNotNull(contract.inputCodec)
         assertNotNull(contract.outputCodec)
-        // G1 stub declares no required capabilities (no capability reads in the handler).
-        assertEquals(emptySet<dev.rubentxu.pipeline.v2.domain.step.StepCapability>(), contract.requiredCapabilities)
+        // G3-A4.2: capability declaration. The handler reaches shell execution
+        // ONLY through SHELL_OPERATIONS_CAPABILITY; admission is fail-closed.
+        assertEquals(
+            setOf<dev.rubentxu.pipeline.v2.domain.step.StepCapability>(SHELL_OPERATIONS_CAPABILITY),
+            contract.requiredCapabilities,
+        )
     }
 
     @Test
@@ -175,13 +195,62 @@ class CoreShellStepTest {
     }
 
     @Test
-    fun `handler — G1 stub returns UnitValue with zero duration and no captured stdout`() {
+    fun `handler — capability-routed handler invokes ShellOperations exactly once and projects typed result`() = runBlocking {
+        // A4.2 success path: the typed CoreShellInput reaches the ShellOperations seam once
+        // with the same payload and execution identity; the typed ShellInvocationResult
+        // returned is projected 1:1 into the typed CoreShellOutput (no string parsing).
+        val ops = shellOpsReturning(ShellInvocationResult.Stdout("hello\n"))
         val def = CoreShellStep.definition
-        val input = CoreShellInput(command = ShellCommand(script = "echo ignored"))
-        val output = def.handler.execute(input, noOpContext())
-        assertEquals(ShellInvocationResult.UnitValue, output.result)
-        assertEquals("", output.capturedStdout)
+        val input = CoreShellInput(command = ShellCommand(script = "echo hello", returnMode = ShellReturnMode.STDOUT))
+        val output = def.handler.execute(
+            input,
+            StepHandlerContext(runId = RunId("a4-2"), stepIndex = 7, capabilities = fakeCapabilities(ops)),
+        )
+
+        assertEquals(1, ops.callCount)
+        assertEquals("echo hello", ops.lastCommand!!.script)
+        assertEquals(ShellReturnMode.STDOUT, ops.lastCommand!!.returnMode)
+        assertEquals(RunId("a4-2"), ops.lastRunId)
+        assertEquals(7, ops.lastStepIndex)
+        assertEquals(ShellInvocationResult.Stdout("hello\n"), output.result)
+        assertEquals("hello\n", output.capturedStdout)
         assertEquals(0L, output.durationMs)
+    }
+
+    @Test
+    fun `handler — non-Stdout variants project with empty capturedStdout and the typed result preserved`() = runBlocking {
+        // The handler is a 1:1 projection of the closed ShellInvocationResult ADT.
+        // Stdout carries captured stdout; the other variants carry no captured stdout
+        // (them being typed semantics, not captured bytes). The adapter remains the
+        // single authority for EchoOutputCaptured events.
+        val cases = listOf(
+            ShellInvocationResult.UnitValue,
+            ShellInvocationResult.Status(exitCode = 0),
+            ShellInvocationResult.Failed(
+                failure = dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
+                    message = "exit 7",
+                ),
+                exitCode = 7,
+            ),
+            ShellInvocationResult.Interrupted(
+                interruption = dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord(
+                    kind = dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind.TIMEOUT,
+                    message = "killed",
+                    operationId = "a/b/0",
+                ),
+            ),
+        )
+        for (variant in cases) {
+            val ops = shellOpsReturning(variant)
+            val output = CoreShellStep.definition.handler.execute(
+                CoreShellInput(command = ShellCommand(script = "x")),
+                StepHandlerContext(runId = RunId("a4-2"), stepIndex = 0, capabilities = fakeCapabilities(ops)),
+            )
+            assertEquals(1, ops.callCount)
+            assertEquals(variant, output.result)
+            assertEquals("", output.capturedStdout)
+        }
     }
 
     @Test

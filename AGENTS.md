@@ -476,6 +476,21 @@ group).
     the pkill command line itself. Use `pkill -f GradleDaemon` or kill by
     PID via `jps`.
 
+### Coordinator test composition (LB-02 / A5)
+
+Validated by the A5 Sh-corpus migration: this rule governs how coordinator and
+durable behaviour tests are composed, and is Step-agnostic.
+
+- Ordinary coordinator / durable behaviour tests MUST use the production-like
+  registry-aware composition (the registered core `StepRegistry` +
+  `StepMetadataResolver` + `CommonExecutionBoundary` + capability composition).
+- Bare / no-registry coordinator construction MUST be explicit and reserved for
+  negative fail-closed tests or intentional legacy characterization.
+- Tests MUST observe the common execution / family-routing seam rather than
+  depending on concrete legacy command subtypes.
+- A pre-existing red test baseline MUST NOT be widened or re-baselined during a
+  Step migration.
+
 ### End-of-round checklist
 
 - [ ] Exactly one L4/L5 full run actually executed (canary verified, fresh XML).

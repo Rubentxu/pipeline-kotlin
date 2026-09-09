@@ -128,6 +128,18 @@ class CoreShellStepTest {
     }
 
     @Test
+    fun `codec input — decode accepts the dsl compiler sh payload shape`() {
+        val dslPayload = EncodedStepValue(
+            """{"kind":"sh","command":"echo from-dsl","isScriptBlock":false,"returnStdout":true}""",
+        )
+
+        val decoded = CoreShellStep.definition.contract.inputCodec.decode(dslPayload)
+
+        assertEquals("echo from-dsl", decoded.command.script)
+        assertEquals(ShellReturnMode.STDOUT, decoded.command.returnMode)
+    }
+
+    @Test
     fun `codec input — decode rejects a non-shell payload kind`() {
         val foreign = EncodedStepValue("""{"kind":"not-shell","script":"x","returnMode":"NONE"}""")
         assertTrue(
@@ -203,11 +215,18 @@ class CoreShellStepTest {
     }
 
     @Test
-    fun `registry resolution — production factory does NOT yet contain core sh (G3 will flip)`() {
-        // G1: factory still seeds only CoreEchoStep. Including CoreShellStep is the G3 flip.
+    fun `registry resolution — production factory now contains core sh (G3 REGISTRY_PRIMARY flip)`() {
+        // LB-02 / A4 WU2: factory seeds both CoreEchoStep and CoreShellStep.
+        // The production `CoreStepRegistryFactory.registry()` is the single
+        // composition authority for core Step definitions; external plugins
+        // register into the same registry at the composition root. After the
+        // A4 flip, both echo and sh flow through `StructuralStepFamily.Registry`.
         val r = CoreStepRegistryFactory.registry()
         assertTrue(r.contains(dev.rubentxu.pipeline.v2.domain.PluginStepId("core.echo")))
-        assertEquals(false, r.contains(CoreShellStep.KEY))
+        assertTrue(
+            r.contains(CoreShellStep.KEY),
+            "CoreStepRegistryFactory MUST register CoreShellStep alongside CoreEchoStep after A4 WU2",
+        )
     }
 
     @Test

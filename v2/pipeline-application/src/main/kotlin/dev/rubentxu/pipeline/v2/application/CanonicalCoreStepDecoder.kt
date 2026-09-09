@@ -44,16 +44,24 @@ sealed interface CanonicalCoreStepCommand {
          * Closed legacy-core canonical COMMAND plugin IDs — the set of plugin keys the canonical
          * dispatcher routes through the legacy decode + dispatch family (StructuralStepFamily.LegacyCore).
          *
-         * Registry-routed core plugins (e.g. `core.echo`) are deliberately excluded: they live behind
-         * the open [dev.rubentxu.pipeline.v2.domain.step.StepRegistry] registered via
-         * [CoreStepRegistryFactory] and classify as StructuralStepFamily.Registry.
+         * Registry-routed core plugins (e.g. `core.echo`, and — since LB-02 / A4 — `core.sh`) are
+         * deliberately excluded: they live behind the open [dev.rubentxu.pipeline.v2.domain.step.StepRegistry]
+         * registered via [CoreStepRegistryFactory] and classify as StructuralStepFamily.Registry.
          *
          * Naming: this constant does NOT mean "all core plugins" — only the legacy executable ones.
          * S3.3 renamed the authority from `ALL_PLUGIN_IDS` to [LEGACY_PLUGIN_IDS] to make the
          * semantic boundary unmistakable.
+         *
+         * LB-02 / A4 (REGISTRY_PRIMARY flip): `"core.sh"` is removed from this set so the
+         * structural classifier routes it through `Registry` (via `StructuralFamilyResolver.classify`).
+         * The `CanonicalCoreStepCommand.Shell` data class, the `CanonicalCoreStepDecoder` Sh branch,
+         * the `CanonicalShellNodeDispatcher`, and the `CanonicalCoreStepMetadata["core.sh"]` row all
+         * REMAIN present for rollback / burn-down. The production path no longer reaches them because
+         * the family classifier returns `Registry` for `core.sh` and the coordinator routes to
+         * `RegistryExecutionPreparation` + `RegistryExecutionBoundary`. The composite
+         * `RegistryStepMetadataResolver` reads the production metadata from `CoreShellStep.descriptor`.
          */
         val LEGACY_PLUGIN_IDS: Set<String> = setOf(
-            "core.sh",
             "core.error",
             "core.sleep",
             "core.file.writeFile",

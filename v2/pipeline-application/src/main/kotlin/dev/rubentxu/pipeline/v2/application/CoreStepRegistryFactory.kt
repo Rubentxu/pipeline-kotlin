@@ -27,5 +27,13 @@ object CoreStepRegistryFactory {
     /** A fresh [StepRegistry] seeded with every registered core [StepDefinition]. */
     fun registry(): InMemoryStepRegistry = InMemoryStepRegistry().apply {
         CoreEchoStep.registerInto(this)
+        // LB-02 / A4 WU2: register CoreShellStep alongside CoreEchoStep.
+        // After the structural flip (WU3, removal of "core.sh" from LEGACY_PLUGIN_IDS),
+        // CoreShellStep is the production routing authority for `sh(...)` invocations.
+        // The classifier `StructuralFamilyResolver.classify("core.sh", registry)` returns
+        // `Registry` because the key is no longer in the legacy set; this composes the
+        // typed input/output codecs and the SHELL_OPERATIONS_CAPABILITY declaration.
+        // Single composition authority — no per-call-site wiring.
+        CoreShellStep.registerInto(this)
     }
 }

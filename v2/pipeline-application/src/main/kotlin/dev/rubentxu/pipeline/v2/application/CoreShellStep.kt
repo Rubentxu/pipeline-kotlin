@@ -26,6 +26,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -102,17 +103,45 @@ object CoreShellStep {
 
         override fun decode(encoded: EncodedStepValue): CoreShellInput {
             val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            require(obj["kind"]?.jsonPrimitive?.content == "shell") {
-                "shell payload kind must be 'shell'"
+            // A4 flip: accept BOTH canonical kind spellings — the production DSL compiler
+            // (DslCompiledPipelineCompiler.shellPayload) emits `"sh"`, while the codec's
+            // own self-encoded form uses `"shell"`. Both name the same Step family; rejecting
+            // either would break the registry path for real `.pipeline.kts` files. Anything
+            // else is rejected fail-closed.
+            val kind = obj["kind"]?.jsonPrimitive?.content
+            require(kind == "shell" || kind == "sh") {
+                "shell payload kind must be 'shell' or 'sh'"
             }
+            // A4 flip: the production DSL compiler emits `"command"`, while the codec's
+            // own self-encoded form uses `"script"`. Both name the same data; accept either
+            // so the codec's self-round-trip AND real `.pipeline.kts` files both decode.
+            val script = obj["command"]?.jsonPrimitive?.content
+                ?: obj["script"]?.jsonPrimitive?.content
+                ?: throw IllegalArgumentException("Shell payload must include 'command' or 'script'")
+            // A4 flip: the DSL compiler emits `"returnStdout"` (Jenkins boolean) and
+            // `"isScriptBlock"` (canonical flag). The codec's own self-encoded form uses
+            // `"returnMode"` (closed enum). Both shapes are canonical for the same Step;
+            // we accept either so registry routing works for real `.pipeline.kts` files.
+            val returnMode = obj["returnMode"]?.jsonPrimitive?.content?.let { ShellReturnMode.valueOf(it) }
+                ?: run {
+                    val returnStdout = obj["returnStdout"]?.jsonPrimitive?.booleanOrNull == true
+                    val returnStatus = obj["returnStatus"]?.jsonPrimitive?.booleanOrNull == true
+                    when {
+                        returnStdout && returnStatus ->
+                            throw IllegalArgumentException(
+                                "Shell payload cannot enable both returnStdout and returnStatus",
+                            )
+                        returnStdout -> ShellReturnMode.STDOUT
+                        returnStatus -> ShellReturnMode.STATUS
+                        else -> ShellReturnMode.NONE
+                    }
+                }
             return CoreShellInput(
                 command = ShellCommand(
-                    script = obj.getValue("script").jsonPrimitive.content,
+                    script = script,
                     encoding = obj["encoding"]?.jsonPrimitive?.content,
                     label = obj["label"]?.jsonPrimitive?.content,
-                    returnMode = ShellReturnMode.valueOf(
-                        obj.getValue("returnMode").jsonPrimitive.content,
-                    ),
+                    returnMode = returnMode,
                 ),
             )
         }

@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
@@ -23,37 +22,31 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
  * [StepHandlerContext] built from the runtime identity plus its declared capabilities; it never sees a
  * [CanonicalRuntimeContext].
  *
- * ## LB-02 / G3-A1: typed-output carrier (correction 1, user rule)
+ * ## LB-02 / G3-A3: atomic outcome + encodedOutput
  *
- * The registry execution model returns BOTH the closed [StepOutcome] algebra
- * and the typed `O` encoded as [EncodedStepValue]. The boundary NEVER
- * persists either into a journal row; **execution produces data; the durable
- * layer decides how/when it is persisted**.
+ * The registry boundary returns the same shape as every other [CommonExecutionBoundary]
+ * implementation: a [CommonExecutionResult] carrying both `outcome` and `encodedOutput?`. The encoded
+ * output is the Step's typed `O` after `outputCodec.encode(O)`. After this boundary returns, the typed
+ * `O` is GONE — only the `EncodedStepValue` (a `String` under a value class) crosses the seam.
+ * The boundary NEVER persists either field; durability is a separate concern.
  *
- * Two sibling entry points:
+ * A Step whose handler returns `Unit` reduces to `encodedOutput = null` (mirroring echo's
+ * `EchoInput -> String` shape; echo's typed output crosses via `EVENT_SINK`, not via this slot).
+ * A thrown handler is an adapter/engine defect and surfaces as `StepOutcome.Failure` (`ENGINE`);
+ * the encoded output in that case is `null` because there is no successful terminal to encode.
  *
- *  - [coexecute] returns the full [RegistryExecutionResult] (outcome +
- *    encoded output).
- *  - [execute] is the existing [CommonExecutionBoundary] adapter; it is now
- *    a thin projection over [coexecute] and continues to return only
- *    [StepOutcome], preserving the [CommonExecutionBoundary] contract for
- *    the legacy-compatible path, the recording boundary, and any caller
- *    that does not need typed output.
+ * ## Atomicity / no-retention invariant (A3.6 user rule)
  *
- * A Step whose handler returns `Unit` reduces to `encodedOutput = null`
- * (mirroring echo's `EchoInput -> String` shape but reduced at the carrier:
- * echo's `String` is observable through the `EVENT_SINK` capability, not
- * through the typed-output slot). A thrown handler is an adapter/engine
- * defect and surfaces as [StepOutcome.Failure] (`ENGINE`); the encoded
- * output in that case is `null` (no successful terminal to encode).
+ * The boundary MUST NOT retain execution output after `execute` returns. The carrier is the
+ * single source of truth and is computed in one pass — there is no `lastOutput` field, no
+ * thread-local, no per-key cache. Future parallel / remote / retry scenarios rely on the
+ * atomicity of the carrier value.
  */
 object RegistryExecutionBoundary {
 
     fun adapt(): CommonExecutionBoundary = CommonExecutionBoundary { prepared, context ->
         when (prepared) {
-            is PreparedRegistryExecution -> {
-                coexecute(prepared, context).outcome
-            }
+            is PreparedRegistryExecution -> coexecute(prepared, context)
             is PreparedLegacyExecution -> throw EngineInvariantViolation(
                 "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",
             )
@@ -62,18 +55,14 @@ object RegistryExecutionBoundary {
 
     /**
      * Executes a [PreparedRegistryExecution] and returns both the closed
-     * [StepOutcome] AND the encoded typed `O` (or `null` if the handler
-     * returned `Unit`, threw, or surfaced a Failure).
-     *
-     * This is the entry point the durable coordinator reaches into when it
-     * wants both pieces (A3 onwards); the projection into a journal row
-     * stays a coordinator concern.
+     * [dev.rubentxu.pipeline.v2.domain.StepOutcome] AND the encoded typed `O` (or `null` if the
+     * handler returned `Unit`, threw, or surfaced a Failure).
      */
     @Suppress("UNCHECKED_CAST")
     suspend fun coexecute(
         prepared: PreparedRegistryExecution,
         context: CanonicalRuntimeContext,
-    ): RegistryExecutionResult {
+    ): CommonExecutionResult {
         // Erasure boundary: the concrete payload type lives behind the codec / in the prepared input.
         val definition = prepared.definition as StepDefinition<Any, Any>
         val contract = definition.contract
@@ -98,7 +87,7 @@ object RegistryExecutionBoundary {
 
         return try {
             val produced: Any = definition.handler.execute(prepared.decodedInput, handlerContext)
-            // A1: persist typed O only when it is NOT `Unit`. Encoded under the
+            // A1/A3: persist typed O only when it is NOT `Unit`. Encoded under the
             // Step's declared output codec so the durable layer can replay-decode only
             // through that same codec, never through opaque assumptions.
             val encoded: EncodedStepValue? = if (produced is Unit) {
@@ -109,13 +98,13 @@ object RegistryExecutionBoundary {
                     as dev.rubentxu.pipeline.v2.domain.step.StepCodec<Any>)
                 codec.encode(produced)
             }
-            RegistryExecutionResult(
-                outcome = StepOutcome.Success,
+            CommonExecutionResult(
+                outcome = dev.rubentxu.pipeline.v2.domain.StepOutcome.Success,
                 encodedOutput = encoded,
             )
         } catch (e: Exception) {
-            RegistryExecutionResult(
-                outcome = StepOutcome.Failure(
+            CommonExecutionResult(
+                outcome = dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure(
                     PipelineFailure(
                         kind = FailureKind.ENGINE,
                         message = "registry step '${prepared.key.value}' handler failed: ${e.message ?: "unknown"}",

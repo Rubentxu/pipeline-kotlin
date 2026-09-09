@@ -26,9 +26,13 @@ class StepExecutionBoundaryTest {
             stepType = "sh",
         )
 
-        val outcome = StepExecutionBoundary(eventStore).execute(context) {
-            StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "exit 7"))
+        val result = StepExecutionBoundary(eventStore).execute(context) {
+            CommonExecutionResult(
+                outcome = StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "exit 7")),
+                encodedOutput = null,
+            )
         }
+        val outcome = result.outcome
 
         assertEquals(StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "exit 7")), outcome)
         val events = eventStore.eventsFor(context.runId).toList()
@@ -50,9 +54,10 @@ class StepExecutionBoundaryTest {
         )
         val failure = PipelineFailure(FailureKind.PLUGIN, "plugin contract rejected input")
 
-        val outcome = StepExecutionBoundary(eventStore).execute(context) {
+        val result = StepExecutionBoundary(eventStore).execute(context) {
             throw PluginStepException(failure)
         }
+        val outcome = result.outcome
 
         assertEquals(StepOutcome.Failure(failure), outcome)
         val events = eventStore.eventsFor(context.runId).toList()
@@ -76,9 +81,13 @@ class StepExecutionBoundaryTest {
             stepType = "sh",
         )
 
-        val outcome = StepExecutionBoundary(eventStore).execute(context) {
-            StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 42"))
+        val result = StepExecutionBoundary(eventStore).execute(context) {
+            CommonExecutionResult(
+                outcome = StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 42")),
+                encodedOutput = null,
+            )
         }
+        val outcome = result.outcome
 
         assertEquals(StepOutcome.Failure(PipelineFailure(FailureKind.SCRIPT, "shell exited with code 42")), outcome)
         val events = eventStore.eventsFor(context.runId).toList()

@@ -226,11 +226,11 @@ class GenericRegistryExecutionCarrierTest {
     // -------- Carrier is what CommonExecutionBoundary.execute returns too --------
 
     @Test
-    fun `adaptBoundary_execute still returns StepOutcome only, not carrier`() = runBlocking {
-        // The boundary's existing adapt() shape (the one SeamedExecutionRouter and the
-        // recording decorator still depend on) must be byte-identical to before A1: it
-        // returns StepOutcome, not RegistryExecutionResult. So the carrier is OPT-IN
-        // through coexecute() — no signature change ripples.
+    fun `adaptBoundary_execute returns CommonExecutionResult with outcome and registry encoded output`() = runBlocking {
+        // A3: CommonExecutionBoundary.execute() is the SINGLE seam. The registry path
+        // returns a CommonExecutionResult carrying both the closed StepOutcome and the
+        // (optional) encoded typed output. Echo's typed String crosses via EVENT_SINK,
+        // not via this slot, so encodedOutput is null here.
         val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
         val ctx = buildContext()
         val boundary = RegistryExecutionBoundary.adapt()
@@ -243,9 +243,14 @@ class GenericRegistryExecutionCarrierTest {
             require(it is ExecutionPreparation.Ready) { "admission must succeed: $it" }
             (it as ExecutionPreparation.Ready).prepared as PreparedRegistryExecution
         }
-        // adapt() returns StepOutcome (existing contract). No allocation of carrier needed by callers.
-        val outcome: StepOutcome = boundary.execute(prepared, ctx)
-        assertEquals(StepOutcome.Success, outcome, "adapt().execute must still return StepOutcome (the carrier is opt-in)")
+        // The carrier is the single seam; the registry path produces BOTH the closed outcome
+        // AND the encoded typed output. Echo's typed String is encoded through the contract's
+        // outputCodec and surfaces here as a non-null EncodedStepValue (mirroring the EVENT_SINK
+        // event it also emits — both are valid projections of the same typed O).
+        val executionResult = boundary.execute(prepared, ctx)
+        assertEquals(StepOutcome.Success, executionResult.outcome)
+        // Echo handler returns "input\n" through its String outputCodec; carrier holds the encoded value.
+        assertEquals(EncodedStepValue("step-outcome-only\n"), executionResult.encodedOutput)
     }
 
     // -------- Sanity: the registry mirror is unaffected --------
@@ -266,7 +271,7 @@ class GenericRegistryExecutionCarrierTest {
             require(it is ExecutionPreparation.Ready) { "admission must succeed: $it" }
             (it as ExecutionPreparation.Ready).prepared as PreparedRegistryExecution
         }
-        val outcome: StepOutcome = boundary.execute(echoPrepared, ctx)
+        val echoResult = boundary.execute(echoPrepared, ctx)
         // The boundary throws on legacy-family prepared, as the docstring states.
         val legacyOutcome = runCatching {
             boundary.execute(
@@ -275,24 +280,24 @@ class GenericRegistryExecutionCarrierTest {
             )
         }
         assertTrue(legacyOutcome.isFailure, "RegistryExecutionBoundary must still refuse legacy-family PreparedExecution")
-        assertEquals(StepOutcome.Success, outcome)
+        assertEquals(StepOutcome.Success, echoResult.outcome)
     }
 
     // -------- Carrier is the typed-output / StepOutcome pair, not two Steps --------
 
     @Test
-    fun `carrier — RegistryExecutionResult is exactly one Outcome and one Optional EncodedStepValue`() {
+    fun `carrier — CommonExecutionResult is exactly one Outcome and one Optional EncodedStepValue`() {
         // Sanity on the structural shape: a data class with two fields, the second
         // one nullable. If a future contributor adds `rawOutput: String?` or any
         // ad-hoc slot to the carrier, this test fails loudly.
         val outcome: StepOutcome = StepOutcome.Success
         val encoded: EncodedStepValue? = EncodedStepValue("any-shape")
-        val carrier = RegistryExecutionResult(outcome = outcome, encodedOutput = encoded)
+        val carrier = CommonExecutionResult(outcome = outcome, encodedOutput = encoded)
         // Structural equality check: two carriers with same fields are equal.
-        val same = RegistryExecutionResult(StepOutcome.Success, EncodedStepValue("any-shape"))
+        val same = CommonExecutionResult(StepOutcome.Success, EncodedStepValue("any-shape"))
         assertEquals(carrier, same)
         // Encoding with null reduces to outcome-only:
-        val noOutput = RegistryExecutionResult(StepOutcome.Success, null)
+        val noOutput = CommonExecutionResult(StepOutcome.Success, null)
         assertNotNull(noOutput.outcome)
         assertEquals(null, noOutput.encodedOutput)
     }

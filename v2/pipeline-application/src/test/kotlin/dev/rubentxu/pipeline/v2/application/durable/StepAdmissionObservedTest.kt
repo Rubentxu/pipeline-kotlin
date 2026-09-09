@@ -123,7 +123,7 @@ class StepAdmissionObservedTest {
         // around the produced boundary is private, so we only assert that the factory
         // accepts and stores the user reference (the test fixture in
         // ExecutionBoundaryFactoryTest already asserts the wrapper increments its counter).
-        val recorder = CommonExecutionBoundary { _, _ -> StepOutcome.Success }
+        val recorder = CommonExecutionBoundary { _, _ -> CommonExecutionResult(outcome = StepOutcome.Success, encodedOutput = null) }
         val produced = ExecutionBoundaryFactory.build(
             dispatcher = CanonicalNodeDispatcher(),
             invocationExecutor = null,

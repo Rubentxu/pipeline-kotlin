@@ -29,9 +29,12 @@ class ExecutionBoundaryFactoryTest {
         var calls: Int = 0
             private set
 
-        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
             calls++
-            return StepOutcome.Success
+            return CommonExecutionResult(outcome = StepOutcome.Success, encodedOutput = null)
         }
     }
 
@@ -40,9 +43,12 @@ class ExecutionBoundaryFactoryTest {
         var calls: Int = 0
             private set
 
-        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
             calls++
-            return StepOutcome.Success
+            return CommonExecutionResult(outcome = StepOutcome.Success, encodedOutput = null)
         }
     }
 
@@ -85,7 +91,7 @@ class ExecutionBoundaryFactoryTest {
             // produced (no wrapping object introduced).
             assertEquals(
                 StepOutcome.Success,
-                produced.execute(legacyPrepared(), runtime()),
+                produced.execute(legacyPrepared(), runtime()).outcome,
                 "LegacyOnly boundary must succeed for a legacy PreparedExecution",
             )
             // Sanity: a registry-prepared payload routed through the legacy-only boundary must throw the
@@ -113,7 +119,7 @@ class ExecutionBoundaryFactoryTest {
         // router and not the legacy boundary alone.
         assertEquals(
             StepOutcome.Success,
-            produced.execute(legacyPrepared(), runtime()),
+            produced.execute(legacyPrepared(), runtime()).outcome,
             "seamed router must route legacy family to the legacy boundary",
         )
         // For registry family the prepare/boundary path needs a registry whose contract admits the
@@ -124,7 +130,7 @@ class ExecutionBoundaryFactoryTest {
         // registry payloads that pass the capability admission.)
         assertNotEquals(
             StepOutcome.Failure::class,
-            produced.execute(legacyPrepared(), runtime())::class,
+            produced.execute(legacyPrepared(), runtime()).outcome::class,
             "seamed router must not fail the legacy family",
         )
     }
@@ -143,7 +149,7 @@ class ExecutionBoundaryFactoryTest {
         // wrapper intercepts the call, invokes the user-supplied recorder, and delegates to the
         // produced boundary. After one execute(), both the recorder's counter and the wrapper's own
         // counter (verifiable via the recorder's counter only here) increment.
-        val outcome = produced.execute(legacyPrepared(), runtime())
+        val outcome = produced.execute(legacyPrepared(), runtime()).outcome
 
         assertEquals(StepOutcome.Success, outcome)
         assertEquals(
@@ -172,11 +178,11 @@ class ExecutionBoundaryFactoryTest {
         // recorder-wrapped variant. They both route the legacy-prepared execution to Success.
         assertEquals(
             StepOutcome.Success,
-            producedWithNullRecorder.execute(legacyPrepared(), runtime()),
+            producedWithNullRecorder.execute(legacyPrepared(), runtime()).outcome,
         )
         assertEquals(
             StepOutcome.Success,
-            producedExplicitlyNoRecorder.execute(legacyPrepared(), runtime()),
+            producedExplicitlyNoRecorder.execute(legacyPrepared(), runtime()).outcome,
         )
         // Sanity: FamilyRouter.decide builds the legacy boundary as the legacy adapter over the
         // dispatcher; the factory returns the same object (no wrapping). Since we cannot introspect

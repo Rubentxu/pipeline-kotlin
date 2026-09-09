@@ -60,7 +60,10 @@ class DurableProtocolInvocationCharacterizationTest {
             stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
-        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
             calls++
             return delegate.execute(prepared, context)
         }

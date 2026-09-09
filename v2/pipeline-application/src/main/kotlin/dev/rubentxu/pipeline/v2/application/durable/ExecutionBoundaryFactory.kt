@@ -125,7 +125,10 @@ object ExecutionBoundaryFactory {
         var calls: Int = 0
             private set
 
-        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
             calls++
             recorder.execute(prepared, context)
             return delegate.execute(prepared, context)

@@ -61,6 +61,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import java.nio.file.Path
 import java.nio.file.Files
 import java.time.Instant
@@ -575,7 +576,10 @@ class CanonicalDurableRunCoordinator(
                     ),
                 )
             is InvocationReconciliation.RecoverRunning -> {
-                val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) { resolution.outcome }
+                val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                    CommonExecutionResult(outcome = resolution.outcome, encodedOutput = null)
+                }
+                val outcome = executionResult.outcome
                 journal.append(
                     RerunOperation(
                         id = operationId,
@@ -592,13 +596,16 @@ class CanonicalDurableRunCoordinator(
             InvocationReconciliation.ReuseCompleted -> return StepOutcome.Success
             is InvocationReconciliation.RejectedAbort ->
                 return StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                    StepOutcome.Failure(
-                        PipelineFailure(
-                            dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                            "Replay aborted for '${resolution.operationId}'",
+                    CommonExecutionResult(
+                        outcome = StepOutcome.Failure(
+                            PipelineFailure(
+                                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                                "Replay aborted for '${resolution.operationId}'",
+                            ),
                         ),
+                        encodedOutput = null,
                     )
-                }
+                }.outcome
             // Execute is the ONLY resolution that reaches the effective executor. beginOperation, the
             // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
             // live here, so the concrete semantics are invoked exclusively under this decision.
@@ -656,15 +663,24 @@ class CanonicalDurableRunCoordinator(
                     journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
                 }
 
-                val outcome = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                val executionStartMs = System.currentTimeMillis()
+                val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
                     executionBoundary.execute(prepared, runtime)
                 }
+                val outcome = executionResult.outcome
+                val executionEndMs = System.currentTimeMillis()
                 journal.append(
                     RerunOperation(
                         id = operationId,
                         fingerprint = fingerprint,
                         input = input,
-                        output = null,
+                        output = executionResult.encodedOutput?.let {
+                            OperationOutput(
+                                result = JsonPrimitive(it.value),
+                                durationMs = executionEndMs - executionStartMs,
+                                finishedAt = executionEndMs,
+                            )
+                        },
                         status = outcome.toOperationStatus(),
                         attempt = 1,
                     ),

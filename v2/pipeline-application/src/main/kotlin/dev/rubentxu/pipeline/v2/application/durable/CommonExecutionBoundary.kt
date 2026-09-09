@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
 /**
  * New authority seam for the EFFECTIVE execution of a Step's concrete semantics (CDE.3-b2).
@@ -15,9 +14,18 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
  *
  * The durable protocol decides whether to call it (fresh/re-run executes; replay reuse, decode
  * rejection, divergence and running-shell recovery return before it is reached).
+ *
+ * ## LB-02 / G3-A3: atomic outcome + encodedOutput
+ *
+ * The seam returns a [CommonExecutionResult] — `outcome + encodedOutput` in one value — to
+ * eliminate temporal connascence. Legacy paths encode `encodedOutput = null`; registry-routed
+ * paths MAY carry a non-null encoded typed output. **There is exactly one execution seam.**
  */
 fun interface CommonExecutionBoundary {
-    suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome
+    suspend fun execute(
+        prepared: PreparedExecution,
+        context: CanonicalRuntimeContext,
+    ): CommonExecutionResult
 }
 
 /**
@@ -32,6 +40,10 @@ data class PreparedLegacyExecution(val command: CanonicalCoreStepCommand) : Prep
  * new [CommonExecutionBoundary]. Temporary migration glue, behavior-preserving: the coordinator may
  * keep constructing the old executor (including a recording one) while the new boundary routes an
  * already-prepared legacy execution to it unchanged.
+ *
+ * The legacy executor produces only an outcome (no typed output at this seam); the adapter
+ * lifts its [dev.rubentxu.pipeline.v2.domain.StepOutcome] into a [CommonExecutionResult]
+ * with `encodedOutput = null`. Backwards-behaviour-preserving at every call site.
  */
 object LegacyExecutionAdapter {
     fun adapt(legacy: CanonicalInvocationExecutor): CommonExecutionBoundary =
@@ -40,7 +52,10 @@ object LegacyExecutionAdapter {
                 ?: throw EngineInvariantViolation(
                     "LegacyExecutionAdapter received a non-legacy PreparedExecution; it cannot route it",
                 )
-            legacy.invoke(legacyPrepared.command, context)
+            CommonExecutionResult(
+                outcome = legacy.invoke(legacyPrepared.command, context),
+                encodedOutput = null,
+            )
         }
 }
 
@@ -52,6 +67,8 @@ object LegacyExecutionAdapter {
  * key and NEVER over concrete plugin steps, so no concrete handler is special-cased. The [when] is
  * exhaustive over the two sealed structural forms. Each family is backed by its own executor boundary
  * ([legacy] for [PreparedLegacyExecution], [registry] for [PreparedRegistryExecution]).
+ *
+ * LB-02 / G3-A3: the routed [CommonExecutionResult] is propagated unchanged — the seam is single.
  */
 object SeamedExecutionRouter {
     fun route(

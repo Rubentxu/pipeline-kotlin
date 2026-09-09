@@ -22,9 +22,12 @@ class SeamedExecutionRouterTest {
     private class RecordingBoundary : CommonExecutionBoundary {
         var calls: Int = 0
             private set
-        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
             calls++
-            return StepOutcome.Success
+            return CommonExecutionResult(outcome = StepOutcome.Success, encodedOutput = null)
         }
     }
 

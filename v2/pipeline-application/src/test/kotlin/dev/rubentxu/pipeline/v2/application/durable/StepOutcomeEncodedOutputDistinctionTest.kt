@@ -280,7 +280,7 @@ class StepOutcomeEncodedOutputDistinctionTest {
             PipelineFailure(FailureKind.SCRIPT, "structured failure"),
         )
         val encoded: EncodedStepValue? = EncodedStepValue("""{"kind":"FAILED","message":"x"}""")
-        val carrier = RegistryExecutionResult(outcome = outcome, encodedOutput = encoded)
+        val carrier = CommonExecutionResult(outcome = outcome, encodedOutput = encoded)
 
         // Each responsibility is read through its own property. The OTHER property is opaque at this site.
         val observedOutcome: StepOutcome = carrier.outcome

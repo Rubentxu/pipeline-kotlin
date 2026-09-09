@@ -36,11 +36,12 @@ class StepExecutionBoundary(
 ) {
     suspend fun execute(
         context: StepLifecycleContext,
-        body: suspend () -> StepOutcome,
-    ): StepOutcome {
+        body: suspend () -> CommonExecutionResult,
+    ): CommonExecutionResult {
         eventSink.append(context.stepStarted())
         try {
-            return body().also { outcome ->
+            return body().also { result ->
+                val outcome = result.outcome
                 if (outcome is StepOutcome.Failure) {
                     eventSink.append(context.stepFailed(outcome))
                 }
@@ -48,7 +49,7 @@ class StepExecutionBoundary(
         } catch (exception: PipelineStepException) {
             val outcome = StepOutcome.Failure(exception.failure)
             eventSink.append(context.stepFailed(outcome))
-            return outcome
+            return CommonExecutionResult(outcome = outcome, encodedOutput = null)
         } finally {
             eventSink.append(context.stepFinished())
         }

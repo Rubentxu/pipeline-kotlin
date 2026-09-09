@@ -71,7 +71,10 @@ class DualExecutionSeamCharacterizationTest {
     private class RecordingBoundary(private val delegate: CommonExecutionBoundary) : CommonExecutionBoundary {
         var calls: Int = 0
             private set
-        override suspend fun execute(prepared: PreparedExecution, context: CanonicalRuntimeContext): StepOutcome {
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
             calls++
             return delegate.execute(prepared, context)
         }

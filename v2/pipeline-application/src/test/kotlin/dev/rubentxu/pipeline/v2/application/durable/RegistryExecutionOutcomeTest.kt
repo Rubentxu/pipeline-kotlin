@@ -127,7 +127,7 @@ class RegistryExecutionOutcomeTest {
         assertTrue(ready is ExecutionPreparation.Ready, "echo envelope input must prepare Ready, got $ready")
         val prepared = (ready as ExecutionPreparation.Ready).prepared as PreparedRegistryExecution
 
-        val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(store))
+        val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(store)).outcome
 
         // The coordinator-facing result is a plain StepOutcome (Success); the echo handler's typed
         // String payload is observable only as the EchoOutputCaptured event it emitted, never as a
@@ -143,7 +143,7 @@ class RegistryExecutionOutcomeTest {
         val registry = InMemoryStepRegistry().apply { register(unitStep(unitKey)) }
         val prepared = prepareValid(registry, unitKey)
 
-        val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore()))
+        val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore())).outcome
 
         assertEquals(StepOutcome.Success, outcome, "a Unit handler return is a durable Success")
     }
@@ -157,7 +157,7 @@ class RegistryExecutionOutcomeTest {
         val registry = InMemoryStepRegistry().apply { register(throwingStep) }
         val prepared = prepareValid(registry, boomKey)
 
-        val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore()))
+        val outcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore())).outcome
 
         assertTrue(outcome is StepOutcome.Failure, "a thrown handler must fail closed, got $outcome")
         val failure = (outcome as StepOutcome.Failure).failure
@@ -173,7 +173,8 @@ class RegistryExecutionOutcomeTest {
         val registry = InMemoryStepRegistry().apply { register(typedStep) }
         val prepared = prepareValid(registry, typedKey)
 
-        val outcome: StepOutcome = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore()))
+        val result = RegistryExecutionBoundary.adapt().execute(prepared, runtime(InMemoryEventStore()))
+        val outcome: StepOutcome = result.outcome
 
         // The erased handler O is consumed inside the boundary; the coordinator-side result is a plain
         // StepOutcome (Success is a value-less data object), so no `Any` can leak to the durable protocol.

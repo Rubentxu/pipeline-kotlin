@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.support
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.CommonExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.durable.CommonExecutionResult
 import dev.rubentxu.pipeline.v2.application.durable.PreparedExecution
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
@@ -106,9 +107,9 @@ class CoordinatorFixtureTest {
         override suspend fun execute(
             prepared: PreparedExecution,
             context: CanonicalRuntimeContext,
-        ): StepOutcome {
+        ): CommonExecutionResult {
             calls += 1
-            return StepOutcome.Success
+            return CommonExecutionResult(outcome = StepOutcome.Success, encodedOutput = null)
         }
     }
 }

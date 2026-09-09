@@ -318,4 +318,48 @@ class ShStepContractSuiteTest {
         assertTrue(!hasShell, "CanonicalCoreStepCommand must have no Shell subtype after S6")
         assertTrue(CoreStepRegistryFactory.registry().contains(CoreShellStep.KEY))
     }
+
+    @Test
+    fun `returnStdout — stdout is the typed value and stderr stays observable while stdout emits no console event (C4)`() = runBlocking {
+        val events = InMemoryEventStore()
+        val ws = Files.createDirectories(tempDir.resolve("rt-workspace"))
+        val result = dev.rubentxu.pipeline.v2.application.durable.ShExecution.invokeShell(
+            command = ShellCommand(script = "echo OUT; echo ERR >&2", returnMode = dev.rubentxu.pipeline.v2.domain.ShellReturnMode.STDOUT),
+            opId = dev.rubentxu.pipeline.v2.application.durable.OpId("rt-capture", 0, 0),
+            runId = "rt-capture",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions(ws, false, null, emptyMap()),
+            controlDirRoot = tempDir.resolve("rt-capture"),
+            eventSink = events,
+        )
+        assertTrue(result is dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout, "returnStdout must yield a typed Stdout value")
+        val value = (result as dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout).value
+        assertTrue(value.contains("OUT"), "typed stdout value must carry OUT; got ${value}")
+        val content = events.eventsFor("rt-capture").filterIsInstance<EchoOutputCaptured>().toList()
+            .joinToString("") { it.content }
+        assertTrue(content.contains("ERR"), "stderr must remain observable; got ${content}")
+        assertTrue(!content.contains("OUT"), "stdout must NOT be re-emitted as a console event; got ${content}")
+    }
+
+    @Test
+    fun `returnStdout — stdout-only capture emits no bogus console event while returning the value (C4 empty stderr)`() = runBlocking {
+        val events = InMemoryEventStore()
+        val ws = Files.createDirectories(tempDir.resolve("rt-workspace2"))
+        val result = dev.rubentxu.pipeline.v2.application.durable.ShExecution.invokeShell(
+            command = ShellCommand(script = "echo RTONLY", returnMode = dev.rubentxu.pipeline.v2.domain.ShellReturnMode.STDOUT),
+            opId = dev.rubentxu.pipeline.v2.application.durable.OpId("rt-empty-err", 0, 0),
+            runId = "rt-empty-err",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions(ws, false, null, emptyMap()),
+            controlDirRoot = tempDir.resolve("rt-capture2"),
+            eventSink = events,
+        )
+        assertTrue(result is dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)
+        val value = (result as dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout).value
+        assertTrue(value.contains("RTONLY"), "stdout value must carry RTONLY; got ${value}")
+        val caps = events.eventsFor("rt-empty-err").filterIsInstance<EchoOutputCaptured>().toList()
+        assertTrue(caps.isEmpty(), "no stderr means no console event; got ${caps.map { it.content }}")
+    }
 }

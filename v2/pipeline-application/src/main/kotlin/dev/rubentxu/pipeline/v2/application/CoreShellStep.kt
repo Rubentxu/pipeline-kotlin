@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
@@ -159,6 +160,10 @@ object CoreShellStep {
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.EXECUTES_SUBPROCESS),
         replayPolicy = ReplayPolicy.RERUN,
+        // LB-02 / G3-A4.1.3: recovery is a declared Step property. Mirrors the
+        // CanonicalCoreStepMetadata["core.sh"] row so the registry-resolved
+        // metadata is byte-equivalent to the legacy one before A4.8 flips routing.
+        recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
     )
 
     /**

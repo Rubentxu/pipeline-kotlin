@@ -169,6 +169,7 @@ and without inventing a new pattern. Where this section and the ADRs disagree, t
 **Reference implementations** (live, defended by fitness):
 - atomic / in-controller Step → `CoreEchoStep` (`core.echo`, `CERTIFIED`).
 - effectful / recoverable process Step → `CoreShellStep` (`core.sh`, `CERTIFIED`).
+- external / open-world Step → `example.uppercase` (`examples/example-uppercase-plugin`, `CERTIFIED`).
 
 When you start a new Step, follow the certified pattern. Do not extract a fresh façade.
 
@@ -337,6 +338,289 @@ engine via `BodyInvoker.invoke` / `BranchInvoker.invokeAll` (ADR-0073). Do NOT a
 collection like `dispatchRetryBlock` / `dispatchTimeoutBlock`. Each Block Step declares its
 own body-shape contract and is routed the same way as atomic Steps. `parallel` is a
 composable set of Named Bodies, not a permanent stage-terminal.
+
+
+## EXTERNAL STEP / PLUGIN AUTHORING GUIDE (DERIVED FROM CERTIFIED PROOF)
+
+**Authority hierarchy.** ADRs/SPECs > AGENTS.md. This section is operative guidance derived
+from certified implementations. If a future implementation contradicts a valid ADR, do NOT
+silently "fix" the ADR from AGENTS.md — escalate and amend the ADR.
+
+**Reference implementations** (all CERTIFIED; architectural references, not mandatory
+dependencies — follow the closest one rather than inventing a new execution pattern):
+
+| Reference | Kind |
+| --- | --- |
+| `core.echo` | CERTIFIED reference for atomic/simple Steps |
+| `core.sh` | CERTIFIED reference for effectful/recoverable Steps |
+| `example.uppercase` (`examples/example-uppercase-plugin`) | CERTIFIED reference for external/open-world Steps |
+
+### External plugin golden path
+
+The certified flow (LB-02, proven end-to-end by `example.uppercase`):
+
+```text
+1.  Define typed Input and Output.
+2.  Define StepCodec<Input> and StepCodec<Output>.
+3.  Define StepDescriptor.
+4.  Define StepContract.
+5.  Implement StepHandler using declared capabilities only.
+6.  Define StepDefinition.
+7.  Expose it through StepDefinitionContributor.
+8.  Package the contributor in an external JAR.
+9.  Register the contributor through the supported discovery metadata.
+10. Provide a plugin-owned typed Kotlin DSL extension.
+11. The extension lowers only to registryStep(...).
+12. registryStep produces RegistryStepSpec.
+13. The compiler lowers RegistryStepSpec generically.
+14. Runtime discovery resolves the StepDefinition.
+15. Execute through the canonical durable spine.
+16. Run the StepContractSuite.
+17. Reach CERTIFIED before treating the plugin as production-ready.
+```
+
+### Plugin ownership boundaries
+
+```text
+PLUGIN OWNS:
+- StepKey
+- Input / Output types
+- codecs
+- StepDescriptor
+- StepContract
+- handler
+- StepDefinition
+- contributor
+- ergonomic Kotlin DSL extension
+
+CORE OWNS:
+- RegistryStepSpec structural representation
+- generic compiler lowering
+- discovery mechanism
+- StepRegistry
+- durable protocol
+- capability admission
+- CommonExecutionBoundary
+- journal/replay/recovery infrastructure
+```
+
+Strong rule: **the compiler MUST NOT know how to convert plugin-specific arguments into
+plugin Input. The plugin DSL façade performs typed construction and encoding.**
+
+### Closed IR / open semantics (first-level law)
+
+```text
+StepSpec is a closed declarative structural IR.
+
+RegistryStepSpec is the single generic structural representation for
+open-world Step semantics.
+
+External plugins MUST NOT define or require new StepSpec subclasses.
+```
+
+```text
+StepSpec MUST NOT be executed directly.
+
+Production Step execution MUST flow:
+
+StepSpec
+→ compiled canonical representation
+→ CanonicalDurableRunCoordinator
+→ execution spine
+```
+
+Re-introducing execution semantics in `PipelineRun`/`PipelineOrchestrator` is prohibited.
+The F2.5 finding is frozen: direct StepSpec execution there = legacy architectural debt =
+not a valid extension point. New Steps/plugins MUST NOT add cases there; the counter tends
+to zero via the independent burn-down.
+
+### External DSL rule
+
+Conceptual pattern (based on the certified `example.uppercase`):
+
+```kotlin
+fun StageScope.uppercase(text: String) =
+    registryStep(
+        stepKey = UppercaseStepDefinition.KEY,
+        encodedInput = UppercaseCodec.encode(UppercaseInput(text)),
+    )
+```
+
+Plugins provide ergonomic typed Kotlin extension functions; core provides only the generic
+`registryStep(...)` primitive. The extension:
+
+- MAY construct typed plugin Input;
+- MAY call the plugin codec;
+- MUST only produce declarative data;
+- MUST NOT resolve the runtime registry;
+- MUST NOT execute handlers;
+- MUST NOT access capabilities;
+- MUST NOT query runtime state.
+
+### Discovery rules
+
+```text
+External StepDefinitions MUST enter runtime composition through
+StepDefinitionContributor/discovery.
+
+They MUST NOT be manually added to CoreStepRegistryFactory.
+```
+
+```text
+duplicate StepKey → fail closed
+```
+
+Never "first wins", never "last wins". The failure diagnostic MUST identify the key and
+the conflicting contributors.
+
+Current production discovery adapter: **ServiceLoader** (`ExternalStepPluginDiscovery` is
+the only ServiceLoader site). The architecture depends on the `StepDefinitionContributor`
+SPI; ServiceLoader is the current adapter, not an eternal domain law — discovery may be
+replaced in the future without changing the Step model.
+
+### Public API boundary
+
+External plugins may depend only on the public plugin/Step SDK surface. They MUST NOT
+import coordinator implementations, application internals, durable internals, dispatcher
+internals, core Step implementation packages, or legacy execution packages. If a plugin
+needs an internal import for a legitimate feature: classify it as an SDK gap; do not work
+around it.
+
+### Capabilities
+
+Plugin handler → declared capability keys → capability admission → minimal capability
+interfaces. NEVER `plugin handler → CanonicalRuntimeContext`. An external plugin gains no
+additional privileges by being installed. Missing capability: handler never runs (handler
+= 0), fail closed via typed Rejection.
+
+### Descriptor metadata
+
+`StepDescriptor` (effects, replayPolicy, recoveryPolicy) is the registry authority for
+pre-decode metadata. External plugins declare these policies exactly like core Steps. The
+metadata resolver MUST NOT know concrete plugin StepKeys.
+
+### Input/output codecs
+
+`StepCodec<I>` represents the complete typed Input `I`; no field extraction by the
+compiler/core. Output flow: handler `O` → `outputCodec.encode(O)` →
+`CommonExecutionResult` → durable encoded result. The durable engine never knows typed
+`O`. And: `OUTPUT_EXISTS != REPLAY_REUSE` — `ReplayPolicy` remains the only authority for
+reuse/rerun.
+
+### Console/transcript rule
+
+Typed Step output and the observable/durable console transcript are independent channels
+and MUST NOT be conflated. A durable console transcript MAY be merged when channel
+identity is not part of the public contract, but data MUST NOT be silently lost or
+duplicated. Invocation modes that expose a stream as a typed value must keep it separate
+from the console projection (certified by `core.sh`).
+
+### Neutral naming
+
+Core/runtime concepts MUST use neutral domain terminology. External product names
+(e.g. Jenkins) are allowed only in explicit integration adapters, compatibility
+boundaries, and historical/migration documentation — never as canonical runtime
+nomenclature.
+
+### External plugin MUST NOT
+
+```text
+MUST NOT:
+- add the plugin StepKey to a core/legacy catalogue;
+- modify coordinator routing for a plugin;
+- modify DslCompiledPipelineCompiler with a concrete plugin case;
+- add a concrete external StepSpec subtype;
+- manually register the plugin in CoreStepRegistryFactory;
+- add a dispatcher case;
+- decode plugin-specific input in core/compiler;
+- execute handlers during DSL construction;
+- depend on internal runtime packages;
+- access CanonicalRuntimeContext from handlers;
+- bypass capability admission;
+- infer replay from presence of encoded output;
+- create a plugin-specific durable/recovery path.
+```
+
+### Certification rules
+
+External plugin certification requires more than unit tests. Minimum proof rows:
+
+```text
+identity
+contract completeness
+input codec
+output codec
+canonical envelope
+discovery via real mechanism
+registry resolution
+capability admission
+handler execution
+typed rejection
+durable fresh
+replay
+divergence
+observability
+real DSL
+real external JAR
+installed-distribution execution
+absence/isolation
+zero production semantic changes
+architecture fitness
+```
+
+No `CERTIFIED` if any mandatory row is missing.
+
+### Testing external plugins
+
+Final plugin proof MUST use the real plugin artifact. Unit tests may register definitions
+manually, but certification needs the full chain:
+
+```text
+source
+→ independent plugin build
+→ JAR
+→ discovery
+→ script compiler visibility
+→ real .pipeline.kts
+→ installed distribution
+→ execution
+```
+
+And the isolation pair is mandatory (detects classpath leakage):
+
+```text
+without plugin → unavailable / clear failure
+with plugin    → available / green
+```
+
+### Zero-production-change rule
+
+Once generic plugin infrastructure exists, adding a new external Step plugin MUST require
+zero Step-specific semantic changes to production core. For a new plugin:
+
+```text
+coordinator modifications       = 0
+durable modifications           = 0
+compiler concrete-Step cases    = 0
+core metadata rows              = 0
+legacy catalogue entries        = 0
+dispatcher cases                = 0
+```
+
+If any is > 0: stop and classify the missing generic extension point before proceeding.
+
+### KSP
+
+KSP MAY generate plugin plumbing or ergonomic DSL code, but MUST NOT introduce
+Step-specific semantics into core/compiler. The handwritten external proof
+(`example.uppercase`) is the current authority; extensibility MUST NOT depend on a central
+list of known Steps.
+
+### Explicitly out of scope (do not build yet)
+
+Plugin marketplace, hot reload, dependency resolution, plugin signing, remote repository,
+plugin lifecycle manager, default-import discovery, advanced KSP automation. Document and
+implement only what `example.uppercase = CERTIFIED` has demonstrated.
 
 
 ## V2 TESTING RULES

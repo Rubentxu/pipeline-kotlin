@@ -97,6 +97,8 @@ object BlockStepFlattener {
 
         // Recurse into nested steps for any block-type step
         when (step) {
+            // Registry step is a leaf: no nested body to flatten (LB-02 / EP-F2).
+            is StepSpec.RegistryStepSpec -> {}
             is StepSpec.WithEnv -> {
                 for ((idx, inner) in step.steps.withIndex()) {
                     val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"

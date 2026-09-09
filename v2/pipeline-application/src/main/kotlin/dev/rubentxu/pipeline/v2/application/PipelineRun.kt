@@ -1664,6 +1664,13 @@ private suspend fun executeDurableStepImpl(
                 "success"
             }
             // ML-R9 T-10: timeout and retry blocks
+            // EP-F2.5 LEGACY BOUNDARY GUARD (temporary): see stepTypeMetadata. RegistryStepSpec is
+            // declarative IR; production executes it only via CanonicalDurableRunCoordinator.
+            is StepSpec.RegistryStepSpec -> error(
+                "EP-F2.5 legacy boundary: RegistryStepSpec '${step.stepKey.value}' reached " +
+                    "executeDurableStepImpl. Production executes registry steps only via " +
+                    "CanonicalDurableRunCoordinator.",
+            )
             is StepSpec.TimeoutBlock -> {
                 // TimeoutBlock runs inner steps with a wall-clock deadline
                 val timeUnit = java.util.concurrent.TimeUnit.valueOf(step.unit)
@@ -1958,6 +1965,16 @@ private fun stepTypeMetadata(step: StepSpec): Triple<String, Set<Effect>, Domain
         is StepSpec.CatchError,
         is StepSpec.WarnError,
         is StepSpec.Unstable -> Triple(step.name, setOf(Effect.READ_ONLY), DomainReplayPolicy.MEMOIZED)
+        // EP-F2.5 LEGACY BOUNDARY GUARD (temporary): RegistryStepSpec is declarative IR lowered
+        // by DslCompiledPipelineCompiler to OpaqueStepNode; the canonical spine executes it. This
+        // legacy direct-execution helper is NOT production-reachable (Main is fail-closed onto
+        // CanonicalDurableRunCoordinator). RegistryStepSpec MUST NOT gain semantics here.
+        // Burn-down: removed when walkPipelineSpecDurable is deleted (EP-F2.5 doc, C4).
+        is StepSpec.RegistryStepSpec -> error(
+            "EP-F2.5 legacy boundary: RegistryStepSpec '${step.stepKey.value}' reached legacy " +
+                "direct StepSpec execution (stepTypeMetadata). Production executes registry steps " +
+                "only via CanonicalDurableRunCoordinator.",
+        )
     }
 }
 
@@ -2157,6 +2174,14 @@ private fun stepToParams(step: StepSpec): Map<String, JsonElement> {
             "stepCount" to JsonPrimitive(step.steps.size),
         )
         is StepSpec.Unstable -> mapOf("message" to JsonPrimitive(step.message))
+        // EP-F2.5 LEGACY BOUNDARY GUARD (temporary): see stepTypeMetadata. Fail-closed; the
+        // registry step's encoded input is carried verbatim in OpaqueStepNode.payload by the
+        // compiler, so no legacy params projection is defined here.
+        is StepSpec.RegistryStepSpec -> error(
+            "EP-F2.5 legacy boundary: RegistryStepSpec '${step.stepKey.value}' reached legacy " +
+                "direct StepSpec execution (stepToParams). Production executes registry steps " +
+                "only via CanonicalDurableRunCoordinator.",
+        )
     }
 }
 

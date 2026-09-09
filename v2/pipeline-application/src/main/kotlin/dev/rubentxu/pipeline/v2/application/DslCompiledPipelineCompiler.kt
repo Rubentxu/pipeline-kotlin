@@ -139,6 +139,21 @@ object DslCompiledPipelineCompiler {
      */
     private fun stepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
         return when (step) {
+            // Generic open-registry lowering (LB-02 / EP-F2): carries the plugin StepKey + already
+            // encoded input verbatim. The compiler NEVER knows a concrete external StepKey, never
+            // resolves a StepDefinition, never decodes/re-encodes the typed input. Runtime
+            // registry/preparation resolves it. Lowering to StructuralRegistry is the SAME family as
+            // core.echo / core.sh.
+            is StepSpec.RegistryStepSpec -> listOf(
+                OpaqueStepNode(
+                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
+                    pluginStepId = step.stepKey,
+                    payload = VersionedStepPayload(
+                        step.schemaVersion,
+                        step.encodedInput.value,
+                    ),
+                ),
+            )
             is StepSpec.WriteFile -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),

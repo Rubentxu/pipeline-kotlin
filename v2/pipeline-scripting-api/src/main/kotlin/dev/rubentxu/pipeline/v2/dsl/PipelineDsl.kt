@@ -42,6 +42,28 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     /** Timeout in milliseconds for this step, or null if no timeout. */
     val timeoutMillis: Long? get() = null
 
+    /**
+     * Generic structural form for a Step hosted in the open StepRegistry (LB-02 / EP-F2).
+     *
+     * The structural DSL/IR stays CLOSED: external plugins cannot add arbitrary StepSpec subtypes.
+     * Instead this ONE form carries only the structural data needed to produce a canonical registry
+     * invocation: the StepKey, the schema/input-contract version, and the already-encoded input.
+     *
+     * It deliberately contains NO StepDefinition, handler, codec object, plugin class, capability or
+     * registry reference. The compiler lowers it to a `StructuralRegistry` invocation without knowing
+     * the concrete StepKey, and never decodes/re-encodes the typed input (that belongs to Execute).
+     */
+    data class RegistryStepSpec(
+        val stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        val schemaVersion: String,
+        val encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "registryStep"
+        override val type: String get() = "registry"
+    }
+
     data class Echo(
         val text: String,
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
@@ -1196,6 +1218,7 @@ class StageScope(
         steps[index] = when (currentStep) {
             is StepSpec.Echo -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Shell -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.RegistryStepSpec -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Error -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Sleep -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
@@ -1278,6 +1301,26 @@ class StageScope(
      */
     fun writeFile(file: String, text: String, encoding: String = "UTF-8") {
         steps.add(StepSpec.WriteFile(file = file, text = text, encoding = encoding))
+    }
+
+    /**
+     * Low-level generic primitive for a Step hosted in the open StepRegistry (LB-02 / EP-F2).
+     *
+     * This is infrastructure: it carries the StepKey, the schema/input-contract version, and the
+     * already-encoded input. It does NOT decode, resolve, or execute anything. Plugins SHOULD wrap it
+     * in their own typed Kotlin DSL façade (e.g. `uppercase(text)`) so end users never write this
+     * directly. Same `steps { }` scope and constraints as every normal Step.
+     *
+     * @param stepKey the open-registry StepKey (never interpreted by the compiler).
+     * @param schemaVersion the encoded Step invocation/input contract version.
+     * @param encodedInput the plugin-encoded input (produced by the plugin's own `inputCodec`).
+     */
+    fun registryStep(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        schemaVersion: String,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+    ) {
+        steps.add(StepSpec.RegistryStepSpec(stepKey = stepKey, schemaVersion = schemaVersion, encodedInput = encodedInput))
     }
 
     /**

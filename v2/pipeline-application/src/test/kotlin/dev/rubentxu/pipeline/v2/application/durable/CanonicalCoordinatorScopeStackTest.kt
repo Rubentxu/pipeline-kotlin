@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.SystemClock
+import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -14,23 +14,15 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import java.util.concurrent.TimeUnit
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 
 /**
  * UAT-LFC1-008-SCOPE-STACK: Coordinator scope tracking for catchError/warnError.
@@ -44,19 +36,12 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeP
 @Timeout(10)
 class CanonicalCoordinatorScopeStackTest {
 
-    private fun makeCoordinator(): CanonicalDurableRunCoordinator {
-        val clock = SystemClock()
-        return CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            InMemoryOperationJournal(clock),
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            InMemoryEventStore(),
-        
-    credentialScopePort = noOpCredentialScopePort(),
-)
-    }
+    private fun makeCoordinator(): CanonicalDurableRunCoordinator =
+        CoordinatorFixture.default(
+            clock = SystemClock(),
+            journal = InMemoryOperationJournal(SystemClock()),
+            eventSink = InMemoryEventStore(),
+        )
 
     /**
      * Helper to build a pipeline with a single echo step.
@@ -282,13 +267,4 @@ class CanonicalCoordinatorScopeStackTest {
                 "Error message should mention underflow: ${e.message}")
         }
     }
-}
-
-/** EM-7 test seam: a fail-closed credential scope port. Coordinator tests that do not
- * exercise withCredentials must never dispatch a credential body, so this stub returns
- * Unavailable(StoreUnavailable) (the coordinator maps it to an INFRASTRUCTURE Failure). */
-private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
-    CredentialScopeOutcome.Unavailable(
-        CredentialScopeFailure.StoreUnavailable("No credential store in this coordinator unit test"),
-    )
 }

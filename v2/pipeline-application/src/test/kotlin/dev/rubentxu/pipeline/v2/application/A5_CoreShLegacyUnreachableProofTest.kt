@@ -119,6 +119,32 @@ class A5_CoreShLegacyUnreachableProofTest {
         )
     }
 
+    @Test
+    fun `legacy sealed command world has no Shell subtype after S6`() {
+        val hasShellSubtype = CanonicalCoreStepCommand::class.sealedSubclasses.any { it.simpleName == "Shell" }
+        assertFalse(
+            hasShellSubtype,
+            "CanonicalCoreStepCommand MUST have no Shell subtype; producing CanonicalCoreStepCommand.Sh must be impossible",
+        )
+    }
+
+    @Test
+    fun `legacy Sh decoder fails fast on a core sh node after S6`() {
+        // The canonical decoder no longer has a Sh case: decoding a core.sh opaque node must throw
+        // the generic unsupported-plugin error rather than produce a legacy Sh command.
+        val node = OpaqueStepNode(
+            id = StepId("build/sh-0"),
+            pluginStepId = CoreShellStep.KEY,
+            payload = VersionedStepPayload(
+                "dsl-v1",
+                """{"kind":"sh","command":"echo x","isScriptBlock":false,"returnStdout":false}""",
+            ),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepDecoder.decode(node)
+        }
+    }
+
     // ---- A5.4.1 metadata provenance (by divergence) --------------------------
 
     private fun customShDefinition(recovery: RecoveryPolicy): StepDefinition<String, String> {

@@ -85,3 +85,35 @@ silently dropped. This is a contract gap requiring a deliberate substrate design
 decision, not a stable certifiable row, so `core.sh` stays `IMPLEMENTED_UNCERTIFIED`.
 A real regression fix (`8c4cbbae`) made the canonical-core gate registry-aware,
 restoring installed `core.sh`/`core.echo` execution after the S6 metadata removal.
+
+## S6.8 completion — console transcript contract + certification
+
+- `4fef9f69` root cause (double O_TRUNC) + durable-protocol sub-gate.
+- `5aab9976` S6.8 separate-channel design + staged plan.
+- `e8732757` S6.8.1 single-FD merged durable transcript (plain stdout+stderr both observable).
+- `205c7b48` canonical durable transcript renamed to `console.log`; legacy `jenkins-log.txt` isolated behind read-compat (`DurableShellFiles.resolveConsoleLog`).
+- `95e178aa` C4.5 `DurableTaskOutput.consoleTranscript` in-memory carrier (A0 verified: not persisted); mode-aware capture keeps stderr observable.
+- `7574302e` C4 mandatory rows; `f6bbd114` C3 mandatory row.
+
+`ShStepContractSuiteTest` **17/0** now covers the full mandatory matrix: identity, contract completeness, input codec, capability admission, missing capability, successful process, non-zero exit, output, plain stdout+stderr both observable, ReplayPolicy, durable output codec, ExternalSubprocess recovery, running-process recovery, observability, legacy absence, returnStdout value+stderr, returnStdout empty-stderr.
+
+Fresh XML SHAs (certification closure):
+```
+ShStepContractSuiteTest           17/0  SHA ff5604e849c0b9b1
+A5_CoreShLegacyUnreachableProof    8/0  SHA cd77b1484b6160b9
+EchoStepContractSuiteTest         17/0  SHA d5f606f9a05890c6
+```
+SDK durable-shell/reconciler/files and architecture gates green; coordinator stays `24/12` (pre-existing non-Sh debt); new failures = 0.
+
+## CERTIFICATION
+
+```text
+core.sh = CERTIFIED
+LB-02   = REMOVED
+```
+
+Ledger:
+```text
+core.sh:
+    REGISTRY_PRIMARY → LEGACY_UNREACHABLE → LEGACY_REMOVED → CERTIFIED
+```

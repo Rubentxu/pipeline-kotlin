@@ -25,7 +25,6 @@ object CanonicalCoreStepMetadata {
             // The running shell operation is externally reconcilable from a control directory.
             recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
         ),
-        "core.echo" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
         "core.error" to StepMetadata(setOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER),
         "core.sleep" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
         "core.file.writeFile" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),

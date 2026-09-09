@@ -26,11 +26,11 @@ sealed interface StructuralStepFamily {
  * Classifies an invocation's [StructuralStepFamily] (CDE.3-e3/e4.3).
  *
  * Deterministic and fail-closed:
- *  - a key in the closed legacy authority ([CanonicalCoreStepCommand.ALL_PLUGIN_IDS]) is [LegacyCore],
- *    EVEN if a definition with the same key is also registered (core semantics must not change; the
- *    composite metadata resolver mirrors this choice);
+ *  - a key in the closed legacy authority ([CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS]) is
+ *    [LegacyCore], EVEN if a definition with the same key is also registered (core semantics must
+ *    not change; the composite metadata resolver mirrors this choice);
  *  - otherwise, when an open [StepRegistry] is injected AND it resolves the key, it is [Registry];
- *  - a key that is neither core nor registered never reaches here: the effective metadata resolver
+ *  - a key that is neither legacy nor registered never reaches here: the effective metadata resolver
  *    already fails the invocation (EngineInvariantViolation) before Execute. So there is NO silent
  *    fallback registry -> legacy and no lookup miss is hidden.
  *
@@ -38,8 +38,8 @@ sealed interface StructuralStepFamily {
  */
 object StructuralFamilyResolver {
     fun classify(stepKey: PluginStepId, registry: StepRegistry?): StructuralStepFamily =
-        if (registry != null && stepKey.value !in CanonicalCoreStepCommand.ALL_PLUGIN_IDS) {
-            // Non-core key: registry family iff the open registry resolves it; a miss is a hard
+        if (registry != null && stepKey.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS) {
+            // Non-legacy key: registry family iff the open registry resolves it; a miss is a hard
             // defect surfaced earlier by the metadata resolver, so do not fall back here.
             StructuralStepFamily.Registry
         } else {

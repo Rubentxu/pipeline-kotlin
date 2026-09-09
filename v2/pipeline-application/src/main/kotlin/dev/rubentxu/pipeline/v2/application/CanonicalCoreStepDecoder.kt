@@ -41,13 +41,18 @@ sealed interface CanonicalCoreStepCommand {
 
     companion object {
         /**
-         * Closed legacy-core canonical COMMAND plugin IDs (the execution-structure world routed to the
-         * legacy decode family). B1.2c3: `core.echo` is deliberately NOT here — echo has migrated to the
-         * open StepRegistry (CoreStepRegistryFactory), so with a registry injected it is classified as
-         * StructuralRegistry. Other legacy commands (sh, ...) remain closed legacy-core until they too
-         * migrate. NOTE: this is the legacy authority only; it no longer means "all core plugin IDs".
+         * Closed legacy-core canonical COMMAND plugin IDs — the set of plugin keys the canonical
+         * dispatcher routes through the legacy decode + dispatch family (StructuralStepFamily.LegacyCore).
+         *
+         * Registry-routed core plugins (e.g. `core.echo`) are deliberately excluded: they live behind
+         * the open [dev.rubentxu.pipeline.v2.domain.step.StepRegistry] registered via
+         * [CoreStepRegistryFactory] and classify as StructuralStepFamily.Registry.
+         *
+         * Naming: this constant does NOT mean "all core plugins" — only the legacy executable ones.
+         * S3.3 renamed the authority from `ALL_PLUGIN_IDS` to [LEGACY_PLUGIN_IDS] to make the
+         * semantic boundary unmistakable.
          */
-        val ALL_PLUGIN_IDS: Set<String> = setOf(
+        val LEGACY_PLUGIN_IDS: Set<String> = setOf(
             "core.sh",
             "core.error",
             "core.sleep",

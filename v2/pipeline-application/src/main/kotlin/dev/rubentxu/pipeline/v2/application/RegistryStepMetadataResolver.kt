@@ -9,9 +9,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
  *
  * The durable protocol resolves pre-decode metadata by structural step key only (never a concrete Step
  * name). This composite keeps that true across both worlds:
- *  - a canonical core key (in [CanonicalCoreStepCommand.ALL_PLUGIN_IDS]) delegates to the legacy core
- *    authority [CanonicalCoreStepMetadata], so core semantics (and their core-echo/sh behaviour) are
- *    unchanged even if a definition with the same key is also registered;
+ *  - a legacy core key (in [CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS]) delegates to the legacy core
+ *    authority [CanonicalCoreStepMetadata], so core semantics (and their sh behaviour) are unchanged
+ *    even if a definition with the same key is also registered;
  *  - any OTHER key resolves through the registry: its definition's descriptor
  *    ([StepContract.descriptor]) provides the durable [StepMetadata] (effects + replayPolicy), which is
  *    exactly the pre-decode contract the coordinator fingerprints and reconciles on;
@@ -27,13 +27,13 @@ object RegistryStepMetadataResolver {
         StepMetadataResolver { stepKey -> resolve(registry, stepKey) }
 
     private fun resolve(registry: StepRegistry, stepKey: PluginStepId): StepMetadata =
-        if (stepKey.value in CanonicalCoreStepCommand.ALL_PLUGIN_IDS) {
-            // Legacy core authority owns core keys; core behaviour must not change.
+        if (stepKey.value in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS) {
+            // Legacy core authority owns legacy executable keys; core behaviour must not change.
             CanonicalCoreStepMetadata.metadata(stepKey.value)
         } else {
             val definition = registry.definition(stepKey)
                 ?: throw EngineInvariantViolation(
-                    "No durable metadata for step '${stepKey.value}': not a core step and not in the registry",
+                    "No durable metadata for step '${stepKey.value}': not a legacy executable and not in the registry",
                 )
             val contract = definition.contract
             StepMetadata(

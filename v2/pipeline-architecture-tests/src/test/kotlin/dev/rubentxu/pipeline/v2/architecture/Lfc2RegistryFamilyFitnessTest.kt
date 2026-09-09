@@ -54,7 +54,7 @@ class Lfc2RegistryFamilyFitnessTest {
         assertTrue(source.contains("data object Registry : StructuralStepFamily"), "Registry family required")
         // Classification is by membership in the closed legacy authority plus the open registry, not by
         // enumerating concrete step names inside the family file.
-        assertTrue(source.contains("CanonicalCoreStepCommand.ALL_PLUGIN_IDS"), "Closed core authority must drive the family split")
+        assertTrue(source.contains("CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS"), "Closed legacy authority must drive the family split")
         assertTrue(source.contains("classify(stepKey"), "Family classifier must classify a step key")
     }
 

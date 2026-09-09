@@ -28,10 +28,9 @@ class CanonicalCoreStepCommandRegistryTest {
     }
 
     @Test
-    fun `ALL_PLUGIN_IDS matches expected set`() {
+    fun `LEGACY_PLUGIN_IDS matches expected set`() {
         val expected = setOf(
             "core.sh",
-            // B1.2c3: core.echo is deliberately NOT in the legacy set (migrated to the StepRegistry).
             "core.error",
             "core.sleep",
             "core.file.writeFile",
@@ -49,7 +48,7 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.archiveArtifacts",
         )
         // Assert against the registry — single source of truth, no duplication
-        assertEquals(expected, CanonicalCoreStepCommand.ALL_PLUGIN_IDS, "ALL_PLUGIN_IDS must match expected set")
+        assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
     }
 
     @Test

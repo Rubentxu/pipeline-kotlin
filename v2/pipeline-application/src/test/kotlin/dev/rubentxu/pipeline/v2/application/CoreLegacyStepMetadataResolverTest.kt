@@ -52,7 +52,7 @@ class CoreLegacyStepMetadataResolverTest {
 
     @Test
     fun `every canonical core plugin id resolves to non-null metadata`() {
-        for (pluginId in CanonicalCoreStepCommand.ALL_PLUGIN_IDS) {
+        for (pluginId in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS) {
             assertEquals(
                 false,
                 CoreLegacyStepMetadataResolver.resolve(PluginStepId(pluginId)) == null,

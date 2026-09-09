@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
  *
  * The structural switch on the durable spine is the closed [StructuralStepFamily] token
  * (LegacyCore | Registry), classified by [StructuralFamilyResolver] using
- * [CanonicalCoreStepCommand.ALL_PLUGIN_IDS] as the closed legacy authority and the open
+ * [CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS] as the closed legacy authority and the open
  * [InMemoryStepRegistry] as the registry authority.
  *
  * This test proves the precondition for S3.1:
@@ -35,9 +35,9 @@ import org.junit.jupiter.api.Test
 class LegacyEchoUnreachableProofTest {
 
     @Test
-    fun `core echo is NOT in the closed legacy authority ALL_PLUGIN_IDS`() {
+    fun `core echo is NOT in the closed legacy authority LEGACY_PLUGIN_IDS`() {
         assertTrue(
-            "core.echo" !in CanonicalCoreStepCommand.ALL_PLUGIN_IDS,
+            "core.echo" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.echo must remain outside the closed legacy authority; regression would resurrect the legacy decode path",
         )
     }
@@ -69,12 +69,12 @@ class LegacyEchoUnreachableProofTest {
 
     @Test
     fun `structural switch never classifies core echo as LegacyCore with the production registry`() {
-        // The closed legacy authority (ALL_PLUGIN_IDS) is the ONLY source of LegacyCore classification
+        // The closed legacy authority (LEGACY_PLUGIN_IDS) is the ONLY source of LegacyCore classification
         // in the structural switch. Since core.echo is excluded from it, LegacyCore is unreachable for
-        // core.echo with a registry. We assert this by checking every name in ALL_PLUGIN_IDS would
+        // core.echo with a registry. We assert this by checking every name in LEGACY_PLUGIN_IDS would
         // classify as LegacyCore (NOT core.echo).
         val registry = CoreStepRegistryFactory.registry()
-        for (legacyId in CanonicalCoreStepCommand.ALL_PLUGIN_IDS) {
+        for (legacyId in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS) {
             assertEquals(
                 StructuralStepFamily.LegacyCore,
                 StructuralFamilyResolver.classify(PluginStepId(legacyId), registry),

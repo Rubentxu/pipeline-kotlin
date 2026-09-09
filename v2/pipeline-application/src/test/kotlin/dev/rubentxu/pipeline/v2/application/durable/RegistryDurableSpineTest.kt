@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.SystemClock
+import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -31,11 +32,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -167,23 +163,8 @@ class RegistryDurableSpineTest {
     private fun identityPayload(text: String): String =
         JsonObject(mapOf("value" to JsonPrimitive(text))).toString()
 
-    private fun coordinator(registry: InMemoryStepRegistry, clock: SystemClock, journal: InMemoryOperationJournal): CanonicalDurableRunCoordinator =
-        CanonicalDurableRunCoordinator(
-            dispatcher = CanonicalNodeDispatcher(),
-            journal = journal,
-            cursorStore = InMemoryReplayCursorStore(clock),
-            clock = clock,
-            effectReplayPolicy = DefaultEffectReplayPolicy(),
-            eventSink = InMemoryEventStore(),
-            credentialScopePort = noOpCredentialScopePort(),
-            stepRegistry = registry,
-        )
-
-    private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
-        CredentialScopeOutcome.Unavailable(
-            CredentialScopeFailure.StoreUnavailable("No credential store in this coordinator unit test"),
-        )
-    }
+    private fun coordinator(registry: InMemoryStepRegistry, clock: SystemClock, journal: InMemoryOperationJournal) =
+        CoordinatorFixture.default(clock, journal, InMemoryEventStore(), registry)
 
     @Test
     fun `DREG-1 fresh registry valid executes codec and handler once on the durable spine`() = runBlocking {

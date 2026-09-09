@@ -46,15 +46,25 @@ Category meanings:
 Only the G1 constructions whose exercised Step is `sh` (normal Sh execution, not
 legacy-Sh decode):
 
-1. `@173` timeout into shell (cancellation)
-2. `@326` dir-block working directory to shell child
-3. `@374` failing canonical shell → typed script failure
-4. `@660` StepFinished count 1 per step on failure path
-5. `@62` catchError continuation (Sh body)
+1. `@173` timeout into shell (cancellation) — **migrated `f5ec0e52`, green**
+2. `@326` dir-block working directory to shell child — **migrated `f5ec0e52`, green**
+3. `@374` failing canonical shell → typed script failure — **migrated `f5ec0e52`, green**
+4. `@660` StepFinished count 1 per step on failure path — **migrated `f5ec0e52`, green**
+5. `@62` catchError continuation (Sh body) — pending (red cause to confirm)
 
-`@128` (recovery) is already migrated. `@515` is legacy-Sh **decode**
+`@128` (recovery) is already migrated in `dfc8dbbd`. `@515` is legacy-Sh **decode**
 characterization and is deliberately excluded from the normal-Sh closure: it
 asserts the legacy decoder error path and will be removed at Sh burn-down.
+
+### Migrated status (A5.3d complete for the pure-Sh coordinator laws)
+
+Full-class rerun after the migrations: **24 tests / 14 failures**, identical to
+the pre-migration baseline (no widening, no re-baselining). The green set now
+contains the five pure-Sh coordinator durable laws running on the **registry**
+family: recovery (`@128`), cancellation/timeout (`@173`), dir-block cwd (`@326`),
+typed script failure (`@358`), and StepFinished failure count (`@640`). The 14
+red are unchanged Echo/block/withCredentials/legacy-decode/control-flow debt
+outside the Sh closure.
 
 ## Explicit non-targets (do not chase in this Sh closure)
 
@@ -65,4 +75,6 @@ asserts the legacy decoder error path and will be removed at Sh burn-down.
 - `@885` / `@958` are Echo/credential red debt outside the Sh closure and stay
   registered as pre-existing, per the no-incidental-Echo-fix rule.
 
-This document is classification-only. No source construction is changed here.
+The initial commit was classification-only. Later A5.3d commits (`dfc8dbbd`,
+`f5ec0e52`) migrate the pure-Sh G1 group; this document records their migrated
+status alongside the original classification.

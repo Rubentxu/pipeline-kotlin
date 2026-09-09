@@ -140,6 +140,11 @@ StageFinished → RunFinished(success)
 for already-registry-migrated `core.echo` and `core.withCredentials`, not an A4
 `core.sh` failure. The A4 change did not widen that baseline.
 
+The architecture guardrail also passed incrementally:
+`timeout 600 ./gradlew -p v2 :pipeline-architecture-tests:test` →
+`BUILD SUCCESSFUL` (33 tasks up-to-date). It covers the fitness constraints that
+prohibit central concrete-Step dispatch and forbidden dependency direction.
+
 ### Module-suite follow-up
 
 A later owning-module run exposed one A4-owned stale characterization:

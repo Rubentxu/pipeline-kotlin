@@ -171,7 +171,7 @@ class RegistryExecutionBoundaryTest {
             org.junit.jupiter.api.Assertions.assertThrows(EngineInvariantViolation::class.java) {
                 runBlocking {
                     boundary.execute(
-                        PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Echo("x")),
+                        PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Sleep(1)),
                         runtime(store),
                     )
                 }

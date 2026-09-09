@@ -59,7 +59,7 @@ class LegacyExecutionAdapterTest {
         val legacy = RecordingLegacyExecutor()
         val boundary = LegacyExecutionAdapter.adapt(legacy)
         val store = InMemoryEventStore()
-        val command = CanonicalCoreStepCommand.Echo("hola")
+        val command = CanonicalCoreStepCommand.Sleep(1)
 
         val outcome = boundary.execute(PreparedLegacyExecution(command), runtime(store))
 

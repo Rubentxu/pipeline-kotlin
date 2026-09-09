@@ -117,20 +117,4 @@ class EchoDurableSpineTest {
             "a reused echo must NOT re-emit EchoOutputCaptured (handler did not run)",
         )
     }
-
-    @Test
-    fun `echo still executes via legacy when no registry is injected during the dual phase`() = runBlocking {
-        // S2.4 dual: without a registry the coordinator still resolves echo as a legacy core command,
-        // so behaviour is continuous during the migration before legacy echo removal.
-        val clock = SystemClock()
-        val journal = InMemoryOperationJournal(clock)
-        val eventSink = InMemoryEventStore()
-        val coord = CoordinatorFixture.negativeNoRegistry(clock, journal, eventSink)
-
-        val outcome = coord.run(pipeline(echoNode("legacy dual")), RunId("echo-legacy-dual"))
-
-        assertEquals(RunOutcome.Success, outcome)
-        val captured = eventSink.eventsFor("echo-legacy-dual").filterIsInstance<EchoOutputCaptured>()
-        assertEquals(1, captured.count(), "dual-phase echo (no registry) must still execute")
-    }
 }

@@ -60,7 +60,7 @@ class ExecutionBoundaryFactoryTest {
     private fun dispatcher(): CanonicalNodeDispatcher = CanonicalNodeDispatcher()
 
     private fun legacyPrepared(): PreparedLegacyExecution =
-        PreparedLegacyExecution(CanonicalCoreStepCommand.Echo("hola"))
+        PreparedLegacyExecution(CanonicalCoreStepCommand.Sleep(1))
 
     private fun registryPrepared(): PreparedRegistryExecution = PreparedRegistryExecution(
         key = CoreEchoStep.KEY,

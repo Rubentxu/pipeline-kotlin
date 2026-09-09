@@ -10,8 +10,9 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 14 entries (Shell, Echo, Error, Sleep, WriteFile,
+ * - sealedSubclasses has exactly 13 entries (Shell, Error, Sleep, WriteFile,
  *   EmitEvent, Milestone, DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
+ *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  * - canonicalCoreStepIds derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -21,9 +22,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 14 entries`() {
+    fun `sealedSubclasses has exactly 13 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(14, subclasses.size, "Expected exactly 14 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(13, subclasses.size, "Expected exactly 13 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -57,14 +58,6 @@ class CanonicalCoreStepCommandRegistryTest {
         assertEquals("core.sh", shellInstance.pluginId)
         assertEquals(setOf(Effect.EXECUTES_SUBPROCESS), shellInstance.defaultMetadata.effects)
         assertEquals(ReplayPolicy.RERUN, shellInstance.defaultMetadata.replayPolicy)
-    }
-
-    @Test
-    fun `Echo has correct pluginId and defaultMetadata`() {
-        val echoInstance = CanonicalCoreStepCommand.Echo("hello")
-        assertEquals("core.echo", echoInstance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), echoInstance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, echoInstance.defaultMetadata.replayPolicy)
     }
 
     @Test

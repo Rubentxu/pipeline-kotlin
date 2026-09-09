@@ -83,10 +83,6 @@ sealed interface CanonicalCoreStepCommand {
         override val pluginId = "core.sh"
     }
 
-    data class Echo(val text: String) : CanonicalCoreStepCommand {
-        override val pluginId = "core.echo"
-    }
-
     data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand {
         override val pluginId = "core.error"
     }
@@ -208,7 +204,6 @@ sealed interface CanonicalCoreStepCommand {
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
     private const val SHELL_PLUGIN_ID = "core.sh"
-    private const val ECHO_PLUGIN_ID = "core.echo"
     private const val ERROR_PLUGIN_ID = "core.error"
     private const val SLEEP_PLUGIN_ID = "core.sleep"
     private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
@@ -248,12 +243,6 @@ object CanonicalCoreStepDecoder {
                     ),
                     isScriptBlock = payload.requiredBoolean("isScriptBlock"),
                 )
-            }
-            ECHO_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "echo") {
-                    "Payload kind must be 'echo' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.Echo(payload.requiredString("text"))
             }
             ERROR_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "error") {

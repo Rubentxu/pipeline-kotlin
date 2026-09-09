@@ -54,23 +54,6 @@ class CanonicalCoreStepDecoderTest {
     }
 
     @Test
-    fun `decodes a versioned echo node into its typed durable command`() {
-        val node = OpaqueStepNode(
-            id = StepId("build/echo-0"),
-            pluginStepId = PluginStepId("core.echo"),
-            payload = VersionedStepPayload(
-                "dsl-v1",
-                """{"kind":"echo","text":"hello canonical runtime"}""",
-            ),
-        )
-
-        assertEquals(
-            CanonicalCoreStepCommand.Echo("hello canonical runtime"),
-            CanonicalCoreStepDecoder.decode(node),
-        )
-    }
-
-    @Test
     fun `decodes a versioned error node with its typed failure kind`() {
         val node = OpaqueStepNode(
             id = StepId("build/error-0"),

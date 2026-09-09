@@ -12,14 +12,17 @@ import org.junit.jupiter.api.Timeout
  * the decoded command's defaultMetadata (single authority, parity exact), covers every canonical core
  * plugin id, and fails fast on an unregistered key. This is the seam durable resolution consumes; it
  * never interprets a Step name.
+ *
+ * S3.3: `core.echo` is no longer in the legacy authority; the registry-routed Echo is verified through
+ * the CoreEchoStep StepDefinition metadata instead.
  */
 @Timeout(10)
 class CoreLegacyStepMetadataResolverTest {
 
     @Test
-    fun `resolves echo metadata by step key matching the decoded command`() {
-        val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.echo"))
-        val decoded = CanonicalCoreStepCommand.Echo("hi").defaultMetadata
+    fun `resolves sleep metadata by step key matching the decoded command`() {
+        val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep"))
+        val decoded = CanonicalCoreStepCommand.Sleep(5).defaultMetadata
         assertEquals(decoded, resolved)
     }
 
@@ -39,7 +42,7 @@ class CoreLegacyStepMetadataResolverTest {
         )
         assertEquals(
             RecoveryPolicy.None,
-            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.echo")).recoveryPolicy,
+            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep")).recoveryPolicy,
         )
         assertEquals(
             RecoveryPolicy.None,

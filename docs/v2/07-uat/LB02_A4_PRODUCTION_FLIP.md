@@ -145,6 +145,16 @@ The architecture guardrail also passed incrementally:
 `BUILD SUCCESSFUL` (33 tasks up-to-date). It covers the fitness constraints that
 prohibit central concrete-Step dispatch and forbidden dependency direction.
 
+### Whole-result final feedback loop
+
+After the late membership-characterization correction, the complete A4 focused
+closure was rerun from current `HEAD`: **169 / 0 / 0 across 15 classes**
+(including `CanonicalCoreStepCommandRegistryTest`). The installed distribution
+then reran the actual `04-sh.pipeline.kts` fixture and asserted the complete
+public event sequence, exact `hello from sh\n` capture, and
+`RunFinished(success)`. `:pipeline-architecture-tests:test` also passed in the
+same final loop.
+
 ### Module-suite follow-up
 
 A later owning-module run exposed one A4-owned stale characterization:

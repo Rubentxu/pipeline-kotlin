@@ -105,6 +105,42 @@ This is the operative translation; the ADRs/specs are the architectural authorit
     same file is executed by ScenarioRunner, TestKit, Just and CI. Invalid programs are first-class
     fixtures.
 
+### Pre-decode durable metadata belongs to StepDescriptor (LB-02 / G3-A4.1)
+
+StepDescriptor is the registry source of truth for static execution/durability metadata
+required BEFORE typed input decode, including:
+
+- `effects`
+- `replayPolicy`
+- `recoveryPolicy`
+
+Registry metadata resolution MUST derive these properties from the descriptor and MUST
+NOT branch on concrete StepKey values.
+
+`recoveryPolicy` MUST be available before `StepCodec.decode` and MUST NOT require
+constructing `PreparedRegistryExecution`.
+
+MUST NOT:
+
+- MUST NOT derive recovery semantics from concrete StepKey/name.
+- MUST NOT place registry recovery metadata in parallel authorities outside `StepDescriptor`.
+
+(The reference implementation Step at this rule's writing is `core.echo`; `core.sh`
+becomes a second reference once it is `CERTIFIED`. Until then only `core.echo` is
+authoritative for the rule's proof.)
+
+### Capability-routed handler discipline (LB-02 / G3-A4.2)
+
+A handler that needs runtime capability access (e.g. `SHELL_OPERATIONS_CAPABILITY` for
+`core.sh`) MUST declare the capability in `StepContract.requiredCapabilities`. The
+boundary admits capabilities fail-closed at prepare-time and re-checks before the
+handler runs. The handler MUST NOT:
+
+- reach `CanonicalRuntimeContext` directly;
+- import process-engine classes (`ProcessBuilder`, `Runtime.exec`, `bash -c`, etc.);
+- emit observability events directly when the underlying substrate is the single
+  authority (e.g. `echo`-style events emitted by `ShExecution`).
+
 ### Fitness tests (mechanically checkable)
 
 - runtime does not depend on the DSL `StepSpec`;

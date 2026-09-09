@@ -103,3 +103,51 @@ consumer-level proof because it exercises the DSL compiler's actual payload.
 establish `LEGACY_UNREACHABLE` before deleting the legacy command, decoder,
 dispatcher, and metadata row. Only after certification may `AGENTS.md` be
 updated with `core.sh` as the reference effectful/recoverable Step.
+
+## Evidence
+
+Fresh post-implementation XML canaries, run with the targeted A4 L1 closure:
+
+```text
+A4_1DescriptorRecoveryCharacterizationTest     7 / 0 / 0  SHA 5a82adef93b63ecb
+A4_2ShellOperationsCapabilityTest             14 / 0 / 0  SHA 95df045acbf2eaec
+A4_3TypedShellOutputIntegrationTest           20 / 0 / 0  SHA c3c1648b0831bda9
+A4_8LegacyRegistrySemanticParityTest          12 / 0 / 0  SHA fccb4c46c1948c9c
+A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test        10 / 0 / 0  SHA 6be67c40d02a6fcf
+CoreShellStepTest                             12 / 0 / 0  SHA ea3ce2a8fcd36d55
+RegistryExecutionBoundaryTest                  6 / 0 / 0
+GenericRegistryExecutionCarrierTest            6 / 0 / 0
+FamilyRouterTest                               4 / 0 / 0
+ExecutionBoundaryFactoryTest                   4 / 0 / 0
+G7_CoreShellOutputCodecRoundTripTest          34 / 0 / 0  SHA 9f930a940537a735
+EchoStepContractSuiteTest                     17 / 0 / 0  SHA 9278e945ac99ddac
+RegistryStepMetadataResolverTest               5 / 0 / 0  SHA 115b7831629fe0e0
+CoordinatorFixtureTest                         3 / 0 / 0
+TOTAL                                        154 / 0 / 0
+```
+
+The real distribution CLI smoke also passed:
+
+```text
+pipeline-application run v2/compatibility/04-sh.pipeline.kts
+CompilationStarted → CompilationFinished → RunStarted → StageStarted →
+StepStarted → EchoOutputCaptured("hello from sh\\n") → StepFinished →
+StageFinished → RunFinished(success)
+```
+
+`UatCompat001CorpusSmokeRunTest` remains the frozen pre-existing baseline at
+`2 tests / 2 failures / 0 errors`. Its failures are the known canonical-ID gap
+for already-registry-migrated `core.echo` and `core.withCredentials`, not an A4
+`core.sh` failure. The A4 change did not widen that baseline.
+
+### Full gate receipt
+
+One final incremental `timeout 600 ./gradlew -p v2 check` was launched after the
+implementation commit. It reached broad pre-existing failures in
+`pipeline-domain`, `pipeline-scripting-kotlin24`, and existing application UAT
+classes, then exhausted the fixed 600-second budget before producing a final
+Gradle summary. It is **not** a green receipt and is not used as A4 success
+evidence. The fresh focused L1 XMLs, real distribution smoke, and unchanged
+`UatCompat001` baseline above are the scoped evidence for this slice. The broad
+failure set requires its own base-vs-head investigation and is outside the A4
+change closure.

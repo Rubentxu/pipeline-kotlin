@@ -285,7 +285,7 @@ The `StepSpec → PipelineRun → direct execution` path disappears.
 | LEG-1.2 delete `StepExecutors.executeBranch` (C3 #9) + migrate/delete its legacy tests | no direct-exec when on `StepSpec` in SDK runtime | L2/L4 |
 | LEG-1.3 delete `walkPipelineSpecDurable` + direct-exec whens (#4 #5) + metadata pair (#6 #7) + C3 UATs that pin them (UatDurable001-007,009 legacy harnesses) | `PipelineRun.kt` deleted or empty; counters: direct StepSpec exec cases (code total) = 0 | L4 + base-vs-head evidence |
 | LEG-1.4 fitness: production execution authority == `CanonicalDurableRunCoordinator` only | mechanical fitness test proves no second production runner exists (CLI fail-closed retained) | architecture tests |
-| LEG-1.5 docs sync | CURRENT_STATE / backlog counters updated; UAT semantics preserved where owned by canonical-path equivalents | docs review |
+| LEG-1.5 docs sync | DONE | ledger + this entry updated; exit criteria of LEG-1.1..1.5 all met | docs review |
 
 Sequencing note: LEG-1 precedes B10..B13 (BodyInvoker/retry/timeout/parallel) so those are
 designed against a single execution architecture. UatDurable tests deleted in LEG-1.3 pin

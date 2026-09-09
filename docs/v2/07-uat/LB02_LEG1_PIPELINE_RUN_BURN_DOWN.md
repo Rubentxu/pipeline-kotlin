@@ -34,10 +34,10 @@ StepSpec → PipelineRun → direct execution
 | --- | --- | --- | --- |
 | LEG-1.0 traceability | DONE | (this commit) | backlog entry + this doc |
 | LEG-1.1 delete `PipelineOrchestrator` + Main construction | DONE | see ledger update | L4 suites green |
-| LEG-1.2 delete `StepExecutors.executeBranch` | PENDING | — | — |
-| LEG-1.3 delete `walkPipelineSpecDurable` + direct-exec whens + legacy UATs | PENDING | — | — |
-| LEG-1.4 execution-authority fitness | PENDING | — | — |
-| LEG-1.5 docs sync | PENDING | — | — |
+| LEG-1.2 delete `StepExecutors.executeBranch` | DONE | `583bc7a0` | certified primitives isolated to `StepExecutors.kt`; legacy switch moved out and (1.3) deleted |
+| LEG-1.3 delete `walkPipelineSpecDurable` + direct-exec whens + legacy UATs | DONE | `5875e9fd` | `PipelineRun.kt` (3074 lines) + walker deleted; 5 fitness tests flipped to absence-pinning; base-vs-head failure diff clean |
+| LEG-1.4 execution-authority fitness | DONE | `08a1f744` | `FArchLeg1ExecutionAuthorityTest` 4/4 green (engine files absent, zero symbol refs, Main fail-closed canonical routing, structural-IR-only StepSpec) |
+| LEG-1.5 docs sync | DONE | (this commit) | ledger + backlog counters updated |
 
 ## LEG-1.1 details
 

@@ -190,6 +190,19 @@ class ShStepContractSuiteTest {
     }
 
     @Test
+    fun `plain sh — stdout and stderr are both observable in the durable console transcript (C3)`() = runBlocking {
+        val events = InMemoryEventStore()
+        val (coord, _) = harness(events)
+        val runId = RunId("sh-both")
+        val outcome = coord.run(pipeline(shNode("echo OUT; echo ERR >&2")), runId)
+        assertEquals(RunOutcome.Success, outcome)
+        val caps = events.eventsFor(runId.value).filterIsInstance<EchoOutputCaptured>().toList()
+        val content = caps.joinToString("") { it.content }
+        assertTrue(content.contains("OUT"), "plain sh stdout must be observable; got ${content}")
+        assertTrue(content.contains("ERR"), "plain sh stderr must be observable; got ${content}")
+    }
+
+    @Test
     fun `non-zero exit — exit 42 sh surfaces as a typed Failure SCRIPT`() = runBlocking {
         val (coord, _) = harness()
         val outcome = coord.run(pipeline(shNode("exit 42")), RunId("sh-nonzero"))

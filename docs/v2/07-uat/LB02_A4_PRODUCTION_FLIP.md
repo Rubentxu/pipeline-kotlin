@@ -146,7 +146,13 @@ A later owning-module run exposed one A4-owned stale characterization:
 `CanonicalCoreStepCommandRegistryTest` still expected `core.sh` in
 `LEGACY_PLUGIN_IDS`. It was corrected in `d87a9188` while retaining the physical
 `CanonicalCoreStepCommand.Shell` subtype for rollback. The focused class then
-passed **15 / 0 / 0**. The two contemporaneous CLI failures
+passed **15 / 0 / 0**. After that correction, the installed distribution reran
+`04-sh.pipeline.kts` and again produced the exact accepted event sequence:
+`CompilationStarted → CompilationFinished → RunStarted → StageStarted →
+StepStarted → EchoOutputCaptured("hello from sh\\n") → StepFinished →
+StageFinished → RunFinished(success)`.
+
+The two contemporaneous CLI failures
 (`CanonicalInMemoryCliTest` and `CliCompileErrorExitsOneTest`) are the already
 recorded `core.echo` canonical-ID gap, identical to `UatCompat001`, and do not
 exercise the A4 `core.sh` route.

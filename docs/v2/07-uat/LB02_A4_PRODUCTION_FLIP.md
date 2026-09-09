@@ -140,6 +140,17 @@ StageFinished → RunFinished(success)
 for already-registry-migrated `core.echo` and `core.withCredentials`, not an A4
 `core.sh` failure. The A4 change did not widen that baseline.
 
+### Module-suite follow-up
+
+A later owning-module run exposed one A4-owned stale characterization:
+`CanonicalCoreStepCommandRegistryTest` still expected `core.sh` in
+`LEGACY_PLUGIN_IDS`. It was corrected in `d87a9188` while retaining the physical
+`CanonicalCoreStepCommand.Shell` subtype for rollback. The focused class then
+passed **15 / 0 / 0**. The two contemporaneous CLI failures
+(`CanonicalInMemoryCliTest` and `CliCompileErrorExitsOneTest`) are the already
+recorded `core.echo` canonical-ID gap, identical to `UatCompat001`, and do not
+exercise the A4 `core.sh` route.
+
 ### Full gate receipt
 
 One final incremental `timeout 600 ./gradlew -p v2 check` was launched after the

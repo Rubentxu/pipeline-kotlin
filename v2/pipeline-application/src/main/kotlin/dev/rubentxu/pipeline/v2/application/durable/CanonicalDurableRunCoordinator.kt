@@ -26,6 +26,7 @@ import dev.rubentxu.pipeline.v2.domain.ContextStack
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.StageBody
@@ -254,6 +255,14 @@ private sealed interface BlockShellScope {
     data class Directory(val target: Path, val previous: Path) : BlockShellScope
     data class TimestampsScope(val runId: String) : BlockShellScope
     data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
+
+    /**
+     * B13/E-EM-11: body-attempt contract projected from the `core.retry` payload.
+     * The body is re-dispatched up to [maxAttempts] times; each attempt carries a
+     * deterministic journal identity (attempt BlockSegment appended to bodyPath),
+     * so restart/replay reconstructs attempt state from the journal, not memory.
+     */
+    data class Retry(val maxAttempts: Int) : BlockShellScope
 }
 
 private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope = when (pluginStepId.value) {
@@ -280,6 +289,15 @@ private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope
         val overridesArray = payload["overrides"]?.jsonArray
         val overrides = overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env)
+    }
+    // B13/E-EM-11: fail-closed contract decode — a malformed retry payload is a
+    // typed schema rejection, never a silent plain-sequence fallback.
+    "core.retry" -> {
+        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+        val maxAttempts = payload["maxAttempts"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: throw IllegalArgumentException("core.retry requires integer maxAttempts")
+        require(maxAttempts >= 1) { "core.retry maxAttempts must be >= 1, got $maxAttempts" }
+        BlockShellScope.Retry(maxAttempts = maxAttempts)
     }
     else -> BlockShellScope.None
 }
@@ -919,6 +937,7 @@ class CanonicalDurableRunCoordinator(
         }
         val childShOptions = when (scope) {
             BlockShellScope.None -> stageShOptions
+            is BlockShellScope.Retry -> stageShOptions
             is BlockShellScope.Directory -> {
                 Files.createDirectories(scope.target)
                 contextStack = contextStack.push(ContextOverlay.Cwd(scope.target.toString()))
@@ -963,44 +982,86 @@ class CanonicalDurableRunCoordinator(
         }
 
         try {
-            for ((childIndex, child) in block.body.withIndex()) {
-                val childOpId = OpId(
-                    runId.value,
-                    stageIndex,
-                    stepIndex,
-                    branchIndex = null,
-                    bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId)
-                )
+            // B13/E-EM-11: `core.retry` re-dispatches the SAME body per attempt.
+            // Each attempt appends a deterministic BlockSegment ("{attempt}:retry-attempt")
+            // to the child bodyPath, so every attempt gets its own journal rows under
+            // exactly-once OpId semantics; completed attempts are never re-executed on
+            // restart/replay (journal lookup, not memory). Other scopes run the body once.
+            val attemptCount = when (scope) {
+                is BlockShellScope.Retry -> scope.maxAttempts
+                else -> 1
+            }
+            var attempt = 1
+            bodyLoop@ while (attempt <= attemptCount) {
+                // Each attempt re-evaluates the body from scratch; a prior attempt's
+                // failure must not survive a later successful attempt.
+                outcome = StepOutcome.Success
+                val attemptSegment = if (scope is BlockShellScope.Retry) {
+                    listOf(BlockSegment(attempt, PluginStepId("retry-attempt")))
+                } else emptyList()
+                val attemptBasePath = parentBodyPath + attemptSegment
 
-                // Fresh StepLifecycleContext per child (JEP-029)
-                val childContext = StepLifecycleContext(
-                    runId = runId.value,
-                    stageIndex = stageIndex,
-                    stepIndex = childIndex,
-                    stepName = child.id.value,
-                    stepType = child.pluginStepId.value,
-                )
-
-                val childOutcome = dispatch(
-                    child,
-                    runId,
-                    stageName,
-                    stageIndex,
-                    stepIndex,
-                    childShOptions,
-                    childOpId.bodyPath,
-                )
-                when (childOutcome) {
-                    is StepOutcome.Failure -> {
-                        outcome = childOutcome
-                        break // Stop on first failure
-                    }
-                    is StepOutcome.Unstable -> {
-                        outcome = childOutcome
-                        break
-                    }
-                    else -> { /* continue */ }
+                if (scope is BlockShellScope.Retry) {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.RetryAttemptStarted(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            attemptNumber = attempt,
+                            maxAttempts = scope.maxAttempts,
+                            stepName = block.id.value,
+                            stepType = block.pluginStepId.value,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                        ),
+                    )
                 }
+
+                for ((childIndex, child) in block.body.withIndex()) {
+                    val childOpId = OpId(
+                        runId.value,
+                        stageIndex,
+                        stepIndex,
+                        branchIndex = null,
+                        bodyPath = attemptBasePath + BlockSegment(childIndex, child.pluginStepId),
+                    )
+
+                    // Fresh StepLifecycleContext per child (JEP-029)
+                    val childContext = StepLifecycleContext(
+                        runId = runId.value,
+                        stageIndex = stageIndex,
+                        stepIndex = childIndex,
+                        stepName = child.id.value,
+                        stepType = child.pluginStepId.value,
+                    )
+
+                    val childOutcome = dispatch(
+                        child,
+                        runId,
+                        stageName,
+                        stageIndex,
+                        stepIndex,
+                        childShOptions,
+                        childOpId.bodyPath,
+                    )
+                    when (childOutcome) {
+                        is StepOutcome.Failure -> {
+                            outcome = childOutcome
+                            if (attempt < attemptCount) {
+                                attempt++
+                                continue@bodyLoop
+                            }
+                            break@bodyLoop // Stop on first failure after last attempt
+                        }
+                        is StepOutcome.Unstable -> {
+                            outcome = childOutcome
+                            break@bodyLoop
+                        }
+                        else -> { /* continue */ }
+                    }
+                }
+                break@bodyLoop // body completed without failure — no extra attempt (WL-R2)
             }
         } finally {
             if (scope is BlockShellScope.Directory) {

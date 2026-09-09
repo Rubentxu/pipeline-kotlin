@@ -290,6 +290,15 @@ object DslCompiledPipelineCompiler {
         is StepSpec.WithCredentialsBlock -> CredentialBindingsPayload.encode(
             step.bindings.map { it.toSpec() },
         )
+        // B13/E-EM-11: core.retry projects its contract (attempt count) into the
+        // payload so the durable coordinator can loop body attempts without
+        // interpreting StepSpec. Deterministic backoff: base/jitter derived from
+        // the DSL retry() delaySeconds (0 when absent) — jitter is NOT part of
+        // any fingerprint (it is applied at dispatch time only).
+        is StepSpec.RetryBlock -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("kind", "retry")
+            put("maxAttempts", step.count)
+        })
         else -> "{}"
     }
 

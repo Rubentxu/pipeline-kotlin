@@ -196,3 +196,62 @@ coordinator to `core.sh`. The boundary stays Step-agnostic by using
 `(produced as? TypedStepOutput)?.outcome`. The marker interface makes the
 projection rule generic and reusable for any future Step that wants to carry
 a canonical outcome on its typed output (e.g. `core.git`, `core.docker`).
+
+## Evidence (fresh XML canaries, slice landed 6f576a26)
+
+```
+A4_3TypedShellOutputIntegrationTest          20 tests / 0 failures / 0 errors  SHA 15cd9256944f922b
+A4_2ShellOperationsCapabilityTest            14 tests / 0 failures / 0 errors  SHA e2cd0de270867ba7
+A4_1DescriptorRecoveryCharacterizationTest    7 tests / 0 failures / 0 errors  SHA 6c32bdce54538bf6
+CoreShellStepTest                            11 tests / 0 failures / 0 errors  SHA f6b016563af45921
+RegistryExecutionBoundaryTest                 6 tests / 0 failures / 0 errors  SHA de5d251ee8cf7912
+GenericRegistryExecutionCarrierTest           6 tests / 0 failures / 0 errors  SHA e407a2f2c2a77b4e
+ExecutionBoundaryFactoryTest                  4 tests / 0 failures / 0 errors  SHA 9c82acb8304317fc
+FamilyRouterTest                              4 tests / 0 failures / 0 errors  SHA 51bf510ffeddc504
+StepDescriptorBodyMetadataTest (domain)       5 tests / 0 failures / 0 errors
+TOTAL: 77 tests / 0 failures / 0 errors
+```
+
+## A3 gap closed: hardcoded `outcome = Success`
+
+`RegistryExecutionBoundary.coexecute` previously hardcoded
+`outcome = StepOutcome.Success` regardless of the handler's actual outcome.
+A `core.sh` invocation returning `ShellInvocationResult.Failed(...)` would
+silently surface as `Success` in the journal, breaking replay parity and
+losing the typed `PipelineFailure` carried on the ADT.
+
+A4.3 replaces the hardcode with:
+
+```kotlin
+val outcome: StepOutcome =
+    (produced as? TypedStepOutput)?.outcome ?: StepOutcome.Success
+```
+
+The handler's typed `CoreShellOutput.outcome` is the new authority (computed
+by `ShellStepOutcomeClassifier.toStepOutcome()`); the boundary projects it
+without knowing which Step it is. Steps that don't implement `TypedStepOutput`
+keep the legacy default of `Success`, preserving `core.echo`'s shape.
+
+## Test inventory (A4_3TypedShellOutputIntegrationTest, 20 tests)
+
+- **Classifier authority (5)**: Unit / Stdout / Status / Failed / Interrupted
+  each map to the same outcome as the legacy `ShExecution` table.
+- **Handler outcome projection (3)**: each variant of `ShellInvocationResult`
+  produces a `CoreShellOutput` with the matching `outcome` field.
+- **Output codec lossless + deterministic (7)**: each variant encodes its
+  discriminant + payload + outcome losslessly; encode is deterministic;
+  A4.2 fields (`capturedStdout`, `durationMs`) are NOT re-introduced.
+- **Boundary projection rule (3)**: typed SUCCESS/Failure projects;
+  non-typed defaults to SUCCESS; thrown handler produces
+  `Failure(ENGINE)` with `encodedOutput = null`.
+- **Handler discipline (1)**: source-level check that `CoreShellStep` does
+  not reference `EventSink`, `EchoOutputCaptured`, `runBlocking`, or
+  `GlobalScope` (comments stripped before assertion).
+
+## Open path
+
+- G7 lands the codec `decode` for `core.sh` (replay path) and the A4.3
+  carrier round-trips through the journal.
+- A4.8 flips `core.sh = REGISTRY_PRIMARY` once legacy + registry parity is
+  frozen and the full UAT corpus passes against the registry path.
+

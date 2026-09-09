@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
+import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
@@ -68,10 +69,16 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Canonical plugin IDs — sourced from the single legacy metadata authority (CDE.2-d). The durable
- * coordinator derives eligibility from metadata, never from the decoded command world.
+ * Canonical plugin IDs eligible for canonical durable execution. The durable spine accepts a step as
+ * canonical when it is either (a) a legacy executable core id, or (b) a core Step registered in the
+ * production registry (e.g. `core.echo`, and — since LB-02 — `core.sh`). Registry-registered core
+ * Steps run through the open registry family; they are canonical even though their legacy metadata
+ * row no longer exists (LB-02 / S6 removed the legacy `core.sh` row). The coordinator derives
+ * eligibility from this authority, never from the decoded command world.
  */
-private val canonicalCoreStepIds: Set<String> = CanonicalCoreStepMetadata.pluginIds
+private val canonicalCoreStepIds: Set<String> =
+    CanonicalCoreStepMetadata.pluginIds +
+        CoreStepRegistryFactory.registry().keys().map { it.value }
 private val canonicalBodyStepIds: Set<String> = setOf(
     "core.dir",
     "core.timeout",

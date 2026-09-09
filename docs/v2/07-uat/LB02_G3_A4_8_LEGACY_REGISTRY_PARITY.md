@@ -119,19 +119,19 @@ deterministic + real-subprocess assertions.
   carrier routes Failure SCRIPT; branch 3b: typed carrier routes
   Interrupted → Failure TIMEOUT).
 
-## Evidence (fresh XML canaries, slice landed <this commit>)
+## Evidence (fresh XML canaries, slice landed 18d3d773)
 
 ```
-A4_8LegacyRegistrySemanticParityTest        12 tests / 0 failures / 0 errors  SHA <a48>
-G7_CoreShellOutputCodecRoundTripTest        34 tests / 0 failures / 0 errors  SHA <g7>
-A4_3TypedShellOutputIntegrationTest         20 tests / 0 failures / 0 errors  SHA <a43>
-A4_2ShellOperationsCapabilityTest           14 tests / 0 failures / 0 errors  SHA <a42>
-A4_1DescriptorRecoveryCharacterizationTest   7 tests / 0 failures / 0 errors  SHA <a41>
-CoreShellStepTest                           11 tests / 0 failures / 0 errors  SHA <css>
-EchoStepContractSuiteTest                   17 tests / 0 failures / 0 errors  SHA <echo>
-RegistryExecutionBoundaryTest                6 tests / 0 failures / 0 errors  SHA <reb>
-GenericRegistryExecutionCarrierTest          6 tests / 0 failures / 0 errors  SHA <grec>
-ExecutionBoundaryFactoryTest                 4 tests / 0 failures / 0 errors  SHA <ebf>
-FamilyRouterTest                             4 tests / 0 failures / 0 errors  SHA <fr>
+A4_8LegacyRegistrySemanticParityTest        12 tests / 0 failures / 0 errors  SHA fa8f78a1c5743b02
+G7_CoreShellOutputCodecRoundTripTest        34 tests / 0 failures / 0 errors  SHA 6f989798e2e21280
+A4_3TypedShellOutputIntegrationTest         20 tests / 0 failures / 0 errors  SHA 0736591c2cb69525
+A4_2ShellOperationsCapabilityTest           14 tests / 0 failures / 0 errors  SHA 958153986a997ff8
+A4_1DescriptorRecoveryCharacterizationTest   7 tests / 0 failures / 0 errors  SHA 8712e66305810eb6
+CoreShellStepTest                           11 tests / 0 failures / 0 errors  SHA 0571b44de00409e1
+EchoStepContractSuiteTest                   17 tests / 0 failures / 0 errors  SHA 615098eb7bbfb5f4
+RegistryExecutionBoundaryTest                6 tests / 0 failures / 0 errors  SHA 5b3811a39c49cc2d
+GenericRegistryExecutionCarrierTest          6 tests / 0 failures / 0 errors  SHA 61a88b3b118decfd
+ExecutionBoundaryFactoryTest                 4 tests / 0 failures / 0 errors  SHA c44276ead4f88672
+FamilyRouterTest                             4 tests / 0 failures / 0 errors  SHA 1525b8aa08d657c1
 TOTAL: 135 tests / 0 failures / 0 errors
 ```

@@ -406,6 +406,19 @@ object JsonEventLog {
             is TimestampsExited -> {
                 // no extra fields
             }
+            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+            is StepAdmissionObserved -> {
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepIndex\":")
+                sb.append(event.stepIndex)
+                sb.append(",\"stepKey\":")
+                sb.append(jsonString(event.stepKey))
+                sb.append(",\"law\":")
+                sb.append(jsonString(event.law))
+                sb.append(",\"executorCalls\":")
+                sb.append(event.executorCalls)
+            }
         }
         sb.append("}")
         return sb.toString()

@@ -863,3 +863,27 @@ data class TimestampsExited(
 ) : DomainEvent {
     override val kind: String get() = "TimestampsExited"
 }
+
+// =============================================================================
+// S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation
+// =============================================================================
+
+/**
+ * Emitted by the durable spine after each step's reconciliation. Reports which admission law
+ * (C1..C6 or Other) was observed for the step and the executor-call count seen for THIS resolution.
+ * S2.5.7 / B1.2c3: introduced to name the durable-protocol admission laws at the spine rather
+ * than only in characterization tests.
+ */
+data class StepAdmissionObserved(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageIndex: Int,
+    val stepIndex: Int,
+    val stepKey: String,
+    val law: String,
+    val executorCalls: Int,
+) : DomainEvent {
+    override val kind: String get() = "StepAdmissionObserved"
+}

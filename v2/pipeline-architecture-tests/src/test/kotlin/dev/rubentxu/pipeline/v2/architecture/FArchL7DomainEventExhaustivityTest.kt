@@ -11,7 +11,7 @@ import kotlin.reflect.full.memberProperties
  *
  * Architecture test that enforces DomainEvent sealed hierarchy is complete.
  *
- * The sealed hierarchy must contain exactly 41 variants:
+ * The sealed hierarchy must contain exactly 44 variants:
  * - 23 existing (ML-R1 through ML-R6)
  * - 4 new for ML-R7 (FileWritten, FileRead, ArtifactArchived, ArtifactArchiveFailed)
  * - 6 new for ML-R9 T-06 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
@@ -19,12 +19,13 @@ import kotlin.reflect.full.memberProperties
  * - 2 new for ML-R9 T-07 (PwdResolved, UnixDetected)
  * - 2 new for ML-R9 T-09 (MilestoneReached, MilestoneAborted)
  * - 1 new for ML-R9 T-10 (TimeoutTriggered)
+ * - 1 new for S2.5.7 / B1.2c3 (StepAdmissionObserved) — LB-01 spine consolidation, WU-1
  * NOTE: ArtifactEntry is a nested data class, not a standalone DomainEvent
  *
  * This CLOSES the DomainEvent exhaustivity invariant from ADR-0046 §D2.
  *
- * RED: AssertionError (hierarchy count != 41)
- * GREEN: After ML-R9 T-07 utility-step additions, hierarchy count == 41
+ * RED: AssertionError (hierarchy count != 44)
+ * GREEN: After S2.5.7 WU-1 addition, hierarchy count == 44
  */
 class FArchL7DomainEventExhaustivityTest {
 
@@ -75,13 +76,14 @@ class FArchL7DomainEventExhaustivityTest {
      * 41. TimeoutTriggered (ML-R9 T-10)
      * 42. TimestampsEntered (ML-R9 T-08)
      * 43. TimestampsExited (ML-R9 T-08)
+     * 44. StepAdmissionObserved (S2.5.7 / B1.2c3 — LB-01 spine consolidation, WU-1)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_43_variants`() {
+    fun `domain_event_sealed_hierarchy_has_44_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 43
+        val expectedCount = 44
 
         assertEquals(
             expectedCount,
@@ -122,7 +124,7 @@ class FArchL7DomainEventExhaustivityTest {
     }
 
     /**
-     * Verifies all 38 variants have the required DomainEvent interface fields.
+     * Verifies all 44 variants have the required DomainEvent interface fields.
      */
     @Test
     fun `all_domain_event_variants_implement_interface_fields`() {

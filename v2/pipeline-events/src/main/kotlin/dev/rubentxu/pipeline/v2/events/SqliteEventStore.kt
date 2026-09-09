@@ -177,6 +177,8 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is TimeoutTriggered -> event.copy(sequence = assignedSequence)
                 is TimestampsEntered -> event.copy(sequence = assignedSequence)
                 is TimestampsExited -> event.copy(sequence = assignedSequence)
+                // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+                is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
             }
 
             conn.prepareStatement(

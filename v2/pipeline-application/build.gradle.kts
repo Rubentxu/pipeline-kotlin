@@ -38,6 +38,9 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(project(":pipeline-step-sdk:scm-git"))
+    // LB-02: external plugin under certification (example.uppercase) — same JAR the
+    // installed distribution hosts via --plugin-jar. Test classpath only.
+    testImplementation(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }

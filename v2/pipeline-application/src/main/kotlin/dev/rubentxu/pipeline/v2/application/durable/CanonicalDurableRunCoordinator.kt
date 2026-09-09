@@ -313,12 +313,16 @@ class CanonicalDurableRunCoordinator(
      * [CommonExecutionBoundary], preserving behaviour exactly; a caller may inject its own boundary
      * for dual characterization. The durable coordinator only ever hands an opaque [PreparedExecution]
      * to this seam and never names a decoded command type.
+     *
+     * As of S2.5.7 WU-5 the call is routed through [ExecutionBoundaryFactory.build] (the named
+     * producer seam) directly, bypassing the [buildDefaultExecutionBoundary] forwarder. The factory
+     * is the structural-switch authority (binary `if (stepRegistry != null)` preserved bit-a-bit); the
+     * forwarder is kept as a source-compatibility shim for any external callers.
      */
     private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
-        // CDE.3-e4.5 / B1.2c3-S2.5.2: the default is the single production routing authority (legacy
-        // adapter alone, or the family router when a registry is injected), built by one helper both the
-        // coordinator and recording test decorators share.
-        ?: buildDefaultExecutionBoundary(dispatcher, invocationExecutor, stepRegistry)
+        // CDE.3-e4.5 / B1.2c3-S2.5.7 WU-5: structural switch lives in ExecutionBoundaryFactory.build
+        // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
+        ?: ExecutionBoundaryFactory.build(dispatcher, invocationExecutor, stepRegistry)
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success

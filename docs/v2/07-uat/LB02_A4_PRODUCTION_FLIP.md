@@ -97,6 +97,37 @@ one `EchoOutputCaptured` event.
 rejects foreign kinds. A real CLI run of `04-sh.pipeline.kts` is required as the
 consumer-level proof because it exercises the DSL compiler's actual payload.
 
+### Mechanical authority proof
+
+`A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test` now drives a real one-step `core.sh`
+pipeline through `CoordinatorFixture.default`, whose recorder delegates to the
+normal production `CommonExecutionBoundary` and classifies the prepared family.
+It proves the requested authority property mechanically:
+
+```text
+core.sh production invocation
+    → StructuralRegistry = Registry
+    → registry execution = 1
+    → legacy Sh execution = 0
+```
+
+The proof observes the shared structural seam, not a concrete legacy command.
+It also asserts the observable stdout event, so `legacy Sh execution = 0` is
+paired with a successful real registry execution rather than a skipped call.
+
+## A4 status
+
+```text
+A4 = DONE
+core.sh = REGISTRY_PRIMARY
+core.sh != LEGACY_UNREACHABLE
+core.sh != LEGACY_REMOVED
+core.sh != CERTIFIED
+```
+
+A5 begins the corpus migration required to establish `LEGACY_UNREACHABLE`; no
+legacy artifact is removed by A4.
+
 ## Deferred work
 
 `core.sh` remains `IMPLEMENTED_UNCERTIFIED`. A5 must migrate the corpus and
@@ -147,9 +178,10 @@ prohibit central concrete-Step dispatch and forbidden dependency direction.
 
 ### Whole-result final feedback loop
 
-After the late membership-characterization correction, the complete A4 focused
-closure was rerun from current `HEAD`: **169 / 0 / 0 across 15 classes**
-(including `CanonicalCoreStepCommandRegistryTest`). The installed distribution
+After the late membership-characterization correction and mechanical authority
+counter, the complete A4 focused closure was rerun from current `HEAD`:
+**170 / 0 / 0 across 15 classes** (including
+`CanonicalCoreStepCommandRegistryTest`). The installed distribution
 then reran the actual `04-sh.pipeline.kts` fixture and asserted the complete
 public event sequence, exact `hello from sh\n` capture, and
 `RunFinished(success)`. `:pipeline-architecture-tests:test` also passed in the

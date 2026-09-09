@@ -3,19 +3,37 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.CommonExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.durable.CommonExecutionResult
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactory
 import dev.rubentxu.pipeline.v2.application.durable.FamilyRouter
 import dev.rubentxu.pipeline.v2.application.durable.FamilyRoutingDecision
 import dev.rubentxu.pipeline.v2.application.durable.LegacyExecutionBoundary
 import dev.rubentxu.pipeline.v2.application.durable.OpId
+import dev.rubentxu.pipeline.v2.application.durable.PreparedExecution
+import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.application.durable.SeamedExecutionRouter
 import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
 import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
+import dev.rubentxu.pipeline.v2.application.durable.buildDefaultExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
+import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
+import dev.rubentxu.pipeline.v2.domain.DefinitionId
+import dev.rubentxu.pipeline.v2.domain.Digest
+import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
+import dev.rubentxu.pipeline.v2.domain.StageBody
+import dev.rubentxu.pipeline.v2.domain.StageId
+import dev.rubentxu.pipeline.v2.domain.StageNode
+import dev.rubentxu.pipeline.v2.domain.StepId
+import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -267,6 +285,83 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
         val family = StructuralFamilyResolver.classify(CoreShellStep.KEY, registry)
         assertEquals(StructuralStepFamily.Registry, family)
         assertTrue(registry.contains(CoreShellStep.KEY))
+    }
+
+    /**
+     * The authoritative production-path counter required to close A4. It records at the
+     * common seam, delegates to the normal production family router, and classifies only
+     * the prepared structural family. It never names the legacy Shell command.
+     */
+    private class AuthorityRecorder : CommonExecutionBoundary {
+        var registryExecutions: Int = 0
+            private set
+        var legacyExecutions: Int = 0
+            private set
+
+        private val delegate = buildDefaultExecutionBoundary(
+            dispatcher = CanonicalNodeDispatcher(),
+            invocationExecutor = null,
+            stepRegistry = CoreStepRegistryFactory.registry(),
+        )
+
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
+            when (prepared) {
+                is PreparedRegistryExecution -> registryExecutions++
+                else -> legacyExecutions++
+            }
+            return delegate.execute(prepared, context)
+        }
+    }
+
+    private fun singleShPipeline(): CompiledPipeline = CompiledPipeline(
+        id = DefinitionId("a4-authority-proof"),
+        source = SourceDescriptor("A4Authority.pipeline.kts", Digest("a4-authority-source")),
+        pluginLockDigest = Digest("a4-authority-lock"),
+        stages = listOf(
+            StageNode(
+                id = StageId("authority"),
+                name = "authority",
+                body = StageBody.Steps(
+                    listOf(
+                        OpaqueStepNode(
+                            id = StepId("authority/sh-0"),
+                            pluginStepId = CoreShellStep.KEY,
+                            payload = VersionedStepPayload(
+                                "dsl-v1",
+                                """{"kind":"sh","command":"echo a4-authority","isScriptBlock":false,"returnStdout":true}""",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun `production core sh invocation records StructuralRegistry, registry execution one, and legacy execution zero`() = runBlocking {
+        val eventSink = InMemoryEventStore()
+        val recorder = AuthorityRecorder()
+        val coordinator = CoordinatorFixture.default(
+            journal = InMemoryOperationJournal(SystemClock()),
+            eventSink = eventSink,
+            recorder = recorder,
+        )
+
+        val family = StructuralFamilyResolver.classify(CoreShellStep.KEY, CoreStepRegistryFactory.registry())
+        val outcome = coordinator.run(singleShPipeline(), RunId("a4-authority-run"))
+
+        assertEquals(StructuralStepFamily.Registry, family, "core.sh must structurally select Registry")
+        assertEquals(RunOutcome.Success, outcome)
+        assertEquals(1, recorder.registryExecutions, "core.sh must execute once through the registry family")
+        assertEquals(0, recorder.legacyExecutions, "core.sh must not execute through the legacy family")
+        assertEquals(
+            1,
+            eventSink.eventsFor("a4-authority-run").filterIsInstance<EchoOutputCaptured>().count(),
+            "registry execution must retain shell observability",
+        )
     }
 
     // -------------------------------------------------------------------

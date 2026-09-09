@@ -69,14 +69,16 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Canonical plugin IDs eligible for canonical durable execution. The durable spine accepts a step as
- * canonical when it is either (a) a legacy executable core id, or (b) a core Step registered in the
- * production registry (e.g. `core.echo`, and — since LB-02 — `core.sh`). Registry-registered core
- * Steps run through the open registry family; they are canonical even though their legacy metadata
- * row no longer exists (LB-02 / S6 removed the legacy `core.sh` row). The coordinator derives
- * eligibility from this authority, never from the decoded command world.
+ * Canonical Step keys eligible for canonical durable execution (EP-F2.6: renamed from
+ * `canonicalCoreStepIds` — the authority is NOT core-only). The durable spine accepts a step as
+ * canonical when its key is either (a) a legacy executable core id, or (b) present in the
+ * production [StepRegistry] — which is open-world: it includes core Steps (`core.echo`,
+ * `core.sh`) AND external plugin contributions discovered at composition time. A key is NOT
+ * canonical-eligible before its plugin is registered and becomes eligible after registration
+ * (proven by EP_F26_GenericProductionPathProofTest). The coordinator derives eligibility from
+ * this authority, never from the decoded command world nor from a closed core catalogue.
  */
-private val canonicalCoreStepIds: Set<String> =
+private val canonicalStepIds: Set<String> =
     CanonicalCoreStepMetadata.pluginIds +
         CoreStepRegistryFactory.registry().keys().map { it.value }
 private val canonicalBodyStepIds: Set<String> = setOf(
@@ -147,7 +149,7 @@ private fun StepNode.checkCanonicalExecution(): String? {
             }
         }
         is OpaqueStepNode -> {
-            if (pluginStepId.value !in canonicalCoreStepIds) {
+            if (pluginStepId.value !in canonicalStepIds) {
                 "opaque step plugin not in canonical core step IDs"
             } else {
                 null

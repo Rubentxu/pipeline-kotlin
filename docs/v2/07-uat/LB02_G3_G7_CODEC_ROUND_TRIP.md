@@ -100,3 +100,18 @@ when called on a non-failure variant.
 
 36 UAT-subprocess tests in `compat`/pipeline-application remain unchanged.
 This slice did NOT introduce new failures.
+
+## Evidence (fresh XML canaries, slice landed c3ceadf5)
+
+```
+G7_CoreShellOutputCodecRoundTripTest           34 tests / 0 failures / 0 errors  SHA 7d5fea575ae5ba70
+A4_3TypedShellOutputIntegrationTest            20 tests / 0 failures / 0 errors  SHA 0897181d85311d0b
+A4_2ShellOperationsCapabilityTest              14 tests / 0 failures / 0 errors  SHA 35af6eb2759fa5c6
+A4_1DescriptorRecoveryCharacterizationTest      7 tests / 0 failures / 0 errors  SHA a4e256ec2c4c81e4
+CoreShellStepTest                              11 tests / 0 failures / 0 errors  SHA 3e3740d5be3b24b0
+RegistryExecutionBoundaryTest                   6 tests / 0 failures / 0 errors  SHA bae76e1f5f2b21c0
+GenericRegistryExecutionCarrierTest             6 tests / 0 failures / 0 errors  SHA 84e7ddbd88047893
+ExecutionBoundaryFactoryTest                    4 tests / 0 failures / 0 errors  SHA 79d9d39b3a48cc9c
+FamilyRouterTest                                4 tests / 0 failures / 0 errors  SHA 6abc07dd2df91d32
+TOTAL: 106 tests / 0 failures / 0 errors
+```

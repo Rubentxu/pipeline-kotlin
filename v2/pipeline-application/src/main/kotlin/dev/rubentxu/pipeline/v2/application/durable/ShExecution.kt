@@ -432,18 +432,6 @@ object ShExecution {
         return classifyShellTerminal(terminal, command.returnMode)
     }
 
-    private fun ShellInvocationResult.toStepOutcome(): StepOutcome = when (this) {
-        ShellInvocationResult.UnitValue,
-        is ShellInvocationResult.Stdout,
-        is ShellInvocationResult.Status,
-        -> StepOutcome.Success
-
-        is ShellInvocationResult.Failed -> StepOutcome.Failure(failure)
-        is ShellInvocationResult.Interrupted -> StepOutcome.Failure(
-            PipelineFailure(FailureKind.TIMEOUT, interruption.message),
-        )
-    }
-
     private fun ShellInvocationResult.toLegacyStatus(
         eventSink: EventSink,
         runId: String,

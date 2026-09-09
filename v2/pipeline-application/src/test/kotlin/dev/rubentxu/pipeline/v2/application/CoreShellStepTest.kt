@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
@@ -18,6 +19,7 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -135,27 +137,34 @@ class CoreShellStepTest {
     }
 
     @Test
-    fun `codec output — encode emits well-formed JSON object with the variant discriminant`() {
+    fun `codec output — encode emits well-formed JSON object with kind and outcome discriminants`() {
+        // A4.3: the codec now emits BOTH the closed-ADT discriminant (`kind`)
+        // and the canonical StepOutcome discriminant (`outcome`). The carrier
+        // no longer carries `capturedStdout` / `durationMs` — those live on
+        // `OperationOutput` (durable substrate) and `ShellInvocationResult.Stdout.value`
+        // (typed stdout), respectively.
         val out = CoreShellOutput(
             result = ShellInvocationResult.UnitValue,
-            capturedStdout = "",
-            durationMs = 7L,
+            outcome = StepOutcome.Success,
         )
         val encoded = CoreShellStep.definition.contract.outputCodec.encode(out)
         val parsed = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
         assertTrue(parsed is kotlinx.serialization.json.JsonObject, "output envelope must be a JSON object")
         val obj = parsed as kotlinx.serialization.json.JsonObject
         assertEquals("UNIT", obj["kind"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
-        assertEquals("", obj["capturedStdout"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
-        assertEquals("7", obj["durationMs"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
+        assertEquals("SUCCESS", obj["outcome"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
+        // A4.3 invariant: `capturedStdout` and `durationMs` are GONE from the
+        // typed carrier. They MUST NOT be silently re-introduced by an
+        // accidentally merged A4.2-era field.
+        assertFalse("capturedStdout" in obj.keys, "capturedStdout must not be re-encoded")
+        assertFalse("durationMs" in obj.keys, "durationMs must not be re-encoded")
     }
 
     @Test
-    fun `codec output — Stdout variant encodes value field`() {
+    fun `codec output — Stdout variant encodes value field and outcome=SUCCESS`() {
         val out = CoreShellOutput(
             result = ShellInvocationResult.Stdout("hello\n"),
-            capturedStdout = "hello\n",
-            durationMs = 12L,
+            outcome = StepOutcome.Success,
         )
         val encoded = CoreShellStep.definition.contract.outputCodec.encode(out)
         val parsed = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
@@ -163,10 +172,11 @@ class CoreShellStepTest {
         val obj = parsed as kotlinx.serialization.json.JsonObject
         assertEquals("STDOUT", obj["kind"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("hello\n", obj["value"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
+        assertEquals("SUCCESS", obj["outcome"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
     }
 
     @Test
-    fun `codec output — Failed variant encodes failureKind and message`() {
+    fun `codec output — Failed variant encodes failureKind, message, exitCode, outcome=FAILURE`() {
         val out = CoreShellOutput(
             result = ShellInvocationResult.Failed(
                 failure = dev.rubentxu.pipeline.v2.domain.PipelineFailure(
@@ -175,12 +185,17 @@ class CoreShellStepTest {
                 ),
                 exitCode = 7,
             ),
-            capturedStdout = "",
-            durationMs = 0L,
+            outcome = StepOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
+                    message = "exit 7",
+                ),
+            ),
         )
         val encoded = CoreShellStep.definition.contract.outputCodec.encode(out)
         val obj = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value) as kotlinx.serialization.json.JsonObject
         assertEquals("FAILED", obj["kind"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
+        assertEquals("FAILURE", obj["outcome"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("SCRIPT", obj["failureKind"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("exit 7", obj["message"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("7", obj["exitCode"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
@@ -213,25 +228,31 @@ class CoreShellStepTest {
         assertEquals(RunId("a4-2"), ops.lastRunId)
         assertEquals(7, ops.lastStepIndex)
         assertEquals(ShellInvocationResult.Stdout("hello\n"), output.result)
-        assertEquals("hello\n", output.capturedStdout)
-        assertEquals(0L, output.durationMs)
+        // A4.3: the typed carrier no longer carries `capturedStdout`/`durationMs`.
+        // Downstream consumers read stdout from `result.value` (Stdout case) and
+        // duration from `OperationOutput.durationMs`.
+        assertEquals(StepOutcome.Success, output.outcome)
     }
 
     @Test
-    fun `handler — non-Stdout variants project with empty capturedStdout and the typed result preserved`() = runBlocking {
-        // The handler is a 1:1 projection of the closed ShellInvocationResult ADT.
-        // Stdout carries captured stdout; the other variants carry no captured stdout
-        // (them being typed semantics, not captured bytes). The adapter remains the
-        // single authority for EchoOutputCaptured events.
-        val cases = listOf(
-            ShellInvocationResult.UnitValue,
-            ShellInvocationResult.Status(exitCode = 0),
+    fun `handler — non-Stdout variants project with the typed result preserved and outcome classified by toStepOutcome`() = runBlocking {
+        // A4.3: the handler is the SOLE place where `outcome` is computed from `result`.
+        // The classifier (`toStepOutcome`) is the single authority; it is NOT
+        // duplicated in this test or in the boundary.
+        val cases = listOf<Pair<ShellInvocationResult, StepOutcome>>(
+            ShellInvocationResult.UnitValue to StepOutcome.Success,
+            ShellInvocationResult.Status(exitCode = 0) to StepOutcome.Success,
             ShellInvocationResult.Failed(
                 failure = dev.rubentxu.pipeline.v2.domain.PipelineFailure(
                     kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
                     message = "exit 7",
                 ),
                 exitCode = 7,
+            ) to StepOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
+                    message = "exit 7",
+                ),
             ),
             ShellInvocationResult.Interrupted(
                 interruption = dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord(
@@ -239,9 +260,14 @@ class CoreShellStepTest {
                     message = "killed",
                     operationId = "a/b/0",
                 ),
+            ) to StepOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT,
+                    message = "killed",
+                ),
             ),
         )
-        for (variant in cases) {
+        for ((variant, expectedOutcome) in cases) {
             val ops = shellOpsReturning(variant)
             val output = CoreShellStep.definition.handler.execute(
                 CoreShellInput(command = ShellCommand(script = "x")),
@@ -249,7 +275,7 @@ class CoreShellStepTest {
             )
             assertEquals(1, ops.callCount)
             assertEquals(variant, output.result)
-            assertEquals("", output.capturedStdout)
+            assertEquals(expectedOutcome, output.outcome)
         }
     }
 

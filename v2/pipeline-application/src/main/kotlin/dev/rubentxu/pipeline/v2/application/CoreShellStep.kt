@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -16,6 +17,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -114,17 +116,31 @@ object CoreShellStep {
     }
 
     /**
-     * G1 output codec: encodes `{kind, capturedStdout, durationMs, ...}` where
-     * `kind` matches the existing scripted-runtime discriminant names
-     * (UNIT / STDOUT / STATUS / FAILED / INTERRUPTED). G2 corpus migration
-     * reuses this shape; G7 will exercise the decode (replay path).
+     * G3-A4.3 output codec: encodes the closed [ShellInvocationResult] ADT plus its
+     * canonical [dev.rubentxu.pipeline.v2.domain.StepOutcome] projection.
+     *
+     * The encoded JSON shape (deterministic, lossless for contractual fields):
+     *  - `kind`: discriminant matching the existing scripted-runtime names
+     *    (`UNIT` / `STDOUT` / `STATUS` / `FAILED` / `INTERRUPTED`).
+     *  - `outcome`: `"SUCCESS"` or `"FAILURE"` — the canonical projection. Any
+     *    downstream re-classification that disagrees with the value here is a
+     *    classifier bug and MUST fail loudly (no silent reconciliation).
+     *  - payload fields per discriminant (`value`, `exitCode`, `failureKind`,
+     *    `message`, `interruptionKind`, `operationId`).
+     *
+     * The `capturedStdout` / `durationMs` fields from the A4.2 carrier are GONE: the
+     * former is derivable from `result.value` when `kind == "STDOUT"`, and the latter
+     * is the substrate's concern (`OperationOutput.durationMs`).
+     *
+     * `decode` remains a TODO until G7 lands (replay path). Until then, malformed
+     * payloads MUST surface as `TODO("G7...")` failures on the replay path, NOT be
+     * silently coerced.
      */
     private val outputCodec = object : StepCodec<CoreShellOutput> {
         override fun encode(value: CoreShellOutput): EncodedStepValue {
             val obj: JsonObject = buildJsonObject {
                 put("kind", JsonPrimitive(kindDiscriminant(value.result)))
-                put("capturedStdout", JsonPrimitive(value.capturedStdout))
-                put("durationMs", JsonPrimitive(value.durationMs))
+                put("outcome", JsonPrimitive(outcomeDiscriminant(value.outcome)))
                 when (val r = value.result) {
                     ShellInvocationResult.UnitValue -> Unit
                     is ShellInvocationResult.Stdout -> put("value", JsonPrimitive(r.value))
@@ -145,8 +161,10 @@ object CoreShellStep {
         }
 
         override fun decode(encoded: EncodedStepValue): CoreShellOutput {
-            // G1: deferred to G7; the typed-output boundary seam lands at G3 first.
-            TODO("G1: typed output decode lands at G7; producer lands at G3.")
+            // G3-A4.3: deferred to G7. Until then the boundary does NOT decode.
+            // Replay path is the only consumer; it MUST land before
+            // `core.sh = REGISTRY_PRIMARY` is flipped.
+            TODO("G7: typed output decode for core.sh lands at the replay slice.")
         }
     }
 
@@ -156,6 +174,12 @@ object CoreShellStep {
         is ShellInvocationResult.Status -> "STATUS"
         is ShellInvocationResult.Failed -> "FAILED"
         is ShellInvocationResult.Interrupted -> "INTERRUPTED"
+    }
+
+    private fun outcomeDiscriminant(o: StepOutcome): String = when (o) {
+        is StepOutcome.Success -> "SUCCESS"
+        is StepOutcome.Unstable -> "UNSTABLE"
+        is StepOutcome.Failure -> "FAILURE"
     }
 
     private val descriptor = StepDescriptor(
@@ -181,10 +205,12 @@ object CoreShellStep {
      *   before this point if the runtime cannot supply the capability),
      * - invokes the seam exactly once with the typed `command` and execution
      *   identity (`runId`, `stepIndex`),
-     * - projects the typed `ShellInvocationResult` into a [CoreShellOutput] with
-     *   `capturedStdout` lifted from the [ShellInvocationResult.Stdout] case (no
-     *   string parsing; no event emission; the [ShExecution] substrate is the
-     *   single authority for `EchoOutputCaptured`).
+     * - projects the typed `ShellInvocationResult` into a [CoreShellOutput] that
+     *   ALSO carries the canonical [dev.rubentxu.pipeline.v2.domain.StepOutcome]
+     *   computed by the single authority
+     *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome] (LB-02 / G3-A4.3).
+     *   No string parsing; no event emission; the [ShExecution] substrate is
+     *   the single authority for `EchoOutputCaptured`.
      *
      * It MUST NOT:
      * - reach `CanonicalRuntimeContext`,
@@ -192,6 +218,8 @@ object CoreShellStep {
      * - call `eventSink` directly,
      * - reach the durable-shell substrate (that is the adapter's authority),
      * - read or write filesystem state.
+     * - re-implement the outcome classifier (it MUST call
+     *   `toStepOutcome()` so legacy and registry paths share one authority).
      */
     private val capabilityRoutedHandler: StepHandler<CoreShellInput, CoreShellOutput> =
         StepHandler { input, ctx ->
@@ -201,17 +229,12 @@ object CoreShellStep {
                 runId = ctx.runId,
                 stepIndex = ctx.stepIndex,
             )
-            val captured = when (result) {
-                is ShellInvocationResult.Stdout -> result.value
-                ShellInvocationResult.UnitValue,
-                is ShellInvocationResult.Status,
-                is ShellInvocationResult.Failed,
-                is ShellInvocationResult.Interrupted -> ""
-            }
+            // A4.3 — outcome is the SINGLE classifier output (NOT re-derived downstream).
+            // `CommonExecutionBoundary` reads `outcome` from the typed carrier via
+            // `produced as? TypedStepOutput`; the boundary stays Step-agnostic.
             CoreShellOutput(
                 result = result,
-                capturedStdout = captured,
-                durationMs = 0L, // A4.2: timing fields populated at A4.3 from the typed terminal.
+                outcome = result.toStepOutcome(),
             )
         }
 

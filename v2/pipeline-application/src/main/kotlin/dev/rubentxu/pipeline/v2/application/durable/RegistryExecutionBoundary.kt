@@ -98,8 +98,18 @@ object RegistryExecutionBoundary {
                     as dev.rubentxu.pipeline.v2.domain.step.StepCodec<Any>)
                 codec.encode(produced)
             }
+            // A4.3: project the canonical `StepOutcome` from the typed output
+            // when the carrier implements `TypedStepOutput`. Steps whose handler
+            // returns `Unit` or a non-typed payload default to `Success` (the
+            // legacy convention preserved by `core.echo`'s EventSink-shaped
+            // output). The boundary stays Step-agnostic — it NEVER branches on
+            // `core.sh` or any other concrete StepKey; the typed carrier is the
+            // only authority for the outcome projection.
+            val outcome: dev.rubentxu.pipeline.v2.domain.StepOutcome =
+                (produced as? dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput)?.outcome
+                    ?: dev.rubentxu.pipeline.v2.domain.StepOutcome.Success
             CommonExecutionResult(
-                outcome = dev.rubentxu.pipeline.v2.domain.StepOutcome.Success,
+                outcome = outcome,
                 encodedOutput = encoded,
             )
         } catch (e: Exception) {

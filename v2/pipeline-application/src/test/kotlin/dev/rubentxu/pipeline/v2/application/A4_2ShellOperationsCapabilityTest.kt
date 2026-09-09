@@ -5,10 +5,12 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
+import dev.rubentxu.pipeline.v2.application.durable.toStepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
@@ -145,31 +147,38 @@ class A4_2ShellOperationsCapabilityTest {
         assertEquals(RunId("a4-2-success"), ops.lastRunId)
         assertEquals(5, ops.lastStepIndex)
         assertEquals(ShellInvocationResult.Stdout("a4-2\n"), output.result)
-        assertEquals("a4-2\n", output.capturedStdout)
+        // A4.3: the typed carrier no longer carries `capturedStdout`. The
+        // captured stdout is now derivable as `output.result.value` for the
+        // `Stdout` variant. Stdout -> Success; the outcome projection is the
+        // single classifier's authority.
+        assertEquals(StepOutcome.Success, output.outcome)
     }
 
     @Test
     fun `A4-2-6 each ShellInvocationResult variant projects 1-1 without string parsing`() = runBlocking {
-        val cases: List<Pair<ShellInvocationResult, String>> = listOf(
-            ShellInvocationResult.UnitValue to "",
-            ShellInvocationResult.Stdout("hello\n") to "hello\n",
-            ShellInvocationResult.Status(exitCode = 0) to "",
+        // A4.3: each variant preserves its identity AND its canonical outcome.
+        // The carrier no longer carries `capturedStdout`; the bytes live in
+        // `result.value` for the Stdout case.
+        val cases: List<ShellInvocationResult> = listOf(
+            ShellInvocationResult.UnitValue,
+            ShellInvocationResult.Stdout("hello\n"),
+            ShellInvocationResult.Status(exitCode = 0),
             ShellInvocationResult.Failed(
                 failure = dev.rubentxu.pipeline.v2.domain.PipelineFailure(
                     kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
                     message = "exit 1",
                 ),
                 exitCode = 1,
-            ) to "",
+            ),
             ShellInvocationResult.Interrupted(
                 interruption = dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord(
                     kind = dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind.TIMEOUT,
                     message = "killed",
                     operationId = "r/0/0",
                 ),
-            ) to "",
+            ),
         )
-        for ((variant, expectedCaptured) in cases) {
+        for (variant in cases) {
             val ops = RecordingShellOps().apply { returnValue = variant }
             val output = CoreShellStep.definition.handler.execute(
                 CoreShellInput(command = ShellCommand(script = "x")),
@@ -177,7 +186,11 @@ class A4_2ShellOperationsCapabilityTest {
             )
             assertEquals(1, ops.callCount)
             assertEquals(variant, output.result)
-            assertEquals(expectedCaptured, output.capturedStdout)
+            // A4.3 — outcome is classifier-derived, identical to the legacy
+            // table. Stdout/Unit/Status -> Success; Failed -> Failure;
+            // Interrupted -> Failure(TIMEOUT).
+            val expectedOutcome = variant.toStepOutcome()
+            assertEquals(expectedOutcome, output.outcome)
         }
     }
 

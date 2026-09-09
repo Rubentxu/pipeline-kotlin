@@ -305,10 +305,15 @@ class DurableShellExecutor : DurableShellLaunching {
         }
 
         // Redirect stdin to /dev/null to prevent blocking on input
-        // stdout/stderr redirected to logFile (wrapper handles its own redirections)
+        // LB-02 / S6.8.1 (Option A): jenkins-log.txt is the single durable console transcript
+        // authority. redirectErrorStream(true) merges stderr into stdout's single file descriptor,
+        // so jenkins-log.txt is opened ONCE per launch. Two independent Redirect.to(log) calls each
+        // opened the file O_TRUNC, so the second truncated the first channel's writes (stdout was
+        // silently lost whenever both streams produced data). Single-FD merge preserves both
+        // channels with no loss, no duplication, and NO change to the durable on-disk protocol.
         pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+        pb.redirectErrorStream(true)
         pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
-        pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
 
             return try {
             val process = pb.start()

@@ -99,3 +99,44 @@ remain unless their data contract changes in the burn-down.
 
 Only then may `core.sh = LEGACY_UNREACHABLE` be recorded. Legacy removal and
 certification are out of this A5.1 inventory slice.
+
+## A5.2 audit finding — coordinator durable corpus (`CanonicalDurableRunCoordinatorTest`)
+
+An audit of the owning durable coordinator file found **22 bare
+`CanonicalDurableRunCoordinator(...)` constructions with `stepRegistry` omitted**
+(defaults to `null` → the legacy authority). This is the accidental legacy Sh
+dependency A5.2/A5.3 removes.
+
+Baseline on current `HEAD`: **24 tests, 14 failures**. Every failure is a
+`core.echo`/`catchError`/`withCredentials` body that the bare legacy-only
+coordinator cannot run, because `core.echo` migrated to the registry in B1.2c3
+and is no longer a sealed legacy command. The failures are pre-existing (they
+predate A4) and are the documented echo-registry test-construction debt.
+
+Key structural fact driving the migration shape: `CoreStepRegistryFactory`
+registers only `CoreEchoStep` + `CoreShellStep`. Every other canonical step
+(milestone, sleep, error, withCredentials) remains in `LEGACY_PLUGIN_IDS`, so it
+routes `LegacyCore` even when a registry is injected. Therefore adding
+`stepRegistry = CoreStepRegistryFactory.registry()` to a construction only
+affects `core.echo` and `core.sh`; legacy-only steps are unchanged.
+
+Migration therefore splits into three precise groups:
+
+1. **A-law Sh and echo tests** (fresh, replay, divergence, exactly-once
+   lifecycle, block/body journal, recovery): add the production registry. This
+   restores the echo laws and moves Sh to the registry family. Proven by
+   `dfc8dbbd`: the frozen "reconcile a completed running canonical shell without
+   relaunching" law passes on the registry family.
+2. **Family-specific decode/dispatch descriptions** (`dispatch decodes each
+   StepNode before delegating to the typed dispatcher`, `dispatch returns
+   SCHEMA when decoder throws`, structural decode tests): these describe the
+   legacy `CanonicalCoreStepDecoder` / typed dispatcher model. They are
+   category D/E and must be re-expressed as registry admission tests or
+   retired, never force-migrated (the registry path has no "typed dispatcher").
+3. **Legacy-only-step tests** (milestone, sleep, error via bare coordinator):
+   unaffected by the registry injection and may stay as-is or use the fixture.
+
+A blind registry sweep over all 22 constructions is **rejected**: group 2 tests
+would silently change what they assert. Each construction must be classified
+before migration.
+

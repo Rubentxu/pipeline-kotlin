@@ -295,6 +295,21 @@ object DslCompiledPipelineCompiler {
         // interpreting StepSpec. Deterministic backoff: base/jitter derived from
         // the DSL retry() delaySeconds (0 when absent) — jitter is NOT part of
         // any fingerprint (it is applied at dispatch time only).
+        // B13/E-EM-11: core.timeout projects its deadline into the payload so the
+        // durable coordinator can budget child dispatches without interpreting
+        // StepSpec. Unit: DSL produces SECONDS/MINUTES/HOURS (Jenkins time/unit).
+        is StepSpec.TimeoutBlock -> {
+            val seconds = when (step.unit.uppercase()) {
+                "SECONDS", "SECOND" -> step.time
+                "MINUTES", "MINUTE" -> Math.multiplyExact(step.time, 60L)
+                "HOURS", "HOUR" -> Math.multiplyExact(step.time, 3600L)
+                else -> error("Unsupported timeout unit '${step.unit}' for core.timeout")
+            }
+            Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+                put("kind", "timeout")
+                put("seconds", seconds)
+            })
+        }
         is StepSpec.RetryBlock -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
             put("kind", "retry")
             put("maxAttempts", step.count)

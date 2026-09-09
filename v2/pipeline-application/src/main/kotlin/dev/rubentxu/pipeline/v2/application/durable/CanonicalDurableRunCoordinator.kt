@@ -257,6 +257,14 @@ private sealed interface BlockShellScope {
     data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
 
     /**
+     * B13/E-EM-11: body-deadline contract projected from the `core.timeout` payload.
+     * The deadline flows to child ShOptions as the certified per-invocation Sh
+     * watchdog budget (min of own and inherited remaining), so cancellation
+     * propagates to the child subprocess through the kill seam.
+     */
+    data class Timeout(val budgetMs: Long) : BlockShellScope
+
+    /**
      * B13/E-EM-11: body-attempt contract projected from the `core.retry` payload.
      * The body is re-dispatched up to [maxAttempts] times; each attempt carries a
      * deterministic journal identity (attempt BlockSegment appended to bodyPath),
@@ -290,8 +298,15 @@ private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope
         val overrides = overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env)
     }
-    // B13/E-EM-11: fail-closed contract decode — a malformed retry payload is a
-    // typed schema rejection, never a silent plain-sequence fallback.
+    // B13/E-EM-11: fail-closed contract decode — malformed retry/timeout payloads
+    // are typed schema rejections, never a silent plain-sequence fallback.
+    "core.timeout" -> {
+        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+        val seconds = payload["seconds"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+            ?: throw IllegalArgumentException("core.timeout requires integer seconds")
+        require(seconds > 0) { "core.timeout seconds must be > 0, got $seconds" }
+        BlockShellScope.Timeout(budgetMs = seconds * 1000L)
+    }
     "core.retry" -> {
         val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
         val maxAttempts = payload["maxAttempts"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
@@ -938,6 +953,16 @@ class CanonicalDurableRunCoordinator(
         val childShOptions = when (scope) {
             BlockShellScope.None -> stageShOptions
             is BlockShellScope.Retry -> stageShOptions
+            // B13/E-EM-11: block deadline becomes the child Sh watchdog budget —
+            // the tighter of the block budget and any inherited stage timeout.
+            is BlockShellScope.Timeout -> {
+                val inherited = stageShOptions.timeoutMs
+                val effective = when {
+                    inherited == null -> scope.budgetMs
+                    else -> minOf(inherited, scope.budgetMs)
+                }
+                stageShOptions.copy(timeoutMs = effective)
+            }
             is BlockShellScope.Directory -> {
                 Files.createDirectories(scope.target)
                 contextStack = contextStack.push(ContextOverlay.Cwd(scope.target.toString()))

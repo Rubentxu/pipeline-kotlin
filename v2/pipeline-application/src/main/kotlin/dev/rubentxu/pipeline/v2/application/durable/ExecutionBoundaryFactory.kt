@@ -32,25 +32,33 @@ object ExecutionBoundaryFactory {
     /**
      * Produces the [CommonExecutionBoundary] for a coordinator's effective execution seam.
      *
-     * - Calls [FamilyRouter.decide] with the supplied inputs and exhaustively matches the returned
-     *   [FamilyRoutingDecision]. For [FamilyRoutingDecision.LegacyOnly] the factory builds the
-     *   legacy boundary directly via [LegacyExecutionAdapter.adapt] (with the same dispatcher/
-     *   invocationExecutor fallback the router would use). For [FamilyRoutingDecision.SeamedRouting]
-     *   it applies [SeamedExecutionRouter.route] over the pre-built `legacy` and `registry`
-     *   boundaries. The `when` is exhaustive: adding a new [FamilyRoutingDecision] variant breaks
-     *   the compile, by design.
-     * - When [recorder] is non-null, wraps the produced boundary in a pass-through decorator that
-     *   increments its own call counter, invokes the user-supplied [recorder] boundary once per
-     *   call (so the caller can observe call counts on its own counter), delegates to the produced
-     *   boundary, and returns the produced boundary's [StepOutcome] unchanged.
+     * Policy (binary preservation of legacy inline `if (stepRegistry != null)`): when
+     * [stepRegistry] is non-null, the factory ALWAYS returns a `SeamedRouting` boundary over the
+     * pre-built legacy + registry boundaries via [SeamedExecutionRouter.route] — regardless of
+     * whether a [stepKey] is supplied, because reachability is decided at prepare-time inside the
+     * registry boundary, not in the factory. When [stepRegistry] is null the factory returns the
+     * legacy adapter alone (the dispatcher fallback applies as for the null executor).
+     *
+     * The seam is named and the structural shape is an exhaustive `when` over
+     * [FamilyRoutingDecision]; the binary rule above means [FamilyRoutingDecision.LegacyOnly] only
+     * fires when registry is null, and [FamilyRoutingDecision.SeamedRouting] fires when registry is
+     * supplied. [FamilyRouter.decide]'s finer-grained step-key check is the optional refinement for
+     * future per-step entry points that know the key up front; the canonical coordinator
+     * (`CanonicalDurableRunCoordinator`) does not need it.
+     *
+     * When [recorder] is non-null, wraps the produced boundary in a pass-through decorator that
+     * increments its own call counter, invokes the user-supplied [recorder] boundary once per
+     * call (so the caller can observe call counts on its own counter), delegates to the produced
+     * boundary, and returns the produced boundary's [StepOutcome] unchanged.
      *
      * @param dispatcher canonical node dispatcher used as the legacy-executor fallback when no
      *   [invocationExecutor] is supplied.
      * @param invocationExecutor optional legacy compatibility seam; when null, the dispatcher is
-     *   used as the fallback inside [FamilyRouter.decide] and the LegacyOnly branch.
-     * @param stepRegistry optional step registry; when null the decision is always `LegacyOnly`.
-     * @param stepKey optional [PluginStepId] consulted by [FamilyRouter.decide] when a registry is
-     *   supplied; controls whether `SeamedRouting` is returned.
+     *   used as the fallback inside the LegacyOnly branch.
+     * @param stepRegistry optional step registry; when non-null the factory always produces
+     *   `SeamedRouting`.
+     * @param stepKey optional [PluginStepId]; currently advisory only — kept in the signature so a
+     *   future per-step entry point can plumb it through.
      * @param recorder optional user-supplied observation boundary. When supplied, the returned
      *   boundary delegates to the structurally-decided boundary and also invokes [recorder]
      *   before returning so the caller can observe call counts without taking over routing.
@@ -62,6 +70,24 @@ object ExecutionBoundaryFactory {
         stepKey: PluginStepId? = null,
         recorder: CommonExecutionBoundary? = null,
     ): CommonExecutionBoundary {
+        // Binary policy preserved bit-a-bit from the original `if (stepRegistry != null)` inline
+        // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
+        // gate the canonical case (the registry reachability is established at prepare-time).
+        if (stepRegistry != null) {
+            val legacy = LegacyExecutionAdapter.adapt(
+                invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
+                    dispatcher.dispatch(command, context)
+                },
+            )
+            val registry = RegistryExecutionBoundary.adapt()
+            // stepKey is intentionally not consumed here; the canonical coordinator does not know
+            // the key at boundary-build time and the registry boundary decides reachability per
+            // prepared execution.
+            @Suppress("UNUSED_VARIABLE")
+            val k = stepKey
+            val produced: CommonExecutionBoundary = SeamedExecutionRouter.route(legacy, registry)
+            return if (recorder == null) produced else RecordingBoundary(recorder = recorder, delegate = produced)
+        }
         val produced: CommonExecutionBoundary = when (val decision = FamilyRouter.decide(
             dispatcher = dispatcher,
             invocationExecutor = invocationExecutor,

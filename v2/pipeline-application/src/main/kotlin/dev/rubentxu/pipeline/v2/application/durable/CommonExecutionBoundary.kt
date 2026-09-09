@@ -73,17 +73,13 @@ object SeamedExecutionRouter {
  * family router ([SeamedExecutionRouter.route]) over the legacy adapter + the registry boundary. Test
  * recorders MUST wrap this authority (observing effective execution and delegating to the real routing),
  * never reimplement family routing themselves.
+ *
+ * As of S2.5.7 this function is retained for source compatibility as a forwarder over
+ * [ExecutionBoundaryFactory.build]; the structural decision lives in [ExecutionBoundaryFactory] / [FamilyRouter].
+ * Removal is future cleanup after legacy adapter retirement.
  */
 fun buildDefaultExecutionBoundary(
     dispatcher: CanonicalNodeDispatcher,
     invocationExecutor: CanonicalInvocationExecutor?,
     stepRegistry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry?,
-): CommonExecutionBoundary = run {
-    val legacy = LegacyExecutionAdapter.adapt(
-        invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
-            dispatcher.dispatch(command, context)
-        },
-    )
-    if (stepRegistry != null) SeamedExecutionRouter.route(legacy, RegistryExecutionBoundary.adapt())
-    else legacy
-}
+): CommonExecutionBoundary = ExecutionBoundaryFactory.build(dispatcher, invocationExecutor, stepRegistry)

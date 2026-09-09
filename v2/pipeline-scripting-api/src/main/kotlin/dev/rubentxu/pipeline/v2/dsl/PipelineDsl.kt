@@ -55,7 +55,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      */
     data class RegistryStepSpec(
         val stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
-        val schemaVersion: String,
+        val schemaVersion: String = "dsl-v1",
         val encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
@@ -1312,13 +1312,14 @@ class StageScope(
      * directly. Same `steps { }` scope and constraints as every normal Step.
      *
      * @param stepKey the open-registry StepKey (never interpreted by the compiler).
-     * @param schemaVersion the encoded Step invocation/input contract version.
+     * @param schemaVersion the CANONICAL ENVELOPE schema (must stay `dsl-v1`; EP-F2.6 conflation
+     *   fix — the plugin's own input-contract version is codec-level, never the envelope version).
      * @param encodedInput the plugin-encoded input (produced by the plugin's own `inputCodec`).
      */
     fun registryStep(
         stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
-        schemaVersion: String,
         encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        schemaVersion: String = "dsl-v1",
     ) {
         steps.add(StepSpec.RegistryStepSpec(stepKey = stepKey, schemaVersion = schemaVersion, encodedInput = encodedInput))
     }

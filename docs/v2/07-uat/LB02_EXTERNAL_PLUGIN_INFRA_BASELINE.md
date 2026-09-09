@@ -97,3 +97,42 @@ StepSpec direct-execution debt (EP-F2.5 doc):
   PipelineOrchestrator       = constructed, never invoked (LF-0205); preferred
                                resolution: progressive deletion, not re-pointing
 ```
+
+---
+
+## POST-PROOF DIFF RESULT (example.uppercase, 2026-09-09)
+
+Mechanical re-hash of the manifest after the certified external plugin:
+
+| Surface | Result |
+|---|---|
+| compiler | UNCHANGED |
+| flattener | UNCHANGED |
+| registry + codec contracts | UNCHANGED |
+| contribution SPI | UNCHANGED |
+| registry composition (core) | UNCHANGED |
+| legacy runner (PipelineRun.kt) | UNCHANGED |
+| compiled pipeline IR | UNCHANGED |
+| pipeline validator | UNCHANGED |
+| execution planner | UNCHANGED |
+| dispatcher | UNCHANGED |
+| legacy decoder | UNCHANGED |
+| core metadata | UNCHANGED |
+| structural family | UNCHANGED |
+| coordinator | CHANGED — eligibility gate parameterized (`analyzeCanonicalDurableExecution(effectiveRegistry)`): general registry-derived composition, zero StepKey knowledge. Envelope/protocol untouched. |
+| DSL | CHANGED — `RegistryStepSpec.schemaVersion` default `dsl-v1` (EP-F2.6 conflation fix: envelope schema vs plugin contract version were conflated; the envelope must be the canonical one, the plugin contract version is codec-level). |
+| composition root | CHANGED — expected: `--plugin-jar` flag, one classpath → script compiler + ServiceLoader discovery, registry composed BEFORE the eligibility gate, discovery adapter wiring. This is the plugin HOSTING surface; it learns no plugin. |
+
+New artifacts (allowed): `ExternalStepPluginDiscovery.kt` (runtime adapter, the
+only ServiceLoader site), `examples/example-uppercase-plugin/` (independent
+Gradle build, public SDK deps only, ServiceLoader descriptor, DSL facade),
+`scripts/uppercase-demo.pipeline.kts`, this section.
+
+Proof evidence:
+- WITHOUT plugin JAR: compile fails with `Unresolved reference 'uppercase'`, exit 1.
+- WITH plugin JAR: `Discovered external Step plugins: example.uppercase` →
+  CompilationFinished (0 diagnostics) → StepStarted/StepFinished →
+  RunFinished `success`, exit 0.
+- Zero-production-change: the coordinator/DSL/composition-root deltas above are
+  generic open-world hosting mechanics, all committed BEFORE the plugin JAR
+  entered the proof loop; no change names or branches on `example.uppercase`.

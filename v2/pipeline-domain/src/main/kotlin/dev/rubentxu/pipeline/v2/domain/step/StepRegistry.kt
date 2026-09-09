@@ -210,3 +210,25 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
         return StepInvocationOutcome.Success(output as O)
     }
 }
+
+/**
+ * Registers every definition from each [StepDefinitionContributor] into this registry, fail-closed on
+ * a duplicate StepKey. Deterministic ordering is the caller's responsibility (iteration order of
+ * [contributors]). On a duplicate the thrown diagnostic names BOTH the StepKey and the contributor id
+ * (never first-wins/last-wins). Used by the runtime composition adapter (EP-F1).
+ */
+fun StepRegistry.registerContributors(contributors: Iterable<StepDefinitionContributor>) {
+    for (contributor in contributors) {
+        for (definition in contributor.definitions()) {
+            val key = definition.contract.key
+            try {
+                register(definition)
+            } catch (e: IllegalArgumentException) {
+                throw IllegalArgumentException(
+                    "Duplicate StepKey '${key.value}' contributed by '${contributor.id}': ${e.message}",
+                    e,
+                )
+            }
+        }
+    }
+}

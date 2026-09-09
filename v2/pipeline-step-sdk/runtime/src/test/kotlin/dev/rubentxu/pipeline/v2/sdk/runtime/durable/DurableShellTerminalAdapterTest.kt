@@ -99,7 +99,7 @@ class DurableShellTerminalAdapterTest {
         val controlDir = tempDir.resolve(opId)
         Files.createDirectories(controlDir)
         val now = Instant.now()
-        val logFile = controlDir.resolve("jenkins-log.txt")
+        val logFile = DurableShellFiles.consoleLog(controlDir)
         Files.createFile(logFile)
         Files.setLastModifiedTime(
             logFile,

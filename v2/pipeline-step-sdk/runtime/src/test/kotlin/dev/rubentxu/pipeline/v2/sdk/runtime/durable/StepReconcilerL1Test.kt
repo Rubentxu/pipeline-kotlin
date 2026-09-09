@@ -54,7 +54,7 @@ class StepReconcilerL1Test {
         Files.createDirectories(controlDir)
 
         // Create log file with recent modification time
-        val logFile = controlDir.resolve("jenkins-log.txt")
+        val logFile = DurableShellFiles.consoleLog(controlDir)
         Files.createFile(logFile)
         Files.setLastModifiedTime(logFile, java.nio.file.attribute.FileTime.from(now))
 
@@ -76,7 +76,7 @@ class StepReconcilerL1Test {
         Files.createDirectories(controlDir)
 
         // Create log file with old modification time
-        val logFile = controlDir.resolve("jenkins-log.txt")
+        val logFile = DurableShellFiles.consoleLog(controlDir)
         Files.createFile(logFile)
         Files.setLastModifiedTime(logFile, java.nio.file.attribute.FileTime.from(staleTime))
 
@@ -164,7 +164,7 @@ class StepReconcilerL1Test {
         Files.writeString(timeoutFlag, System.currentTimeMillis().toString())
 
         // Create old log file
-        val logFile = controlDir.resolve("jenkins-log.txt")
+        val logFile = DurableShellFiles.consoleLog(controlDir)
         Files.createFile(logFile)
         Files.setLastModifiedTime(logFile, java.nio.file.attribute.FileTime.from(staleTime))
 
@@ -207,6 +207,55 @@ class StepReconcilerL1Test {
 
         // FAILED_TIMEOUT is terminal - should not re-run
         assertFalse(reconciler.shouldRerun(dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.FAILED_TIMEOUT))
+    }
+
+    @Test
+    fun `classify reattach when legacy jenkins log present but console log absent (compat)`() {
+        assumeLinux()
+        val now = Instant.now()
+        val clock = FakeClock(now)
+        val reconciler = StepReconcilerL1(clock, tempDir, config)
+
+        val controlDir = tempDir.resolve("test-legacy-reattach")
+        Files.createDirectories(controlDir)
+
+        // Only the legacy jenkins-log.txt exists (pre-rename durable operation); no console.log.
+        // resolveConsoleLog must fall back to it so heartbeat freshness is still observed.
+        val legacyLog = controlDir.resolve("jenkins-log.txt")
+        Files.createFile(legacyLog)
+        Files.setLastModifiedTime(legacyLog, java.nio.file.attribute.FileTime.from(now))
+
+        val classification = reconciler.classifyControlDir(controlDir)
+
+        assertTrue(classification is StepReconcilerL1.Classification.Reattach,
+            "legacy jenkins-log.txt must still be recoverable via the read-compatibility fallback, got: $classification")
+    }
+
+    @Test
+    fun `heartbeat freshness prefers console log over legacy when both exist (precedence)`() {
+        assumeLinux()
+        val now = Instant.now()
+        val clock = FakeClock(now)
+        val reconciler = StepReconcilerL1(clock, tempDir, config)
+
+        val controlDir = tempDir.resolve("test-precedence")
+        Files.createDirectories(controlDir)
+
+        // console.log is fresh; legacy jenkins-log.txt is stale. resolveConsoleLog must pick
+        // console.log, so heartbeat reads as fresh (Reattach). If the legacy stale file won, it
+        // would classify as Lost.
+        val consoleLog = DurableShellFiles.consoleLog(controlDir)
+        Files.createFile(consoleLog)
+        Files.setLastModifiedTime(consoleLog, java.nio.file.attribute.FileTime.from(now))
+        val staleTime = now.minusSeconds(config.heartbeatCheckInterval + config.heartbeatMinimumDelta + 10)
+        val legacyLog = controlDir.resolve("jenkins-log.txt")
+        Files.createFile(legacyLog)
+        Files.setLastModifiedTime(legacyLog, java.nio.file.attribute.FileTime.from(staleTime))
+
+        val classification = reconciler.classifyControlDir(controlDir)
+
+        assertTrue(classification is StepReconcilerL1.Classification.Reattach,
+            "console.log must take precedence over a stale legacy jenkins-log.txt, got: $classification")
     }
 
     /**

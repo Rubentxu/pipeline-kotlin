@@ -219,7 +219,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // Write script files
         val scriptFile = controlDir.resolve("script.sh")
         val scriptCopy = controlDir.resolve("script.sh.copy")
-        val logFile = controlDir.resolve("jenkins-log.txt")
+        val logFile = DurableShellFiles.consoleLog(controlDir)
         val resultFile = controlDir.resolve("result.txt")
         val resultTmp = controlDir.resolve("result.txt.tmp")
         val cookieFile = controlDir.resolve(".cookie")
@@ -503,7 +503,7 @@ class DurableShellExecutor : DurableShellLaunching {
         opId: String,
     ): String {
         val cookieFileEscaped = escapeForShell(controlDir.resolve(".cookie").toString())
-        val logFileEscaped = escapeForShell(controlDir.resolve("jenkins-log.txt").toString())
+        val logFileEscaped = escapeForShell(DurableShellFiles.consoleLog(controlDir).toString())
         val resultFileEscaped = escapeForShell(controlDir.resolve("result.txt").toString())
         val resultTmpEscaped = escapeForShell(controlDir.resolve("result.txt.tmp").toString())
         val scriptPathEscaped = escapeForShell(scriptPath.toString())
@@ -996,7 +996,7 @@ class DurableShellExecutor : DurableShellLaunching {
 
             val capturedStdout = when (request.outputProjection) {
                 DurableShellOutputProjection.CAPTURE_FILE -> readOutputText(controlDir, config.captureRetainPolicy)
-                DurableShellOutputProjection.JENKINS_LOG -> readJenkinsLogText(controlDir)
+                DurableShellOutputProjection.JENKINS_LOG -> readConsoleLogText(controlDir)
             }
 
             return if (timeoutTriggered.get() && exitCode == -1) {
@@ -1037,8 +1037,8 @@ class DurableShellExecutor : DurableShellLaunching {
         }
     }
 
-    private fun readJenkinsLogText(controlDir: Path): String? = try {
-        val logFile = controlDir.resolve("jenkins-log.txt")
+    private fun readConsoleLogText(controlDir: Path): String? = try {
+        val logFile = DurableShellFiles.resolveConsoleLog(controlDir)
         if (Files.exists(logFile)) Files.readString(logFile) else null
     } catch (_: Exception) {
         null

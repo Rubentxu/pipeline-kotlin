@@ -140,7 +140,7 @@ class StepReconcilerL1(
      */
     fun classifyControlDir(controlDir: Path): Classification {
         val resultFile = controlDir.resolve("result.txt")
-        val logFile = controlDir.resolve("jenkins-log.txt")
+        val logFile = DurableShellFiles.resolveConsoleLog(controlDir)
         val timeoutFlag = controlDir.resolve("timeout.flag")
 
         // Check 0: Is timeout.flag present? (check BEFORE heartbeat per TMO-S-005)

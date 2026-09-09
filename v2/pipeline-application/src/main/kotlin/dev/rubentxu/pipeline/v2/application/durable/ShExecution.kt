@@ -186,7 +186,8 @@ object ShExecution {
             //      directory, the log-file fallback preserves the existing event behavior.
             val capturedOutput: String = (terminal as? DurableTaskTerminal.Exited)?.output?.capturedStdout
                 ?: try {
-                    val logFile = controlDir.resolve("jenkins-log.txt")
+                    val logFile = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
+                        .resolveConsoleLog(controlDir)
                     if (Files.exists(logFile)) Files.readString(logFile) else ""
                 } catch (_: Exception) {
                     ""

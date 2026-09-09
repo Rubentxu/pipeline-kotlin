@@ -75,6 +75,15 @@ D. Backlog item with documented Exit criterion + Gate owner.
 
 ## STEP CONSTITUTION & EXTENSIBILITY (MANDATORY)
 
+StepSpec is declarative structural IR (demonstrated by EP-F2.5 production
+reachability audit, `docs/v2/07-uat/LB02_EP_F2_5_STEPSPEC_EXECUTION_DECOUPLING.md`):
+production Step execution MUST flow through the canonical compiled
+representation (`StepNode`) and `CanonicalDurableRunCoordinator`. New Step
+implementations MUST NOT add direct `StepSpec` execution paths or teach
+`PipelineRun`/`PipelineOrchestrator` how to execute concrete `StepSpec` forms.
+`StepSpec.RegistryStepSpec` is the single generic structural escape hatch for
+open-world Step semantics; concrete external `StepSpec` subtypes are forbidden.
+
 Authority: ADR-0070..0074 + STEP_CONSTITUTION / STEP_PLUGIN_CERTIFICATION / PIPELINE_TEST_HARNESS.
 This is the operative translation; the ADRs/specs are the architectural authority. Openspec change:
 `openspec/changes/lfc2-step-constitution-plugin-seam`.

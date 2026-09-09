@@ -266,6 +266,32 @@ Owned by cycle `p-733fb505b5a6bd2d/em-0-execution-model-contract-freeze`
   for retry/timeout/parallel. This is a design-gated EM milestone (own ADR/spec change), NOT a bounded
   LFC-2 slice.
 
+### LEG-1 legacy execution burn-down (`PipelineRun`/`PipelineOrchestrator`; 2026-09-09, APPROVED as independent bounded burn-down)
+
+Grounding: EP-F2.5 inventory (`docs/v2/07-uat/LB02_EP_F2_5_STEPSPEC_EXECUTION_DECOUPLING.md`).
+Facts: direct StepSpec execution is production-unreachable (0 prod-reachable C2 cases);
+`PipelineOrchestrator` is constructed in Main but never invoked (LF-0205); public CLI is
+fail-closed onto `CanonicalDurableRunCoordinator` (exit 2 otherwise). Decision (user
+2026-09-09): progressive DELETION, not modernization. First hypothesis = the alternative
+execution engine has no conservation value.
+
+Target rule: `DSL → StepSpec → compiled canonical representation → CanonicalDurableRunCoordinator`.
+The `StepSpec → PipelineRun → direct execution` path disappears.
+
+| Slice | Exit criterion | Gate / owner |
+|---|---|---|
+| LEG-1.0 traceability doc | Milestone → Backlog → Exit criterion → Gate recorded (this entry + `LB02_LEG1_PIPELINE_RUN_BURN_DOWN.md`) | AGENTS scope firewall |
+| LEG-1.1 delete `PipelineOrchestrator` + Main construction (dead) | compiles; orchestrator-free Main; LF-0205 closed | L4 affected suites |
+| LEG-1.2 delete `StepExecutors.executeBranch` (C3 #9) + migrate/delete its legacy tests | no direct-exec when on `StepSpec` in SDK runtime | L2/L4 |
+| LEG-1.3 delete `walkPipelineSpecDurable` + direct-exec whens (#4 #5) + metadata pair (#6 #7) + C3 UATs that pin them (UatDurable001-007,009 legacy harnesses) | `PipelineRun.kt` deleted or empty; counters: direct StepSpec exec cases (code total) = 0 | L4 + base-vs-head evidence |
+| LEG-1.4 fitness: production execution authority == `CanonicalDurableRunCoordinator` only | mechanical fitness test proves no second production runner exists (CLI fail-closed retained) | architecture tests |
+| LEG-1.5 docs sync | CURRENT_STATE / backlog counters updated; UAT semantics preserved where owned by canonical-path equivalents | docs review |
+
+Sequencing note: LEG-1 precedes B10..B13 (BodyInvoker/retry/timeout/parallel) so those are
+designed against a single execution architecture. UatDurable tests deleted in LEG-1.3 pin
+only the legacy harness; their durable semantics (fresh/replay/divergence/kill/resume) are
+owned by the canonical-path suite + coordinator tests and must be green before deletion.
+
 ### LFC-2 recovery slices (OPEN, 2026-09-08, source base `7c9ce5c7`)
 
 Seven disabled full-grammar/parallel UAT methods remain acceptance obligations, not passed gates.

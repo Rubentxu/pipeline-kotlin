@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.PipelineOrchestrator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
@@ -599,24 +598,9 @@ fun main(args: Array<String>) {
         null
     }
 
-    val orchestrator = PipelineOrchestrator(
-        journal = journal,
-        cursorStore = cursorStore,
-        divergenceDetector = divergenceDetector,
-        effectReplayPolicy = effectPolicy,
-        eventSink = eventStore,
-        clock = clock,
-        controlDirRoot = controlDirRoot,
-        sandboxProfile = config.sandboxProfile,
-        redactingEventSink = eventStore,
-        secretStore = secretStore,
-        withCredentialsExecutor = withCredentialsExecutor,
-    )
-
-    // LF-0205 redirect: the CLI reaches the durable runtime ONLY through
-    // the RunCoordinator port. The orchestrator is constructed here (it is
-    // the composition root) but handed in as a DurableRunDelegate; the
-    // typed outcome returned by the coordinator drives the exit code.
+    // LF-0205 (closed LEG-1.1): the legacy PipelineOrchestrator was constructed here but
+    // never invoked. The CLI reaches the durable runtime ONLY through the canonical
+    // RunCoordinator (fail-closed exit 2 otherwise). LEG-1 burn-down deleted the class.
     // LB-02 / EP-6: compose the registry BEFORE the canonical-eligibility gate —
     // eligibility is registry-derived, so external plugin contributions must be
     // visible to the gate or a contributed key would be wrongly rejected as

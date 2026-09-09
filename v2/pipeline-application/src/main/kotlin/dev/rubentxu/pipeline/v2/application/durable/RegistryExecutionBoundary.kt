@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 
@@ -22,35 +23,57 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
  * [StepHandlerContext] built from the runtime identity plus its declared capabilities; it never sees a
  * [CanonicalRuntimeContext].
  *
- * A normal typed handler return is a durable [StepOutcome.Success]: the step's observable meaning is
- * the effects it emits through its declared capabilities (echo emits [EchoOutputCaptured] into the
- * event sink it received). A thrown handler is an adapter/engine defect, so it fails closed as a typed
- * [StepOutcome.Failure] (ENGINE).
+ * ## LB-02 / G3-A1: typed-output carrier (correction 1, user rule)
  *
- * Output normalization (CDE.3-d4): the durable [StepOutcome] carries NO generic output slot and the
- * journal schema is unchanged, so the handler's typed `O` is never stuffed into a [StepOutcome] and
- * never crosses to the durable coordinator (no `Any` as a durable contract). Grounding: a registry
- * Step's durable-observable output is realized as an effect the handler emits through its declared
- * capabilities (the echo pattern); the coordinator only ever sees [StepOutcome]. Typed `O`, void/Unit
- * `O` and a thrown handler all reduce to [StepOutcome] here; output *encoding* only matters when a
- * step chooses to persist its result, which this spine does not do silently.
+ * The registry execution model returns BOTH the closed [StepOutcome] algebra
+ * and the typed `O` encoded as [EncodedStepValue]. The boundary NEVER
+ * persists either into a journal row; **execution produces data; the durable
+ * layer decides how/when it is persisted**.
+ *
+ * Two sibling entry points:
+ *
+ *  - [coexecute] returns the full [RegistryExecutionResult] (outcome +
+ *    encoded output).
+ *  - [execute] is the existing [CommonExecutionBoundary] adapter; it is now
+ *    a thin projection over [coexecute] and continues to return only
+ *    [StepOutcome], preserving the [CommonExecutionBoundary] contract for
+ *    the legacy-compatible path, the recording boundary, and any caller
+ *    that does not need typed output.
+ *
+ * A Step whose handler returns `Unit` reduces to `encodedOutput = null`
+ * (mirroring echo's `EchoInput -> String` shape but reduced at the carrier:
+ * echo's `String` is observable through the `EVENT_SINK` capability, not
+ * through the typed-output slot). A thrown handler is an adapter/engine
+ * defect and surfaces as [StepOutcome.Failure] (`ENGINE`); the encoded
+ * output in that case is `null` (no successful terminal to encode).
  */
 object RegistryExecutionBoundary {
 
     fun adapt(): CommonExecutionBoundary = CommonExecutionBoundary { prepared, context ->
         when (prepared) {
-            is PreparedRegistryExecution -> execute(prepared, context)
+            is PreparedRegistryExecution -> {
+                coexecute(prepared, context).outcome
+            }
             is PreparedLegacyExecution -> throw EngineInvariantViolation(
                 "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",
             )
         }
     }
 
+    /**
+     * Executes a [PreparedRegistryExecution] and returns both the closed
+     * [StepOutcome] AND the encoded typed `O` (or `null` if the handler
+     * returned `Unit`, threw, or surfaced a Failure).
+     *
+     * This is the entry point the durable coordinator reaches into when it
+     * wants both pieces (A3 onwards); the projection into a journal row
+     * stays a coordinator concern.
+     */
     @Suppress("UNCHECKED_CAST")
-    private suspend fun execute(
+    suspend fun coexecute(
         prepared: PreparedRegistryExecution,
         context: CanonicalRuntimeContext,
-    ): StepOutcome {
+    ): RegistryExecutionResult {
         // Erasure boundary: the concrete payload type lives behind the codec / in the prepared input.
         val definition = prepared.definition as StepDefinition<Any, Any>
         val contract = definition.contract
@@ -74,15 +97,32 @@ object RegistryExecutionBoundary {
         )
 
         return try {
-            definition.handler.execute(prepared.decodedInput, handlerContext)
-            StepOutcome.Success
+            val produced: Any = definition.handler.execute(prepared.decodedInput, handlerContext)
+            // A1: persist typed O only when it is NOT `Unit`. Encoded under the
+            // Step's declared output codec so the durable layer can replay-decode only
+            // through that same codec, never through opaque assumptions.
+            val encoded: EncodedStepValue? = if (produced is Unit) {
+                null
+            } else {
+                @Suppress("UNCHECKED_CAST")
+                val codec = (definition.contract.outputCodec
+                    as dev.rubentxu.pipeline.v2.domain.step.StepCodec<Any>)
+                codec.encode(produced)
+            }
+            RegistryExecutionResult(
+                outcome = StepOutcome.Success,
+                encodedOutput = encoded,
+            )
         } catch (e: Exception) {
-            StepOutcome.Failure(
-                PipelineFailure(
-                    kind = FailureKind.ENGINE,
-                    message = "registry step '${prepared.key.value}' handler failed: ${e.message ?: "unknown"}",
-                    cause = e,
+            RegistryExecutionResult(
+                outcome = StepOutcome.Failure(
+                    PipelineFailure(
+                        kind = FailureKind.ENGINE,
+                        message = "registry step '${prepared.key.value}' handler failed: ${e.message ?: "unknown"}",
+                        cause = e,
+                    ),
                 ),
+                encodedOutput = null,
             )
         }
     }

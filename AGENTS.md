@@ -125,9 +125,8 @@ MUST NOT:
 - MUST NOT derive recovery semantics from concrete StepKey/name.
 - MUST NOT place registry recovery metadata in parallel authorities outside `StepDescriptor`.
 
-(The reference implementation Step at this rule's writing is `core.echo`; `core.sh`
-becomes a second reference once it is `CERTIFIED`. Until then only `core.echo` is
-authoritative for the rule's proof.)
+(Reference implementation Steps at this rule's writing are `core.echo` (atomic) and `core.sh`
+(effectful/recoverable, LB-02); both are `CERTIFIED` and authoritative for the rule's proof.)
 
 ### Capability-routed handler discipline (LB-02 / G3-A4.2)
 
@@ -160,9 +159,29 @@ and without inventing a new pattern. Where this section and the ADRs disagree, t
 
 **Reference implementations** (live, defended by fitness):
 - atomic / in-controller Step → `CoreEchoStep` (`core.echo`, `CERTIFIED`).
-- effectful / process Step → `core.sh` (`CERTIFIED` after LB-02).
+- effectful / recoverable process Step → `CoreShellStep` (`core.sh`, `CERTIFIED`).
 
 When you start a new Step, follow the certified pattern. Do not extract a fresh façade.
+
+**Effectful / recoverable Step rules (validated by LB-02, `core.sh` reference):**
+- Effectful handlers use narrow declared capabilities; the handler never reaches a coordinator,
+  journal, event sink, or global context directly.
+- A durable **console transcript** and a **typed Step value** are independent output channels and
+  MUST NOT be conflated. `capturedStdout` (typed value requested by a capture mode) is not console
+  output; `consoleTranscript` is the observable console output.
+- `returnStdout` controls STDOUT projection only; it MUST NOT suppress STDERR. A stream exposed as a
+  typed value stays separate from console projection.
+- A durable transcript MAY be merged when channel identity is not part of the public contract, but
+  output data MUST NOT be lost or duplicated, and a persisted file opened for writing MUST have a
+  single writer (no two `O_TRUNC` opens of one file).
+- Typed handler output leaves execution through `CommonExecutionResult`; durable persistence consumes
+  encoded output, never the typed object.
+- `ReplayPolicy` controls reuse independently of output presence.
+- Recoverable Steps declare `RecoveryPolicy` on `StepDescriptor`; recovery routing MUST NOT branch on
+  concrete `StepKey`.
+- Effectful Steps reuse existing runtime engines through ports/adapters rather than reimplementing
+  them, and use neutral domain naming: external product names appear only in integrations /
+  compatibility boundaries, never as canonical runtime concepts.
 
 ### Step implementation golden path
 

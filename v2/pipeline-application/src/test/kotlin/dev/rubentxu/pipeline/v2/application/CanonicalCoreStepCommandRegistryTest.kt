@@ -30,7 +30,9 @@ class CanonicalCoreStepCommandRegistryTest {
     @Test
     fun `LEGACY_PLUGIN_IDS matches expected set`() {
         val expected = setOf(
-            "core.sh",
+            // A4: core.sh remains a physical sealed legacy command for rollback,
+            // but production routing is registry-primary and it is no longer a
+            // LEGACY_PLUGIN_IDS member.
             "core.error",
             "core.sleep",
             "core.file.writeFile",

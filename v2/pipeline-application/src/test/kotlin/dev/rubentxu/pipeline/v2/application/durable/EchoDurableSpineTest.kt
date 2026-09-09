@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.SystemClock
+import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -23,15 +23,9 @@ import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -75,29 +69,12 @@ class EchoDurableSpineTest {
         attempt = 1,
     )
 
-    private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
-        CredentialScopeOutcome.Unavailable(
-            CredentialScopeFailure.StoreUnavailable("no credential store in echo spine test"),
-        )
-    }
-
-    private fun coordinator(
-        journal: InMemoryOperationJournal,
-        eventSink: InMemoryEventStore,
-        clock: SystemClock,
-        registry: Boolean,
-    ): CanonicalDurableRunCoordinator = CanonicalDurableRunCoordinator(
-        CanonicalNodeDispatcher(), journal, InMemoryReplayCursorStore(clock), clock,
-        DefaultEffectReplayPolicy(), eventSink, noOpCredentialScopePort(),
-        stepRegistry = if (registry) CoreStepRegistryFactory.registry() else null,
-    )
-
     @Test
     fun `flipped echo runs via the registry family emitting EchoOutputCaptured`() = runBlocking {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val eventSink = InMemoryEventStore()
-        val coord = coordinator(journal, eventSink, clock, registry = true)
+        val coord = CoordinatorFixture.default(clock, journal, eventSink)
 
         val outcome = coord.run(pipeline(echoNode("hello flipped")), RunId("echo-registry-fresh"))
 
@@ -129,7 +106,7 @@ class EchoDurableSpineTest {
             ),
         )
         // Pre-registry executions used runId with matching op id "echo-registry-reuse-s0-0".
-        val coord = coordinator(journal, eventSink, clock, registry = true)
+        val coord = CoordinatorFixture.default(clock, journal, eventSink)
 
         val outcome = coord.run(pipeline(echoNode("persisted-under-old-path")), runId)
 
@@ -148,7 +125,7 @@ class EchoDurableSpineTest {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val eventSink = InMemoryEventStore()
-        val coord = coordinator(journal, eventSink, clock, registry = false)
+        val coord = CoordinatorFixture.negativeNoRegistry(clock, journal, eventSink)
 
         val outcome = coord.run(pipeline(echoNode("legacy dual")), RunId("echo-legacy-dual"))
 

@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 
 /**
  * Single source of truth for the durable metadata of each canonical core plugin (CDE.2-b1).
@@ -19,12 +18,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
  */
 object CanonicalCoreStepMetadata {
     private val table: Map<String, StepMetadata> = mapOf(
-        "core.sh" to StepMetadata(
-            effects = setOf(Effect.EXECUTES_SUBPROCESS),
-            replayPolicy = ReplayPolicy.RERUN,
-            // The running shell operation is externally reconcilable from a control directory.
-            recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
-        ),
         "core.error" to StepMetadata(setOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER),
         "core.sleep" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
         "core.file.writeFile" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),

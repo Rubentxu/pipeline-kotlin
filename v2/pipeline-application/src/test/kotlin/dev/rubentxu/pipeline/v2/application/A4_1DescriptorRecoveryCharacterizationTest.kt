@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -113,46 +114,25 @@ class A4_1DescriptorRecoveryCharacterizationTest {
     }
 
     @Test
-    fun `A4-1-4 legacy authority for core sh keeps ExternalSubprocess during the dual phase`() {
-        // Today `core.sh` is in LEGACY_PLUGIN_IDS, so the composite delegates to the legacy table.
-        // The table's recovery row must match CoreShellStep.descriptor.recoveryPolicy so the
-        // pre/post A4.8 metadata is byte-equivalent.
-        val legacy = CanonicalCoreStepMetadata.metadata("core.sh")
-        val registryDescriptor = CoreShellStep.definition.contract.descriptor
-
+    fun `A4-1-6 post-S6 registry metadata is the single authority for core sh recovery`() {
+        // The dual phase ended at S6: the legacy authority no longer owns core.sh metadata.
+        // Recovery metadata for core.sh MUST come exclusively from CoreShellStep.descriptor
+        // through the registry resolver.
         assertEquals(
             RecoveryPolicy.ExternalSubprocess,
-            legacy.recoveryPolicy,
-            "legacy metadata for core.sh must continue to declare ExternalSubprocess during the dual phase",
+            CoreShellStep.definition.contract.descriptor.recoveryPolicy,
         )
-        assertEquals(
-            legacy.recoveryPolicy,
-            registryDescriptor.recoveryPolicy,
-            "A4.1.5 parity law: legacy recoveryPolicy == registry descriptor recoveryPolicy for core.sh",
-        )
-    }
-
-    @Test
-    fun `A4-1-5 full pre-decode metadata parity for core sh across authorities`() {
-        // End-state law: once `core.sh` leaves LEGACY_PLUGIN_IDS (A4.8), the registry-resolved
-        // metadata MUST match the legacy-resolved metadata bit-for-bit for the same step.
-        // We construct the registry-resolved value by reading CoreShellStep.definition.contract.descriptor
-        // (the post-A4.8 source) and assert equivalence with the legacy table row.
-        val legacy = CanonicalCoreStepMetadata.metadata("core.sh")
-        val descriptor = CoreShellStep.definition.contract.descriptor
-
-        assertEquals(legacy.replayPolicy, descriptor.replayPolicy, "replayPolicy parity")
-        assertEquals(legacy.recoveryPolicy, descriptor.recoveryPolicy, "recoveryPolicy parity")
-        assertEquals(legacy.effects, descriptor.effects.toSet(), "effects parity")
-        assertEquals(
-            CanonicalCoreStepMetadata.shortType("core.sh"),
-            descriptor.name,
-            "descriptor name is the short type the legacy table derives",
-        )
-        // executionLocation lives only on the descriptor today (legacy table omits it),
-        // but the durable protocol does not consume it pre-decode for sh; record the parity
-        // assumption explicitly so a future divergence is caught.
-        assertNotEquals(null, descriptor.executionLocation)
+        // The composite (registry + legacy fallback) resolves core.sh via the descriptor and
+        // never a legacy row, because core.sh is absent from the legacy authority.
+        val resolver = RegistryStepMetadataResolver.composite(CoreStepRegistryFactory.registry())
+        val metadata = resolver.resolve(CoreShellStep.KEY)
+        assertEquals(RecoveryPolicy.ExternalSubprocess, metadata!!.recoveryPolicy)
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.sh")
+        }
+        // executionLocation lives on the descriptor; the durable protocol does not consume it
+        // pre-decode for sh, but it must be set.
+        assertNotEquals(null, CoreShellStep.definition.contract.descriptor.executionLocation)
     }
 
     @Test

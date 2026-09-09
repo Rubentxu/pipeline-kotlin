@@ -1,8 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.ShellCommand
-import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -54,12 +52,10 @@ sealed interface CanonicalCoreStepCommand {
          *
          * LB-02 / A4 (REGISTRY_PRIMARY flip): `"core.sh"` is removed from this set so the
          * structural classifier routes it through `Registry` (via `StructuralFamilyResolver.classify`).
-         * The `CanonicalCoreStepCommand.Shell` data class, the `CanonicalCoreStepDecoder` Sh branch,
-         * the `CanonicalShellNodeDispatcher`, and the `CanonicalCoreStepMetadata["core.sh"]` row all
-         * REMAIN present for rollback / burn-down. The production path no longer reaches them because
-         * the family classifier returns `Registry` for `core.sh` and the coordinator routes to
-         * `RegistryExecutionPreparation` + `RegistryExecutionBoundary`. The composite
-         * `RegistryStepMetadataResolver` reads the production metadata from `CoreShellStep.descriptor`.
+         * LB-02 / S6 burn-down removed the legacy `CanonicalCoreStepCommand.Shell` subtype, the
+         * legacy Sh decoder branch, the `CanonicalShellNodeDispatcher`, and the
+         * `CanonicalCoreStepMetadata["core.sh"]` row. Production Sh metadata is read exclusively
+         * from `CoreShellStep.descriptor` via `RegistryStepMetadataResolver`.
          */
         val LEGACY_PLUGIN_IDS: Set<String> = setOf(
             "core.error",
@@ -78,22 +74,6 @@ sealed interface CanonicalCoreStepCommand {
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
         fun pluginIdToShortType(pluginId: String): String = CanonicalCoreStepMetadata.shortType(pluginId)
-    }
-
-    data class Shell(
-        val shell: ShellCommand,
-        val isScriptBlock: Boolean,
-    ) : CanonicalCoreStepCommand {
-        @Deprecated("Use ShellCommand.returnMode")
-        constructor(command: String, isScriptBlock: Boolean, returnStdout: Boolean) : this(
-            shell = ShellCommand(
-                script = command,
-                returnMode = if (returnStdout) ShellReturnMode.STDOUT else ShellReturnMode.NONE,
-            ),
-            isScriptBlock = isScriptBlock,
-        )
-
-        override val pluginId = "core.sh"
     }
 
     data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand {
@@ -216,7 +196,6 @@ sealed interface CanonicalCoreStepCommand {
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
-    private const val SHELL_PLUGIN_ID = "core.sh"
     private const val ERROR_PLUGIN_ID = "core.error"
     private const val SLEEP_PLUGIN_ID = "core.sleep"
     private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
@@ -236,27 +215,6 @@ object CanonicalCoreStepDecoder {
         }
         val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject
         return when (node.pluginStepId.value) {
-            SHELL_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "sh") {
-                    "Payload kind must be 'sh' for '${node.id.value}'"
-                }
-                val returnStdout = payload.requiredBoolean("returnStdout")
-                val returnStatus = payload["returnStatus"]?.jsonPrimitive?.booleanOrNull ?: false
-                require(!(returnStdout && returnStatus)) {
-                    "Shell payload cannot enable both returnStdout and returnStatus for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.Shell(
-                    shell = ShellCommand(
-                        script = payload.requiredString("command"),
-                        returnMode = when {
-                            returnStatus -> ShellReturnMode.STATUS
-                            returnStdout -> ShellReturnMode.STDOUT
-                            else -> ShellReturnMode.NONE
-                        },
-                    ),
-                    isScriptBlock = payload.requiredBoolean("isScriptBlock"),
-                )
-            }
             ERROR_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "error") {
                     "Payload kind must be 'error' for '${node.id.value}'"

@@ -20,7 +20,6 @@ data class CanonicalRuntimeContext(
 
 /** Dispatches the supported canonical core nodes through their durable runtime paths. */
 class CanonicalNodeDispatcher {
-    private val shellDispatcher = CanonicalShellNodeDispatcher()
     private val errorDispatcher = CanonicalErrorNodeDispatcher()
     private val sleepDispatcher = CanonicalSleepNodeDispatcher()
     private val writeFileDispatcher = CanonicalWriteFileNodeDispatcher()
@@ -36,7 +35,6 @@ class CanonicalNodeDispatcher {
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
-            is CanonicalCoreStepCommand.Shell -> shellDispatcher.dispatch(command, context.shellContext())
             is CanonicalCoreStepCommand.Error -> errorDispatcher.dispatch(command)
             is CanonicalCoreStepCommand.Sleep -> sleepDispatcher.dispatch(command, context.sleepContext())
             is CanonicalCoreStepCommand.WriteFile -> writeFileDispatcher.dispatch(command, context.writeFileContext())
@@ -52,16 +50,6 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
             is CanonicalCoreStepCommand.ArchiveArtifacts -> archiveArtifactsDispatcher.dispatch(command, context.archiveArtifactsContext())
         }
-
-    private fun CanonicalRuntimeContext.shellContext() = CanonicalShellDispatchContext(
-        opId = opId,
-        runId = runId,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        shOptions = shOptions,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-    )
 
     private fun CanonicalRuntimeContext.sleepContext() = CanonicalSleepDispatchContext(
         runId = runId,

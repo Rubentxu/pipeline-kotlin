@@ -126,11 +126,10 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
             "core.sh" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "`core.sh` MUST be removed from LEGACY_PLUGIN_IDS; flip is the single point of structural change",
         )
-        // And the legacy metadata row is physically present but orphaned for production routing.
-        assertNotNull(
-            CanonicalCoreStepMetadata.metadata("core.sh"),
-            "Legacy metadata row remains present for burn-down / rollback",
-        )
+        // S6 removed the legacy core.sh metadata row too: asking the legacy authority MUST fail fast.
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.sh")
+        }
     }
 
     // -------------------------------------------------------------------
@@ -154,23 +153,6 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
         assertEquals(
             CoreShellStep.definition.contract.descriptor.recoveryPolicy,
             metadata.recoveryPolicy,
-        )
-        // Legacy row happens to agree on these particular values (ExternalSubprocess + RERUN +
-        // EXECUTES_SUBPROCESS), but the resolution path MUST be the registry descriptor.
-        assertEquals(
-            CanonicalCoreStepMetadata.metadata("core.sh").replayPolicy,
-            metadata.replayPolicy,
-            "legacy and registry agree on replayPolicy for now (both RERUN)",
-        )
-        assertEquals(
-            CanonicalCoreStepMetadata.metadata("core.sh").effects,
-            metadata.effects,
-            "legacy and registry agree on effects for now (both EXECUTES_SUBPROCESS)",
-        )
-        assertEquals(
-            CanonicalCoreStepMetadata.metadata("core.sh").recoveryPolicy,
-            metadata.recoveryPolicy,
-            "legacy and registry agree on recoveryPolicy for now (both ExternalSubprocess)",
         )
     }
 

@@ -146,25 +146,36 @@ class A5_CoreShLegacyUnreachableProofTest {
     }
 
     @Test
-    fun `metadata provenance follows registry descriptor not CanonicalCoreStepMetadata`() {
-        // The legacy row for core.sh still says ExternalSubprocess. Register a core.sh whose
-        // descriptor says None. If the composite resolver consulted the legacy row it would
-        // return ExternalSubprocess; following the registry descriptor it returns None.
-        assertEquals(
-            RecoveryPolicy.ExternalSubprocess,
-            CanonicalCoreStepMetadata.metadata("core.sh").recoveryPolicy,
-            "precondition: legacy row still declares ExternalSubprocess",
-        )
+    fun `metadata provenance follows registry descriptor and core sh is absent from the legacy authority`() {
+        // Post-S6 the legacy authority no longer owns core.sh metadata: asking it MUST fail fast,
+        // so no registry resolution can ever fall back to a legacy row.
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.sh")
+        }
+        // The composite resolver follows the registered descriptor exactly (here None), proving the
+        // registry StepDescriptor is the single metadata authority for core.sh.
         val registry = InMemoryStepRegistry()
         registry.register(customShDefinition(RecoveryPolicy.None))
         val resolved = RegistryStepMetadataResolver.composite(registry).resolve(CoreShellStep.KEY)
-        assertNotNull(resolved, "registry-resolved core.sh metadata must be present (never legacy fallback)")
+        assertNotNull(resolved, "registry-resolved core.sh metadata must be present")
         val metadata = resolved!!
         assertEquals(
             RecoveryPolicy.None,
             metadata.recoveryPolicy,
-            "recovery policy during registry Sh resolution MUST come from the registered descriptor, not the legacy row",
+            "recovery policy during registry Sh resolution MUST come from the registered descriptor",
         )
+    }
+
+    @Suppress("FunctionName")
+    private fun <T : Throwable> assertThrows(exceptionClass: Class<T>, block: () -> Unit) {
+        try {
+            block()
+            throw AssertionError("expected ${exceptionClass.simpleName} but none was thrown")
+        } catch (e: Throwable) {
+            if (!exceptionClass.isInstance(e)) {
+                throw AssertionError("expected ${exceptionClass.simpleName} but got ${e::class.simpleName}: ${e.message}", e)
+            }
+        }
     }
 
     // ---- A5.4.3 + A5.4.4 running recovery on the registry family --------------

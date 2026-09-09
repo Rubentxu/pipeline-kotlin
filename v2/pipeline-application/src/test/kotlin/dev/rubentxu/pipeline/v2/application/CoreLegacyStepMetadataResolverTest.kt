@@ -27,19 +27,9 @@ class CoreLegacyStepMetadataResolverTest {
     }
 
     @Test
-    fun `resolves shell metadata by step key matching the decoded command`() {
-        val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sh"))
-        val decoded = CanonicalCoreStepCommand.Shell("exit 0", false, false).defaultMetadata
-        assertEquals(decoded, resolved)
-    }
-
-    @Test
-    fun `shell declares external-subprocess recovery, ordinary steps declare none`() {
+    fun `ordinary steps declare no recovery`() {
         // CDE.2-b4: the durable protocol decides recovery from metadata.recoveryPolicy, never a Step name.
-        assertEquals(
-            RecoveryPolicy.ExternalSubprocess,
-            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sh")).recoveryPolicy,
-        )
+        // core.sh is no longer a legacy authority member (S6); its recovery is read from CoreShellStep.descriptor.
         assertEquals(
             RecoveryPolicy.None,
             CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep")).recoveryPolicy,

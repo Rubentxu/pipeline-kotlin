@@ -10,9 +10,10 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 13 entries (Shell, Error, Sleep, WriteFile,
+ * - sealedSubclasses has exactly 12 entries (Error, Sleep, WriteFile,
  *   EmitEvent, Milestone, DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
+ *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  * - canonicalCoreStepIds derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -22,17 +23,14 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 13 entries`() {
+    fun `sealedSubclasses has exactly 12 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(13, subclasses.size, "Expected exactly 13 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(12, subclasses.size, "Expected exactly 12 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
     fun `LEGACY_PLUGIN_IDS matches expected set`() {
         val expected = setOf(
-            // A4: core.sh remains a physical sealed legacy command for rollback,
-            // but production routing is registry-primary and it is no longer a
-            // LEGACY_PLUGIN_IDS member.
             "core.error",
             "core.sleep",
             "core.file.writeFile",
@@ -51,14 +49,6 @@ class CanonicalCoreStepCommandRegistryTest {
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
-    }
-
-    @Test
-    fun `Shell has correct pluginId and defaultMetadata`() {
-        val shellInstance = CanonicalCoreStepCommand.Shell("echo test", false, false)
-        assertEquals("core.sh", shellInstance.pluginId)
-        assertEquals(setOf(Effect.EXECUTES_SUBPROCESS), shellInstance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.RERUN, shellInstance.defaultMetadata.replayPolicy)
     }
 
     @Test

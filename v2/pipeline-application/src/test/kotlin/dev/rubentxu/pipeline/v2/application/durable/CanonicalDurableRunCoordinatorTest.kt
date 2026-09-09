@@ -181,6 +181,7 @@ class CanonicalDurableRunCoordinatorTest {
             shOptions = ShOptions(tempDir.resolve("workspace"), false, null, emptyMap()),
         
     credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         assertTrue(outcome is RunOutcome.Failure)
@@ -328,6 +329,7 @@ class CanonicalDurableRunCoordinatorTest {
             DefaultEffectReplayPolicy(), InMemoryEventStore(), controlDirRoot = tempDir.resolve("control"),
         
     credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, RunId("canonical-dir-working-directory"))
 
         assertEquals(RunOutcome.Success, outcome)
@@ -376,6 +378,7 @@ class CanonicalDurableRunCoordinatorTest {
             DefaultEffectReplayPolicy(), InMemoryEventStore(),
         
     credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         assertTrue(outcome is RunOutcome.Failure)
@@ -666,6 +669,7 @@ class CanonicalDurableRunCoordinatorTest {
             eventSink = eventStore,
         
     credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         coordinator.run(pipeline, runId)
 

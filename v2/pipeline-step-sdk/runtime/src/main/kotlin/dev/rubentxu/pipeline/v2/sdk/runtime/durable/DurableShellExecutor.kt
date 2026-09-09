@@ -305,15 +305,24 @@ class DurableShellExecutor : DurableShellLaunching {
         }
 
         // Redirect stdin to /dev/null to prevent blocking on input
-        // LB-02 / S6.8.1 (Option A): jenkins-log.txt is the single durable console transcript
-        // authority. redirectErrorStream(true) merges stderr into stdout's single file descriptor,
-        // so jenkins-log.txt is opened ONCE per launch. Two independent Redirect.to(log) calls each
-        // opened the file O_TRUNC, so the second truncated the first channel's writes (stdout was
-        // silently lost whenever both streams produced data). Single-FD merge preserves both
-        // channels with no loss, no duplication, and NO change to the durable on-disk protocol.
+        // LB-02 / S6.8 (mode-aware projection): the durable file separation depends on the Sh
+        // invocation mode.
+        //   plain (captureStdout=false): stdout+stderr merged via ONE file descriptor into the
+        //     durable console transcript (console.log). redirectErrorStream(true) gives a single
+        //     O_TRUNC open, so no stream is lost or duplicated.
+        //   captureStdout=true: stdout goes to the separate stdout value file (output.txt) and
+        //     stderr to console.log (durable console transcript). No fusion: the typed value must
+        //     never be polluted by stderr.
+        // console.log always has a single writer per launch.
         pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
-        pb.redirectErrorStream(true)
-        pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+        if (captureStdout) {
+            val stdoutCapture = controlDir.resolve("output.txt")
+            pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutCapture.toFile()))
+            pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
+        } else {
+            pb.redirectErrorStream(true)
+            pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+        }
 
             return try {
             val process = pb.start()
@@ -994,9 +1003,14 @@ class DurableShellExecutor : DurableShellLaunching {
                 }
             }
 
+            // Read the durable console transcript (console.log) BEFORE cleanup so success-path
+            // observability is not lost when the policy deletes the control dir on success.
+            // consoleTranscript is the console/event channel; capturedStdout is the typed value
+            // channel (output.txt in capture mode). They are distinct (LB-02 / C4.5).
+            val consoleTranscript = readConsoleLogText(controlDir)
             val capturedStdout = when (request.outputProjection) {
                 DurableShellOutputProjection.CAPTURE_FILE -> readOutputText(controlDir, config.captureRetainPolicy)
-                DurableShellOutputProjection.JENKINS_LOG -> readConsoleLogText(controlDir)
+                DurableShellOutputProjection.JENKINS_LOG -> consoleTranscript
             }
 
             return if (timeoutTriggered.get() && exitCode == -1) {
@@ -1011,7 +1025,11 @@ class DurableShellExecutor : DurableShellLaunching {
             } else {
                 DurableTaskTerminal.Exited(
                     exitCode = exitCode,
-                    output = DurableTaskOutput(controlDir.toString(), capturedStdout),
+                    output = DurableTaskOutput(
+                        controlDir = controlDir.toString(),
+                        capturedStdout = capturedStdout,
+                        consoleTranscript = consoleTranscript,
+                    ),
                 )
             }
         } catch (e: LinuxRequiredException) {

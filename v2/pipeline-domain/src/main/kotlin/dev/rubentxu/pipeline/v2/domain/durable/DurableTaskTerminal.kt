@@ -101,11 +101,21 @@ sealed interface DurableTaskSnapshot {
     ) : DurableTaskSnapshot
 }
 
-/** Reference to durable output retained by the task substrate. */
+/**
+ * Reference to durable output retained by the task substrate.
+ *
+ * [capturedStdout] is the explicit typed VALUE requested by a capture mode (returnStdout); it is NOT
+ * the console transcript. [consoleTranscript] is the durable console output destined for the
+ * observable event/console substrate (in plain mode it is the merged stdout+stderr transcript; in
+ * capture mode it is stderr only, because stdout went to the typed value). These two channels are
+ * deliberately distinct and MUST NOT be conflated. Both are carried in-memory only; neither changes
+ * the persisted control-dir file protocol.
+ */
 @Serializable
 data class DurableTaskOutput(
     val controlDir: String,
     val capturedStdout: String? = null,
+    val consoleTranscript: String? = null,
 ) {
     init {
         require(controlDir.isNotBlank()) { "DurableTaskOutput.controlDir must not be blank" }

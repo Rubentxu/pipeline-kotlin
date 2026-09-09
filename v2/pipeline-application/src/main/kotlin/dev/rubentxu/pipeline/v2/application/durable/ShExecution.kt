@@ -58,6 +58,19 @@ import java.util.UUID
 object ShExecution {
 
     /**
+     * Reads the durable console transcript (console.log, with legacy jenkins-log.txt read-compat)
+     * for the observable console output. In capture mode this file holds stderr only; in plain mode
+     * it holds the merged stdout+stderr transcript.
+     */
+    private fun readConsoleTranscript(controlDir: Path): String = try {
+        val consoleLog = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
+            .resolveConsoleLog(controlDir)
+        if (Files.exists(consoleLog)) Files.readString(consoleLog) else ""
+    } catch (_: Exception) {
+        ""
+    }
+
+    /**
      * Executes a shell step with durable semantics.
      *
      * @param step The shell step specification.
@@ -178,28 +191,27 @@ object ShExecution {
                 shOptions = envOptions,
             )
 
-            // Emit EchoOutputCaptured. Two paths:
-            //   1. captureStdout=true  → wrapper tees stdout to output.txt; executor reads it BEFORE cleanup
-            //      and stores it in result.capturedStdout. jenkins-log.txt in that mode contains only stderr.
-            //   2. captureStdout=false → wrapper writes stdout+stderr (2>&1) to jenkins-log.txt; cleanup
-            //      stores it in the typed terminal. For a retained failure control
-            //      directory, the log-file fallback preserves the existing event behavior.
-            val capturedOutput: String = (terminal as? DurableTaskTerminal.Exited)?.output?.capturedStdout
-                ?: try {
-                    val logFile = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
-                        .resolveConsoleLog(controlDir)
-                    if (Files.exists(logFile)) Files.readString(logFile) else ""
-                } catch (_: Exception) {
-                    ""
-                }
-            if (capturedOutput.isNotEmpty()) {
+            // Project the durable console transcript and the typed value separately.
+            //   plain (returnMode != STDOUT): console.log holds stdout+stderr merged; the whole
+            //     transcript is the observable console output. No typed value.
+            //   captureStdout (returnMode == STDOUT): stdout is the captured typed VALUE (output.txt,
+            //     read as terminal.capturedStdout); console.log holds only stderr and is the
+            //     observable transcript. The stdout value must NOT be re-emitted as a console event.
+            val terminalExited = terminal as? DurableTaskTerminal.Exited
+            // Observable console output comes from the console transcript channel (console.log),
+            // which the durable executor read BEFORE cleanup so success-path observability is
+            // preserved. capturedStdout is the typed value channel (capture mode), NOT console output.
+            val consoleContent: String = terminalExited?.output?.consoleTranscript
+                ?: terminalExited?.output?.capturedStdout
+                ?: readConsoleTranscript(controlDir)
+            if (consoleContent.isNotEmpty()) {
                 eventSink.append(EchoOutputCaptured(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId,
                     sequence = 0L,
                     occurredAt = Instant.now(),
                     stepIndex = stepIndex,
-                    content = capturedOutput,
+                    content = consoleContent,
                 ))
             }
 

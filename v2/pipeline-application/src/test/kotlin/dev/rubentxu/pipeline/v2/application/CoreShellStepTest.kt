@@ -197,7 +197,8 @@ class CoreShellStepTest {
         assertEquals("FAILED", obj["kind"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("FAILURE", obj["outcome"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("SCRIPT", obj["failureKind"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
-        assertEquals("exit 7", obj["message"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
+        // G7: failure message is encoded under `failureMessage`.
+        assertEquals("exit 7", obj["failureMessage"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
         assertEquals("7", obj["exitCode"]?.let { (it as kotlinx.serialization.json.JsonPrimitive).content })
     }
 

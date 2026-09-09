@@ -282,7 +282,9 @@ class A4_3TypedShellOutputIntegrationTest {
         assertEquals("FAILED", obj["kind"]?.jsonPrimitive?.content)
         assertEquals("FAILURE", obj["outcome"]?.jsonPrimitive?.content)
         assertEquals("SCRIPT", obj["failureKind"]?.jsonPrimitive?.content)
-        assertEquals("exit 7", obj["message"]?.jsonPrimitive?.content)
+        // G7: failure message is encoded under `failureMessage` to disambiguate
+        // from `interruptionMessage` on the INTERRUPTED variant.
+        assertEquals("exit 7", obj["failureMessage"]?.jsonPrimitive?.content)
         assertEquals("7", obj["exitCode"]?.jsonPrimitive?.content)
     }
 
@@ -316,7 +318,9 @@ class A4_3TypedShellOutputIntegrationTest {
         assertEquals("INTERRUPTED", obj["kind"]?.jsonPrimitive?.content)
         assertEquals("FAILURE", obj["outcome"]?.jsonPrimitive?.content)
         assertEquals("TIMEOUT", obj["interruptionKind"]?.jsonPrimitive?.content)
-        assertEquals("killed", obj["message"]?.jsonPrimitive?.content)
+        // G7: interruption message is encoded under `interruptionMessage` to
+        // disambiguate from `failureMessage` on the FAILED variant.
+        assertEquals("killed", obj["interruptionMessage"]?.jsonPrimitive?.content)
         assertNotNull(obj["operationId"])
     }
 

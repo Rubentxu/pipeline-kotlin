@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
@@ -8,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
@@ -116,25 +119,42 @@ object CoreShellStep {
     }
 
     /**
-     * G3-A4.3 output codec: encodes the closed [ShellInvocationResult] ADT plus its
-     * canonical [dev.rubentxu.pipeline.v2.domain.StepOutcome] projection.
+     * G7 output codec: deterministic, lossless for contractual fields, malformed-fail.
      *
-     * The encoded JSON shape (deterministic, lossless for contractual fields):
-     *  - `kind`: discriminant matching the existing scripted-runtime names
+     * The encoded JSON shape (see [decode] for the symmetric reader):
+     *  - `kind` (mandatory): discriminant matching the existing scripted-runtime names
      *    (`UNIT` / `STDOUT` / `STATUS` / `FAILED` / `INTERRUPTED`).
-     *  - `outcome`: `"SUCCESS"` or `"FAILURE"` — the canonical projection. Any
-     *    downstream re-classification that disagrees with the value here is a
-     *    classifier bug and MUST fail loudly (no silent reconciliation).
-     *  - payload fields per discriminant (`value`, `exitCode`, `failureKind`,
-     *    `message`, `interruptionKind`, `operationId`).
+     *  - `outcome` (mandatory): canonical projection of [dev.rubentxu.pipeline.v2.domain.StepOutcome]
+     *    — `SUCCESS` / `UNSTABLE` / `FAILURE`. The discriminant is cross-checked against
+     *    the variant payload on decode; mismatches surface as typed decode failure
+     *    (no silent coercion).
+     *  - Per-variant payload fields (all mandatory iff the variant requires them; missing
+     *    or wrong-typed fields fail closed on decode):
+     *      - `STDOUT` -> `value: String`
+     *      - `STATUS` -> `exitCode: Int`
+     *      - `FAILED` -> `failureKind: String` (FailureKind.name), `failureMessage: String`,
+     *        optional `failureCauseClass: String` (Throwable class name ONLY; the throwable
+     *        itself is NEVER transported — `FailureRecord`'s documented design rule),
+     *        optional `durableFailure: { code, kind, message, origin, retryable,
+     *        operationId, workerId?, taskId?, details?, schemaVersion }`,
+     *        optional `exitCode: Int`.
+     *      - `INTERRUPTED` -> `interruptionKind: String` (InterruptionKind.name),
+     *        `interruptionMessage: String`, `operationId: String`,
+     *        optional `causedBy: String`, optional `deadlineEpochMillis: Long`,
+     *        optional `details: Map<String,String>`.
+     *      - `UNIT` -> no payload fields.
      *
-     * The `capturedStdout` / `durationMs` fields from the A4.2 carrier are GONE: the
-     * former is derivable from `result.value` when `kind == "STDOUT"`, and the latter
-     * is the substrate's concern (`OperationOutput.durationMs`).
+     * `outcome = FAILURE` MUST appear iff the variant payload carries a `failureKind`
+     * (or for `INTERRUPTED`, an `interruptionKind` whose classifier maps to TIMEOUT).
+     * The decode rule below enforces this.
      *
-     * `decode` remains a TODO until G7 lands (replay path). Until then, malformed
-     * payloads MUST surface as `TODO("G7...")` failures on the replay path, NOT be
-     * silently coerced.
+     * Determinism: encode uses `buildJsonObject` with explicit `put` ordering; the
+     * optional fields appear in fixed positions and are omitted when not present.
+     * No Map iteration, no timestamps, no identity — same instance produces byte-identical
+     * bytes across calls.
+     *
+     * Failure modes (decode): [StepCodec.decode] throws a subclass of [RuntimeException]
+     * with a typed reason; the boundary never silently coerces malformed payloads.
      */
     private val outputCodec = object : StepCodec<CoreShellOutput> {
         override fun encode(value: CoreShellOutput): EncodedStepValue {
@@ -147,13 +167,47 @@ object CoreShellStep {
                     is ShellInvocationResult.Status -> put("exitCode", JsonPrimitive(r.exitCode))
                     is ShellInvocationResult.Failed -> {
                         put("failureKind", JsonPrimitive(r.failure.kind.name))
-                        put("message", JsonPrimitive(r.failure.message))
+                        put("failureMessage", JsonPrimitive(r.failure.message))
+                        r.failure.cause?.let { cause ->
+                            put("failureCauseClass", JsonPrimitive(cause::class.qualifiedName ?: cause::class.simpleName))
+                        }
+                        r.durableFailure?.let { fr ->
+                            put("durableFailure", buildJsonObject {
+                                put("code", JsonPrimitive(fr.code))
+                                put("kind", JsonPrimitive(fr.kind.name))
+                                put("message", JsonPrimitive(fr.message))
+                                put("origin", JsonPrimitive(fr.origin.name))
+                                put("retryable", JsonPrimitive(fr.retryable))
+                                put("operationId", JsonPrimitive(fr.operationId))
+                                fr.workerId?.let { put("workerId", JsonPrimitive(it)) }
+                                fr.taskId?.let { put("taskId", JsonPrimitive(it)) }
+                                // Encode details in canonical key order: sorted
+                                // by key to remove Map-iteration dependence.
+                                if (fr.details.isNotEmpty()) {
+                                    put("details", buildJsonObject {
+                                        fr.details.toSortedMap().forEach { (k, v) ->
+                                            put(k, JsonPrimitive(v))
+                                        }
+                                    })
+                                }
+                                put("schemaVersion", JsonPrimitive(fr.schemaVersion))
+                            })
+                        }
                         r.exitCode?.let { put("exitCode", JsonPrimitive(it)) }
                     }
                     is ShellInvocationResult.Interrupted -> {
                         put("interruptionKind", JsonPrimitive(r.interruption.kind.name))
-                        put("message", JsonPrimitive(r.interruption.message))
+                        put("interruptionMessage", JsonPrimitive(r.interruption.message))
                         put("operationId", JsonPrimitive(r.interruption.operationId))
+                        r.interruption.causedBy?.let { put("causedBy", JsonPrimitive(it)) }
+                        r.interruption.deadlineEpochMillis?.let { put("deadlineEpochMillis", JsonPrimitive(it)) }
+                        if (r.interruption.details.isNotEmpty()) {
+                            put("details", buildJsonObject {
+                                r.interruption.details.toSortedMap().forEach { (k, v) ->
+                                    put(k, JsonPrimitive(v))
+                                }
+                            })
+                        }
                     }
                 }
             }
@@ -161,11 +215,194 @@ object CoreShellStep {
         }
 
         override fun decode(encoded: EncodedStepValue): CoreShellOutput {
-            // G3-A4.3: deferred to G7. Until then the boundary does NOT decode.
-            // Replay path is the only consumer; it MUST land before
-            // `core.sh = REGISTRY_PRIMARY` is flipped.
-            TODO("G7: typed output decode for core.sh lands at the replay slice.")
+            val obj = try {
+                Json.parseToJsonElement(encoded.value).jsonObject
+            } catch (e: Exception) {
+                throw CoreShellCodecException(
+                    "core.sh output envelope is not a JSON object: ${e.message ?: "parse failed"}",
+                )
+            }
+
+            val kindStr = obj["kind"]?.asStringOrNull()
+                ?: throw CoreShellCodecException("core.sh output missing mandatory 'kind' field")
+            val outcomeStr = obj["outcome"]?.asStringOrNull()
+                ?: throw CoreShellCodecException("core.sh output missing mandatory 'outcome' field")
+
+            val result: ShellInvocationResult = when (kindStr) {
+                "UNIT" -> ShellInvocationResult.UnitValue
+                "STDOUT" -> {
+                    val v = obj["value"]?.asStringOrNull()
+                        ?: throw CoreShellCodecException("STDOUT variant missing mandatory 'value' field")
+                    ShellInvocationResult.Stdout(v)
+                }
+                "STATUS" -> {
+                    val ec = obj["exitCode"]?.asIntOrNull()
+                        ?: throw CoreShellCodecException("STATUS variant missing or non-integer 'exitCode' field")
+                    ShellInvocationResult.Status(ec)
+                }
+                "FAILED" -> {
+                    val fkStr = obj["failureKind"]?.asStringOrNull()
+                        ?: throw CoreShellCodecException("FAILED variant missing mandatory 'failureKind' field")
+                    val fmStr = obj["failureMessage"]?.asStringOrNull()
+                        ?: throw CoreShellCodecException("FAILED variant missing mandatory 'failureMessage' field")
+                    val failureKind = try {
+                        FailureKind.valueOf(fkStr)
+                    } catch (e: IllegalArgumentException) {
+                        throw CoreShellCodecException(
+                            "FAILED variant 'failureKind' is not a valid FailureKind: '$fkStr'",
+                        )
+                    }
+                    // We do NOT reconstitute Throwables across the durable wire:
+                    // `failureCauseClass` is the documented diagnostic-only field
+                    // and `failure.cause` is always null after round-trip. This
+                    // matches `FailureRecord`'s design (a Throwable may be retained
+                    // by an in-process exception for diagnostics, but it is
+                    // deliberately not part of the persisted contract).
+                    val durableFailure: FailureRecord? = obj["durableFailure"]?.let { frEl ->
+                        val frObj = frEl as? JsonObject
+                            ?: throw CoreShellCodecException("'durableFailure' must be a JSON object")
+                        try {
+                            FailureRecord(
+                                code = frObj.stringOrThrow("code"),
+                                kind = FailureKind.valueOf(frObj.stringOrThrow("kind")),
+                                message = frObj.stringOrThrow("message"),
+                                origin = dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin.valueOf(
+                                    frObj.stringOrThrow("origin"),
+                                ),
+                                retryable = frObj.boolOrThrow("retryable"),
+                                operationId = frObj.stringOrThrow("operationId"),
+                                workerId = frObj["workerId"]?.asStringOrNull(),
+                                taskId = frObj["taskId"]?.asStringOrNull(),
+                                details = frObj["details"]?.asStringMapOrNull() ?: emptyMap(),
+                                schemaVersion = frObj.intOrThrow("schemaVersion"),
+                            )
+                        } catch (e: CoreShellCodecException) {
+                            throw e
+                        } catch (e: Exception) {
+                            throw CoreShellCodecException(
+                                "malformed durableFailure: ${e.message ?: "decode failed"}",
+                            )
+                        }
+                    }
+                    val ec = obj["exitCode"]?.asIntOrNull()
+                    ShellInvocationResult.Failed(
+                        failure = PipelineFailure(kind = failureKind, message = fmStr),
+                        durableFailure = durableFailure,
+                        exitCode = ec,
+                    )
+                    // `failure.cause` is null after round-trip by design (see
+                    // FailureRecord's documented "no throwable transport" rule).
+                    // `failureCauseClass` is preserved as a separate diagnostic
+                    // field for tooling that needs the class name.
+                }
+                "INTERRUPTED" -> {
+                    val ikStr = obj["interruptionKind"]?.asStringOrNull()
+                        ?: throw CoreShellCodecException("INTERRUPTED variant missing mandatory 'interruptionKind' field")
+                    val imStr = obj["interruptionMessage"]?.asStringOrNull()
+                        ?: throw CoreShellCodecException("INTERRUPTED variant missing mandatory 'interruptionMessage' field")
+                    val opId = obj["operationId"]?.asStringOrNull()
+                        ?: throw CoreShellCodecException("INTERRUPTED variant missing mandatory 'operationId' field")
+                    val ik = try {
+                        dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind.valueOf(ikStr)
+                    } catch (e: IllegalArgumentException) {
+                        throw CoreShellCodecException(
+                            "INTERRUPTED variant 'interruptionKind' is not a valid InterruptionKind: '$ikStr'",
+                        )
+                    }
+                    val causedBy = obj["causedBy"]?.asStringOrNull()
+                    val deadline = obj["deadlineEpochMillis"]?.asLongOrNull()
+                    val details = obj["details"]?.asStringMapOrNull() ?: emptyMap()
+                    ShellInvocationResult.Interrupted(
+                        interruption = dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord(
+                            kind = ik,
+                            message = imStr,
+                            operationId = opId,
+                            causedBy = causedBy,
+                            deadlineEpochMillis = deadline,
+                            details = details,
+                        ),
+                    )
+                }
+                else -> throw CoreShellCodecException("unknown core.sh output 'kind': '$kindStr'")
+            }
+
+            // Validate the outcome discriminant first; defer constructing the
+            // typed StepOutcome until the cross-check passes so we never invoke
+            // `pipelineFailureFor` on a non-failure variant (which would throw
+            // IllegalStateException instead of a typed CoreShellCodecException).
+            val outcomeKind: String = outcomeStr
+            when (outcomeKind) {
+                "SUCCESS", "UNSTABLE", "FAILURE" -> Unit
+                else -> throw CoreShellCodecException("unknown core.sh output 'outcome': '$outcomeKind'")
+            }
+
+            // Cross-check discriminant vs variant BEFORE constructing the typed outcome.
+            // This keeps malformed payloads on the typed-decode-failure path.
+            crossCheckOutcomeDiscriminant(result, outcomeKind)?.let { reason ->
+                throw CoreShellCodecException(reason)
+            }
+
+            val outcome: StepOutcome = when (outcomeKind) {
+                "SUCCESS" -> StepOutcome.Success
+                "UNSTABLE" -> StepOutcome.Unstable
+                "FAILURE" -> StepOutcome.Failure(pipelineFailureFor(result))
+                else -> error("unreachable: crossCheckOutcomeDiscriminant passed for $outcomeKind")
+            }
+
+            return CoreShellOutput(result = result, outcome = outcome)
         }
+    }
+
+    /**
+     * Build the canonical [PipelineFailure] for the `outcome = FAILURE` projection.
+     *
+     * Used by [decode] when the encoded `outcome` says `FAILURE` — the failure MUST
+     * carry the same kind/message carried by the variant payload.
+     */
+    private fun pipelineFailureFor(result: ShellInvocationResult): PipelineFailure =
+        when (result) {
+            is ShellInvocationResult.Failed -> result.failure
+            is ShellInvocationResult.Interrupted -> PipelineFailure(
+                kind = FailureKind.TIMEOUT,
+                message = result.interruption.message,
+            )
+            is ShellInvocationResult.UnitValue,
+            is ShellInvocationResult.Stdout,
+            is ShellInvocationResult.Status,
+            -> error("decode inconsistency: outcome=FAILURE with non-failure variant $result")
+        }
+
+    /**
+     * Cross-check rule (pre-construction): if the variant says `FAILED` or `INTERRUPTED`,
+     * the outcome discriminant MUST be `FAILURE`; if the variant says `UNIT` / `STDOUT` /
+     * `STATUS`, the outcome discriminant MUST be `SUCCESS` (or `UNSTABLE`, which is
+     * currently never produced for `core.sh` but is accepted if the producer chose it).
+     *
+     * Operating on the discriminant string avoids invoking `pipelineFailureFor` on a
+     * non-failure variant, which would throw `IllegalStateException` instead of the
+     * typed `CoreShellCodecException`.
+     */
+    private fun crossCheckOutcomeDiscriminant(
+        result: ShellInvocationResult,
+        outcomeKind: String,
+    ): String? = when {
+        result is ShellInvocationResult.Failed && outcomeKind != "FAILURE" ->
+            "outcome/variant mismatch: kind=FAILED but outcome=$outcomeKind"
+        result is ShellInvocationResult.Interrupted && outcomeKind != "FAILURE" ->
+            "outcome/variant mismatch: kind=INTERRUPTED but outcome=$outcomeKind"
+        result is ShellInvocationResult.UnitValue && outcomeKind == "FAILURE" ->
+            "outcome/variant mismatch: kind=UNIT but outcome=FAILURE"
+        result is ShellInvocationResult.Stdout && outcomeKind == "FAILURE" ->
+            "outcome/variant mismatch: kind=STDOUT but outcome=FAILURE"
+        result is ShellInvocationResult.Status && outcomeKind == "FAILURE" ->
+            "outcome/variant mismatch: kind=STATUS but outcome=FAILURE"
+        else -> null
+    }
+
+    private fun discriminant(o: StepOutcome): String = when (o) {
+        is StepOutcome.Success -> "SUCCESS"
+        is StepOutcome.Unstable -> "UNSTABLE"
+        is StepOutcome.Failure -> "FAILURE"
     }
 
     private fun kindDiscriminant(r: ShellInvocationResult): String = when (r) {
@@ -176,11 +413,7 @@ object CoreShellStep {
         is ShellInvocationResult.Interrupted -> "INTERRUPTED"
     }
 
-    private fun outcomeDiscriminant(o: StepOutcome): String = when (o) {
-        is StepOutcome.Success -> "SUCCESS"
-        is StepOutcome.Unstable -> "UNSTABLE"
-        is StepOutcome.Failure -> "FAILURE"
-    }
+    private fun outcomeDiscriminant(o: StepOutcome): String = discriminant(o)
 
     private val descriptor = StepDescriptor(
         stepId = "core.sh",

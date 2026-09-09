@@ -53,6 +53,7 @@ class CanonicalRuntimeCapabilityAccess(
         )
         val shellOps: ShellOperations = ShOperationsAdapter(
             runIdString = context.runId,
+            opId = context.opId,
             shOptions = context.shOptions,
             controlDirRoot = context.controlDirRoot,
             eventSink = context.eventSink,

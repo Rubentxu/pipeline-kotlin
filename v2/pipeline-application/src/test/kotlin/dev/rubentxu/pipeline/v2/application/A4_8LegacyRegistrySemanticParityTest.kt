@@ -218,6 +218,7 @@ class A4_8LegacyRegistrySemanticParityTest {
         val eventSink = InMemoryEventStore()
         val adapter = ShOperationsAdapter(
             runIdString = runId,
+            opId = OpId(runId, 0, 0),
             shOptions = ShOptions.EMPTY,
             controlDirRoot = null,
             eventSink = eventSink,
@@ -303,6 +304,7 @@ class A4_8LegacyRegistrySemanticParityTest {
         val eventSink = RecordingEventSink()
         val adapter = ShOperationsAdapter(
             runIdString = runId,
+            opId = OpId(runId, 0, 0),
             shOptions = ShOptions.EMPTY,
             controlDirRoot = null,
             eventSink = eventSink,
@@ -353,6 +355,7 @@ class A4_8LegacyRegistrySemanticParityTest {
             )
             ShOperationsAdapter(
                 runIdString = "a4-8-parity-registry",
+                opId = OpId("a4-8-parity-registry", 0, 0),
                 shOptions = ShOptions.EMPTY,
                 controlDirRoot = null,
                 eventSink = registrySink,

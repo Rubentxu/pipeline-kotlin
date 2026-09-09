@@ -360,6 +360,7 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
         val eventSink = InMemoryEventStore()
         val adapter = dev.rubentxu.pipeline.v2.application.durable.ShOperationsAdapter(
             runIdString = "$runIdString-handler",
+            opId = dev.rubentxu.pipeline.v2.application.durable.OpId("$runIdString-handler", 0, 0),
             shOptions = ShOptions.EMPTY,
             controlDirRoot = null, // non-durable fallback; matches existing legacy test path
             eventSink = eventSink,

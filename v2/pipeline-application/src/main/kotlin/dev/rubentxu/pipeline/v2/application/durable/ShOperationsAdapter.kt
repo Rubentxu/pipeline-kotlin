@@ -29,12 +29,19 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * - **AGENTS.md invariant**: handlers adapt to typed seams; they never
  *   own process-execution logic.
  *
- * The adapter derives `OpId` per call from the `runId` and `stepIndex`
- * pair (sufficient for one process per step — the canonical pattern used
- * by the existing [CanonicalShellNodeDispatcher]).
+ * The adapter binds the canonical [OpId] of the invocation (handed in from
+ * the [CanonicalRuntimeContext] at construction time, so it already carries
+ * the stage/step indices AND any branch/bodyPath identity — e.g. the
+ * `-bp2-b0:branch-...` form for parallel-branch steps). Deriving a fresh
+ * `OpId(runId, 0, stepIndex)` per call would collapse two concurrent parallel
+ * branches onto the SAME control dir (`{controlRoot}/{opId}`), interleaving
+ * their `script.sh`/`result.txt` writes — the corruption observed in
+ * B13/E-EM-11 WL-P2/P3. The control dir is derived from `opId.format()` in
+ * [ShExecution.invokeShell], so the opId IS the durable process identity.
  */
 class ShOperationsAdapter(
     private val runIdString: String,
+    private val opId: OpId,
     private val shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions,
     private val controlDirRoot: java.nio.file.Path?,
     private val eventSink: EventSink,
@@ -45,15 +52,9 @@ class ShOperationsAdapter(
         runId: RunId,
         stepIndex: Int,
     ): ShellInvocationResult {
-        // The opId format must match the canonical canonical-driver pattern
-        // (`OpId.format()` yields "<runId>/<stageIndex>/<stepIndex>"); the
-        // canonical dispatcher uses the same shape through CanonicalRuntimeContext.
-        // LB-02 G3 does NOT need to invent a fresh scheme — it derives one
-        // consistent with the canonical family.
-        val opId = OpId(runIdString, 0, stepIndex)
         return ShExecution.invokeShell(
             command = command,
-            opId = opId,
+            opId = this.opId,
             runId = runIdString,
             stageIndex = 0,
             stepIndex = stepIndex,

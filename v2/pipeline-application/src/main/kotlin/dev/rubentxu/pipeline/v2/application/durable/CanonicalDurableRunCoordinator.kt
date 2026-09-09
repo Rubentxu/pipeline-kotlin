@@ -64,6 +64,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import java.nio.file.Path
 import java.nio.file.Files
 import java.time.Instant
@@ -401,16 +403,13 @@ class CanonicalDurableRunCoordinator(
         runStartedEmitted = true
 
         try {
-            for (stageIndex in pipeline.stages.indices) {
+            stagesLoop@ for (stageIndex in pipeline.stages.indices) {
                 val stage = pipeline.stages[stageIndex]
                 // Stage boundary: context stack must be empty when entering a stage
                 check(contextStack.isEmpty) {
                     "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${contextStack.size} frame(s) remaining"
                 }
                 val steps = (stage.body as? StageBody.Steps)?.steps
-                    ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear stage steps")
-                // D5: Per-stage workspaceRoot override at dispatch boundary
-                // C1: Workspace pre-creation - ensure stage workspace exists before shell dispatch
                 var stageWorkspace: Path? = null
                 if (controlDirRoot != null) {
                     val resolver = WorkspaceResolver(controlDirRoot)
@@ -430,6 +429,52 @@ class CanonicalDurableRunCoordinator(
                 }
                 val stageBaseOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
                 val stageShOptions = stage.projectShellOptions(stageBaseOptions)
+                // B13/E-EM-11: parallel stages re-enter the SAME dispatch spine —
+                // each branch is dispatched as a bodyPath-rooted branch with its
+                // own branchIndex (deterministic durable identity via OpId -b{N}
+                // journal keys). No second engine, no ParallelFrameExecutor.
+                if (steps == null && stage.body is StageBody.Parallel) {
+                    // Workspace creation is required before branch dispatch (D5/C1 reuse).
+                    val parallelOutcome = runParallelStage(stage, stageIndex, stageShOptions, runId)
+                    when (val continuation = decideContinuation(parallelOutcome, stage.name, runId.value)) {
+                        CanonicalContinuation.Continue -> {
+                            eventSink.append(
+                                dev.rubentxu.pipeline.v2.events.StageFinished(
+                                    eventId = UUID.randomUUID().toString(),
+                                    runId = runId.value,
+                                    sequence = 0L,
+                                    occurredAt = Instant.now(),
+                                    stageIndex = stageIndex,
+                                    stageName = stage.name,
+                                    outcome = "success",
+                                ),
+                            )
+                        }
+                        CanonicalContinuation.ContinueUnstable -> {
+                            currentOutcome = RunOutcome.Unstable
+                            eventSink.append(
+                                dev.rubentxu.pipeline.v2.events.StageFinished(
+                                    eventId = UUID.randomUUID().toString(),
+                                    runId = runId.value,
+                                    sequence = 0L,
+                                    occurredAt = Instant.now(),
+                                    stageIndex = stageIndex,
+                                    stageName = stage.name,
+                                    outcome = "unstable",
+                                ),
+                            )
+                        }
+                        is CanonicalContinuation.Abort -> {
+                            currentOutcome = RunOutcome.Failure(continuation.failure)
+                            return@run currentOutcome
+                        }
+                    }
+                    continue@stagesLoop
+                }
+                val steps1 = steps
+                    ?: throw IllegalArgumentException("Canonical durable coordinator supports only linear or parallel stage bodies")
+                // D5: Per-stage workspaceRoot override at dispatch boundary
+                // C1: Workspace pre-creation - ensure stage workspace exists before shell dispatch
                 // LFC-2 / ERR-S-004: restore stage bookends lost in the LF-0208 spine migration.
                 // The canonical coordinator emits StageStarted at entry and StageFinished on normal
                 // completion (success/unstable). An aborting stage returns before StageFinished;
@@ -445,8 +490,8 @@ class CanonicalDurableRunCoordinator(
                     ),
                 )
                 var stageUnstable = false
-                for (stepIndex in steps.indices) {
-                    val step = steps[stepIndex]
+                for (stepIndex in steps1.indices) {
+                    val step = steps1[stepIndex]
                     val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
                     when (val continuation = decideContinuation(outcome, stage.name, runId.value)) {
                         CanonicalContinuation.Continue -> Unit
@@ -916,6 +961,114 @@ class CanonicalDurableRunCoordinator(
      * @param block The BlockStepNode to dispatch
      * @param parentStack The context stack at entry (restored in finally)
      */
+    /**
+     * B13/E-EM-11 — parallel stage execution through the canonical spine.
+     *
+     * Each [StageBody.Parallel] branch is dispatched concurrently by the SAME
+     * [dispatch] machinery used for linear steps; branch identity is the
+     * branch-indexed OpId (`-b{N}` journal keys, pre-existing contract), so
+     * every branch child gets independent durable rows and a durable rerun
+     * reuses completed branch work instead of duplicating it.
+     *
+     * Join policy: ALL_COMPLETE (grounded in the surviving domain JoinPolicy
+     * contract + the coordinator's step fail-fast semantics) — a failing branch
+     * fails the aggregate; the join WAITS for all started branches so sibling
+     * outcomes stay independent and journaled. No undeclared failFast.
+     */
+    private suspend fun runParallelStage(
+        stage: StageNode,
+        stageIndex: Int,
+        stageShOptions: ShOptions,
+        runId: RunId,
+    ): StepOutcome {
+        val branches = (stage.body as? StageBody.Parallel)?.branches
+            ?: throw EngineInvariantViolation("runParallelStage called for non-parallel stage '${stage.name}'")
+
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
+        val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = branches.mapIndexed { branchIndex: Int, branch: StageNode ->
+            scope.async {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.ParallelBranchStarted(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            branchIndex = branchIndex,
+                            branchName = branch.name,
+                            parentStageIndex = stageIndex,
+                        ),
+                    )
+                    val branchOutcome = executeBranchSteps(branch, runId, stageIndex, branchIndex, stageShOptions)
+                    val outcomeText = when (branchOutcome) {
+                        is StepOutcome.Failure -> "failure"
+                        is StepOutcome.Unstable -> "unstable"
+                        else -> "success"
+                    }
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.ParallelBranchFinished(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            branchIndex = branchIndex,
+                            branchName = branch.name,
+                            parentStageIndex = stageIndex,
+                            outcome = outcomeText,
+                        ),
+                    )
+                    branchOutcome
+                }
+        }
+        val branchOutcomes: List<StepOutcome> = deferred.map { it.await() }
+
+        // ALL_COMPLETE: first failure (deterministic: lowest branch index) is the aggregate.
+        return branchOutcomes.firstOrNull { it is StepOutcome.Failure }
+            ?: branchOutcomes.firstOrNull { it is StepOutcome.Unstable }
+            ?: StepOutcome.Success
+    }
+
+    /**
+     * Dispatches one parallel branch's linear steps through the shared spine with
+     * branch-indexed journal identity. A branch failure is contained: it becomes
+     * the branch outcome, never a throw (the join waits for all branches).
+     */
+    private suspend fun executeBranchSteps(
+        branch: StageNode,
+        runId: RunId,
+        stageIndex: Int,
+        branchIndex: Int,
+        stageShOptions: ShOptions,
+    ): StepOutcome {
+        val steps = (branch.body as? StageBody.Steps)?.steps
+            ?: throw EngineInvariantViolation("Parallel branch '${branch.name}' has a non-linear body")
+        var outcome: StepOutcome = StepOutcome.Success
+        for (stepIndex in steps.indices) {
+            val step = steps[stepIndex]
+            // Branch durable identity: dispatch() derives the journal key from the
+            // bodyPath it is handed, so the branch index is encoded as the FIRST
+            // deterministic BlockSegment ("b{branchIndex}:branch"). Two branches'
+            // children can never collide; a durable rerun reuses the same keys.
+            val bodyPath = listOf(
+                BlockSegment("b$branchIndex:branch"),
+                BlockSegment(stepIndex, step.pluginStepId),
+            )
+            val stepOutcome = dispatch(
+                step,
+                runId,
+                branch.name,
+                stageIndex,
+                stepIndex,
+                stageShOptions,
+                bodyPath,
+            )
+            when (stepOutcome) {
+                is StepOutcome.Failure, is StepOutcome.Unstable -> return stepOutcome
+                else -> { /* continue */ }
+            }
+        }
+        return outcome
+    }
+
     private suspend fun dispatchBody(
         block: BlockStepNode,
         runId: RunId,

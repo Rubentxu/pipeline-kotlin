@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.BranchSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.ExecutionOutputSink
 import dev.rubentxu.pipeline.v2.domain.durable.JoinPolicy
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream

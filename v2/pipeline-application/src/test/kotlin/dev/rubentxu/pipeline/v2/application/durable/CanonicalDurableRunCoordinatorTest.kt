@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
@@ -134,6 +135,7 @@ class CanonicalDurableRunCoordinatorTest {
             controlDirRoot = tempDir.resolve("control"),
         
     credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         assertEquals(RunOutcome.Success, outcome)

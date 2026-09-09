@@ -90,7 +90,6 @@ class EP_F26_GenericProductionPathProofTest {
                 stage("External") {
                     registryStep(
                         stepKey = neutralKey,
-                        schemaVersion = "fixture-v1",
                         encodedInput = codec.encode("payload-42"),
                     )
                 }
@@ -111,8 +110,9 @@ class EP_F26_GenericProductionPathProofTest {
     fun `registryStep DSL produces a RegistryStepSpec carrying key, schema and verbatim input`() {
         val (_, node) = compiledStageKeys()
         assertEquals(neutralKey, node.pluginStepId)
-        // The declared invocation contract version flows through verbatim (not a compiler constant).
-        assertEquals("fixture-v1", node.payload.schemaVersion)
+        // The canonical ENVELOPE schema flows through (dsl-v1); the plugin's own contract
+        // version is codec-level (StepCodec.schema), never the envelope version.
+        assertEquals("dsl-v1", node.payload.schemaVersion)
         // Verbatim, undecoded, unre-encoded: compile must not understand the payload.
         assertTrue(node.payload.encoded.contains("payload-42"))
     }

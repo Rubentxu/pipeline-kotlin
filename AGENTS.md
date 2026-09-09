@@ -115,6 +115,164 @@ This is the operative translation; the ADRs/specs are the architectural authorit
 - declared capability == used capability;
 - an external plugin adds a Step with zero core changes.
 
+## STEP IMPLEMENTATION — OPERATIVE GUIDE (DERIVED FROM ADRs/SPEC)
+
+**Authority hierarchy.** ADRs (ADR-0070..0074), `STEP_CONSTITUTION`, `STEP_PLUGIN_CERTIFICATION`
+and `PIPELINE_TEST_HARNESS` are the architectural authority. This section is the **operative
+translation**: how to implement, migrate, test and certify a Step without re-introducing legacy
+and without inventing a new pattern. Where this section and the ADRs disagree, the ADRs win.
+
+**Reference implementations** (live, defended by fitness):
+- atomic / in-controller Step → `CoreEchoStep` (`core.echo`, `CERTIFIED`).
+- effectful / process Step → `core.sh` (`CERTIFIED` after LB-02).
+
+When you start a new Step, follow the certified pattern. Do not extract a fresh façade.
+
+### Step implementation golden path
+
+```text
+1. Define typed Input/Output value types (sealed/data class; never Any?).
+2. Define StepCodec<I> and StepCodec<O>. The Input codec encodes the WHOLE input payload.
+   The engine MUST NOT require codecs to round-trip only specific fields.
+3. Define StepContract: key, descriptor, inputCodec, outputCodec, requiredCapabilities.
+4. Implement the typed handler using ONLY the declared capabilities. Do not request a
+   "context", a coordinator, a service locator, or any omnipotent parameter.
+5. Register through StepRegistry — never instantiate the Step class manually inside the
+   coordinator, dispatcher, compiler, or any adapter.
+6. Produce a StructuralRegistry canonical invocation from the DSL (the DSL is data
+   construction; runtime values come from the handler).
+7. Verify fresh / replay / divergence / typed-invalid / missing-capability behaviour.
+8. Run the StepContractSuite. Every row must pass.
+9. If migrating legacy:
+     REGISTRY_PRIMARY
+     → LEGACY_UNREACHABLE
+     → LEGACY_REMOVED
+     → CERTIFIED.
+   A Step cannot be CERTIFIED while it remains legacy-executable.
+```
+
+### Burn-down sequence template (G0..G8)
+
+This is the only legitimate sequence to take a `LEGACY_PLUGIN_IDS` entry through the new
+spine. The S3 / `core.echo` burn-down is the worked example (see `docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md`).
+
+```text
+G0 baseline / pre-existing failures:
+    Fresh canary on pre-apply SHA; reproduce every pre-existing failure with base SHA + SHA-256
+    logs. Persist evidence under docs/v2/07-uat/.
+G1 registry seam proof:
+    Implement Core<Name>Step behind the registry, keeping the legacy decode/dispatch path
+    intact. PROVE the registry path is correct (handler + contract + codecs + capabilities).
+G2 corpus migration:
+    Migrate the durable characterisation/characterization corpus to drive the Step through
+    the registry so the same fingerprint/op-journal is exercised by both paths.
+G3 REGISTRY_PRIMARY:
+    Flip the production wiring to the registry (CoreStepRegistryFactory contains the Step;
+    coordinator's stepRegistry is the production factory). Both paths still exist on paper.
+G4 LEGACY_UNREACHABLE:
+    Remove the legacy execution path source-of-truth (canonical command data class, decoder
+    branch, dispatcher case, metadata table row). Prove via fitness that classify() routes
+    the key as Registry on every production wiring.
+G5 LEGACY_REMOVED:
+    Mechanical fitness: source-level absence of all THREE legacy forms (decoder, dispatcher,
+    registration). Distinct from LEGACY_UNREACHABLE (runtime property); LEGACY_REMOVED is a
+    static source property and is what we mean by "removed".
+G6 architecture fitness:
+    Run the L4/L5 architecture fitness against the new path; the Lfc2RegistryFamilyFitness
+    suite must remain green and now reference the renamed LEGACY_PLUGIN_IDS.
+G7 StepContractSuite:
+    16/17 coverage: identity, contract completeness, codec input, codec output, canonical
+    envelope, registry resolution, capability admission, success, typed failure, fresh
+    durable, replay, divergence, observability, missing capability, architecture fitness,
+    real DSL scenario (pipeline { stages { stage("...") { steps { <step>(...) } } } }).
+G8 CERTIFIED:
+    Update the per-Step state in the burn-down ledger. Anything not yet CERTIFIED must be
+    reported as IMPLEMENTED_UNCERTIFIED with an exact gap description. Never record DONE/PASS
+    for an uncertified Step (ADR-0074).
+```
+
+No slice may invent a different shape. If a future Step genuinely needs a new gate, propose
+the addition in an ADR before adding it.
+
+### Counters (project dashboard / roadmap)
+
+Until every LEGACY_PLUGIN_IDS entry is burned down, the project must track three numbers:
+
+```text
+Certified Steps:           N
+Legacy executable Steps:   M     (where N + M = |LEGACY_PLUGIN_IDS| + external plugin count)
+Registry-primary Steps:    N
+```
+
+`N + M = total`; convergence means `M -> 0`. The updated values belong in the per-cycle
+release receipt (and in `docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md` style receipts).
+
+### MUST NOT (Step Constitution enforcement)
+
+These are mechanically defensible; fitness tests in the S3/S4 sections are the canonical
+implementation of each:
+
+```text
+- add a concrete Step case to CanonicalNodeDispatcher;
+- route by StepKey / stepName in the durable coordinator (no when(stepKey), no when(stepName));
+- decode legacy command and re-encode for the registry (no "compat" seam);
+- execute handlers before capability admission (capability check MUST be in RegistryExecutionPreparation.prepare, before the typed handler call);
+- accept CanonicalRuntimeContext, the coordinator, or any service locator as a StepHandler argument;
+- persist typed Input or PreparedExecution as `Any`/Map (prepared is runtime-ephemeral, never fingerprinted, never journaled);
+- claim CERTIFIED while the Step remains legacy-executable (LEGACY_REMOVED is a prerequisite of CERTIFIED);
+- modify journal/replay semantics as part of a normal Step migration (those are spine-level);
+- introduce a KSP processor that branches on a concrete Step name;
+- give core a privileged execution path that external plugins cannot reach.
+```
+
+A common failure mode is "polymorphic dispatcher": the moment a coordinator's `when` branch
+discriminates `core.echo` vs `core.sh`, the spine has regressed to a closed world. If you need
+behaviour that varies by Step, declare it as part of the StepContract (replay policy,
+recoverable operation, required capabilities) — the engine reads the contract, it does not
+read the Step key.
+
+### DSL vs runtime (using Steps)
+
+Authoring an example or a test:
+
+```kotlin
+// GOOD: declarative DSL construction
+steps {
+    echo("hola")
+    sh("./gradlew test")
+}
+```
+
+```kotlin
+// GOOD: capturing runtime values inside a scriptable block
+script {
+    val branch = shStdout("git branch --show-current").trim()
+    if (branch == "main") {
+        sh("./publish.sh")
+    }
+}
+```
+
+```kotlin
+// BAD: simulating runtime values during construction
+pipeline {
+    val branch = "main"               // fabricated runtime value — forbidden
+    sh("./publish-${if (branch == "main") "prod" else "dev"}.sh")
+}
+```
+
+Construction (the DSL builder) MUST NOT perform I/O, MUST NOT shell out, MUST NOT call
+`pwd()` / `isUnix()` / `now()` and pretend those are real values. Anything that needs
+runtime data lives inside a Step handler with declared capabilities (input codec is the
+canonical envelope, not ad-hoc field probing).
+
+### Block Steps (when the time comes)
+
+When implementing `retry`, `timeout`, `parallel`, `script`, etc., control-flow enters the
+engine via `BodyInvoker.invoke` / `BranchInvoker.invokeAll` (ADR-0073). Do NOT add a
+collection like `dispatchRetryBlock` / `dispatchTimeoutBlock`. Each Block Step declares its
+own body-shape contract and is routed the same way as atomic Steps. `parallel` is a
+composable set of Named Bodies, not a permanent stage-terminal.
 
 
 ## V2 TESTING RULES

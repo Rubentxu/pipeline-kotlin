@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.SystemClock
+import dev.rubentxu.pipeline.v2.application.support.CoordinatorFixture
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -18,15 +19,12 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -90,28 +88,17 @@ class DurableProtocolInvocationCharacterizationTest {
             ),
         )
 
-    private fun noOpCredentialScopePort(): CredentialScopePort = CredentialScopePort { _, _ ->
-        CredentialScopeOutcome.Unavailable(
-            CredentialScopeFailure.StoreUnavailable("no credential store in characterization test"),
-        )
-    }
-
     @Test
     fun `C1 fresh execution invokes the effective executor exactly once`() = runBlocking {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()
         val runId = RunId("a1-2-c1-fresh")
         val recorder = RecordingBoundary()
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            InMemoryOperationJournal(clock),
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            commonExecutionBoundary = recorder,
-            stepRegistry = CoreStepRegistryFactory.registry(),
+        val coordinator = CoordinatorFixture.default(
+            clock = clock,
+            journal = InMemoryOperationJournal(clock),
+            eventSink = eventStore,
+            recorder = recorder,
         )
 
         val outcome = coordinator.run(echoPipeline("hola"), runId)
@@ -157,16 +144,11 @@ class DurableProtocolInvocationCharacterizationTest {
             ),
         )
         val recorder = RecordingBoundary()
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            journal,
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            commonExecutionBoundary = recorder,
-            stepRegistry = CoreStepRegistryFactory.registry(),
+        val coordinator = CoordinatorFixture.default(
+            clock = clock,
+            journal = journal,
+            eventSink = eventStore,
+            recorder = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -208,16 +190,11 @@ class DurableProtocolInvocationCharacterizationTest {
             ),
         )
         val recorder = RecordingBoundary()
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            journal,
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            commonExecutionBoundary = recorder,
-            stepRegistry = CoreStepRegistryFactory.registry(),
+        val coordinator = CoordinatorFixture.default(
+            clock = clock,
+            journal = journal,
+            eventSink = eventStore,
+            recorder = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -252,16 +229,11 @@ class DurableProtocolInvocationCharacterizationTest {
             ),
         )
         val recorder = RecordingBoundary()
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            InMemoryOperationJournal(clock),
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            commonExecutionBoundary = recorder,
-            stepRegistry = CoreStepRegistryFactory.registry(),
+        val coordinator = CoordinatorFixture.default(
+            clock = clock,
+            journal = InMemoryOperationJournal(clock),
+            eventSink = eventStore,
+            recorder = recorder,
         )
 
         val outcome = coordinator.run(malformed, runId)
@@ -331,15 +303,19 @@ class DurableProtocolInvocationCharacterizationTest {
         Files.writeString(controlRoot.resolve(operationId).resolve("result.txt"), "0")
 
         val recorder = RecordingBoundary()
+        // S1 sets `controlDirRoot` to the shell-recovery root, which the central fixture does not
+        // expose today. The fixture is the default; this test keeps its explicit coordinator wiring
+        // because that single seam is the System-Under-Test here, not the fixture surface.
         val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            journal,
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = InMemoryReplayCursorStore(clock),
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = eventStore,
+            credentialScopePort = CoordinatorFixture.noOpCredentialScopePort(),
             controlDirRoot = controlRoot,
+            shOptions = ShOptions.EMPTY,
             commonExecutionBoundary = recorder,
             stepRegistry = CoreStepRegistryFactory.registry(),
         )
@@ -405,16 +381,11 @@ class DurableProtocolInvocationCharacterizationTest {
             ),
         )
         val recorder = RecordingBoundary()
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            journal,
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            commonExecutionBoundary = recorder,
-            stepRegistry = CoreStepRegistryFactory.registry(),
+        val coordinator = CoordinatorFixture.default(
+            clock = clock,
+            journal = journal,
+            eventSink = eventStore,
+            recorder = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -491,16 +462,11 @@ class DurableProtocolInvocationCharacterizationTest {
             ),
         )
         val recorder = RecordingBoundary()
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            journal,
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            commonExecutionBoundary = recorder,
-            stepRegistry = CoreStepRegistryFactory.registry(),
+        val coordinator = CoordinatorFixture.default(
+            clock = clock,
+            journal = journal,
+            eventSink = eventStore,
+            recorder = recorder,
         )
 
         val outcome = coordinator.run(pipeline, runId)
@@ -516,14 +482,10 @@ class DurableProtocolInvocationCharacterizationTest {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()
         val runId = RunId("a1-4-lifecycle-order")
-        val coordinator = CanonicalDurableRunCoordinator(
-            CanonicalNodeDispatcher(),
-            InMemoryOperationJournal(clock),
-            InMemoryReplayCursorStore(clock),
-            clock,
-            DefaultEffectReplayPolicy(),
-            eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
+        val coordinator = CoordinatorFixture.negativeNoRegistry(
+            clock = clock,
+            journal = InMemoryOperationJournal(clock),
+            eventSink = eventStore,
         )
         val outcome = coordinator.run(echoPipeline("ordered"), runId)
         assertEquals(RunOutcome.Success, outcome)

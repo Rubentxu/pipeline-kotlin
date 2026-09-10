@@ -246,4 +246,42 @@ class UatDsl003ParallelTest {
         assertTrue(events.indexOfLast { it is ParallelBranchFinished } < events.indexOf(finished.single()),
             "Every ParallelBranchFinished must precede StageFinished")
     }
+
+    // ---- P6 (PAR-D): durable rerun reuses the terminal aggregate ----
+
+    @Test
+    fun `P6 - second durable run reuses terminal aggregate with zero child executions and zero fabricated branch events`() {
+        val db = java.nio.file.Files.createTempFile("par-p6", ".db")
+        val stdout1 = runWithDb(parallelScript, db)
+        val events1 = JsonEventLog.decode(stdout1)
+        assertEquals(2, events1.filterIsInstance<ParallelBranchStarted>().count(), "fresh run must execute both branches")
+
+        val stdout2 = runWithDb(parallelScript, db)
+        val all2 = JsonEventLog.decode(stdout2)
+        // The durable event log of BOTH runs may interleave (sequence resets per
+        // run), so scope by wall clock: keep only events from the 2nd invocation.
+        val t1 = events1.map { it.occurredAt }.max()
+        val events2 = all2.filter { it.occurredAt > t1 }
+        assertEquals(0, events2.filterIsInstance<ParallelBranchStarted>().count(),
+            "reused terminal aggregate must not fabricate ParallelBranchStarted: $stdout2")
+        assertEquals(0, events2.filterIsInstance<ParallelBranchFinished>().count(),
+            "reused terminal aggregate must not fabricate ParallelBranchFinished")
+        assertEquals(0, events2.filterIsInstance<StepStarted>().count(),
+            "reused terminal aggregate must not re-execute any child step")
+        assertEquals("success", events2.filterIsInstance<StageFinished>().single().outcome)
+    }
+
+    private fun runWithDb(script: Path, db: Path): String {
+        val stdoutFile = java.nio.file.Files.createTempFile("uat", ".stdout")
+        val process = ProcessBuilder(appBin.toString(), "run", "--db", db.toString(), script.toString())
+            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
+            .redirectErrorStream(true)
+            .start()
+        val exitCode = process.waitFor()
+        val stdout = java.nio.file.Files.readString(stdoutFile).trim()
+        if (exitCode != 0) {
+            throw IllegalStateException("CLI exited with $exitCode. output: $stdout")
+        }
+        return stdout
+    }
 }

@@ -1,0 +1,10 @@
+version: 1
+expect:
+  runOutcome: UNSTABLE
+constraints:
+  - exactly: { event: CatchErrorTriggered, where: { buildResult: FAILURE }, count: 1 }
+  - exactly: { event: CatchErrorTriggered, where: { buildResult: UNSTABLE }, count: 1 }
+  - before:
+      first: { event: CatchErrorTriggered, where: { buildResult: FAILURE } }
+      second: { event: CatchErrorTriggered, where: { buildResult: UNSTABLE } }
+  - exactly: { event: EchoOutputCaptured, where: { text: continues }, count: 1 }

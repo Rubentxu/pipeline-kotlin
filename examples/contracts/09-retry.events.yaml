@@ -1,0 +1,12 @@
+version: 1
+expect:
+  runOutcome: SUCCESS
+constraints:
+  - exactly: { event: RetryAttemptStarted, count: 2 }
+  - exactly: { event: RetryAttemptFinished, count: 2 }
+  - before:
+      first: { event: RetryAttemptStarted, where: { attempt: 1 } }
+      second: { event: RetryAttemptFinished, where: { attempt: 1 } }
+  - before:
+      first: { event: RetryAttemptStarted, where: { attempt: 2 } }
+      second: { event: RetryAttemptFinished, where: { attempt: 2 } }

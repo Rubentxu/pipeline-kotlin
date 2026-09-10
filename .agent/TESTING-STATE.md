@@ -60,3 +60,11 @@
   before oracle runs. NOT a code regression (contamination reproduced on pre-branch binary).
 - Known launcher note: TMPDIR here = ~/.jcode/scratch so oracle scratch lives at
   $TMPDIR/pipeline-examples.
+
+## EVT-1 CLOSED (2026-09-10, trunk 4ca1dfed)
+- Cycle evt-1-resource-ref-envelope CLOSED (SDDK seq 864, all gates PASSED).
+- Identity ownership FINAL: ResourceKind/ResourceRef/ResourceRefs in pipeline-domain
+  (dev.rubentxu.pipeline.v2.domain.identity); EventRef/Envelope/Projector in pipeline-events.
+- Module gates: pipeline-domain 360 tests, pipeline-events 117 tests, all green.
+- P4-EX oracle now hermetic per-run (run.sh --control-root mktemp); INC-EVT-H1 filed
+  as BASELINE harness debt. Contract-09 flake = stale durable-shell state, never EVT-1.

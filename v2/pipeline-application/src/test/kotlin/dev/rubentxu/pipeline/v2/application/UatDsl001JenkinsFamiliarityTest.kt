@@ -20,7 +20,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
@@ -64,10 +63,6 @@ class UatDsl001JenkinsFamiliarityTest {
         Paths.get(javaClass.getResource("/grammar-full.pipeline.kts")!!.toURI())
     }
 
-    @Disabled("BLOCKED-ON-EM E-EM-11: grammar-full asserts M2-R1 parallel/retry/timeout events only the " +
-        "retired legacy PipelineRun emits; canonical coordinator cannot compile parallel+sibling " +
-        "(G2) and emits no RetryAttempt/TimeoutScheduled/ParallelBranch events. Re-open when E-EM-11 " +
-        "(canonical M2-R1 event parity) lands.")
     @Test
     fun `full grammar script compiles and emits parseable JSON`() {
         val result = ProcessBuilder(appBin.toString(), "run", grammarFullScript.toString())
@@ -86,8 +81,6 @@ class UatDsl001JenkinsFamiliarityTest {
         assertTrue(events.isNotEmpty(), "events must not be empty")
     }
 
-    @Disabled("BLOCKED-ON-EM E-EM-11: asserts ParallelBranch/RetryAttempt/TimeoutScheduled events of the " +
-        "retired legacy PipelineRun; canonical coordinator cannot emit them. See E-EM-11.")
     @Test
     fun `full grammar script emits expected event kinds`() {
         val (stdout, events) = runAndDecode()
@@ -119,8 +112,6 @@ class UatDsl001JenkinsFamiliarityTest {
         assertTrue(events.any { it is TimeoutScheduled }, "Must have TimeoutScheduled event")
     }
 
-    @Disabled("BLOCKED-ON-EM E-EM-11: requires the full grammar (incl. parallel Deploy stage) to run on " +
-        "the canonical path; blocked by E-EM-11. See E-EM-11.")
     @Test
     fun `full grammar script contains error and sleep step types`() {
         val (_, events) = runAndDecode()

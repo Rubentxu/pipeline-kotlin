@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
 import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
@@ -748,5 +749,10 @@ private fun runCanonicalPipeline(
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,
+        // RETRY-D (ADR-0075): production wire-up. The retry aggregate is reconciled against
+        // the on-disk control journal so a `run` invocation with the same --db and
+        // --control-root reuses the prior aggregate terminal state and does not re-launch
+        // child bodies that already succeeded/failed terminally.
+        retryControlJournal = FileBasedRetryControlJournal(controlDirRoot),
     ).run(pipeline, runId)
 }

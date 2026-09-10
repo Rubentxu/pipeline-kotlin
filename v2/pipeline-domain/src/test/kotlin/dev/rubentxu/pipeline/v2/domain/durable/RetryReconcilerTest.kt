@@ -122,6 +122,22 @@ class RetryReconcilerTest {
             )
             assertEquals(RetryReconciliationDecision.ReuseFailure(attempt = 2), decision)
         }
+
+        @Test
+        fun `superseded failure is skipped so planner reaches the active attempt`() {
+            // The dispatch loop already persisted attempt 2 RUNNING after attempt 1 FAILED.
+            // The planner must skip attempt 1 (which is "superseded") and resume attempt 2.
+            val decision = RetryReconciler.reconcile(
+                input(
+                    maxAttempts = 3,
+                    controls = listOf(
+                        control(1, OperationStatus.FAILED),
+                        control(2, OperationStatus.RUNNING),
+                    ),
+                ),
+            )
+            assertEquals(RetryReconciliationDecision.ScheduleAttempt(2), decision)
+        }
     }
 
     @Nested

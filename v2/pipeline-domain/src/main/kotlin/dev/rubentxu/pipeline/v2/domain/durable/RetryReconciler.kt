@@ -100,6 +100,15 @@ object RetryReconciler {
         val maxPersistedAttempt = byAttempt.keys.maxOrNull() ?: 0
         for (attempt in 1..maxPersistedAttempt) {
             val control = byAttempt[attempt] ?: continue
+            // A terminal attempt with a successor in the control rows has
+            // already been "advanced past" by the dispatch loop. Skip it so
+            // the planner reaches the active attempt (e.g. attempt 2 RUNNING)
+            // and returns ResumeAttempt, not another AdvanceAfterFailure.
+            if ((control.status.isFailureForRetry() || control.status.isTerminal) &&
+                byAttempt.containsKey(attempt + 1)
+            ) {
+                continue
+            }
             val rawChildren = input.childrenByAttempt[attempt].orEmpty()
             // Synthetic PENDING rows emitted by the production reader for
             // (attempt, childIndex) positions absent from the OperationJournal

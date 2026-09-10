@@ -1427,15 +1427,24 @@ class CanonicalDurableRunCoordinator(
 
                     when (attemptOutcome) {
                         is StepOutcome.Success -> {
-                            journal.updateStatus(controlOpId, attempt, OperationStatus.SUCCEEDED, fingerprint)
+                            persistAttemptTerminalTransition(
+                                controlOpId, attempt, OperationStatus.SUCCEEDED, fingerprint,
+                                parentBodyPath, runId, stageIndex, stepIndex, block, scope,
+                            )
                             return StepOutcome.Success
                         }
                         is StepOutcome.Unstable -> {
-                            journal.updateStatus(controlOpId, attempt, OperationStatus.FAILED, fingerprint)
+                            persistAttemptTerminalTransition(
+                                controlOpId, attempt, OperationStatus.FAILED, fingerprint,
+                                parentBodyPath, runId, stageIndex, stepIndex, block, scope,
+                            )
                             return attemptOutcome
                         }
                         is StepOutcome.Failure -> {
-                            journal.updateStatus(controlOpId, attempt, OperationStatus.FAILED, fingerprint)
+                            persistAttemptTerminalTransition(
+                                controlOpId, attempt, OperationStatus.FAILED, fingerprint,
+                                parentBodyPath, runId, stageIndex, stepIndex, block, scope,
+                            )
                             if (attempt >= scope.maxAttempts) return attemptOutcome
                             // Loop again: the driver will emit AdvanceAfterFailure or ReuseFailure.
                         }
@@ -1451,6 +1460,58 @@ class CanonicalDurableRunCoordinator(
             PipelineFailure(
                 dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
                 "retry reconciliation loop exceeded budget (${scope.maxAttempts})",
+            ),
+        )
+    }
+
+    /**
+     * E-EM-11 T2.1: project a retry attempt's terminal durable transition.
+     * Persists the terminal status via the control journal and emits
+     * [RetryAttemptFinished] only when the transition actually occurred
+     * (RUNNING -> FAILED / RUNNING -> SUCCEEDED). Re-terminaling an attempt
+     * that is already in the requested terminal state is a no-op: no event.
+     * Replay paths (ReuseSuccess / ReuseFailure / CloseSuccessFromChild) do
+     * not route through here, so replay never fabricates extra events.
+     */
+    private fun persistAttemptTerminalTransition(
+        controlOpId: String,
+        attempt: Int,
+        status: OperationStatus,
+        fingerprint: Fingerprint,
+        parentBodyPath: List<BlockSegment>,
+        runId: RunId,
+        stageIndex: Int,
+        stepIndex: Int,
+        block: BlockStepNode,
+        scope: BlockShellScope.Retry,
+    ) {
+        val priorStatus = retryControlJournal?.readState(
+            controlOpId, runId.value, stageIndex, stepIndex,
+            parentBodyPath = parentBodyPath,
+            maxAttempts = scope.maxAttempts,
+            currentFingerprint = fingerprint,
+        )?.controlRows?.firstOrNull { it.attempt == attempt }?.status
+        retryControlJournal?.updateStatus(controlOpId, attempt, status, fingerprint)
+        val transitioned = priorStatus == null || priorStatus != status
+        if (!transitioned) return
+        val outcomeText = when (status) {
+            OperationStatus.SUCCEEDED -> "succeeded"
+            OperationStatus.FAILED -> "failed"
+            else -> error("persistAttemptTerminalTransition requires a terminal status, got $status")
+        }
+        eventSink.append(
+            dev.rubentxu.pipeline.v2.events.RetryAttemptFinished(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                attemptNumber = attempt,
+                maxAttempts = scope.maxAttempts,
+                stepName = block.id.value,
+                stepType = block.pluginStepId.value,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                outcome = outcomeText,
             ),
         )
     }

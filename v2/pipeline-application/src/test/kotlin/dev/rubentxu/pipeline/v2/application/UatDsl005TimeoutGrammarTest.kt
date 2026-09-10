@@ -94,6 +94,67 @@ class UatDsl005TimeoutGrammarTest {
     }
 
     @Test
+    fun `T21 retry terminal transitions project exactly one RetryAttemptFinished per attempt`() {
+        val fixture = java.nio.file.Files.createTempFile("t21", ".pipeline.kts").toFile()
+        fixture.writeText(
+            """
+            pipeline {
+                stages {
+                    stage("t21") {
+                        retry(2) {
+                            sh("test -f /tmp/t21-marker && exit 0 || { touch /tmp/t21-marker; exit 1; }")
+                        }
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        fixture.deleteOnExit()
+        java.io.File("/tmp/t21-marker").delete()
+
+        val stdoutFile = java.nio.file.Files.createTempFile("t21", ".stdout")
+        val pb = ProcessBuilder(appBin.toString(), "run", fixture.absolutePath)
+            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        assertEquals(0, process.waitFor(), "fail-then-succeed retry must end green")
+        val events = JsonEventLog.decode(java.nio.file.Files.readString(stdoutFile).trim())
+
+        val started = events.filterIsInstance<RetryAttemptStarted>()
+        val finished = events.filterIsInstance<RetryAttemptFinished>()
+
+        // Exactly one Started + one Finished per terminal attempt transition.
+        assertEquals(2, started.size, "Started: $started")
+        assertEquals(2, finished.size, "Finished: $finished")
+
+        val byAttempt = finished.associateBy { it.attemptNumber }
+        assertEquals(2, byAttempt.size, "one Finished per attempt: $finished")
+        assertEquals("failed", byAttempt.getValue(1).outcome, "attempt 1 must project FAILED")
+        assertEquals("succeeded", byAttempt.getValue(2).outcome, "attempt 2 must project SUCCEEDED")
+
+        // Ordering when the substrate preserves it: Started(1) < Finished(1) < Started(2) < Finished(2).
+        val retryIdx = events
+            .filter { it is RetryAttemptStarted || it is RetryAttemptFinished }
+            .map { e ->
+                when (e) {
+                    is RetryAttemptStarted -> "RetryAttemptStarted" to e.attemptNumber
+                    is RetryAttemptFinished -> "RetryAttemptFinished" to e.attemptNumber
+                    else -> error("unreachable")
+                }
+            }
+        assertEquals(
+            listOf(
+                "RetryAttemptStarted" to 1,
+                "RetryAttemptFinished" to 1,
+                "RetryAttemptStarted" to 2,
+                "RetryAttemptFinished" to 2,
+            ),
+            retryIdx,
+            "terminal transitions must interleave with attempt starts in order",
+        )
+    }
+
+    @Test
     fun `timeout-retry script emits timeout scheduled events`() {
         val (_, events) = runAndDecode()
 

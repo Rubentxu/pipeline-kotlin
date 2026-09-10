@@ -1123,6 +1123,25 @@ class CanonicalDurableRunCoordinator(
                     inherited == null -> scope.budgetMs
                     else -> minOf(inherited, scope.budgetMs)
                 }
+                // E-EM-11 T2.2: the timeout is now ADMITTED — decode passed, the
+                // effective deadline is computed and governs all children via
+                // childShOptions. Project the scheduling transition once, here,
+                // BEFORE any child StepStarted. Invalid payloads never reach this
+                // point (projectShellScope fails closed above with no children).
+                eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
+                        eventId = UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        timeoutSeconds = effective / 1000L,
+                        timeoutAction = "abort",
+                        stepName = block.id.value,
+                        stepType = block.pluginStepId.value,
+                        stageIndex = stageIndex,
+                        stepIndex = stepIndex,
+                    ),
+                )
                 stageShOptions.copy(timeoutMs = effective)
             }
             is BlockShellScope.Directory -> {

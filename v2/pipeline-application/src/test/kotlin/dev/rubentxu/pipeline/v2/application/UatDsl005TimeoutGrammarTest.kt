@@ -167,6 +167,43 @@ class UatDsl005TimeoutGrammarTest {
     }
 
     @Test
+    fun `T22 valid timeout schedules exactly once before child`() {
+        val fixture = java.nio.file.Files.createTempFile("t22", ".pipeline.kts").toFile()
+        fixture.writeText(
+            """
+            pipeline {
+                stages {
+                    stage("t22") {
+                        timeout(30, "SECONDS") {
+                            sh("echo t22-ok")
+                        }
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+        fixture.deleteOnExit()
+
+        val stdoutFile = java.nio.file.Files.createTempFile("t22", ".stdout")
+        val pb = ProcessBuilder(appBin.toString(), "run", fixture.absolutePath)
+            .redirectOutput(ProcessBuilder.Redirect.to(stdoutFile.toFile()))
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        assertEquals(0, process.waitFor(), "valid timeout with fast child must succeed")
+        val events = JsonEventLog.decode(java.nio.file.Files.readString(stdoutFile).trim())
+
+        val scheduled = events.filterIsInstance<TimeoutScheduled>()
+        assertEquals(1, scheduled.size, "TimeoutScheduled must be emitted exactly once: $scheduled")
+        assertTrue(scheduled.first().timeoutSeconds > 0, "timeoutSeconds must be positive")
+        assertEquals("success", events.lastOrNull().let { (it as? RunFinished)?.outcome }, "run must succeed")
+
+        // Ordering: TimeoutScheduled precedes the child StepStarted it governs.
+        val schedIdx = events.indexOfFirst { it is TimeoutScheduled }
+        val childStartIdx = events.indexOfFirst { it is StepStarted }
+        assertTrue(schedIdx in 0 until childStartIdx, "TimeoutScheduled must precede child StepStarted")
+    }
+
+    @Test
     fun `timeout-retry script produces complete event timeline`() {
         val (_, events) = runAndDecode()
 

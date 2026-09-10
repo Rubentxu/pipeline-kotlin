@@ -5,6 +5,9 @@ Program: EVT
 
 ## 1. Why this exists
 
+**Grounding anchor:** `main` = `d0ccf4b5` at package revision time. CTX-P4-EX is closed and its 10/10 real-example gate is the input oracle for EVT, not planned work. See `../00-context/EVT_P4_EX_BASELINE.md`.
+
+
 `pipeline-kotlin` already emits typed events and has a local SQLite implementation, but the current
 abstraction must not make SQLite, console logs, Jenkins or any remote transport part of the execution
 model. The evolution is justified only if it solves concrete problems now and preserves future goals.

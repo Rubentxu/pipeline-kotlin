@@ -1,6 +1,6 @@
 # UAT-EVT — real examples, history, verification and live relay
 
-Status: PROPOSED
+Status: PROPOSED EVT UAT; **P4-EX baseline already CLOSED at d0ccf4b5**
 
 ## Test philosophy
 
@@ -13,65 +13,50 @@ user-facing behavior:
 
 All tests use the installDist binary unless marked HF0/HF1.
 
-## Existing examples baseline
+## Authoritative P4-EX baseline (already closed)
 
-| Example | Expected execution contract |
+Do **not** create examples 07–10 in EVT: they are already on trunk and validated by the real CLI at `d0ccf4b5`. The starting oracle is:
+
+| Example | Real-CLI baseline contract |
 |---|---|
 | `01-hello.pipeline.kts` | SUCCESS |
 | `02-multi-stage.pipeline.kts` | SUCCESS; declaration order visible |
 | `03-shell.pipeline.kts` | SUCCESS; real OS process |
 | `04-kotlin-control-flow.pipeline.kts` | SUCCESS; real scripting path |
-| `05-failing-step.pipeline.kts` | EXPECTED FAILURE; typed script failure |
-| `06-durable.pipeline.kts` | SUCCESS; durable/replay behavior |
+| `05-failing-step.pipeline.kts` | EXPECTED FAILURE; typed SCRIPT failure |
+| `06-durable.pipeline.kts` | two runs with same `--db`; current durable policy semantics |
+| `07-catch-error.pipeline.kts` | exactly 2 `CatchErrorTriggered`: inner FAILURE → outer UNSTABLE; echo afterwards |
+| `08-parallel.pipeline.kts` | second run same `--db`: 0 new branch lifecycle + 0 `StepStarted` |
+| `09-retry.pipeline.kts` | `RetryAttemptFinished` failed → succeeded; deterministic |
+| `10-timeout.pipeline.kts` | `TimeoutScheduled`; timed-out shell; expected terminal FAILURE |
 
-The harness must treat expected non-zero as an expected outcome, not a harness crash.
+`examples/run.sh` already owns expected exit/outcome semantics and returns 0 for the complete 10-example gate. Expected non-zero examples are successful acceptance cases when their declared outcome matches.
 
-## New example scenarios
+### EVT-3 migration target
 
-### EX-EVT-07 — nested catchError
+EVT-3 does not add these behaviors. It moves their verification from scenario-specific shell parsing toward reusable typed contracts:
 
-Proposed file: `07-catch-error.pipeline.kts` + `07-catch-error.events.yaml`.
+```text
+existing run.sh assertion
+        |
+        +--> characterize law
+        |
+        +--> EventConstraint ADT
+        |
+        +--> sidecar contract codec
+        |
+        +--> same captured trace
+                 |
+          old verdict == new verdict
+```
 
-Required assertions:
-- inner and outer catch events exactly once each;
-- failure observation order inner -> outer;
-- final expected run/stage outcome preserved;
-- step after both scopes executes when semantics permit;
-- no stale catch frame affects a later unrelated failure;
-- exit markers do not fabricate duplicate CatchErrorTriggered events.
+For 07–10 the supplied `examples/contracts/*.events.yaml` files in this proposal are **candidate normalized representations of laws that are already proven**, not evidence that the `.pipeline.kts` files are missing.
 
-### EX-EVT-08 — parallel
+Special baseline debt to preserve while migrating:
 
-Proposed file: `08-parallel.pipeline.kts` + contract.
-
-Required assertions:
-- each branch Started exactly once and Finished exactly once on fresh run;
-- Started(branch X) happens-before Finished(branch X);
-- StageStarted happens-before branch lifecycle;
-- required branch terminals happen-before StageFinished;
-- no global A-before-B order assumed;
-- durable replay: zero new branch lifecycle and zero new StepStarted for reused aggregate/children.
-
-### EX-EVT-09 — retry fail→success
-
-Proposed file: `09-retry.pipeline.kts` + deterministic counter fixture + contract.
-
-Required assertions:
-- attempt 1 FAILED, attempt 2 SUCCEEDED;
-- retry events have exact ordinal identity;
-- rerun with same durable facts produces no attempt 3;
-- final outcome equivalent under replay.
-
-### EX-EVT-10 — timeout
-
-Proposed file: `10-timeout.pipeline.kts` + contract.
-
-Required assertions:
-- exactly one effective TimeoutScheduled when admitted;
-- event precedes governed child execution;
-- typed timeout terminal semantics match runtime contract;
-- invalid timeout/admission produces no fabricated scheduled event/child;
-- expected timeout is not reported as harness infrastructure failure.
+- flags after the script path are currently ignored by the CLI; use leading durable flags;
+- durable replay output may contain prior events with original timestamps (`INC-021d`); until first-class cursor/run identity replaces it, parity tests must account for the existing scoping behavior;
+- 10-timeout expects FAILURE, not UNSTABLE.
 
 ## Event Harness protocol canaries
 

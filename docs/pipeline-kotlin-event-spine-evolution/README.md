@@ -1,7 +1,9 @@
 # pipeline-kotlin — Event Spine, Verification & Policy evolution pack
 
 Status: **PROPOSED / merge-ready documentation**  
-Grounded against current `main` after CTX-P closure (2026-09-10).
+Grounded against `main` **d0ccf4b572cd80a5ff48ac55af58b265603bf566** after CTX-P4-EX closure (2026-09-10).
+
+Baseline fact: the real `examples/run.sh` acceptance gate is already **GREEN 10/10** and examples 07–10 already exist with real-CLI event assertions. EVT must evolve/reuse that evidence, never recreate or weaken it.
 
 This pack turns the conversation around event verification, live observers, local-first history,
 future controller/Jenkins integration and Cedar policies into a sequenced evolution that can be
@@ -21,8 +23,7 @@ The goal is **not** to build a generic event platform. The goal is to make pipel
 ## 80/20 scope
 
 **Build first:** `PipelineEventEnvelope`, `ResourceRef`, transport-agnostic EventLog/EventTail ports,
-local durable adapter behind those ports, post-run Event Harness, real examples with event contracts,
-and a detached live relay proof.
+local durable adapter behind those ports, a post-run Event Harness that **absorbs/generalizes the already-green P4-EX assertions**, and a detached live relay proof.
 
 **Defer until evidence:** NATS/Kafka selection, generic observer/plugin runtime, controller protocol,
 Jenkins implementation, Cedar enforcement, organization policy distribution, CloudEvents SDK dependency.
@@ -38,7 +39,8 @@ stdout/stderr as DomainEvents, one JVM/process per observer, and a universal tem
 - `docs/v2/06-design/POLICY_GUARDRAILS_DESIGN.md` — Cedar audit/shadow/enforcement model.
 - `docs/v2/04-adrs/ADR-0077..0080` — proposed architecture decisions.
 - `docs/v2/05-roadmap/EVENT_SPINE_EVOLUTION.md` — sequenced EVT/POL program.
-- `docs/v2/07-uat/UAT_EVT_REAL_EXAMPLES.md` — measurable UAT and real examples.
+- `docs/v2/00-context/EVT_P4_EX_BASELINE.md` — immutable starting evidence from d0ccf4b5.
+- `docs/v2/07-uat/UAT_EVT_REAL_EXAMPLES.md` — measurable UAT built on the existing 10-example gate.
 - `openspec/changes/*` — proposal/design/tasks for implementation cycles.
 - `integration/*` — exact roadmap/backlog snippets and merge guidance.
 

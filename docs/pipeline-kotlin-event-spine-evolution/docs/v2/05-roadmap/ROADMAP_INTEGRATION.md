@@ -10,7 +10,7 @@ The existing roadmap already has:
 - M8: graph/provenance from execution history;
 - M9: policy engine/hardening.
 
-EVT is the missing evolutionary bridge. It should be inserted after the current local/LFC-2 execution
+The CTX-P4-EX gate at `d0ccf4b5` already proves 10 real examples. EVT is the missing evolutionary bridge that generalizes that evidence and makes the same event model usable for local history/live remote consumers. It should be inserted after the current local/LFC-2 execution
 foundation and before resuming the remote controller path. It extends E1 rather than replacing it and
 provides value locally before M4/M6 exist.
 
@@ -18,6 +18,7 @@ provides value locally before M4/M6 exist.
 
 | New work | Existing roadmap anchor | Relationship |
 |---|---|---|
+| P4-EX baseline | CTX-P closure / examples | 10/10 real CLI gate is input evidence, not new EVT work |
 | EVT-1 envelope/identity | E1-01/E1-04 | evolve typed IDs + EventEnvelope |
 | EVT-2 ports/local history | E1-05..E1-07 | separate contract from SQLite adapter |
 | EVT-4 live relay/cursor | E5-03..E5-05 | precondition/evidence for commands/events, ACK/replay |

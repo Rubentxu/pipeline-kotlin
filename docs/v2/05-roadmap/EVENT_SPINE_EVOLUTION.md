@@ -11,9 +11,10 @@ compatible seam for the next deployment topology.
 
 ## EVT-0 — Grounding and contract freeze
 
-**Goal:** inventory current event production, sequence assignment, storage, event types and all existing real UAT/example assertions.
+**Goal:** inventory current event production, sequence assignment, storage, event types and all existing real UAT/example assertions, using **d0ccf4b5 / CTX-P4-EX as the immutable behavioral baseline**.
 
 Deliverables:
+- CTX-P4-EX baseline receipt/evidence mapped into EVT (`10/10` real examples already GREEN);
 - event producer/reachability inventory;
 - baseline event catalogue + producers;
 - authority statement: Journal != Events;
@@ -59,23 +60,25 @@ UAT:
 - history can be filtered by event type and ResourceRef;
 - no stdout/stderr chunks stored as DomainEvents.
 
-## EVT-3 — Event Harness POST_RUN + real examples
+## EVT-3 — Event Harness POST_RUN + P4-EX migration
 
-**Goal:** make real examples executable protocol specifications.
+**Goal:** generalize the **already executable** examples into reusable protocol specifications without weakening the d0ccf4b5 gate.
 
 Deliverables:
 - universal lifecycle grammar;
 - typed constraints (`Exactly`, `Never`, `Before`, `Outcome` minimum);
 - YAML/TOML contract codec;
 - minimal counterexample reporting;
-- examples 01..06 classified by expected outcome;
-- new real examples for catchError, parallel, retry and timeout;
-- `examples/run.sh` or dedicated acceptance runner distinguishes expected failures/timeouts.
+- import/characterize the existing `examples/run.sh` `EXPECTED_OUTCOME` / `EXPECTED_EXIT` matrix;
+- preserve examples 01..10 exactly as real CLI acceptance fixtures;
+- migrate the existing 07–10 event assertions into typed scenario contracts (sidecar YAML/TOML may become their declarative representation);
+- differential parity gate: existing shell verifier verdict == Event Harness verdict before deleting any old assertion;
+- `examples/run.sh` remains GREEN and may delegate to the harness only after parity is demonstrated.
 
 UAT: see `docs/v2/07-uat/UAT_EVT_REAL_EXAMPLES.md`.
 
 Exit:
-- all supported examples execute via installDist;
+- baseline `examples/run.sh` remains 10/10 GREEN through installDist;
 - contracts validate actual produced histories;
 - at least one deliberately mutated trace is rejected (anti-false-green canary).
 

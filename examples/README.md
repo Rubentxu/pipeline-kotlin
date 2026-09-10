@@ -76,6 +76,7 @@ Known limitations (tracked in `docs/debt/`):
 expected execution outcome and observable event contract both pass through the installed CLI
 distribution. `run.sh` already asserts this for 07–10 (see above).
 
-Companion declarative contracts live in `examples/contracts/*.events.yaml` (PROPOSED, EVT-07/EVT-08):
-the Event Harness will run them POST_RUN by default; live verification is not required for these
-assertions. Until the harness lands, `run.sh` is the executable contract authority.
+Companion normalized contracts live in `examples/contracts/*.events.yaml` (candidate schemas, EVT-07/EVT-08):
+they normalize the already-proven P4-EX laws so the Event Harness can differential-test against the
+`run.sh` oracle (POST_RUN by default; live verification not required). Until the harness lands,
+`run.sh` is the executable contract authority.

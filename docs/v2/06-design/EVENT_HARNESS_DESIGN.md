@@ -8,6 +8,8 @@ Primary mode: POST_RUN
 The harness exists to catch observable protocol defects that ordinary exit-code tests miss. It turns real
 pipeline histories into executable specifications and removes duplicated ad-hoc event assertions.
 
+**Grounded starting point:** CTX-P4-EX at `d0ccf4b5` already has a GREEN 10-example real-CLI gate, including event assertions for catchError/parallel/retry/timeout. The first harness implementation must run *differentially* against that oracle; it is a refactoring/generalization of verification, not a redefinition of expected behavior.
+
 ## Layer 1 — universal event protocol grammar
 
 These laws apply independently of a specific example:

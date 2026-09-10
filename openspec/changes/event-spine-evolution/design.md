@@ -32,3 +32,8 @@ PolicyAdmission can intentionally deny a protected effect.
 - CloudEvents mapping at external boundary;
 - transport chosen by M4 needs after EVT-5 measurements;
 - controller/Jenkins consume same envelope/ResourceRef.
+
+
+## Grounded migration oracle
+
+`d0ccf4b5` / CTX-P4-EX is the behavioral oracle. `examples/run.sh` already validates 10 real pipelines; examples 07–10 include event-level contracts. EVT-3 must differential-test new typed constraints against those existing assertions before replacing their implementation. No Event Harness change may weaken an existing P4-EX law merely to simplify the grammar.

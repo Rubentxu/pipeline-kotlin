@@ -93,3 +93,83 @@ No se promete exactly-once de side effects externos. Se ofrecen:
   SPIKE-016 N6 (crash del worker durante la ventana FAILED_TIMEOUT) y la
   matriz de cortes SPIKE-016 E3/E3a. Gate de release para las fases
   EM-1/EM-2/EM-5/EM-8.
+
+## 9. Addendum RETRY-D (2026-09-10, ADR-0075)
+
+Canonical retry constructs own a durable **control record** per logical
+attempt, in addition to the per-side-effect child records. The control record
+is the authority; retry observability events are projections.
+
+### 9.1 Retry control record
+
+```text
+RetryControlIdentity
+    = OpId(runId, stageIndex, stepIndex, inherited parentBodyPath)
+AttemptIdentity
+    = RetryControlIdentity + 1-based attempt ordinal
+```
+
+Invariants:
+
+- The control row persists BEFORE any child effect is scheduled.
+- A child effect belongs to exactly one `(RetryControlIdentity, attempt,
+  childIndex)`. This triple is deterministic across restarts.
+- The single authority for the control row is the retry reconciliation /
+  control-flow component. Child executors, `ShExecution`, step handlers, and
+  event projectors MUST NOT write it.
+
+### 9.2 Crash-window matrix (W0–W5)
+
+| Window | Evidence at re-entry | Required decision |
+|---|---|---|
+| W0 | no control row, no child evidence | safe to initialise retry |
+| W1 | control row persisted, no child evidence (AttemptPending) | schedule N exactly once |
+| W2 | control row + child RUNNING (AttemptInProgress) | delegate / reconcile, no duplicate child |
+| W3 | child N terminal failure, control row stale | derive failure, never execute N again, advance or Exhausted |
+| W4 / **Window C** | child N terminal success, control row stale | reconstruct success, close aggregate, **child executions = 0** |
+| W5 | control row terminal, observability gap | no re-execution; projections may complete |
+
+W4 is mandatory: it is proven with a real `OperationJournal` decorator
+configured against the exact canonical child `OpId`, not by argument or by
+probabilistic race.
+
+### 9.3 Compatibility with pre-ADR-0075 journals
+
+Pre-ADR-0075 journals may contain retry child history without the new control
+row. The recovery policy is:
+
+```text
+A — Safe reconstruction
+    legacy child facts  →  RetryReconciliationState
+    when identities and child facts unambiguously reconstruct the aggregate.
+
+B — Fail closed
+    retry durable history exists
+    + retry control state absent
+    + reconstruction ambiguous
+    → explicit incompatible durable state (RejectDivergence)
+```
+
+NEVER:
+
+```text
+control row absent → assume fresh retry → execute body again
+```
+
+That reproduces the bug ADR-0075 closes.
+
+### 9.4 Terminality law
+
+```text
+AggregateTerminalSuccess(attempt)
+OR
+AggregateTerminalExhausted(attempt)
+=
+terminal Retry state
+
+terminal Retry + compatible replay
+→ zero child scheduling
+```
+
+This property holds regardless of whether retry observability events were
+projected.

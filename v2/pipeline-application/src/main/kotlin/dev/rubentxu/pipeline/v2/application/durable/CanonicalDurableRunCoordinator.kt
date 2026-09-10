@@ -18,6 +18,11 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeC
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
+// RETRY-D: control journal + reconciliation driver (ADR-0075 §11).
+import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
+import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory
+import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
+import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
@@ -348,6 +353,10 @@ class CanonicalDurableRunCoordinator(
     // later, execution. Additive at the end of the ctor so the ~25 legacy call-sites (positional or
     // named) compile unchanged. No global registry, no service locator, no singleton.
     private val stepRegistry: StepRegistry? = null,
+    // RETRY-D: optional retry control journal. When bound, the retry branch of `dispatchBody`
+    // routes through RetryReconciliationDriver (ADR-0075 §11). When null, the pre-ADR-0075
+    // inline retry loop is preserved bit-equivalent — existing callers and tests see no change.
+    private val retryControlJournal: FileBasedRetryControlJournal? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
     private var contextStack: ContextStack = ContextStack.EMPTY
@@ -1165,12 +1174,31 @@ class CanonicalDurableRunCoordinator(
             // to the child bodyPath, so every attempt gets its own journal rows under
             // exactly-once OpId semantics; completed attempts are never re-executed on
             // restart/replay (journal lookup, not memory). Other scopes run the body once.
-            val attemptCount = when (scope) {
-                is BlockShellScope.Retry -> scope.maxAttempts
-                else -> 1
-            }
-            var attempt = 1
-            bodyLoop@ while (attempt <= attemptCount) {
+            //
+            // RETRY-D (ADR-0075): when `retryControlJournal` is bound, the retry aggregate
+            // is reconciled against durable state BEFORE each attempt dispatch. The legacy
+            // in-memory counter is replaced by a control journal that survives restarts.
+            // When the journal is NOT bound, the pre-RETRY-D inline loop is preserved
+            // bit-equivalent — existing callers and tests see no change.
+            if (scope is BlockShellScope.Retry && retryControlJournal != null) {
+                outcome = dispatchRetryAwareBody(
+                    scope = scope,
+                    block = block,
+                    runId = runId,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stageName = stageName,
+                    stageShOptions = stageShOptions,
+                    parentBodyPath = parentBodyPath,
+                    childShOptions = childShOptions,
+                )
+            } else {
+                val attemptCount = when (scope) {
+                    is BlockShellScope.Retry -> scope.maxAttempts
+                    else -> 1
+                }
+                var attempt = 1
+                bodyLoop@ while (attempt <= attemptCount) {
                 // Each attempt re-evaluates the body from scratch; a prior attempt's
                 // failure must not survive a later successful attempt.
                 outcome = StepOutcome.Success
@@ -1240,6 +1268,7 @@ class CanonicalDurableRunCoordinator(
                     }
                 }
                 break@bodyLoop // body completed without failure — no extra attempt (WL-R2)
+                }
             }
         } finally {
             if (scope is BlockShellScope.Directory) {
@@ -1269,6 +1298,186 @@ class CanonicalDurableRunCoordinator(
         }
 
         return outcome
+    }
+
+    /**
+     * RETRY-D (ADR-0075): dispatch the body of a `core.retry` block under the durable
+     * control journal. The single-writer law applies: this function is the only path
+     * that mutates [FileBasedRetryControlJournal] for the retry aggregate; the driver
+     * is plan-only.
+     *
+     * Algorithm:
+     *   1. Plan via [RetryReconciliationDriver] — a pure read of the journal.
+     *   2. Branch on [RetryReconciliationDecision]:
+     *      - Terminal (ReuseSuccess / ReuseFailure / CloseSuccessFromChild /
+     *        RejectDivergence): return the corresponding StepOutcome.
+     *      - ScheduleAttempt(n) / ResumeAttempt(n): persist RUNNING, dispatch the body
+     *        children, persist SUCCEEDED / FAILED, and re-plan.
+     *      - AdvanceAfterFailure(from, to): persist the new attempt row, re-plan.
+     *
+     * The loop is bounded by [scope.maxAttempts] + 1 ticks to guarantee progress.
+     */
+    private suspend fun dispatchRetryAwareBody(
+        scope: BlockShellScope.Retry,
+        block: BlockStepNode,
+        runId: RunId,
+        stageIndex: Int,
+        stepIndex: Int,
+        stageName: String,
+        stageShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        childShOptions: ShOptions,
+    ): StepOutcome {
+        val journal = retryControlJournal ?: return StepOutcome.Failure(
+            PipelineFailure(
+                dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                "retry control journal not bound",
+            ),
+        )
+        val controlOpId = RetryIdentityFactory.controlOperationId(runId.value, stageIndex, stepIndex, parentBodyPath)
+        val fingerprint = computeRetryContractFingerprint(parentBodyPath, scope)
+        val driver = RetryReconciliationDriver(
+            journal = journal,
+            identity = dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity(operationId = controlOpId),
+            controlOpId = controlOpId,
+            parentBodyPath = parentBodyPath,
+            fingerprint = fingerprint,
+            maxAttempts = scope.maxAttempts,
+            runId = runId.value,
+            stageIndex = stageIndex,
+            stepIndex = stepIndex,
+        )
+
+        var budget = scope.maxAttempts + 1
+        while (budget-- > 0) {
+            val decision = driver.plan()
+            when (decision) {
+                is RetryReconciliationDecision.ReuseSuccess -> return StepOutcome.Success
+                is RetryReconciliationDecision.ReuseFailure -> return StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
+                        "retry aggregate terminal failure at attempt ${decision.attempt}",
+                    ),
+                )
+                is RetryReconciliationDecision.CloseSuccessFromChild -> {
+                    journal.updateStatus(controlOpId, decision.attempt, OperationStatus.SUCCEEDED, fingerprint)
+                    return StepOutcome.Success
+                }
+                is RetryReconciliationDecision.RejectDivergence -> return StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                        "retry control fingerprint divergence: ${decision.reason}",
+                    ),
+                )
+                is RetryReconciliationDecision.ScheduleAttempt,
+                is RetryReconciliationDecision.ResumeAttempt -> {
+                    val attempt = when (decision) {
+                        is RetryReconciliationDecision.ScheduleAttempt -> decision.attempt
+                        is RetryReconciliationDecision.ResumeAttempt -> decision.attempt
+                        else -> error("unreachable: handled by outer when")
+                    }
+                    journal.beginAttempt(controlOpId, attempt, fingerprint, OperationStatus.RUNNING)
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.RetryAttemptStarted(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            attemptNumber = attempt,
+                            maxAttempts = scope.maxAttempts,
+                            stepName = block.id.value,
+                            stepType = block.pluginStepId.value,
+                            stageIndex = stageIndex,
+                            stepIndex = stepIndex,
+                        ),
+                    )
+                    val attemptSegment = listOf(BlockSegment(attempt, PluginStepId("retry-attempt")))
+                    val attemptBasePath = parentBodyPath + attemptSegment
+
+                    var attemptOutcome: StepOutcome = StepOutcome.Success
+                    for ((childIndex, child) in block.body.withIndex()) {
+                        val childOpId = OpId(
+                            runId.value,
+                            stageIndex,
+                            stepIndex,
+                            branchIndex = null,
+                            bodyPath = attemptBasePath + BlockSegment(childIndex, child.pluginStepId),
+                        )
+                        val childOutcome = dispatch(
+                            child,
+                            runId,
+                            stageName,
+                            stageIndex,
+                            stepIndex,
+                            childShOptions,
+                            childOpId.bodyPath,
+                        )
+                        when (childOutcome) {
+                            is StepOutcome.Failure -> {
+                                attemptOutcome = childOutcome
+                                break
+                            }
+                            is StepOutcome.Unstable -> {
+                                attemptOutcome = childOutcome
+                                break
+                            }
+                            else -> { /* continue to next child */ }
+                        }
+                    }
+
+                    when (attemptOutcome) {
+                        is StepOutcome.Success -> {
+                            journal.updateStatus(controlOpId, attempt, OperationStatus.SUCCEEDED, fingerprint)
+                            return StepOutcome.Success
+                        }
+                        is StepOutcome.Unstable -> {
+                            journal.updateStatus(controlOpId, attempt, OperationStatus.FAILED, fingerprint)
+                            return attemptOutcome
+                        }
+                        is StepOutcome.Failure -> {
+                            journal.updateStatus(controlOpId, attempt, OperationStatus.FAILED, fingerprint)
+                            if (attempt >= scope.maxAttempts) return attemptOutcome
+                            // Loop again: the driver will emit AdvanceAfterFailure or ReuseFailure.
+                        }
+                    }
+                }
+                is RetryReconciliationDecision.AdvanceAfterFailure -> {
+                    journal.beginAttempt(controlOpId, decision.to, fingerprint, OperationStatus.RUNNING)
+                    // Loop again: the driver will emit ScheduleAttempt(decision.to).
+                }
+            }
+        }
+        return StepOutcome.Failure(
+            PipelineFailure(
+                dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                "retry reconciliation loop exceeded budget (${scope.maxAttempts})",
+            ),
+        )
+    }
+
+    /**
+     * RETRY-D: deterministic fingerprint of a retry aggregate's contract.
+     * The fingerprint is stable across attempts for a given parent bodyPath and
+     * maxAttempts — divergence triggers [RetryReconciliationDecision.RejectDivergence].
+     */
+    private fun computeRetryContractFingerprint(
+        parentBodyPath: List<BlockSegment>,
+        scope: BlockShellScope.Retry,
+    ): Fingerprint {
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = "core.retry",
+            params = mapOf(
+                "maxAttempts" to kotlinx.serialization.json.JsonPrimitive(scope.maxAttempts),
+                "parentBodyPath" to kotlinx.serialization.json.JsonArray(
+                    parentBodyPath.map {
+                        kotlinx.serialization.json.JsonPrimitive(it.encoded)
+                    },
+                ),
+            ),
+            runId = "retry-contract", // Stable per-aggregate, NOT per-attempt.
+            attempt = 1,
+        )
+        return Fingerprint.compute(input, "core.retry", ReplayPolicy.MEMOIZED, 1)
     }
 
     /**

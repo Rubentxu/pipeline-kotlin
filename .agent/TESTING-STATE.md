@@ -35,3 +35,10 @@
 - Cambio clave: 07-10 son baseline CLOSED; EVT-08 = migración con paridad
   diferencial old(run.sh)/new(harness); ley de migración EVT-3 en
   docs/v2/00-context/EVT_P4_EX_BASELINE.md. No recrear examples nunca.
+
+## EVT-0 ciclo SDDK cerrado (2026-09-10)
+- sddk cycle evt-0-grounding (B-direct): CLOSED, ledger seq 851, todos los gates PASSED.
+- Branch docs/evt-0-grounding @ cfd83619 pusheada (EVT/POL integration + EVT-0 receipt).
+- Prioridad acordada con usuario: EVT-0..3 P0; luego LFC-2 ∥ EVT-4; M4 reactivado después;
+  POL shadow P2; CloudEvents SDK/NATS deferred (EVT-5).
+- Próximo ciclo: EVT-1 (ResourceRef + PipelineEventEnvelope) — mismo patrón sddk.

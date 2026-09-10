@@ -1,6 +1,8 @@
 # E-EM-11 CLOSURE RECEIPT — mandatory event emitters + grammar re-enable
 
 Cycle window: 815a1237..HEAD (post RETRY-D close / ADR-0075 accepted).
+Published trunk SHA: ef482c37 (fast-forward push to origin/main,
+2026-09-10; remote had not advanced; no force-push).
 Round gate: `timeout 1270 ./gradlew -p v2 check` — 20m48s, NON-ZERO due
 exclusively to known baseline failures (ledger below). E-EM-11 change-
 scoped gate: PASS, new failures = 0, baseline widened = 0 (rule 16

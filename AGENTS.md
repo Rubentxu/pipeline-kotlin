@@ -623,6 +623,88 @@ plugin lifecycle manager, default-import discovery, advanced KSP automation. Doc
 implement only what `example.uppercase = CERTIFIED` has demonstrated.
 
 
+## RETRY-D — DURABLE CONTROL ROWS (MANDATORY)
+
+Authority: ADR-0075. The retry aggregate is a **durable control row**, not an
+event or an in-memory counter. Without a control row, a second invocation of
+the binary with the same `--db` and `--control-root` re-runs the entire retry
+loop and duplicates a previously successful child effect.
+
+```text
+retry control row   → canonical durable state (persisted BEFORE child effects)
+retry event         → observability only (not authoritative)
+in-memory counter   → prohibited as the durable source of truth
+```
+
+### Production wire-up
+
+```kotlin
+CanonicalDurableRunCoordinator(
+    ...,
+    stepRegistry = stepRegistry,
+    retryControlJournal = FileBasedRetryControlJournal(controlDirRoot),
+).run(pipeline, runId)
+```
+
+Without `retryControlJournal`, the retry aggregate has no durable anchor:
+the dispatch loop still runs `W1–W5`, but every plan() call sees an empty
+control journal and re-schedules attempt 1 from scratch. This is the
+failure mode that caused R2 to loop in the closure script.
+
+### Planner invariants
+
+The dispatch loop and `RetryReconciler.reconcile()` cooperate on the
+following invariant:
+
+```text
+control rows = [ (1, FAILED), (2, RUNNING) ]
+plan() MUST skip attempt 1 because attempt 1 is terminal AND already
+has a successor (attempt 2) in the control rows. The planner must
+reach attempt 2 and return ScheduleAttempt(2) / ResumeAttempt(2),
+NOT AdvanceAfterFailure(1 -> 2).
+```
+
+Without the supersede-skip, the planner iterates attempts in order, sees
+`(1, FAILED)` first, and returns `AdvanceAfterFailure(1 → 2)` again — the
+dispatch loop never reaches attempt 2 and burns the retry budget on
+redundant advance decisions.
+
+The fix lives in `RetryReconciler` (`pipeline-domain`):
+
+```kotlin
+if ((control.status.isFailureForRetry() || control.status.isTerminal) &&
+    byAttempt.containsKey(attempt + 1)
+) {
+    continue
+}
+```
+
+### What MAY NOT exist
+
+```text
+- A second retry coordinator, a RetryShExecutor, or a parallel dispatch path.
+- A `dispatchRetryBlock` collection alongside the canonical dispatch loop.
+- A retry decision based solely on event streams or in-memory counters.
+- A retry plan() that branches on concrete StepKey / stepName.
+- A run-mode that skips retryControlJournal injection (e.g. a "dev mode").
+```
+
+### Closure proof (R1–R6)
+
+```text
+R1 / R3 / R4 / R6 : pipeline-domain unit tests, commit caa0b497
+R5 Window C      : child success / control stale reconciliation, caa0b497
+R2 installDist   : counter file advanced 1 -> 2 with retry-ok=1 emitted;
+                   journal contains {FAILED, SUCCEEDED};
+                   replay with same --db/--control-root reuses cached
+                   success without re-executing child bodies;
+                   commit aae1acb1.
+```
+
+The four pre-existing compatibility/UAT failures (UatLocal008 credential
+events, UatLocal009 archiveArtifacts) remain out of RETRY-D scope and are
+not regressions from this work.
+
 ## V2 TESTING RULES
 
 ### Execution economics ( Gradle )

@@ -19,10 +19,29 @@ related:
 
 ## Status
 
-**Proposed.** Promoted to `accepted` only after R1–R6 (with R5 Window C and R2
-installed-distribution acceptance) are green with fresh evidence. The ADR stays
-`proposed` while the implementation compiles — acceptance is a verification
-event, not a build event.
+**Accepted.** Promoted from `proposed` after R1–R6 (with R5 Window C and R2
+installed-distribution acceptance) are green with fresh evidence:
+
+- R1, R3, R4, R6 — `pipeline-domain` unit tests (commit `caa0b497`).
+- R2 — `installDist` real binary at
+  `v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application`
+  with `core.sh` body, `--db` SQLite, `--control-root` on-disk journal.
+  Closure evidence: attempt 1 FAILED → attempt 2 SUCCEEDED; counter
+  file advanced to `2`, `retry-ok=1` emitted; replay run with the same
+  `--db`/`--control-root` reused the cached success without re-executing
+  child bodies (commit `aae1acb1`).
+- R5 Window C — child success / control stale reconciliation (commit
+  `caa0b497`).
+
+Implementation invariants now wired in production (`Main.kt`):
+
+- `CanonicalDurableRunCoordinator` is constructed with
+  `retryControlJournal = FileBasedRetryControlJournal(controlDirRoot)`.
+- `RetryReconciler` skips a terminal attempt that already has a successor
+  in the control rows, so the dispatch loop's `(FAILED, RUNNING)` state
+  reaches the active attempt instead of looping on
+  `AdvanceAfterFailure(from, to)`.
+
 
 ## Context
 

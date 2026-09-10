@@ -61,19 +61,30 @@ object RetryReconciler {
             }
         }
 
-        // Aggregate terminal reuse (W5 / ADR-0075 §10) — terminal means final.
-        for (c in input.controlRows) {
-            if (c.status == OperationStatus.SUCCEEDED) {
-                return ReuseSuccess(c.attempt)
-            }
-            if (c.status.isFailureForRetry()) {
-                return ReuseFailure(c.attempt)
-            }
-            if (c.status.isTerminal) {
-                // ABORTED / DIVERGENT / LOST recorded as terminal control rows are reused
-                // as a retry-side failure: the retry cannot make progress on that attempt.
-                return ReuseFailure(c.attempt)
-            }
+        // Aggregate terminal reuse (W5 / ADR-0075 §10) — terminal means FINAL.
+        //
+        // Critical fix (R1, R3, R4 closure): the W5 reuse check fires only when
+        // a terminal control row can be unambiguously identified as the FINAL
+        // terminal state of the retry aggregate. Two distinct cases:
+        //
+        //  - Latest persisted row is SUCCEEDED → ReuseSuccess at that row's
+        //    ordinal (covers R1 replay).
+        //  - Latest terminal-failure row's ordinal is >= maxAttempts → the
+        //    retry has truly exhausted its budget → ReuseFailure. Earlier
+        //    terminal-failure rows are ignored because a fresh dispatch may
+        //    have advanced past them (R4 case: attempt 1 FAIL + attempt 2
+        //    RUNNING must NOT collapse to ReuseFailure(1)). This also covers
+        //    R3 where the writer forced an attempt N+1 row — the planner
+        //    returns ReuseFailure(N) instead of scheduling N+1.
+        val latest = input.controlRows.maxByOrNull { it.attempt }
+        if (latest != null && latest.status == OperationStatus.SUCCEEDED) {
+            return ReuseSuccess(latest.attempt)
+        }
+        val maxTerminalOrdinal = input.controlRows
+            .filter { it.status.isFailureForRetry() || it.status.isTerminal }
+            .maxOfOrNull { it.attempt }
+        if (maxTerminalOrdinal != null && maxTerminalOrdinal >= input.maxAttempts) {
+            return ReuseFailure(maxTerminalOrdinal)
         }
 
         // No control rows: legacy compat (ADR-0075 §8) or fresh retry (W0).
@@ -86,36 +97,82 @@ object RetryReconciler {
             .groupBy { it.attempt }
             .mapValues { (_, rows) -> rows.first() }
 
-        val maxPersistedAttempt = byAttempt.keys.max()
+        val maxPersistedAttempt = byAttempt.keys.maxOrNull() ?: 0
         for (attempt in 1..maxPersistedAttempt) {
             val control = byAttempt[attempt] ?: continue
-            val children = input.childrenByAttempt[attempt].orEmpty()
+            val rawChildren = input.childrenByAttempt[attempt].orEmpty()
+            // Synthetic PENDING rows emitted by the production reader for
+            // (attempt, childIndex) positions absent from the OperationJournal
+            // are placeholders, NOT real evidence. Their meaning depends on
+            // the control row status:
+            //   - control RUNNING/PENDING + synthetic only → writer is
+            //     mid-execution, journal not yet written → ResumeAttempt.
+            //   - control FAIL/terminal + synthetic only → no child evidence,
+            //     writer finished as failure → advance or exhaust.
+            val realChildren = rawChildren.filterNot {
+                it.fingerprint == null && it.status == OperationStatus.PENDING
+            }
+            val hasSyntheticPending = realChildren.size != rawChildren.size
 
-            // W1 — control persisted but no child evidence yet: schedule that attempt.
-            if (children.isEmpty()) {
+            if (control.status == OperationStatus.SUCCEEDED) {
+                // W4 / Window C — control row says success; trust it.
+                return CloseSuccessFromChild(attempt)
+            }
+
+            if (control.status.isFailureForRetry() || control.status.isTerminal) {
+                // Control row is terminal failure (W3 / R4 advance / R3 exhaustion).
+                if (realChildren.isEmpty()) {
+                    // No real child evidence: advance to the next attempt if
+                    // the retry budget allows it; otherwise exhaust.
+                    if (attempt >= input.maxAttempts) return ReuseFailure(attempt)
+                    return AdvanceAfterFailure(from = attempt, to = attempt + 1)
+                }
+                val inFlight = realChildren.firstOrNull { !it.status.isTerminal }
+                if (inFlight != null) {
+                    // Should not normally happen: control FAIL but child
+                    // in-flight. Trust the child as mid-execution.
+                    return ResumeAttempt(attempt)
+                }
+                val success = realChildren.firstOrNull { it.isSuccess }
+                if (success != null) {
+                    // Window C variant: control FAIL stale + child SUCCEEDED.
+                    return CloseSuccessFromChild(attempt)
+                }
+                // Every real child is terminal non-success.
+                if (attempt >= input.maxAttempts) return ReuseFailure(attempt)
+                return AdvanceAfterFailure(from = attempt, to = attempt + 1)
+            }
+
+            // Control row is RUNNING / PENDING (non-terminal).
+            if (realChildren.isEmpty()) {
+                if (hasSyntheticPending) {
+                    // Writer is mid-execution; journal not yet written.
+                    return ResumeAttempt(attempt)
+                }
+                // W1 — control persisted but no child evidence at all:
+                // schedule that attempt.
                 return ScheduleAttempt(attempt)
             }
 
-            val inFlight = children.firstOrNull { !it.status.isTerminal }
+            val inFlight = realChildren.firstOrNull { !it.status.isTerminal }
             if (inFlight != null) {
-                // W2 — child evidence is mid-run: resume that attempt, do not re-schedule.
+                // W2 — real child evidence is mid-run: resume that attempt.
                 return ResumeAttempt(attempt)
             }
 
-            val success = children.firstOrNull { it.isSuccess }
+            val success = realChildren.firstOrNull { it.isSuccess }
             if (success != null) {
                 // W4 / Window C — child journal proves success.
                 return CloseSuccessFromChild(attempt)
             }
 
-            // Every child is terminal non-success: this attempt failed for retry purposes.
-            if (attempt >= input.maxAttempts) {
-                return ReuseFailure(attempt)
-            }
+            // Every real child is terminal non-success under a non-terminal
+            // control row: trust the children's failure and advance/exhaust.
+            if (attempt >= input.maxAttempts) return ReuseFailure(attempt)
             return AdvanceAfterFailure(from = attempt, to = attempt + 1)
         }
 
-        // All recorded attempts are exhausted above maxAttempts — treated as terminal failure.
+        // All recorded attempts exhausted above maxAttempts — terminal failure.
         return ReuseFailure(maxPersistedAttempt)
     }
 
@@ -148,7 +205,16 @@ object RetryReconciler {
     private fun reconcileLegacyOrFresh(input: RetryReconciliationInput): RetryReconciliationDecision {
         // Merge the post-ADR child row bucket with the pre-ADR legacy bucket.
         // When no control row exists we treat ANY child evidence uniformly.
+        //
+        // Critical filter (R1 closure): rows emitted by the production reader as
+        // synthetic `Missing (PENDING)` placeholders carry `fingerprint = null`
+        // and `status = PENDING`. These represent "no OperationJournal row
+        // exists for this position" — NOT pre-ADR-0075 evidence. Without this
+        // filter a fresh retry (empty journal + empty control row) would be
+        // misclassified as ambiguous legacy data with multi-attempt history and
+        // rejected with `RejectDivergence`, breaking W0 / first-launch semantics.
         val legacy = (input.childrenByAttempt.values.flatten() + input.preControlChildren)
+            .filterNot { it.fingerprint == null && it.status == OperationStatus.PENDING }
         if (legacy.isEmpty()) {
             return ScheduleAttempt(1)
         }

@@ -119,10 +119,22 @@ class RetryReconciliationDriverTest {
         }
 
         @Test
-        fun `terminal failure plans ReuseFailure without mutation`() {
+        fun `non-final failure advances to next attempt without mutation`() {
             val (d, _) = driver(presetControlStatuses = mapOf(2 to OperationStatus.FAILED))
             assertEquals(
-                dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseFailure(2),
+                dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.AdvanceAfterFailure(from = 2, to = 3),
+                d.plan(),
+            )
+        }
+
+        @Test
+        fun `final failure (attempt == maxAttempts) plans ReuseFailure without mutation`() {
+            val (d, _) = driver(
+                presetControlStatuses = mapOf(3 to OperationStatus.FAILED),
+                maxAttempts = 3,
+            )
+            assertEquals(
+                dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ReuseFailure(3),
                 d.plan(),
             )
         }

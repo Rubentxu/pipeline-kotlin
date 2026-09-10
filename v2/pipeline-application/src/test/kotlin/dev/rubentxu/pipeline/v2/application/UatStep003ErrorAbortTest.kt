@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
@@ -62,6 +63,19 @@ class UatStep003ErrorAbortTest {
             stepFinishedEvents.any { (it as StepFinished).stepType == "error" },
             "Must have StepFinished for error step",
         )
+
+        // E-EM-11/NEVER fix hardening: the failure must be the TYPED core.error
+        // outcome (handler executed exactly once with its contractual failureKind),
+        // NOT the INFRASTRUCTURE 'Replay aborted' admission rejection. Those two
+        // both emit a StepFailed, which is why the untyped assertion was a
+        // false positive while ReplayPolicy.NEVER blocked fresh execution.
+        val stepFailed = events.filterIsInstance<StepFailed>().single()
+        assertEquals(FailureKind.USER, stepFailed.failureKind,
+            "core.error must surface its configured failureKind, not an infrastructure rejection")
+        assertEquals("boom", stepFailed.message,
+            "core.error must surface its configured message")
+        assertTrue("Replay aborted" !in stepFailed.message,
+            "A fresh error() must never fail through the replay-abort admission path")
 
         // NOTE: under the durable spine a failing stage does NOT emit
         // StageFinished (verified in-memory and on --db); the failure is

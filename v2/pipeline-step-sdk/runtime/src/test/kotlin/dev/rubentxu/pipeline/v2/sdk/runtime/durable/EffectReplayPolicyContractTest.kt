@@ -70,14 +70,28 @@ class EffectReplayPolicyContractTest {
     }
 
     @Test
-    fun `NEVER policy returns ABORT`() {
+    fun `NEVER policy with journal entry returns ABORT`() {
+        // E-EM-11/NEVER fix: NEVER rejects re-execution of durable history.
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.NEVER,
+            effects = emptySet(),
+            hasJournalEntry = true,
+            journaledOutcome = null,
+        )
+        assertEquals(ReplayDecision.ABORT, decision)
+    }
+
+    @Test
+    fun `NEVER policy without journal entry executes fresh`() {
+        // E-EM-11/NEVER fix (classification A): a fresh invocation has no durable
+        // history to protect; NEVER must not suppress the first execution.
         val decision = policy.decide(
             replayPolicy = ReplayPolicy.NEVER,
             effects = emptySet(),
             hasJournalEntry = false,
             journaledOutcome = null,
         )
-        assertEquals(ReplayDecision.ABORT, decision)
+        assertEquals(ReplayDecision.RERUN, decision)
     }
 
     @Test

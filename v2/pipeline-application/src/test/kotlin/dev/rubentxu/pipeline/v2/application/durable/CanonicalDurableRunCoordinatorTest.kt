@@ -387,6 +387,79 @@ class CanonicalDurableRunCoordinatorTest {
     }
 
     @Test
+    fun `NEVER policy executes fresh core error as typed failure`() = runBlocking {
+        // E-EM-11/NEVER fix, fresh half: first legitimate execution must reach the
+        // handler and surface the TYPED failure, never an INFRASTRUCTURE replay abort.
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("never-fresh-error-run")
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("never-fresh-error-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(StageNode(StageId("err"), "err", body = StageBody.Steps(listOf(
+                OpaqueStepNode(
+                    id = StepId("err/fail"),
+                    pluginStepId = PluginStepId("core.error"),
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"error","message":"boom","failureKind":"USER"}"""),
+                ),
+            )))),
+        )
+        val outcome = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(), journal, InMemoryReplayCursorStore(clock), clock,
+            DefaultEffectReplayPolicy(), InMemoryEventStore(),
+        
+    credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
+).run(pipeline, runId)
+
+        assertTrue(outcome is RunOutcome.Failure)
+        val failure = (outcome as RunOutcome.Failure).failure
+        assertEquals(FailureKind.USER, failure.kind, "fresh core.error must surface its configured failureKind")
+        assertEquals("boom", failure.message)
+        assertEquals(OperationStatus.FAILED, journal.listForRun(runId.value).single().status)
+    }
+
+    @Test
+    fun `NEVER policy aborts re-execution of a journaled core error`() = runBlocking {
+        // E-EM-11/NEVER fix, journaled half: a core.error already present in the
+        // durable journal must NEVER re-execute; the admission must fail closed
+        // with the canonical replay-abort rejection.
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+        val runId = RunId("never-journaled-error-run")
+        val pipeline = CompiledPipeline(
+            id = DefinitionId("never-journaled-error-pipeline"),
+            source = SourceDescriptor("Pipeline.kts", Digest("source")),
+            pluginLockDigest = Digest("lock"),
+            stages = listOf(StageNode(StageId("err"), "err", body = StageBody.Steps(listOf(
+                OpaqueStepNode(
+                    id = StepId("err/fail"),
+                    pluginStepId = PluginStepId("core.error"),
+                    payload = VersionedStepPayload("dsl-v1", """{"kind":"error","message":"boom","failureKind":"USER"}"""),
+                ),
+            )))),
+        )
+        val coordinator = CanonicalDurableRunCoordinator(
+            CanonicalNodeDispatcher(), journal, InMemoryReplayCursorStore(clock), clock,
+            DefaultEffectReplayPolicy(), InMemoryEventStore(),
+        
+    credentialScopePort = noOpCredentialScopePort(),
+            stepRegistry = CoreStepRegistryFactory.registry(),
+)
+        val fresh = coordinator.run(pipeline, runId)
+        assertTrue(fresh is RunOutcome.Failure, "run #1 must execute and fail typed")
+
+        val replayed = coordinator.run(pipeline, runId)
+        assertTrue(replayed is RunOutcome.Failure)
+        val failure = (replayed as RunOutcome.Failure).failure
+        assertEquals(FailureKind.INFRASTRUCTURE, failure.kind,
+            "journaled NEVER re-execution must be rejected as replay abort")
+        assertTrue("Replay aborted" in failure.message,
+            "rejection must be the canonical replay-abort, not a handler execution")
+    }
+
+    @Test
     fun `journals and checkpoints a linear canonical echo run`() = runBlocking {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)

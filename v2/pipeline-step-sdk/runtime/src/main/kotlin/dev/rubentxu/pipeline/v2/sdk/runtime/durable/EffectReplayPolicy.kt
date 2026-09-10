@@ -20,7 +20,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * | MEMOIZED     | EXECUTES_SUBPROCESS  | any               | any               | RERUN    |
  * | MEMOIZED     | WRITES_WORKSPACE     | any               | any               | RERUN    |
  * | RERUN        | any                  | any               | any               | RERUN    |
- * | NEVER        | any                  | any               | any               | ABORT    |
+ * | NEVER        | any                  | false (fresh)     | —                 | RERUN    |
+ * | NEVER        | any                  | true (journaled)  | any               | ABORT    |
  * | any          | ABORTS_PIPELINE      | any               | any               | ABORT    |
  * | any          | —                    | false (MEMOIZED)  | —                 | ABORT    |
  * | any          | FAILED (journaled)   | true              | FAILED            | ABORT    |
@@ -77,9 +78,14 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
             return ReplayDecision.RERUN
         }
 
-        // NEVER policy always aborts.
+        // E-EM-11/NEVER fix (classification A): NEVER constrains re-execution of
+        // durable history — it must not suppress the FIRST legitimate execution.
+        // fresh (no journal entry) → execute handler now (RERUN decision);
+        // journaled (prior durable execution exists) → ABORT, fail closed.
+        // Naming debt: RERUN is the current decision meaning "execute handler
+        // now", even for a fresh execution; renaming the ADT is out of scope.
         if (replayPolicy == ReplayPolicy.NEVER) {
-            return ReplayDecision.ABORT
+            return if (!hasJournalEntry) ReplayDecision.RERUN else ReplayDecision.ABORT
         }
 
         // ABORTS_PIPELINE effect always aborts.

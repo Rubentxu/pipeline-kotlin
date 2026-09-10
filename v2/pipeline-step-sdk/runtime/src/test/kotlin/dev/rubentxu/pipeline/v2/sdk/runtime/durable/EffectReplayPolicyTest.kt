@@ -44,12 +44,40 @@ class EffectReplayPolicyTest {
     }
 
     @Test
-    fun `NEVER policy returns ABORT`() {
+    fun `NEVER policy with journal entry returns ABORT`() {
+        // NEVER constrains re-execution of durable history: a journaled
+        // invocation may NEVER be re-executed.
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.NEVER,
+            effects = emptySet(),
+            hasJournalEntry = true,
+            journaledOutcome = null,
+        )
+        assertEquals(ReplayDecision.ABORT, decision)
+    }
+
+    @Test
+    fun `NEVER policy without journal entry executes fresh`() {
+        // E-EM-11/NEVER fix (classification A): NEVER means "never RE-run",
+        // not "never run". A fresh invocation (no durable history) executes
+        // normally. RERUN is the current decision name for "execute handler
+        // now" — naming debt, documented, not renamed in this slice.
         val decision = policy.decide(
             replayPolicy = ReplayPolicy.NEVER,
             effects = emptySet(),
             hasJournalEntry = false,
             journaledOutcome = null,
+        )
+        assertEquals(ReplayDecision.RERUN, decision)
+    }
+
+    @Test
+    fun `NEVER policy with journaled nonterminal entry still aborts`() {
+        val decision = policy.decide(
+            replayPolicy = ReplayPolicy.NEVER,
+            effects = emptySet(),
+            hasJournalEntry = true,
+            journaledOutcome = OperationStatus.RUNNING,
         )
         assertEquals(ReplayDecision.ABORT, decision)
     }

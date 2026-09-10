@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.identity
+package dev.rubentxu.pipeline.v2.domain.identity
 
 /**
  * Typed, hierarchical, deterministic reference to an addressable pipeline entity

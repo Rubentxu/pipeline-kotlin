@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.identity
+package dev.rubentxu.pipeline.v2.domain.identity
 
 /**
  * Kind of addressable pipeline entity a [ResourceRef] points to (EVT-1 minimal set).

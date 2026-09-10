@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
+import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
+import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
+
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageStarted

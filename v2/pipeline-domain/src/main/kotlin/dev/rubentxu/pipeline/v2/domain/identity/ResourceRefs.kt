@@ -1,4 +1,4 @@
-package dev.rubentxu.pipeline.v2.events.identity
+package dev.rubentxu.pipeline.v2.domain.identity
 
 /**
  * The ONLY authority for constructing [ResourceRef]s (EVT-1 law: typed

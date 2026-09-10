@@ -1644,3 +1644,39 @@ durable facts
   MUST reflect — not define — the durable contract. A failing branch in
   a supervisor join is a contained typed outcome, not a cancellation of
   durable facts.
+
+## EXPLICIT IMMUTABLE EXECUTION CONTEXT (MANDATORY)
+
+Validated by CTX-P (receipt: `docs/v2/07-uat/CTX_P_CLOSURE_RECEIPT.md`).
+
+### Law
+
+```text
+Concurrent execution context is explicit immutable data.
+A branch or nested execution may derive a child context, but it MUST
+NOT mutate parent or sibling execution context through coordinator
+state, thread-locals, coroutine-locals, or global ambient state.
+```
+
+Operative forms:
+
+```text
+lexical scope:      parent context -- pure derivation --> child context
+linearized scope:   Context_n + structural transition --> Context_n+1
+```
+
+### Consequences
+
+- Execution context ownership MUST be explicit: passed as a value, never
+  discovered by reading coordinator/global/thread/coroutine ambient state.
+- The context value MUST NOT own journal, event sink, step registry,
+  coroutine scope, or process executor. It is not a GodContext.
+- Context transitions (e.g. structural scope enter/exit) are pure data:
+  `(context, transition) -> nextContext`, fail-closed on invariant
+  violation. No generic pop/drop; no finally-restore idiom over a shared
+  authority.
+- Sequential state transitions are valid; a shared mutable context
+  authority is not. `immutable != stateless`.
+- Preserved PAR-D law: the execution context is not durable truth;
+  fingerprint, journal identity, and replay semantics are independent of
+  context threading.

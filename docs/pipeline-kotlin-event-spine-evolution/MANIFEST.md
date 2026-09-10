@@ -1,8 +1,10 @@
 # Package manifest
 
-Files: 30
+Files: 32
 
 - `README.md`
+- `MANIFEST.md`
+- `docs/v2/00-context/EVT_P4_EX_BASELINE.md`
 - `docs/v2/04-adrs/ADR-0077-event-spine-boundaries.md`
 - `docs/v2/04-adrs/ADR-0078-resource-ref-identity.md`
 - `docs/v2/04-adrs/ADR-0079-event-harness-protocol-contracts.md`

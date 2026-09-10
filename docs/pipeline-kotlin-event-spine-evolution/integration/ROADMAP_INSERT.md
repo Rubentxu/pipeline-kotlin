@@ -1,6 +1,6 @@
 ## EVT — Event Spine evolution + executable verification
 
-> Intercalated after the current local/LFC-2 execution-model consolidation and before resuming E5-02..E5-10.
+> Intercalated after the current local/LFC-2 execution-model consolidation and **after CTX-P4-EX (`d0ccf4b5`)**, before resuming E5-02..E5-10.
 > EVT does not reopen M4 and does not implement Jenkins. It evolves E1 into a transport-agnostic,
 > locally useful event foundation and proves the live semantics that M4/M6 will consume.
 
@@ -14,7 +14,7 @@ proving that live detached consumers can later drive controller/Jenkins UI witho
 - EVT-0 grounding/contract freeze.
 - EVT-1 ResourceRef + PipelineEventEnvelope.
 - EVT-2 Event history ports + existing local durable adapter behind them.
-- EVT-3 POST_RUN Event Harness + real examples.
+- EVT-3 POST_RUN Event Harness + migration of the already-GREEN P4-EX 10-example oracle.
 - EVT-4 detached live relay + crash/reconnect/resource-isolation proof.
 - EVT-5 CloudEvents mapping + measured transport spike.
 - EVT-6 handoff to M4/M6.
@@ -22,7 +22,7 @@ proving that live detached consumers can later drive controller/Jenkins UI witho
 ### Exit/UAT
 
 - real installDist run leaves queryable historical events;
-- same history verifies real examples post-run;
+- same history verifies the existing 10 real examples post-run with parity to the P4-EX assertions;
 - StageStarted is observable live before RunFinished;
 - subscriber process crash never cancels/fails the run;
 - reconnect from cursor catches up without semantic lifecycle duplication;

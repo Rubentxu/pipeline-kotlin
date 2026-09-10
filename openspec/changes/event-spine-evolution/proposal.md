@@ -2,8 +2,8 @@
 
 ## Why
 
-The current event implementation provides local value but couples several responsibilities behind
-`EventSink/EventStore`, while upcoming real-example verification and future M4/M6 consumers require a
+At `d0ccf4b5`, CTX-P4-EX already proves a 10/10 real-CLI examples gate and scenario-specific event assertions for 07–10. The current event implementation provides local value but couples several responsibilities behind
+`EventSink/EventStore`; the next need is to generalize that proven verification and serve future M4/M6 consumers through a
 stable identity/envelope, post-run history and detached live consumption.
 
 ## Outcomes
@@ -11,7 +11,7 @@ stable identity/envelope, post-run history and detached live consumption.
 - typed ResourceRef and PipelineEventEnvelope;
 - transport/storage-independent event ports;
 - preserve and adapt existing local SQLite history;
-- Event Harness over real examples;
+- Event Harness that preserves and generalizes the existing P4-EX real-example oracle;
 - detached live relay proof with failure/resource isolation;
 - CloudEvents-ready mapping without selecting a broker prematurely.
 

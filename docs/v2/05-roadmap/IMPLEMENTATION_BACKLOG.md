@@ -343,7 +343,7 @@ No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con e
 ## Program EVT — Event Spine evolution & executable verification
 > Extiende E1 y prepara E5/M4 + M6 sin reabrir todavía controller/Jenkins.
 
-- **EVT-00** Grounding inventory: producers, ordering, consumers, assertions, authorities.
+- **EVT-00** Grounding inventory from `d0ccf4b5`: producers, ordering, consumers, P4-EX assertions, authorities; freeze 10/10 gate as oracle.
 - **EVT-01** `ResourceRef` typed identity for Pipeline/Run/Stage/Step/Operation.
 - **EVT-02** `PipelineEventEnvelope` + EventRef/causation/correlation contract.
 - **EVT-03** Split EventPublisher/EventHistory/EventTail ports; preserve current adapters through compatibility layer.
@@ -351,7 +351,7 @@ No empezar E8 por amplitud funcional antes de haber demostrado E4/E5/E6/E7 con e
 - **EVT-05** ObservationStatus (`COMPLETE/DEGRADED/INCOMPLETE`) and acceptance separation.
 - **EVT-06** Universal Event Protocol Grammar.
 - **EVT-07** Scenario contract ADTs + YAML/TOML codec + minimal counterexamples.
-- **EVT-08** Real examples 01..10 acceptance gate (catchError/parallel/retry/timeout included).
+- **EVT-08** Migrate/generalize existing P4-EX 01..10 acceptance gate into reusable Event Harness with old-vs-new differential parity; do not recreate examples.
 - **EVT-09** Event Harness mutation canaries.
 - **EVT-10** Event↔Journal consistency verifier (after core harness proves useful).
 - **EVT-11** Replay metamorphic verification.

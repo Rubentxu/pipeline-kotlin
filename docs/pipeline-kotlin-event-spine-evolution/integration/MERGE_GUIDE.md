@@ -2,7 +2,7 @@
 
 ## Grounding anchors
 
-This pack was prepared against the current V2 roadmap where:
+This revised pack is grounded against `main` at **d0ccf4b5**, where CTX-P4-EX is already closed. At that point:
 
 - M1 already introduced the basic event spine and in-memory/SQLite reference stores;
 - E1 backlog already contains typed IDs, EventEnvelope and EventStore work;
@@ -10,7 +10,8 @@ This pack was prepared against the current V2 roadmap where:
 - M6 owns Jenkins Workflow adapter and `event→FlowNode`;
 - M8 owns graph/provenance;
 - M9 owns policy engine/hardening;
-- CTX-P is already closed and protects explicit immutable execution context ownership.
+- CTX-P is closed and protects explicit immutable execution context ownership;
+- P4-EX is closed: `examples/run.sh` is 10/10 GREEN through the real installDist CLI, with event contracts already asserted for examples 07–10.
 
 ## Safe integration order
 
@@ -18,7 +19,7 @@ This pack was prepared against the current V2 roadmap where:
 2. Add the EVT/POL program section to `ROADMAP.md` using `ROADMAP_INSERT.md`.
 3. Append backlog entries from `IMPLEMENTATION_BACKLOG_APPEND.md`.
 4. Replace/merge the small `MILESTONES.md` using `MILESTONES.replacement.md`.
-5. Add UAT design and example contract proposals.
+5. Add UAT design and candidate normalized sidecar contracts; do **not** recreate examples 07–10 or duplicate the current examples README.
 6. Keep `AGENTS_CANDIDATE.md` out of normative AGENTS until implementation evidence closes each law.
 7. Start only EVT-0 in the first code cycle.
 

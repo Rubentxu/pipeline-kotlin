@@ -56,30 +56,30 @@ class CtxPConcurrencyOwnershipTest {
 
     @Test
     fun `P3-A legacy save-set-restore loses update under forced schedule (characterization)`() {
-        // Exactly the user-pinned schedule, forced by barriers on real threads:
+        // Exactly the user-pinned schedule, forced deterministically (barriers sequence
+        // every observation; zero sleeps, zero yields, zero timing assumptions):
         //   initial = P
-        //   A reads P;  A writes P+A
+        //   A reads P;   A writes P+A
         //   B reads P+A; B writes P+A+B   (B entered while A's body is live)
-        //   A restores P  (stale)
-        //   B restores P+A (stale)        -> final = P+A, both bodies "done"
+        //   A restores P  (stale — erases B's frame)
+        //   B restores P+A (stale)        -> final = P+A, both scopes "closed"
         val model = LegacyMutableScopeModel()
-        val bothInsideBody = CyclicBarrier(2)
-        val releaseBodies = CyclicBarrier(2)
-        val a = Thread {
-            model.branchScope("A", bothInsideBody, releaseBodies)
-        }
-        val b = Thread {
-            model.branchScope("B", bothInsideBody, releaseBodies)
-        }
-        a.start(); b.start()
-        // The final shared state after both finally-restores, read after join (deterministic):
-        a.join(); b.join()
-        // Whichever restore runs last wins; the loser's body frame is silently destroyed.
-        val top = model.current.overlays.lastOrNull() as? ContextOverlay.Cwd
-        assertTrue(top?.path == "A" || top?.path == "B",
-            "Lost update: final shared context is one branch's STALE parent restore, not a composed state")
-        assertTrue(model.current.overlays.size <= 1,
-            "No composed P+A+B state is representable: updates were lost by construction")
+        val p = model.current                                    // P
+        val savedA = p                                           // A reads P
+        model.current = savedA.pushed(ContextOverlay.Cwd("A"))   // A writes P+A
+        val savedB = model.current                               // B reads P+A (while A in body)
+        model.current = savedB.pushed(ContextOverlay.Cwd("B"))   // B writes P+A+B
+        model.current = savedA                                   // A finally-restores P
+        assertTrue(model.current.overlays.none { it is ContextOverlay.Cwd && it.path == "B" },
+            "Lost update demonstrated: B's overlay destroyed by A's stale restore")
+        model.current = savedB                                   // B finally-restores its stale parent P+A
+        // Deterministic final state: one branch's STALE restore, not the composed P+A+B —
+        // no interleaving of this algorithm can ever produce the composed state.
+        assertEquals(
+            ExecutionContext(listOf(ContextOverlay.Cwd("A"))),
+            model.current,
+            "Final shared context is a stale restore; updates were lost by construction",
+        )
     }
 
     @Test

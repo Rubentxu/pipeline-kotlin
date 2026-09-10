@@ -302,7 +302,7 @@ Design: `openspec/changes/lfc-2-honest-dsl-closure/design.md` (repository-root r
 | LFC2-H01 | LFC-2 → unsupported retry/timeout blocks, stage retry options and parallel shapes rejected across whole plan before effects | compiler + coordinator admission + proposed Lfc2AdmissionCliTest, application seam |
 | LFC2-H02 | LFC-2 → post/when never silently discarded or unconditional; unsupported DSL forms reject before body evaluation | DSL/compiler negative contracts + post/when CLI probes, scripting/application seams |
 | LFC2-H03 | LFC-2 → runtime values/polling are real and observable or fail-closed before closure evaluation | pwd/isUnix/waitUntil contracts and runtime-value boundary decision, scripting/domain seams |
-| E-EM-11 T1 | LFC-2 dependency → real bounded retry, attempt identity and persisted outcomes | compiler payload, coordinator, journal and real restart UAT, EM runtime seam |
+| E-EM-11 T1 | LFC-2 dependency → real bounded retry, attempt identity and persisted outcomes — 🟢 DONE (R1–R6 green; ADR-0075 accepted; commits `caa0b497` + `aae1acb1`; R2 installDist evidence: counter 1→2, retry-ok=1, journal SUCCEEDED, replay reuses cached success) | compiler payload, coordinator, journal and real restart UAT, EM runtime seam |
 | E-EM-11 T2 | LFC-2 dependency → shared persisted deadline, cancellation/recovery and timeout events | typed clock tests + real CLI kill/resume, EM runtime seam |
 | E-EM-11 T3/T4 | LFC-2 dependency → composability decision and seven UAT obligations actually executed green | ADR + compiler/parallel journal contracts + re-enabled original UATs, EM/domain seams |
 

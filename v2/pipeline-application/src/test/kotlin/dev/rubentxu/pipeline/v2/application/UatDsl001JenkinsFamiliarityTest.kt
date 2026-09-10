@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -103,8 +102,11 @@ class UatDsl001JenkinsFamiliarityTest {
         assertTrue(events.any { it is CompilationStarted }, "Must have CompilationStarted event")
         assertTrue(events.any { it is CompilationFinished }, "Must have CompilationFinished event")
 
-        // Verify new M2-R1 event kinds
-        assertTrue(events.any { it is AgentResolved }, "Must have AgentResolved event")
+        // Z1 decision (E-EM-11): AgentResolved is NOT asserted here. It remains a supported
+        // DomainEvent/schema variant for compatibility and future real agent allocation
+        // (requested constraints -> resolver/scheduler -> resolved target -> AgentResolved).
+        // Configured agent metadata in the DSL is NOT a resolution transition; emitting it
+        // from stage metadata would fabricate a transition that did not occur.
         assertTrue(events.any { it is ParallelBranchStarted }, "Must have ParallelBranchStarted event")
         assertTrue(events.any { it is ParallelBranchFinished }, "Must have ParallelBranchFinished event")
         assertTrue(events.any { it is RetryAttemptStarted }, "Must have RetryAttemptStarted event")

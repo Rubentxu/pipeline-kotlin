@@ -51,3 +51,127 @@ proven; never `DONE/PASS` while uncertified.
 - Every UAT/integration class declares `@Timeout`; teardown kills whole process groups.
 - Do not claim a Step `DONE`/`PASS` from a partially wired façade (criterion 13/18).
 - No full-grammar or `parallel` UAT re-opens green until E-EM-11 (B12/B13) provides real semantics.
+
+## Phase C — Local-first Step ecosystem expansion (after B17 + EVT-3)
+
+This phase is the product-priority continuation defined by:
+
+- `docs/v2/05-roadmap/LFC2_STEP_ECOSYSTEM_EXPANSION.md`;
+- `docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md`;
+- `docs/v2/03-specifications/STEP_ECOSYSTEM_POLICY.md`.
+
+EVT-4/M4 remote/controller work is deliberately deferred until the local-first feature freeze.
+
+### C0 — Existing family certification (P0)
+
+- [ ] certify primitives `error`, `sleep`;
+- [ ] certify control `retry`, `timeout`, `catchError`, `warnError`, `unstable`, `parallel`;
+- [ ] certify context/workspace `dir`, `withEnv`, `withCredentials`, `pwd`, `isUnix`, `readFile`, `writeFile`, `fileExists`, cleanup;
+- [ ] classify/certify `archiveArtifacts`, `timestamps`, `ansiColor`, `milestone`, `waitUntil`, `load`;
+- [ ] certify existing Git/checkout through plugin delivery policy;
+- [ ] remove/forbid every alternate legacy executable path for certified Steps.
+
+Gate: exact certified inventory + real examples + EVT-3 Event Harness contracts, no disabled mandatory UAT counted as green.
+
+### C1 — Universal core freeze
+
+- [ ] resolve every P0 `CORE` candidate in the ecosystem matrix;
+- [ ] document evidence for promotion/retention in core;
+- [ ] default every non-universal new family to `OFFICIAL_PLUGIN`;
+- [ ] add fitness preventing plugin-name-specific cases in coordinator/central dispatcher.
+
+Gate: core surface intentionally bounded; future growth requires core-admission evidence.
+
+### C2 — Utilities official plugin
+
+- [ ] JSON/YAML/TOML/properties structured-data steps;
+- [ ] findFiles/file utilities;
+- [ ] checksums;
+- [ ] zip/tar archive utilities;
+- [ ] typed native results + Jenkins-compatible façades where useful.
+
+Gate: filesystem + typed-value plugin works with zero Step-specific core edits.
+
+### C3 — Testing/reporting official plugins
+
+- [ ] `junit` typed report;
+- [ ] local HTML/report publication;
+- [ ] coverage adapters;
+- [ ] typed issue/static-analysis reports if evidence justifies them.
+
+Gate: structured result/events/artifacts plugin works with zero Step-specific core edits.
+
+### C4 — Artifacts/stash official plugin
+
+- [ ] complete/certify `archiveArtifacts` in its final delivery location;
+- [ ] `stash` / `unstash`;
+- [ ] local `copyArtifacts` based on RunId/ResourceRef.
+
+Gate: durable artifact data movement and replay contracts green.
+
+### C5 — Toolchain/config official plugins
+
+- [ ] Maven/Java;
+- [ ] Gradle;
+- [ ] Node/npm/pnpm/yarn;
+- [ ] Python/pip/Poetry;
+- [ ] .NET/Go as P2;
+- [ ] scoped configuration provider.
+
+Gate: at least Java+Maven/Gradle and Node or Python real repo builds pass through plugin APIs.
+
+### C6 — Network/SSH/notification plugins
+
+- [ ] typed `httpRequest`;
+- [ ] SSH agent/selected SSH operations;
+- [ ] notification compatibility surfaces where useful.
+
+Gate: network + credentials + typed failure + secret-safe output demonstrated without core exceptions.
+
+### C7 — Local coordination/interaction plugins
+
+- [ ] local durable `lock`;
+- [ ] local durable/manual `input`.
+
+Gate: restart/recovery behavior characterized; no controller UI dependency.
+
+### C8 — Local containers official plugin
+
+- [ ] provider-neutral container runtime capability;
+- [ ] Docker/Podman pull/build/push;
+- [ ] `inside`-like nested scope;
+- [ ] side-service/withRun lifecycle;
+- [ ] registry credentials.
+
+Gate: real local container pipeline works; no Kubernetes worker semantics added.
+
+### C9 — Advanced Git official plugin
+
+- [ ] `readScmFile`;
+- [ ] shallow/depth;
+- [ ] submodules;
+- [ ] refspec/prune/tags;
+- [ ] sparse/LFS where justified.
+
+Gate: real advanced checkout fixtures, credential safety and replay/idempotency green.
+
+### C10 — Complex external reference plugin
+
+- [ ] choose Artifactory/Xray or an equivalently demanding vendor integration;
+- [ ] implement a bounded real surface (e.g. upload/download/build-info/promote/scan);
+- [ ] package/register as a true external plugin artifact;
+- [ ] pass the same PluginContractSuite and real distribution UAT;
+- [ ] verify zero Step-specific production core edits.
+
+Gate: SDK proven beyond toy `example.uppercase` against network + credentials + artifacts + vendor failures.
+
+### Phase-C exit — local-first feature freeze
+
+- [ ] all P0 matrix rows resolved/certified/rejected with evidence;
+- [ ] representative P1 plugin families run end-to-end locally;
+- [ ] checkout → build → test → report → artifact real pipeline green;
+- [ ] representative HTTP/network and container flow green;
+- [ ] complex external reference plugin CERTIFIED;
+- [ ] Event Harness contracts own reusable acceptance assertions;
+- [ ] no hidden controller/remote-worker dependency;
+- [ ] only after this gate may EVT-4 become the next product-priority evolution.

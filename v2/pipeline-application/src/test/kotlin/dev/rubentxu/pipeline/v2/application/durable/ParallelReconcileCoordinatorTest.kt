@@ -191,4 +191,55 @@ class ParallelReconcileCoordinatorTest {
         val aggregate = journal.get(controlOpId(runId.value), 1)
         assertEquals(OperationStatus.SUCCEEDED, aggregate!!.status)
     }
+
+    @Test
+    fun `W2 partial restart resumes only the incomplete branch without re-executing terminal children`() = runBlocking {
+        val clock = SystemClock()
+        val runId = RunId("par-d3-w2")
+        val journal = InMemoryOperationJournal(clock)
+        // Aggregate stale RUNNING (crashed mid-stage).
+        journal.append(
+            CompositeOperation(
+                id = controlOpId(runId.value),
+                fingerprint = terminalAggregate(runId.value, "success").fingerprint,
+                input = aggregateInput(runId.value),
+                output = null,
+                status = OperationStatus.RUNNING,
+                attempt = 1,
+                subOperations = emptyList(),
+            ),
+        )
+        // Branch 0: fully terminal SUCCEEDED child. Branch 1: mid-run RUNNING child.
+        seedTerminalChild(journal, runId.value, 0)
+        run {
+            val bodyPath = listOf(BlockSegment("b1:branch"), BlockSegment(0, PluginStepId("core.echo")))
+            val input = OperationInput(
+                stepId = "core.echo",
+                params = mapOf("payload" to JsonPrimitive("""{"kind":"echo","text":"branch-1"}""")),
+                runId = runId.value,
+                attempt = 1,
+            )
+            journal.append(
+                RerunOperation(
+                    id = OpId(runId.value, 0, 0, bodyPath = bodyPath).format(),
+                    fingerprint = Fingerprint.compute(input, "core.echo", ReplayPolicy.MEMOIZED, 1),
+                    input = input,
+                    output = null,
+                    status = OperationStatus.RUNNING,
+                    attempt = 1,
+                ),
+            )
+        }
+        val sink = InMemoryEventStore()
+        val coord = CoordinatorFixture.default(clock, journal, sink)
+
+        val outcome = coord.run(parallelPipeline(), runId)
+
+        assertEquals(dev.rubentxu.pipeline.v2.domain.RunOutcome.Success, outcome)
+        val echoes = sink.eventsFor(runId.value).filterIsInstance<dev.rubentxu.pipeline.v2.events.EchoOutputCaptured>()
+        assertEquals(1, echoes.count(), "only the incomplete branch's echo must execute; terminal branch-0 must not re-run")
+        // Exactly one branch re-attached (branch 1): one ParallelBranchStarted projected for the NEW execution.
+        val started = sink.eventsFor(runId.value).filterIsInstance<ParallelBranchStarted>()
+        assertTrue(started.all { it.branchIndex == 1 }, "only branch 1 may project a new branch start, got: ${started.map { it.branchIndex }}")
+    }
 }

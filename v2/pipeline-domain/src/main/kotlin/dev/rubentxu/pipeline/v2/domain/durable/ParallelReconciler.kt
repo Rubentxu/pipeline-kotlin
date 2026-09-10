@@ -29,6 +29,9 @@ object ParallelReconciler {
             val children = input.childrenByBranch[branch].orEmpty()
             when {
                 children.isEmpty() -> incomplete += branch
+                // A branch with any non-terminal child is INCOMPLETE (W2): the
+                // canonical child dispatch resumes it; no ambiguity involved.
+                children.any { !it.status.isTerminal } -> incomplete += branch
                 else -> {
                     val terminal = reconstructBranch(children)
                     when (terminal) {
@@ -86,8 +89,6 @@ object ParallelReconciler {
         val hasFailed = children.any { it.status == OperationStatus.FAILED }
         val allSucceeded = children.all { it.status == OperationStatus.SUCCEEDED }
         return when {
-            // Not every child terminal: the branch is incomplete (or mid-run).
-            children.any { !it.status.isTerminal } -> Reconstructed.Ambiguous("__INCOMPLETE__")
             allSucceeded -> Reconstructed.Terminal(BranchTerminal.Succeeded)
             hasFailed -> Reconstructed.Ambiguous(
                 "branch child rows contain FAILED; cannot distinguish real Failure from Unstable without a lossless semantic carrier",

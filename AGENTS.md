@@ -705,6 +705,67 @@ The four pre-existing compatibility/UAT failures (UatLocal008 credential
 events, UatLocal009 archiveArtifacts) remain out of RETRY-D scope and are
 not regressions from this work.
 
+## REPLAY POLICY — EXECUTION VS RE-EXECUTION (MANDATORY)
+
+Validated by E-EM-11 NEVER-1 (EffectReplayPolicy fix; receipt:
+`docs/v2/07-uat/E_EM_11_CLOSURE_RECEIPT.md`).
+
+### Law
+
+```text
+Replay policy governs execution in relation to EXISTING durable history.
+It MUST NOT suppress a legitimate first execution unless admission
+denial is explicitly part of that policy.
+```
+
+### Minimal matrix (ReplayPolicy.NEVER)
+
+```text
+ReplayPolicy.NEVER
+
+fresh / no durable entry
+    -> EXECUTE (ReplayDecision.RERUN: "execute handler now";
+       naming debt — do not read RERUN as "this is a re-run")
+
+existing durable history (any journaled status)
+    -> ABORT / fail closed (no handler execution)
+```
+
+The decision MUST live in the generic replay authority
+(`EffectReplayPolicy.decide`), never as a per-Step special case. Any
+future Step declaring `ReplayPolicy.NEVER` inherits the correct
+semantics automatically.
+
+### Frozen distinction: Effect vs Decision
+
+```text
+Effect.ABORTS_PIPELINE != ReplayDecision.ABORT
+```
+
+```text
+ABORTS_PIPELINE
+    -> behavior of the Step AFTER legitimate execution
+       (the handler ran; its typed outcome aborts the pipeline)
+
+ReplayDecision.ABORT
+    -> execution admission / re-execution decision
+       (the handler NEVER runs; fail closed before effects)
+```
+
+### Test law: distinguish failure classes
+
+Tests MUST distinguish a typed Step failure from a replay/admission
+infrastructure failure when both can produce the same surface event
+(e.g. both `StepFailed`). At minimum assert:
+
+```text
+failureKind == the Step's contractual kind  (not INFRASTRUCTURE)
+message   == the Step's configured message  (not "Replay aborted")
+```
+
+(False-green precedent: `UatStep003ErrorAbortTest` passed while
+`core.error` was unexecutable, because both paths emit a StepFailed.)
+
 ## V2 TESTING RULES
 
 ### Execution economics ( Gradle )

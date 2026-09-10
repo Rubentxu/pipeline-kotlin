@@ -232,6 +232,11 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
 fun main(args: Array<String>) {
     // Events subcommand (EVT-2): structured local history inspection
     if (args.firstOrNull() == "events") {
+        if (args.getOrNull(1) == "verify") {
+            val exitCode = MainEventsVerifyCli.main(args.drop(2).toTypedArray())
+            System.exit(exitCode)
+            return
+        }
         val exitCode = MainEventsCli.main(args.drop(1).toTypedArray())
         System.exit(exitCode)
         return

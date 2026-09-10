@@ -202,7 +202,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         val results = mutableListOf<DomainEvent>()
         try {
             conn.prepareStatement(
-                "SELECT payload FROM events WHERE run_id = ? ORDER BY sequence ASC"
+                "SELECT payload FROM events WHERE run_id = ? ORDER BY rowid ASC"
             ).use { ps ->
                 ps.setString(1, runId)
                 ps.executeQuery().use { rs ->

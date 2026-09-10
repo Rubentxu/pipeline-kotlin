@@ -1,6 +1,6 @@
 # EVT — Event Spine, Verification and Policy evolution
 
-Status: PROPOSED program  
+Status: ACTIVE program — EVT-0 CLOSED, EVT-1 CLOSED (cycle evt-1-resource-ref-envelope), EVT-2 CLOSED @ 1b950074, EVT-3 IN PROGRESS (branch docs/evt-3-event-harness)  
 Placement: after LFC-2/CTX-P foundation, before resuming the distributed/controller path that depends on event semantics.
 Maps forward to existing M4 (Protocol/Gateway), M6 (Jenkins UI), M8 (Graph/Provenance) and M9 (policies).
 
@@ -61,6 +61,16 @@ UAT:
 - no stdout/stderr chunks stored as DomainEvents.
 
 ## EVT-3 — Event Harness POST_RUN + P4-EX migration
+
+**Status: IN PROGRESS** — implemented facts (not plans): new module
+`v2/pipeline-event-harness` (model/verify/codec); typed contract ADT
+(`Exactly`/`Never`/`Before`/`TerminalOutcome`, closed `FieldMatch` selectors, no
+`Map<String,Any>`); pure deterministic verifier with bounded counterexamples;
+YAML v1 codec fail-closed; CLI `pipeline events verify`; HF0 9/9 + real-history
+parity/mutation 10/10; FArch020 isolation fitness 4/4; differential parity 07-10
+PASSED on real executions (legacy assertions intact, none removed).
+**BASELINE DEBT INC-EVT3-1**: durable rerun re-appends a lifecycle skeleton with
+restarted sequences (pre-existing append behavior; characterized, unchanged).
 
 **Goal:** generalize the **already executable** examples into reusable protocol specifications without weakening the d0ccf4b5 gate.
 

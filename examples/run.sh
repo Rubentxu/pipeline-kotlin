@@ -156,6 +156,38 @@ run_one() {
     10-*) check_10 "$f1" ;;
   esac
 
+  # EVT-3 differential parity: typed harness verdict must match the legacy
+  # verdict on the SAME execution. Legacy assertions above remain the authority;
+  # this block is additive and non-destructive.
+  hcontract="$ROOT/examples/contracts/${name%.pipeline.kts}.events.yaml"
+  if [[ -f "$hcontract" ]]; then
+    hdb="${db:-$SCRATCH/$name.harness.db}"
+    if [[ -z "${db:-}" ]]; then
+      ctl2="$(mktemp -d "${TMPDIR:-/tmp}/pipeline-run-ctl.XXXXXX")"
+      set +e
+      "$BIN" run --db "$hdb" --control-root "$ctl2" "$ROOT/examples/$script" "$@" > /dev/null 2>&1
+      rc=$?
+      set -e
+      rm -rf "$ctl2"
+      [[ $rc -eq ${EXPECTED_EXIT[$name]:-0} ]] || fail "$name harness-replay run exited $rc"
+    fi
+    hrid="$(python3 -c "
+import sqlite3, json
+c=sqlite3.connect('$hdb')
+ev=json.loads(c.execute('SELECT payload FROM events LIMIT 1').fetchone()[0])[0]
+print(ev['runId'])")"
+    hargs=(events verify --db "$hdb" --run "$hrid" --contract "$hcontract")
+    case "$name" in
+      08-*) hargs+=(--scope last-segment) ;;
+    esac
+    set +e
+    "$BIN" "${hargs[@]}" > /dev/null 2>&1
+    hrc=$?
+    set -e
+    [[ $hrc -eq 0 ]] || fail "$name harness parity: typed contract FAILED (legacy was GREEN)"
+    echo "   ✓ $name harness parity: typed contract PASSED (differential, legacy assertions intact)"
+  fi
+
   echo "   ✓ $name exit=$rc outcome=$outcome (expected $expected)"
   rm -rf "$ctl"
 }

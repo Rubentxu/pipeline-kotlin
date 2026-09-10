@@ -9,11 +9,13 @@ protobufPlugin = "0.9.4"
 # BouncyCastle (credentials-local module only - ADR-0049 D2)
 # NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
 bouncycastle = "1.80.2"
+snakeyaml = "2.3"
 
 [libraries]
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.46.1.3" }
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }

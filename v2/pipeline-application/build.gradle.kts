@@ -21,6 +21,7 @@ application {
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
+    implementation(project(":pipeline-event-harness"))
     implementation(project(":pipeline-scripting-kotlin24"))
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))

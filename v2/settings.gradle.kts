@@ -25,6 +25,7 @@ include(
     ":pipeline-testkit",
     ":pipeline-architecture-tests",
     ":pipeline-events",
+    ":pipeline-event-harness",
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:processor",
     ":pipeline-step-sdk:runtime",

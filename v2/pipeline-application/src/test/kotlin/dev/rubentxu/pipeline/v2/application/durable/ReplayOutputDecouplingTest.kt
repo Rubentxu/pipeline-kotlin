@@ -161,11 +161,19 @@ class ReplayOutputDecouplingTest {
     }
 
     @Test
-    fun `NEVER policy returns ABORT regardless of output presence`() {
-        // Operational semantics win; output ignored.
+    fun `NEVER policy decision is independent of output presence`() {
+        // E-EM-11/NEVER-1 (contract update): NEVER constrains re-execution of durable
+        // history — fresh executes, journaled aborts. Operational semantics win;
+        // output presence is ignored in BOTH branches.
+        assertEquals(
+            ReplayDecision.RERUN,
+            policy.decide(ReplayPolicy.NEVER, setOf(Effect.EXECUTES_SUBPROCESS), false, null),
+            "fresh NEVER invocation must execute regardless of output",
+        )
         assertEquals(
             ReplayDecision.ABORT,
-            policy.decide(ReplayPolicy.NEVER, setOf(Effect.EXECUTES_SUBPROCESS), false, null),
+            policy.decide(ReplayPolicy.NEVER, setOf(Effect.EXECUTES_SUBPROCESS), true, null),
+            "journaled NEVER invocation must abort regardless of output",
         )
     }
 

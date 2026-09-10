@@ -42,3 +42,21 @@
 - Prioridad acordada con usuario: EVT-0..3 P0; luego LFC-2 ∥ EVT-4; M4 reactivado después;
   POL shadow P2; CloudEvents SDK/NATS deferred (EVT-5).
 - Próximo ciclo: EVT-1 (ResourceRef + PipelineEventEnvelope) — mismo patrón sddk.
+
+## EVT-0 cierre en trunk (2026-09-10, 1f39d17d)
+- main == origin/main == 1f39d17d (FF de docs/evt-0-grounding @22f199c0 + disposition).
+- Pack staging: retenido solo como provenance, README apunta a docs/v2 (disposition note).
+- Cycle evt-0-grounding CLOSED; branches merged conservadas (convención del repo).
+- SIGUIENTE: EVT-1 ResourceRef+Envelope, slice behavior-preserving, leyes 1-12 del usuario.
+
+## EVT-1 identity slice (2026-09-10, HEAD 5a50319c)
+- Added v2/pipeline-events identity pkg: ResourceKind/ResourceRef/ResourceRefs/EventRef/
+  PipelineEventEnvelope/EnvelopeProjector + EnvelopeCodec + CloudEvents characterization.
+  Tests: ResourceRefDeterminismTest (9) + EnvelopeProjectionTest (9) = 18 GREEN; module
+  :pipeline-events:test 124/124 GREEN. P4-EX oracle (examples/run.sh) 10/10 exit 0.
+- CRITICAL oracle gotcha: run.sh durable examples share scratch/durable-shell/ op-state
+  across runs; deleting only the *.db leaves stale retry op dirs -> coordinator skips
+  steps silently and contract 09 fails. Clean `durable-shell/` dir + /tmp/pipeline-retry-done
+  before oracle runs. NOT a code regression (contamination reproduced on pre-branch binary).
+- Known launcher note: TMPDIR here = ~/.jcode/scratch so oracle scratch lives at
+  $TMPDIR/pipeline-examples.

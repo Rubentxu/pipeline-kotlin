@@ -1121,10 +1121,16 @@ class CanonicalDurableRunCoordinator(
             else -> emptyList()
         }
 
-        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
-        val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = branchesToRun.map { branchIndex ->
-            val branch = branches[branchIndex]
-            scope.async {
+        // PAR-D structured concurrency: the join runs inside a caller-bound
+        // supervisorScope; branch outcomes are typed VALUES (contained), never
+        // exceptions used as control flow. The scope exits only when every branch
+        // resolves; no coroutine survives the parallel stage lifecycle. Branch
+        // CancellationException stays an execution mechanism — it is converted by
+        // the same typed boundary below, never into a durable terminal truth.
+        val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = kotlinx.coroutines.supervisorScope {
+            branchesToRun.map { branchIndex ->
+                val branch = branches[branchIndex]
+                async(kotlinx.coroutines.Dispatchers.Default) {
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.ParallelBranchStarted(
                             eventId = UUID.randomUUID().toString(),
@@ -1156,6 +1162,7 @@ class CanonicalDurableRunCoordinator(
                     )
                     branchOutcome
                 }
+            }
         }
         val branchOutcomes: List<StepOutcome> = deferred.map { it.await() }
 

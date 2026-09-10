@@ -106,12 +106,18 @@ run_one() {
   # Durable examples run TWICE with the same --db; the second run proves reuse.
   f1="$SCRATCH/$name.run1.json"
   f2="$SCRATCH/$name.run2.json"
+  # Hermeticity (harness debt EVT-H1): durable op-state lives in
+  # "$db.parent/durable-shell" and survives "rm $db", silently skipping steps on
+  # later runs (observed with contract 09 and the baseline binary). Isolate per
+  # execution with a unique per-run control root (test-only; production untouched).
+  local ctl
+  ctl="$(mktemp -d "${TMPDIR:-/tmp}/pipeline-run-ctl.XXXXXX")"
   case "$name" in
     06-*|08-*|09-*)
       db="$SCRATCH/$name.db"
       rm -f "$db" /tmp/pipeline-retry-done
       set +e
-      "$BIN" run --db "$db" "$ROOT/examples/$script" "$@" > "$f1"
+      "$BIN" run --db "$db" --control-root "$ctl" "$ROOT/examples/$script" "$@" > "$f1"
       rc=$?
       set -e
       [[ $rc -eq 0 ]] || fail "$name first run exited $rc (expected 0)"
@@ -136,7 +142,7 @@ run_one() {
       [[ -n "${db:-}" ]] || fail "$name: internal error, db not set"
       rm -f /tmp/pipeline-retry-done
       set +e
-      "$BIN" run --db "$db" "$ROOT/examples/$script" "$@" > "$f2"
+      "$BIN" run --db "$db" --control-root "$ctl" "$ROOT/examples/$script" "$@" > "$f2"
       rc=$?
       set -e
       [[ $rc -eq 0 ]] || fail "$name second run exited $rc (expected 0)"
@@ -151,6 +157,7 @@ run_one() {
   esac
 
   echo "   ✓ $name exit=$rc outcome=$outcome (expected $expected)"
+  rm -rf "$ctl"
 }
 
 if [[ $# -eq 0 ]]; then

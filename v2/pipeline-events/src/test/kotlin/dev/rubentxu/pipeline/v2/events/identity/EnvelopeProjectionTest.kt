@@ -109,18 +109,14 @@ class EnvelopeProjectionTest {
         }
 
         @Test
-        fun `R4 - unprojectable kind fails closed`() {
-            // EchoOutputCaptured carries no identity derivation rule yet: the projector
-            // MUST fail closed rather than degrade identity.
-            val ex = assertThrows(UnprojectableEventException::class.java) {
-                EnvelopeProjector.project(
-                    dev.rubentxu.pipeline.v2.events.EchoOutputCaptured(
-                        eventId = "e8", runId = runId, sequence = 8, occurredAt = at,
-                        stepIndex = 0, content = "hi",
-                    ),
-                )
-            }
-            assertTrue(ex.message!!.contains("No identity derivation rule"))
+        fun `R4 - stepIndex-only events resolve to RUN subject (frozen law)`() {
+            val env = EnvelopeProjector.project(
+                dev.rubentxu.pipeline.v2.events.EchoOutputCaptured(
+                    eventId = "e8", runId = runId, sequence = 8, occurredAt = at,
+                    stepIndex = 0, content = "hi",
+                ),
+            )
+            assertEquals(ResourceRefs.run(runId), env.subject)
         }
 
         @Test

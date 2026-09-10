@@ -20,3 +20,18 @@
 - Durable rerun: default ReusePriorRun; --rerun fresh; --resume continues. CLI reprints
   prior journal with ORIGINAL timestamps → scope new events by occurredAt > max(prev run).
 - P6 parallel test note: UatDsl003ParallelTest P6 passes via the same CLI (verified fresh XML).
+
+## Event Spine integration handoff (2026-09-10)
+- Branch docs/event-spine-evolution-integration (f3bf32e1 + 3c12ec19), pusheada; NO mergeada a main.
+- EVT/POL integrados en ROADMAP.md (tras EM, antes de M5), backlog EVT-00..16/POL-00..09,
+  MILESTONES replacement, ADR-0077..0080 PROPOSED, design docs 06-design, UAT_EVT_REAL_EXAMPLES,
+  examples/contracts YAML (proposales), openspec changes event-spine-evolution + policy-guardrails.
+- AGENTS_CANDIDATE NO fusionado (merge guide paso 6: solo tras receipts EVT/POL).
+- Solo EVT-0 autorizado a arrancar en primer ciclo de código.
+- Pendiente: revisión ADR-0077..0079, merge a main tras aprobación.
+
+## Corrección pack EVT (2026-09-10, 5adfe0cf)
+- Reemplazado pack por revisión corregida grounded en d0ccf4b5 (P4-EX closed).
+- Cambio clave: 07-10 son baseline CLOSED; EVT-08 = migración con paridad
+  diferencial old(run.sh)/new(harness); ley de migración EVT-3 en
+  docs/v2/00-context/EVT_P4_EX_BASELINE.md. No recrear examples nunca.

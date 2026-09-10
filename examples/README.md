@@ -69,3 +69,13 @@ Known limitations (tracked in `docs/debt/`):
 - `--resume` output is a merged stream (prior journal replay + new events with
   original timestamps). Deferred to INC-021d.
 - `warnError` and `withCredentials` are not demonstrated here yet.
+
+## Event-contract acceptance (EVT)
+
+`examples/` is executable product documentation: a supported example is accepted only when its
+expected execution outcome and observable event contract both pass through the installed CLI
+distribution. `run.sh` already asserts this for 07–10 (see above).
+
+Companion declarative contracts live in `examples/contracts/*.events.yaml` (PROPOSED, EVT-07/EVT-08):
+the Event Harness will run them POST_RUN by default; live verification is not required for these
+assertions. Until the harness lands, `run.sh` is the executable contract authority.

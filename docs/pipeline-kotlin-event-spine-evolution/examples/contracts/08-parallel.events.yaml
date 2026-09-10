@@ -1,0 +1,13 @@
+version: 1
+expect:
+  runOutcome: SUCCESS
+constraints:
+  - exactlyPer: { event: ParallelBranchStarted, key: branch, count: 1 }
+  - exactlyPer: { event: ParallelBranchFinished, key: branch, count: 1 }
+  - before:
+      first: { event: ParallelBranchStarted }
+      second: { event: ParallelBranchFinished }
+      same: branch
+  - before: { first: { event: StageStarted }, second: { event: ParallelBranchStarted } }
+  - before: { first: { event: ParallelBranchFinished }, second: { event: StageFinished } }
+  - never: { event: StepFailed }

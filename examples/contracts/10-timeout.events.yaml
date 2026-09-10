@@ -1,0 +1,6 @@
+version: 1
+expect:
+  runOutcome: FAILURE
+constraints:
+  - exactly: { event: TimeoutScheduled, count: 1 }
+  - before: { first: { event: TimeoutScheduled }, second: { event: StepStarted } }

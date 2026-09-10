@@ -11,3 +11,12 @@
 **Verification executed:** docs-only `git diff --check` PASS. No Gradle run was relevant because production/test sources are unchanged.
 
 **Next after explicit design/ADR approval:** implement only the typed retry reconciliation, then progressively run R1/R3-R6 focused tests and the real `installDist` R2 acceptance. Do not add RetryAttemptFinished/TimeoutScheduled, change timeout/parallel, reopen grammar UATs, alter `StepExecutors.kt`, or commit before R2, R5, and R6 are green.
+
+## CTX-P4-EX handoff (2026-09-10)
+- examples/run.sh = real-CLI gate: expected exit+outcome matrix, event contracts 07-10.
+  Full gate GREEN (exit 0), commit d0ccf4b5.
+- CLI: flags MUST precede script path (`run --db X script`); trailing flags silently
+  ignored — strictness is an OPEN item.
+- Durable rerun: default ReusePriorRun; --rerun fresh; --resume continues. CLI reprints
+  prior journal with ORIGINAL timestamps → scope new events by occurredAt > max(prev run).
+- P6 parallel test note: UatDsl003ParallelTest P6 passes via the same CLI (verified fresh XML).

@@ -7,9 +7,13 @@ Real, runnable pipelines executed by the V2 CLI binary
 
 ```bash
 ./gradlew -p v2 :pipeline-application:installDist   # once, or let run.sh do it
-examples/run.sh                                     # run all examples
+examples/run.sh                                     # run all examples (asserts expected outcomes)
 examples/run.sh 03-shell.pipeline.kts               # run one
 ```
+
+`run.sh` checks each example's exit code AND terminal outcome
+(`success` / `failure` / `unstable`), plus event-level contracts for the
+semantic examples (07–10). A green run is executable acceptance evidence.
 
 ## Examples
 
@@ -19,19 +23,27 @@ examples/run.sh 03-shell.pipeline.kts               # run one
 | `02-multi-stage.pipeline.kts` | Multiple stages in declaration order |
 | `03-shell.pipeline.kts` | Real OS processes via `sh` (incl. a shell `for` loop) |
 | `04-kotlin-control-flow.pipeline.kts` | Real Kotlin control flow (`script {}` blocks) |
-| `05-failing-step.pipeline.kts` | Typed failure: `sh` exits 3 → `StepFailed(kind=SCRIPT)`, CLI exits non-zero |
-| `06-durable.pipeline.kts` | Durable execution with `--db`: journal, fingerprints, replay gating |
+| `05-failing-step.pipeline.kts` | Typed failure: `sh` exits 3 → `StepFailed(kind=SCRIPT)`, run outcome `failure` |
+| `06-durable.pipeline.kts` | Durable execution with `--db`: journal, fingerprints, crash resume |
+| `07-catch-error.pipeline.kts` | Nested `catchError`: two `CatchErrorTriggered` events (inner FAILURE → outer UNSTABLE), pipeline continues |
+| `08-parallel.pipeline.kts` | Two concurrent branches; second run with the same `--db` reuses the terminal aggregate (zero branch/step events) |
+| `09-retry.pipeline.kts` | `retry`: first attempt fails, second succeeds (marker-file deterministic) |
+| `10-timeout.pipeline.kts` | `timeout` deadline aborts an over-running `sh`; run outcome `failure` |
 
 ## Durable execution demo
 
 ```bash
 BIN=v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application
 $BIN run --db /tmp/demo-journal.db examples/06-durable.pipeline.kts   # first run executes
-$BIN run --db /tmp/demo-journal.db examples/06-durable.pipeline.kts   # re-run replays journaled effects
+# kill it mid-run, then:
+$BIN run --db /tmp/demo-journal.db examples/06-durable.pipeline.kts   # resume
 ```
 
-With `--db`, every operation is journaled in SQLite with an input fingerprint;
-a re-run skips already-completed effects instead of launching them twice.
+With `--db`, every operation is journaled in SQLite with an input fingerprint.
+On resume of an interrupted run, completed non-effectful steps replay from the
+journal and effectful `sh` steps re-execute (recoverable policy). A completed
+run is not memoized across independent runs by design; the one cross-run reuse
+guarantee today is the parallel terminal aggregate (see `08`).
 
 ## CLI contract
 
@@ -42,9 +54,11 @@ pipeline run [--db <path>] [--resume] <script>   # durable run with SQLite journ
 
 ## Status (honest)
 
-What these examples exercise **works today**: linear pipelines, stages, real
-`sh` processes with structured failures, Kotlin `script {}` control flow, and
-journaling with `--db`.
+What these examples exercise **works today**, each proven by executing the
+real CLI: linear pipelines, stages, real `sh` processes with structured
+failures, Kotlin `script {}` control flow, durable journaling with `--db`
+including crash resume, nested `catchError`, `parallel` with durable rerun
+reuse, `retry`, and `timeout` deadlines.
 
 Known limitations (tracked in `docs/debt/`):
 
@@ -52,10 +66,6 @@ Known limitations (tracked in `docs/debt/`):
   `09-archive-artefacts.pipeline.kts` fail to compile due to a DSL surface
   issue (missing `isScriptBlock` parameter on `StageScope.sh()`). Deferred to
   INC-021c.
-- `--db` does not skip on re-run by itself and `--resume` output is a merged
-  stream. Memoized same-run replay is proven at coordinator level and in
-  SPIKE-016, not yet as one-command CLI resume. Deferred to INC-021d.
-
-Not yet implemented (tracked in `docs/v2/05-roadmap/`): timeout deadlines
-(EM-5), `retry`/`catchError`/`warnError` semantics (EM-6), `withCredentials`
-completion.
+- `--resume` output is a merged stream (prior journal replay + new events with
+  original timestamps). Deferred to INC-021d.
+- `warnError` and `withCredentials` are not demonstrated here yet.

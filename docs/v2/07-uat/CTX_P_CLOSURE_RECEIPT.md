@@ -160,3 +160,51 @@ ExecutionContext durable authority = NO  (F6)
 - FailFast — OPEN (designed, not exposed)
 - Flow output — OPEN
 - fingerprint/context-sensitivity review — OPEN, separate durable decision
+
+## REAL EXECUTABLE EXAMPLES (P4-EX)
+
+Additional gate requested after CTX-P closure: every documented capability
+must have a real `.pipeline.kts` example executed by the REAL installed CLI
+(`:pipeline-application:installDist`), with expected outcomes asserted by
+`examples/run.sh` and event-level contracts for 07–10. Compilation alone is
+not acceptance.
+
+### Evidence matrix
+
+| Example | Compiles | Real CLI run | Exit / outcome | Contract |
+|---|---|---|---|---|
+| 01-hello | ✓ | ✓ | 0 / success | — |
+| 02-multi-stage | ✓ | ✓ | 0 / success | — |
+| 03-shell | ✓ | ✓ | 0 / success | — |
+| 04-kotlin-control-flow | ✓ | ✓ | 0 / success | — |
+| 05-failing-step | ✓ | ✓ | 1 / failure | StepFailed(kind=SCRIPT), exit 3 |
+| 06-durable | ✓ | ✓ (×2, same `--db`) | 0 / success | rerun reuses prior run (ReusePriorRun default); `--rerun` forces fresh |
+| 07-catch-error | ✓ | ✓ | 0 / unstable | exactly 2 `CatchErrorTriggered`, inner FAILURE → outer UNSTABLE (ERR-S-007 innermost-first) + post-catch echo executes |
+| 08-parallel | ✓ | ✓ (×2, same `--db`) | 0 / success | 2nd run reuses terminal aggregate: 0 `ParallelBranchStarted`, 0 `StepStarted` |
+| 09-retry | ✓ | ✓ (×2, same `--db`) | 0 / success | exactly 2 `RetryAttemptFinished`: failed → succeeded |
+| 10-timeout | ✓ | ✓ | 1 / failure | `TimeoutScheduled` + `StepFailed("durable shell timed out")` |
+
+Gate invocation: `examples/run.sh` — full run GREEN, exit 0, all 10 examples
+(fresh XML-equivalent evidence: full gate log, 2026-09-10, installDist from
+current HEAD).
+
+### Findings captured while building the gate (no production changes)
+
+1. **CLI flag order is positional**: flags are parsed only while they lead the
+   argument list (`run --db X script`); `run script --db X` silently ignores
+   `--db` (no durable journal, fresh runId). Examples and README now use the
+   leading-flag form. CLI-side strictness (reject trailing flags) is
+   **OPEN, separate item, not a CTX-P gap**.
+2. **Durable rerun semantics clarified**: default policy is ReusePriorRun
+   (second run with the same `--db` reuses/resumes; zero re-execution for 08);
+   `--rerun` = StartFreshRun; `--resume` = ResumePriorRun. Cross-run reuse of a
+   COMPLETED run is parallel terminal-aggregate reuse (P6); effectful `sh`
+   steps re-execute on resume by recoverable policy. README updated to state
+   exactly this (previous text overclaimed "skips already-completed effects").
+3. **Journal replay on durable reruns**: the CLI reprints prior journal events
+   with their ORIGINAL timestamps; contract checks must scope "new events" by
+   `occurredAt > max(previous run)` — done in `run.sh` (this is the INC-021d
+   merged-stream debt, documented, not fixed here).
+4. `timeout` terminal outcome is `failure` (not UNSTABLE as earlier example
+   comment claimed); example comment corrected. UNSTABLE semantics remain the
+   catchError domain (07).

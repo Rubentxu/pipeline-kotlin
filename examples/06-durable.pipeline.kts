@@ -3,8 +3,8 @@
 //   examples/run.sh 06-durable.pipeline.kts --db /tmp/hello-journal.db
 //
 // With --db the runner journals every operation, fingerprints its inputs and
-// gates replay: re-running the same pipeline against the same journal skips
-// already-completed effects instead of launching them twice.
+// reuses the prior run's terminal state on rerun (pass --rerun to force a
+// fresh run, --resume to continue an interrupted one).
 pipeline {
     stages {
         stage("prepare") {

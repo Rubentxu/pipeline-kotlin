@@ -34,9 +34,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
+import dev.rubentxu.pipeline.v2.domain.ExecutionContext
+import dev.rubentxu.pipeline.v2.domain.ContextTransition
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.ContextOverlay
-import dev.rubentxu.pipeline.v2.domain.ContextStack
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -367,7 +368,6 @@ class CanonicalDurableRunCoordinator(
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
-    private var contextStack: ContextStack = ContextStack.EMPTY
 
     /**
      * Effective pre-decode metadata authority (CDE.3-e4.2). An explicit [stepMetadataResolver] wins;
@@ -405,7 +405,9 @@ class CanonicalDurableRunCoordinator(
         // Reset state for this run
         currentOutcome = RunOutcome.Success
         runStartedEmitted = false
-        contextStack = ContextStack.EMPTY
+        // CTX-P2: ambient execution context is a run-local immutable value threaded
+        // explicitly through dispatch; no coordinator field, no restore idiom.
+        var ambient = ExecutionContext.EMPTY
 
         // C3: Emit RunStarted at the beginning of the pipeline run
         eventSink.append(
@@ -422,9 +424,9 @@ class CanonicalDurableRunCoordinator(
         try {
             stagesLoop@ for (stageIndex in pipeline.stages.indices) {
                 val stage = pipeline.stages[stageIndex]
-                // Stage boundary: context stack must be empty when entering a stage
-                check(contextStack.isEmpty) {
-                    "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${contextStack.size} frame(s) remaining"
+                // Stage boundary: ambient context must be structurally empty when entering a stage
+                check(ambient.overlays.isEmpty()) {
+                    "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${ambient.overlays.size} frame(s) remaining"
                 }
                 val steps = (stage.body as? StageBody.Steps)?.steps
                 var stageWorkspace: Path? = null
@@ -452,8 +454,8 @@ class CanonicalDurableRunCoordinator(
                 // journal keys). No second engine, no ParallelFrameExecutor.
                 if (steps == null && stage.body is StageBody.Parallel) {
                     // Workspace creation is required before branch dispatch (D5/C1 reuse).
-                    val parallelOutcome = runParallelStage(stage, stageIndex, stageShOptions, runId)
-                    when (val continuation = decideContinuation(parallelOutcome, stage.name, runId.value)) {
+                    val parallelOutcome = runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
+                    when (val continuation = decideContinuation(parallelOutcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> {
                             eventSink.append(
                                 dev.rubentxu.pipeline.v2.events.StageFinished(
@@ -509,8 +511,9 @@ class CanonicalDurableRunCoordinator(
                 var stageUnstable = false
                 for (stepIndex in steps1.indices) {
                     val step = steps1[stepIndex]
-                    val outcome = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions)
-                    when (val continuation = decideContinuation(outcome, stage.name, runId.value)) {
+                    val dispatched = dispatch(step, runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(), ambient)
+                    ambient = dispatched.context
+                    when (val continuation = decideContinuation(dispatched.outcome, stage.name, runId.value, ambient)) {
                         CanonicalContinuation.Continue -> Unit
                         CanonicalContinuation.ContinueUnstable -> {
                             currentOutcome = RunOutcome.Unstable
@@ -580,22 +583,26 @@ class CanonicalDurableRunCoordinator(
      * suppresses and stops the walk. An unstable()-only outcome is never a failure, so it never
      * enters the walk (ERR-S-008 emits no trigger).
      */
-    private fun decideContinuation(outcome: StepOutcome, stageName: String, runIdValue: String): CanonicalContinuation =
-        when (outcome) {
-            StepOutcome.Success -> CanonicalContinuation.Continue
-            StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
-            is StepOutcome.Failure -> walkCatchErrorChain(outcome.failure, stageName, runIdValue)
-        }
+    private fun decideContinuation(
+        outcome: StepOutcome,
+        stageName: String,
+        runIdValue: String,
+        executionContext: ExecutionContext,
+    ): CanonicalContinuation = when (outcome) {
+        StepOutcome.Success -> CanonicalContinuation.Continue
+        StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
+        is StepOutcome.Failure -> walkCatchErrorChain(outcome.failure, stageName, runIdValue, executionContext)
+    }
 
     private fun walkCatchErrorChain(
         failure: PipelineFailure,
         stageName: String,
         runIdValue: String,
+        executionContext: ExecutionContext,
     ): CanonicalContinuation {
-        val frames = contextStack.frames
-        var i = frames.size - 1
-        while (i >= 0 && frames[i] is ContextOverlay.CatchErrorOverlay) {
-            val overlay = frames[i] as ContextOverlay.CatchErrorOverlay
+        // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
+        val chain = executionContext.trailingCatchErrorChain()
+        for (overlay in chain) {
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
                     eventId = UUID.randomUUID().toString(),
@@ -609,7 +616,7 @@ class CanonicalDurableRunCoordinator(
                 ),
             )
             when (overlay.buildResult) {
-                "FAILURE" -> i-- // re-throw outward to the next enclosing catch scope
+                "FAILURE" -> Unit // re-throw outward to the next enclosing catch scope
                 "SUCCESS" -> return CanonicalContinuation.Continue
                 else -> return CanonicalContinuation.ContinueUnstable
             }
@@ -621,6 +628,9 @@ class CanonicalDurableRunCoordinator(
     /**
      * Dispatches a step, routing BlockStepNode to [dispatchBody].
      */
+    /** CTX-P2: outcome + successor context returned together; callers keep their own parent value. */
+    private data class Dispatched(val outcome: StepOutcome, val context: ExecutionContext)
+
     private suspend fun dispatch(
         step: StepNode,
         runId: RunId,
@@ -629,13 +639,15 @@ class CanonicalDurableRunCoordinator(
         stepIndex: Int,
         stageShOptions: ShOptions,
         bodyPath: List<BlockSegment> = emptyList(),
-    ): StepOutcome {
+        executionContext: ExecutionContext = ExecutionContext.EMPTY,
+    ): Dispatched {
         // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
         // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
         // timeout/retry. catchError and warnError remain on the legacy linear path
         // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
         if (step is BlockStepNode) {
-            return dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, bodyPath)
+            val body = dispatchBody(step, runId, stageName, stageIndex, stepIndex, stageShOptions, bodyPath, executionContext)
+            return Dispatched(body, executionContext)
         }
 
         // CDE.2-c0: durable opId/input are needed by every rejection path, so derive them first.
@@ -652,12 +664,17 @@ class CanonicalDurableRunCoordinator(
         // decode. A structurally-invalid node is a terminal SCHEMA rejection (C3/C5), executor never runs.
         val structural = CanonicalStructuralPreparation.prepare(step)
         val structuralReady = when (structural) {
-            is StructuralPreparation.Rejected -> return rejectSchema(operationId, input, structural.reason)
+            is StructuralPreparation.Rejected -> return Dispatched(rejectSchema(operationId, input, structural.reason), executionContext)
             is StructuralPreparation.Ready -> structural
         }
-        applyOverlay(
-            StructuralOverlayProjection.project(structuralReady.invocation.stepKey, structuralReady.envelope),
-        )
+        // CTX-P2: pure context derivation, no ambient mutation (C6 preserved: pushed pre-reconcile).
+        val projectedOverlay = StructuralOverlayProjection.project(structuralReady.invocation.stepKey, structuralReady.envelope)
+        // Baseline behaviour preserved: Triggered with emitted=false performs NO scope exit.
+        val contextAfterOverlay = if (projectedOverlay is StructuralOverlay.CatchErrorTriggered && !projectedOverlay.emitted) {
+            executionContext
+        } else {
+            deriveOverlay(executionContext, projectedOverlay)
+        }
 
         // CDE.2-b2: durable metadata resolved by structural step key BEFORE typed semantics, so
         // fingerprint and reconcile never depend on the decoded command.
@@ -683,12 +700,12 @@ class CanonicalDurableRunCoordinator(
         )
         when (val resolution = reconcileInvocation(metadata, journaled, currentOperation, operationId)) {
             is InvocationReconciliation.Diverged ->
-                return StepOutcome.Failure(
+                return Dispatched(StepOutcome.Failure(
                     PipelineFailure(
                         dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                         "Canonical run diverged at '${resolution.operationId}'",
                     ),
-                )
+                ), contextAfterOverlay)
             is InvocationReconciliation.RecoverRunning -> {
                 val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
                     CommonExecutionResult(outcome = resolution.outcome, encodedOutput = null)
@@ -705,11 +722,11 @@ class CanonicalDurableRunCoordinator(
                     ),
                 )
                 if (outcome is StepOutcome.Success) cursorStore.advance(runId.value, operationId, stageIndex)
-                return outcome
+                return Dispatched(outcome, contextAfterOverlay)
             }
-            InvocationReconciliation.ReuseCompleted -> return StepOutcome.Success
+            InvocationReconciliation.ReuseCompleted -> return Dispatched(StepOutcome.Success, contextAfterOverlay)
             is InvocationReconciliation.RejectedAbort ->
-                return StepExecutionBoundary(eventSink).execute(lifecycleContext) {
+                return Dispatched(StepExecutionBoundary(eventSink).execute(lifecycleContext) {
                     CommonExecutionResult(
                         outcome = StepOutcome.Failure(
                             PipelineFailure(
@@ -719,7 +736,7 @@ class CanonicalDurableRunCoordinator(
                         ),
                         encodedOutput = null,
                     )
-                }.outcome
+                }.outcome, contextAfterOverlay)
             // Execute is the ONLY resolution that reaches the effective executor. beginOperation, the
             // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
             // live here, so the concrete semantics are invoked exclusively under this decision.
@@ -745,11 +762,11 @@ class CanonicalDurableRunCoordinator(
                 val family = StructuralFamilyResolver.classify(step.pluginStepId, stepRegistry)
                 val prepared = when (family) {
                     StructuralStepFamily.LegacyCore -> when (val admission = LegacyExecutionBoundary.prepare(step)) {
-                        is ExecutionPreparation.Rejected -> return rejectSchema(
+                        is ExecutionPreparation.Rejected -> return Dispatched(rejectSchema(
                             operationId,
                             input,
                             "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
-                        )
+                        ), contextAfterOverlay)
                         is ExecutionPreparation.Ready -> admission.prepared
                     }
                     StructuralStepFamily.Registry -> {
@@ -763,11 +780,11 @@ class CanonicalDurableRunCoordinator(
                             availableCapabilities = CanonicalRuntimeCapabilityAccess(runtime).available(),
                         )
                         when (admission) {
-                            is ExecutionPreparation.Rejected -> return rejectSchema(
+                            is ExecutionPreparation.Rejected -> return Dispatched(rejectSchema(
                                 operationId,
                                 input,
                                 "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
-                            )
+                            ), contextAfterOverlay)
                             is ExecutionPreparation.Ready -> admission.prepared
                         }
                     }
@@ -800,7 +817,7 @@ class CanonicalDurableRunCoordinator(
                     ),
                 )
                 if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
-                return outcome
+                return Dispatched(outcome, contextAfterOverlay)
             }
         }
     }
@@ -811,31 +828,27 @@ class CanonicalDurableRunCoordinator(
      * reused CatchErrorEntered still establishes its scope without re-executing (C6: executor stays 0).
      * Only the structural overlay descriptor is consumed; no typed command is built here.
      */
-    private fun applyOverlay(overlay: StructuralOverlay) {
-        when (overlay) {
-            StructuralOverlay.None -> Unit
-            is StructuralOverlay.CatchErrorEntered -> {
-                contextStack = contextStack.push(
-                    ContextOverlay.CatchErrorOverlay(
-                        overlay.buildResult,
-                        overlay.stageResult,
-                        overlay.message,
-                        overlay.enteredAt?.toLongOrNull() ?: System.currentTimeMillis(),
-                    ),
-                )
-            }
-            is StructuralOverlay.CatchErrorTriggered -> {
-                if (overlay.emitted) {
-                    val top = contextStack.peek()
-                    if (top is ContextOverlay.CatchErrorOverlay) {
-                        contextStack = contextStack.pop()
-                    } else {
-                        throw IllegalStateException(
-                            "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered",
-                        )
-                    }
-                }
-            }
+    /**
+     * CTX-P2: pure derivation of the successor ExecutionContext from the structural overlay.
+     * The old CatchErrorTriggered pop/underflow check disappears: the frame was pushed by the
+     * matching CatchErrorEntered derivation, and the caller simply keeps its own parent value.
+     * There is no shared authority to underflow.
+     */
+    private fun deriveOverlay(parent: ExecutionContext, overlay: StructuralOverlay): ExecutionContext = when (overlay) {
+        StructuralOverlay.None -> parent
+        is StructuralOverlay.CatchErrorEntered -> parent.pushed(
+            ContextOverlay.CatchErrorOverlay(
+                overlay.buildResult,
+                overlay.stageResult,
+                overlay.message,
+                overlay.enteredAt?.toLongOrNull() ?: System.currentTimeMillis(),
+            ),
+        )
+        is StructuralOverlay.CatchErrorTriggered -> when (val exit = parent.exitCatchError()) {
+            is ContextTransition.Advanced -> exit.context
+            is ContextTransition.Rejected -> throw IllegalStateException(
+                "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered",
+            )
         }
     }
 
@@ -976,7 +989,6 @@ class CanonicalDurableRunCoordinator(
      * keyed by length-prefix bodyPath (JEP-029 exactly-once).
      *
      * @param block The BlockStepNode to dispatch
-     * @param parentStack The context stack at entry (restored in finally)
      */
     /**
      * B13/E-EM-11 — parallel stage execution through the canonical spine.
@@ -997,6 +1009,7 @@ class CanonicalDurableRunCoordinator(
         stageIndex: Int,
         stageShOptions: ShOptions,
         runId: RunId,
+        executionContext: ExecutionContext,
     ): StepOutcome {
         val branches = (stage.body as? StageBody.Parallel)?.branches
             ?: throw EngineInvariantViolation("runParallelStage called for non-parallel stage '${stage.name}'")
@@ -1142,7 +1155,7 @@ class CanonicalDurableRunCoordinator(
                             parentStageIndex = stageIndex,
                         ),
                     )
-                    val branchOutcome = executeBranchSteps(branch, runId, stageIndex, branchIndex, stageShOptions)
+                    val branchOutcome = executeBranchSteps(branch, runId, stageIndex, branchIndex, stageShOptions, executionContext)
                     val outcomeText = when (branchOutcome) {
                         is StepOutcome.Failure -> "failure"
                         is StepOutcome.Unstable -> "unstable"
@@ -1257,7 +1270,11 @@ class CanonicalDurableRunCoordinator(
         stageIndex: Int,
         branchIndex: Int,
         stageShOptions: ShOptions,
+        executionContext: ExecutionContext,
     ): StepOutcome {
+        // CTX-P2 branch derivation: immutable value; today branchContext == parentContext.
+        val branchContext = executionContext
+        // P2 fitness: branches must observe an explicitly derived context, never coordinator state.
         val steps = (branch.body as? StageBody.Steps)?.steps
             ?: throw EngineInvariantViolation("Parallel branch '${branch.name}' has a non-linear body")
         var outcome: StepOutcome = StepOutcome.Success
@@ -1279,7 +1296,8 @@ class CanonicalDurableRunCoordinator(
                 stepIndex,
                 stageShOptions,
                 bodyPath,
-            )
+                branchContext,
+            ).outcome
             when (stepOutcome) {
                 is StepOutcome.Failure, is StepOutcome.Unstable -> return stepOutcome
                 else -> { /* continue */ }
@@ -1296,6 +1314,7 @@ class CanonicalDurableRunCoordinator(
         stepIndex: Int,
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
     ): StepOutcome {
         // EM-7/LFC-5.3 (INC-022): withCredentials has its own scope lifecycle
         // (acquire -> env overlay -> always close), so it bypasses the generic
@@ -1310,10 +1329,11 @@ class CanonicalDurableRunCoordinator(
                 stepIndex,
                 stageShOptions,
                 parentBodyPath,
+                executionContext,
             )
         }
-        // Capture parent stack for finally restoration (BLOCK_STEP_EXECUTION.md §4 invariant)
-        val parentStack = contextStack
+        // CTX-P2: no parent capture, no restore — executionContext is the caller's value and stays it.
+        var contextInBody = executionContext
         var outcome: StepOutcome = StepOutcome.Success
         val scope = try {
             block.projectShellScope(stageShOptions)
@@ -1356,7 +1376,7 @@ class CanonicalDurableRunCoordinator(
             }
             is BlockShellScope.Directory -> {
                 Files.createDirectories(scope.target)
-                contextStack = contextStack.push(ContextOverlay.Cwd(scope.target.toString()))
+                contextInBody = contextInBody.pushed(ContextOverlay.Cwd(scope.target.toString()))
                 eventSink.append(
                     DirEntered(
                         eventId = UUID.randomUUID().toString(),
@@ -1392,7 +1412,7 @@ class CanonicalDurableRunCoordinator(
                 }
                 val mergedEnv = scope.parentEnv + envOverrides
                 val envSpecValues = envOverrides.mapValues { it.value.borrow { bytes -> String(bytes, Charsets.UTF_8) } }
-                contextStack = contextStack.push(ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)))
+                contextInBody = contextInBody.pushed(ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)))
                 stageShOptions.copy(env = mergedEnv)
             }
         }
@@ -1420,6 +1440,7 @@ class CanonicalDurableRunCoordinator(
                     stageShOptions = stageShOptions,
                     parentBodyPath = parentBodyPath,
                     childShOptions = childShOptions,
+                    executionContext = contextInBody,
                 )
             } else {
                 val attemptCount = when (scope) {
@@ -1479,7 +1500,8 @@ class CanonicalDurableRunCoordinator(
                         stepIndex,
                         childShOptions,
                         childOpId.bodyPath,
-                    )
+                        contextInBody,
+                    ).outcome
                     when (childOutcome) {
                         is StepOutcome.Failure -> {
                             outcome = childOutcome
@@ -1522,8 +1544,6 @@ class CanonicalDurableRunCoordinator(
                     ),
                 )
             }
-            // Restore parent context stack in finally (BLOCK_STEP_EXECUTION.md §4 invariant)
-            contextStack = parentStack
         }
 
         return outcome
@@ -1556,6 +1576,7 @@ class CanonicalDurableRunCoordinator(
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
         childShOptions: ShOptions,
+        executionContext: ExecutionContext,
     ): StepOutcome {
         val journal = retryControlJournal ?: return StepOutcome.Failure(
             PipelineFailure(
@@ -1640,7 +1661,8 @@ class CanonicalDurableRunCoordinator(
                             stepIndex,
                             childShOptions,
                             childOpId.bodyPath,
-                        )
+                            executionContext,
+                        ).outcome
                         when (childOutcome) {
                             is StepOutcome.Failure -> {
                                 attemptOutcome = childOutcome
@@ -1788,6 +1810,7 @@ class CanonicalDurableRunCoordinator(
         stepIndex: Int,
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
     ): StepOutcome {
         val bindings: List<CredentialBindingSpec> = try {
             CredentialBindingsPayload.decode(block.payload.encoded)
@@ -1807,6 +1830,7 @@ class CanonicalDurableRunCoordinator(
                 PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, acquisition.failure.describe()),
             )
             is CredentialScopeOutcome.Acquired -> dispatchAcquiredWithCredentialsBody(
+                executionContext = executionContext,
                 scope = acquisition.scope,
                 block = block,
                 runId = runId,
@@ -1837,15 +1861,18 @@ class CanonicalDurableRunCoordinator(
         stepIndex: Int,
         stageShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
     ): StepOutcome {
-        val parentStack = contextStack
-        val childShOptions = stageShOptions.copy(env = stageShOptions.env + scope.env)
-        val envSpecValues = scope.env.mapValues { (_, handle) ->
-            handle.borrow { bytes -> String(bytes, Charsets.UTF_8) }
-        }
-        contextStack = contextStack.push(
-            ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)),
+        // CTX-P2: ShOptions stays the functional env carrier (unchanged semantics);
+        // the Environment overlay is derived on the immutable context separately.
+        val childContext = executionContext.pushed(
+            ContextOverlay.Environment(
+                dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(
+                    scope.env.mapValues { (_, handle) -> handle.borrow { bytes -> String(bytes, Charsets.UTF_8) } },
+                ),
+            ),
         )
+        val childShOptions = stageShOptions.copy(env = stageShOptions.env + scope.env)
         var bodyOutcome: StepOutcome = StepOutcome.Success
         val cleanup: CredentialScopeCleanup = try {
             for ((childIndex, child) in block.body.withIndex()) {
@@ -1864,7 +1891,8 @@ class CanonicalDurableRunCoordinator(
                     stepIndex,
                     childShOptions,
                     childOpId.bodyPath,
-                )
+                    childContext,
+                ).outcome
                 when (childOutcome) {
                     is StepOutcome.Failure -> {
                         bodyOutcome = childOutcome
@@ -1879,8 +1907,8 @@ class CanonicalDurableRunCoordinator(
             }
             scope.close()
         } finally {
-            // Restore parent context stack in finally (BLOCK_STEP_EXECUTION.md §4 invariant)
-            contextStack = parentStack
+            // CTX-P2: no context restore needed — childContext is a derived value;
+            // the caller still owns its own parent context.
         }
         return mergeBodyAndCleanup(bodyOutcome, cleanup)
     }

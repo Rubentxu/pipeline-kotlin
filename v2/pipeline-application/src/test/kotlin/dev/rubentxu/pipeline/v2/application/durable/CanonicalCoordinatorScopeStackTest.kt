@@ -232,8 +232,10 @@ class CanonicalCoordinatorScopeStackTest {
     }
 
     @Test
-    fun `pop on empty stack throws IllegalStateException`() = runBlocking {
-        // Pipeline that pops scope without pushing first
+    fun `CatchErrorTriggered without an active scope fails closed (CTX-P2, underflow law preserved)`() = runBlocking {
+        // CTX-P2: the mutable stack is gone, but the invariant is NOT: a Triggered exit
+        // marker with no active CatchError scope is a rejected structural transition and
+        // the coordinator fails closed (IllegalStateException), now via exitCatchError().
         val pipelineWithUnderflow = CompiledPipeline(
             id = DefinitionId("scope-underflow"),
             source = SourceDescriptor("test", Digest("test")),
@@ -261,7 +263,7 @@ class CanonicalCoordinatorScopeStackTest {
         val coordinator = makeCoordinator()
         try {
             coordinator.run(pipelineWithUnderflow, RunId("underflow-run"))
-            fail("Expected IllegalStateException for scope underflow")
+            fail("Expected IllegalStateException for scope underflow (fail-closed)")
         } catch (e: IllegalStateException) {
             assertTrue(e.message?.contains("underflow") == true,
                 "Error message should mention underflow: ${e.message}")

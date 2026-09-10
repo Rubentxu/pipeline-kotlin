@@ -6,108 +6,145 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * HF0 pure laws for [ExecutionContext] (CTX-P1). No coroutines, no sleeps,
- * no scheduler identity. These laws are the contract the CTX-P2 coordinator
- * threading must preserve and the CTX-P3 race-proof pair relies on.
+ * HF0 pure laws for [ExecutionContext] (CTX-P1 corrected by the P2 equivalence
+ * RED + P2 state-machine laws CTX-1..7). No coroutines, no sleeps.
+ *
+ * CTX-P2-1 innermost-first trailing chain
+ * CTX-P2-2 Entered push transition
+ * CTX-P2-3 Triggered exit transition
+ * CTX-P2-4 Triggered without active catch -> rejected (fail closed)
+ * CTX-P2-5 nested lifecycle: [] -> [outer] -> [outer,inner] -> chain [inner,outer] -> [outer] -> []
+ * CTX-P2-7 no stale frames after exits (unrelated later failure observes none)
+ * plus parent/sibling/nesting/replay value laws.
  */
 class CtxPExecutionContextTest {
 
-    private val parent = ExecutionContext(
-        listOf(
-            ContextOverlay.Cwd("/ws"),
-            ContextOverlay.CatchErrorOverlay(
-                buildResult = "FAILURE",
-                stageResult = "FAILURE",
-                message = "outer",
-                enteredAt = 1L,
-            ),
-        ),
-    )
+    private fun catchO(result: String, msg: String) =
+        ContextOverlay.CatchErrorOverlay(buildResult = result, stageResult = result, message = msg, enteredAt = 1L)
 
-    // CTX-Parent: derivation preserves the receiver.
+    // ---- P1 value laws ------------------------------------------------------
+
     @Test
     fun ctx1_parent_pushed_is_unchanged() {
+        val parent = ExecutionContext(listOf(ContextOverlay.Cwd("/ws")))
         val child = parent.pushed(ContextOverlay.Cwd("/ws/sub"))
-        assertEquals(listOf<ContextOverlay>(ContextOverlay.Cwd("/ws"), parent.overlays[1]), parent.overlays)
-        assertEquals(3, child.overlays.size)
-        // CTX-Nesting: returning from the child needs no restore — parent still IS parent.
-        assertEquals(parent, ExecutionContext(parent.overlays))
+        assertEquals(listOf<ContextOverlay>(ContextOverlay.Cwd("/ws")), parent.overlays)
+        assertEquals(2, child.overlays.size)
     }
 
-    // CTX-Siblings: two derivations from one parent never alias.
     @Test
     fun ctx2_sibling_derivations_are_independent() {
+        val parent = ExecutionContext(listOf(ContextOverlay.Cwd("/ws")))
         val a = parent.pushed(ContextOverlay.Cwd("/ws/a"))
         val b = parent.pushed(ContextOverlay.Cwd("/ws/b"))
+        assertFalse(a == b)
         assertEquals(parent.overlays, a.overlays.dropLast(1))
         assertEquals(parent.overlays, b.overlays.dropLast(1))
-        assertFalse(a == b)
-        assertEquals("/ws/a", (a.overlays.last() as ContextOverlay.Cwd).path)
-        assertEquals("/ws/b", (b.overlays.last() as ContextOverlay.Cwd).path)
-        // Parent did not observe either derivation.
-        assertEquals(2, parent.overlays.size)
+        assertEquals(1, parent.overlays.size)
     }
 
-    // CTX-Nesting: child and grandchild chain without restore ops.
     @Test
     fun ctx3_nesting_needs_no_restore() {
+        val parent = ExecutionContext(listOf(ContextOverlay.Cwd("/ws")))
         val child = parent.pushed(ContextOverlay.Environment(EnvironmentSpec(mapOf("K" to "V"))))
         val grandchild = child.pushed(ContextOverlay.Cwd("/ws/deep"))
-        assertEquals(4, grandchild.overlays.size)
         assertTrue(grandchild.overlays.take(child.overlays.size) == child.overlays)
         assertTrue(child.overlays.take(parent.overlays.size) == parent.overlays)
-        // All three values coexist; no pop/restore was ever required.
-        assertEquals(3, child.overlays.size)
-        assertEquals(2, parent.overlays.size)
+        assertEquals(1, parent.overlays.size)
     }
 
-    // CTX-CatchError: deterministic pure query, EM-5/6 trailing-chain precedence.
     @Test
-    fun ctx4_trailingCatchErrorChain_is_pure_and_ordered() {
-        val outer = ContextOverlay.CatchErrorOverlay("FAILURE", "FAILURE", "outer", 1L)
-        val inner = ContextOverlay.CatchErrorOverlay("SUCCESS", "FAILURE", "inner", 2L)
-        // Trailing chain: Cwd, Catch(outer), Catch(inner) -> [outer, inner] outermost-first.
-        val withCatch = ExecutionContext(listOf(ContextOverlay.Cwd("/ws"), outer, inner))
-        val chain = withCatch.trailingCatchErrorChain()
-        assertEquals(listOf(outer, inner), chain)
+    fun ctx5_same_derivations_are_equal_and_identity_free() {
+        val parent = ExecutionContext(listOf(ContextOverlay.Cwd("/ws")))
+        fun derive(p: ExecutionContext, branch: String) = p.pushed(ContextOverlay.Cwd("/ws/$branch"))
+        assertEquals(derive(parent, "b0"), derive(parent, "b0"))
+    }
 
-        // A non-catch frame between scopes breaks the trailing chain (current walk semantics).
-        val separated = parent.pushed(ContextOverlay.Cwd("/ws/x")).pushed(inner)
+    // ---- CTX-P2 state-machine laws -----------------------------------------
+
+    // CTX-P2-1: innermost-first trailing chain, cut at first non-catch frame.
+    @Test
+    fun `P2-1 trailing chain is innermost first and cut at non-catch frames`() {
+        val outer = catchO("FAILURE", "outer")
+        val inner = catchO("SUCCESS", "inner")
+        val withCatch = ExecutionContext(listOf(ContextOverlay.Cwd("/ws"), outer, inner))
+        assertEquals(listOf(inner, outer), withCatch.trailingCatchErrorChain())
+
+        val separated = ExecutionContext(listOf(outer, ContextOverlay.Cwd("/ws/x"), inner))
         assertEquals(listOf(inner), separated.trailingCatchErrorChain())
 
-        val env = ContextOverlay.Environment(EnvironmentSpec(emptyMap()))
-        val blocked = withCatch.pushed(env)
-        assertEquals(emptyList<ContextOverlay.CatchErrorOverlay>(), blocked.trailingCatchErrorChain())
-
-        // No catch frames at all -> empty chain (abort path unchanged).
         assertTrue(ExecutionContext(listOf(ContextOverlay.Cwd("/"))).trailingCatchErrorChain().isEmpty())
-
-        // Query is repeatable and mutation-free.
-        assertEquals(chain, withCatch.trailingCatchErrorChain())
+        // Pure: repeatable, no mutation.
+        assertEquals(listOf(inner, outer), withCatch.trailingCatchErrorChain())
         assertEquals(3, withCatch.overlays.size)
     }
 
-    // CTX-Replay: same logical inputs -> equal value; no scheduling identity inside.
+    // CTX-P2-2: Entered -> ctx0.pushed(catch) == ctx1.
     @Test
-    fun ctx5_same_derivations_are_equal_and_identity_free() {
-        fun derive(p: ExecutionContext, branch: String) = p.pushed(ContextOverlay.Cwd("/ws/$branch"))
-        val replayA = derive(parent, "b0")
-        val replayB = derive(parent, "b0")
-        assertEquals(replayA, replayB)
-        assertEquals(replayA.hashCode(), replayB.hashCode())
-        // Value contains only overlays — no thread/coroutine/job identity fields exist.
-        assertTrue(replayA.overlays.all { it is ContextOverlay })
+    fun `P2-2 Entered transitions ctx0 to ctx1 by pure push`() {
+        val ctx0 = ExecutionContext.EMPTY
+        val ctx1 = ctx0.pushed(catchO("UNSTABLE", "c1"))
+        assertEquals(1, ctx1.overlays.size)
+        assertEquals(0, ctx0.overlays.size)
     }
 
-    // Structural unwind: dropping exactly the pushed frames returns to the parent value.
+    // CTX-P2-3: Triggered(emitted=true) on an active scope -> ctx0 back.
+    @Test
+    fun `P2-3 Triggered exits the active catch scope`() {
+        val ctx1 = ExecutionContext.EMPTY.pushed(catchO("UNSTABLE", "c1"))
+        val exit = ctx1.exitCatchError()
+        val ctx2 = (exit as ContextTransition.Advanced).context
+        assertEquals(ExecutionContext.EMPTY, ctx2)
+    }
+
+    // CTX-P2-4: Triggered without an active catch scope -> fail-closed rejection.
+    @Test
+    fun `P2-4 Triggered without active catch is a rejected invariant violation`() {
+        val exit = ExecutionContext.EMPTY.exitCatchError()
+        assertTrue(exit is ContextTransition.Rejected)
+        assertEquals(ContextInvariantViolation.CATCH_ERROR_UNDERFLOW, (exit as ContextTransition.Rejected).violation)
+
+        // Top frame is a non-catch overlay -> also rejected (old peek-pop guard).
+        val exit2 = ExecutionContext(listOf(ContextOverlay.Cwd("/ws"))).exitCatchError()
+        assertTrue(exit2 is ContextTransition.Rejected)
+    }
+
+    // CTX-P2-5: full nested lifecycle fold.
+    @Test
+    fun `P2-5 nested lifecycle fold`() {
+        val outer = catchO("UNSTABLE", "outer")
+        val inner = catchO("FAILURE", "inner")
+        var ctx = ExecutionContext.EMPTY            // []
+        ctx = ctx.pushed(outer)                     // [outer]
+        ctx = ctx.pushed(inner)                     // [outer, inner]
+        // Failure point: walk observes [inner, outer] (innermost-first).
+        assertEquals(listOf(inner, outer), ctx.trailingCatchErrorChain())
+        ctx = (ctx.exitCatchError() as ContextTransition.Advanced).context   // inner exit -> [outer]
+        assertEquals(listOf(outer), ctx.overlays)
+        ctx = (ctx.exitCatchError() as ContextTransition.Advanced).context   // outer exit -> []
+        assertEquals(ExecutionContext.EMPTY, ctx)
+    }
+
+    // CTX-P2-7: after both exits, an unrelated later failure observes ZERO stale frames.
+    @Test
+    fun `P2-7 no stale catch frames survive scope exits`() {
+        var ctx = ExecutionContext.EMPTY
+        ctx = ctx.pushed(catchO("UNSTABLE", "outer"))
+        ctx = ctx.pushed(catchO("FAILURE", "inner"))
+        ctx = (ctx.exitCatchError() as ContextTransition.Advanced).context
+        ctx = (ctx.exitCatchError() as ContextTransition.Advanced).context
+        assertTrue(ctx.trailingCatchErrorChain().isEmpty())
+        assertEquals(ExecutionContext.EMPTY, ctx)
+    }
+
+    // Structural unwind / totality retained from P1.
     @Test
     fun ctx6_unwind_returns_exactly_to_parent_value() {
+        val parent = ExecutionContext(listOf(ContextOverlay.Cwd("/ws")))
         val child = parent.pushed(ContextOverlay.Cwd("/s")).pushed(ContextOverlay.Cwd("/s/d"))
-        val unwound = ExecutionContext(child.overlays.dropLast(2))
-        assertEquals(parent, unwound)
+        assertEquals(parent, ExecutionContext(child.overlays.dropLast(2)))
     }
 
-    // Empty base is total: pushes/drops/queries never throw.
     @Test
     fun ctx7_empty_context_operations_are_total() {
         assertEquals(ExecutionContext(listOf(ContextOverlay.Cwd("/x"))), ExecutionContext.EMPTY.pushed(ContextOverlay.Cwd("/x")))

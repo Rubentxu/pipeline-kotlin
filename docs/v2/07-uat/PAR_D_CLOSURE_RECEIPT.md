@@ -1,6 +1,7 @@
 # PAR-D CLOSURE RECEIPT — typed parallel reconciliation & structured concurrency
 
 Cycle window: 181cb0d2..c8dc34c1 (base for rule 16: cbd0db1a = E-EM-11 HEAD).
+Published trunk SHA: 5b024cd8 (fast-forward push to origin/main, 2026-09-10; no force-push).
 ADR: `docs/v2/04-adrs/ADR-0076-typed-parallel-reconciliation.md`.
 Global round gate: `timeout 1270 ./gradlew -p v2 check` — 20m45s (within budget),
 **NON-ZERO due exclusively to known baseline debt**.

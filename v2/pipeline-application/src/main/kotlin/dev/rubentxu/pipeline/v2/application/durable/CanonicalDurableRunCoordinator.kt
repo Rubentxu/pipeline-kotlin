@@ -23,6 +23,15 @@ import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory
 import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.durable.BranchTerminal
+import dev.rubentxu.pipeline.v2.domain.durable.CompositeOperation
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateId
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateSnapshot
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelBranchChildSnapshot
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
@@ -46,7 +55,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -1010,8 +1018,112 @@ class CanonicalDurableRunCoordinator(
             ),
         )
 
+        // PAR-D D2: plan the parallel aggregate from durable facts BEFORE any branch
+        // launches. The reconciler is pure; this coordinator is the single writer.
+        val aggregateId = ParallelAggregateId(runId = runId.value, stageIndex = stageIndex)
+        val aggregateInput = OperationInput(
+            stepId = "core.parallel",
+            params = mapOf("control" to kotlinx.serialization.json.JsonPrimitive("aggregate")),
+            runId = runId.value,
+            attempt = 1,
+        )
+        val aggregateFingerprint = Fingerprint.compute(
+            aggregateInput,
+            "core.parallel[$stageIndex]" + branches.joinToString("|") { it.name },
+            ReplayPolicy.MEMOIZED,
+            1,
+        )
+        val aggregateRow = journal.get(parallelControlOpId(runId.value, stageIndex), 1)?.let {
+            ParallelAggregateSnapshot(
+                id = aggregateId,
+                fingerprint = it.fingerprint,
+                status = it.status,
+                semanticOutcome = decodeBranchTerminal(it.output?.result),
+            )
+        }
+        val childSnapshots = journal.listForRun(runId.value)
+            .mapNotNull { op ->
+                // Branch durable identity lives in the FIRST bodyPath segment
+                // ("b{N}:branch"), never in an OpId -b{N} suffix (the canonical
+                // parallel child key has no -b segment). Parse it deterministically.
+                val branchIndex = Regex("-bp\\d+-b(\\d+):branch(-|$)").find(op.id)
+                    ?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
+                ParallelBranchChildSnapshot(
+                    branchIndex = branchIndex,
+                    childIndex = op.attempt,
+                    status = op.status,
+                )
+            }
+            .groupBy { it.branchIndex }
+        val decision = ParallelReconciler.reconcile(
+            ParallelReconciliationInput(
+                aggregateId = aggregateId,
+                currentFingerprint = aggregateFingerprint,
+                aggregateRow = aggregateRow,
+                branchCount = branches.size,
+                childrenByBranch = childSnapshots,
+            ),
+        )
+
+        val aggregateOpId = parallelControlOpId(runId.value, stageIndex)
+        when (decision) {
+            is ParallelDecision.RejectDivergence -> {
+                journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, BranchTerminal.Failed(decision.reason), OperationStatus.DIVERGENT))
+                return StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, decision.reason),
+                )
+            }
+            is ParallelDecision.RejectAmbiguousOutcome -> {
+                journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, BranchTerminal.Failed(decision.reason), OperationStatus.ABORTED))
+                return StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, decision.reason),
+                )
+            }
+            is ParallelDecision.ReuseSuccess -> return StepOutcome.Success
+            is ParallelDecision.ReuseUnstable -> return StepOutcome.Unstable
+            is ParallelDecision.ReuseFailure -> {
+                // The exact semantic outcome is durable; surface it as a canonical failure.
+                val message = (decision as? ParallelDecision.ReuseFailure).let { "parallel aggregate previously failed" }
+                return StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, message),
+                )
+            }
+            is ParallelDecision.CloseFromChildren -> {
+                val status = when (decision.outcome) {
+                    is BranchTerminal.Succeeded -> OperationStatus.SUCCEEDED
+                    is BranchTerminal.Unstable -> OperationStatus.ABORTED
+                    is BranchTerminal.Failed -> OperationStatus.FAILED
+                }
+                journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, decision.outcome, status))
+                return when (decision.outcome) {
+                    is BranchTerminal.Succeeded -> StepOutcome.Success
+                    is BranchTerminal.Unstable -> StepOutcome.Unstable
+                    is BranchTerminal.Failed -> StepOutcome.Failure(
+                        PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, (decision.outcome as BranchTerminal.Failed).message ?: "parallel branch failed"),
+                    )
+                }
+            }
+            is ParallelDecision.Start -> {
+                // Single writer: persist the aggregate RUNNING BEFORE launching branches.
+                journal.append(compositeRunningRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput))
+            }
+            is ParallelDecision.ResumeBranches -> {
+                // Aggregate row already RUNNING (or absent for a pre-PAR-D journal); keep it RUNNING.
+                if (aggregateRow == null) {
+                    journal.append(compositeRunningRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput))
+                }
+            }
+        }
+
+        val branchesToRun: List<Int> = when (decision) {
+            is ParallelDecision.Start -> decision.branches
+            is ParallelDecision.ResumeBranches -> decision.branches
+            else -> emptyList()
+        }
+
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
-        val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = branches.mapIndexed { branchIndex: Int, branch: StageNode ->
+        val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = branchesToRun.map { branchIndex ->
+            val branch = branches[branchIndex]
             scope.async {
                     eventSink.append(
                         dev.rubentxu.pipeline.v2.events.ParallelBranchStarted(
@@ -1047,10 +1159,84 @@ class CanonicalDurableRunCoordinator(
         }
         val branchOutcomes: List<StepOutcome> = deferred.map { it.await() }
 
+        // PAR-D D2: fold the typed branch outcomes (exact semantic knowledge at fresh
+        // execution time) and close the aggregate row with the lossless carrier.
+        val outcomeByBranch = branchesToRun.mapIndexed { i, branchIdx ->
+            val o = branchOutcomes[i]
+            branchIdx to when (o) {
+                is StepOutcome.Failure -> BranchTerminal.Failed(o.failure.message)
+                is StepOutcome.Unstable -> BranchTerminal.Unstable
+                else -> BranchTerminal.Succeeded
+            }
+        }.toMap()
+        val fold = dev.rubentxu.pipeline.v2.domain.durable.foldAwaitAll(outcomeByBranch)
+        val aggregateStatus = when (fold) {
+            is BranchTerminal.Succeeded -> OperationStatus.SUCCEEDED
+            is BranchTerminal.Unstable -> OperationStatus.ABORTED
+            is BranchTerminal.Failed -> OperationStatus.FAILED
+        }
+        journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, fold, aggregateStatus))
+
         // ALL_COMPLETE: first failure (deterministic: lowest branch index) is the aggregate.
         return branchOutcomes.firstOrNull { it is StepOutcome.Failure }
             ?: branchOutcomes.firstOrNull { it is StepOutcome.Unstable }
             ?: StepOutcome.Success
+    }
+
+    /** Deterministic control OpId for the parallel aggregate (PAR-D typed identity). */
+    private fun parallelControlOpId(runIdValue: String, stageIndex: Int): String =
+        OpId(runIdValue, stageIndex, -1, bodyPath = listOf(BlockSegment("0:parallel-control"))).format()
+
+    private fun compositeRunningRow(
+        opId: String,
+        id: ParallelAggregateId,
+        fingerprint: Fingerprint,
+        input: OperationInput,
+    ): CompositeOperation = CompositeOperation(
+        id = opId,
+        fingerprint = fingerprint,
+        input = input,
+        output = null,
+        status = OperationStatus.RUNNING,
+        attempt = 1,
+        subOperations = emptyList(),
+    )
+
+    /** Terminal aggregate row carrying the exact typed outcome (lossless carrier). */
+    private fun aggregateTerminalRow(
+        opId: String,
+        id: ParallelAggregateId,
+        fingerprint: Fingerprint,
+        input: OperationInput,
+        outcome: BranchTerminal,
+        status: OperationStatus,
+    ): CompositeOperation {
+        val result = kotlinx.serialization.json.buildJsonObject {
+            put("outcome", kotlinx.serialization.json.JsonPrimitive(outcome.asText))
+            if (outcome is BranchTerminal.Failed && outcome.message != null) {
+                put("message", kotlinx.serialization.json.JsonPrimitive(outcome.message))
+            }
+        }
+        return CompositeOperation(
+            id = opId,
+            fingerprint = fingerprint,
+            input = input,
+            output = OperationOutput(result, durationMs = 0L, finishedAt = clock.now().toEpochMilli()),
+            status = status,
+            attempt = 1,
+            subOperations = emptyList(),
+        )
+    }
+
+    private fun decodeBranchTerminal(result: kotlinx.serialization.json.JsonElement?): BranchTerminal? {
+        val obj = result as? kotlinx.serialization.json.JsonObject ?: return null
+        val text = (obj["outcome"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return null
+        return when (text) {
+            "success" -> BranchTerminal.Succeeded
+            "unstable" -> BranchTerminal.Unstable
+            "failure" -> BranchTerminal.Failed((obj["message"] as? kotlinx.serialization.json.JsonPrimitive)?.content)
+            else -> null
+        }
     }
 
     /**

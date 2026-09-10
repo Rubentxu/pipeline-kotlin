@@ -75,3 +75,64 @@ promotion, but LFC-2 retains its acceptance dependency. H01 is containment only,
 ## Verify
 - Historical focused evidence: UatDsl001 (mutating), UatEvt001, ErrorHandlingTest (ERR-S-*).
   UatDsl003 + UatDsl001-full-grammar are disabled, NOT PASS. No fresh full gate in this diagnostic round.
+
+## Local-first ecosystem continuation — LFC-2E
+
+Once the foundational LFC-2 gate and EVT-3 Event Harness are green, the next product priority is **not**
+EVT-4/controller/remote execution. It is a broad local-first Step ecosystem expansion using the proven
+external plugin seam.
+
+Canonical planning documents:
+
+- `LFC2_STEP_ECOSYSTEM_EXPANSION.md` — ordered implementation roadmap;
+- `../01-product/STEP_ECOSYSTEM_MATRIX.md` — family/delivery/certification coverage;
+- `../03-specifications/STEP_ECOSYSTEM_POLICY.md` — core vs official/external plugin law.
+
+### Sequencing law
+
+```text
+LFC-2 foundation + EVT-3
+        ↓
+LFC-2E0..E10 local-first Step/plugin expansion
+        ↓
+local-first feature freeze
+        ↓
+EVT-4 live relay / M4 remote-controller continuation
+```
+
+EVT-4+ remains tracked but is intentionally deferred until the local-first product surface has broad,
+certified value.
+
+### Core/plugin law
+
+- universal pipeline semantics may remain `CORE`;
+- non-universal high-value capabilities default to `OFFICIAL_PLUGIN`;
+- vendor/domain surfaces default to `EXTERNAL_REFERENCE`;
+- remote/controller-only semantics are `DEFERRED_REMOTE`;
+- Jenkins internal Java-extension bridges may be `REJECTED_JENKINS_INTERNAL`.
+
+A popular Jenkins Step is **not** automatically core.
+
+### Extensibility pressure-test
+
+Every non-universal family is attempted through the public plugin seam first. If a family such as
+`junit`, utilities, HTTP, Git, containers or Artifactory needs a Step-specific edit in
+`CanonicalDurableRunCoordinator` or a central per-Step dispatcher, the family slice fails its architecture
+gate. The correct response is to improve the generic capability/plugin seam and prove the change with
+multiple consumers, never to add a privileged plugin-name-specific core case.
+
+### Certification after EVT-3
+
+Every Step/family claimed complete must have:
+
+- typed Step contract/codecs;
+- declared capabilities/effects;
+- canonical durable execution/replay behavior;
+- real `.pipeline.kts` scenario;
+- Step/Plugin Contract Suite evidence;
+- reusable Event Harness acceptance contract where observable;
+- no legacy executable alternative.
+
+The existing `example.uppercase` remains the minimal external proof. LFC-2E progressively raises the
+plugin difficulty from pure/string operations to filesystem/typed data, testing, network+credentials,
+SCM, containers and finally a complex vendor reference plugin.

@@ -1,13 +1,32 @@
 # EVT — Event Spine, Verification and Policy evolution
 
 Status: PROPOSED program  
-Placement: after LFC-2/CTX-P foundation, before resuming the distributed/controller path that depends on event semantics.
+Placement: EVT-0..3 complete the local verification foundation; EVT-4+ resumes only after the LFC-2E local-first Step ecosystem freeze.
 Maps forward to existing M4 (Protocol/Gateway), M6 (Jenkins UI), M8 (Graph/Provenance) and M9 (policies).
 
 ## Sequencing principle
 
 Do not build the final distributed platform first. Each slice must produce visible local value and leave a
 compatible seam for the next deployment topology.
+
+**Product-priority amendment:** EVT-3 is the final sequential P0 Event Spine slice before local feature expansion.
+After EVT-3, `LFC-2E` becomes the product-priority program so pipeline-kotlin can maximize and certify the
+local Step/plugin ecosystem. EVT-4 is intentionally deferred until the local-first feature freeze defined by
+`LFC2_STEP_ECOSYSTEM_EXPANSION.md`; it is not cancelled.
+
+```text
+EVT-0..3
+   ↓
+LFC-2E local-first Step/plugin expansion
+   ↓
+local-first feature freeze
+   ↓
+EVT-4 detached live relay
+   ↓
+EVT-5 transport spike
+   ↓
+EVT-6 M4/M6 handoff
+```
 
 ## EVT-0 — Grounding and contract freeze
 
@@ -82,7 +101,13 @@ Exit:
 - contracts validate actual produced histories;
 - at least one deliberately mutated trace is rejected (anti-false-green canary).
 
+**Handoff:** after this exit, new/certified LFC-2E Step families use the Event Harness for reusable acceptance contracts.
+EVT-4 does not automatically start.
+
 ## EVT-4 — Detached live relay
+
+**Start condition:** local-first feature freeze from `LFC2_STEP_ECOSYSTEM_EXPANSION.md` is green, or an explicit
+roadmap reprioritization with evidence supersedes that gate.
 
 **Goal:** prove live consumers can observe a running pipeline without becoming part of its failure/cancellation/resource domain.
 

@@ -1607,3 +1607,40 @@ If yes, run it.
 If no, do not run it during the normal implementation loop.
 
 If uncertain and the uncertainty is material, investigate or widen explicitly.
+
+## COROUTINES — EXECUTION MECHANISM, NEVER DURABLE AUTHORITY (MANDATORY)
+
+Validated by PAR-D (ADR-0076; receipt:
+`docs/v2/07-uat/PAR_D_CLOSURE_RECEIPT.md`).
+
+### Law
+
+```text
+Coroutines execute a previously determined typed decision;
+they are not the authority for durable truth.
+```
+
+Operative pipeline:
+
+```text
+durable facts
+    -> pure reconciliation
+    -> typed decision
+    -> coroutine execution / effects
+```
+
+### Consequences
+
+- Coroutine completion or cancellation is NEVER, by itself, durable
+  truth. Durable state changes only through the typed decision boundary
+  and the journal (single writer).
+- `CancellationException` is an execution mechanism: it MUST NOT be
+  mapped to a generic infrastructure failure or to a terminal durable
+  outcome.
+- A coroutine failure used as control flow is forbidden on decision
+  paths: branch/concurrent outcomes are typed values folded by the
+  declared policy.
+- Concurrency primitives (scope choice, dispatcher, structured scopes)
+  MUST reflect — not define — the durable contract. A failing branch in
+  a supervisor join is a contained typed outcome, not a cancellation of
+  durable facts.

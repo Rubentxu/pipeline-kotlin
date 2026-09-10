@@ -1,32 +1,22 @@
-// Parallel execution fixture exercising parallel branches.
+// Pure-parallel fixture: parallel body is the ONLY body of the stage
+// (G2 contract: parallel + sibling steps in one stage is fail-closed;
+// see parallel-mixed-body-sibling.pipeline.kts for the negative case).
 
 pipeline {
     stages {
         stage("ParallelTest") {
-            agent("linux-agent")
-
             parallel {
                 branch("branch-a") {
-                    echo("Branch A step 1")
-                    sh("echo 'Branch A running'")
-                    sleep(1)
-                    echo("Branch A step 2")
+                    echo("A1")
+                    sh("echo A-running")
+                    echo("A2")
                 }
                 branch("branch-b") {
-                    echo("Branch B step 1")
-                    sh("echo 'Branch B running'")
-                    sleep(1)
-                    echo("Branch B step 2")
-                }
-                branch("branch-c") {
-                    echo("Branch C step 1")
-                    sh("echo 'Branch C running'")
-                    sleep(1)
-                    echo("Branch C step 2")
+                    echo("B1")
+                    sh("echo B-running")
+                    echo("B2")
                 }
             }
-
-            echo("All branches complete")
         }
     }
 }

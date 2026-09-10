@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
 import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -226,5 +227,23 @@ class UatDsl003ParallelTest {
         }
         val events = JsonEventLog.decode(stdout)
         return stdout to events
+    }
+    @Test
+    fun `Z2 - parallel stage emits StageStarted and StageFinished with same stage identity`() {
+        val (_, events) = runAndDecode(parallelScript, expectedExit = 0)
+
+        val started = events.filterIsInstance<StageStarted>()
+        val finished = events.filterIsInstance<StageFinished>()
+
+        assertEquals(1, started.size, "Exactly one StageStarted for the parallel stage: $events")
+        assertEquals(1, finished.size, "Exactly one StageFinished for the parallel stage: $finished")
+        assertEquals(started.single().stageIndex, finished.single().stageIndex, "Stage identity must pair")
+        assertEquals(started.single().stageName, finished.single().stageName, "Stage identity must pair")
+
+        // Ordering laws (no global branch ordering frozen):
+        assertTrue(events.indexOf(started.single()) < events.indexOfFirst { it is ParallelBranchStarted },
+            "StageStarted must precede every ParallelBranchStarted")
+        assertTrue(events.indexOfLast { it is ParallelBranchFinished } < events.indexOf(finished.single()),
+            "Every ParallelBranchFinished must precede StageFinished")
     }
 }

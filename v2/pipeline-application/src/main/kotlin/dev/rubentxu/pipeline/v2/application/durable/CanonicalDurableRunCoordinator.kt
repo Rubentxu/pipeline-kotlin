@@ -993,6 +993,23 @@ class CanonicalDurableRunCoordinator(
         val branches = (stage.body as? StageBody.Parallel)?.branches
             ?: throw EngineInvariantViolation("runParallelStage called for non-parallel stage '${stage.name}'")
 
+        // E-EM-11 Z2: the canonical stage law is StageStarted < stage execution <
+        // StageFinished for EVERY admitted stage, including parallel bodies. The
+        // parallel path previously forked before the linear-path StageStarted emitter,
+        // an accidental implementation difference, not a different Stage semantic.
+        // Exactly one StageStarted, same stage identity as the StageFinished emitted
+        // by the caller's continuation handling.
+        eventSink.append(
+            dev.rubentxu.pipeline.v2.events.StageStarted(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stageIndex = stageIndex,
+                stageName = stage.name,
+            ),
+        )
+
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)
         val deferred: List<kotlinx.coroutines.Deferred<StepOutcome>> = branches.mapIndexed { branchIndex: Int, branch: StageNode ->
             scope.async {

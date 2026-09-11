@@ -35,5 +35,15 @@ object CoreStepRegistryFactory {
         // typed input/output codecs and the SHELL_OPERATIONS_CAPABILITY declaration.
         // Single composition authority — no per-call-site wiring.
         CoreShellStep.registerInto(this)
+        // LFC-2E1-S2-A1 / G2: register CoreErrorStep alongside CoreEchoStep and CoreShellStep.
+        // IMPORTANT: this is REGISTRATION only, not a production routing flip.
+        // While "core.error" remains in LEGACY_PLUGIN_IDS, StructuralFamilyResolver.classify
+        // returns StructuralStepFamily.LegacyCore for this key (legacy membership wins per
+        // the resolver contract). Production behavior is UNCHANGED at G2. The flip to
+        // Registry family is G5, after G3 parity proof and G4 architecture fitness.
+        // Counter invariant at G2: LEGACY_PLUGIN_IDS == 12, metadata rows == 12,
+        // dispatcher classes == 12. The legacy decoder/dispatcher/metadata row are not
+        // mutated by this edit — they remain the production authority until G6.
+        CoreErrorStep.registerInto(this)
     }
 }

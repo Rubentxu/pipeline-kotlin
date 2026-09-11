@@ -392,28 +392,73 @@ and the durable spine. All findings captured in
 - E36 pipeline-step-sdk module structure
 - E37 Step SDK public typed surface
 - E38 pipeline-architecture-tests module
-- E39 S3EchoLegacyRemovedFitnessTest 7/7 GREEN (G7 contract suite)
+- E39 S3EchoLegacyRemovedFitnessTest 7/7 GREEN (G4 fitness gate)
 - E40 Durable spine architecture
 
-### E39 — critical S1 evidence
+### Round 8 (commit 4224d53f, E39b — precision fix)
+- E39b EchoStepContractSuiteTest 17/17 GREEN (G7 StepContractSuite)
 
-`S3EchoLegacyRemovedFitnessTest` is the **G7 StepContractSuite** for
-`core.echo`. 7/7 contracts green mechanically proves:
-- core.echo is NOT decodable by CanonicalCoreStepDecoder (legacy path absent)
-- core.echo is NOT dispatched by CanonicalNodeDispatcher (legacy dispatch absent)
-- core.echo IS in the production StepRegistry (registry path present)
-- core.echo is NOT in LEGACY_PLUGIN_IDS or legacy metadata table
+### Round 9 (commit bee13f75, E41..E45)
+- E41 12/12 Canonical*NodeDispatcher files exist (one per legacy key)
+- E42 LEGACY_PLUGIN_IDS: 12 entries; core.sh NOT in set (REGISTRY_PRIMARY)
+- E43 CoreStepRegistryFactory: 2 entries (echo + sh)
+- E44 CanonicalCoreStepMetadata: 12 entries with typed Effect+ReplayPolicy
+- E45 LEGACY_PLUGIN_IDS == metadata table (diff empty)
 
-= core.echo satisfies **CERTIFIED + LEGACY_REMOVED** combined verdict.
+### Round 10 (commit b4acf115, E46..E49 — precision correction)
+- E46 EchoStepContractSuiteTest 17 named contracts (matches G7)
+- E47 ShStepContractSuiteTest 17/17 GREEN (G7 for core.sh)
+- E48 No S3ShLegacyRemovedFitnessTest exists (architectural gap)
+- E49 core.sh is IMPLEMENTED_UNCERTIFIED (correction to E42)
+
+### E39 + E39b — combined S1 evidence
+
+Two complementary mechanical proofs for `core.echo`:
+
+| Suite | Module | Tests | Result | Role |
+|---|---|---|---|---|
+| `S3EchoLegacyRemovedFitnessTest` | pipeline-architecture-tests | 7 | 7/7 GREEN | G4 fitness gate |
+| `EchoStepContractSuiteTest` | pipeline-application | 17 | 17/17 GREEN | G7 StepContractSuite |
+
+The G4 fitness proves CERTIFIED + LEGACY_REMOVED (structural invariant).
+The G7 suite proves the full 17-row contract coverage. Together they
+mechanically support the S1 certification recording.
+
+### E49 — precision correction
+
+Earlier claim "core.sh = CERTIFIED + LEGACY_REMOVED" was INCORRECT.
+
+Per `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md`:
+- core.sh = LEGACY_REMOVED (LB-02 S6.1-4 done)
+- core.sh = IMPLEMENTED_UNCERTIFIED (stderr contract row pending, LB02_S6_7)
+
+### E48 — real architectural gap
+
+No `S3ShLegacyRemovedFitnessTest` exists. If S1 is extended to record
+`core.sh` CERTIFIED + LEGACY_REMOVED, a new fitness test would need
+to be created. Real work, not just recording.
+
+### Updated inventory verdict
+
+| Key | Status |
+|---|---|
+| `core.echo` | CERTIFIED + LEGACY_REMOVED (S1 ready) |
+| `core.sh` | REGISTRY_PRIMARY + IMPLEMENTED_UNCERTIFIED (LB-02 != REMOVED; stderr pending) |
+| 12 legacy keys | All LEGACY_EXECUTABLE (S2 burn-down scope) |
+| `example.uppercase` | CERTIFIED (LB-02 EP) |
 
 ### Cumulative verdict
 
 ```text
-Rounds 1-7 (E1..E40):
-  39 PASS
+Rounds 1-10 (E1..E49):
+  46 PASS
    1 SKIPPED (E4: external plugin — known CLI limitation)
+   1 HONEST FINDING (E48: missing S3Sh fitness gate)
+   1 LEGACY_REMOVED_NOT_YET_CERTIFIED (E42/E49: core.sh stderr pending)
 
-Trunk: main == origin/main == 594b27d2
+Trunk: main == origin/main == b4acf115
 
 S1 still requires explicit user direction to open (standing instruction).
+S1 scope (corrected): record core.echo as CERTIFIED + LEGACY_REMOVED only.
+S2 burn-down scope: 12 legacy keys (none burned down yet).
 ```

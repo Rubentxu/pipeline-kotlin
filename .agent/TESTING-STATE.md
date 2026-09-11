@@ -68,3 +68,48 @@
 - Module gates: pipeline-domain 360 tests, pipeline-events 117 tests, all green.
 - P4-EX oracle now hermetic per-run (run.sh --control-root mktemp); INC-EVT-H1 filed
   as BASELINE harness debt. Contract-09 flake = stale durable-shell state, never EVT-1.
+
+## EVT-3 CLOSED + LFC-2E integrated on trunk (2026-09-11)
+
+### EVT-3 closure cycle (cycle evt-3-event-harness)
+- Branch: docs/evt-3-event-harness, base 1b950074, HEAD df22ff01 + closure commit d0aedb5d
+- Receipt: docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md (210 lines)
+- L0 compile GREEN (38 tasks UP-TO-DATE)
+- L1-L2 :pipeline-event-harness:test --rerun-tasks = 19/19 GREEN (HF0 9/9 + mutation 10/10)
+- L3 examples/run.sh x2 consecutive = 10/10 + 4/4 parity each run
+- L4 FArch020EventHarnessIsolationTest = 4/4 GREEN
+- L4 CanonicalEmitEventNodeDispatcherTest = 5/5 GREEN
+- L5 ./gradlew -p v2 check = same 8 pre-existing failures as base SHA, 0 regressions
+- Rule-16: introduced failures = 0
+- FF-merge to main: main == origin/main == d0aedb5d
+- EVT-3 status in EVENT_SPINE_EVOLUTION.md: CLOSED @ df22ff01
+- EVT-4 status: PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY
+- EVT-5 status: PENDING-DEFERRED (no transport selected)
+
+### LFC-2E documentation integration cycle
+- Source: PR #22 / branch origin/docs/lfc2-step-ecosystem-expansion @ 2bf7bb5d (7 doc commits)
+- Integration branch: docs/lfc2-step-ecosystem-expansion-integration
+- 7 PR commits rebased cleanly on d0aedb5d (only 1 conflict on EVENT_SPINE_EVOLUTION.md)
+- 2 conflict zones resolved semantically:
+  - Status line: keep EVT-3 CLOSED SHA from EVT-3, keep Placement text from LFC-2E
+  - EVT-4 status: combine PENDING label (EVT-3) + start condition (LFC-2E)
+- 1 ROADMAP.md amendment commit (a14e5e6f): EVT section now shows closure status + priority chain
+- FF-merge to main: main == origin/main == a14e5e6f
+- 8 required files preserved (per user law #4):
+  - docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md
+  - docs/v2/03-specifications/STEP_ECOSYSTEM_POLICY.md
+  - docs/v2/03-specifications/STEP_PLUGIN_SDK.md
+  - docs/v2/05-roadmap/EVENT_SPINE_EVOLUTION.md (reconciled)
+  - docs/v2/05-roadmap/LFC2_HONEST_DSL_CLOSURE.md
+  - docs/v2/05-roadmap/LFC2_STEP_ECOSYSTEM_EXPANSION.md
+  - docs/v2/05-roadmap/ROADMAP.md (amended)
+  - openspec/changes/lfc2-step-constitution-plugin-seam/tasks.md
+
+### Next cycle: LFC-2E0 — certify existing families
+- Step inventory must be MACHINE-DERIVED, not matrix-hypothesis
+- Required fields per Step: delivery, DSL present?, StepDefinition present?,
+  canonical execution?, legacy executable path?, typed input?, typed output?,
+  capabilities?, replay policy?, real example?, Event Harness contract?, certification state?
+- STEP_ECOSYSTEM_MATRIX.md is the hypothesis to verify, not the evidence
+- Priority order E0..E10 (E0 first: certify existing; E1: universal core freeze)
+- Do NOT open EVT-4 during these cycles unless explicit reprioritization

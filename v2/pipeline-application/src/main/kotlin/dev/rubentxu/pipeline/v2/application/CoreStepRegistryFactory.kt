@@ -45,5 +45,10 @@ object CoreStepRegistryFactory {
         // dispatcher classes == 12. The legacy decoder/dispatcher/metadata row are not
         // mutated by this edit — they remain the production authority until G6.
         CoreErrorStep.registerInto(this)
+        // LFC-2E1-S2-A2 / G1: candidate registration only. `core.sleep` remains in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
+        // keeps LegacyCore as the canonical production authority. No legacy decoder,
+        // metadata, dispatcher, or catalogue entry changes in this gate.
+        CoreSleepStep.registerInto(this)
     }
 }

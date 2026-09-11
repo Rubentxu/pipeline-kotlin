@@ -550,3 +550,35 @@ Burn-down of 12 legacy keys:
 - `core.sh` does NOT belong to S2 scope (already CERTIFIED + LEGACY_REMOVED)
 
 S1 still requires explicit user direction to merge the cycle branch to main.
+
+## Active Change — S2-A2 G1 core.sleep registry candidate (2026-09-11)
+
+**Status: G1 candidate registered, no cutover.** Branch
+`cycle/lfc2-e1-s2-legacy-catalog-burn-down`, base `5df378bf`.
+
+**Changed surfaces:**
+- `pipeline-application`: new `CoreSleepStep` typed registry candidate and
+  `CoreSleepStepUnitTest`.
+- `CoreStepRegistryFactory`: candidate registration only.
+- `RegistryExecutionBoundary`: timeout catches before `CancellationException`; ordinary
+  cancellation rethrows structurally and is never classified ENGINE.
+- G1 receipt: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G1_REGISTRY_CANDIDATE_RECEIPT.md`.
+
+**Known impact:** the candidate uses `delay(input.seconds.seconds)`, validates
+`seconds > 0` at typed-input decode, declares no capabilities, and retains the
+legacy `READ_ONLY` / `MEMOIZED` descriptor. `StructuralFamilyResolver` still selects
+`LegacyCore` because `core.sleep` remains in `LEGACY_PLUGIN_IDS`.
+
+**Verification fresh at G1:**
+- L0 `:pipeline-application:compileTestKotlin` PASS.
+- L1 `CoreSleepStepUnitTest` 10/10 PASS.
+- L2 114/114 PASS: CoreSleep candidate, both G0 legacy characterization classes,
+  GenericRegistryExecutionCarrier, A4_3 typed-shell boundary consumer, and echo/error
+  regression/contract suites. Fresh XML canaries verified.
+
+**Deliberately not run:** module suite and full `check`. The change is bounded to the
+application registry/boundary and direct consumers were tested. G1 does not cut over
+production sleep routing, so no installed CLI parity claim is valid or needed here.
+
+**Next:** G2/G3 must establish candidate-vs-legacy differential/parity evidence before
+any `LEGACY_PLUGIN_IDS` change. Do not describe `core.sleep` as CERTIFIED.

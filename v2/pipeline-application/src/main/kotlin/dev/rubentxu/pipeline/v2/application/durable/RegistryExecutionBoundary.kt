@@ -7,6 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 
 /**
  * Registry strategy executor behind the [CommonExecutionBoundary] (CDE.3-d3).
@@ -112,6 +114,24 @@ object RegistryExecutionBoundary {
                 outcome = outcome,
                 encodedOutput = encoded,
             )
+        } catch (e: TimeoutCancellationException) {
+            // A timeout is an expected operational outcome. It is classified before the
+            // CancellationException supertype, remains key-agnostic, and gives the
+            // coordinator a typed terminal outcome instead of an ENGINE failure.
+            CommonExecutionResult(
+                outcome = dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure(
+                    PipelineFailure(
+                        kind = FailureKind.TIMEOUT,
+                        message = e.message ?: "registry step '${prepared.key.value}' timed out",
+                        cause = e,
+                    ),
+                ),
+                encodedOutput = null,
+            )
+        } catch (e: CancellationException) {
+            // Cancellation is structured execution control, never an ENGINE failure or
+            // a durable terminal fact. Let the owning coroutine/coordinator unwind.
+            throw e
         } catch (e: Exception) {
             CommonExecutionResult(
                 outcome = dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure(

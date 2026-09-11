@@ -748,6 +748,65 @@ Rounds 1-7 (E1..E40, +E39b):
 Trunk: main == origin/main == 04f7b039
 ```
 
+## Edge case sweep — round 9 (2026-09-11, post-4224d53f)
+
+Legacy surface structural verification — the foundation that S2 burn-down will build on:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E41 | All 12 legacy keys → Canonical*NodeDispatcher files | PASS | 12/12 files present (one per key) |
+| E42 | `LEGACY_PLUGIN_IDS` (CanonicalCoreStepDecoder.kt L60-72) | PASS | 12 entries; `core.echo` NOT in set; `core.sh` NOT in set (REGISTRY_PRIMARY flip — major finding) |
+| E43 | `CoreStepRegistryFactory` (registry entries) | PASS | 2 entries: `CoreEchoStep.registerInto` (L29) + `CoreShellStep.registerInto` (L37) |
+| E44 | `CanonicalCoreStepMetadata` table | PASS | 12 entries with `StepMetadata(Effect, ReplayPolicy)`; `core.error: ABORTS_PIPELINE + NEVER` (typed failure); `core.sh` NOT in this table |
+| E45 | Cross-check: LEGACY_PLUGIN_IDS == metadata table | PASS | diff is empty (12 == 12, no drift) |
+
+### Captured logs (edge cases round 9, rule 25)
+
+```text
+/tmp/lfc2e0-e41-e45-round9.log      sha256=a167879ac41495b621d49853aea69fad88e6507095215737025f001490dc158a
+/tmp/lfc2e0-legacy-keys.txt         sha256=917ac17e2b54c53094c839f948bfe56a933195ebeecdb8be8d63e1cdf44b073d
+/tmp/lfc2e0-metadata-keys.txt       sha256=917ac17e2b54c53094c839f948bfe56a933195ebeecdb8be8d63e1cdf44b073d
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e41-e45-round9.log /tmp/lfc2e0-legacy-keys.txt \
+          /tmp/lfc2e0-metadata-keys.txt
+```
+
+### Major finding (E42): `core.sh` is NOT in LEGACY_PLUGIN_IDS
+
+This is a previously-unreported insight:
+
+```text
+CanonicalCoreStepDecoder.kt comment (L52-58):
+  "LB-02 / A4 (REGISTRY_PRIMARY flip): 'core.sh' is removed from this set
+   so the production routing authority is CoreShellStep.registerInto()"
+```
+
+**Implication**: `core.sh` is the **second** CERTIFIED + LEGACY_REMOVED
+key (alongside `core.echo`), not a legacy key. The inventory claim
+"LEGACY = 12" is correct, and `core.sh` belongs in the **registry**
+column (currently 2 entries), not the legacy column.
+
+This affects S2 burn-down scope: only 11 legacy keys remain
+(core.error, core.sleep, core.file.writeFile, core.emit.event,
+core.milestone, core.deleteDir, core.cleanWs, core.load, core.pwd,
+core.isUnix, core.waitUntil, core.archiveArtifacts — minus core.sh
+which was already burned down).
+
+### Cumulative edge case tally (after round 9)
+
+```text
+Rounds 1-9 (E1..E45):
+  44 PASS
+   1 SKIPPED (E4)
+   1 BURNED-DOWN-PRE-LFC-2E0 (core.sh, found in E42)
+
+Trunk: main == origin/main == 4224d53f
+```
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

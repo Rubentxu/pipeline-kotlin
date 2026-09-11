@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
 import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
+import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
@@ -43,23 +44,26 @@ import java.util.concurrent.TimeUnit
 class CoreSleepStepUnitTest {
 
     @Test
-    fun `input validation rejects zero and negative seconds before any duration conversion`() {
-        val zero = assertThrows(IllegalArgumentException::class.java) { CoreSleepInput(0) }
+    fun `input validation accepts zero and rejects negative seconds before any duration conversion`() {
+        assertEquals(CoreSleepInput(0), CoreSleepInput(0))
         val negative = assertThrows(IllegalArgumentException::class.java) { CoreSleepInput(-1) }
-        assertTrue(zero.message!!.contains("seconds > 0"))
-        assertTrue(negative.message!!.contains("seconds > 0"))
+        assertTrue(negative.message!!.contains("seconds >= 0"))
     }
 
     @Test
-    fun `input codec is legacy-envelope-compatible and rejects invalid seconds at decode boundary`() {
+    fun `input codec is legacy-envelope-compatible and rejects only negative seconds at decode boundary`() {
         val encoded = CoreSleepStep.definition.contract.inputCodec.encode(CoreSleepInput(1))
         assertEquals("""{"kind":"sleep","seconds":1}""", encoded.value)
         assertEquals(CoreSleepInput(1), CoreSleepStep.definition.contract.inputCodec.decode(encoded))
 
+        assertEquals(
+            CoreSleepInput(0),
+            CoreSleepStep.definition.contract.inputCodec.decode(EncodedStepValue("""{"kind":"sleep","seconds":0}""")),
+        )
         val invalid = assertThrows(IllegalArgumentException::class.java) {
-            CoreSleepStep.definition.contract.inputCodec.decode(EncodedStepValue("""{"kind":"sleep","seconds":0}"""))
+            CoreSleepStep.definition.contract.inputCodec.decode(EncodedStepValue("""{"kind":"sleep","seconds":-1}"""))
         }
-        assertTrue(invalid.message!!.contains("seconds > 0"))
+        assertTrue(invalid.message!!.contains("seconds >= 0"))
     }
 
     @Test
@@ -86,6 +90,7 @@ class CoreSleepStepUnitTest {
         assertEquals("sleep", descriptor.name)
         assertEquals(listOf(Effect.READ_ONLY), descriptor.effects)
         assertEquals(ReplayPolicy.MEMOIZED, descriptor.replayPolicy)
+        assertEquals(RecoveryPolicy.None, descriptor.recoveryPolicy)
     }
 
     @Test
@@ -118,9 +123,15 @@ class CoreSleepStepUnitTest {
     }
 
     @Test
+    fun `zero completes immediately through the real registry seam`() = runBlocking {
+        val result = RegistryExecutionBoundary.coexecute(prepare(CoreSleepInput(0)), context("zero"))
+        assertEquals(StepOutcome.Success, result.outcome)
+    }
+
+    @Test
     fun `external cancellation remains structured and is never relabelled ENGINE`() = runBlocking {
         val job = launch {
-            RegistryExecutionBoundary.coexecute(prepare(CoreSleepInput(60)), context("cancel"))
+            RegistryExecutionBoundary.coexecute(prepare(CoreSleepInput(Long.MAX_VALUE)), context("cancel"))
         }
         delay(50)
         job.cancelAndJoin()
@@ -139,7 +150,7 @@ class CoreSleepStepUnitTest {
     }
 
     @Test
-    fun `boundary classifies an internal timeout before cancellation as typed TIMEOUT`() = runBlocking {
+    fun `boundary propagates an internal timeout so coroutine ownership is never swallowed`() = runBlocking {
         val definition = object : StepDefinition<CoreSleepInput, CoreSleepOutput> {
             override val contract = CoreSleepStep.definition.contract
             override val handler = StepHandler<CoreSleepInput, CoreSleepOutput> { _, _ ->
@@ -156,9 +167,9 @@ class CoreSleepStepUnitTest {
         )
         val ready = assertInstanceOf(ExecutionPreparation.Ready::class.java, preparation)
         val prepared = assertInstanceOf(PreparedRegistryExecution::class.java, ready.prepared)
-        val result = RegistryExecutionBoundary.coexecute(prepared, context("internal-timeout"))
-        val failure = assertInstanceOf(StepOutcome.Failure::class.java, result.outcome).failure
-        assertEquals(dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT, failure.kind)
+        assertThrows(kotlinx.coroutines.TimeoutCancellationException::class.java) {
+            runBlocking { RegistryExecutionBoundary.coexecute(prepared, context("internal-timeout")) }
+        }
     }
 
     private fun prepare(input: CoreSleepInput): PreparedRegistryExecution {

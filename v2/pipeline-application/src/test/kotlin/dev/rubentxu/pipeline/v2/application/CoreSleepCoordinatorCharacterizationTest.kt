@@ -190,4 +190,49 @@ class CoreSleepCoordinatorCharacterizationTest {
             )
         }
     }
+
+    @Test
+    fun `RUNNING sleep with RecoveryPolicy None reruns from the beginning under generic memoized reconciliation`() {
+        // G2 decision evidence: core.sleep declares RecoveryPolicy.None. A stale RUNNING row
+        // receives no sleep-specific recovery; READ_ONLY + MEMOIZED generic reconciliation
+        // selects Execute for every non-SUCCEEDED row. Zero makes the re-execution observable
+        // and deterministic without waiting for a real duration.
+        val eventStore = InMemoryEventStore()
+        val h = freshHarness(eventStore)
+        val runId = RunId("sleep-running-recovery")
+        val node = sleepNode(seconds = 0)
+        val payload = node.payload.encoded
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = sleepPluginId,
+            params = mapOf("payload" to kotlinx.serialization.json.JsonPrimitive(payload)),
+            runId = runId.value,
+            attempt = 1,
+        )
+        val operationId = "${runId.value}-s0-0"
+        h.journal.append(
+            dev.rubentxu.pipeline.v2.domain.durable.RerunOperation(
+                id = operationId,
+                fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
+                    input,
+                    sleepPluginId,
+                    dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED,
+                    1,
+                ),
+                input = input,
+                output = null,
+                status = OperationStatus.RUNNING,
+                attempt = 1,
+            ),
+        )
+
+        runBlocking {
+            assertEquals(RunOutcome.Success, h.coord.run(pipeline(node), runId))
+        }
+        assertEquals(OperationStatus.SUCCEEDED, h.journal.get(operationId)?.status)
+        assertEquals(
+            1,
+            eventStore.eventsFor(runId.value).filterIsInstance<StepStarted>().count(),
+            "generic RecoveryPolicy.None must execute a stale RUNNING sleep from its full duration",
+        )
+    }
 }

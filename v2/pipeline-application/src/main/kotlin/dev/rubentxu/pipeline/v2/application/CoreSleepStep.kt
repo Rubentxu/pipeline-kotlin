@@ -26,12 +26,12 @@ import kotlin.time.Duration.Companion.seconds
  * Typed input payload of `core.sleep`.
  *
  * The invariant is validated while decoding the complete canonical envelope, before the handler
- * can create an effect. A positive `Long` is represented as a [kotlin.time.Duration] directly,
+ * can create an effect. A non-negative `Long` is represented as a [kotlin.time.Duration] directly,
  * avoiding the legacy `seconds * 1000L` overflow path.
  */
 data class CoreSleepInput(val seconds: Long) {
     init {
-        require(seconds > 0) { "core.sleep requires seconds > 0" }
+        require(seconds >= 0) { "core.sleep requires seconds >= 0" }
     }
 }
 

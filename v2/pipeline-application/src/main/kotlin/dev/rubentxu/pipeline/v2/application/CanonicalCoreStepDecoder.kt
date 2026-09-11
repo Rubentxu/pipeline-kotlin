@@ -67,7 +67,17 @@ sealed interface CanonicalCoreStepCommand {
             //   - CanonicalCoreStepMetadata["core.error"] row
             // Until G6 the legacy dispatcher is unreachable in production but
             // still type-loadable; the parity test (G3) can still drive it.
-            "core.emit.event",
+            // S2-A4 / G4 (2026-09-11): "core.emit.event" removed — REGISTRY_PRIMARY flip.
+            // Production routing authority is now CoreEmitEventStep.definition via the open
+            // registry (CoreStepRegistryFactory). Legacy `core.emit.event` source remains
+            // physically present until G5 (LEGACY_UNREACHABLE, not LEGACY_REMOVED):
+            //   - CanonicalCoreStepCommand.EmitEvent subtype
+            //   - EMIT_EVENT_PLUGIN_ID decoder branch
+            //   - CanonicalEmitEventNodeDispatcher.kt + CanonicalNodeDispatcher emitEvent branch
+            //   - CanonicalCoreStepMetadata["core.emit.event"] row
+            // StructuralOverlayProjection keeps its own structural dependency on the
+            // "core.emit.event" key (pre-decode control context), independent of the legacy
+            // execution path.
             "core.milestone",
             "core.deleteDir",
             "core.cleanWs",

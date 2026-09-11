@@ -21,7 +21,7 @@ class S3SleepLegacyRemovedFitnessTest {
     private val sleepStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStep.kt")
 
     private val expectedIds = setOf(
-        "core.emit.event", "core.milestone", "core.deleteDir", "core.cleanWs",
+        "core.milestone", "core.deleteDir", "core.cleanWs",
         "core.load", "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
     )
 
@@ -57,11 +57,11 @@ class S3SleepLegacyRemovedFitnessTest {
         assertFalse(Regex("\\\"core\\.sleep\\\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    @Test fun `three residual legacy authorities converge to exact nine step snapshots`() {
+    @Test fun `transitional snapshot converges to 8 IDs 9 metadata rows 9 dispatchers S2-A4-G4 window`() {
         assertEquals(expectedIds, legacyIds())
         val metadataKeys = Regex("\\\"(core\\.[a-zA-Z.]+)\\\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
-        assertEquals(expectedIds, metadataKeys)
+        assertEquals(expectedIds + "core.emit.event", metadataKeys)
         val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
         val actualDispatchers = Files.list(durable).use { paths -> paths.map { it.fileName.toString() }
             .filter { it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") && it != "CanonicalNodeDispatcher.kt" }
@@ -73,7 +73,7 @@ class S3SleepLegacyRemovedFitnessTest {
             "CanonicalIsUnixNodeDispatcher.kt", "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
-        assertEquals(9, legacyIds().size)
+        assertEquals(8, legacyIds().size)
         assertEquals(9, metadataKeys.size)
         assertEquals(9, actualDispatchers.size)
     }

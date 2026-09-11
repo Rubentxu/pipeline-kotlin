@@ -17,12 +17,12 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
-import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Paths
@@ -51,6 +51,10 @@ import java.nio.file.Paths
  * assertions (family == LegacyCore, key in LEGACY_PLUGIN_IDS) are recorded by method name and
  * will be archived at G4 rather than inverted.
  */
+@Disabled("Archived G3 evidence (S2-A4): superseded by CoreEmitEventRegistryPrimaryFitnessTest " +
+    "after the G4 REGISTRY_PRIMARY flip. Pre-flip assertions (LegacyCore family, legacy " +
+    "membership) became incorrect after a successful migration; see class kdoc and " +
+    "CoreErrorMigrationReadinessFitnessTest for the archival rationale.")
 @Timeout(30)
 class CoreEmitEventMigrationReadinessFitnessTest {
 

@@ -126,7 +126,6 @@ class S3ErrorLegacyRemovedFitnessTest {
         // Extract every "core.xxx" literal that is on its own line.
         val ids = Regex("\"core\\.[a-zA-Z.]+\"").findAll(legacyBlock).map { it.value }.toSet()
         val expected = setOf(
-            "\"core.emit.event\"",
             "\"core.milestone\"",
             "\"core.deleteDir\"",
             "\"core.cleanWs\"",
@@ -139,7 +138,7 @@ class S3ErrorLegacyRemovedFitnessTest {
         assertEquals(
             expected,
             ids,
-            "LEGACY_PLUGIN_IDS MUST equal the 9 residual legacy keys (no core.error, no core.echo, no core.sh, no extras); " +
+            "LEGACY_PLUGIN_IDS MUST equal the 8 residual legacy keys post-S2-A4/G4 (no core.error, no core.echo, no core.sh, no core.emit.event, no extras); " +
                 "got $ids",
         )
     }
@@ -313,7 +312,6 @@ class S3ErrorLegacyRemovedFitnessTest {
             ?: error("LEGACY_PLUGIN_IDS declaration not found")
         val legacyIds = Regex("\"(core\\.[a-zA-Z.]+)\"").findAll(legacyBlock).map { it.groupValues[1] }.toSet()
         val expected = setOf(
-            "core.emit.event",
             "core.milestone",
             "core.deleteDir",
             "core.cleanWs",
@@ -323,8 +321,8 @@ class S3ErrorLegacyRemovedFitnessTest {
             "core.waitUntil",
             "core.archiveArtifacts",
         )
-        assertEquals(expected, legacyIds, "LEGACY_PLUGIN_IDS MUST equal the 9 residual legacy keys")
-        assertEquals(9, legacyIds.size)
+        assertEquals(expected, legacyIds, "LEGACY_PLUGIN_IDS MUST equal the 8 residual legacy keys (post-S2-A4/G4)")
+        assertEquals(8, legacyIds.size)
     }
 
     @Test

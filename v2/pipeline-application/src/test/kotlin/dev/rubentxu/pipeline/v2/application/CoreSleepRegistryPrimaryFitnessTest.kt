@@ -34,8 +34,9 @@ class CoreSleepRegistryPrimaryFitnessTest {
         assertFalse("core.sleep" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertEquals(StructuralStepFamily.Registry, StructuralFamilyResolver.classify(key, registry))
         // S2-A3/G4: core.file.writeFile flipped to registry; 10 -> 9 residual legacy keys.
+        // S2-A4/G4: core.emit.event flipped to registry; 9 -> 8 residual legacy keys.
         assertEquals(setOf(
-            "core.emit.event", "core.milestone", "core.deleteDir", "core.cleanWs",
+            "core.milestone", "core.deleteDir", "core.cleanWs",
             "core.load", "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
     }
@@ -45,9 +46,9 @@ class CoreSleepRegistryPrimaryFitnessTest {
         assertEquals(11, CanonicalCoreStepMetadata.pluginIds.size)
     }
 
-    @Test fun `production registry contains exactly the five registered core steps (echo sh error sleep + writeFile G1 candidate)`() {
+    @Test fun `production registry contains exactly the five registered core steps (echo sh error sleep writeFile + emitEvent G1 candidate)`() {
         assertEquals(
-            setOf("core.echo", "core.sh", "core.error", "core.sleep", "core.file.writeFile"),
+            setOf("core.echo", "core.sh", "core.error", "core.sleep", "core.file.writeFile", "core.emit.event"),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )
     }

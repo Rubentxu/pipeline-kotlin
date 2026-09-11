@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.durable.CanonicalEmitEventNodeDispat
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
+import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -319,16 +320,16 @@ class CoreEmitEventDifferentialContractTest {
     // ===== no-cutover invariants =====
 
     @Test
-    fun `no cutover — registry candidate registered but LegacyCore authoritative and counters untouched`() {
+    fun `post-flip — registry is primary authority with legacy dispatcher unreachable but physically present`() {
         val production = CoreStepRegistryFactory.registry()
         assertTrue(production.contains(CoreEmitEventStep.KEY))
         assertEquals(
-            dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(CoreEmitEventStep.KEY, production),
         )
-        assertTrue(
+        assertFalse(
             PluginStepId("core.emit.event").value in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "G2 MUST NOT touch LEGACY_PLUGIN_IDS (no flip before G3/G4)",
+            "S2-A4/G4: REGISTRY_PRIMARY flip done; legacy removal is G5",
         )
     }
 }

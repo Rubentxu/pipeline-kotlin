@@ -299,20 +299,20 @@ class CoreEmitEventStepUnitTest {
     // ===== production registry membership + structural family =====
 
     @Test
-    fun `registry — production factory contains the candidate but StructuralFamily stays LegacyCore`() {
+    fun `registry — production factory contains the step and StructuralFamily is Registry post-flip`() {
         val production = CoreStepRegistryFactory.registry()
         assertTrue(
             production.contains(CoreEmitEventStep.KEY),
-            "candidate MUST be registered in the production registry",
+            "step MUST be registered in the production registry",
         )
         assertEquals(
-            StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(CoreEmitEventStep.KEY, production),
-            "legacy-membership-wins rule MUST keep LegacyCore authoritative until the G4 flip",
+            "S2-A4/G4: production routing authority is the registry (REGISTRY_PRIMARY)",
         )
-        assertTrue(
+        assertFalse(
             PluginStepId("core.emit.event").value in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "G1 MUST NOT touch LEGACY_PLUGIN_IDS",
+            "S2-A4/G4: core.emit.event flipped OUT of LEGACY_PLUGIN_IDS",
         )
     }
 

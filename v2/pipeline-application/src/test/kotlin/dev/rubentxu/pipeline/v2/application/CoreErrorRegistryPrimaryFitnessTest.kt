@@ -97,8 +97,6 @@ class CoreErrorRegistryPrimaryFitnessTest {
         //   - core.file.writeFile is REMOVED from legacy routing (LFC-2E1-S2-A3 / G4)
         //   - none of the other 9 legacy keys were accidentally burned down
         val expected = setOf(
-            "core.emit.event",
-            "core.emit.event",
             "core.milestone",
             "core.deleteDir",
             "core.cleanWs",
@@ -111,10 +109,10 @@ class CoreErrorRegistryPrimaryFitnessTest {
         assertEquals(
             expected,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "LEGACY_PLUGIN_IDS MUST be exactly the 9 residual legacy keys post-S2-A3/G4; " +
+            "LEGACY_PLUGIN_IDS MUST be exactly the 8 residual legacy keys post-S2-A4/G4; " +
                 "set equality catches both accidental removals and accidental additions",
         )
-        assertEquals(9, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(8, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test
@@ -360,13 +358,14 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // ========================================================================
 
     @Test
-    fun `G6 counters -- LEGACY_PLUGIN_IDS is 9, metadata rows is 9, dispatchers is 9 (legacy removed)`() {
-        // Post-S2-A3/G4 counter state (core.file.writeFile flipped at LFC-2E1-S2-A3/G4;
-        // metadata row + dispatcher removed physically at that slice's G5):
-        //   - LEGACY_PLUGIN_IDS: 9
+    fun `G6 counters -- LEGACY_PLUGIN_IDS is 8, metadata rows is 9, dispatchers is 9 (legacy removed)`() {
+        // Post-S2-A4/G4 counter state (core.file.writeFile flipped at S2-A3/G4;
+        // core.emit.event flipped at S2-A4/G4; emit.event metadata row + dispatcher
+        // still physically present until its G5):
+        //   - LEGACY_PLUGIN_IDS: 8
         //   - CanonicalCoreStepMetadata rows: 9
         //   - durable/ per-Step dispatchers: 9
-        assertEquals(9, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(8, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         // The legacy metadata row for core.error MUST be gone: the row was deleted at G6.
         assertThrows(
             IllegalArgumentException::class.java,

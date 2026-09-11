@@ -38,7 +38,7 @@ class CanonicalCoreStepCommandRegistryTest {
         val expected = setOf(
             // core.sleep removed at LFC-2E1-S2-A2 / G5 (registry-routed, CERTIFIED).
             // core.file.writeFile removed at LFC-2E1-S2-A3 / G4 (registry-routed).
-            "core.emit.event",
+            // core.emit.event removed at LFC-2E1-S2-A4 / G4 (registry-routed).
             "core.milestone",
             // P1a — workflow-control (v0.33.0)
             "core.deleteDir",

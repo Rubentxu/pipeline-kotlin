@@ -141,6 +141,99 @@ Receipt-level digest (self-referential):
 ```
 
 Also updated closure gates checklist to [x] `HEAD == origin/main` (verified
-b6689aa8 == b6689aa8 post-amendment).
+4dc49435 == 4dc49435 post-amendment).
 
-Trunk: main == origin/main == b6689aa8110a84e5517da2cc66d8326e3244f46c.
+Trunk: main == origin/main == 4dc49435c74d836a3380678f4fd40dc410dd700b.
+
+## LFC-2E0 inventory cycle (2026-09-11)
+
+### Discoveries (machine-derived, NOT hypothesis)
+
+- **Production registry has 2 core keys**: core.echo + core.sh (per `CoreStepRegistryFactory`).
+- **12 legacy core keys** still routed through `Canonical*NodeDispatcher`:
+  core.{error, sleep, file.writeFile, emit.event, milestone, deleteDir,
+        cleanWs, load, pwd, isUnix, waitUntil, archiveArtifacts}
+- **External plugin (1)**: example.uppercase (CERTIFIED via ServiceLoader).
+- **Block / orchestration DSL is NOT a Step key**: retry, timeout, parallel,
+  catchError, warnError, unstable, dir, withEnv, withCredentials, readFile,
+  fileExists, timestamps, ansiColor, node — re-enters engine via
+  BodyInvoker.invoke / BranchInvoker.invokeAll (ADR-0073).
+- **Git family NOT_STARTED**: DSL exists (PipelineDsl.kt L1050, L1066, L1094)
+  but no StepDefinition in pipeline-step-sdk/scm-git and no entry in registry.
+- **3 CERTIFIED Steps total**: core.echo (S3 burn-down), core.sh (S6 burn-down),
+  example.uppercase (EP burn-down).
+
+### Deliverables
+
+- `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` — machine-derived table (239 lines)
+- `docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md` — corrected with
+  LEGACY_IMPLEMENTED_UNCERTIFIED state + certification snapshot at top
+- `openspec/changes/lfc2-step-ecosystem-expansion/{proposal,design,tasks}.md`
+- Branch: `cycle/lfc2-step-ecosystem-expansion` (pushed, NOT merged)
+
+### Verification
+
+- L0 compile `:pipeline-event-harness + :pipeline-application` GREEN
+  (`BUILD SUCCESSFUL in 3s`, 35 tasks UP-TO-DATE; no production code change).
+- All internal links resolve.
+- No production code touched.
+
+### Rebase onto trunk (2026-09-11, after `4dc49435`)
+
+Branch was rebased onto `origin/main = 4dc49435` to absorb the EVT-3
+digest-gap closure commits. Conflict on `.agent/TESTING-STATE.md` resolved
+semantically: both histories (EVT-3 receipt digest closure + LFC-2E0
+inventory) preserved. No other file conflicted. Branch tip after rebase
+recorded in the LFC-2E0 PR receipt.
+
+### Next: LFC-2E1 (universal core freeze)
+
+Burn down 12 legacy keys onto the registry seam via G0..G8 sequence:
+- P0 first: core.{error, sleep, pwd, isUnix}
+- P1 second: core.{deleteDir, cleanWs, waitUntil}
+- P2 third: core.{milestone, load, archiveArtifacts, emit.event, file.writeFile}
+
+**LB-01 anchor (added 2026-09-11)**: E1-S1 (LB-02 LEGACY_REMOVED slice —
+refixture `LegacyEchoUnreachableProofTest`, `EchoDurableSpineTest`,
+`UatStep002EchoCaptureTest`, `CoreEchoSeamTest`, `EchoStepContractSuiteTest`;
+activate `S3EchoLegacyRemovedFitnessTest`) PRECEDES E1-S2 burn-down of the
+12 legacy keys. Per LB-01, CERTIFIED requires LEGACY_REMOVED.
+
+EVT-4 stays PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY throughout E0..E10.
+
+## LFC-2E0 LB-01 anchoring (2026-09-11, 25a96d18)
+
+### Memory facts respected
+
+1. `.agent/TESTING-STATE.md` is tracked despite the `.agent/` ignore rule;
+   commits succeed without `-f` (verified — commit b5315fb7 + 25a96d18 included
+   the file).
+2. LB-01 (Legacy Burn-down Policy) tracks B1.2c3 closure; CERTIFIED requires
+   LEGACY_REMOVED. Per LB-01 the next slice is:
+   - remove reachable unused legacy Echo machinery
+   - refixture legacy tests
+   - activate the fitness guard
+   - record LEGACY_REMOVED (NOT re-CERTIFIED)
+
+### LB-01 sequencing applied to LFC-2E1
+
+- E1-S1 (FIRST): LB-02 LEGACY_REMOVED slice
+  - core.echo is already CERTIFIED (S3 burn-down, LEGACY_REMOVED achieved)
+  - but reachable legacy Echo machinery may still exist in tests:
+    LegacyEchoUnreachableProofTest, EchoDurableSpineTest,
+    UatStep002EchoCaptureTest, CoreEchoSeamTest, EchoStepContractSuiteTest
+  - Action: refixture each to drive core.echo exclusively through registry seam;
+    activate S3EchoLegacyRemovedFitnessTest; record LEGACY_REMOVED in LB-01 ledger
+- E1-S2: burn down 12 legacy keys via G0..G8 (P0: error/sleep/pwd/isUnix; P1:
+  deleteDir/cleanWs/waitUntil; P2: milestone/load/archiveArtifacts/emit.event/file.writeFile)
+
+### Branch state
+
+- cycle/lfc2-step-ecosystem-expansion @ 25a96d18 (pushed, NOT merged)
+- LB-01 anchoring documented in:
+  - openspec/changes/lfc2-step-ecosystem-expansion/tasks.md (E1-S1 + E1-S2 split)
+  - openspec/changes/lfc2-step-ecosystem-expansion/design.md (rationale)
+  - docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md (sequencing section)
+  - docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md (E1-S1 in family progression)
+
+EVT-4 stays PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY throughout E1..E10.

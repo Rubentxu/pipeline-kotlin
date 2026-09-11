@@ -83,10 +83,6 @@ sealed interface CanonicalCoreStepCommand {
         fun pluginIdToShortType(pluginId: String): String = CanonicalCoreStepMetadata.shortType(pluginId)
     }
 
-    data class Sleep(val seconds: Long) : CanonicalCoreStepCommand {
-        override val pluginId = "core.sleep"
-    }
-
     /** LFC1-007: typed-command for atomic file writes via the canonical bridge. */
     data class WriteFile(
         val file: String,
@@ -199,7 +195,6 @@ sealed interface CanonicalCoreStepCommand {
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
-    private const val SLEEP_PLUGIN_ID = "core.sleep"
     private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
     private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
     private const val MILESTONE_PLUGIN_ID = "core.milestone"
@@ -217,12 +212,6 @@ object CanonicalCoreStepDecoder {
         }
         val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject
         return when (node.pluginStepId.value) {
-            SLEEP_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "sleep") {
-                    "Payload kind must be 'sleep' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.Sleep(payload.requiredLong("seconds"))
-            }
             WRITE_FILE_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "writeFile") {
                     "Payload kind must be 'writeFile' for '${node.id.value}'"

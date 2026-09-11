@@ -30,6 +30,7 @@ import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -52,6 +53,7 @@ import org.junit.jupiter.api.Timeout
  *   - Timeout interaction (covered separately by CoreSleepTimeoutInteractionTest using CLI).
  *   - Coroutine cancellation (the legacy sleep is not coroutine-cooperative).
  */
+@Disabled("Historical G0 legacy-authority characterization; superseded by core.sleep LEGACY_REMOVED at G5.")
 @Timeout(60)
 class CoreSleepCoordinatorCharacterizationTest {
 

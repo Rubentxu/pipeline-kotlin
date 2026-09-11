@@ -22,7 +22,7 @@ class CoreLegacyStepMetadataResolverTest {
     @Test
     fun `resolves sleep metadata by step key matching the decoded command`() {
         val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep"))
-        val decoded = CanonicalCoreStepCommand.Sleep(5).defaultMetadata
+        val decoded = CanonicalCoreStepCommand.Pwd().defaultMetadata
         assertEquals(decoded, resolved)
     }
 

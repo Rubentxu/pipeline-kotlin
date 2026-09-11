@@ -26,6 +26,7 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
 /** G3 frozen classification proof: every observed legacy/candidate differential is named. */
+@Disabled("Historical G3 differential evidence; legacy core.sleep authority was removed at G5.")
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class CoreSleepLegacyRegistryDifferentialParityTest {
     private val key = PluginStepId("core.sleep")

@@ -59,11 +59,11 @@ class LegacyExecutionAdapterTest {
         val legacy = RecordingLegacyExecutor()
         val boundary = LegacyExecutionAdapter.adapt(legacy)
         val store = InMemoryEventStore()
-        val command = CanonicalCoreStepCommand.Sleep(1)
+        val command = CanonicalCoreStepCommand.Pwd()
 
         val outcome = boundary.execute(PreparedLegacyExecution(command), runtime(store))
 
-        assertEquals(StepOutcome.Success, outcome)
+        assertEquals(StepOutcome.Success, outcome.outcome)
         assertEquals(1, legacy.calls, "a single CommonExecutionBoundary.execute must reach the old executor exactly once")
         assertSame(command, legacy.lastCommand, "the adapter must forward the decoded command unchanged")
     }

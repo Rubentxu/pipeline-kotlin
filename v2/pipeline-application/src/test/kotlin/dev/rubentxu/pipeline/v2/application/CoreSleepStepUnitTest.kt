@@ -99,15 +99,15 @@ class CoreSleepStepUnitTest {
     }
 
     @Test
-    fun `factory registry resolves candidate while legacy membership remains canonical authority`() {
+    fun `factory registry resolves candidate as the canonical registry authority`() {
         val registry = CoreStepRegistryFactory.registry()
         assertNotNull(registry.definition(CoreSleepStep.KEY))
         assertSame(CoreSleepStep.definition, registry.definition(CoreSleepStep.KEY))
-        assertTrue("core.sleep" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.sleep" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertEquals(
-            StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(CoreSleepStep.KEY, registry),
-            "legacy membership wins even when the candidate is registered",
+            "after G4/G5 core.sleep is registry-primary and legacy-free",
         )
     }
 

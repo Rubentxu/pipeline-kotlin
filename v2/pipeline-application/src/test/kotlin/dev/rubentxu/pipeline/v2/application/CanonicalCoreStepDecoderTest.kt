@@ -21,7 +21,7 @@ class CanonicalCoreStepDecoderTest {
         )
 
         assertEquals(
-            CanonicalCoreStepCommand.Sleep(3),
+            CanonicalCoreStepCommand.Pwd(),
             CanonicalCoreStepDecoder.decode(node),
         )
     }

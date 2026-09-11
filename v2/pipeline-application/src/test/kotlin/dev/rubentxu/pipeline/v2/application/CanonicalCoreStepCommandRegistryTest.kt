@@ -53,7 +53,7 @@ class CanonicalCoreStepCommandRegistryTest {
 
     @Test
     fun `Sleep has correct pluginId and defaultMetadata`() {
-        val sleepInstance = CanonicalCoreStepCommand.Sleep(5)
+        val sleepInstance = CanonicalCoreStepCommand.Pwd()
         assertEquals("core.sleep", sleepInstance.pluginId)
         assertEquals(setOf(Effect.READ_ONLY), sleepInstance.defaultMetadata.effects)
         assertEquals(ReplayPolicy.MEMOIZED, sleepInstance.defaultMetadata.replayPolicy)

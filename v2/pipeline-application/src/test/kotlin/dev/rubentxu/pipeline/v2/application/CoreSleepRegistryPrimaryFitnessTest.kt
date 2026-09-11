@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
@@ -36,6 +37,10 @@ class CoreSleepRegistryPrimaryFitnessTest {
             "core.file.writeFile", "core.emit.event", "core.milestone", "core.deleteDir", "core.cleanWs",
             "core.load", "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+    }
+
+    @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")
+    @Test fun `G4 transitional snapshot retained eleven legacy metadata rows`() {
         assertEquals(11, CanonicalCoreStepMetadata.pluginIds.size)
     }
 

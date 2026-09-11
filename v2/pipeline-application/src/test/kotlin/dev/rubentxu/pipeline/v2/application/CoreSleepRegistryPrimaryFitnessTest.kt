@@ -2,12 +2,15 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
 import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
+import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
+import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
+import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
+import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
-import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -36,6 +39,13 @@ class CoreSleepRegistryPrimaryFitnessTest {
         assertEquals(11, CanonicalCoreStepMetadata.pluginIds.size)
     }
 
+    @Test fun `production registry contains exactly the four registry-primary core steps`() {
+        assertEquals(
+            setOf("core.echo", "core.sh", "core.error", "core.sleep"),
+            CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
+        )
+    }
+
     @Test fun `registry descriptor is now effective metadata authority`() {
         val descriptor = CoreSleepStep.definition.contract.descriptor
         assertEquals(listOf(Effect.READ_ONLY), descriptor.effects)
@@ -46,26 +56,26 @@ class CoreSleepRegistryPrimaryFitnessTest {
     }
 
     @Test fun `registry seam executes zero successfully`() = runBlocking {
-        val input = CoreSleepStep.definition.contract.inputCodec.encode(CoreSleepInput(0))
-        val prep = dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation.prepare(
-            CoreStepRegistryFactory.registry(), key, input, emptySet())
-        val ready = prep as dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation.Ready
-        val prepared = ready.prepared as dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
-        val result = dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary.coexecute(prepared,
-            testContext("zero"))
+        val result = RegistryExecutionBoundary.coexecute(prepare(CoreSleepInput(0)), testContext("zero"))
         assertEquals(StepOutcome.Success, result.outcome)
     }
 
     @Test fun `registry seam preserves parent cancellation`() = runBlocking {
         val job = launch {
-            CoreSleepStep.definition.handler.execute(CoreSleepInput(Long.MAX_VALUE),
-                dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext(dev.rubentxu.pipeline.v2.domain.RunId("g4"), 0,
-                    object : dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess {
-                        override fun available() = emptySet<dev.rubentxu.pipeline.v2.domain.step.StepCapability>()
-                        override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T = error("none")
-                    }))
+            RegistryExecutionBoundary.coexecute(prepare(CoreSleepInput(Long.MAX_VALUE)), testContext("cancel"))
         }
         delay(30); job.cancelAndJoin(); assertTrue(job.isCancelled)
+    }
+
+    private fun prepare(input: CoreSleepInput): PreparedRegistryExecution {
+        val preparation = RegistryExecutionPreparation.prepare(
+            registry = CoreStepRegistryFactory.registry(),
+            key = key,
+            encodedInput = CoreSleepStep.definition.contract.inputCodec.encode(input),
+            availableCapabilities = emptySet(),
+        )
+        val ready = preparation as ExecutionPreparation.Ready
+        return ready.prepared as PreparedRegistryExecution
     }
 
     private fun testContext(label: String) = dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext(

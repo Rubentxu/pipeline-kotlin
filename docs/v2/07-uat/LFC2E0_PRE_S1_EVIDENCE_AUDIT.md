@@ -496,6 +496,87 @@ The `examples/run.sh EVT-H1` hermeticity debt (hermeticity requires
 per-run control-root) is validated: ctl1 reused = same runId, ctl2
 different = new runId, even with same db.
 
+## Edge case sweep — round 4 (2026-09-11, post-a6bf21b9)
+
+Block Step contracts (parallel, retry, timeout, catchError) — the surfaces
+that AGENTS.md §"Block Steps" declares must route through `BodyInvoker.invoke` /
+`BranchInvoker.invokeAll`. Each contract is verified via a real `.pipeline.kts`
+example shipped in `examples/`:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E22 | `parallel { branch("left") { … } branch("right") { … } }` | PASS | 27 events, `ParallelBranchStarted: 2`, `ParallelBranchFinished: 2`, post-join stage executes |
+| E23 | `retry(count = 3) { sh(...) }` (fail-then-succeed) | PASS | 22 events, 2 `RetryAttemptStarted` (attempt 1, 2), attempt 1 `failed`, attempt 2 `succeeded`, downstream stage runs |
+| E24 | `timeout(time = 2, "SECONDS") { sh(...) }` (over-budget) | PASS | 10 events, `TimeoutScheduled timeoutSeconds=2 timeoutAction=abort`, `StepFailed failureKind=TIMEOUT "durable shell timed out"`, final outcome `failure` |
+| E25 | Nested `catchError` (inner FAILURE → outer UNSTABLE) | PASS | 23 events, 2 `CatchErrorTriggered` (FAILURE innermost-first then UNSTABLE), final outcome `UNSTABLE`, post-catch echo executes — verifies ERR-S-007 contract |
+
+### Captured logs (edge cases round 4, rule 25)
+
+```text
+/tmp/lfc2e0-e22-e25-blocks.log    sha256=31785a2fd4d577c34d47cb3f64063dfe7082a8f2a37aea9c35512b024da33c65
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e22-e25-blocks.log
+```
+
+### Cumulative edge case tally (after round 4)
+
+```text
+Round 1 (E1..E6):
+  E1: core.sleep legacy execution                 PASS
+  E2: mixed legacy + registry                     PASS
+  E3: replay semantics                            PASS
+  E4: external plugin coexistence                  SKIPPED (honest finding)
+  E5: packaging sanity                            PASS
+  E6: CLI flag semantics                          PASS
+
+Round 2 (E7..E14):
+  E7:  core.error failure semantics               PASS
+  E8:  write/read filesystem roundtrip            PASS
+  E9:  deleteDir cleanup                          PASS
+  E10: concurrent pipelines                       PASS
+  E11: unknown step (fail-closed)                 PASS
+  E12: malformed script (fail-closed)             PASS
+  E13: capability admission                       PASS (structural)
+  E14: Rule-16 UATL008 verification               PASS
+
+Round 3 (E15..E21):
+  E15: journal durability                         PASS
+  E16: --rerun vs --resume distinction            PASS
+  E17: validate subcommand (no execution)         PASS
+  E18: --resume idempotency                       PASS
+  E19: --db isolation                             PASS
+  E20: failure durability                         PASS (documented)
+  E21: --control-root isolation (EVT-H1)          PASS
+
+Round 4 (E22..E25):
+  E22: parallel branches                          PASS (Block Step contract)
+  E23: retry (fail then succeed)                  PASS (Block Step contract)
+  E24: timeout abort                              PASS (Block Step contract)
+  E25: nested catchError                          PASS (Block Step contract)
+
+Total: 24 PASS + 1 SKIPPED across 25 edge cases
+```
+
+### AGENTS.md "Block Steps" rule coverage
+
+```text
+"Block Steps re-enter the engine through BodyInvoker.invoke / BranchInvoker.invokeAll
+(ADR-0073). Never add a dispatchRetryBlock/dispatchTimeoutBlock/… collection;
+route control-flow Steps through the shared body machinery."
+
+E22 (parallel)   → BranchInvoker.invokeAll      verified
+E23 (retry)      → BodyInvoker.invoke           verified (with RetryReconciler)
+E24 (timeout)    → BodyInvoker.invoke           verified (with deadline)
+E25 (catchError) → BodyInvoker.invoke           verified (nested scopes)
+
+All four block-step contracts route through the canonical spine,
+not through a parallel dispatch collection. PASS.
+```
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

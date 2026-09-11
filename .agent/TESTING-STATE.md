@@ -200,3 +200,40 @@ activate `S3EchoLegacyRemovedFitnessTest`) PRECEDES E1-S2 burn-down of the
 12 legacy keys. Per LB-01, CERTIFIED requires LEGACY_REMOVED.
 
 EVT-4 stays PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY throughout E0..E10.
+
+## LFC-2E0 LB-01 anchoring (2026-09-11, 25a96d18)
+
+### Memory facts respected
+
+1. `.agent/TESTING-STATE.md` is tracked despite the `.agent/` ignore rule;
+   commits succeed without `-f` (verified — commit b5315fb7 + 25a96d18 included
+   the file).
+2. LB-01 (Legacy Burn-down Policy) tracks B1.2c3 closure; CERTIFIED requires
+   LEGACY_REMOVED. Per LB-01 the next slice is:
+   - remove reachable unused legacy Echo machinery
+   - refixture legacy tests
+   - activate the fitness guard
+   - record LEGACY_REMOVED (NOT re-CERTIFIED)
+
+### LB-01 sequencing applied to LFC-2E1
+
+- E1-S1 (FIRST): LB-02 LEGACY_REMOVED slice
+  - core.echo is already CERTIFIED (S3 burn-down, LEGACY_REMOVED achieved)
+  - but reachable legacy Echo machinery may still exist in tests:
+    LegacyEchoUnreachableProofTest, EchoDurableSpineTest,
+    UatStep002EchoCaptureTest, CoreEchoSeamTest, EchoStepContractSuiteTest
+  - Action: refixture each to drive core.echo exclusively through registry seam;
+    activate S3EchoLegacyRemovedFitnessTest; record LEGACY_REMOVED in LB-01 ledger
+- E1-S2: burn down 12 legacy keys via G0..G8 (P0: error/sleep/pwd/isUnix; P1:
+  deleteDir/cleanWs/waitUntil; P2: milestone/load/archiveArtifacts/emit.event/file.writeFile)
+
+### Branch state
+
+- cycle/lfc2-step-ecosystem-expansion @ 25a96d18 (pushed, NOT merged)
+- LB-01 anchoring documented in:
+  - openspec/changes/lfc2-step-ecosystem-expansion/tasks.md (E1-S1 + E1-S2 split)
+  - openspec/changes/lfc2-step-ecosystem-expansion/design.md (rationale)
+  - docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md (sequencing section)
+  - docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md (E1-S1 in family progression)
+
+EVT-4 stays PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY throughout E1..E10.

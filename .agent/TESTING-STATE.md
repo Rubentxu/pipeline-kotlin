@@ -596,6 +596,12 @@ production sleep routing, so no installed CLI parity claim is valid or needed he
 **Next:** G2/G3 must establish candidate-vs-legacy differential/parity evidence before
 any `LEGACY_PLUGIN_IDS` change. Do not describe `core.sleep` as CERTIFIED.
 
+## LFC-2R / R4A (COMPLETE — investigation/design only, receipt: docs/v2/07-uat/LFC2R_R4A_PRODUCTION_WIRING_ARCHITECTURE.md)
+- Decision: PRODUCTION_WIRING_MODEL = SCRIPTED_FRONTEND_CANONICAL_BACKEND; SECOND_RUNNER = REJECTED. Scripted entry point = frontend for BODY execution; structural nodes (stage/retry/parallel) stay coordinator-owned (ADR-0073). Identity law R4A-L1: one run, one journal key space; frontend ops use stableScriptedKey promoted into canonical namespace.
+- Key finding: production DSL is EAGER (PipelineScope/StageScope construct PipelineSpec at script-build; isUnix() reads runtimeConfig.osName() at CONSTRUCTION time, Main.kt ~L355/L495). ScriptedArtifactRuntime not reachable from Main today.
+- Zero code changes this slice; no tests invalidated.
+- Next: R4B (mechanical wiring: entry-point selection seam, invoker same-journal wiring, lowering inside stage bodies, fixture13 FRESH/--rerun/--resume, close D3).
+
 ## LFC-2R / R3 (COMPLETE, receipt: docs/v2/07-uat/LFC2R_R3_ISUNIX_COMPILER_SOURCE_MAPPING.md)
 - Changed: ScriptedExecutionApi.kt ADT (ScriptedCallKind/ScriptedMappedCall/Mapped), KotlinScriptedSourceMapper.kt (PSI isUnix detection, unqualified arg-less only), NEW pipeline-scripting-kotlin24/ScriptedSourceLowering.kt (deterministic rewrite isUnix() -> steps.isUnix(ScriptedCallSiteId(...)), FACADE_SCHEMA_VERSION="facade-r3-isUnix-v1"), NEW ScriptedIsUnixCompilerMappingTest.kt (10/0).
 - Fresh evidence: CompilerMapping 10/0, Runtime 13/0, Invoker 10/0, Mapper 1/0, EntryPointHost 1/0, arch-tests 53 classes 0 failures (--rerun-tasks).

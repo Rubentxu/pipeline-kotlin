@@ -213,21 +213,46 @@ These are controller-level orchestration and depend on the canonical block-step 
 
 ## Sequencing for LFC-2E1..
 
-Per AGENTS.md "Burn-down sequence template (G0..G8)":
+Per AGENTS.md "Burn-down sequence template (G0..G8)" and the LB-01 / LEGACY_BURNDOWN_POLICY
+state machine (LEGACY → DUAL_AVAILABLE → REGISTRY_PRIMARY → LEGACY_UNREACHABLE →
+LEGACY_REMOVED → CERTIFIED; **CERTIFIED requires LEGACY_REMOVED**):
 
 ```text
-LFC-2E1: universal core freeze
-  1. promote core.{error, sleep, writeFile, emit.event, milestone, deleteDir, cleanWs, load, pwd, isUnix, waitUntil, archiveArtifacts}
-     from legacy to registry
-  2. for each: StepDefinition<I,O> + codecs + descriptor + capability declaration + contract suite
-  3. G0 baseline evidence → G8 CERTIFIED
-  4. burn-down each one through the LEGACY_REMOVED gate
+LFC-2E1-S1 (FIRST): LB-02 LEGACY_REMOVED slice
+  - core.echo is already CERTIFIED (S3 burn-down, LEGACY_REMOVED achieved).
+  - But reachable legacy Echo machinery may still exist in tests:
+    LegacyEchoUnreachableProofTest, EchoDurableSpineTest, UatStep002EchoCaptureTest,
+    CoreEchoSeamTest, EchoStepContractSuiteTest.
+  - Action: refixture each to drive core.echo exclusively through the registry seam;
+    activate S3EchoLegacyRemovedFitnessTest; record LEGACY_REMOVED in the LB-01 ledger
+    (do NOT re-record CERTIFIED — that was the prior cycle's outcome).
+
+LFC-2E1-S2: universal core freeze (G0..G8 per Step)
+  P0 first (in order):
+    - core.error      (registry StepDefinition + capability; G0 baseline → G8 CERTIFIED)
+    - core.sleep      (registry StepDefinition; G0 → G8)
+    - core.pwd        (registry; must produce typed String value)
+    - core.isUnix     (registry; must produce typed Boolean)
+  P1 second:
+    - core.deleteDir, core.cleanWs, core.waitUntil
+  P2 third:
+    - core.milestone, core.load, core.archiveArtifacts, core.emit.event, core.file.writeFile
+  For each Step:
+    G0 baseline evidence
+    G1 registry seam proof (handler + contract + codecs + capabilities)
+    G2 corpus migration (durable characterisation drives registry path)
+    G3 REGISTRY_PRIMARY (CoreStepRegistryFactory contains the Step)
+    G4 LEGACY_UNREACHABLE (decoder/dispatcher/metadata row deleted; runtime)
+    G5 LEGACY_REMOVED (source-level absence of all 3 legacy forms; static)
+    G6 architecture fitness
+    G7 StepContractSuite (16/17 rows)
+    G8 CERTIFIED (per-Step state in burn-down ledger)
 ```
 
 ```text
-LFC-2E2: utilities (no production Step; review + scope)
+LFC-2E2: utilities (filesystem + typed deterministic values; OFFICIAL_PLUGIN)
 LFC-2E3: testing/reports (junit + publishHTML first time)
-LFC-2E4: artifacts/stash (cleanWs already promoted)
+LFC-2E4: artifacts/stash (cleanWs already promoted in E1)
 LFC-2E5: toolchains/config (no DSL surface today)
 LFC-2E6: HTTP/SSH/notifications (new Step families)
 LFC-2E7: lock/input (new Step families)

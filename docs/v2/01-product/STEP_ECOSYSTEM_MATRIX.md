@@ -235,6 +235,10 @@ Target difficulty ladder after EVT-3, anchored to the LFC-2E0 inventory
 ```text
 E0  certify existing families        (12 legacy core keys → registry seam; LFC-2E0 inventory)
 E1  universal core freeze            (no more new core Steps without registry + capability + contract suite)
+    E1-S1 (FIRST)  LB-02 LEGACY_REMOVED slice (refixture legacy Echo tests, activate fitness guard,
+                                              record LEGACY_REMOVED in LB-01 ledger)
+    E1-S2          burn down the 12 legacy keys via G0..G8 (P0: error/sleep/pwd/isUnix;
+                   P1: deleteDir/cleanWs/waitUntil; P2: milestone/load/archiveArtifacts/emit.event/file.writeFile)
 E2  utilities plugin                 (filesystem + typed deterministic values; OFFICIAL_PLUGIN)
 E3  testing/reports plugin           (junit, publishHTML, coverage; OFFICIAL_PLUGIN)
 E4  artifacts/stash                  (cleanWs promoted, archiveArtifacts review)

@@ -47,10 +47,22 @@ The LFC-2E0 cycle made three discoveries that the original matrix did not:
 ## Why no production code change in E0
 
 Per user law #10 and #11: LFC-2E0 is **inventory only**. No Step implementation.
-The next cycle LFC-2E1 begins the burn-down of the 12 legacy keys onto the
-registry seam, in priority order (P0 first: error, sleep, pwd, isUnix; then P1:
-deleteDir, cleanWs, waitUntil; then P2: milestone, load, archiveArtifacts,
-emit.event, file.writeFile).
+
+Per LB-01 / LEGACY_BURNDOWN_POLICY (the per-Step state machine
+LEGACY → DUAL_AVAILABLE → REGISTRY_PRIMARY → LEGACY_UNREACHABLE →
+LEGACY_REMOVED → CERTIFIED; **CERTIFIED requires LEGACY_REMOVED**), the next
+cycle LFC-2E1 must:
+
+1. **E1-S1 (FIRST):** complete the LB-02 LEGACY_REMOVED slice — refixture any
+   reachable legacy Echo machinery (LegacyEchoUnreachableProofTest,
+   EchoDurableSpineTest, UatStep002EchoCaptureTest, CoreEchoSeamTest,
+   EchoStepContractSuiteTest) to drive `core.echo` exclusively through the
+   registry seam; activate `S3EchoLegacyRemovedFitnessTest`; record
+   `LEGACY_REMOVED` in the LB-01 ledger (do NOT re-record CERTIFIED).
+2. **E1-S2:** burn down the 12 legacy keys onto the registry seam in priority
+   order (P0 first: error, sleep, pwd, isUnix; then P1: deleteDir, cleanWs,
+   waitUntil; then P2: milestone, load, archiveArtifacts, emit.event,
+   file.writeFile). Each burn-down follows G0..G8.
 
 ## Sequencing rules preserved
 

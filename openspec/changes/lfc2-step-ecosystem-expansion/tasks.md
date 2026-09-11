@@ -18,8 +18,33 @@
 
 ## LFC-2E1 (next cycle, NOT in this PR)
 
-E1 = universal core freeze. Burn down 12 legacy keys onto the registry seam
-following AGENTS.md G0..G8 sequence. Per the inventory priority:
+> **LB-01 ordering:** `CERTIFIED` requires `LEGACY_REMOVED` (per
+> `openspec/changes/lfc2-step-constitution-plugin-seam/LEGACY_BURNDOWN_POLICY.md`).
+> The first E1 slice addresses LB-02's remaining reachable legacy fixtures,
+> NOT a fresh burn-down. Then E1 starts the burn-down of the 12 legacy keys.
+
+### LFC-2E1-S1 — LB-02 LEGACY_REMOVED slice (FIRST)
+
+- [ ] inventory legacy `core.echo` machinery still reachable in production:
+  `LegacyEchoUnreachableProofTest`, `EchoDurableSpineTest`, `UatStep002EchoCaptureTest`,
+  `CoreEchoSeamTest`, `EchoStepContractSuiteTest` (live in
+  `v2/pipeline-application/src/test/kotlin/.../`)
+- [ ] refixture each legacy test to drive `core.echo` exclusively through the
+  registry seam (no legacy decoder, no legacy metadata row)
+- [ ] activate the `S3EchoLegacyRemovedFitnessTest` fitness guard with strict
+  forbidden-pattern assertions
+- [ ] run `S3EchoLegacyRemovedFitnessTest` and confirm it fails closed on any
+  reintroduction of legacy Echo path
+- [ ] record `LEGACY_REMOVED` in the LB-01 burn-down ledger (do NOT re-record
+  `CERTIFIED`; that was the prior cycle's outcome)
+- [ ] capture a small LB-02 LEGACY_REMOVED receipt under `docs/v2/07-uat/`
+  (or amend `S3_ECHO_BURNDOWN_CERTIFICATION.md` to note the fitness guard is now
+  active)
+
+### LFC-2E1-S2 — universal core freeze (after LB-02 slice)
+
+Burn down 12 legacy keys onto the registry seam following AGENTS.md G0..G8.
+Per the inventory priority:
 
 P0 first:
 - [ ] `core.error` — burn-down to registry (G0 baseline → G8 CERTIFIED)

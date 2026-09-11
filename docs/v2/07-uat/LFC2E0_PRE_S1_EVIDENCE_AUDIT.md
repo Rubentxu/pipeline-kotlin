@@ -577,6 +577,58 @@ All four block-step contracts route through the canonical spine,
 not through a parallel dispatch collection. PASS.
 ```
 
+## Edge case sweep — round 5 (2026-09-11, post-394fc1ab)
+
+Real `.pipeline.kts` examples (06, 04, 05) plus the external plugin
+golden path (E29, E30):
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E26 | `06-durable.pipeline.kts` (multi-stage `--resume`) | PASS | Run 2 `--resume` block: 10 events, 0 step-level events. All 3 stages cached as `StageFinished` immediately. **Correction**: my E18 count summed across blocks with same runId, not isolating latest block — per-block inspection confirms `--resume` is fully idempotent at the step level. |
+| E27 | `04-kotlin-control-flow.pipeline.kts` (`script {}` block) | PASS | 23 events, 5 `EchoOutputCaptured`: file check ("all 3 expected files present") + countdown 3-2-1-liftoff. Real Kotlin (`listOf`, `filter`, `for`) executed. |
+| E28 | `05-failing-step.pipeline.kts` (typed failure) | PASS | CLI exit=1, 14 events, **exactly 1 `StepFailed`** with `failureKind=SCRIPT message="shell exited with code 3"`. "boom" + "never-reached" stages aborted. |
+| E29 | `example-uppercase-plugin` (CERTIFIED external reference) | PASS (structural) | JAR 19918 bytes; ServiceLoader descriptor `example.uppercase.UppercaseContributor`; DSL facade `uppercase(text)` lowers to `registryStep(stepKey, encodedInput)` |
+| E30 | Plugin isolation (zero internal imports) | PASS | Plugin depends ONLY on `pipeline-domain` + `pipeline-scripting-api` (compileOnly). Zero internal application/runtime imports — matches AGENTS.md "Public API boundary" rule. |
+
+### Captured logs (edge cases round 5, rule 25)
+
+```text
+/tmp/lfc2e0-e26-run1.txt          sha256=8f12d75d13df67816bec7e7e8f264919db55cb1998b1eab684b462d1c5bf6413
+/tmp/lfc2e0-e26-run2.txt          sha256=57aec349dd7ba98fe60a61a323f114dad2f8e0053378e28e4c9ac3c0bae14b4d
+/tmp/lfc2e0-e27-kotlin.txt        sha256=5bffdc05a86434309d477df19ecec47361f1a3c16f73b5fc9e98dd04bffdd929
+/tmp/lfc2e0-e28-fail.txt          sha256=b44d16622300515545ccf274c82798fb8803a60f30ac58f01ddda4d75608f877
+/tmp/lfc2e0-e26-e30-round5.log    sha256=cca2b6c89220563ccf1a106f40999c4621430f6bf884d0336ea7de261bd29cb9
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e26-run1.txt /tmp/lfc2e0-e26-run2.txt \
+          /tmp/lfc2e0-e27-kotlin.txt /tmp/lfc2e0-e28-fail.txt \
+          /tmp/lfc2e0-e26-e30-round5.log
+```
+
+### Cumulative edge case tally (after round 5)
+
+```text
+Rounds 1-5 (E1..E30):
+  29 PASS
+   1 SKIPPED (E4: external plugin — known CLI limitation; structural
+              inspection of the JAR via E29/E30 addresses the gap)
+
+Trunk: main == origin/main == 05aefe01
+```
+
+### Correction to E18 log
+
+While running E26, I noticed my E18 counting code summed events across
+**all blocks with the same runId**, not the latest block. Per-block
+inspection of E18's journal shows the original 6-event `--resume`
+finding is correct: subsequent `--resume` blocks emit Compilation +
+Run + Stage events but **no step-level events**. The cached outcome
+is reused at the step level. E26 with multi-stage and `sh` confirms
+this holds for shell steps too — not just `echo`.
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

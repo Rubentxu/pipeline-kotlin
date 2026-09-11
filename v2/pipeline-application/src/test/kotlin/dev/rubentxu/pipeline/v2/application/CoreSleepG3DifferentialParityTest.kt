@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -99,6 +100,7 @@ class CoreSleepLegacyRegistryDifferentialParityTest {
 }
 
 /** G3 pre-flip structural readiness proof, deliberately separate from differential semantics. */
+@Disabled("Historical G3 pre-flip evidence; superseded by CoreSleepRegistryPrimaryFitnessTest at G4.")
 @Timeout(value = 30, unit = TimeUnit.SECONDS)
 class CoreSleepMigrationReadinessFitnessTest {
     @Test fun `candidate is registered but legacy membership wins routing`() {

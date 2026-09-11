@@ -67,7 +67,6 @@ sealed interface CanonicalCoreStepCommand {
             //   - CanonicalCoreStepMetadata["core.error"] row
             // Until G6 the legacy dispatcher is unreachable in production but
             // still type-loadable; the parity test (G3) can still drive it.
-            "core.sleep",
             "core.file.writeFile",
             "core.emit.event",
             "core.milestone",

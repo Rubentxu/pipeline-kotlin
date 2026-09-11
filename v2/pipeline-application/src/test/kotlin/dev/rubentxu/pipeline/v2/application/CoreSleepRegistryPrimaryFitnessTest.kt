@@ -28,13 +28,14 @@ import java.util.concurrent.TimeUnit
 class CoreSleepRegistryPrimaryFitnessTest {
     private val key = PluginStepId("core.sleep")
 
-    @Test fun `registry is primary and legacy counters retain only the ten residual keys`() {
+    @Test fun `registry is primary and legacy counters retain only the nine residual keys`() {
         val registry = CoreStepRegistryFactory.registry()
         assertTrue(registry.contains(key))
         assertFalse("core.sleep" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertEquals(StructuralStepFamily.Registry, StructuralFamilyResolver.classify(key, registry))
+        // S2-A3/G4: core.file.writeFile flipped to registry; 10 -> 9 residual legacy keys.
         assertEquals(setOf(
-            "core.file.writeFile", "core.emit.event", "core.milestone", "core.deleteDir", "core.cleanWs",
+            "core.emit.event", "core.milestone", "core.deleteDir", "core.cleanWs",
             "core.load", "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
     }

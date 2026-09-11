@@ -261,3 +261,34 @@ Trunk: main == origin/main == 5efac6c0.
 **Next (NOT STARTED per user instruction)**: LFC-2E1-S1
 (lfc2-e1-s1-echo-legacy-removed) — turn core.echo into the oracle:
 CERTIFIED + LEGACY_REMOVED. S2 burn-down of 12 legacy keys gated on S1.
+
+## LFC-2E0 post-merge defensive audit (2026-09-11, cca0fe14)
+
+After LFC-2E0 merge @ bbb2e584, a defensive validation pass was run on
+trunk (NOT a new cycle; pre-positioning evidence for S1):
+
+- Inventory claims re-enumerated: 12 LEGACY + 2 registry + 1 external
+  plugin = 15 production keys (matches STEP_INVENTORY_LFC2E0.md)
+- Event Harness: 19/19 GREEN (EVT-3 verdict preserved post-merge)
+- Architecture fitness family: 193/193 GREEN
+- S3EchoLegacyRemovedFitnessTest: 7/7 GREEN (already active, not
+  quarantined; structural fitness, not grep-fragile)
+- 5 echo tests (LegacyEchoUnreachableProofTest, EchoDurableSpineTest,
+  UatStep002EchoCaptureTest, CoreEchoSeamTest, EchoStepContractSuiteTest):
+  31/31 GREEN (no refixture needed)
+
+**Honest finding for S1 scope**: the LB-01 anchor framed S1 as
+"refixture + activate fitness". On current main, neither is needed.
+The actual S1 scope is certification RECORDING:
+1. Update LB-01 ledger to formally record core.echo's
+   CERTIFIED + LEGACY_REMOVED combined verdict with full evidence
+2. Produce CORE_ECHO_CERTIFICATION.md receipt
+3. Update STEP_INVENTORY_LFC2E0.md row from "CERTIFIED (S3 burn-down)"
+   to "CERTIFIED + LEGACY_REMOVED (S1 certification recording)"
+4. Re-run LFC-2E0 gates (no regression)
+
+Receipt: docs/v2/07-uat/LFC2E0_PRE_S1_EVIDENCE_AUDIT.md
+
+S1 still requires explicit user direction to open (standing instruction).
+
+Trunk: main == origin/main == cca0fe149d529a8dc9e1b9afec9a2871abadb7c8.

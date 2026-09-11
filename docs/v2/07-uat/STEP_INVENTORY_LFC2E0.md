@@ -73,14 +73,34 @@ Columns:
 
 ## Row citations
 
-### `core.echo` — CERTIFIED (production registry)
+### `core.echo` — CERTIFIED + LEGACY_REMOVED (production registry, S1 closure)
 
 - **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEchoStep.kt:34` `val KEY: PluginStepId = PluginStepId("core.echo")`
 - **Registry:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt:31` `CoreEchoStep.registerInto(this)`
 - **DSL:** `v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1002` `fun echo(text: String)`, `:1817`, `:1855`
-- **Receipt:** `docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md` — G0..G8 burn-down complete; LEGACY_REMOVED achieved
-- **Contract Suite:** `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/EchoStepContractSuiteTest.kt` — 16/17 rows per LB-02
+- **Receipt (burn-down):** `docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md` — G0..G8 burn-down complete; LEGACY_REMOVED achieved
+- **Receipt (certification):** `docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md` — formal CERTIFIED + LEGACY_REMOVED combined verdict (S1)
+- **Receipt (G4 fitness):** `docs/v2/07-uat/CORE_ECHO_G4_FITNESS_RECEIPT.md` — `S3EchoLegacyRemovedFitnessTest` 7/7 GREEN
+- **Contract Suite (G7):** `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/EchoStepContractSuiteTest.kt` — 17/17 GREEN
+- **Echo test suite:** 5 files / 31/31 GREEN (LegacyEchoUnreachableProof + EchoDurableSpine + UatStep002 + CoreEchoSeam + EchoStepContractSuite)
 - **Real examples:** 01-hello, 02-multi-stage, 04-kotlin-control-flow, 05-failing-step, 06-durable, 07-catch-error, 08-parallel, 09-retry
+- **Real execution parity:** `examples/01-hello.pipeline.kts` → 9 events SUCCESS, 1 EchoOutputCaptured (proves registry path resolution)
+
+```text
+core.echo:
+  delivery:    CORE
+  execution:   REGISTRY_PRIMARY
+  legacy:      REMOVED
+  certification: CERTIFIED
+
+proof (machine-derived):
+  - G4 architecture fitness (S3EchoLegacyRemovedFitnessTest, 7/7 GREEN)
+  - G7 StepContractSuite (EchoStepContractSuiteTest, 17/17 GREEN)
+  - Echo test suite (5 files, 31/31 GREEN)
+  - Real execution parity (examples/01-hello.pipeline.kts, SUCCESS)
+```
+
+State updated: `CERTIFIED (S3 burn-down)` → `CERTIFIED + LEGACY_REMOVED (S1 certification recording)`.
 
 ### `core.sh` — CERTIFIED (production registry)
 

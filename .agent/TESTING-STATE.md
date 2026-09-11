@@ -292,3 +292,18 @@ Receipt: docs/v2/07-uat/LFC2E0_PRE_S1_EVIDENCE_AUDIT.md
 S1 still requires explicit user direction to open (standing instruction).
 
 Trunk: main == origin/main == cca0fe149d529a8dc9e1b9afec9a2871abadb7c8.
+
+## LFC-2E0 post-merge acceptance parity (2026-09-11, 7f06876b)
+
+After the 11-hypothesis structural sweep at 260fbaf5, the missing piece
+was the integration-boundary acceptance oracle. Ran examples/run.sh
+TWICE consecutively with hermetic scratch dirs:
+
+- Run #1: 18 PASS, 0 FAIL, exit 0 (log ed80d7c8...)
+- Run #2: 18 PASS, 0 FAIL, exit 0 (log 6a5bdb43...)
+- All 10 examples match expected exit+outcome
+- All 4 contracts (07/08/09/10) PASS differential parity
+- examples/01-hello.pipeline.kts emits EchoOutputCaptured → STRONGEST proof
+  core.echo resolves through registry path (not legacy)
+
+Trunk: main == origin/main == 7f06876b133c9525bac13e8b8f3577859401113d.

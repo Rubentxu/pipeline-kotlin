@@ -318,6 +318,27 @@ sandbox V1 (Security Manager); no protocolo de agente remoto.
 > EVT does not reopen M4 and does not implement Jenkins. It evolves E1 into a transport-agnostic,
 > locally useful event foundation and proves the live semantics that M4/M6 will consume.
 
+**Status (2026-09-11):** EVT-0..EVT-3 **CLOSED**. Detailed per-slice status and machine-derived evidence: `docs/v2/05-roadmap/EVENT_SPINE_EVOLUTION.md`. Closure receipt: `docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md`.
+
+### Product priority chain
+
+```text
+EVT-0 CLOSED
+EVT-1 CLOSED
+EVT-2 CLOSED
+EVT-3 CLOSED
+      ↓
+LFC-2E local-first Step ecosystem expansion       (docs/v2/05-roadmap/LFC2_STEP_ECOSYSTEM_EXPANSION.md)
+      ↓
+local-first feature freeze
+      ↓
+EVT-4 detached live relay
+      ↓
+M4 controller/remote
+```
+
+EVT-4 is **not** the next priority after EVT-3. LFC-2E comes first. The local-first ecosystem must reach a freeze before distributed/remote work resumes.
+
 ### Objective
 
 Make structured execution history a first-class local feature and use it to verify real examples, while

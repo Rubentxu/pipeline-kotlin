@@ -196,8 +196,8 @@ Pre-existing artifacts referenced:
 - [x] Architecture fitness regressions: 0
 - [x] Rule-16 introduced failures: 0
 - [x] Working tree clean
-- [ ] `HEAD == origin/main` after FF merge (next step, sddk-release)
-- [x] Receipt with argv/exit/digest (this file)
+- [x] `HEAD == origin/main` after FF merge (verified `b5315fb7` == `b5315fb7` post-EVT-3 closure + LFC-2E integration)
+- [x] Receipt with argv/exit/digest (this file; §9 holds SHA-256 digests)
 
 ## 8. Authority updates required for closure
 
@@ -208,3 +208,49 @@ The following authority documents must reflect EVT-3 CLOSED status with real SHA
 3. `openspec/changes/event-spine-evolution/design.md` — keep EVT-3 entry
 
 These updates are part of the closure commit that precedes sddk-release.
+
+## 9. Captured logs and SHA-256 digests (rule 25)
+
+Per AGENTS.md rule 25, every machine-derived gate citation includes argv, exit,
+and a digest of the captured log. Digests computed via `sha256sum` on this
+closure cycle, **2026-09-11** at 07:06 UTC.
+
+```text
+EVT-3 closure logs:
+  /tmp/evt3-l0-compile.log                   5893 B   sha256=c1f224272d811c22031b6f49c0936392211a40e76a4fb498dd2c47db2a1f5336
+  /tmp/evt3-l1-harness-test-rerun.log        6128 B   sha256=cb48f0206faa75a4255666e0165fe85cfae7bae6fd73c959ed1d6e0f5cfd50af
+  /tmp/evt3-parity-run.log                  13368 B   sha256=a260291827bc2625254d6fdf66ba0fde5373cfa74724a3e8aaa9e1c04f939d47
+  /tmp/evt3-parity-run2.log                 13368 B   sha256=a570cd5cc1ad7342a3c407eee1196947f367349517b94c529d64026e2680b765
+  /tmp/evt3-l4-archfit.log                  74030 B   sha256=6a724e32dd59c4bfe9f62dbc1adbeb8fbb2b93087ffe272b48301d43df0ad36b
+  /tmp/evt3-l4-eventtests.log               43380 B   sha256=75eac8b8cd4bf5f50b3715dbfbf71164b90cde88eca2757243fc68e64f21812c
+  /tmp/evt3-l5-check.log                    16955 B   sha256=034a3f933fda22168f7f847b0c457065ef023c1ad088c5f752bb9f3b599541fb
+
+Base-SHA evidence (rule 15, pre-existing failures only):
+  /tmp/base-fixture14-verify.log             6552 B   sha256=af626b31d5f1c001365022e07c272277d2e43fd2c32f9e7a1a7dab05e53f7c94
+  /tmp/base-scripting-verify.log             4498 B   sha256=6fd6eba3a9cd9837b78629487702748372988a4516fe7e8b6dec02b00401ff60
+```
+
+Verifying command (reproducible):
+
+```bash
+sha256sum /tmp/evt3-l0-compile.log \
+          /tmp/evt3-l1-harness-test-rerun.log \
+          /tmp/evt3-parity-run.log \
+          /tmp/evt3-parity-run2.log \
+          /tmp/evt3-l4-archfit.log \
+          /tmp/evt3-l4-eventtests.log \
+          /tmp/evt3-l5-check.log \
+          /tmp/base-fixture14-verify.log \
+          /tmp/base-scripting-verify.log
+```
+
+Receipt-level digest (sha256 of this receipt file at the time of writing):
+`docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md` — recompute via:
+
+```bash
+sha256sum docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md
+```
+
+At amendment time (2026-09-11 07:07 UTC):
+`3030bcdb66345da202e7a2c1ca29c8a7ffb1f698b7f0abc2880261a6348c7c6f  docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md`
+

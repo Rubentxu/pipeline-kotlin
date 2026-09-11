@@ -414,6 +414,88 @@ Round 2 (E7..E14):
 Total: 13 PASS + 1 SKIPPED across 14 edge cases
 ```
 
+## Edge case sweep — round 3 (2026-09-11, post-496699eb)
+
+Drilling deeper into the durable spine and CLI semantics — the surfaces
+that S1 will need to assert against:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E15 | Event journal durability across runs | PASS | run.db sha256 changed between runs; no event duplication; full 9-event execution first run |
+| E16 | `--rerun` vs `--resume` semantics | PASS | `--rerun` = 9 events (full re-execution); `--resume` = 6 events (cached outcome reused) |
+| E17 | `validate` subcommand (no execution) | PASS | Only CompilationStarted/Finished events; "VALIDATION SUCCESSFUL" |
+| E18 | `--resume` idempotency (5x consecutive) | PASS | All share same `runId`; step-level events appear only in original block |
+| E19 | `--db` isolation (different path) | PASS | Independent runId, fresh journal, original db sha256 unchanged |
+| E20 | Failure durability (`--resume` of failure) | PASS (with documented behavior) | Successes cached (idempotent); failures re-execute (retry semantics) — both observable & consistent |
+| E21 | `--control-root` isolation (EVT-H1 hermeticity) | PASS | Same db + same ctl = same runId; same db + different ctl = different runId; confirms `examples/run.sh` hermeticity rationale |
+
+### Captured logs (edge cases round 3, rule 25)
+
+```text
+/tmp/lfc2e0-e15-journal.log      sha256=f5fc9718163fb7562351b71e74165dc40d095ed2155431fcb5e90dd5ab994e71
+/tmp/lfc2e0-e16-rerun.log        sha256=c48cdc8a12457c14c0ff723fc03aa565f021089e5995c919f95913b5a5bb364e
+/tmp/lfc2e0-e17-validate.log     sha256=516aed8c6ec6e8648f0a2830ea8c641714b74082c45d4a2c99809c410b4452a6
+/tmp/lfc2e0-e18-idempotent.log   sha256=1df9a34909c4f2b5cf9d05402a1a12082cd4e3cd2f32d6ce186ad98452732ce9
+/tmp/lfc2e0-e19-isolation.log    sha256=f9798d029b4ce4133485a46fe89e8a0a69a56ecea9373161aea8971117dbfee3
+/tmp/lfc2e0-e20-failure.log      sha256=02770e89491f4146901f49baf81ff12dcc6138274d78b7206e480d039aa6bc54
+/tmp/lfc2e0-e21-ctlroot.log      sha256=dd81ee8c9dc7d89570b06a8e09f30ae736d340f420eb96ef95659b884c92d4ea
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e15-journal.log /tmp/lfc2e0-e16-rerun.log \
+          /tmp/lfc2e0-e17-validate.log /tmp/lfc2e0-e18-idempotent.log \
+          /tmp/lfc2e0-e19-isolation.log /tmp/lfc2e0-e20-failure.log \
+          /tmp/lfc2e0-e21-ctlroot.log
+```
+
+### Cumulative edge case tally (after round 3)
+
+```text
+Round 1 (E1..E6):
+  E1: core.sleep legacy execution                 PASS
+  E2: mixed legacy + registry                     PASS
+  E3: replay semantics                            PASS
+  E4: external plugin coexistence                  SKIPPED (honest finding)
+  E5: packaging sanity                            PASS
+  E6: CLI flag semantics                          PASS
+
+Round 2 (E7..E14):
+  E7:  core.error failure semantics               PASS
+  E8:  write/read filesystem roundtrip            PASS
+  E9:  deleteDir cleanup                          PASS
+  E10: concurrent pipelines                       PASS
+  E11: unknown step (fail-closed)                 PASS
+  E12: malformed script (fail-closed)             PASS
+  E13: capability admission                       PASS (structural)
+  E14: Rule-16 UATL008 verification               PASS
+
+Round 3 (E15..E21):
+  E15: journal durability                         PASS
+  E16: --rerun vs --resume distinction            PASS
+  E17: validate subcommand (no execution)         PASS
+  E18: --resume idempotency                       PASS
+  E19: --db isolation                             PASS
+  E20: failure durability                         PASS (documented)
+  E21: --control-root isolation (EVT-H1)          PASS
+
+Total: 20 PASS + 1 SKIPPED across 21 edge cases
+```
+
+### Key durability finding (E20 + E21)
+
+The two surfaces interact:
+- `--control-root` is the **durable op-state anchor** (retry decisions, replay cache)
+- `--db` is only the **event journal** (observability)
+- **Successes** are cached at the control-root level → `--resume` reuses cached outcome
+- **Failures** are NOT cached → `--resume` re-executes the failing step (retry-on-resume)
+
+This is **deliberate design**, observable, and consistent across runs.
+The `examples/run.sh EVT-H1` hermeticity debt (hermeticity requires
+per-run control-root) is validated: ctl1 reused = same runId, ctl2
+different = new runId, even with same db.
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

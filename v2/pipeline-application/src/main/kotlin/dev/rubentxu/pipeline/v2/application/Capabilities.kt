@@ -43,3 +43,22 @@ data class StageIdentity(
 )
 
 val STAGE_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.stage-identity")
+
+/**
+ * Runtime platform observation supplied to a handler that must classify the CURRENT
+ * execution environment (S2-A5 / G1), e.g. `core.isUnix`.
+ *
+ * Deliberately carries ONLY the raw observation ([PlatformIdentity.osName]) — NOT a
+ * derived `isUnix` boolean: the classification POLICY belongs to the Step, the
+ * environmental OBSERVATION belongs to this capability. This separation lets the
+ * canonical policy be decided/compared (G2) without changing how the environment is
+ * acquired, and keeps the handler from calling `System.getProperty` directly.
+ *
+ * Declared in `StepContract.requiredCapabilities`; admission is fail-closed before
+ * the handler runs when it is not available.
+ */
+data class PlatformIdentity(
+    val osName: String,
+)
+
+val PLATFORM_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.platform-identity")

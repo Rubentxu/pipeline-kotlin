@@ -60,5 +60,12 @@ object CoreStepRegistryFactory {
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreEmitEventStep.registerInto(this)
+        // LFC-2E1-S2-A5 / G1: candidate registration only. `core.isUnix` remains in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
+        // keeps LegacyCore as the canonical production authority. No legacy decoder,
+        // metadata, dispatcher, or catalogue entry changes in this gate. The candidate
+        // exposes TYPED_RUNTIME_OUTPUT (CANDIDATE_ARCHITECTURAL_DELTA, NOT YET APPROVED)
+        // and classifies with PATH_B verbatim; the canonical-policy decision is G2.
+        CoreIsUnixStep.registerInto(this)
     }
 }

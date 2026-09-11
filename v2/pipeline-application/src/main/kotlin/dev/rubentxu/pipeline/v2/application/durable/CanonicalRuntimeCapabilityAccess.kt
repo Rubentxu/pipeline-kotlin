@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.PlatformIdentity
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
@@ -78,6 +80,12 @@ class CanonicalRuntimeCapabilityAccess(
         builder[STAGE_IDENTITY_CAPABILITY] = StageIdentity(
             name = context.stageName,
             index = context.stageIndex,
+        )
+        // S2-A5 / G1: raw environmental observation for platform-classification handlers
+        // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,
+        // in the bridge adapter — never inside a handler.
+        builder[PLATFORM_IDENTITY_CAPABILITY] = PlatformIdentity(
+            osName = System.getProperty("os.name", ""),
         )
         return builder.toMap()
     }

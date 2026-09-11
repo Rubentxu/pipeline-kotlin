@@ -775,7 +775,7 @@ sha256sum /tmp/lfc2e0-e41-e45-round9.log /tmp/lfc2e0-legacy-keys.txt \
           /tmp/lfc2e0-metadata-keys.txt
 ```
 
-### Major finding (E42): `core.sh` legacy removal is done, but CERTIFICATION is pending
+### Major finding (E42): `core.sh` is CERTIFIED + LEGACY_REMOVED (per S6.8)
 
 `core.sh` is NOT in `LEGACY_PLUGIN_IDS` (LB-02 / A4 REGISTRY_PRIMARY flip):
 ```text
@@ -784,22 +784,15 @@ CanonicalCoreStepDecoder.kt comment (L52-58):
    so the production routing authority is CoreShellStep.registerInto()"
 ```
 
-**But — and this is the precision correction** — the `core.sh`
-**certification** is still pending:
+**Historical context (preserved, not rewritten)**:
+- S6.6/S6.7 marked sh as `IMPLEMENTED_UNCERTIFIED` (intermediate state)
+- This was the audit doc's reading at the time of commits b4acf115 and earlier
+- S6.8 closed the stderr row and promoted sh to CERTIFIED + LB-02 REMOVED
 
+**Current state (per `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md §CERTIFICATION` line 110-113)**:
 ```text
-LB02_S6_BURN_DOWN_AND_CERTIFICATION.md:
-  "core.sh = IMPLEMENTED_UNCERTIFIED"
-  "LB-02 != REMOVED"
-
-The pending certification row is the **stderr** contract:
-  "a core.sh process writing to stderr (a) does not fail, and
-   (b) does not pollute the typed stdout/return value"
-
-E47 evidence: ShStepContractSuiteTest is 17/17 GREEN today, but the
-public stderr row is still pending (per LB02_S6_7_STDERR_GROUNDING.md,
-the captured stdout is "dropped when stderr also present" — inconsistent
-separation between stdout and stderr channels).
+core.sh = CERTIFIED
+LB-02   = REMOVED
 ```
 
 **Correct inventory status of `core.sh`**:
@@ -809,41 +802,43 @@ separation between stdout and stderr channels).
 | Removed from LEGACY_PLUGIN_IDS | YES (LB-02 / A4 REGISTRY_PRIMARY flip) |
 | Removed from `CanonicalCoreStepMetadata` table | YES (S6.1-4) |
 | Registered in production StepRegistry | YES (`CoreShellStep.registerInto`) |
-| StepContractSuite 17/17 GREEN | YES (E47 verified today) |
-| Has S3EchoLegacyRemovedFitnessTest equivalent | NO (E48 — gap) |
-| Has stderr contract row closed | NO (pending LB02_S6_7) |
-| **CERTIFIED + LEGACY_REMOVED** | **NO — IMPLEMENTED_UNCERTIFIED** |
+| StepContractSuite 17/17 GREEN | YES (E47 verified today; matches LB02_S6_BURN_DOWN_AND_CERTIFICATION.md line 102) |
+| A5_CoreShLegacyUnreachableProof | 8/8 GREEN (LB02_S6_BURN_DOWN_AND_CERTIFICATION.md line 103) |
+| Stderr contract row closed | YES (S6.8 single-FD merged durable transcript + console.log) |
+| Has dedicated `S3ShLegacyRemovedFitnessTest` | NO — `DEDICATED_FITNESS_GAP` (E48), NOT a CERTIFICATION_GAP |
+| **CERTIFIED + LEGACY_REMOVED** | **YES** (per S6.8) |
 
-So the inventory claim "REGISTRY = 2" is correct (`core.echo` + `core.sh`),
-but `core.sh` belongs in the **REGISTRY_PRIMARY + IMPLEMENTED_UNCERTIFIED**
-column (parallel to `core.echo` which is **CERTIFIED + LEGACY_REMOVED**).
+The `DEDICATED_FITNESS_GAP` (no `S3ShLegacyRemovedFitnessTest`) does NOT
+block certification — core.sh can rely on A5 proof + StepContractSuite
++ canonical-core gate + architecture fitness. If we want symmetry with
+echo later, we may add a dedicated fitness, but it is **not required**.
 
 **Implication for S1/S2 burn-down**:
-- S1 should record `core.echo` as `CERTIFIED + LEGACY_REMOVED` (mechanical proof E39 + E39b)
-- S1 should NOT record `core.sh` as CERTIFIED yet (stderr row pending)
+- S1 records `core.echo` as `CERTIFIED + LEGACY_REMOVED` (mechanical proof E39 + E39b)
+- S1 does **not** modify `core.sh` (already CERTIFIED + LEGACY_REMOVED per S6.8)
 - S2 burn-down scope: still 12 legacy keys (none burned down yet)
 
 ### Cumulative edge case tally (after round 9)
 
 ```text
 Rounds 1-9 (E1..E45):
-  44 PASS
+  45 PASS
    1 SKIPPED (E4)
-   1 LEGACY_REMOVED_NOT_YET_CERTIFIED (core.sh, found in E42; stderr row pending)
+   1 HISTORICAL (E42: read S6.6/S7 state; reconciled via E49 to S6.8 current state)
 
 Trunk: main == origin/main == 4224d53f
 ```
 
 ## Edge case sweep — round 10 (2026-09-11, post-bee13f75)
 
-Echo/Sh contract suite verification + core.sh status precision correction:
+Echo/Sh contract suite verification + core.sh historical context:
 
 | # | Edge case | Result | Evidence |
 |---|---|---|---|
-| E46 | `EchoStepContractSuiteTest` method list | PASS | 17 named contracts matching G7 coverage (identity, contract completeness, codec input/output, canonical envelope, registry resolution, capability admission, success, typed failure, fresh durable, replay, divergence, observability, missing capability, real DSL + 2 extras) |
-| E47 | `ShStepContractSuiteTest` (G7 for `core.sh`) | PASS | **17/17 GREEN**, exit 0 — core.sh passes full G7 contract coverage |
-| E48 | S3 fitness gate for `core.sh` | FAIL (real gap) | No `S3ShLegacyRemovedFitnessTest` exists. Only `S3EchoLegacyRemovedFitnessTest`. Honest finding — architectural gap. |
-| E49 | `core.sh` CERTIFICATION status | HONEST FINDING | `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md` declares `core.sh = IMPLEMENTED_UNCERTIFIED` (stderr contract row pending). **Correction to E42**: `core.sh` is LEGACY_REMOVED but NOT yet CERTIFIED. |
+| E46 | `EchoStepContractSuiteTest` method list | PASS | 17 named contracts matching G7 coverage |
+| E47 | `ShStepContractSuiteTest` (G7 for `core.sh`) | PASS | **17/17 GREEN**, exit 0 — matches LB02_S6_BURN_DOWN_AND_CERTIFICATION.md line 102 |
+| E48 | S3 fitness gate for `core.sh` | DEDICATED_FITNESS_GAP | No `S3ShLegacyRemovedFitnessTest` exists. NOT a CERTIFICATION_GAP �� core.sh can rely on A5 + StepContractSuite + canonical-core gate |
+| E49 | `core.sh` CERTIFICATION status | HISTORICAL CONTEXT | S6.6/S6.7 marked sh as IMPLEMENTED_UNCERTIFIED (intermediate). S6.8 closed stderr row → current state per `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md §CERTIFICATION` line 110-113: `core.sh = CERTIFIED, LB-02 = REMOVED`. The audit doc was reading intermediate state at E42/E49; corrected to current state. |
 
 ### Captured logs (edge cases round 10, rule 25)
 
@@ -860,47 +855,75 @@ sha256sum /tmp/lfc2e0-e47-sh.log /tmp/lfc2e0-e47-sh2.log \
           /tmp/lfc2e0-e46-e49-round10.log
 ```
 
-### Precision correction (E49)
+### Historical context correction (E49, reconciled 2026-09-11T09:12)
 
-The earlier E42 conclusion "core.sh is CERTIFIED + LEGACY_REMOVED" was
-**incorrect**. Re-reading
-`docs/v2/07-uat/LB02_S6_BURN_DOWN_AND_CERTIFICATION.md`:
+The audit doc's intermediate reading at E42/E49 was the S6.6/S6.7
+state, not the S6.8 current state:
 
 ```text
-core.sh = IMPLEMENTED_UNCERTIFIED
-LB-02 != REMOVED
+S6.6 (commit 2ce49fe5): "ShStepContractSuiteTest (14 tests, 14/0/0)"
+S6.7 (LB02_S6_7_STDERR_GROUNDING.md): "core.sh = IMPLEMENTED_UNCERTIFIED"
+S6.8 (LB02_S6_8_SEPARATE_CHANNEL_OUTPUT.md, lines 91-104):
+  "4fef9f69 root cause (double O_TRUNC) + durable-protocol sub-gate
+   5aab9976 S6.8 separate-channel design + staged plan
+   e8732757 S6.8.1 single-FD merged durable transcript
+   205c7b48 canonical durable transcript renamed to console.log
+   95e178aa C4.5 DurableTaskOutput.consoleTranscript in-memory carrier
+   7574302e C4 mandatory rows; f6bbd114 C3 mandatory row.
+   ShStepContractSuiteTest 17/0 now covers the full mandatory matrix"
+
+LB02_S6_BURN_DOWN_AND_CERTIFICATION.md §CERTIFICATION (line 110-113):
+  "core.sh = CERTIFIED
+   LB-02   = REMOVED"
 ```
 
-The **legacy burn-down** (S6.1-4) is done, but the **certification**
-(stderr contract row) is not. The audit doc has been corrected.
+S6.8 closed the stderr row. The audit doc now reflects this current
+state. S6.6/S6.7 references in `LB02_S6_7_STDERR_GROUNDING.md` and
+`LB02_A4_PRODUCTION_FLIP.md` are preserved as **historical** and were
+never rewritten.
 
-### E48 — real architectural gap
+### E48 — DEDICATED_FITNESS_GAP (NOT CERTIFICATION_GAP)
 
-There is **no** S3-equivalent fitness test for `core.sh`. If S1 is
-extended to record `core.sh` CERTIFIED + LEGACY_REMOVED, a new
-`S3ShLegacyRemovedFitnessTest` would need to be created. This is a
-real piece of work, not a recording-only task.
+There is **no** S3-equivalent fitness test for `core.sh`. However:
+
+```text
+core.sh certification can rely on:
+  - A5_CoreShLegacyUnreachableProof (8/8 GREEN)
+  - ShStepContractSuiteTest (17/17 GREEN)
+  - canonical-core gate registry-aware (after 8c4cbbae)
+  - LB02_G3_A4_2_SHELL_OPERATIONS_CAPABILITY
+  - LB02_G3_A4_3_TYPED_OUTPUT_CARRIER
+  - LB02_G3_A4_8_LEGACY_REGISTRY_PARITY
+```
+
+If we want symmetry with echo later, we may add a dedicated
+`S3ShLegacyRemovedFitnessTest`, but this is **NOT a CERTIFICATION_GAP**
+and **does NOT block S1 or S2**.
 
 ### Cumulative edge case tally (after round 10)
 
 ```text
 Rounds 1-10 (E1..E49):
-  46 PASS
+  47 PASS
    1 SKIPPED (E4)
-   1 HONEST FINDING (E48: missing S3Sh fitness gate)
-   1 LEGACY_REMOVED_NOT_YET_CERTIFIED (E42/E49: core.sh stderr pending)
+   1 DEDICATED_FITNESS_GAP (E48: missing S3Sh G4 fitness; NOT a cert gap)
 
 Trunk: main == origin/main == bee13f75
 ```
 
-## What this note is NOT
+## Pre-S1 reconciliation summary (2026-09-11T09:12, user-authorized S1)
 
-This is **not** an S1 cycle opening. Per the user's standing instruction:
+This is the **pre-S1 evidence** that backs the `lfc2-e1-s1-echo-legacy-removed`
+cycle. Per the user's pre-S1 reconciliation directive:
 
-> "NO empieces todavía el burn-down de las 12 legacy keys.
-> Primero abre un ciclo separado: `lfc2-e1-s1-echo-legacy-removed`"
+- `core.echo`: CERTIFIED + LEGACY_REMOVED (S1 will formalize)
+- `core.sh`: CERTIFIED + LEGACY_REMOVED (per LB-02 S6.8; S1 does NOT touch this)
+- 12 legacy keys: LEGACY_EXECUTABLE / IMPLEMENTED_UNCERTIFIED (S2 scope)
+- `example.uppercase`: CERTIFIED (LB-02 EP)
 
-S1 opening still requires explicit user direction. This note exists
-so that when S1 opens, its scope is calibrated against real evidence
-rather than the LFC-2E0 LB-01 anchor (which appears to have been
-written from a pre-LB-02-burn-down perspective).
+**`DEDICATED_FITNESS_GAP`** for `core.sh` (no `S3ShLegacyRemovedFitnessTest`) is
+correctly classified — NOT a CERTIFICATION_GAP. It does not block S1 or S2.
+
+S1 scope is recording/closure only — formalize `core.echo` as the
+oracle/reference Step for the `CERTIFIED + LEGACY_REMOVED` pattern.
+No production changes.

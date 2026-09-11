@@ -405,11 +405,11 @@ and the durable spine. All findings captured in
 - E44 CanonicalCoreStepMetadata: 12 entries with typed Effect+ReplayPolicy
 - E45 LEGACY_PLUGIN_IDS == metadata table (diff empty)
 
-### Round 10 (commit b4acf115, E46..E49 — precision correction)
+### Round 10 (commit b4acf115, E46..E49 — pre-S1 audit)
 - E46 EchoStepContractSuiteTest 17 named contracts (matches G7)
 - E47 ShStepContractSuiteTest 17/17 GREEN (G7 for core.sh)
-- E48 No S3ShLegacyRemovedFitnessTest exists (architectural gap)
-- E49 core.sh is IMPLEMENTED_UNCERTIFIED (correction to E42)
+- E48 No S3ShLegacyRemovedFitnessTest exists (DEDICATED_FITNESS_GAP, NOT CERTIFICATION_GAP)
+- E49 Historical note: S6.6/S6.7 marked sh as IMPLEMENTED_UNCERTIFIED (intermediate state, not current)
 
 ### E39 + E39b — combined S1 evidence
 
@@ -424,27 +424,55 @@ The G4 fitness proves CERTIFIED + LEGACY_REMOVED (structural invariant).
 The G7 suite proves the full 17-row contract coverage. Together they
 mechanically support the S1 certification recording.
 
-### E49 — precision correction
+### E49 — historical context (corrected by user 2026-09-11)
 
-Earlier claim "core.sh = CERTIFIED + LEGACY_REMOVED" was INCORRECT.
+Earlier audit (commit b4acf115) flagged `core.sh` as
+IMPLEMENTED_UNCERTIFIED. **This was reading the intermediate state at
+S6.6/S6.7, not the current state at S6.8.**
 
-Per `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md`:
-- core.sh = LEGACY_REMOVED (LB-02 S6.1-4 done)
-- core.sh = IMPLEMENTED_UNCERTIFIED (stderr contract row pending, LB02_S6_7)
+Per `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md §CERTIFICATION` (line 110):
+```text
+core.sh = CERTIFIED
+LB-02   = REMOVED
+```
 
-### E48 — real architectural gap
+S6.8 (commits 4fef9f69 / 5aab9976 / e8732757 / 205c7b48 / 95e178aa /
+7574302e / f6bbd114) closed the stderr row:
+- Single-FD merged durable transcript (plain stdout+stderr both observable)
+- console.log rename; jenkins-log.txt isolated behind read-compat
+- DurableTaskOutput.consoleTranscript in-memory carrier
+- Mandatory rows complete; ShStepContractSuiteTest 17/17
+- A5_CoreShLegacyUnreachableProof 8/8
 
-No `S3ShLegacyRemovedFitnessTest` exists. If S1 is extended to record
-`core.sh` CERTIFIED + LEGACY_REMOVED, a new fitness test would need
-to be created. Real work, not just recording.
+S6.6/S6.7 references in `LB02_S6_7_STDERR_GROUNDING.md` and
+`LB02_A4_PRODUCTION_FLIP.md` are **historical**, not current.
 
-### Updated inventory verdict
+### E48 — DEDICATED_FITNESS_GAP (NOT CERTIFICATION_GAP)
+
+`S3ShLegacyRemovedFitnessTest` does not exist (no dedicated
+G4-equivalent for sh). However:
+
+```text
+core.sh certification can rely on:
+  - A5_CoreShLegacyUnreachableProof (8/8 GREEN)
+  - ShStepContractSuiteTest (17/17 GREEN)
+  - canonical-core gate registry-aware (after 8c4cbbae)
+  - LB02_G3_A4_2_SHELL_OPERATIONS_CAPABILITY
+  - LB02_G3_A4_3_TYPED_OUTPUT_CARRIER
+  - LB02_G3_A4_8_LEGACY_REGISTRY_PARITY
+```
+
+If we want symmetry with echo later, we can create a dedicated
+G4-equivalent fitness for sh, but **this is NOT a CERTIFICATION_GAP**
+and **does NOT block S1 or S2**.
+
+### Updated inventory verdict (post-reconciliation)
 
 | Key | Status |
 |---|---|
 | `core.echo` | CERTIFIED + LEGACY_REMOVED (S1 ready) |
-| `core.sh` | REGISTRY_PRIMARY + IMPLEMENTED_UNCERTIFIED (LB-02 != REMOVED; stderr pending) |
-| 12 legacy keys | All LEGACY_EXECUTABLE (S2 burn-down scope) |
+| `core.sh` | CERTIFIED + LEGACY_REMOVED (LB-02 S6.8 closure) |
+| 12 legacy keys | LEGACY_EXECUTABLE / IMPLEMENTED_UNCERTIFIED (S2 burn-down scope) |
 | `example.uppercase` | CERTIFIED (LB-02 EP) |
 
 ### Cumulative verdict
@@ -453,12 +481,10 @@ to be created. Real work, not just recording.
 Rounds 1-10 (E1..E49):
   46 PASS
    1 SKIPPED (E4: external plugin — known CLI limitation)
-   1 HONEST FINDING (E48: missing S3Sh fitness gate)
-   1 LEGACY_REMOVED_NOT_YET_CERTIFIED (E42/E49: core.sh stderr pending)
+   1 DEDICATED_FITNESS_GAP (E48: missing S3Sh G4 fitness; NOT a cert gap)
 
-Trunk: main == origin/main == b4acf115
+Trunk: main == origin/main == f3cb502c
 
-S1 still requires explicit user direction to open (standing instruction).
-S1 scope (corrected): record core.echo as CERTIFIED + LEGACY_REMOVED only.
-S2 burn-down scope: 12 legacy keys (none burned down yet).
+S1 user-authorized 2026-09-11T09:12:31Z; scope: core.echo recording only.
+S2 scope: 12 legacy keys (none burned down yet); derive from LEGACY_PLUGIN_IDS.
 ```

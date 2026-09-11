@@ -52,6 +52,16 @@ data class ScriptedSourceLocation(
         "${sourceId.value}:$line:$column:sh",
     )
 
+    /**
+     * Stable source identity emitted for a generated runtime-returning platform
+     * query call. Deliberately DISTINCT from [shellCallSite]: two different steps
+     * transformed at the same source position must never collide on one durable
+     * call-site identity.
+     */
+    fun unixCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
+        "${sourceId.value}:$line:$column:isUnix",
+    )
+
     /** Stable dynamic scope for a generated loop iteration. */
     fun loopScope(iteration: Int): ScriptedDynamicScopeId {
         require(iteration >= 0) { "Scripted loop iteration must not be negative" }
@@ -176,6 +186,15 @@ interface ScriptedStepFacade {
         encoding: String? = null,
         label: String? = null,
     ): Int
+
+    /**
+     * Runtime-returning platform query (LFC-2R / R2). Unlike the eager DSL path,
+     * the returned [Boolean] is a durable runtime value: FRESH observes the
+     * execution target through the registry Step; REUSE reproduces the persisted
+     * observation without re-observing. The result materializes BEFORE control
+     * returns to Kotlin; a failure NEVER fabricates `false`.
+     */
+    suspend fun isUnix(callSite: ScriptedCallSiteId): Boolean
 }
 
 private fun stableScriptedArtifactKey(fields: List<String>): String = fields.joinToString(separator = "") { field ->

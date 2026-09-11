@@ -93,7 +93,20 @@ class ScriptedRegistryInvoker(
     private val journal: OperationJournal,
     private val clock: Clock,
     private val runtimeContextFactory: (call: ScriptedRegistryCall) -> CanonicalRuntimeContext,
+    /**
+     * Capability bridge construction. The default is the canonical bridge over the
+     * runtime context; harnesses may substitute a bridge whose OBSERVATION sources
+     * are synthetic (e.g. a non-host platform) without changing any production logic.
+     * Admission stays fail-closed and replay never consults this factory.
+     */
+    private val capabilityAccessFactory: (CanonicalRuntimeContext) -> dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess =
+        { context -> dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess(context) },
 ) {
+
+    /** Read-only definition accessor so callers can project typed outputs through the
+     * Step's DECLARED codec — the single output contract, never a parallel decoder. */
+    fun definitionFor(key: PluginStepId): dev.rubentxu.pipeline.v2.domain.step.StepDefinition<*, *>? =
+        registry.definition(key)
 
     suspend fun invoke(call: ScriptedRegistryCall): ScriptedRegistryResult {
         val stepId = scriptedStepId(call.stepKey)
@@ -158,7 +171,7 @@ class ScriptedRegistryInvoker(
             registry = registry,
             key = call.stepKey,
             encodedInput = call.encodedInput,
-            availableCapabilities = dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess(
+            availableCapabilities = capabilityAccessFactory(
                 runtimeContextFactory(call),
             ).available(),
         )
@@ -171,7 +184,7 @@ class ScriptedRegistryInvoker(
 
         journal.append(record(operationId, fingerprint, input, OperationStatus.RUNNING, null))
         val startedAt = clock.now().toEpochMilli()
-        val result = RegistryExecutionBoundary.coexecute(ready, runtimeContextFactory(call))
+        val result = RegistryExecutionBoundary.coexecute(ready, runtimeContextFactory(call), capabilityAccessFactory)
         val finishedAt = clock.now().toEpochMilli()
         val output = result.encodedOutput?.let {
             OperationOutput(

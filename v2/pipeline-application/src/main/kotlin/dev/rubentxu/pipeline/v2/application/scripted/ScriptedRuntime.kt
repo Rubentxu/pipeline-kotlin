@@ -166,7 +166,30 @@ class ScriptedScope internal constructor(
         dynamicScopePath = dynamicScopePath + scopeId.value,
         ordinals = ordinals,
     ).block()
+
+    /** Source identity for the registry invoker (LFC-2R / R2). */
+    internal val identity: ScriptedScopeIdentity = ScriptedScopeIdentity(runId, entryPointId, dynamicScopePath)
+
+    /**
+     * Next invocation ordinal for one call site within this scope path — the same
+     * loop-safety discipline as [invokeAt], shared by all registry-step invocations.
+     */
+    internal fun nextOrdinal(callSiteId: ScriptedCallSiteId): Int {
+        val ordinalKey = stableScriptedKey(
+            listOf(callSiteId.value, dynamicScopePath.size.toString()) + dynamicScopePath,
+        )
+        val ordinal = ordinals.getOrDefault(ordinalKey, 0)
+        ordinals[ordinalKey] = ordinal + 1
+        return ordinal
+    }
 }
+
+/** Immutable identity inputs the runtime façade forwards to the registry invoker. */
+internal data class ScriptedScopeIdentity(
+    val runId: String,
+    val entryPointId: String,
+    val dynamicScopePath: List<String>,
+)
 
 internal fun ShellInvocationResult.asUnit() = when (this) {
     ShellInvocationResult.UnitValue -> Unit

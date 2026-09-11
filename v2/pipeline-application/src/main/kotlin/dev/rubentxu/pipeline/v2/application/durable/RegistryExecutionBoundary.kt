@@ -63,11 +63,23 @@ object RegistryExecutionBoundary {
     suspend fun coexecute(
         prepared: PreparedRegistryExecution,
         context: CanonicalRuntimeContext,
+    ): CommonExecutionResult = coexecute(prepared, context) { CanonicalRuntimeCapabilityAccess(context) }
+
+    /**
+     * Overload with an explicit capability-bridge factory. Production callers use the
+     * canonical bridge; harnesses that substitute OBSERVATION sources (e.g. a synthetic
+     * platform) supply a factory returning a bridge with the same fail-closed contract.
+     */
+    @Suppress("UNCHECKED_CAST")
+    suspend fun coexecute(
+        prepared: PreparedRegistryExecution,
+        context: CanonicalRuntimeContext,
+        capabilityAccessFactory: (CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess,
     ): CommonExecutionResult {
         // Erasure boundary: the concrete payload type lives behind the codec / in the prepared input.
         val definition = prepared.definition as StepDefinition<Any, Any>
         val contract = definition.contract
-        val access = CanonicalRuntimeCapabilityAccess(context)
+        val access = capabilityAccessFactory(context)
 
         // Hard fail-closed re-check against the ACTUAL runtime access, immediately before the handler.
         // Admission is authoritative in prepare; reaching execute already implies capabilities were

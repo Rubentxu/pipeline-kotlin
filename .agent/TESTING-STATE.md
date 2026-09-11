@@ -1,5 +1,18 @@
 
 
+## Active Change — LFC-2R / R2 core.isUnix scripted runtime consumer (2026-09-11)
+
+**Status: IMPLEMENTED, VALIDATED, COMMITTED.** R2 done; STOP before R3 (compiler/source mapping) or S2-A5/G3 — user decision pending.
+
+**Changed:** scripting-api facade (`isUnix(callSite): Boolean` suspend + `unixCallSite()` identity), `ScriptedRuntime` scope identity/ordinals, `RuntimeScriptedStepFacade.isUnix` thin adaptation via `ScriptedRegistryInvoker` + Step's declared outputCodec, invoker `capabilityAccessFactory` + `definitionFor`, `RegistryExecutionBoundary.coexecute` overload, `CanonicalRuntimeCapabilityAccess` opened (`open` class/get). No Main/DSL/legacy changes; S2-A5 counters 8/8/8 unchanged; D3 still OPEN (refined: runtime proven, compiled consumer proven, production wiring false).
+
+**Verification (all fresh XML, canary discipline):** `ScriptedIsUnixRuntimeTest` 13/0 (fresh execution-target SunOS/Windows/MacOSX/OpenBSD/"" matrix with facade==persisted==event coherence; REUSE through EMPTY registry + zero capabilities + changed platform → persisted value, 0 platform reads, 0 new events; 5 distinct call-site/ordinal ops; 5 fail-closed cases; 2 arch fitness scans). `ScriptedRegistryInvokerTest` 10/0, `CoreIsUnixStepUnitTest` 18/0, `ScriptedScopeTest` 13/0, kotlin24 `CompiledScriptedEntryPointHostTest` 1/0, architecture-tests 53 classes failures=0 (`--rerun-tasks` canary). Full compileTestKotlin green.
+
+**Gotchas learned:** invoker capability injection requires BOTH `capabilityAccessFactory` on the invoker AND a `coexecute` overload (boundary built its own bridge); reuse-path codec decoding must come from the Step's static codec (registry-resolved codec breaks empty-registry reuse); test platform substitution subclasses `CanonicalRuntimeCapabilityAccess` with synthetic `PlatformIdentity`.
+
+**Next:** user picks R3 (compiler/source mapping for real `.pipeline.kts`) or S2-A5/G3. Receipt: `docs/v2/07-uat/LFC2R_R2_ISUNIX_SCRIPTED_RUNTIME_CONSUMER.md`.
+
+
 ## Active Change — RETRY-D durable retry reconciliation (2026-09-10, HEAD `e4cca233`)
 
 **Status: DESIGN GATE / NO PRODUCTION EDITS.** The public installed-distribution retry acceptance previously reproduced a real defect: `fail → success → rerun` with the same DB/control state appended a second `retry-ok`. Timeout and parallel installed UATs remain green, but E-EM-11 must remain OPEN.

@@ -31,7 +31,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * nullable/`Any?` sentinel, so a handler can only ever start once capability admission has confirmed
  * availability.
  */
-class CanonicalRuntimeCapabilityAccess(
+open class CanonicalRuntimeCapabilityAccess(
     context: CanonicalRuntimeContext,
 ) : StepCapabilityAccess {
 
@@ -40,7 +40,7 @@ class CanonicalRuntimeCapabilityAccess(
     override fun available(): Set<StepCapability> = provided.keys
 
     @Suppress("UNCHECKED_CAST")
-    override fun <T : Any> get(key: StepCapability): T =
+    open override fun <T : Any> get(key: StepCapability): T =
         provided[key] as? T
             ?: throw IllegalArgumentException("capability unavailable to this invocation: $key")
 
@@ -54,7 +54,9 @@ class CanonicalRuntimeCapabilityAccess(
      * the adapter still constructs (controlDirRoot=null is the documented non-durable fallback
      * path) but the capability stays exposed so `core.sh` retain its declared require-set.
      */
-    private fun buildProvided(context: CanonicalRuntimeContext): Map<StepCapability, Any> {
+    // protected (not private) so test harnesses can substitute a synthetic platform
+    // observation without touching production logic; production always uses this impl.
+    protected fun buildProvided(context: CanonicalRuntimeContext): Map<StepCapability, Any> {
         val builder: MutableMap<StepCapability, Any> = mutableMapOf(
             EVENT_SINK_CAPABILITY to context.eventSink,
         )

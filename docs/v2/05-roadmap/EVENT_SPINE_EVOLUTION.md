@@ -1,6 +1,6 @@
 # EVT — Event Spine, Verification and Policy evolution
 
-Status: ACTIVE program — EVT-0 CLOSED, EVT-1 CLOSED (cycle evt-1-resource-ref-envelope), EVT-2 CLOSED @ 1b950074, EVT-3 IN PROGRESS (branch docs/evt-3-event-harness)  
+Status: ACTIVE program — EVT-0 CLOSED, EVT-1 CLOSED (cycle evt-1-resource-ref-envelope), EVT-2 CLOSED @ 1b950074, **EVT-3 CLOSED @ df22ff01** (cycle evt-3-event-harness, branch docs/evt-3-event-harness). EVT-4 PENDING (deferred by local-first priority per LFC-2E program); EVT-5 PENDING (deferred, no transport selected).
 Placement: after LFC-2/CTX-P foundation, before resuming the distributed/controller path that depends on event semantics.
 Maps forward to existing M4 (Protocol/Gateway), M6 (Jenkins UI), M8 (Graph/Provenance) and M9 (policies).
 
@@ -62,15 +62,22 @@ UAT:
 
 ## EVT-3 — Event Harness POST_RUN + P4-EX migration
 
-**Status: IN PROGRESS** — implemented facts (not plans): new module
+**Status: CLOSED @ `df22ff01`** (cycle `evt-3-event-harness`, branch `docs/evt-3-event-harness`)  
+**Closure receipt:** `docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md`
+
+Implemented facts (not plans): new module
 `v2/pipeline-event-harness` (model/verify/codec); typed contract ADT
 (`Exactly`/`Never`/`Before`/`TerminalOutcome`, closed `FieldMatch` selectors, no
 `Map<String,Any>`); pure deterministic verifier with bounded counterexamples;
 YAML v1 codec fail-closed; CLI `pipeline events verify`; HF0 9/9 + real-history
 parity/mutation 10/10; FArch020 isolation fitness 4/4; differential parity 07-10
-PASSED on real executions (legacy assertions intact, none removed).
+PASSED on real executions (legacy assertions intact, none removed) — 2 consecutive
+runs of `examples/run.sh` GREEN (10/10 + 4/4 parity) on 2026-09-11.
 **BASELINE DEBT INC-EVT3-1**: durable rerun re-appends a lifecycle skeleton with
 restarted sequences (pre-existing append behavior; characterized, unchanged).
+
+**Next downstream:** LFC-2E (local-first Step ecosystem expansion) — Step families
+E0..E10 sequenced after EVT-3; LFC-2E0 = certify existing families.
 
 **Goal:** generalize the **already executable** examples into reusable protocol specifications without weakening the d0ccf4b5 gate.
 
@@ -93,6 +100,9 @@ Exit:
 - at least one deliberately mutated trace is rejected (anti-false-green canary).
 
 ## EVT-4 — Detached live relay
+
+**Status: PENDING — DEFERRED-BY-LOCAL-FIRST-PRIORITY**  
+EVT-4 is NOT the next priority after EVT-3. Per the LFC-2E program (`docs/v2/05-roadmap/LFC2_STEP_ECOSYSTEM_EXPANSION.md`), EVT-4 must yield to LFC-2E0..E10 (certify existing Step families, then implement the local-first Step ecosystem). EVT-4 will be reopened after the local-first feature freeze (M4 controller/remote work).
 
 **Goal:** prove live consumers can observe a running pipeline without becoming part of its failure/cancellation/resource domain.
 
@@ -119,6 +129,7 @@ Resource isolation gate:
 
 ## EVT-5 — CloudEvents adapter + transport spike
 
+**Status: PENDING — DEFERRED** (no transport selected; transport choice gated on M4 controller/remote needs).  
 **Goal:** prove interoperability, not select a fashionable broker.
 
 Compare with measured UAT/benchmarks:

@@ -20,15 +20,17 @@
 - [ ] add run query/filter CLI/API minimum
 - [ ] add ObservationStatus/completeness semantics
 
-## EVT-3
-- [ ] protocol grammar ADTs and verifier
-- [ ] YAML/TOML codec with fail-closed validation
-- [ ] minimal counterexample renderer
-- [ ] characterize current `examples/run.sh` 01..10 expected outcome/exit oracle
-- [ ] encode existing 07 catchError, 08 parallel, 09 retry and 10 timeout assertions as typed constraints/sidecars
-- [ ] differential gate: old `run.sh` assertion verdict == new harness verdict on the same histories
-- [ ] only then delegate/remove duplicated shell assertions; keep `examples/run.sh` top-level gate GREEN
-- [ ] add one mutation canary per core grammar family
+## EVT-3 — CLOSED on docs/evt-3-event-harness @ df22ff01 (cycle evt-3-event-harness)
+- [x] protocol grammar ADTs and verifier — `v2/pipeline-event-harness/.../verify/ProtocolGrammar.kt` + `EventHarness.kt`
+- [x] YAML/TOML codec with fail-closed validation — `codec/YamlEventContractCodec.kt` (snakeyaml)
+- [x] minimal counterexample renderer — `EventViolation.relevantTrace: List<SequenceWindow>` bounded windows
+- [x] characterize current `examples/run.sh` 01..10 expected outcome/exit oracle — preserved unchanged
+- [x] encode existing 07 catchError, 08 parallel, 09 retry and 10 timeout assertions as typed constraints/sidecars — `examples/contracts/{07,08,09,10}.events.yaml` v1 schema
+- [x] differential gate: old `run.sh` assertion verdict == new harness verdict on the same histories — 2 consecutive × 4/4 GREEN (07..10)
+- [x] only then delegate/remove duplicated shell assertions; keep `examples/run.sh` top-level gate GREEN — additive, non-destructive parity block; legacy assertions remain authority
+- [x] add one mutation canary per core grammar family — `RealHistoryParityTest` 10 mutation scenarios, 10/10 GREEN
+
+Closure receipt: `docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md`
 
 ## EVT-4
 - [ ] detached relay process spike using current local backend/tail

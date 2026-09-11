@@ -548,7 +548,14 @@ fun main(args: Array<String>) {
             val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
                 mapping.calls.filter { it.kind == dev.rubentxu.pipeline.v2.scripting.ScriptedCallKind.IsUnix }
             } else emptyList()
-            if (mappedCalls.isNotEmpty()) {
+            // R4B scope: the R3 lowering emits a generator-level entry point
+            // body only. A `pipeline { stages { stage { ... } } }` structure
+            // keeps the eager PipelineSpec frontend this slice (no DSL-body
+            // migration, per the R4B GO). Frontend FORM selection, never an
+            // execution-authority switch.
+            val isGeneratorLevelSource = mappedCalls.isNotEmpty() &&
+                !Regex("""\bpipeline\s*\{""").containsMatchIn(scriptContent)
+            if (isGeneratorLevelSource) {
                 when (val lowered = ScriptedSourceLowering.lower(
                     sourceId = ScriptedSourceId(scriptPath.fileName.toString()),
                     sourceText = scriptContent,

@@ -775,26 +775,53 @@ sha256sum /tmp/lfc2e0-e41-e45-round9.log /tmp/lfc2e0-legacy-keys.txt \
           /tmp/lfc2e0-metadata-keys.txt
 ```
 
-### Major finding (E42): `core.sh` is NOT in LEGACY_PLUGIN_IDS
+### Major finding (E42): `core.sh` legacy removal is done, but CERTIFICATION is pending
 
-This is a previously-unreported insight:
-
+`core.sh` is NOT in `LEGACY_PLUGIN_IDS` (LB-02 / A4 REGISTRY_PRIMARY flip):
 ```text
 CanonicalCoreStepDecoder.kt comment (L52-58):
   "LB-02 / A4 (REGISTRY_PRIMARY flip): 'core.sh' is removed from this set
    so the production routing authority is CoreShellStep.registerInto()"
 ```
 
-**Implication**: `core.sh` is the **second** CERTIFIED + LEGACY_REMOVED
-key (alongside `core.echo`), not a legacy key. The inventory claim
-"LEGACY = 12" is correct, and `core.sh` belongs in the **registry**
-column (currently 2 entries), not the legacy column.
+**But — and this is the precision correction** — the `core.sh`
+**certification** is still pending:
 
-This affects S2 burn-down scope: only 11 legacy keys remain
-(core.error, core.sleep, core.file.writeFile, core.emit.event,
-core.milestone, core.deleteDir, core.cleanWs, core.load, core.pwd,
-core.isUnix, core.waitUntil, core.archiveArtifacts — minus core.sh
-which was already burned down).
+```text
+LB02_S6_BURN_DOWN_AND_CERTIFICATION.md:
+  "core.sh = IMPLEMENTED_UNCERTIFIED"
+  "LB-02 != REMOVED"
+
+The pending certification row is the **stderr** contract:
+  "a core.sh process writing to stderr (a) does not fail, and
+   (b) does not pollute the typed stdout/return value"
+
+E47 evidence: ShStepContractSuiteTest is 17/17 GREEN today, but the
+public stderr row is still pending (per LB02_S6_7_STDERR_GROUNDING.md,
+the captured stdout is "dropped when stderr also present" — inconsistent
+separation between stdout and stderr channels).
+```
+
+**Correct inventory status of `core.sh`**:
+
+| Property | Status |
+|---|---|
+| Removed from LEGACY_PLUGIN_IDS | YES (LB-02 / A4 REGISTRY_PRIMARY flip) |
+| Removed from `CanonicalCoreStepMetadata` table | YES (S6.1-4) |
+| Registered in production StepRegistry | YES (`CoreShellStep.registerInto`) |
+| StepContractSuite 17/17 GREEN | YES (E47 verified today) |
+| Has S3EchoLegacyRemovedFitnessTest equivalent | NO (E48 — gap) |
+| Has stderr contract row closed | NO (pending LB02_S6_7) |
+| **CERTIFIED + LEGACY_REMOVED** | **NO — IMPLEMENTED_UNCERTIFIED** |
+
+So the inventory claim "REGISTRY = 2" is correct (`core.echo` + `core.sh`),
+but `core.sh` belongs in the **REGISTRY_PRIMARY + IMPLEMENTED_UNCERTIFIED**
+column (parallel to `core.echo` which is **CERTIFIED + LEGACY_REMOVED**).
+
+**Implication for S1/S2 burn-down**:
+- S1 should record `core.echo` as `CERTIFIED + LEGACY_REMOVED` (mechanical proof E39 + E39b)
+- S1 should NOT record `core.sh` as CERTIFIED yet (stderr row pending)
+- S2 burn-down scope: still 12 legacy keys (none burned down yet)
 
 ### Cumulative edge case tally (after round 9)
 
@@ -802,9 +829,68 @@ which was already burned down).
 Rounds 1-9 (E1..E45):
   44 PASS
    1 SKIPPED (E4)
-   1 BURNED-DOWN-PRE-LFC-2E0 (core.sh, found in E42)
+   1 LEGACY_REMOVED_NOT_YET_CERTIFIED (core.sh, found in E42; stderr row pending)
 
 Trunk: main == origin/main == 4224d53f
+```
+
+## Edge case sweep — round 10 (2026-09-11, post-bee13f75)
+
+Echo/Sh contract suite verification + core.sh status precision correction:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E46 | `EchoStepContractSuiteTest` method list | PASS | 17 named contracts matching G7 coverage (identity, contract completeness, codec input/output, canonical envelope, registry resolution, capability admission, success, typed failure, fresh durable, replay, divergence, observability, missing capability, real DSL + 2 extras) |
+| E47 | `ShStepContractSuiteTest` (G7 for `core.sh`) | PASS | **17/17 GREEN**, exit 0 — core.sh passes full G7 contract coverage |
+| E48 | S3 fitness gate for `core.sh` | FAIL (real gap) | No `S3ShLegacyRemovedFitnessTest` exists. Only `S3EchoLegacyRemovedFitnessTest`. Honest finding — architectural gap. |
+| E49 | `core.sh` CERTIFICATION status | HONEST FINDING | `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md` declares `core.sh = IMPLEMENTED_UNCERTIFIED` (stderr contract row pending). **Correction to E42**: `core.sh` is LEGACY_REMOVED but NOT yet CERTIFIED. |
+
+### Captured logs (edge cases round 10, rule 25)
+
+```text
+/tmp/lfc2e0-e47-sh.log               sha256=71145c828df3a541a4a89dab407d664c3656e1bd46ec32db9d8266073c1c8af2
+/tmp/lfc2e0-e47-sh2.log              sha256=a5542904ad9cb1d79d0a6b3fc5e38b9fe3540c19dd424c6f56619b05323879a7
+/tmp/lfc2e0-e46-e49-round10.log      sha256=3a6b32de42fe409245e280be5d8da70599507b5467d9fa6ac2eb6878c5f2eaef
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e47-sh.log /tmp/lfc2e0-e47-sh2.log \
+          /tmp/lfc2e0-e46-e49-round10.log
+```
+
+### Precision correction (E49)
+
+The earlier E42 conclusion "core.sh is CERTIFIED + LEGACY_REMOVED" was
+**incorrect**. Re-reading
+`docs/v2/07-uat/LB02_S6_BURN_DOWN_AND_CERTIFICATION.md`:
+
+```text
+core.sh = IMPLEMENTED_UNCERTIFIED
+LB-02 != REMOVED
+```
+
+The **legacy burn-down** (S6.1-4) is done, but the **certification**
+(stderr contract row) is not. The audit doc has been corrected.
+
+### E48 — real architectural gap
+
+There is **no** S3-equivalent fitness test for `core.sh`. If S1 is
+extended to record `core.sh` CERTIFIED + LEGACY_REMOVED, a new
+`S3ShLegacyRemovedFitnessTest` would need to be created. This is a
+real piece of work, not a recording-only task.
+
+### Cumulative edge case tally (after round 10)
+
+```text
+Rounds 1-10 (E1..E49):
+  46 PASS
+   1 SKIPPED (E4)
+   1 HONEST FINDING (E48: missing S3Sh fitness gate)
+   1 LEGACY_REMOVED_NOT_YET_CERTIFIED (E42/E49: core.sh stderr pending)
+
+Trunk: main == origin/main == bee13f75
 ```
 
 ## What this note is NOT

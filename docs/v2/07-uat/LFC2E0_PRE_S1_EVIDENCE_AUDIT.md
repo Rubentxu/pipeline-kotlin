@@ -675,7 +675,8 @@ Step SDK, architecture tests, S3 contract suite, durable spine:
 | E36 | `pipeline-step-sdk` module structure | PASS | `api` + `processor` subprojects; 12+ .kt files in api/src/main |
 | E37 | Step SDK public typed surface | PASS | `@Step` annotation (BINARY retention); `StepContext(runId, parameters, environment)`; `BlockStepFlattener` enforces CPS depth limit |
 | E38 | `pipeline-architecture-tests` module | PASS | 48 .kt files; FArch001..FArch011 + FArchL5..FArchL7 (193/193 GREEN verified earlier) |
-| E39 | S3EchoLegacyRemovedFitnessTest (G7 contract suite) | PASS | **7/7 GREEN**, exit 0. Covers: LEGACY_REMOVED rule, CERTIFIED disjoint from LEGACY, no decoder/dispatcher/metadata, IS in production registry |
+| E39 | `S3EchoLegacyRemovedFitnessTest` (G4 fitness gate) | PASS | **7/7 GREEN**, exit 0. Covers: LEGACY_REMOVED rule, CERTIFIED disjoint from LEGACY, no decoder/dispatcher/metadata, IS in production registry |
+| E39b | `EchoStepContractSuiteTest` (G7 StepContractSuite) | PASS | **17/17 GREEN**, exit 0. Covers identity, contract completeness, codec input/output, canonical envelope, registry resolution, capability admission, success, typed failure, fresh durable, replay, divergence, observability, missing capability, architecture fitness, real DSL scenario (+1 over 16/17 LB-01 anchor) |
 | E40 | Durable spine architecture | PASS | 13 `Canonical*NodeDispatchers` (closed ADT); `CanonicalDurableRunCoordinator.run()` entry; `RegistryExecutionPreparation.prepare()` capability gate; `dispatchBody` routes parallel through SAME spine |
 
 ### Captured logs (edge cases round 7, rule 25)
@@ -691,11 +692,12 @@ Verifying command:
 sha256sum /tmp/lfc2e0-e39-s3.log /tmp/lfc2e0-e36-e40-round7.log
 ```
 
-### E39 — G7 StepContractSuite verification (core.echo)
+### E39 — G4 fitness test verification (core.echo)
 
-The S3EchoLegacyRemovedFitnessTest is the G7 burn-down row for
-`core.echo`. 7/7 contracts green = the Step is **CERTIFIED +
-LEGACY_REMOVED** mechanically:
+The `S3EchoLegacyRemovedFitnessTest` (in
+`pipeline-architecture-tests`) is the **G4 fitness gate** for
+`core.echo`. 7/7 contracts green = the Step satisfies the
+**CERTIFIED + LEGACY_REMOVED** combined verdict:
 
 ```text
 1. core echo satisfies the LEGACY_REMOVED rule
@@ -708,15 +710,39 @@ LEGACY_REMOVED** mechanically:
 7. core echo IS in the production StepRegistry
 ```
 
-The burn-down ledger can move core.echo from `CERTIFIED (S3 burn-down)`
-to `CERTIFIED + LEGACY_REMOVED (S1 certification recording)` based on
-**mechanical evidence already on main** — no implementation work required.
+### E39b — G7 StepContractSuite verification (core.echo, 17 contracts)
+
+The `EchoStepContractSuiteTest` (in `pipeline-application`) is the
+**G7 StepContractSuite** for `core.echo`. 17/17 contracts green =
+the Step passes the full 17-row contract coverage:
+
+```text
+identity, contract completeness, codec input, codec output,
+canonical envelope, registry resolution, capability admission,
+success, typed failure, fresh durable, replay, divergence,
+observability, missing capability, architecture fitness,
+real DSL scenario (+ 1 row = 17/17, one over the 16/17 LB-01 anchor)
+```
+
+### E39 + E39b — combined S1 evidence
+
+Two complementary mechanical proofs for `core.echo`:
+
+| Suite | Module | Tests | Result |
+|---|---|---|---|
+| `S3EchoLegacyRemovedFitnessTest` (G4 fitness) | pipeline-architecture-tests | 7 | 7/7 GREEN |
+| `EchoStepContractSuiteTest` (G7 contract suite) | pipeline-application | 17 | 17/17 GREEN |
+
+Both are **mechanical, not grep-fragile**. The burn-down ledger
+can move core.echo from `CERTIFIED (S3 burn-down)` to
+`CERTIFIED + LEGACY_REMOVED (S1 certification recording)` based
+on evidence already on main — no implementation work required.
 
 ### Cumulative edge case tally (after round 7)
 
 ```text
-Rounds 1-7 (E1..E40):
-  39 PASS
+Rounds 1-7 (E1..E40, +E39b):
+  40 PASS
    1 SKIPPED (E4)
 
 Trunk: main == origin/main == 04f7b039

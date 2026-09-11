@@ -70,6 +70,27 @@ REGISTERED         = true
 REGISTRY_PRIMARY   = true
 LEGACY_UNREACHABLE = true
 LEGACY_REMOVED     = true
-CONTRACT_SUITE     = false   ← G6
+CONTRACT_SUITE     = true    ← G6 (2026-09-11T13:56Z)
 CERTIFIED          = false   ← G8
 ```
+
+## G6 — SleepStepContractSuite (2026-09-11T13:56Z)
+
+`SleepStepContractSuiteTest`: **21 tests / 0 failures / 0 errors / 0 skipped**
+(fresh XML canary-verified, `:pipeline-application:test --tests SleepStepContractSuiteTest`,
+2026-09-11T13:56:02Z).
+
+Coverage: identity, contract completeness (READ_ONLY + MEMOIZED + empty
+capabilities), input codec round-trip + rejection (foreign kind / missing
+seconds / negative seconds), output codec round-trip + non-SUCCESS rejection,
+canonical byte-identical dsl-v1 envelope, production registry resolution +
+fresh-factory consistency, capability declaration, admission with empty
+available set, missing-capability fail-closed rejection (admission seam,
+mirroring Echo suite), success, typed handler-exception failure, fresh durable,
+MEMOIZED replay (StepStarted count and journal row stay at 1 — no re-execution),
+divergence (changed seconds → typed failure), observability
+(StepStarted/StepFinished pair), real DSL scenario
+(`pipeline { stage { sleep(1); echo("woke") } }`).
+
+Architecture-fitness row delegated to `S3SleepLegacyRemovedFitnessTest` +
+`CoreSleepRegistryPrimaryFitnessTest` (G5 evidence above).

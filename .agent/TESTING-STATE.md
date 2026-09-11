@@ -307,3 +307,63 @@ TWICE consecutively with hermetic scratch dirs:
   core.echo resolves through registry path (not legacy)
 
 Trunk: main == origin/main == 7f06876b133c9525bac13e8b8f3577859401113d.
+
+## LFC-2E0 post-merge defensive audit — rounds 2-4 (2026-09-11, 922f95e8 → 394fc1ab)
+
+After the structural sweep + acceptance parity, three additional edge
+case rounds drilled into failure modes, durable semantics, and block
+step contracts. All findings captured in
+`docs/v2/07-uat/LFC2E0_PRE_S1_EVIDENCE_AUDIT.md`.
+
+### Round 2 (commit 496699eb, E7..E14)
+8 edge cases:
+- E7  core.error failure semantics
+- E8  write/read filesystem roundtrip
+- E9  deleteDir cleanup
+- E10 concurrent pipelines same control root
+- E11 unknown step (fail-closed compile)
+- E12 malformed script (fail-closed compile)
+- E13 capability admission (SHELL_OPERATIONS_CAPABILITY)
+- E14 Rule-16 UATL008 verification (re-run = 27 tests, 1 skipped, **2 failures** — same as EVT-3 base)
+
+9 SHA-256 digests captured per rule 25.
+
+### Round 3 (commit a6bf21b9, E15..E21)
+7 edge cases into durable spine + CLI:
+- E15 journal durability across runs (sha256 changes, no corruption)
+- E16 --rerun vs --resume distinction (9 vs 6 events)
+- E17 validate subcommand (parse-only, no execution)
+- E18 --resume idempotency (5x consecutive — same runId, step events only in original block)
+- E19 --db isolation (independent runId per db path)
+- E20 failure durability (documented: successes cached, failures retry)
+- E21 --control-root isolation (EVT-H1 hermeticity: ctl1 reused = same runId; ctl2 different = new runId, even with same db)
+
+7 SHA-256 digests captured.
+
+### Round 4 (commit 394fc1ab, E22..E25)
+Block Step contracts via real .pipeline.kts examples:
+- E22 parallel { branch("left") { … } branch("right") { … } } — BranchInvoker.invokeAll verified
+- E23 retry(count = 3) { sh } (fail then succeed) — BodyInvoker + RetryReconciler
+- E24 timeout(time = 2, "SECONDS") { sh } (over-budget) — BodyInvoker + deadline
+- E25 Nested catchError (inner FAILURE → outer UNSTABLE) — ERR-S-007 contract
+
+1 SHA-256 digest captured.
+
+### Cumulative verdict
+
+```text
+Rounds 1-4 (E1..E25):
+  24 PASS
+   1 SKIPPED (E4: external plugin — known CLI limitation)
+
+Trunk: main == origin/main == 394fc1ab
+
+Key durability findings:
+  - --control-root is the durable op-state anchor (retry/replay cache)
+  - --db is only the event journal (observability)
+  - Successes cached → --resume reuses (idempotent)
+  - Failures NOT cached → --resume re-executes (retry-on-resume)
+  - All block steps route through BodyInvoker/BranchInvoker (ADR-0073)
+
+S1 still requires explicit user direction to open (standing instruction).
+```

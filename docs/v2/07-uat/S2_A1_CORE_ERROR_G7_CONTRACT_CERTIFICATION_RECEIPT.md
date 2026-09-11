@@ -3,8 +3,8 @@
 > Cycle: `cycle/lfc2-e1-s2-legacy-catalog-burn-down`
 > Slice: S2-A1 (`core.error`)
 > Gate: **G7 — Contract Certification**
-> SHA: `55b6b1bb`
-> Date: 2026-09-11T12:04Z
+> SHA: `babb86c710cdf91b9d3d7ecde42d736236cf719b`
+> Date: 2026-09-11T12:05Z
 
 ## 1. Purpose
 

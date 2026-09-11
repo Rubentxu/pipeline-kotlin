@@ -28,13 +28,13 @@ Certification receipts                         docs/v2/07-uat/S3_ECHO_BURNDOWN_C
 
 ```text
 Production Step keys total: 15
-  Registry (open-world Step seam): 2   (core.echo, core.sh)
-  Legacy (Canonical*NodeDispatcher): 12
+  Registry (open-world Step seam): 3   (core.echo, core.sh, core.error)
+  Legacy (Canonical*NodeDispatcher): 11
   External plugin (ServiceLoader):  1   (example.uppercase)
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900)
 Real .pipeline.kts examples: 10 (01..10)
 Event Harness contracts: 4 (07, 08, 09, 10)
-CERTIFIED Steps: 3 (core.echo, core.sh, example.uppercase)
+CERTIFIED Steps: 4 (core.echo, core.sh, example.uppercase, core.error)
 ```
 
 ## Inventory table
@@ -57,7 +57,7 @@ Columns:
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `core.echo` | CORE | registry | Y (L1002, L1817, L1855) | Y (`CoreEchoStep`) | Y | N (LB-02 burn-down) | Y/Y | N (atomic) | Y (`EffectReplayPolicy`) | 01-06, 07, 08 | 07..10 (via echo path) | **CERTIFIED** (S3 burn-down) |
 | `core.sh` | CORE | registry | Y (L1006/1017, L1821, L1859, ScriptedExecutionApi.kt L157) | Y (`CoreShellStep`) | Y | N (S6 burn-down) | Y/Y | Y (`SHELL_OPERATIONS_CAPABILITY`) | Y (`EffectReplayPolicy`) | 03, 05, 06, 07, 08, 09, 10 | 07, 09, 10 | **CERTIFIED** (S6 burn-down) |
-| `core.error` | CORE | legacy | Y (L1034) | N | Y (CanonicalErrorNodeDispatcher) | Y | Y/N | N | — | 05 | — | IMPLEMENTED_UNCERTIFIED |
+| `core.error` | CORE | registry | Y (L1034) | Y (`CoreErrorStep`) | Y | N (S2-A1 burn-down) | Y/Y | N (atomic) | Y (`ReplayPolicy.NEVER`) | 05, 15 | — | **CERTIFIED** (S2-A1 burn-down) |
 | `core.sleep` | CORE | legacy | Y (L1041) | N | Y (CanonicalSleepNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.file.writeFile` | CORE | legacy | Y (L1302) | N | Y (CanonicalWriteFileNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.emit.event` | CORE | legacy | Y (emits canonical DomainEvent kinds) | N | Y (CanonicalEmitEventNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
@@ -113,14 +113,41 @@ State updated: `CERTIFIED (S3 burn-down)` → `CERTIFIED + LEGACY_REMOVED (S1 ce
 - **Real examples:** 03-shell, 05-failing-step, 06-durable, 07-catch-error, 08-parallel, 09-retry, 10-timeout
 - **Event Harness contracts:** 07 (CatchErrorTriggered adjacent), 09 (RetryAttemptFinished), 10 (TimeoutScheduled)
 
-### `core.error` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.error` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A1 closure)
 
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStep.kt` `val KEY: PluginStepId = PluginStepId("core.error")`
 - **DSL:** `PipelineDsl.kt:1034` `fun error(message: String, failureKind: String = "UNKNOWN")`
-- **Legacy decoder:** `CanonicalCoreStepDecoder.kt: Error` data class with `pluginId = "core.error"` (in LEGACY_PLUGIN_IDS)
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalErrorNodeDispatcher.kt:7`
-- **Real example:** 05-failing-step (uses `error(...)`)
-- **Missing:** StepDefinition; canonical registry path; typed output (returns Unit/no value); capabilities; replay policy; contract suite; certification receipt
-- **State:** IMPLEMENTED_UNCERTIFIED — burn-down required (G0 baseline → G8 CERTIFIED per AGENTS.md)
+- **Real example:** `v2/compatibility/15-error.pipeline.kts` (used as G8 fresh+replay scenario)
+- **Descriptor:**
+  - `effects = { Effect.ABORTS_PIPELINE }` (terminal failure semantics)
+  - `replayPolicy = ReplayPolicy.NEVER` (no reproducible effect)
+  - `requiredCapabilities = emptySet()` (handler is pure)
+- **Typed carrier:** `CoreErrorOutput` (`TypedStepOutput`); `outcome == StepOutcome.Failure(failure)` is the single authority.
+- **Receipts (certification):**
+  - G5 REGISTRY_PRIMARY: `docs/v2/07-uat/S2_A1_CORE_ERROR_G5_REGISTRY_PRIMARY_RECEIPT.md`
+  - G6 LEGACY_REMOVED: `docs/v2/07-uat/S2_A1_CORE_ERROR_G6_LEGACY_REMOVED_RECEIPT.md`
+  - G7 CONTRACT_SUITE: `docs/v2/07-uat/S2_A1_CORE_ERROR_G7_CONTRACT_CERTIFICATION_RECEIPT.md`
+  - G8 REAL_CLI_SCENARIO + CERTIFIED: `docs/v2/07-uat/S2_A1_CORE_ERROR_G8_FINAL_CERTIFICATION_RECEIPT.md`
+- **Gate scoreboard at G8 close:**
+  ```
+  ErrorStepContractSuiteTest           17 PASS / 1 N.A. / 0 FAIL
+  CoreErrorStepUnitTest                20/20
+  CoreErrorRegistryPrimaryFitnessTest  14/14
+  S3ErrorLegacyRemovedFitnessTest      12/12
+  Fresh CLI (15-error.pipeline.kts)    exit=1, 1 USER StepFailed
+  Replay CLI (15-error.pipeline.kts)   exit=1, 1 INFRASTRUCTURE replay-abort StepFailed
+  legacy counters                      11 / 11 / 11
+  ```
+
+```text
+core.error:
+  delivery:       CORE
+  execution:      REGISTRY_PRIMARY
+  legacy:         REMOVED
+  certification:  CERTIFIED
+```
+
+State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A1 closure)` at LFC-2E1-S2-A1 / G8.
 
 ### `core.sleep` — IMPLEMENTED_UNCERTIFIED (legacy)
 

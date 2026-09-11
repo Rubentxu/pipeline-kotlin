@@ -349,6 +349,71 @@ E4 is therefore a known limitation of the validation surface, NOT a
 regression. S1 will need to either add the plugin classpath or rely on
 the existing certification receipt.
 
+## Edge case sweep — round 2 (2026-09-11, post-b7e4a1de)
+
+After the first 6 edge cases, a second round exercised failure modes,
+filesystem behavior, concurrency, capability enforcement, and Rule-16
+verification with proper XML extraction:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E7 | `core.error` (legacy) failure semantics | PASS | `/tmp/lfc2e0-error-test.log`: exit 1, outcome=failure, 1 `StepFailed` event, "after error" step did NOT execute (stage halted) |
+| E8 | Write→read filesystem roundtrip | PASS | `/tmp/lfc2e0-write-read-test.log`: sh wrote file, sh read back via `cat`; on-disk file content matches |
+| E9 | `deleteDir` (legacy filesystem cleanup) | PASS | `/tmp/lfc2e0-delete-dir-test.log`: directory deleted; test verified `GONE` (not `STILL EXISTS`) |
+| E10 | Concurrent pipelines, same control root | PASS | `/tmp/lfc2e0-concurrent-0{1,2,3}.log`: 3 distinct runIds, all success, no contention crashes |
+| E11 | Unknown step key (fail-closed compile) | PASS | `/tmp/lfc2e0-unknown-test.log`: exit 1, "Unresolved reference 'unknownStep'" — fail-closed before execution |
+| E12 | Malformed script syntax error | PASS | `/tmp/lfc2e0-malformed-test.log`: exit 1, "Syntax error: Expecting ')'" — fail-closed at parse |
+| E13 | Capability admission (SHELL_OPERATIONS_CAPABILITY) | PASS (structural) | `CoreShellStep.contract.requiredCapabilities = setOf(SHELL_OPERATIONS_CAPABILITY)` (L512); `RegistryExecutionPreparation.prepare()` is the fail-closed admission (L45); coordinator calls it before handler invocation (L776) |
+| E14 | Rule-16 verification (UATL008 fresh run) | PASS | `/tmp/lfc2e0-e14-uat008.log`: 27 tests, 1 skipped, **2 failures** — identical to EVT-3 base SHA (UAT-L8-CP-001 corpus hash mismatch, CR-BD-027 missing CredentialUsed events) |
+
+### Captured logs (edge cases round 2, rule 25)
+
+```text
+/tmp/lfc2e0-error-test.log        sha256=cfd6db512c8de767cef0bf57e47ab7cae294d4d92d105cd417e40203ba49b458
+/tmp/lfc2e0-write-read-test.log   sha256=6e79a0875aeb42baa6baa891016343494c41c69b9014d34cdb476710e85276c9
+/tmp/lfc2e0-delete-dir-test.log   sha256=2aa31a7ce22c2e94d6de52df9b332f22fcd966fa7698dfa89cac5ba9f3dd6522
+/tmp/lfc2e0-concurrent-01.log     sha256=17c8a066d51df6ca1bcfddbb64ed1b472076a5e57d278e5992692e07ccf54099
+/tmp/lfc2e0-concurrent-02.log     sha256=024c48c67d35213676850fde8cfebe901f65d452eba225b83c4c58afa504aa57
+/tmp/lfc2e0-concurrent-03.log     sha256=2e6359bc5664fe413894b6eb2366989577d8b6ec0bd77219c241aa3eadce2e0b
+/tmp/lfc2e0-unknown-test.log      sha256=315108550ebc42ab3df22d0f65b750a40fe9d445d70fff797ebda04839640779
+/tmp/lfc2e0-malformed-test.log    sha256=2684325e2b6a639242e685cdbc57a77abfda539ec9a64f60cf55726c093205f7
+/tmp/lfc2e0-e14-uat008.log        sha256=e399c75d8543e134f69dd6940c378f4e063a929e928060d8671e7d798cb923fd
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-error-test.log /tmp/lfc2e0-write-read-test.log \
+          /tmp/lfc2e0-delete-dir-test.log \
+          /tmp/lfc2e0-concurrent-0{1,2,3}.log \
+          /tmp/lfc2e0-unknown-test.log /tmp/lfc2e0-malformed-test.log \
+          /tmp/lfc2e0-e14-uat008.log
+```
+
+### Cumulative edge case tally
+
+```text
+Round 1 (E1..E6):
+  E1: core.sleep legacy execution                 PASS
+  E2: mixed legacy + registry                     PASS
+  E3: replay semantics                            PASS
+  E4: external plugin coexistence                  SKIPPED (honest finding)
+  E5: packaging sanity                            PASS
+  E6: CLI flag semantics                          PASS
+
+Round 2 (E7..E14):
+  E7:  core.error failure semantics               PASS
+  E8:  write/read filesystem roundtrip            PASS
+  E9:  deleteDir cleanup                          PASS
+  E10: concurrent pipelines                       PASS
+  E11: unknown step (fail-closed)                 PASS
+  E12: malformed script (fail-closed)             PASS
+  E13: capability admission                       PASS (structural)
+  E14: Rule-16 UATL008 verification               PASS
+
+Total: 13 PASS + 1 SKIPPED across 14 edge cases
+```
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

@@ -57,26 +57,25 @@ class S3WriteFileLegacyRemovedFitnessTest {
         assertFalse(Regex("\\\"core\\.file\\.writeFile\\\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    @Test fun `transitional snapshot converges to 8 IDs 9 metadata rows 9 dispatchers S2-A4-G4 window`() {
+    @Test fun `transitional snapshot converges to 8 IDs 8 metadata rows 8 dispatchers S2-A4-G5 convergence`() {
         assertEquals(expectedIds, legacyIds())
         val metadataKeys = Regex("\\\"(core\\.[a-zA-Z.]+)\\\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
         // S2-A4/G4 window: emit.event routing flipped (IDs) but its legacy metadata row and
         // dispatcher remain physically present until that slice's G5 (LEGACY_UNREACHABLE).
-        assertEquals(expectedIds + "core.emit.event", metadataKeys)
+        assertEquals(expectedIds, metadataKeys)
         val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
         val actualDispatchers = Files.list(durable).use { paths -> paths.map { it.fileName.toString() }
             .filter { it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") && it != "CanonicalNodeDispatcher.kt" }
             .toList().toSet() }
         assertEquals(setOf(
-            "CanonicalEmitEventNodeDispatcher.kt",
             "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
             "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt", "CanonicalPwdNodeDispatcher.kt",
             "CanonicalIsUnixNodeDispatcher.kt", "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
         assertEquals(8, legacyIds().size)
-        assertEquals(9, metadataKeys.size)
-        assertEquals(9, actualDispatchers.size)
+        assertEquals(8, metadataKeys.size)
+        assertEquals(8, actualDispatchers.size)
     }
 }

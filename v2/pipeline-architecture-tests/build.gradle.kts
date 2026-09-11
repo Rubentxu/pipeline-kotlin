@@ -20,6 +20,9 @@ dependencies {
     testImplementation(project(":pipeline-scripting-api"))
     testImplementation(project(":pipeline-artefacts-local"))
     testImplementation(project(":pipeline-step-sdk:api"))
+    testImplementation(project(":pipeline-application"))
+    testImplementation(project(":pipeline-domain"))
+    testImplementation(project(":pipeline-step-sdk:runtime"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly(project(":pipeline-binding-factory"))
 }

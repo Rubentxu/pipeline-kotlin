@@ -60,7 +60,7 @@ import java.nio.file.Files
  * Counters at G6 close:
  *   LEGACY_PLUGIN_IDS  : 9
  *   metadata rows       : 9
- *   dispatcher files    : 9
+ *   dispatcher files    : 8
  */
 class S3ErrorLegacyRemovedFitnessTest {
 
@@ -290,9 +290,9 @@ class S3ErrorLegacyRemovedFitnessTest {
 
     /**
      * Counter snapshot at G6 close. Asserts the canonical production counters:
-     *   LEGACY_PLUGIN_IDS.size == 9
-     *   metadata rows           == 9
-     *   per-Step dispatcher files == 9 (one Canonical<Node>NodeDispatcher.kt per legacy id,
+     *   LEGACY_PLUGIN_IDS.size == 8
+     *   metadata rows           == 8
+     *   per-Step dispatcher files == 8 (one Canonical<Node>NodeDispatcher.kt per legacy id,
      *                                    plus the facade CanonicalNodeDispatcher.kt)
      *
      * Each counter is asserted via full-set equality (not just a count) so that accidental
@@ -335,7 +335,6 @@ class S3ErrorLegacyRemovedFitnessTest {
             .map { it.groupValues[1] }
             .toSet()
         val expected = setOf(
-            "core.emit.event",
             "core.milestone",
             "core.deleteDir",
             "core.cleanWs",
@@ -348,14 +347,14 @@ class S3ErrorLegacyRemovedFitnessTest {
         assertEquals(
             expected,
             metadataKeys,
-            "CanonicalCoreStepMetadata.table keys MUST equal the 9 residual legacy keys",
+            "CanonicalCoreStepMetadata.table keys MUST equal the 8 residual legacy keys (post-S2-A4/G5)",
         )
-        assertEquals(9, metadataKeys.size)
+        assertEquals(8, metadataKeys.size)
         assertFalse("core.error" in metadataKeys, "core.error MUST NOT be in legacy metadata")
     }
 
     @Test
-    fun `counter snapshot at G6 close -- per-Step dispatcher files equal the 9 residual legacy dispatcher classes`() {
+    fun `counter snapshot at G6 close -- per-Step dispatcher files equal the 8 residual legacy dispatcher classes`() {
         // Per-Step dispatcher files are HARDCODED (NOT derived from plugin ids) because the
         // plugin id -> class name mapping is a historical naming accident, not a contract.
         val durableDir = ScannerSupport.v2Root()
@@ -369,7 +368,6 @@ class S3ErrorLegacyRemovedFitnessTest {
                 .toSet()
         }
         val expectedDispatchers = setOf(
-            "CanonicalEmitEventNodeDispatcher.kt",
             "CanonicalMilestoneNodeDispatcher.kt",
             "CanonicalDeleteDirNodeDispatcher.kt",
             "CanonicalCleanWsNodeDispatcher.kt",
@@ -382,9 +380,9 @@ class S3ErrorLegacyRemovedFitnessTest {
         assertEquals(
             expectedDispatchers,
             actualDispatchers,
-            "Per-Step dispatcher files in durable/ MUST equal the 9 expected Canonical<Node>NodeDispatcher.kt",
+            "Per-Step dispatcher files in durable/ MUST equal the 8 expected Canonical<Node>NodeDispatcher.kt (emit.event removed at S2-A4/G5)",
         )
-        assertEquals(9, actualDispatchers.size)
+        assertEquals(8, actualDispatchers.size)
         assertFalse(
             "CanonicalErrorNodeDispatcher.kt" in actualDispatchers,
             "CanonicalErrorNodeDispatcher.kt MUST NOT exist at G6 (LEGACY_REMOVED)",

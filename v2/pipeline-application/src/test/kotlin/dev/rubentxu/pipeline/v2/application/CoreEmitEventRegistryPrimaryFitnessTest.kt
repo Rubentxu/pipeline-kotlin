@@ -23,10 +23,8 @@ import java.nio.file.Files
  *  - StructuralFamily == Registry with the production registry;
  *  - effective metadata source == the registry descriptor (READ_ONLY + MEMOIZED),
  *    byte-equivalent to the frozen legacy row, so fingerprints stay stable;
- *  - legacy forms PHYSICALLY PRESENT (G5 removes them, not this gate):
- *    CanonicalCoreStepCommand.EmitEvent, EMIT_EVENT_PLUGIN_ID decoder branch,
- *    CanonicalEmitEventNodeDispatcher.kt, legacy metadata row,
- *    CanonicalNodeDispatcher emitEvent branch;
+ *  - legacy forms PHYSICALLY REMOVED at G5 (S3EmitEventLegacyRemovedFitnessTest is the
+ *    irreversible authority); this class keeps the pre-G5 flip assertions green;
  *  - capability declarations unchanged (EVENT_SINK + STAGE_IDENTITY);
  *  - the generic RegistryExecutionBoundary contains NO core.emit.event-specific
  *    branch (no privileged core path).
@@ -40,8 +38,6 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     private val key = PluginStepId("core.emit.event")
     private val decoderPath = java.nio.file.Paths.get(
         "src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt")
-    private val dispatcherPath = java.nio.file.Paths.get(
-        "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt")
     private val nodeDispatcherPath = java.nio.file.Paths.get(
         "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalNodeDispatcher.kt")
     private val boundaryPath = java.nio.file.Paths.get(
@@ -123,23 +119,25 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     // ===== legacy physically present (LEGACY_UNREACHABLE, removal is G5) =====
 
     @Test
-    fun `G4 legacy forms still physically present — command subtype decoder branch dispatcher metadata`() {
-        val decoder = codeOnly(Files.readString(decoderPath))
-        assertTrue(
-            decoder.contains("data class EmitEvent") &&
-                decoder.contains("EMIT_EVENT_PLUGIN_ID") &&
-                Regex("EMIT_EVENT_PLUGIN_ID\\s*->").containsMatchIn(decoder),
-            "legacy EmitEvent command + decoder branch must remain until G5",
+    fun `G5 — legacy forms physically removed, structural overlay protocol intentionally alive`() {
+        assertFalse(
+            java.nio.file.Files.exists(
+                java.nio.file.Paths.get(
+                    "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt"),
+            ),
+            "legacy dispatcher file MUST be gone at G5 (authority: S3EmitEventLegacyRemovedFitnessTest)",
         )
-        assertTrue(
-            Files.exists(dispatcherPath),
-            "CanonicalEmitEventNodeDispatcher.kt must remain on disk until G5",
+        assertFalse(
+            codeOnly(Files.readString(decoderPath)).contains("data class EmitEvent"),
+            "legacy EmitEvent command MUST be gone at G5",
         )
-        val nodeDispatcher = codeOnly(Files.readString(nodeDispatcherPath))
+        // Positive anti-over-removal check: the structural control protocol SURVIVES.
         assertTrue(
-            nodeDispatcher.contains("emitEventDispatcher") &&
-                nodeDispatcher.contains("CanonicalCoreStepCommand.EmitEvent"),
-            "CanonicalNodeDispatcher emitEvent branch must remain until G5",
+            Files.readString(
+                java.nio.file.Paths.get(
+                    "src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalInvocation.kt"),
+            ).contains("core.emit.event"),
+            "StructuralOverlayProjection MUST keep recognizing the raw core.emit.event envelope",
         )
     }
 

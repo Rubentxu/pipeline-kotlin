@@ -21,8 +21,10 @@ import java.nio.file.Path
 class FArchLfc1CanonicalCoverageTest {
 
     private val compatibilityDir = FitnessPaths.v2Root().resolve("compatibility")
+    // S2-A4 / G5: the legacy CanonicalEmitEventNodeDispatcher was removed. The whitelist
+    // authority now lives in CoreEmitEventStep (registry-routed StepDefinition).
     private val dispatcherPath = FitnessPaths.v2Root()
-        .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt")
+        .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStep.kt")
     private val baselinePath = compatibilityDir.resolve("baseline.json")
 
     /** Canonical step kinds that are allowed in the dispatcher whitelist. */
@@ -45,12 +47,12 @@ class FArchLfc1CanonicalCoverageTest {
         val source = Files.readString(dispatcherPath)
 
         // Extract the ALLOWED_EMIT_EVENT_KINDS set contents
-        val match = Regex("""ALLOWED_EMIT_EVENT_KINDS\s*=\s*setOf\(\s*(\[[^\]]*])\s*\)""")
-            .find(source) ?: Regex("""ALLOWED_EMIT_EVENT_KINDS\s*=\s*setOf\(\s*([\s\S]*?)\n\s*\)""").find(source)
+        val match = Regex("""ALLOWED_KINDS\s*=\s*setOf\(\s*(\[[^\]]*])\s*\)""")
+            .find(source) ?: Regex("""ALLOWED_KINDS\s*=\s*setOf\(\s*([\s\S]*?)\n\s*\)""").find(source)
 
         assertTrue(
             match != null,
-            "ALLOWED_EMIT_EVENT_KINDS must be declared in CanonicalEmitEventNodeDispatcher",
+            "ALLOWED_KINDS must be declared in CoreEmitEventStep",
         )
 
         val kindsBlock = match!!.groupValues[1]
@@ -59,7 +61,7 @@ class FArchLfc1CanonicalCoverageTest {
         forbiddenEventKinds.forEach { legacy ->
             assertFalse(
                 kindsBlock.contains("\"$legacy\""),
-                "ALLOWED_EMIT_EVENT_KINDS must NOT contain legacy kind '$legacy' — use canonical form",
+                "ALLOWED_KINDS must NOT contain legacy kind '$legacy' — use canonical form",
             )
         }
 
@@ -67,7 +69,7 @@ class FArchLfc1CanonicalCoverageTest {
         canonicalEventKinds.forEach { canonical ->
             assertTrue(
                 kindsBlock.contains("\"$canonical\""),
-                "ALLOWED_EMIT_EVENT_KINDS must contain canonical kind '$canonical'",
+                "ALLOWED_KINDS must contain canonical kind '$canonical'",
             )
         }
     }

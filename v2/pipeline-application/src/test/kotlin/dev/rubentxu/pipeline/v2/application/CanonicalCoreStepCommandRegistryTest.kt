@@ -30,7 +30,7 @@ class CanonicalCoreStepCommandRegistryTest {
     @Test
     fun `sealedSubclasses has exactly 9 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(9, subclasses.size, "Expected exactly 9 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(8, subclasses.size, "Expected exactly 8 sealed subtypes (EmitEvent removed at S2-A4/G5). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -55,13 +55,9 @@ class CanonicalCoreStepCommandRegistryTest {
         assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
     }
 
-    @Test
-    fun `EmitEvent has correct pluginId and defaultMetadata`() {
-        val emitInstance = CanonicalCoreStepCommand.EmitEvent("CatchErrorTriggered", emptyMap())
-        assertEquals("core.emit.event", emitInstance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), emitInstance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, emitInstance.defaultMetadata.replayPolicy)
-    }
+    // S2-A4 / G5: EmitEvent legacy command removed (LEGACY_REMOVED); its historical
+    // metadata row assertions live in the G1/G2 receipts. Metadata authority is now
+    // CoreEmitEventStep.descriptor via RegistryStepMetadataResolver.
 
     @Test
     fun `Milestone has correct pluginId and defaultMetadata`() {

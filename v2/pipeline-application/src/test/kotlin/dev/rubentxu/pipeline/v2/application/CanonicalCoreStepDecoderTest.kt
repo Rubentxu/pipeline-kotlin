@@ -29,24 +29,9 @@ class CanonicalCoreStepDecoderTest {
     // core.file.writeFile decoder branch removed at LFC-2E1-S2-A3/G5 (LEGACY_REMOVED);
     // writeFile now decodes via CoreWriteFileStep codec in the registry path.
 
-    @Test
-    fun `decodes emitEvent plugin id into EmitEvent typed command`() {
-        val node = OpaqueStepNode(
-            id = StepId("build/emit-0"),
-            pluginStepId = PluginStepId("core.emit.event"),
-            payload = VersionedStepPayload(
-                "dsl-v1",
-                """{"kind":"CatchErrorTriggered","buildResult":"FAILURE","stageResult":"FAILURE","message":"tolerated"}""",
-            ),
-        )
-
-        val result = CanonicalCoreStepDecoder.decode(node)
-        assertEquals("CatchErrorTriggered", (result as CanonicalCoreStepCommand.EmitEvent).kind)
-        assertEquals("FAILURE", result.payload["buildResult"])
-        assertEquals("FAILURE", result.payload["stageResult"])
-        assertEquals("tolerated", result.payload["message"])
-    }
-
+    // S2-A4 / G5: the emitEvent decoder branch was removed (LEGACY_REMOVED). The raw
+    // core.emit.event envelope is consumed pre-decode by StructuralOverlayProjection and
+    // executively by CoreEmitEventStep via the registry codec — never by this decoder.
     @Test
     fun `throws IllegalArgumentException for unknown plugin step id`() {
         val node = OpaqueStepNode(

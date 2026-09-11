@@ -92,13 +92,13 @@ sealed interface CanonicalCoreStepCommand {
         fun pluginIdToShortType(pluginId: String): String = CanonicalCoreStepMetadata.shortType(pluginId)
     }
 
-    /** LFC1-007: first-class workflow-event emitter for shell-rewrite path. */
-    data class EmitEvent(
-        val kind: String,
-        val payload: Map<String, String?>,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.emit.event"
-    }
+    /**
+     * S2-A4 / G5: the legacy `EmitEvent` command subtype was removed (LEGACY_REMOVED).
+     * Production routing is exclusively `CoreEmitEventStep.definition` via the registry.
+     * The RAW `core.emit.event` envelope remains the structural control protocol for
+     * catchError: `StructuralOverlayProjection` projects push/pop pre-decode from it —
+     * `legacy execution removed != structural control protocol removed`.
+     */
 
     /**
      * ML-R9 T-09: local single-run milestone marker (ADR-0046 §ML — no cross-build abort).
@@ -195,7 +195,7 @@ sealed interface CanonicalCoreStepCommand {
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
-    private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
+    // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     private const val MILESTONE_PLUGIN_ID = "core.milestone"
     private const val DELETE_DIR_PLUGIN_ID = "core.deleteDir"
     private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
@@ -211,14 +211,9 @@ object CanonicalCoreStepDecoder {
         }
         val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject
         return when (node.pluginStepId.value) {
-            EMIT_EVENT_PLUGIN_ID -> {
-                CanonicalCoreStepCommand.EmitEvent(
-                    kind = payload.requiredString("kind"),
-                    payload = payload.entries
-                        .filter { it.key != "kind" }
-                        .associate { it.key to it.value.jsonPrimitive.contentOrNull },
-                )
-            }
+            // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
+            // core.emit.event envelope is consumed structurally (StructuralOverlayProjection,
+            // pre-decode) and executively by CoreEmitEventStep via the registry — never here.
             MILESTONE_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "milestone") {
                     "Payload kind must be 'milestone' for '${node.id.value}'"

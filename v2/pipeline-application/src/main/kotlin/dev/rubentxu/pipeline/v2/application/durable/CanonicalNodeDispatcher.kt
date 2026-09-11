@@ -20,7 +20,8 @@ data class CanonicalRuntimeContext(
 
 /** Dispatches the supported canonical core nodes through their durable runtime paths. */
 class CanonicalNodeDispatcher {
-    private val emitEventDispatcher = CanonicalEmitEventNodeDispatcher()
+    // S2-A4 / G5: emitEventDispatcher removed (LEGACY_REMOVED) — core.emit.event executes
+    // exclusively through CoreEmitEventStep via the registry.
     private val milestoneDispatcher = CanonicalMilestoneNodeDispatcher()
     private val deleteDirDispatcher = CanonicalDeleteDirNodeDispatcher()
     private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
@@ -32,7 +33,7 @@ class CanonicalNodeDispatcher {
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
-            is CanonicalCoreStepCommand.EmitEvent -> emitEventDispatcher.dispatch(command, context.emitEventContext())
+            // S2-A4 / G5: EmitEvent when-branch removed (LEGACY_REMOVED).
             is CanonicalCoreStepCommand.Milestone -> milestoneDispatcher.dispatch(command, context.milestoneContext())
             is CanonicalCoreStepCommand.DeleteDir -> deleteDirDispatcher.dispatch(command, context.deleteDirContext())
             is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
@@ -45,11 +46,7 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.ArchiveArtifacts -> archiveArtifactsDispatcher.dispatch(command, context.archiveArtifactsContext())
         }
 
-    private fun CanonicalRuntimeContext.emitEventContext() = CanonicalEmitEventDispatchContext(
-        runId = runId,
-        stageName = stageName,
-        eventSink = eventSink,
-    )
+    // S2-A4 / G5: emitEventContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.milestoneContext() = CanonicalMilestoneDispatchContext(
         runId = runId,

@@ -367,3 +367,53 @@ Key durability findings:
 
 S1 still requires explicit user direction to open (standing instruction).
 ```
+
+## LFC-2E0 post-merge defensive audit — rounds 5-7 (2026-09-11, 49bbee07 → 594b27d2)
+
+Three additional rounds covering real examples, contracts, Step SDK,
+and the durable spine. All findings captured in
+`docs/v2/07-uat/LFC2E0_PRE_S1_EVIDENCE_AUDIT.md`.
+
+### Round 5 (commit 49bbee07, E26..E30)
+- E26 06-durable (multi-stage --resume)
+- E27 04-kotlin-control-flow (script {} block)
+- E28 05-failing-step (typed failure)
+- E29 example-uppercase-plugin (CERTIFIED external ref)
+- E30 Plugin isolation (zero internal imports)
+
+### Round 6 (commit 04f7b039, E31..E35)
+- E31 examples/contracts/ typed YAML contracts
+- E32 Contract 07 differential test (4/5 PASS, 1 case-mismatch finding)
+- E33 examples/README.md accuracy
+- E34 v2 module structure (17 modules)
+- E35 v2/compatibility/ corpus (17 fixtures, 01-basic runs)
+
+### Round 7 (commit 594b27d2, E36..E40)
+- E36 pipeline-step-sdk module structure
+- E37 Step SDK public typed surface
+- E38 pipeline-architecture-tests module
+- E39 S3EchoLegacyRemovedFitnessTest 7/7 GREEN (G7 contract suite)
+- E40 Durable spine architecture
+
+### E39 — critical S1 evidence
+
+`S3EchoLegacyRemovedFitnessTest` is the **G7 StepContractSuite** for
+`core.echo`. 7/7 contracts green mechanically proves:
+- core.echo is NOT decodable by CanonicalCoreStepDecoder (legacy path absent)
+- core.echo is NOT dispatched by CanonicalNodeDispatcher (legacy dispatch absent)
+- core.echo IS in the production StepRegistry (registry path present)
+- core.echo is NOT in LEGACY_PLUGIN_IDS or legacy metadata table
+
+= core.echo satisfies **CERTIFIED + LEGACY_REMOVED** combined verdict.
+
+### Cumulative verdict
+
+```text
+Rounds 1-7 (E1..E40):
+  39 PASS
+   1 SKIPPED (E4: external plugin — known CLI limitation)
+
+Trunk: main == origin/main == 594b27d2
+
+S1 still requires explicit user direction to open (standing instruction).
+```

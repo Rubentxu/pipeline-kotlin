@@ -666,6 +666,62 @@ Rounds 1-6 (E1..E35):
 Trunk: main == origin/main == 49bbee07
 ```
 
+## Edge case sweep — round 7 (2026-09-11, post-04f7b039)
+
+Step SDK, architecture tests, S3 contract suite, durable spine:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E36 | `pipeline-step-sdk` module structure | PASS | `api` + `processor` subprojects; 12+ .kt files in api/src/main |
+| E37 | Step SDK public typed surface | PASS | `@Step` annotation (BINARY retention); `StepContext(runId, parameters, environment)`; `BlockStepFlattener` enforces CPS depth limit |
+| E38 | `pipeline-architecture-tests` module | PASS | 48 .kt files; FArch001..FArch011 + FArchL5..FArchL7 (193/193 GREEN verified earlier) |
+| E39 | S3EchoLegacyRemovedFitnessTest (G7 contract suite) | PASS | **7/7 GREEN**, exit 0. Covers: LEGACY_REMOVED rule, CERTIFIED disjoint from LEGACY, no decoder/dispatcher/metadata, IS in production registry |
+| E40 | Durable spine architecture | PASS | 13 `Canonical*NodeDispatchers` (closed ADT); `CanonicalDurableRunCoordinator.run()` entry; `RegistryExecutionPreparation.prepare()` capability gate; `dispatchBody` routes parallel through SAME spine |
+
+### Captured logs (edge cases round 7, rule 25)
+
+```text
+/tmp/lfc2e0-e39-s3.log               sha256=00d4569e1ea81b457e16e853e15dd3c87fcc600542db4ebff2490917e1c69c26
+/tmp/lfc2e0-e36-e40-round7.log       sha256=968f9e1a9e59003347389e7a2a61cae3013bc189ec9fda7397037f4e65c51e48
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e39-s3.log /tmp/lfc2e0-e36-e40-round7.log
+```
+
+### E39 — G7 StepContractSuite verification (core.echo)
+
+The S3EchoLegacyRemovedFitnessTest is the G7 burn-down row for
+`core.echo`. 7/7 contracts green = the Step is **CERTIFIED +
+LEGACY_REMOVED** mechanically:
+
+```text
+1. core echo satisfies the LEGACY_REMOVED rule
+   (decoder absent AND dispatcher absent AND registration absent)
+2. certified registry-routed plugins are disjoint from LEGACY_PLUGIN_IDS
+3. core echo is NOT decodable by CanonicalCoreStepDecoder
+4. core echo is NOT dispatched by CanonicalNodeDispatcher
+5. core echo is NOT in the closed legacy authority LEGACY_PLUGIN_IDS
+6. core echo is NOT in the legacy metadata table
+7. core echo IS in the production StepRegistry
+```
+
+The burn-down ledger can move core.echo from `CERTIFIED (S3 burn-down)`
+to `CERTIFIED + LEGACY_REMOVED (S1 certification recording)` based on
+**mechanical evidence already on main** — no implementation work required.
+
+### Cumulative edge case tally (after round 7)
+
+```text
+Rounds 1-7 (E1..E40):
+  39 PASS
+   1 SKIPPED (E4)
+
+Trunk: main == origin/main == 04f7b039
+```
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

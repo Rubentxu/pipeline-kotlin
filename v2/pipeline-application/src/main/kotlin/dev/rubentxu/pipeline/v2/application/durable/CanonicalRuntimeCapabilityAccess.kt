@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.StageIdentity
 import dev.rubentxu.pipeline.v2.application.ShellOperations
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperations
@@ -70,6 +72,13 @@ class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
         )
         builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOps
+        // S2-A4 / G1: narrow stage identity (name + index) for handlers needing the current
+        // stage as a default (core.emit.event StageMarkedUnstable fallback). Derived from the
+        // runtime context; never exposes the context itself.
+        builder[STAGE_IDENTITY_CAPABILITY] = StageIdentity(
+            name = context.stageName,
+            index = context.stageIndex,
+        )
         return builder.toMap()
     }
 }

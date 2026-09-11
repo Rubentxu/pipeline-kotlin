@@ -26,3 +26,20 @@ val EVENT_SINK_CAPABILITY: StepCapability = StepCapability("eventSink")
  * when it is not available.
  */
 val WORKSPACE_OPERATIONS_CAPABILITY: StepCapability = StepCapability("workspaceOperations")
+
+/**
+ * Runtime stage identity supplied to a handler that must resolve the CURRENT stage as a
+ * default (S2-A4 / G1), e.g. `core.emit.event`'s `StageMarkedUnstable` stageName fallback.
+ *
+ * Deliberately a narrow value (name + index) — NOT a step toward a PipelineContext: the
+ * handler sees only this immutable pair, derived by the durable capability bridge from the
+ * runtime context, exactly like [EVENT_SINK_CAPABILITY]. Declared in
+ * `StepContract.requiredCapabilities`; admission is fail-closed before the handler runs
+ * when it is not available.
+ */
+data class StageIdentity(
+    val name: String,
+    val index: Int,
+)
+
+val STAGE_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.stage-identity")

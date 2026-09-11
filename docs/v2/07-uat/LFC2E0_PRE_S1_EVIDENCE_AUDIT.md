@@ -292,6 +292,63 @@ Verifying command:
 sha256sum /tmp/lfc2e0-runsh-parity*.log /tmp/lfc2e0-installDist.log
 ```
 
+## Edge case sweep (2026-09-11, post-b7e4a1de)
+
+After the structural + acceptance parity passes, an edge-case sweep
+exercised failure modes and integration boundaries not covered by the
+canonical examples:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E1 | `core.sleep` (legacy) executes correctly via legacy path | PASS | `/tmp/lfc2e0-legacy-test.log`: exit 0, `legacy-stage/sleep-0` stepType="sleep", duration ~1.018s matches `sleep(1)` |
+| E2 | Mixed legacy (`sleep`/`pwd`/`isUnix`) + registry (`echo`) coexist | PASS | `/tmp/lfc2e0-mixed-test.log`: exit 0, 6 Steps emitted, `PwdResolved` + `UnixDetected` + 3 `EchoOutputCaptured` |
+| E3 | Replay semantics on legacy key (`--rerun` vs default ReusePriorRun) | PASS | `--rerun`=6.6s, default=5.0s; cached events reused on default mode, fresh on `--rerun` |
+| E4 | External plugin `example.uppercase` coexistence with core | SKIPPED | CLI has no `--script-classpath` flag; `examples/run.sh` itself doesn't exercise external plugins (consistent with inventory: "no example in 01..10"). Not a regression — this is a known limitation pre-LFC-2E0 |
+| E5 | Packaging: `installDist` jar contents sanity | PASS | 38 jars / 95MB; `pipeline-domain-0.1.0-SNAPSHOT.jar` contains `StepRegistry`/`StepContract`/`StepCodec`; `pipeline-application-0.1.0-SNAPSHOT.jar` contains `CoreStepRegistryFactory`/`CoreEchoStep`/`CoreShellStep` |
+| E6 | CLI flag semantics (`--rerun` / `--resume` / default) | PASS | Run #1 fresh=6.6s, Run #2 default reuse=5.0s, Run #3 `--rerun`=6.7s, Run #4 `--resume`=5.2s; semantics match `DurableRunPolicy.ReusePriorRun`/`FreshRun`/`Continue` |
+
+### Captured logs (edge cases, rule 25)
+
+```text
+/tmp/lfc2e0-legacy-test.log     sha256=71b9cbdd9af0d3dd7cd2491d10d6672286209df9325d913ce29a34fe2fb2df59
+/tmp/lfc2e0-mixed-test.log      sha256=4e1741c1f07812479096298102f447b38863d7d74ebe7f5bceadf86b02793ded
+/tmp/lfc2e0-replay-run1.log     sha256=b13d1c08b85c9498374d07d6a38069c9523da223578547867d1ad6d5eb19e184
+/tmp/lfc2e0-replay-run2.log     sha256=a78e27c93d0512185be299d1b70fe6d71559f78c4839446f8403442f71bf12c8
+/tmp/lfc2e0-default-run1.log    sha256=58802a7dbfbae95b34b5abcc5996960a64fdda81bfce9d5190faeac5c6ac198a
+/tmp/lfc2e0-default-run2.log    sha256=7161e127d0072c9852bb959230889bbeffce90d957318cd83345ad25d3e6716f
+/tmp/lfc2e0-rerun-run.log       sha256=0107896fd74963346e984857212c76938f223db67e6e73675c69848c7a3ad572
+/tmp/lfc2e0-resume-run1.log     sha256=f2f7ff3f6f4561c9e12c7899bf0cd86f18861ae2a23d954541783b7004b49f04
+/tmp/lfc2e0-resume-run2.log     sha256=cdd2511b2fd0cf08a9a63a8c7a3cd42ba01eec9d58e21265544edfa37d3d5417
+/tmp/lfc2e0-resume-run3.log     sha256=2fd997fc64627a2d56c8588a907d3396e8f630978e1ada618f01a8ad93a0ea72
+/tmp/lfc2e0-resume-run4.log     sha256=8907f787d6d6f8eb1da3dffff552679d7e0ce1f4f76d9c252586a737d181b037
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-legacy-test.log /tmp/lfc2e0-mixed-test.log \
+          /tmp/lfc2e0-replay-*.log /tmp/lfc2e0-default-*.log /tmp/lfc2e0-rerun-*.log \
+          /tmp/lfc2e0-resume-*.log
+```
+
+### E4 honest finding (skipped)
+
+`example.uppercase` is registered via ServiceLoader. The `examples/run.sh`
+script does NOT include the plugin jar on the classpath, and the CLI
+lacks a `--script-classpath` flag. To exercise E4 would require either:
+1. Adding the jar to `examples/run.sh` (production change, out of LFC-2E0 scope)
+2. Adding a new CLI flag (production change, ADR required)
+3. A custom test harness (out of validation scope)
+
+The LFC-2E0 inventory notes "Real examples: none in 01..10" for `example.uppercase`
+— this is honest. The plugin's `CERTIFIED` verdict comes from
+`S3EchoLegacyRemovedFitnessTest`-style certification (per
+`LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md`), not from example-based parity.
+
+E4 is therefore a known limitation of the validation surface, NOT a
+regression. S1 will need to either add the plugin classpath or rely on
+the existing certification receipt.
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

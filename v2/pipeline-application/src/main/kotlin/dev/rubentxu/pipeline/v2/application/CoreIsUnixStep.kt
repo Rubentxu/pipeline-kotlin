@@ -35,15 +35,18 @@ import java.util.UUID
 data object IsUnixInput
 
 /**
- * TYPED_RUNTIME_OUTPUT — CANDIDATE_ARCHITECTURAL_DELTA — **NOT YET APPROVED** (S2-A5 / G1).
+ * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (S2-A5 / G2, decision D2).
  *
- * The legacy durable path produces NO typed output (`StepOutcome.Success` only; the
+ * Legacy durable path produces NO typed output (`StepOutcome.Success` only; the
  * boolean is observable solely through the `UnixDetected` event). The candidate
  * deliberately exposes the classified value as a typed result because the product
  * baseline requires `isUnix` to be a runtime-valued Step (the eventual reconnection
  * of `PipelineDsl.isUnix` to a real execution-target observation depends on it).
- * Whether this output is persisted as `OperationOutput`, how it participates in
- * replay, and how it feeds the DSL are G2 decisions. G1 only makes the delta visible.
+ *
+ * Durable law (G2): fresh/rerun OBSERVE the environment; resume/reuse REPRODUCE the
+ * persisted observation (`IsUnixOutput` + original `UnixDetected`) without
+ * re-executing the handler or re-observing `PlatformIdentity`. A stale observation
+ * after an OS change is correct durable semantics, not a bug.
  */
 data class IsUnixOutput(
     val isUnix: Boolean,
@@ -80,14 +83,12 @@ object CoreIsUnixStep {
     val KEY: PluginStepId = PluginStepId("core.isUnix")
 
     /**
-     * PATH_B classifier, verbatim from `CanonicalIsUnixNodeDispatcher.dispatch`
-     * (G0 characterization). Single source for both the typed result and the event so
-     * they can never disagree within one invocation.
+     * S2-A5 / G2: classification now routes through the single canonical pure
+     * classifier [UnixPlatformClassifier.classifyUnix] (decision D1). The G1
+     * PATH_B-verbatim body is retired; see the G2 differential-freeze receipt for the
+     * APPROVED_FIX / APPROVED_CONTRACT_DELTA matrix.
      */
-    internal fun classify(osName: String): Boolean =
-        osName.lowercase().let {
-            it.contains("linux") || it.contains("mac") || it.contains("darwin") || it.contains("freebsd")
-        }
+    internal fun classify(osName: String): Boolean = UnixPlatformClassifier.classifyUnix(osName)
 
     private val inputCodec = object : StepCodec<IsUnixInput> {
         override fun encode(value: IsUnixInput): EncodedStepValue =

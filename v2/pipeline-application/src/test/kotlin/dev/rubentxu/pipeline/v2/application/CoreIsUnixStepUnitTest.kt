@@ -45,22 +45,123 @@ class CoreIsUnixStepUnitTest {
     // PATH_B classifier matrix (G0 characterization, verbatim semantics)
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // G2 canonical differential freeze: full A / B / C-G1 / TARGET matrix.
+    // UNKNOWN_DIFFERENTIALS = 0. Sources of truth for A and B columns:
+    // PATH_A = PipelineDsl.isUnix exact membership {linux,macos,darwin,sunos,aix,
+    //          hp-ux,freebsd,openbsd,netbsd}, "" -> true placeholder.
+    // PATH_B = CanonicalIsUnixNodeDispatcher substring {linux,mac,darwin,freebsd}.
+    // TARGET = UnixPlatformClassifier (canonical C2 contract, decision D1).
+    // ------------------------------------------------------------------
+
+    private fun pathA(osName: String): Boolean =
+        osName.lowercase() in setOf(
+            "linux", "macos", "darwin", "sunos", "aix", "hp-ux", "freebsd", "openbsd", "netbsd",
+        ) || osName.isEmpty()
+
+    private fun pathB(osName: String): Boolean =
+        osName.lowercase().let {
+            it.contains("linux") || it.contains("mac") || it.contains("darwin") || it.contains("freebsd")
+        }
+
+    private data class Row(
+        val osName: String,
+        val target: Boolean,
+        val label: String,
+    )
+
+    private val differential: List<Row> = listOf(
+        Row("Linux", true, "AGREEMENT"),
+        Row("linux", true, "AGREEMENT"),
+        Row("macos", true, "AGREEMENT"),
+        Row("Mac OS X", true, "APPROVED_FIX (A false, B/G1 true via substring)"),
+        Row("mac os x", true, "APPROVED_FIX normalized"),
+        Row("Darwin", true, "AGREEMENT"),
+        Row("SunOS", true, "APPROVED_CONTRACT_DELTA (A true, B/G1 false)"),
+        Row("AIX", true, "APPROVED_CONTRACT_DELTA (A true, B/G1 false)"),
+        Row("HP-UX", true, "APPROVED_CONTRACT_DELTA (A true, B/G1 false)"),
+        Row("hp-ux", true, "APPROVED_CONTRACT_DELTA normalized"),
+        Row("FreeBSD", true, "AGREEMENT"),
+        Row("freebsd", true, "AGREEMENT"),
+        Row("OpenBSD", true, "APPROVED_CONTRACT_DELTA (A true, B/G1 false)"),
+        Row("NetBSD", true, "APPROVED_CONTRACT_DELTA (A true, B/G1 false)"),
+        Row("netbsd", true, "APPROVED_CONTRACT_DELTA normalized"),
+        Row("", false, "APPROVED_FIX (A placeholder true is retired)"),
+        Row("   ", false, "APPROVED_FIX trim normalization"),
+        Row("Windows 11", false, "AGREEMENT"),
+        Row("windows", false, "AGREEMENT"),
+        Row("unknown", false, "AGREEMENT"),
+        Row("OS/2", false, "AGREEMENT"),
+        Row("Smacos", false, "APPROVED_FIX (B substring heuristics retired: exact membership)"),
+    )
+
     @Test
-    fun `classifier matches PATH_B verbatim - positive rows`() {
-        assertTrue(CoreIsUnixStep.classify("Linux"))          // lowercase contains "linux"
-        assertTrue(CoreIsUnixStep.classify("linux"))
-        assertTrue(CoreIsUnixStep.classify("Mac OS X"))       // substring "mac" (Path B divergence vs PATH_A)
-        assertTrue(CoreIsUnixStep.classify("Darwin"))
-        assertTrue(CoreIsUnixStep.classify("FreeBSD"))
+    fun `G2 canonical differential - TARGET matches the frozen C2 contract on every row`() {
+        for (row in differential) {
+            assertEquals(row.target, UnixPlatformClassifier.classifyUnix(row.osName), "row: " + row.osName)
+        }
     }
 
     @Test
-    fun `classifier matches PATH_B verbatim - negative rows`() {
-        assertFalse(CoreIsUnixStep.classify(""))               // PATH_A placeholder-true diverges
-        assertFalse(CoreIsUnixStep.classify("Windows 11"))
-        assertFalse(CoreIsUnixStep.classify("SunOS"))          // PATH_A true diverges
-        assertFalse(CoreIsUnixStep.classify("AIX"))            // PATH_A true diverges
-        assertFalse(CoreIsUnixStep.classify("OpenBSD"))        // PATH_A true diverges
+    fun `G2 canonical differential - no row is unknown and every delta row is explicitly labeled`() {
+        for (row in differential) {
+            val a = pathA(row.osName)
+            val b = pathB(row.osName)
+            val target = UnixPlatformClassifier.classifyUnix(row.osName)
+            val unknown = target != a && target != b
+            assertFalse(unknown, "UNKNOWN differential for '" + row.osName + "'")
+            if (a != target || b != target) {
+                assertTrue(
+                    row.label.startsWith("APPROVED_"),
+                    "diverging row '" + row.osName + "' must carry an explicit APPROVED_* label, was: " + row.label,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `G2 canonical differential - G1 candidate semantics retired in favor of the canonical target`() {
+        // Rows where G1 (PATH_B verbatim) differs from the frozen target: classification
+        // MUST follow the target now (SunOS/AIX/HP-UX/OpenBSD/NetBSD flip to true; ""
+        // stays false). "Mac OS X" stays true (G1 and target agree).
+        for (row in listOf("SunOS", "AIX", "HP-UX", "OpenBSD", "NetBSD")) {
+            assertTrue(CoreIsUnixStep.classify(row), "canonical target must accept " + row)
+        }
+        assertFalse(CoreIsUnixStep.classify(""), "empty placeholder must NOT return")
+        assertFalse(CoreIsUnixStep.classify("Smacos"), "substring heuristic must NOT return")
+    }
+
+    @Test
+    fun `classifier is pure and total - same input twice, no exception as outcome`() {
+        for (row in differential) {
+            assertEquals(
+                UnixPlatformClassifier.classifyUnix(row.osName),
+                UnixPlatformClassifier.classifyUnix(row.osName),
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // D2: TYPED_RUNTIME_OUTPUT approved — durable law
+    // fresh/rerun observe the environment; resume/reuse reproduce the
+    // persisted observation (handler NOT executed, platform NOT re-observed).
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `durable law D2 - encoded output survives durable persistence and decodes to the same Boolean`() {
+        // The journal consumes the ENCODED form, never the typed object. Simulate a
+        // persistence round-trip through a raw String (the only durable representation).
+        for (value in listOf(true, false)) {
+            val encoded = CoreIsUnixStep.definition.contract.outputCodec.encode(IsUnixOutput(value))
+            val persisted: String = encoded.value // what OperationOutput would store
+            val recovered = CoreIsUnixStep.definition.contract.outputCodec.decode(EncodedStepValue(persisted))
+            assertEquals(IsUnixOutput(value), recovered)
+        }
+    }
+
+    @Test
+    fun `durable law D2 - MEMOIZED replay policy is the resume-reuse authority (no re-observation on resume)`() {
+        assertEquals(ReplayPolicy.MEMOIZED, CoreIsUnixStep.definition.contract.descriptor.replayPolicy)
     }
 
     // ------------------------------------------------------------------
@@ -136,7 +237,7 @@ class CoreIsUnixStepUnitTest {
 
             @Suppress("UNCHECKED_CAST")
             override fun <T : Any> get(key: StepCapability): T = when (key) {
-                PLATFORM_IDENTITY_CAPABILITY -> PlatformIdentity(osName = "SunOS") as T
+                PLATFORM_IDENTITY_CAPABILITY -> PlatformIdentity(osName = "Windows 11") as T
                 EVENT_SINK_CAPABILITY -> sink as T
                 else -> throw IllegalArgumentException("unexpected capability $key")
             }
@@ -151,9 +252,9 @@ class CoreIsUnixStepUnitTest {
         assertFalse(output.isUnix, "classification must follow the PlatformIdentity capability, not the host JVM")
         assertEquals(1, sink.eventsFor("g1-synthetic").toList().filterIsInstance<UnixDetected>().size)
         val event = sink.eventsFor("g1-synthetic").toList().filterIsInstance<UnixDetected>().single()
-        assertEquals("SunOS", event.osName)
+        assertEquals("Windows 11", event.osName)
         assertFalse(event.isUnix)
-        assertEquals(CoreIsUnixStep.sha256("SunOS"), event.sha256)
+        assertEquals(CoreIsUnixStep.sha256("Windows 11"), event.sha256)
     }
 
     // ------------------------------------------------------------------

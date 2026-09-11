@@ -44,9 +44,9 @@ class CoreSleepRegistryPrimaryFitnessTest {
         assertEquals(11, CanonicalCoreStepMetadata.pluginIds.size)
     }
 
-    @Test fun `production registry contains exactly the four registry-primary core steps`() {
+    @Test fun `production registry contains exactly the five registered core steps (echo sh error sleep + writeFile G1 candidate)`() {
         assertEquals(
-            setOf("core.echo", "core.sh", "core.error", "core.sleep"),
+            setOf("core.echo", "core.sh", "core.error", "core.sleep", "core.file.writeFile"),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )
     }

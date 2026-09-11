@@ -88,14 +88,14 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // ========================================================================
 
     @Test
-    fun `G5 flip -- LEGACY_PLUGIN_IDS is exactly the 11 residual keys (full-set equality)`() {
+    fun `G5 flip -- LEGACY_PLUGIN_IDS is exactly the 10 residual keys (full-set equality)`() {
         // Full-set equality is stronger than a partial negative pin: it proves three
         // facts simultaneously:
         //   - core.error is REMOVED (S2-A1 / G5 flip)
-        //   - core.echo and core.sh remain REMOVED (S1 / LB-02 / S2-prior closures)
-        //   - none of the other 11 legacy keys were accidentally burned down
+        //   - core.echo, core.sh remain REMOVED (S1 / LB-02 closures)
+        //   - core.sleep is REMOVED (LFC-2E1-S2-A2 / G5; CERTIFIED at S2-A2/G8)
+        //   - none of the other 10 legacy keys were accidentally burned down
         val expected = setOf(
-            "core.sleep",
             "core.file.writeFile",
             "core.emit.event",
             "core.milestone",
@@ -110,10 +110,10 @@ class CoreErrorRegistryPrimaryFitnessTest {
         assertEquals(
             expected,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "LEGACY_PLUGIN_IDS MUST be exactly the 11 residual legacy keys post-G5; " +
+            "LEGACY_PLUGIN_IDS MUST be exactly the 10 residual legacy keys post-S2-A2/G5; " +
                 "set equality catches both accidental removals and accidental additions",
         )
-        assertEquals(11, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(10, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test
@@ -359,13 +359,12 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // ========================================================================
 
     @Test
-    fun `G6 counters -- LEGACY_PLUGIN_IDS is 11, metadata rows is 11, dispatchers is 11 (legacy removed)`() {
-        // G6 final counter state (post-LEGACY_REMOVED):
-        //   - LEGACY_PLUGIN_IDS: 11  (core.error removed at G5; G6 does not touch the set)
-        //   - CanonicalCoreStepMetadata rows: 11 (the core.error row DELETED at G6)
-        //   - durable/ per-Step dispatchers: 11 (CanonicalErrorNodeDispatcher.kt DELETED at G6)
-        // G6 closes S2-A1 with these counters.
-        assertEquals(11, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    fun `G6 counters -- LEGACY_PLUGIN_IDS is 10, metadata rows is 10, dispatchers is 10 (legacy removed)`() {
+        // Post-S2-A2 counter state (core.sleep removed at LFC-2E1-S2-A2/G5):
+        //   - LEGACY_PLUGIN_IDS: 10
+        //   - CanonicalCoreStepMetadata rows: 10
+        //   - durable/ per-Step dispatchers: 10
+        assertEquals(10, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         // The legacy metadata row for core.error MUST be gone: the row was deleted at G6.
         assertThrows(
             IllegalArgumentException::class.java,

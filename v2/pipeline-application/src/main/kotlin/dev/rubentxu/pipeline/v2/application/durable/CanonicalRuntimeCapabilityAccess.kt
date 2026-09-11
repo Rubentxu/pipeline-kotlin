@@ -3,6 +3,9 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.ShellOperations
+import dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.WorkspaceOperations
+import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -59,6 +62,14 @@ class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
         )
         builder[SHELL_OPERATIONS_CAPABILITY] = shellOps
+        // S2-A3 / G1: workspace file operations bound to the current stage identity.
+        val workspaceOps: WorkspaceOperations = WorkspaceOperationsAdapter(
+            stageName = context.stageName,
+            stageIndex = context.stageIndex,
+            controlDirRoot = context.controlDirRoot,
+            eventSink = context.eventSink,
+        )
+        builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOps
         return builder.toMap()
     }
 }

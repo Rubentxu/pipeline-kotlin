@@ -58,7 +58,16 @@ sealed interface CanonicalCoreStepCommand {
          * from `CoreShellStep.descriptor` via `RegistryStepMetadataResolver`.
          */
         val LEGACY_PLUGIN_IDS: Set<String> = setOf(
-            "core.error",
+            // "core.error" removed at LFC-2E1-S2-A1 / G5 (2026-09-11T10:34Z).
+            // The production routing authority flipped to the registry path
+            // (CoreErrorStep.definition). The legacy `core.error` source code
+            // remains physically present until G6 deletes it (LEGACY_REMOVED):
+            //   - CanonicalCoreStepCommand.Error subtype
+            //   - ERROR_PLUGIN_ID decoder branch
+            //   - CanonicalErrorNodeDispatcher.kt file
+            //   - CanonicalCoreStepMetadata["core.error"] row
+            // Until G6 the legacy dispatcher is unreachable in production but
+            // still type-loadable; the parity test (G3) can still drive it.
             "core.sleep",
             "core.file.writeFile",
             "core.emit.event",

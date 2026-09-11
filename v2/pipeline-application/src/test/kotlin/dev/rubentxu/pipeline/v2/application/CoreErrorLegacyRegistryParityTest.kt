@@ -310,6 +310,8 @@ class CoreErrorLegacyRegistryParityTest {
     // Invariant: counters UNCHANGED at G3
     // ========================================================================
 
+    @org.junit.jupiter.api.Disabled("Archived G3 invariant: superseded by CoreErrorRegistryPrimaryFitnessTest (G5). " +
+        "At G5 the LEGACY_PLUGIN_IDS membership flipped; the structural assertion is in the G5 fitness.")
     @Test
     fun `G3 invariant -- LEGACY_PLUGIN_IDS still contains core error`() {
         val legacyIds = CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS
@@ -317,6 +319,8 @@ class CoreErrorLegacyRegistryParityTest {
             "core.error MUST remain in LEGACY_PLUGIN_IDS at G3; the flip is G5")
     }
 
+    @org.junit.jupiter.api.Disabled("Archived G3 invariant: superseded by CoreErrorRegistryPrimaryFitnessTest (G5). " +
+        "At G5 the family flipped to Registry; the structural assertion is in the G5 fitness.")
     @Test
     fun `G3 invariant -- StructuralFamilyResolver classifies core error as LegacyCore`() {
         val registry = CoreStepRegistryFactory.registry()

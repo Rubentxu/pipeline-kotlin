@@ -254,3 +254,64 @@ Each level must pass the same public plugin seam. A Step-specific core edit
 (`when(stepName)`, `CanonicalDurableRunCoordinator` step-specific logic,
 privileged core path) is a failed architecture gate, not a normal implementation
 technique — per AGENTS.md user law #7.
+
+
+## Provider / Release / Policy-surface columns (LFC-2E2 precondition)
+
+The matrix above currently tracks `Family / Step | Delivery | Current evidence/state |
+Priority | Target note`. New plugin families born in or after LFC-2E2 SHALL add the
+following dimensions per row, frozen by the policy readiness gate
+(`docs/v2/02-architecture/PLUGIN_POLICY_READINESS_GATE.md`) and shaped by
+`docs/v2/02-architecture/PLUGIN_IDENTITY_MODEL.md`:
+
+```text
+Provider          — publisher + plugin identity (e.g. "rubentxu/pipeline-containers")
+Plugin ResourceRef — ResourceRef(kind=PLUGIN, namespace, identity)
+Plugin Families   — multi-family classification (Set<PluginFamily>), e.g. { CONTAINERS, ARTIFACTS }
+Delivery          — CORE | OFFICIAL_PLUGIN | EXTERNAL_REFERENCE | DEFERRED_REMOTE | REJECTED
+Trust Metadata    — signed / approved-digest / provenance (consumed by future Cedar binding)
+Capabilities      — Set of declared capabilities (matches StepContract.requiredCapabilities)
+Policy Surface    — Cedar-ready entity set + relations (StepDefinition providedBy Plugin,
+                    PluginRelease releaseOf Plugin, Plugin memberOf PluginFamily[],
+                    StepDefinition requires Capability)
+Release Identity  — version + digest (sha256 of the artifact that ran)
+```
+
+These dimensions are **metadata**, not runtime admission verdicts. They are consumed by
+the future Cedar binding; today the runtime uses none of them for admission.
+
+### Family ↔ Capability separation (mandatory)
+
+`Plugin Family` and `Capability` are kept distinct dimensions. A plugin may declare
+multiple families (e.g. `pipeline-git -> { SCM, NETWORK }`); a plugin's capabilities
+describe authorities/effects (e.g. `{ NETWORK, FILESYSTEM_READ, FILESYSTEM_WRITE,
+CREDENTIAL_USE, PROCESS_EXECUTION }`).
+
+Family membership changes policy reasoning (e.g. "developers may invoke TESTING in
+non-PROD environments"). Capability admission (today's `RegistryStepInvoker` /
+`RegistryExecutionPreparation`) stays the most security-critical layer regardless of
+family.
+
+### Delivery ≠ policy verdict
+
+`Delivery` is one input the policy engine considers, not a verdict. `OFFICIAL_PLUGIN`
+does not imply "allow everything"; `EXTERNAL_REFERENCE` does not imply "deny". This
+matches R12 in `STEP_ECOSYSTEM_POLICY.md` and is asserted structurally by the gate's
+condition C7.
+
+### Cedar readiness is shape-only at this point
+
+No Cedar runtime dependency, no `PolicyEngine` interface, no policy evaluation
+call sites. The data shape is frozen so that adding Cedar later is an architectural
+decision (an ADR), not a data-model reconstruction.
+
+## Expansion precondition summary
+
+```text
+S2-A..S2-G         burn down LEGACY_PLUGIN_IDS (12 → 0)
+LFC-2E2-prep       adopt StepRegistration(definition, provider) shape + readiness fitness
+LFC-2E2            new plugin families (utilities, junit, HTTP, git, containers, artifactory)
+                   all born with provider/release/family/policy-surface dimensions
+LFC-2E3 (future)   Cedar runtime binding; consumes the frozen shape; no runtime data
+                   reconstruction needed because C1..C10 were green before LFC-2E2
+```

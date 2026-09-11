@@ -155,3 +155,74 @@ Before EVT-4/M4 remote work becomes the product priority, target:
 - no remote/controller semantic dependency in the local runtime.
 
 The numeric Step count is informative, not an exit criterion. Coverage of real use cases and certification evidence are the gate.
+
+
+## R12 — Provider identity and release metadata
+
+Every plugin introduced in or after LFC-2E2 SHALL declare, at registration time, the
+identity and release dimensions independently:
+
+- `ResourceRef(kind = PLUGIN, namespace, identity)` — the **logical** plugin identity.
+  Independent of version. Used in policies that allow "any release of this plugin".
+- `PluginReleaseRef(plugin, version, digest)` — the **immutable** artifact identity.
+  Used in audit events and provenance; freezes "what code actually ran".
+- `publisher` — stable publisher identifier (e.g. `"io.rubentxu"`).
+- `families: Set<PluginFamily>` — multi-family classification allowed (e.g.
+  `{ SCM, NETWORK }` for git).
+- `delivery: Delivery` — CORE / OFFICIAL_PLUGIN / EXTERNAL_REFERENCE /
+  DEFERRED_REMOTE / REJECTED_JENKINS_INTERNAL. Metadata only; NOT a policy verdict.
+- `trustMetadata` — signed / approved-digest / provenance; consumed by a future
+  Cedar binding, not by the current runtime.
+
+These dimensions answer **who**, **what artifact**, and **what functional family**, in
+addition to the existing `StepDefinition` fields that answer **what semantics**. The
+two views are intentionally separate: contract = semantics; provider = provenance.
+
+`Delivery` MUST NOT be used to grant or deny execution. An `EXTERNAL_REFERENCE` Step
+with valid metadata executes identically to a `CORE` Step modulo the structural
+admission check. The future policy engine reasons over delivery *as one input*, not as
+a verdict.
+
+Authority: `docs/v2/02-architecture/PLUGIN_IDENTITY_MODEL.md`.
+
+## R13 — Policy readiness gate before LFC-2E2
+
+Before any new plugin family (utilities, junit, HTTP, Git, containers, Artifactory)
+enters production in LFC-2E2, the policy readiness gate defined in
+`docs/v2/02-architecture/PLUGIN_POLICY_READINESS_GATE.md` MUST be green:
+
+- C1: `ResourceRef(PLUGIN)` declared for every plugin.
+- C2: `PluginReleaseRef` declared with version + digest.
+- C3: registry exposes `providerOf(STEP_KEY)` in O(1).
+- C4: families are a `Set` (multi-family allowed).
+- C5: manifest capabilities match `StepContract.requiredCapabilities` (cross-checked).
+- C6: no Cedar runtime dependency in production classpath.
+- C7: identical admission for `OFFICIAL_PLUGIN` and `EXTERNAL_REFERENCE` (modulo
+  duplicate-key detection).
+- C8: `PipelineEventEnvelope` for Step execution carries `ResourceRef(STEP_DEFINITION)`;
+  audit events MAY freeze `plugin_release_digest`.
+- C9: dedicated fitness suite (`Lfc2PolicyReadinessFitnessTest`) green.
+- C10: S2-burned-down core Steps (`core.echo`, `core.sh`, `core.error`, ...) register
+  without provider metadata and continue to pass their existing contract suites.
+
+This is a **shape-only** gate. Cedar is NOT wired up; no policy evaluation engine is
+introduced; the runtime behavior of `StructuralFamilyResolver`,
+`RegistryExecutionBoundary`, and `RegistryStepInvoker` is unchanged. The gate ensures
+the data the future engine will consume already exists.
+
+LFC-2E2 cycle proposals MUST cite this section and demonstrate the conditions are met
+before the first new plugin family enters production.
+
+## R14 — Cedar as a future binding (deferred, not discarded)
+
+When Cedar (or an equivalent policy engine) is wired up, it MUST consume the frozen
+shape from R12 + R13. The engine binding will be:
+
+- a new layer (`PolicyEngine` port) called at the four admission points defined in the
+  identity model: Plugin Admission / Enablement / Step Invocation / Capability Admission;
+- a textual ARN/URI representation derived from `ResourceRef` (deferred format choice);
+- a Cedar policy schema covering the entities and relations listed in the identity
+  model.
+
+Until that cycle opens, this section is informational. No runtime changes are permitted
+under R14.

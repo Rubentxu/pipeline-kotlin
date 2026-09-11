@@ -360,3 +360,50 @@ The freeze is evidence-based rather than a raw Step count. Target expectations:
 - no hidden dependency on controller/remote worker semantics.
 
 A useful planning range is ~70–100 operations across 12–15 families, but **coverage + certification**, not the number, decides exit.
+
+
+## Cedar / policy readiness — frozen before LFC-2E2 expansion
+
+Cedar enforcement is listed above (line 345) as deferred, not discarded. To avoid
+runtime data reconstruction when the binding eventually opens, the data shape that the
+binding will consume is frozen NOW by:
+
+- `docs/v2/02-architecture/PLUGIN_IDENTITY_MODEL.md` — ResourceRef, PluginReleaseRef,
+  StepProviderMetadata, multi-family classification, four-level admission model.
+- `docs/v2/03-specifications/STEP_ECOSYSTEM_POLICY.md` — R12 (provider identity),
+  R13 (policy readiness gate), R14 (Cedar binding, deferred).
+- `docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md` — Provider / Plugin ResourceRef /
+  Plugin Families / Trust Metadata / Capabilities / Policy Surface / Release Identity
+  columns.
+
+### LFC-2E2 precondition (gate C1..C10)
+
+Before any new plugin family (utilities, junit, HTTP, Git, containers, Artifactory)
+enters production in LFC-2E2, the policy readiness gate MUST be green:
+
+- C1  ResourceRef(PLUGIN) declared per plugin
+- C2  PluginReleaseRef(version, digest) declared per release
+- C3  registry exposes `providerOf(STEP_KEY)` in O(1)
+- C4  families are a `Set` (multi-family allowed)
+- C5  manifest capabilities match StepContract.requiredCapabilities (cross-checked)
+- C6  no Cedar runtime dependency in production classpath
+- C7  identical admission for OFFICIAL_PLUGIN and EXTERNAL_REFERENCE (modulo duplicate-key)
+- C8  PipelineEventEnvelope for Step execution carries ResourceRef(STEP_DEFINITION)
+- C9  dedicated fitness suite (Lfc2PolicyReadinessFitnessTest) green
+- C10 S2-burned-down core Steps register without provider metadata; their existing
+     contract suites continue to pass
+
+The gate is **shape-only**. Cedar is NOT wired up at this point. No policy evaluation
+engine is introduced; the runtime behavior of StructuralFamilyResolver,
+RegistryExecutionBoundary, and RegistryStepInvoker is unchanged. The gate ensures the
+data the future engine will consume already exists.
+
+### Forward plan
+
+```text
+S2-A..S2-G        burn down LEGACY_PLUGIN_IDS (12 → 0)
+LFC-2E2-prep      adopt StepRegistration(definition, provider) shape + readiness fitness
+LFC-2E2           new plugin families born with provider/release/family/policy-surface
+LFC-2E3 (future)  Cedar runtime binding; consumes the frozen shape; no runtime
+                  data reconstruction needed because C1..C10 were green before LFC-2E2
+```

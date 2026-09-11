@@ -113,3 +113,34 @@
 - STEP_ECOSYSTEM_MATRIX.md is the hypothesis to verify, not the evidence
 - Priority order E0..E10 (E0 first: certify existing; E1: universal core freeze)
 - Do NOT open EVT-4 during these cycles unless explicit reprioritization
+
+## EVT-3 closure receipt digest gap closed (2026-09-11, b6689aa8)
+
+Honest assessment identified one outstanding weak point: the EVT-3 closure
+receipt cited argv + exit code per gate but did NOT include SHA-256 digests
+of the captured logs (AGENTS.md rule 25 partial coverage).
+
+Closed by adding section 9 to `docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md`:
+
+```text
+EVT-3 closure logs (sha256):
+  /tmp/evt3-l0-compile.log                   sha256=c1f224272d811c22031b6f49c0936392211a40e76a4fb498dd2c47db2a1f5336
+  /tmp/evt3-l1-harness-test-rerun.log        sha256=cb48f0206faa75a4255666e0165fe85cfae7bae6fd73c959ed1d6e0f5cfd50af
+  /tmp/evt3-parity-run.log                   sha256=a260291827bc2625254d6fdf66ba0fde5373cfa74724a3e8aaa9e1c04f939d47
+  /tmp/evt3-parity-run2.log                  sha256=a570cd5cc1ad7342a3c407eee1196947f367349517b94c529d64026e2680b765
+  /tmp/evt3-l4-archfit.log                   sha256=6a724e32dd59c4bfe9f62dbc1adbeb8fbb2b93087ffe272b48301d43df0ad36b
+  /tmp/evt3-l4-eventtests.log                sha256=75eac8b8cd4bf5f50b3715dbfbf71164b90cde88eca2757243fc68e64f21812c
+  /tmp/evt3-l5-check.log                     sha256=034a3f933fda22168f7f847b0c457065ef023c1ad088c5f752bb9f3b599541fb
+
+Base-SHA evidence:
+  /tmp/base-fixture14-verify.log             sha256=af626b31d5f1c001365022e07c272277d2e43fd2c32f9e7a1a7dab05e53f7c94
+  /tmp/base-scripting-verify.log             sha256=6fd6eba3a9cd9837b78629487702748372988a4516fe7e8b6dec02b00401ff60
+
+Receipt-level digest (self-referential):
+  docs/v2/07-uat/EVT_3_CLOSURE_RECEIPT.md    sha256=3030bcdb66345da202e7a2c1ca29c8a7ffb1f698b7f0abc2880261a6348c7c6f
+```
+
+Also updated closure gates checklist to [x] `HEAD == origin/main` (verified
+b6689aa8 == b6689aa8 post-amendment).
+
+Trunk: main == origin/main == b6689aa8110a84e5517da2cc66d8326e3244f46c.

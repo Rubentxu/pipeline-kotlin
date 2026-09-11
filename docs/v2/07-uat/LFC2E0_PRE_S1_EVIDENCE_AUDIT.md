@@ -208,6 +208,90 @@ because: (a) it shows the verification itself was honest about its own
 limits; (b) the lesson generalizes — strict boundary parsing matters for
 every grep/awk/grep -c claim in this receipt.
 
+## Public acceptance oracle (2026-09-11, post-b7e4a1de)
+
+The 11-hypothesis sweep covered **structural** claims. The strongest
+acceptance gate is **behavioral**: does the installed production binary
+execute the 10 documented `.pipeline.kts` examples and emit the events
+the 4 contracts (07-10) require?
+
+`examples/run.sh` was run **twice consecutively** with hermetic scratch
+directories (the EVT-3 receipt pattern). Both runs:
+
+```text
+Run #1 (TMPDIR=/tmp/lfc2e0-runsh-scratch):
+  exit:    0
+  PASS:    18 markers (10 examples + 4 contracts + 4 harness parity)
+  FAIL:    0 markers
+  log sha256: ed80d7c83e264cf8386d82c1a44272599c76fc02f2549e00717e3f6b6106313b
+
+Run #2 (TMPDIR=/tmp/lfc2e0-runsh-scratch2, fresh):
+  exit:    0
+  PASS:    18 markers
+  FAIL:    0 markers
+  log sha256: 6a5bdb43319010711256f2b22a9053689b06a7d8e6d550f85291495612f1ba3a
+```
+
+All 10 examples match expected exit+outcome:
+
+```text
+01-hello:               exit=0  outcome=success    (expected success)
+02-multi-stage:         exit=0  outcome=success    (expected success)
+03-shell:               exit=0  outcome=success    (expected success)
+04-kotlin-control-flow: exit=0  outcome=success    (expected success)
+05-failing-step:        exit=1  outcome=failure    (expected failure)
+06-durable:             exit=0  outcome=success    (expected success)
+07-catch-error:         exit=0  outcome=unstable   (expected unstable)
+08-parallel:            exit=0  outcome=success    (expected success)
+09-retry:               exit=0  outcome=success    (expected success)
+10-timeout:             exit=1  outcome=failure    (expected failure)
+```
+
+All 4 contracts PASS differential parity:
+
+```text
+07-catch-error: 2 CatchErrorTriggered (FAILURE→UNSTABLE, innermost-first) + post-catch echo
+08-parallel:    second run reuses terminal aggregate (0 branch events, 0 step events)
+09-retry:       RetryAttemptFinished failed→succeeded (exactly 2 attempts)
+10-timeout:     TimeoutScheduled + sh aborted by deadline
+```
+
+### Strongest evidence: 01-hello event history
+
+```text
+Total events: 9
+Event kinds:  CompilationStarted(1) CompilationFinished(1) RunStarted(1)
+              StageStarted(1) StepStarted(1) EchoOutputCaptured(1)
+              StepFinished(1) StageFinished(1) RunFinished(1)
+```
+
+`EchoOutputCaptured` is the typed domain event that the LFC-2E0 inventory
+attributes to `core.echo` (registry path). The fact that this event is
+emitted by the installed production binary executing the documented
+`examples/01-hello.pipeline.kts` is the strongest possible proof that:
+
+1. The binary resolves `echo(...)` via the registry path (not legacy);
+2. The registry entry `CoreEchoStep` produces the typed event the Event
+   Harness contract expects;
+3. The Event Harness verdicts are reproducible post-LFC-2E0 merge.
+
+This **closes the integration-boundary gate** the 11-hypothesis sweep
+deliberately did not cover (it was structural, not behavioral).
+
+### Captured logs (run.sh parity, rule 25)
+
+```text
+/tmp/lfc2e0-runsh-parity.log     sha256=ed80d7c83e264cf8386d82c1a44272599c76fc02f2549e00717e3f6b6106313b
+/tmp/lfc2e0-runsh-parity2.log    sha256=6a5bdb43319010711256f2b22a9053689b06a7d8e6d550f85291495612f1ba3a
+/tmp/lfc2e0-installDist.log      sha256=9f2a1a42adaf810dca1cba1cd06c260748a042325e3318f19fc3005b222c1a93
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-runsh-parity*.log /tmp/lfc2e0-installDist.log
+```
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

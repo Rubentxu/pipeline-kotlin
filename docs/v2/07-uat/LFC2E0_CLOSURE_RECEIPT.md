@@ -83,6 +83,7 @@ the inventory as source of truth.
 | 9. Rule 16 clean | PASS | no production/test change ⇒ no new failure surface |
 | 10. Working tree clean | PASS | `git status --porcelain` empty |
 | 11. L0 compile GREEN | PASS | 37/37 UP-TO-DATE in 2s |
+| 12. examples/run.sh parity (post-merge, integration-boundary acceptance) | PASS | 10/10 examples + 4/4 contracts; 18 PASS markers, 0 FAIL across two consecutive runs (logs `/tmp/lfc2e0-runsh-parity.log`, `/tmp/lfc2e0-runsh-parity2.log`); `EchoOutputCaptured` event emitted by registry-resolved `core.echo` proves canonical-path behavior |
 
 ---
 
@@ -92,12 +93,19 @@ the inventory as source of truth.
 LFC-2E0 closure logs:
   /tmp/lfc2e0-l0-compile.log             5833 B   sha256=14e9f4c5bebe97bd0a8e32f3140854566c5c412079f786f5247f6e8a9a771848
   /tmp/lfc2e0-post-merge-l0.log          ~600 B   sha256=4ec0e67f639102d2297c39ee091ccd74e56f0e1760ae31e5d6a7bebf8ef9f84d
+
+Post-merge acceptance run.sh parity (added 2026-09-11 08:25 UTC):
+  /tmp/lfc2e0-installDist.log            sha256=9f2a1a42adaf810dca1cba1cd06c260748a042325e3318f19fc3005b222c1a93
+  /tmp/lfc2e0-runsh-parity.log           sha256=ed80d7c83e264cf8386d82c1a44272599c76fc02f2549e00717e3f6b6106313b
+  /tmp/lfc2e0-runsh-parity2.log          sha256=6a5bdb43319010711256f2b22a9053689b06a7d8e6d550f85291495612f1ba3a
 ```
 
 Verifying command:
 
 ```bash
-sha256sum /tmp/lfc2e0-l0-compile.log /tmp/lfc2e0-post-merge-l0.log
+sha256sum /tmp/lfc2e0-l0-compile.log /tmp/lfc2e0-post-merge-l0.log \
+          /tmp/lfc2e0-installDist.log \
+          /tmp/lfc2e0-runsh-parity.log /tmp/lfc2e0-runsh-parity2.log
 ```
 
 Receipt-level digest (self-referential, recomputable):
@@ -111,6 +119,9 @@ At writing time (2026-09-11 07:20 UTC):
 
 After merge evidence appended (2026-09-11 07:27 UTC):
 `21458690dd536aa10e3db7242d063f7defb75cd26ada13ba9c3a766f8b497a2a  docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md`
+
+After post-merge acceptance evidence appended (2026-09-11 08:26 UTC):
+`0163a7a0ab26cbe161a72e4e6cf6aa05083ab3f8d5195aeed9fff0e71ea6e374  docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md`
 
 ---
 
@@ -233,6 +244,38 @@ Trunk final state:
 ```text
 main == origin/main == 5efac6c0c90c5b5be28e1cd898a6b325dca8ae85
 ```
+
+## 8b. Post-merge acceptance evidence (added 2026-09-11 08:25 UTC)
+
+After PR #23 merge, two consecutive `examples/run.sh` parity runs were
+executed against the installed production binary (built fresh at
+2026-09-11 10:16 local from trunk `260fbaf5`):
+
+```text
+Run #1 (TMPDIR=/tmp/lfc2e0-runsh-scratch):
+  exit:           0
+  PASS markers:   18  (10 examples + 4 contracts + 4 harness parity)
+  FAIL markers:   0
+  log sha256:     ed80d7c83e264cf8386d82c1a44272599c76fc02f2549e00717e3f6b6106313b
+
+Run #2 (TMPDIR=/tmp/lfc2e0-runsh-scratch2, fresh scratch):
+  exit:           0
+  PASS markers:   18
+  FAIL markers:   0
+  log sha256:     6a5bdb43319010711256f2b22a9053689b06a7d8e6d550f85291495612f1ba3a
+```
+
+All 10 examples match expected exit+outcome; all 4 contracts (07 CatchError,
+08 Parallel, 09 Retry, 10 Timeout) PASS differential parity. The fact
+that `examples/01-hello.pipeline.kts` emits `EchoOutputCaptured` via the
+installed binary proves `core.echo` resolves through the **registry path**
+(not legacy), which is the strongest behavioral confirmation of the
+CERTIFIED + LEGACY_REMOVED state for `core.echo`.
+
+Full evidence in `docs/v2/07-uat/LFC2E0_PRE_S1_EVIDENCE_AUDIT.md` §
+"Public acceptance oracle".
+
+Receipt amended at 2026-09-11 08:25 UTC (post-merge acceptance evidence).
 
 ---
 

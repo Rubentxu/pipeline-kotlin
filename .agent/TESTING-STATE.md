@@ -595,3 +595,11 @@ production sleep routing, so no installed CLI parity claim is valid or needed he
 
 **Next:** G2/G3 must establish candidate-vs-legacy differential/parity evidence before
 any `LEGACY_PLUGIN_IDS` change. Do not describe `core.sleep` as CERTIFIED.
+
+## LFC-2R / R3 (COMPLETE, receipt: docs/v2/07-uat/LFC2R_R3_ISUNIX_COMPILER_SOURCE_MAPPING.md)
+- Changed: ScriptedExecutionApi.kt ADT (ScriptedCallKind/ScriptedMappedCall/Mapped), KotlinScriptedSourceMapper.kt (PSI isUnix detection, unqualified arg-less only), NEW pipeline-scripting-kotlin24/ScriptedSourceLowering.kt (deterministic rewrite isUnix() -> steps.isUnix(ScriptedCallSiteId(...)), FACADE_SCHEMA_VERSION="facade-r3-isUnix-v1"), NEW ScriptedIsUnixCompilerMappingTest.kt (10/0).
+- Fresh evidence: CompilerMapping 10/0, Runtime 13/0, Invoker 10/0, Mapper 1/0, EntryPointHost 1/0, arch-tests 53 classes 0 failures (--rerun-tasks).
+- Base-vs-head: ScriptTextEscaperTest 15/3, WithCredentialsCompileIntegrationTest 6/4 at base 39472d1e identical -> pre-existing, not regressions.
+- Out of scope (unchanged): Main.kt, CLI, authority flip, S2-A5 counters 8/8/8.
+- Next decision point: R4 (production wiring) vs S2-A5/G3.
+

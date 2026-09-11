@@ -31,16 +31,29 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                 SCRIPT_PARSE_FILE_NAME,
                 source.text,
             )
-            val shellCalls = mutableListOf<ScriptedSourceLocation>()
+            val calls = mutableListOf<ScriptedMappedCall>()
             val diagnostics = mutableListOf<ScriptedSourceDiagnostic>()
 
             file.accept(object : KtTreeVisitorVoid() {
                 override fun visitCallExpression(expression: KtCallExpression) {
-                    if (
-                        expression.calleeExpression?.text == "sh" &&
-                        expression.parent !is KtDotQualifiedExpression
-                    ) {
-                        shellCalls += source.locationAt(expression.textRange.startOffset)
+                    val isDotQualified = expression.parent is KtDotQualifiedExpression
+                    when {
+                        // Unqualified generator-level `sh(...)`: a shell step call.
+                        expression.calleeExpression?.text == "sh" && !isDotQualified ->
+                            calls += ScriptedMappedCall(
+                                ScriptedCallKind.Shell,
+                                source.locationAt(expression.textRange.startOffset),
+                            )
+                        // Unqualified runtime-returning `isUnix()`: platform query step
+                        // (LFC-2R / R3). Argument-less by contract; qualified/receiver
+                        // forms are NOT generator calls.
+                        expression.calleeExpression?.text == "isUnix" &&
+                            !isDotQualified &&
+                            expression.valueArguments.isEmpty() ->
+                            calls += ScriptedMappedCall(
+                                ScriptedCallKind.IsUnix,
+                                source.locationAt(expression.textRange.startOffset),
+                            )
                     }
                     super.visitCallExpression(expression)
                 }
@@ -55,7 +68,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
             })
 
             if (diagnostics.isEmpty()) {
-                ScriptedSourceMapping.Mapped(shellCalls)
+                ScriptedSourceMapping.Mapped(calls)
             } else {
                 ScriptedSourceMapping.InvalidSyntax(diagnostics)
             }

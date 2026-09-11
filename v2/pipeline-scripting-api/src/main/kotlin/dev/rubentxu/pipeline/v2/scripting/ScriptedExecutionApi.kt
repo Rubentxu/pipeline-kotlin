@@ -85,11 +85,31 @@ fun interface ScriptedSourceMapper {
     fun map(source: ScriptedSource): ScriptedSourceMapping
 }
 
+/**
+ * Kind of a runtime-effectful scripted call discovered by source mapping
+ * (LFC-2R / R3). The ADT grows only with real consumers — never per-Step
+ * speculative buckets.
+ */
+sealed interface ScriptedCallKind {
+    data object Shell : ScriptedCallKind
+    data object IsUnix : ScriptedCallKind
+}
+
+/** One mapped runtime-effectful call: its kind and exact source location. */
+data class ScriptedMappedCall(
+    val kind: ScriptedCallKind,
+    val location: ScriptedSourceLocation,
+)
+
 /** Closed result of parsing source for generated scripted calls. */
 sealed interface ScriptedSourceMapping {
     data class Mapped(
-        val shellCalls: List<ScriptedSourceLocation>,
-    ) : ScriptedSourceMapping
+        val calls: List<ScriptedMappedCall>,
+    ) : ScriptedSourceMapping {
+        /** Back-compat view: the mapped `sh` calls in source order. */
+        val shellCalls: List<ScriptedSourceLocation>
+            get() = calls.filter { it.kind == ScriptedCallKind.Shell }.map { it.location }
+    }
 
     data class InvalidSyntax(
         val diagnostics: List<ScriptedSourceDiagnostic>,

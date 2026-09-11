@@ -105,15 +105,14 @@ through a chain of structural seams, each independently proven by a G5 test:
 
 | Counter                              | Before (G4) | After (G5) | Survives G6?       |
 | ------------------------------------ | ----------- | ---------- | ------------------ |
-| `LEGACY_PLUGIN_IDS.size`             | 12          | 11         | No (G6 → 10)       |
+| `LEGACY_PLUGIN_IDS.size`             | 12          | 11         | YES (G6 does not touch `LEGACY_PLUGIN_IDS`) |
 | `CanonicalCoreStepMetadata` rows     | 12          | 12         | No (G6 deletes core.error row) |
 | Per-Step dispatcher files in `durable/` | 12          | 12         | No (G6 deletes `CanonicalErrorNodeDispatcher.kt`) |
 | `CoreErrorStep.definition` in registry | YES        | YES        | YES (permanent)    |
 
-Transient counters are valid (per user directive). The G5 fitness explicitly
-asserts the **full-set equality** of `LEGACY_PLUGIN_IDS` (not just a partial
-negative pin) so accidental removals or additions of unrelated keys would be
-caught.
+`LEGACY_PLUGIN_IDS` stays at **11** through G6. G6 only deletes the now-unreachable
+legacy source code; the production routing authority is already the registry
+spine after G5.
 
 ---
 
@@ -357,10 +356,15 @@ A3 = writeFile; A4 = emit.event; ...).
     - `ERROR_PLUGIN_ID` decoder branch in `CanonicalCoreStepDecoder.decode`
     - `CanonicalErrorNodeDispatcher.kt` file
     - `CanonicalCoreStepMetadata["core.error"]` row
-  Counters at G6 close: `LEGACY_PLUGIN_IDS = 10, metadata = 11, dispatchers = 11`.
-  Will be asserted by `S3ErrorLegacyRemovedFitnessTest` (in
-  `:pipeline-architecture-tests`).
-- **S2-A2** (`core.sleep`, 11 → 10) awaits its own cycle branch.
+    - any `errorDispatcher` field/wiring/branch in `CanonicalNodeDispatcher`
+  `LEGACY_PLUGIN_IDS` remains **11** through G6 (G6 does NOT touch it). Final
+  counters at G6 close: `metadata = 11, dispatchers = 11`. Asserted by
+  `S3ErrorLegacyRemovedFitnessTest` (in `:pipeline-architecture-tests`).
+- **G7 (StepContractSuite)** — 16/17 coverage for `core.error` (separate GO).
+- **G8 (real executable certification scenario)** — closes S2-A1 with
+  `core.error = CERTIFIED` (separate GO).
+- **S2-A2** (`core.sleep`, 11 → 10 on LEGACY_PLUGIN_IDS) awaits its own cycle
+  branch after S2-A1 is fully CERTIFIED.
 
 ---
 

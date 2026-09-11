@@ -1,6 +1,8 @@
 # LFC-2E0 — Step Inventory (machine-derived, 2026-09-11)
 
-Status: **DRAFT — sources cited per row; no production code change.**
+Status: **MERGED on main @ 5efac6c0 (PR #23) — sources cited per row; no production code change.**
+
+Receipt: `docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md`
 
 This file is the source of truth for the LFC-2E program. `STEP_ECOSYSTEM_MATRIX.md`
 is the planning hypothesis and is corrected against this table.

@@ -237,3 +237,27 @@ EVT-4 stays PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY throughout E0..E10.
   - docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md (E1-S1 in family progression)
 
 EVT-4 stays PENDING-DEFERRED-BY-LOCAL-FIRST-PRIORITY throughout E1..E10.
+
+## LFC-2E0 MERGED on trunk (2026-09-11, 5efac6c0)
+
+Cycle lfc2-step-ecosystem-expansion E0 inventory slice CLOSED:
+
+- Branch rebased onto origin/main = 4dc49435 (semantic conflict
+  resolution on .agent/TESTING-STATE.md preserved BOTH histories)
+- PR #23 created DRAFT, marked READY for review, MERGED at 2026-09-11T07:24:12Z
+- Method: --merge (non-squash; 5 individual commits preserved)
+- Merge commit: 5efac6c0c90c5b5be28e1cd898a6b325dca8ae85
+- 11/11 gates PASS (trunk baseline, machine-derived inventory, matrix
+  reflects code, no false CERTIFIED, zero production source, no policy
+  contradiction, Rule 16 clean, working tree clean, L0 compile 37/37
+  UP-TO-DATE)
+- 7 LFC-2E integration files preserved (zero drift)
+- 6 expected files now on main: STEP_ECOSYSTEM_MATRIX, STEP_INVENTORY_LFC2E0,
+  LFC2E0_CLOSURE_RECEIPT, openspec/{proposal,design,tasks}, .agent/TESTING-STATE
+- Post-merge L0 on main: 37/37 UP-TO-DATE in 1s
+
+Trunk: main == origin/main == 5efac6c0.
+
+**Next (NOT STARTED per user instruction)**: LFC-2E1-S1
+(lfc2-e1-s1-echo-legacy-removed) — turn core.echo into the oracle:
+CERTIFIED + LEGACY_REMOVED. S2 burn-down of 12 legacy keys gated on S1.

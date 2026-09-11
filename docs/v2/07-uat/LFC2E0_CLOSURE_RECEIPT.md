@@ -90,13 +90,14 @@ the inventory as source of truth.
 
 ```text
 LFC-2E0 closure logs:
-  /tmp/lfc2e0-l0-compile.log           5833 B   sha256=14e9f4c5bebe97bd0a8e32f3140854566c5c412079f786f5247f6e8a9a771848
+  /tmp/lfc2e0-l0-compile.log             5833 B   sha256=14e9f4c5bebe97bd0a8e32f3140854566c5c412079f786f5247f6e8a9a771848
+  /tmp/lfc2e0-post-merge-l0.log          ~600 B   sha256=4ec0e67f639102d2297c39ee091ccd74e56f0e1760ae31e5d6a7bebf8ef9f84d
 ```
 
 Verifying command:
 
 ```bash
-sha256sum /tmp/lfc2e0-l0-compile.log
+sha256sum /tmp/lfc2e0-l0-compile.log /tmp/lfc2e0-post-merge-l0.log
 ```
 
 Receipt-level digest (self-referential, recomputable):
@@ -107,6 +108,9 @@ sha256sum docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md
 
 At writing time (2026-09-11 07:20 UTC):
 `b80191b3ddaee1e5c4c83e79118e586291b4ea0ee77f43448e414494e7d701d8  docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md`
+
+After merge evidence appended (2026-09-11 07:27 UTC):
+`21458690dd536aa10e3db7242d063f7defb75cd26ada13ba9c3a766f8b497a2a  docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md`
 
 ---
 
@@ -194,6 +198,40 @@ Commits (newest first):
   e9f2313e  lfc2-step-ecosystem-expansion: anchor E1 sequencing to LB-01 policy
   21e57952  testing-state: record LFC-2E0 inventory cycle handoff
   68a49a3e  lfc2-step-ecosystem-expansion: E0 inventory cycle (machine-derived)
+```
+
+## 8a. PR review + merge (2026-09-11)
+
+```text
+PR:   Rubentxu/pipeline-kotlin#23
+URL:  https://github.com/Rubentxu/pipeline-kotlin/pull/23
+State: MERGED at 2026-09-11T07:24:12Z by Rubentxu
+Merge commit: 5efac6c0c90c5b5be28e1cd898a6b325dca8ae85
+Method: --merge (non-squash; 5 individual commits preserved for audit trail)
+```
+
+Post-merge verification (rule 25, on main after pull --ff-only):
+
+```text
+main HEAD:        5efac6c0c90c5b5be28e1cd898a6b325dca8ae85
+origin/main HEAD: 5efac6c0c90c5b5be28e1cd898a6b325dca8ae85
+gate:             HEAD == origin/main                                  PASS
+                  working tree clean                                    PASS
+                  6 expected LFC-2E0 files present on main               PASS
+                  7 LFC-2E integration files preserved (no drift)        PASS
+                  L0 compile on main                                    PASS (37/37 UP-TO-DATE in 1s)
+```
+
+Post-merge L0 log captured for the record:
+
+```text
+/tmp/lfc2e0-post-merge-l0.log   sha256=4ec0e67f639102d2297c39ee091ccd74e56f0e1760ae31e5d6a7bebf8ef9f84d
+```
+
+Trunk final state:
+
+```text
+main == origin/main == 5efac6c0c90c5b5be28e1cd898a6b325dca8ae85
 ```
 
 ---

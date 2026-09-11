@@ -629,6 +629,43 @@ Run + Stage events but **no step-level events**. The cached outcome
 is reused at the step level. E26 with multi-stage and `sh` confirms
 this holds for shell steps too — not just `echo`.
 
+## Edge case sweep — round 6 (2026-09-11, post-49bbee07)
+
+Contracts, README, module structure, and corpus executable:
+
+| # | Edge case | Result | Evidence |
+|---|---|---|---|
+| E31 | `examples/contracts/` typed YAML contracts | PASS | 4 contracts (07/08/09/10), all `version: 1` typed ADTs with `expect.runOutcome` + `constraints[exactly/never/before]` rules |
+| E32 | Contract 07 differential test against real events | PASS (with finding) | 4/5 rules PASS; 1 rule has case-mismatch: contract uses `UNSTABLE` (uppercase) but emission is `unstable` (lowercase). Canonical emission `CanonicalDurableRunCoordinator.kt:482,536` confirms lowercase is the durable outcome form. |
+| E33 | `examples/README.md` accuracy | PASS | Documents all 10 examples + semantics; matches real CLI behavior (E22-E28) |
+| E34 | v2 module structure | PASS | 17 modules + 3 step-sdk subprojects; `pipeline-domain` jar built (plugin dep); install dist 37 libs |
+| E35 | `v2/compatibility/` corpus executable | PASS | 17 corpus fixtures + `baseline.json`; `01-basic.pipeline.kts` runs cleanly (9 events, success, 1 echo) |
+
+### Captured logs (edge cases round 6, rule 25)
+
+```text
+/tmp/lfc2e0-e32-07.txt              sha256=8d5a3fffadfbfa9efcf02a2d1c33b11cc6c26163ebe6bf7ddb087eb7f28096dd
+/tmp/lfc2e0-e35-01.txt              sha256=e31f1477ffd85338973e9b72905d6ba9a3c16ad15b4502022c6a846c12afc7b3
+/tmp/lfc2e0-e31-e35-round6.log      sha256=d8333840c2662809bd999be6bef003a39108b4c95c67f330a0ccb38c8b3318cb
+```
+
+Verifying command:
+
+```bash
+sha256sum /tmp/lfc2e0-e32-07.txt /tmp/lfc2e0-e35-01.txt \
+          /tmp/lfc2e0-e31-e35-round6.log
+```
+
+### Cumulative edge case tally (after round 6)
+
+```text
+Rounds 1-6 (E1..E35):
+  34 PASS
+   1 SKIPPED (E4)
+
+Trunk: main == origin/main == 49bbee07
+```
+
 ## What this note is NOT
 
 This is **not** an S1 cycle opening. Per the user's standing instruction:

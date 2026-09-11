@@ -18,7 +18,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  */
 object CanonicalCoreStepMetadata {
     private val table: Map<String, StepMetadata> = mapOf(
-        "core.error" to StepMetadata(setOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER),
         "core.sleep" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
         "core.file.writeFile" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),
         "core.emit.event" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),

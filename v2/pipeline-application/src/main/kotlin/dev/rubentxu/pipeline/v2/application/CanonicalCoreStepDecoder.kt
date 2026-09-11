@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -83,10 +82,6 @@ sealed interface CanonicalCoreStepCommand {
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
         fun pluginIdToShortType(pluginId: String): String = CanonicalCoreStepMetadata.shortType(pluginId)
-    }
-
-    data class Error(val message: String, val failureKind: FailureKind) : CanonicalCoreStepCommand {
-        override val pluginId = "core.error"
     }
 
     data class Sleep(val seconds: Long) : CanonicalCoreStepCommand {
@@ -205,7 +200,6 @@ sealed interface CanonicalCoreStepCommand {
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
-    private const val ERROR_PLUGIN_ID = "core.error"
     private const val SLEEP_PLUGIN_ID = "core.sleep"
     private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
     private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
@@ -224,15 +218,6 @@ object CanonicalCoreStepDecoder {
         }
         val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject
         return when (node.pluginStepId.value) {
-            ERROR_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "error") {
-                    "Payload kind must be 'error' for '${node.id.value}'"
-                }
-                val failureKindName = payload.requiredString("failureKind")
-                val failureKind = FailureKind.entries.firstOrNull { it.name == failureKindName }
-                    ?: throw IllegalArgumentException("Unknown failure kind '$failureKindName' for '${node.id.value}'")
-                CanonicalCoreStepCommand.Error(payload.requiredString("message"), failureKind)
-            }
             SLEEP_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "sleep") {
                     "Payload kind must be 'sleep' for '${node.id.value}'"

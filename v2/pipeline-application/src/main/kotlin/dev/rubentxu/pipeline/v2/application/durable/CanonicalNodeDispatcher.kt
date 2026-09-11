@@ -20,7 +20,6 @@ data class CanonicalRuntimeContext(
 
 /** Dispatches the supported canonical core nodes through their durable runtime paths. */
 class CanonicalNodeDispatcher {
-    private val errorDispatcher = CanonicalErrorNodeDispatcher()
     private val sleepDispatcher = CanonicalSleepNodeDispatcher()
     private val writeFileDispatcher = CanonicalWriteFileNodeDispatcher()
     private val emitEventDispatcher = CanonicalEmitEventNodeDispatcher()
@@ -35,7 +34,6 @@ class CanonicalNodeDispatcher {
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
-            is CanonicalCoreStepCommand.Error -> errorDispatcher.dispatch(command)
             is CanonicalCoreStepCommand.Sleep -> sleepDispatcher.dispatch(command, context.sleepContext())
             is CanonicalCoreStepCommand.WriteFile -> writeFileDispatcher.dispatch(command, context.writeFileContext())
             is CanonicalCoreStepCommand.EmitEvent -> emitEventDispatcher.dispatch(command, context.emitEventContext())

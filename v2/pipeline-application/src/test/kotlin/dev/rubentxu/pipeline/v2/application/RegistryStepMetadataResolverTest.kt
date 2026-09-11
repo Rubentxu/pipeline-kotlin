@@ -70,12 +70,13 @@ class RegistryStepMetadataResolverTest {
     @Test
     fun `a remaining legacy core key delegates to the legacy core authority even when absent from the registry`() {
         // The composite delegates still-legacy core keys to the legacy core catalog, NOT to any registry
-        // definition, so core semantics (e.g. core.error) cannot be shadowed by a definition.
-        // LB-02 / A4: `core.sh` is no longer in this set; `core.error` is the canonical example.
+        // definition, so core semantics (e.g. core.sleep) cannot be shadowed by a definition.
+        // LB-02 / A4: `core.sh` is no longer in this set.
+        // LFC-2E1-S2-A1 / G6: `core.error` is no longer in this set (CoreErrorStep registered).
         val resolver = RegistryStepMetadataResolver.composite(registry())
-        val metadata = resolver.resolve(PluginStepId("core.error"))
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.error").replayPolicy, metadata!!.replayPolicy)
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.error").effects, metadata.effects)
+        val metadata = resolver.resolve(PluginStepId("core.sleep"))
+        assertEquals(CanonicalCoreStepMetadata.metadata("core.sleep").replayPolicy, metadata!!.replayPolicy)
+        assertEquals(CanonicalCoreStepMetadata.metadata("core.sleep").effects, metadata.effects)
     }
 
     @Test

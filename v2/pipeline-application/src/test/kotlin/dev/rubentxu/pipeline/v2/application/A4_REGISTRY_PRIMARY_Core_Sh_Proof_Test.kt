@@ -106,16 +106,16 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
             family,
             "Post-A4: StructuralFamilyResolver MUST classify `core.sh` as Registry",
         )
-        // Negative pin: core.error is STILL a legacy core key (proves the flip is surgical,
-        // not a global legacy wipe).
+        // Negative pin: core.sleep is STILL a legacy core key (proves the flip is surgical,
+        // not a global legacy wipe). core.echo and core.error are also Registry.
         val legacyFamily = StructuralFamilyResolver.classify(
-            PluginStepId("core.error"),
+            PluginStepId("core.sleep"),
             registry,
         )
         assertEquals(
             StructuralStepFamily.LegacyCore,
             legacyFamily,
-            "core.error remains a legacy key (surgical flip on `core.sh` only)",
+            "core.sleep remains a legacy key (surgical flip on `core.sh` only)",
         )
     }
 
@@ -418,7 +418,7 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
         // We assert that RegistryExecutionBoundary.adapt() is a distinct, usable boundary.
         val boundary = RegistryExecutionBoundary.adapt()
         assertNotNull(boundary, "RegistryExecutionBoundary must be constructible post-A4")
-        // And the LegacyExecutionBoundary is unchanged (kept for other legacy keys like core.error).
+        // And the LegacyExecutionBoundary is unchanged (kept for other legacy keys like core.sleep).
         // Type-pinning (compile-time proof that the legacy boundary still exists for the burn-down).
         // Suppress unused warnings — the pins exist to prove these types remain physically
         // present after the flip (rollback / burn-down path).

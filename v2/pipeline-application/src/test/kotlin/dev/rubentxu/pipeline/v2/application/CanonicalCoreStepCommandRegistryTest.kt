@@ -3,18 +3,19 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 12 entries (Error, Sleep, WriteFile,
- *   EmitEvent, Milestone, DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
+ * - sealedSubclasses has exactly 11 entries (Sleep, WriteFile, EmitEvent, Milestone,
+ *   DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
- * - canonicalCoreStepIds derived from the sealed hierarchy matches the expected set.
+ *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
+ *   via CoreErrorStep).
+ * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
  * This test enforces EC-9: adding a new step variant requires exactly
@@ -23,15 +24,14 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 12 entries`() {
+    fun `sealedSubclasses has exactly 11 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(12, subclasses.size, "Expected exactly 12 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(11, subclasses.size, "Expected exactly 11 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
     fun `LEGACY_PLUGIN_IDS matches expected set`() {
         val expected = setOf(
-            "core.error",
             "core.sleep",
             "core.file.writeFile",
             "core.emit.event",
@@ -49,17 +49,6 @@ class CanonicalCoreStepCommandRegistryTest {
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
-    }
-
-    @Test
-    fun `Error has correct pluginId and defaultMetadata`() {
-        val errorInstance = CanonicalCoreStepCommand.Error(
-            "failed",
-            dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT
-        )
-        assertEquals("core.error", errorInstance.pluginId)
-        assertEquals(setOf(Effect.ABORTS_PIPELINE), errorInstance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.NEVER, errorInstance.defaultMetadata.replayPolicy)
     }
 
     @Test

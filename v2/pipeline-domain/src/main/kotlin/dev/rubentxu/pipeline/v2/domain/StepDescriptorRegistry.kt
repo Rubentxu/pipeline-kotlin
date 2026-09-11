@@ -101,12 +101,6 @@ class StepDescriptorRegistry private constructor(
                     configRef = "",
                     takesBody = false,
                 ))
-                put(PluginStepId("core.error"), StepDescriptor(
-                    stepId = "core.error",
-                    name = "error",
-                    configRef = "",
-                    takesBody = false,
-                ))
                 put(PluginStepId("core.sleep"), StepDescriptor(
                     stepId = "core.sleep",
                     name = "sleep",

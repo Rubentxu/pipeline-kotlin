@@ -359,23 +359,26 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // ========================================================================
 
     @Test
-    fun `G5 counters -- LEGACY_PLUGIN_IDS is 11, metadata rows is 12 (legacy row survives G6), dispatchers is 12`() {
-        // G5 transient counter state:
-        //   - LEGACY_PLUGIN_IDS: 11  (core.error removed)
-        //   - CanonicalCoreStepMetadata rows: 12 (the core.error row still exists; G6 deletes it)
-        //   - durable/ dispatchers: 12 (CanonicalErrorNodeDispatcher.kt still on disk; G6 deletes it)
-        // G6 deletes the metadata row + dispatcher + decoder branch + command subtype.
+    fun `G6 counters -- LEGACY_PLUGIN_IDS is 11, metadata rows is 11, dispatchers is 11 (legacy removed)`() {
+        // G6 final counter state (post-LEGACY_REMOVED):
+        //   - LEGACY_PLUGIN_IDS: 11  (core.error removed at G5; G6 does not touch the set)
+        //   - CanonicalCoreStepMetadata rows: 11 (the core.error row DELETED at G6)
+        //   - durable/ per-Step dispatchers: 11 (CanonicalErrorNodeDispatcher.kt DELETED at G6)
+        // G6 closes S2-A1 with these counters.
         assertEquals(11, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
-        // The legacy metadata row for core.error still exists at G5 (G6 deletes it).
-        val legacyMetadata = CanonicalCoreStepMetadata.metadata("core.error")
-        assertNotNull(legacyMetadata, "legacy metadata row for core.error still exists at G5 (G6 deletes it)")
-        // The file is still on disk (G6 deletes it).
+        // The legacy metadata row for core.error MUST be gone: the row was deleted at G6.
+        assertThrows(
+            IllegalArgumentException::class.java,
+            { CanonicalCoreStepMetadata.metadata("core.error") },
+            "legacy metadata row for core.error MUST be deleted at G6",
+        )
+        // The dispatcher file MUST be gone.
         val dispatcherFile = java.io.File(
             "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalErrorNodeDispatcher.kt"
         )
-        assertTrue(
+        assertFalse(
             dispatcherFile.exists(),
-            "CanonicalErrorNodeDispatcher.kt still on disk at G5 (G6 deletes it)",
+            "CanonicalErrorNodeDispatcher.kt MUST be deleted at G6 (LEGACY_REMOVED)",
         )
     }
 

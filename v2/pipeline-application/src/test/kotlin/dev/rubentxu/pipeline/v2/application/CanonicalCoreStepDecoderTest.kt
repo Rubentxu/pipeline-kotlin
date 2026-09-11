@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
-import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
@@ -10,23 +9,6 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
 class CanonicalCoreStepDecoderTest {
-    @Test
-    fun `decodes a versioned error node with its typed failure kind`() {
-        val node = OpaqueStepNode(
-            id = StepId("build/error-0"),
-            pluginStepId = PluginStepId("core.error"),
-            payload = VersionedStepPayload(
-                "dsl-v1",
-                """{"kind":"error","message":"deployment denied","failureKind":"USER"}""",
-            ),
-        )
-
-        assertEquals(
-            CanonicalCoreStepCommand.Error("deployment denied", FailureKind.USER),
-            CanonicalCoreStepDecoder.decode(node),
-        )
-    }
-
     @Test
     fun `decodes a versioned sleep node into its typed durable command`() {
         val node = OpaqueStepNode(

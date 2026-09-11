@@ -44,6 +44,12 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
+import dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput
+import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
+import dev.rubentxu.pipeline.v2.scripting.ScriptedSource
+import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
+import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
+import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
@@ -532,6 +538,70 @@ fun main(args: Array<String>) {
         }
     } else null
 
+    // LFC-2R / R4B — frontend FORM selection. The compiler-backed mapping decides
+    // whether this source contains runtime-effectful scripted calls; Main only
+    // picks the closed artifact FORM, never an execution authority and never a
+    // concrete Step (R4A law: Main may choose the frontend, never the backend).
+    val scriptedFrontend: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact? =
+        if (result.isSuccess) {
+            val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent))
+            val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
+                mapping.calls.filter { it.kind == dev.rubentxu.pipeline.v2.scripting.ScriptedCallKind.IsUnix }
+            } else emptyList()
+            if (mappedCalls.isNotEmpty()) {
+                when (val lowered = ScriptedSourceLowering.lower(
+                    sourceId = ScriptedSourceId(scriptPath.fileName.toString()),
+                    sourceText = scriptContent,
+                    mapper = KotlinScriptedSourceMapper(),
+                    facadeSchemaVersion = ScriptedSourceLowering.FACADE_SCHEMA_VERSION,
+                )) {
+                    is LoweringResult.Generated -> dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact(
+                        loweredSource = lowered.source,
+                        identity = lowered.artifact,
+                    )
+                    is LoweringResult.InvalidSyntax -> {
+                        // The source already compiled (host), so this is an internal
+                        // invariant violation: fail closed, never fall back to eager.
+                        System.err.println("Error: scripted source lowering failed: ${lowered.diagnostics}")
+                        System.exit(2)
+                        null // unreachable
+                    }
+                }
+            } else null
+        } else null
+
+    val scriptedEntryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint? =
+        scriptedFrontend?.let { artifact ->
+            val definitionScript = """
+                ${artifact.loweredSource}
+            """.trimIndent()
+            val scriptedDefinition = ScriptDefinition.inline(
+                text = definitionScript,
+                classpath = buildList {
+                    ScriptDefinition.dslApiJar()?.let(::add)
+                    addAll(config.pluginJars)
+                },
+            )
+            // Compiled WITHOUT the eager RuntimeConfig injection: a runtime-returned
+            // body must never observe the platform through the eager DSL port.
+            val scriptedResult = host.compile(scriptedDefinition)
+            when {
+                scriptedResult is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure -> {
+                    System.err.println("Error: scripted frontend compilation failed: ${scriptedResult.diagnostics}")
+                    System.exit(2)
+                    null // unreachable
+                }
+                else -> when (val out = (scriptedResult as dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Success).output) {
+                    is ScriptEvaluationOutput.CompiledEntryPoint -> out.entryPoint
+                    else -> {
+                        System.err.println("Error: scripted frontend did not produce a compiled entry point")
+                        System.exit(2)
+                        null // unreachable
+                    }
+                }
+            }
+        }
+
     val compileOutcome: RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
         RunOutcome.Failure(
             dev.rubentxu.pipeline.v2.domain.PipelineFailure(
@@ -633,6 +703,21 @@ fun main(args: Array<String>) {
         System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
     }
     val runOutcome: RunOutcome? = when {
+        // LFC-2R / R4B: the scripted FRONTEND form runs against the SAME durable
+        // authority (journal, registry, event sink, control root) composed for the
+        // canonical path. This is a frontend selection, never a second runner: the
+        // invocation authority is the registry seam proven in R1/R2 (R4A model B).
+        scriptedEntryPoint != null -> runScriptedFrontend(
+            entryPoint = scriptedEntryPoint,
+            runId = runId,
+            artifact = requireNotNull(scriptedFrontend) { "scripted frontend artifact" }.identity,
+            stepRegistry = composedStepRegistry,
+            journal = journal,
+            eventSink = eventStore,
+            clock = clock,
+            controlDirRoot = controlDirRoot,
+            sandboxProfile = config.sandboxProfile,
+        )
         compiledPipeline?.supportsCanonicalDurableExecution(composedStepRegistry) == true -> runCanonicalPipeline(
             pipeline = compiledPipeline,
             runId = RunId(runId),
@@ -721,6 +806,54 @@ private fun startFreshRun(
  * script compiler via ScriptDefinition.classpath — one flag, one classpath,
  * two consumers.
  */
+private fun runScriptedFrontend(
+    entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint,
+    runId: String,
+    artifact: dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity,
+    stepRegistry: InMemoryStepRegistry,
+    journal: OperationJournal,
+    eventSink: EventSink,
+    clock: Clock,
+    controlDirRoot: Path,
+    sandboxProfile: SandboxProfile,
+): RunOutcome? {
+    // Frontend runs on the SAME durable authority: identical journal instance,
+    // identical composed registry, identical event sink and control root.
+    val outcome = kotlinx.coroutines.runBlocking {
+        dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.run(
+            entryPoint = entryPoint,
+            runId = runId,
+            expectedArtifact = artifact,
+            registry = stepRegistry,
+            journal = journal,
+            eventSink = eventSink,
+            clock = clock,
+            shOptions = ShOptions(
+                workspaceRoot = controlDirRoot.resolve("workspace"),
+                captureStdout = false,
+                timeoutMs = null,
+                env = emptyMap(),
+                sandbox = SandboxConfigResolver.resolve(sandboxProfile),
+            ),
+            controlDirRoot = controlDirRoot,
+        )
+    }
+    return when (outcome) {
+        is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.Completed ->
+            when (val aggregate = outcome.aggregate) {
+                is dev.rubentxu.pipeline.v2.domain.StepOutcome.Success -> RunOutcome.Success
+                is dev.rubentxu.pipeline.v2.domain.StepOutcome.Unstable -> RunOutcome.Unstable
+                is dev.rubentxu.pipeline.v2.domain.StepOutcome.Failure -> RunOutcome.Failure(aggregate.failure)
+            }
+        is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.ArtifactIncompatible -> {
+            // Fail closed (compatibility law): never silently replay an incompatible artifact.
+            System.err.println("Error: ${outcome.message}")
+            System.exit(2)
+            null // unreachable
+        }
+    }
+}
+
 private fun pluginClassLoaderFor(jars: List<String>): ClassLoader =
     java.net.URLClassLoader(
         jars.map { java.io.File(it).toURI().toURL() }.toTypedArray(),

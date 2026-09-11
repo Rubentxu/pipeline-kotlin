@@ -240,16 +240,20 @@ state machine (LEGACY → DUAL_AVAILABLE → REGISTRY_PRIMARY → LEGACY_UNREACH
 LEGACY_REMOVED → CERTIFIED; **CERTIFIED requires LEGACY_REMOVED**):
 
 ```text
-LFC-2E1-S1 (FIRST): LB-02 LEGACY_REMOVED slice
-  - core.echo is already CERTIFIED (S3 burn-down, LEGACY_REMOVED achieved).
-  - But reachable legacy Echo machinery may still exist in tests:
-    LegacyEchoUnreachableProofTest, EchoDurableSpineTest, UatStep002EchoCaptureTest,
-    CoreEchoSeamTest, EchoStepContractSuiteTest.
-  - Action: refixture each to drive core.echo exclusively through the registry seam;
-    activate S3EchoLegacyRemovedFitnessTest; record LEGACY_REMOVED in the LB-01 ledger
-    (do NOT re-record CERTIFIED — that was the prior cycle's outcome).
+LFC-2E1-S1 (CLOSED 2026-09-11, ad4867f1): core.echo CERTIFICATION RECORDING
+  - core.echo = CERTIFIED + LEGACY_REMOVED (S1 closure, recording only)
+  - G4 architecture fitness: S3EchoLegacyRemovedFitnessTest 7/7 GREEN
+  - G7 StepContractSuite:    EchoStepContractSuiteTest 17/17 GREEN
+  - Echo test suite (5):     31/31 GREEN
+  - Real execution parity:   examples/01-hello SUCCESS
+  - Receipts:
+    docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md
+    docs/v2/07-uat/CORE_ECHO_G4_FITNESS_RECEIPT.md
+  - 0 production files modified; 0 tests refixtured (already GREEN pre-S1)
+  - core.sh NOT touched (already CERTIFIED + LEGACY_REMOVED per LB-02 S6.8)
+  - S3ShLegacyRemovedFitnessTest NOT created (DEDICATED_FITNESS_GAP, deferred)
 
-LFC-2E1-S2: universal core freeze (G0..G8 per Step)
+LFC-2E1-S2 (next, separate cycle): burn-down of the 12 legacy keys
   P0 first (in order):
     - core.error      (registry StepDefinition + capability; G0 baseline → G8 CERTIFIED)
     - core.sleep      (registry StepDefinition; G0 → G8)
@@ -269,6 +273,10 @@ LFC-2E1-S2: universal core freeze (G0..G8 per Step)
     G6 architecture fitness
     G7 StepContractSuite (16/17 rows)
     G8 CERTIFIED (per-Step state in burn-down ledger)
+  Law: registry implementation + legacy fallback != completion;
+       registry implementation + parity + legacy unreachable
+       + legacy removed + certification = closure.
+  DO NOT migrate the 12 in a single commit/ciclo; group by semantic family.
 ```
 
 ```text

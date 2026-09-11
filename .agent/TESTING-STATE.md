@@ -483,8 +483,70 @@ Rounds 1-10 (E1..E49):
    1 SKIPPED (E4: external plugin — known CLI limitation)
    1 DEDICATED_FITNESS_GAP (E48: missing S3Sh G4 fitness; NOT a cert gap)
 
-Trunk: main == origin/main == f3cb502c
-
-S1 user-authorized 2026-09-11T09:12:31Z; scope: core.echo recording only.
-S2 scope: 12 legacy keys (none burned down yet); derive from LEGACY_PLUGIN_IDS.
+Trunk: main == origin/main == ca550da0 (after pre-S1 reconciliation)
 ```
+
+## LFC-2E1-S1 cycle — `core.echo` CERTIFIED + LEGACY_REMOVED recording
+
+**Cycle branch:** `cycle/lfc2-e1-s1-echo-legacy-removed`
+**Cycle commit:** `ad4867f1`
+**Status:** CLOSED (recording/closure only, NO production code change)
+**Date:** 2026-09-11T09:17Z
+
+### Mechanical proofs (fresh on `ca550da0`)
+
+| Layer | Suite | Tests | Result | log sha256 |
+|---|---|---|---|---|
+| G4 architecture fitness | `S3EchoLegacyRemovedFitnessTest` | 7 | 7/7 GREEN | `78b4650b141c2d2985eed9f69f659760eeb76975a6b62497e434db9d28bb298b` |
+| G7 StepContractSuite | `EchoStepContractSuiteTest` | 17 | 17/17 GREEN | `9ea8f96effbe1cfe9460af099b1c1b1b98eb1775e22ebaa8286124cf7e3f0f7f` |
+| Echo test suite (5 files) | LegacyEchoUnreachable + EchoDurable + UatStep002 + CoreEchoSeam + EchoStepContractSuite | 31 | 31/31 GREEN | `82554dd709c420e95ef5e206b4b7b52bf006ab4a638333d893c1cec107d3a1eb` |
+| Real execution parity | `examples/01-hello.pipeline.kts` | — | SUCCESS, 9 events, 1 EchoOutputCaptured | `a1d5ee77f438719fa3febc8ca54a8a702c10f6c46394b464d18ae6bc67a1d4fa` |
+
+### Final statement (machine-derived)
+
+```text
+core.echo:
+  delivery:    CORE
+  execution:   REGISTRY_PRIMARY
+  legacy:      REMOVED
+  certification: CERTIFIED
+
+proof:
+  - G4 architecture fitness (S3EchoLegacyRemovedFitnessTest, 7/7 GREEN)
+  - G7 StepContractSuite (EchoStepContractSuiteTest, 17/17 GREEN)
+  - Echo test suite (5 files, 31/31 GREEN)
+  - Real execution parity (examples/01-hello.pipeline.kts, SUCCESS)
+```
+
+### Deliverables (commit `ad4867f1`)
+
+```text
++ openspec/changes/lfc2-e1-s1-echo-legacy-removed/proposal.md
++ openspec/changes/lfc2-e1-s1-echo-legacy-removed/design.md
++ openspec/changes/lfc2-e1-s1-echo-legacy-removed/tasks.md
++ docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md
++ docs/v2/07-uat/CORE_ECHO_G4_FITNESS_RECEIPT.md
+M docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md (core.echo row updated)
+M docs/v2/07-uat/LFC2E0_CLOSURE_RECEIPT.md (section 9 updated)
+```
+
+### Forbidden changes (NOT in S1)
+
+```text
+- any production code change
+- any test refixture (the 31 echo tests were already GREEN pre-S1)
+- core.sh (already CERTIFIED + LEGACY_REMOVED per LB-02 S6.8)
+- the 12 legacy keys (LFC-2E1-S2 scope)
+- S3ShLegacyRemovedFitnessTest creation (DEDICATED_FITNESS_GAP, deferred)
+```
+
+### S2 scope (next cycle, separate branch, NOT this PR)
+
+Burn-down of 12 legacy keys:
+- Derive from `LEGACY_PLUGIN_IDS` (12 members demonstrated)
+- Group by semantic family: P0 (error/sleep/pwd/isUnix) → P1 (deleteDir/cleanWs/waitUntil) → P2 (milestone/load/archiveArtifacts/emit.event/writeFile)
+- Do NOT migrate the 12 in a single commit/ciclo
+- Law: registry implementation + parity + legacy unreachable + legacy removed + certification = closure
+- `core.sh` does NOT belong to S2 scope (already CERTIFIED + LEGACY_REMOVED)
+
+S1 still requires explicit user direction to merge the cycle branch to main.

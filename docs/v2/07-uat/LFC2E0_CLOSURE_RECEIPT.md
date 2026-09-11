@@ -281,37 +281,56 @@ Receipt amended at 2026-09-11 08:25 UTC (post-merge acceptance evidence).
 
 ## 9. Next cycle: LFC-2E1-S1 (`lfc2-e1-s1-echo-legacy-removed`)
 
+**CLOSED 2026-09-11T09:17Z, cycle branch `cycle/lfc2-e1-s1-echo-legacy-removed` @ `ad4867f1`.**
+
 Goal: convert `core.echo` into the **oracle** for the burn-down pattern:
 
 ```text
 CERTIFIED + LEGACY_REMOVED
 ```
 
-Required evidence:
+Outcome (recording/closure only, NO production code change):
 
 ```text
-typed DSL
- -> canonical invocation
- -> StepRegistry
- -> StepDefinition
- -> typed codec
- -> capability admission
- -> handler
- -> CommonExecutionBoundary
- -> durable protocol
- -> typed outcome/events
+core.echo:
+  delivery:    CORE
+  execution:   REGISTRY_PRIMARY
+  legacy:      REMOVED
+  certification: CERTIFIED
 
-legacy executable authorities = 0
+proof (machine-derived):
+  - G4 architecture fitness: S3EchoLegacyRemovedFitnessTest 7/7 GREEN
+    log sha256: 78b4650b141c2d2985eed9f69f659760eeb76975a6b62497e434db9d28bb298b
+  - G7 StepContractSuite:    EchoStepContractSuiteTest 17/17 GREEN
+    log sha256: 9ea8f96effbe1cfe9460af099b1c1b1b98eb1775e22ebaa8286124cf7e3f0f7f
+  - Echo test suite (5):     31/31 GREEN
+    log sha256: 82554dd709c420e95ef5e206b4b7b52bf006ab4a638333d893c1cec107d3a1eb
+  - Real execution parity:   examples/01-hello.pipeline.kts SUCCESS (9 events, 1 EchoOutputCaptured)
+    log sha256: a1d5ee77f438719fa3febc8ca54a8a702c10f6c46394b464d18ae6bc67a1d4fa
 ```
 
-S1 must produce:
+Deliverables (cycle commit `ad4867f1`):
+- `openspec/changes/lfc2-e1-s1-echo-legacy-removed/{proposal,design,tasks}.md`
+- `docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md` (formal CERTIFIED + LEGACY_REMOVED receipt)
+- `docs/v2/07-uat/CORE_ECHO_G4_FITNESS_RECEIPT.md` (G4 architecture fitness receipt)
+- `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` (core.echo row updated)
 
-- 5 refixture tests GREEN (preserve the laws they protected, migrate to canonical path)
-- `S3EchoLegacyRemovedFitnessTest` GREEN (structural, not grep-fragile)
-- `StepContractSuite` GREEN
-- relevant module suites GREEN
-- Event Harness relevant contract GREEN
-- no new baseline widening, no legacy executable path
+**NOT touched in S1** (per user directive):
+- Any production code (registry, dispatcher, decoder, metadata)
+- The 31 echo tests (all already GREEN pre-S1; no refixture needed)
+- `core.sh` (already CERTIFIED + LEGACY_REMOVED per LB-02 S6.8)
+- The 12 legacy keys (LFC-2E1-S2 scope)
 
-**No `core.echo` burn-down is complete while legacy execution is reachable.**
-S2 burn-down of 12 legacy keys may only start after S1 closes.
+**DEDICATED_FITNESS_GAP acknowledged**:
+- `S3ShLegacyRemovedFitnessTest` does not exist (no G4 equivalent for sh)
+- This is NOT a CERTIFICATION_GAP — `core.sh` already has A5 proof +
+  StepContractSuite + canonical-core gate + architecture fitness
+- Symmetry with echo can be added later if desired; does NOT block S1 or S2
+
+S2 burn-down of 12 legacy keys (next cycle, separate branch):
+- Derive from `LEGACY_PLUGIN_IDS` (12 members demonstrated)
+- Group by semantic family (P0/P1/P2 per LFC-2E0 inventory)
+- Do NOT migrate the 12 in a single commit/ciclo
+- Law: registry implementation + parity + legacy unreachable +
+  legacy removed + certification = closure
+- `core.sh` does NOT belong to S2 scope (already CERTIFIED + LEGACY_REMOVED)

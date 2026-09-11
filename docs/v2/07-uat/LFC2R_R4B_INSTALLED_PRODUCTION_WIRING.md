@@ -1,7 +1,7 @@
 # LFC-2R / R4B — Installed Production Wiring (Scripted Frontend, Canonical Backend)
 
-Status: CLOSED (pending round-gate + acceptance matrix evidence, see below)
-Commit: `9761ddf0` (wiring) on `cycle/lfc2-e1-s2-legacy-catalog-burn-down`
+Status: CLOSED
+Commits: `9761ddf0` (wiring), `5456a2eb` (frontend-selection scope fix)
 Authority: R4A decision (`LFC2R_R4A_PRODUCTION_WIRING_ARCHITECTURE.md`),
 `PRODUCTION_WIRING_MODEL = SCRIPTED_FRONTEND_CANONICAL_BACKEND`, identity law R4A-L1.
 
@@ -27,11 +27,20 @@ R4B only. No `core.isUnix` authority flip, no legacy removal, no `pwd` /
 2. `Main.kt` frontend FORM selection (R4A law: Main may choose the frontend
    representation, never the durable authority):
    - `KotlinScriptedSourceMapper` (R3, PSI-backed) maps the source.
-   - **isUnix-only filter**: only `ScriptedCallKind.IsUnix` calls route the
-     source to the scripted frontend in this slice. Pure-`sh` sources stay on
-     the eager PipelineSpec path (found via UatLocal002 regression: the mapper
-     also detects generator-level `sh`, which would have flipped every fixture
-     to the scripted path out of scope).
+   - **Generator-level isUnix-only gate**: a source routes to the scripted
+     frontend ONLY when (a) the mapped calls include `ScriptedCallKind.IsUnix`
+     and (b) the source is generator-level (no `pipeline {` DSL structure).
+     Two regressions caught and fixed by UAT evidence:
+     - UatLocal002: the R3 mapper also detects generator-level `sh(...)`;
+       an `sh`-only fixture would be flipped to the scripted path out of
+       scope. Fixed by filtering to IsUnix only.
+     - UatLocal011/SC-011-10: `isUnix()` inside a `stage {}` body is rewritten
+       by the lowering into a suspend call inside the eager StageScope lambda,
+       which cannot compile ("Suspension functions can only be called within
+       coroutine body"), exit 2. Fixed by the generator-level gate:
+       `pipeline {}`-structured sources keep the eager PipelineSpec frontend
+       this slice (per R4B GO: no DSL-body migration). Both proven base-green
+       at `50ffb299` before the fix and green after.
    - Lowered source compiled WITHOUT the eager `RuntimeConfig` injection
      (runtime-returned platform values only, DSL_RUNTIME_RETURN_GAP closure).
    - Failure at lowering / compile / entry-point extraction → fail closed,

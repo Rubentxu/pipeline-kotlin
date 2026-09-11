@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 
 class CanonicalCoreStepDecoderTest {
     @Test
-    fun `decodes a versioned sleep node into its typed durable command`() {
+    fun `core sleep is no longer legacy decodable (registry-routed since S2-A2 G5)`() {
         val node = OpaqueStepNode(
             id = StepId("build/sleep-0"),
             pluginStepId = PluginStepId("core.sleep"),
@@ -20,32 +20,14 @@ class CanonicalCoreStepDecoderTest {
             ),
         )
 
-        assertEquals(
-            CanonicalCoreStepCommand.Pwd(),
-            CanonicalCoreStepDecoder.decode(node),
-        )
+        // Fail-closed: unknown legacy plugin ids MUST be rejected, never re-routed.
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepDecoder.decode(node)
+        }
     }
 
-    @Test
-    fun `decodes writeFile plugin id into WriteFile typed command`() {
-        val node = OpaqueStepNode(
-            id = StepId("build/writefile-0"),
-            pluginStepId = PluginStepId("core.file.writeFile"),
-            payload = VersionedStepPayload(
-                "dsl-v1",
-                """{"kind":"writeFile","file":"output.txt","text":"hello world","encoding":"UTF-8"}""",
-            ),
-        )
-
-        assertEquals(
-            CanonicalCoreStepCommand.WriteFile(
-                file = "output.txt",
-                text = "hello world",
-                encoding = "UTF-8",
-            ),
-            CanonicalCoreStepDecoder.decode(node),
-        )
-    }
+    // core.file.writeFile decoder branch removed at LFC-2E1-S2-A3/G5 (LEGACY_REMOVED);
+    // writeFile now decodes via CoreWriteFileStep codec in the registry path.
 
     @Test
     fun `decodes emitEvent plugin id into EmitEvent typed command`() {

@@ -4,8 +4,21 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.events.EventSink
 import java.time.Instant
 import java.util.UUID
+
+/**
+ * Runtime dependencies for canonical emit-event dispatch.
+ *
+ * @param runId The run identifier
+ * @param eventSink Event sink for appending domain events
+ */
+data class CanonicalEmitEventDispatchContext(
+    val runId: String,
+    val stageName: String,
+    val eventSink: EventSink,
+)
 
 /**
  * LFC1-008 whitelist of known [DomainEvent] kinds for [core.emit.event].

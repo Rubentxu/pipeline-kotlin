@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 10 entries (WriteFile, EmitEvent, Milestone,
+ * - sealedSubclasses has exactly 9 entries (EmitEvent, Milestone,
  *   DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test
  *   via CoreErrorStep).
  *   LFC-2E1-S2-A2 / G5 removed Sleep (core.sleep migrated to the open StepRegistry
  *   via CoreSleepStep; CERTIFIED at S2-A2/G8).
+ *   LFC-2E1-S2-A3 / G5 removed WriteFile (core.file.writeFile migrated to the open
+ *   StepRegistry via CoreWriteFileStep).
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -26,9 +28,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 10 entries`() {
+    fun `sealedSubclasses has exactly 9 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(10, subclasses.size, "Expected exactly 10 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(9, subclasses.size, "Expected exactly 9 sealed subtypes. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -51,14 +53,6 @@ class CanonicalCoreStepCommandRegistryTest {
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
-    }
-
-    @Test
-    fun `WriteFile has correct pluginId and defaultMetadata`() {
-        val writeInstance = CanonicalCoreStepCommand.WriteFile("file.txt", "content", "utf-8")
-        assertEquals("core.file.writeFile", writeInstance.pluginId)
-        assertEquals(setOf(Effect.WRITES_WORKSPACE), writeInstance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, writeInstance.defaultMetadata.replayPolicy)
     }
 
     @Test

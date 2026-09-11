@@ -82,15 +82,6 @@ sealed interface CanonicalCoreStepCommand {
         fun pluginIdToShortType(pluginId: String): String = CanonicalCoreStepMetadata.shortType(pluginId)
     }
 
-    /** LFC1-007: typed-command for atomic file writes via the canonical bridge. */
-    data class WriteFile(
-        val file: String,
-        val text: String,
-        val encoding: String,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.file.writeFile"
-    }
-
     /** LFC1-007: first-class workflow-event emitter for shell-rewrite path. */
     data class EmitEvent(
         val kind: String,
@@ -194,7 +185,6 @@ sealed interface CanonicalCoreStepCommand {
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
-    private const val WRITE_FILE_PLUGIN_ID = "core.file.writeFile"
     private const val EMIT_EVENT_PLUGIN_ID = "core.emit.event"
     private const val MILESTONE_PLUGIN_ID = "core.milestone"
     private const val DELETE_DIR_PLUGIN_ID = "core.deleteDir"
@@ -211,16 +201,6 @@ object CanonicalCoreStepDecoder {
         }
         val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject
         return when (node.pluginStepId.value) {
-            WRITE_FILE_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "writeFile") {
-                    "Payload kind must be 'writeFile' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.WriteFile(
-                    file = payload.requiredString("file"),
-                    text = payload.requiredString("text"),
-                    encoding = payload.requiredString("encoding"),
-                )
-            }
             EMIT_EVENT_PLUGIN_ID -> {
                 CanonicalCoreStepCommand.EmitEvent(
                     kind = payload.requiredString("kind"),

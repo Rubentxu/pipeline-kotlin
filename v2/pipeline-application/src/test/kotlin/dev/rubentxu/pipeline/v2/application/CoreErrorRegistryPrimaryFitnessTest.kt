@@ -120,6 +120,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // S2-A5 / G4 (2026-09-12): "core.isUnix" also flipped to registry; 8 -> 7 residual.
     // The historical S2-A1/G5 snapshot above is preserved verbatim for traceability;
     // the post-S2-A5/G4 snapshot is asserted below.
+    @Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A6-G4 — 6 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test
     fun `LEGACY_PLUGIN_IDS post-S2-A5-G4 — 7 residual legacy keys remain`() {
         val expected = setOf(
@@ -137,6 +138,24 @@ class CoreErrorRegistryPrimaryFitnessTest {
             "LEGACY_PLUGIN_IDS MUST be exactly the 7 residual legacy keys post-S2-A5/G4",
         )
         assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    @Test
+    fun `LEGACY_PLUGIN_IDS post-S2-A6-G4 — 6 residual legacy keys remain`() {
+        val expected = setOf(
+            "core.milestone",
+            "core.deleteDir",
+            "core.cleanWs",
+            "core.load",
+            "core.waitUntil",
+            "core.archiveArtifacts",
+        )
+        assertEquals(
+            expected,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS MUST be exactly the 6 residual legacy keys post-S2-A6/G4",
+        )
+        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test

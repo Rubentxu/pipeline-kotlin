@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -278,6 +279,7 @@ class CoreIsUnixStepUnitTest {
         )
     }
 
+    @Disabled("Historical S2-A5/G5 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key counter is superseded by `counters drop to 6-6-7 post-S2-A6-G4` below. Preserved verbatim for traceability.")
     @Test
     fun `counters drop to 7-7-7 and legacy dispatcher source is physically removed`() {
         // G5 (LEGACY_REMOVED) closes the burn-down for core.isUnix:
@@ -292,6 +294,25 @@ class CoreIsUnixStepUnitTest {
         }
         // Source-level absence proof — the dispatcher type must NOT exist on the classpath.
         // (Compilation of this file would have failed in L0 if CanonicalIsUnixNodeDispatcher were still on disk.)
+    }
+
+    @Test
+    fun `counters drop to 6-6-7 post-S2-A6-G4 and legacy dispatcher source is physically removed`() {
+        // S2-A6 / G4 (2026-09-12): "core.pwd" flipped to REGISTRY_PRIMARY; counter 7 -> 6.
+        // The legacy metadata row for "core.pwd" remains (LEGACY_UNREACHABLE, not REMOVED).
+        // The canonical-core counter is 6-6-7: 6 executable IDs in LEGACY_PLUGIN_IDS,
+        // 6 metadata rows (core.pwd row preserved until G5), 7 dispatcher sources (no
+        // dispatcher has been physically deleted by this slice).
+        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue("core.isUnix" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.pwd" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // The legacy metadata authority still answers for "core.pwd" (LEGACY_UNREACHABLE):
+        val pwdMeta = dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.pwd")
+        assertEquals(setOf(dev.rubentxu.pipeline.v2.domain.durable.Effect.READ_ONLY), pwdMeta.effects.toSet())
+        // The legacy metadata authority no longer answers for "core.isUnix" (G5 REMOVED):
+        assertThrows(IllegalArgumentException::class.java) {
+            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.isUnix")
+        }
     }
 
     @Test

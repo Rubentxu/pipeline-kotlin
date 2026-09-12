@@ -80,6 +80,7 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     // S2-A5 / G4 (2026-09-12): "core.isUnix" also flipped to registry. The historical
     // snapshot above is preserved verbatim for traceability; the post-S2-A5/G4 snapshot
     // is asserted in `core.isUnix registry flip — 7 residual keys remain` below.
+    @Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `core pwd registry flip — 6 residual keys remain post-S2-A6-G4` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `core isUnix registry flip — 7 residual legacy keys remain post-S2-A5-G4`() {
         assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -90,6 +91,19 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
             ),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "post-S2-A5/G4: 7 residual legacy keys; core.isUnix removed (REGISTRY_PRIMARY flip)",
+        )
+    }
+
+    @Test
+    fun `core pwd registry flip — 6 residual legacy keys remain post-S2-A6-G4`() {
+        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(
+            setOf(
+                "core.milestone", "core.deleteDir", "core.cleanWs", "core.load",
+                "core.waitUntil", "core.archiveArtifacts",
+            ),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-S2-A6/G4: 6 residual legacy keys; core.pwd removed (REGISTRY_PRIMARY flip)",
         )
     }
 

@@ -28,11 +28,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -87,6 +89,7 @@ class CorePwdTmpStepUnitTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G3T snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the LegacyCore assertion is superseded by `core pwd flip — structural family resolves to Registry post-flip` in CorePwdStepUnitTest. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `structural family - core pwd stays LegacyCore (post-G1 invariant unchanged)`() {
         assertTrue("core.pwd" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
@@ -169,6 +172,7 @@ class CorePwdTmpStepUnitTest {
     // Counter invariant — S2-A5/G8 frozen state must NOT widen
     // ------------------------------------------------------------------
 
+    @Disabled("Historical S2-A6/G3T snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key LegacyCore counter is superseded by `core pwd flip — 6 residual keys remain post-S2-A6-G4` in CorePwdStepUnitTest. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `counters - legacy 7 7 7 unchanged, core pwd tmp is a NEW registry entry, NOT a legacy entry`() {
         assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)

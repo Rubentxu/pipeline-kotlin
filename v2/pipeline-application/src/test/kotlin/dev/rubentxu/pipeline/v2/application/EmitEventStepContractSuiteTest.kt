@@ -47,6 +47,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -567,6 +568,7 @@ class EmitEventStepContractSuiteTest {
     // ===== 12. no legacy resurrection =====
 
     @Test
+    @Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key count is superseded by `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4` below. Preserved verbatim for traceability.")
     fun `no legacy resurrection — irreversible G5 state holds from inside the contract suite`() {
         val decoderRaw = Files.readString(
             java.nio.file.Paths.get(
@@ -591,6 +593,36 @@ class EmitEventStepContractSuiteTest {
             7,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
             "counters stay 7/7/7 (post-S2-A4/G5 + S2-A5/G5: isUnix physically removed) — a contract-suite fix must not resurrect legacy",
+        )
+    }
+
+    @Test
+    fun `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4`() {
+        val decoderRaw = Files.readString(
+            java.nio.file.Paths.get(
+                "src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt",
+            ),
+        )
+        // Strip comments: historical kdoc MAY mention the removed forms; CODE must not.
+        val decoderSource = Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
+            Regex("//[^\\n]*").replace(decoderRaw, ""),
+            "",
+        )
+        assertFalse(decoderSource.contains("data class EmitEvent"))
+        assertFalse(decoderSource.contains("EMIT_EVENT_PLUGIN_ID"))
+        assertFalse(
+            Files.exists(
+                java.nio.file.Paths.get(
+                    "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt",
+                ),
+            ),
+        )
+        // S2-A6 / G4 (2026-09-12): "core.pwd" flipped to REGISTRY_PRIMARY. The historical
+        // S2-A5/G4 snapshot above is preserved verbatim; the counter is updated here.
+        assertEquals(
+            6,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "counters stay 6/6/6 (post-S2-A4/G5 + S2-A5/G4 + S2-A6/G4: isUnix + pwd physically removed in code; counter 7 -> 6) — a contract-suite fix must not resurrect legacy",
         )
     }
 }

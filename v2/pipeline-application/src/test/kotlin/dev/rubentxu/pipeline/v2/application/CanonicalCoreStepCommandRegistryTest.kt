@@ -43,13 +43,23 @@ class CanonicalCoreStepCommandRegistryTest {
             // S2-A5 / G5 (2026-09-12): "core.isUnix" legacy subtype/decoder/dispatcher/metadata
             // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
             // open registry (CoreIsUnixStep.descriptor via RegistryStepMetadataResolver).
+            // S2-A6 / G4 (2026-09-12): "core.pwd" removed — REGISTRY_PRIMARY flip.
+            // Production routing authority is now CorePwdStep.definition via the open
+            // registry (CoreStepRegistryFactory). Legacy `core.pwd` source remains
+            // physically present until G5 (LEGACY_UNREACHABLE, not LEGACY_REMOVED):
+            //   - CanonicalCoreStepCommand.Pwd subtype
+            //   - PWD_PLUGIN_ID decoder branch (kind="pwd")
+            //   - CanonicalPwdNodeDispatcher.kt + CanonicalNodeDispatcher pwd branch
+            //   - CanonicalCoreStepMetadata["core.pwd"] row
+            // The S2-A6/G3R slice already redirects the DSL `pwd(tmp=false)` through the
+            // open registry; this G4 flip removes the legacy-membership fallback so the
+            // production decoder routes through CorePwdStep.definition.
             "core.milestone",
             // P1a — workflow-control (v0.33.0)
             "core.deleteDir",
             "core.cleanWs",
             "core.load",
             // P1b — utility (v0.33.0)
-            "core.pwd",
             "core.waitUntil",
             // P2 — archiveArtifacts (v0.33.1)
             "core.archiveArtifacts",

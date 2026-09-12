@@ -18,7 +18,9 @@ import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -230,6 +232,7 @@ class CorePwdStepUnitTest {
     // Structural family classification (G1 invariant: LEGACY membership wins)
     // ------------------------------------------------------------------
 
+    @Disabled("Historical S2-A6/G1 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the LegacyCore assertion is superseded by `core pwd registry flip — structural family resolves to Registry post-flip` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `structural family - core pwd stays LegacyCore while in LEGACY_PLUGIN_IDS (no authority flip at G1)`() {
         // G1 invariant: registration alone MUST NOT change production authority.
@@ -247,6 +250,7 @@ class CorePwdStepUnitTest {
     // Counter invariant — S2-A5/G8 frozen state must NOT widen at G1
     // ------------------------------------------------------------------
 
+    @Disabled("Historical S2-A6/G1 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key LegacyCore counter is superseded by `core pwd registry flip — 6 residual keys remain post-S2-A6-G4` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `counters - 7 7 7 unchanged by S2-A6 G1 registration only`() {
         // G1 invariant: registration alone MUST NOT widen the burn-down counters. The
@@ -257,6 +261,43 @@ class CorePwdStepUnitTest {
         // The legacy metadata authority STILL answers for "core.pwd" (post-G1, pre-G4):
         val meta = CanonicalCoreStepMetadata.metadata("core.pwd")
         assertEquals(setOf(Effect.READ_ONLY), meta.effects.toSet())
+    }
+
+    // ------------------------------------------------------------------
+    // S2-A6 / G4 post-flip snapshot
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `core pwd registry flip - structural family resolves to Registry post-flip`() {
+        // S2-A6 / G4 (2026-09-12): core.pwd removed from LEGACY_PLUGIN_IDS.
+        // Production routing authority is now CorePwdStep.definition via the open
+        // registry. StructuralFamilyResolver classifies the key as Registry.
+        assertFalse("core.pwd" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        val registry = CoreStepRegistryFactory.registry()
+        assertEquals(
+            StructuralStepFamily.Registry,
+            StructuralFamilyResolver.classify(CorePwdStep.KEY, registry),
+        )
+    }
+
+    @Test
+    fun `core pwd registry flip - 6 residual keys remain post-S2-A6-G4`() {
+        // S2-A6 / G4 (2026-09-12): core.pwd removed from LEGACY_PLUGIN_IDS.
+        // The legacy metadata authority STILL answers for "core.pwd" because the
+        // physical row in CanonicalCoreStepMetadata is preserved until G5
+        // (LEGACY_UNREACHABLE). RegistryStepMetadataResolver reads metadata
+        // exclusively from CorePwdStep.descriptor; the legacy row is dead code
+        // on the production path but type-loadable for parity tests.
+        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertFalse("core.pwd" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // Legacy metadata row is still queryable (LEGACY_UNREACHABLE; not LEGACY_REMOVED):
+        val legacyMeta = CanonicalCoreStepMetadata.metadata("core.pwd")
+        assertEquals(setOf(Effect.READ_ONLY), legacyMeta.effects.toSet())
+        // Production metadata reads from the registry descriptor, which must match:
+        val registry = CoreStepRegistryFactory.registry()
+        val regMeta = RegistryStepMetadataResolver.composite(registry).resolve(CorePwdStep.KEY)!!
+        assertEquals(legacyMeta.effects, regMeta.effects)
+        assertEquals(legacyMeta.replayPolicy, regMeta.replayPolicy)
     }
 
     // ------------------------------------------------------------------

@@ -42,9 +42,7 @@ class CoreSleepRegistryPrimaryFitnessTest {
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
     }
 
-    // S2-A5 / G4 (2026-09-12): "core.isUnix" also flipped to registry; 8 -> 7 residual.
-    // The historical S2-A2/G4 snapshot above is preserved verbatim for traceability;
-    // the post-S2-A5/G4 snapshot is asserted below.
+    @Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `registry post-S2-A6-G4 — 6 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test fun `registry post-S2-A5-G4 — 7 residual legacy keys remain`() {
         assertEquals(setOf(
             "core.milestone", "core.deleteDir", "core.cleanWs",
@@ -53,14 +51,33 @@ class CoreSleepRegistryPrimaryFitnessTest {
         assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
+    // S2-A6 / G4 (2026-09-12): "core.pwd" also flipped to registry; 7 -> 6 residual.
+    // The historical S2-A5/G4 snapshot above is preserved verbatim for traceability;
+    // the post-S2-A6/G4 snapshot is asserted below.
+    @Test fun `registry post-S2-A6-G4 — 6 residual legacy keys remain`() {
+        assertEquals(setOf(
+            "core.milestone", "core.deleteDir", "core.cleanWs",
+            "core.load", "core.waitUntil", "core.archiveArtifacts",
+        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")
     @Test fun `G4 transitional snapshot retained eleven legacy metadata rows`() {
         assertEquals(11, CanonicalCoreStepMetadata.pluginIds.size)
     }
 
+    @Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) registered core.pwd (G1 candidate since S2-A6/G1) and core.pwd.tmp; the 7-key registry shape is superseded by `production registry contains exactly the registered core steps (post-S2-A6-G4)` below. Preserved verbatim for traceability.")
     @Test fun `production registry contains exactly the registered core steps (echo sh error sleep writeFile emitEvent + isUnix S2-A5 G1 candidate)`() {
         assertEquals(
             setOf("core.echo", "core.sh", "core.error", "core.sleep", "core.file.writeFile", "core.emit.event", "core.isUnix"),
+            CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
+        )
+    }
+
+    @Test fun `production registry contains exactly the registered core steps (post-S2-A6-G4)`() {
+        assertEquals(
+            setOf("core.echo", "core.sh", "core.error", "core.sleep", "core.file.writeFile", "core.emit.event", "core.isUnix", "core.pwd", "core.pwd.tmp"),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )
     }

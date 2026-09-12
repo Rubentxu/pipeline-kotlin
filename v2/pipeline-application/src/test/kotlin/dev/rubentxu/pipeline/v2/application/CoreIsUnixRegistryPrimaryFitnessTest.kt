@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -66,6 +67,7 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
         )
     }
 
+    @Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `G4 flip - core dot pwd counter check` in CorePwdRegistryPrimaryFitnessTest. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `G4 flip — core dot isUnix is absent from LEGACY_PLUGIN_IDS`() {
         assertTrue(
@@ -76,6 +78,19 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
             7,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
             "G4 counter: LEGACY_PLUGIN_IDS converges 8 (post-S2-A4) -> 7 (post-S2-A5/G4)",
+        )
+    }
+
+    @Test
+    fun `G4 flip - core dot isUnix stays absent from LEGACY_PLUGIN_IDS post-S2-A6-G4`() {
+        assertTrue(
+            key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.isUnix MUST remain absent from LEGACY_PLUGIN_IDS post-S2-A6/G4 flip of core.pwd",
+        )
+        assertEquals(
+            6,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "G4 counter: LEGACY_PLUGIN_IDS converges 7 (post-S2-A5/G4) -> 6 (post-S2-A6/G4)",
         )
     }
 

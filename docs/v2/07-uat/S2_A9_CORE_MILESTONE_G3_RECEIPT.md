@@ -11,23 +11,27 @@
 
 ## 1. Purpose
 
-G3 certifies `CoreMilestoneStep` end-to-end through the registry-driven, open-world
-Step seam using `CoreMilestoneStepContractSuiteTest` (15 mandatory rows + 4 milestone-specific
-rows = 19 total tests). This proves the registration contract is complete: identity,
+G3 proves `CoreMilestoneStep` end-to-end through the registry-driven, open-world
+Step seam using `CoreMilestoneStepContractSuiteTest` (23 total tests, incl. 3
+milestone wiring rows). This proves the registration contract is complete: identity,
 codec, envelope, dispatch, capability admission, durable identity (fresh + replay),
 observability, missing capability, and a real pipeline scenario.
 
 G3 adds:
-- `CoreMilestoneStepContractSuiteTest.kt` — 19 tests
-- State-seam fix: handler delegates to `MilestoneStateStore` via capability (no mutable handler state)
+- `CoreMilestoneStepContractSuiteTest.kt` — 23 tests (incl. shared-store / isolated-coordinators / default-store wiring rows)
+- State-seam fix: handler delegates to run-scoped in-memory `MilestoneStateStore` via capability (no mutable handler state)
 
 G3 does NOT:
-- Change LEGACY_PLUGIN_IDS (milestone stays legacy-executed until G4)
+- Change LEGACY_PLUGIN_IDS (milestone stays legacy-executed until its G4 turn)
 - Modify legacy dispatcher or decoder
+- Set CERTIFIED (only G8 sets CERTIFIED)
 
 ## 2. Test results
 
-### 2.1 CoreMilestoneStepContractSuiteTest (registry path — NEW)
+### 2.1 CoreMilestoneStepContractSuiteTest (registry path — NEW; pre-wiring HISTORICAL snapshot below)
+
+> HISTORICAL: this subsection records the FIRST suite run (19 tests) before the
+> state-seam/wiring work. The FINAL counts are in §6 (23/0/0) and take precedence.
 
 ```text
 $ ./v2/gradlew -p v2 :pipeline-application:test --tests 'CoreMilestoneStepContractSuiteTest'
@@ -92,16 +96,23 @@ registry entries              = 10   (unchanged — includes milestone)
 core.milestone:
   execution     = LegacyCore (CanonicalMilestoneNodeDispatcher)
   registry      = present (CoreMilestoneStep.registered in CoreStepRegistryFactory)
-  certification = G3 IMPLEMENTED_UNCERTIFIED
-  AUTHORITY_FLIP_READY = false (pending G4 REGISTRY_PRIMARY)
+  certification = G3 IMPLEMENTED_UNCERTIFIED (FINAL; AUTHORITY_FLIP_READY=true — see §6)
+  AUTHORITY_FLIP_READY = true (final; see §6 freeze block)
   characterization evidence = THIS RECEIPT (revised; final evidence in §6)
 ```
 
-## 5. State machine transition
+## 5. State machine transition (HISTORICAL → FINAL)
 
 ```
-core.milestone: G2 (IMPLEMENTED_UNCERTIFIED)
-  → G3 (IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false)
+HISTORICAL (pre state-seam):
+  core.milestone: G2 (IMPLEMENTED_UNCERTIFIED)
+    → G3 (IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false)
+
+FINAL (post state-seam + wiring + decision A):
+  core.milestone: G3 CLOSED
+    status       = IMPLEMENTED_UNCERTIFIED
+    AUTHORITY_FLIP_READY = true
+    CERTIFIED    = false (only G8 sets CERTIFIED)
 ```
 
 **NOTA IMPORTANTE**: Este receipt declara IMPLEMENTED_UNCERTIFIED, NO CERTIFIED.
@@ -151,21 +162,32 @@ No changes to LEGACY_PLUGIN_IDS, legacy decoder, legacy dispatcher, or legacy me
 
 ## 8. Stop condition
 
-G3 is STOP. Per the batch manifest:
+G3 was STOP per the batch manifest. HISTORICAL manifest line (superseded):
 
-> stop_after: G3 → estado IMPLEMENTED_UNCERTIFIED y STOP (AUTHORITY_FLIP_READY=false pendiente del fix de estado)
+> HISTORICAL: stop_after: G3 → estado IMPLEMENTED_UNCERTIFIED y STOP (AUTHORITY_FLIP_READY=false pendiente del fix de estado)
+>
+> The state fix landed in this same branch (state-seam + wiring + decision A), so
+> the blocker no longer exists. FINAL status is the §6 freeze block.
 
-`core.milestone` is now:
+`core.milestone` FINAL state:
 - G1: CoreMilestoneStep implemented and registered (IMPLEMENTED_UNCERTIFIED)
 - G2: Corpus migrated (19 tests green)
 - G3: Contract suite passed (23 tests green, IMPLEMENTED_UNCERTIFIED)
-- state seam: run-scoped MilestoneStateStore wired at coordinator level (global mutable REMOVED — old PROBLEMA 1 resolved)
+- state seam: run-scoped in-memory MilestoneStateStore wired at coordinator level (global mutable REMOVED — old PROBLEMA 1 resolved)
 
 **AUTHORITY_FLIP_READY = true** (third review) — no technical blocker remains.
-Gate plan when its turn arrives in the merge queue:
-- G4 = REGISTRY_PRIMARY → counters 5-then-4 pattern: milestone G4 → 5/6/6 (only LEGACY_PLUGIN_IDS shrinks)
-- G5 = LEGACY_REMOVED → 5/5/5
-- NO CERTIFIED before G8.
+
+Gate law (generic; exact counters depend on queue position):
+```text
+G4: N/N/N → (N-1)/N/N     (only LEGACY_PLUGIN_IDS shrinks)
+G5: (N-1)/N/N → (N-1)/(N-1)/(N-1)
+```
+Planned after deleteDir (deleteDir G4→5/6/6, G5→5/5/5):
+```text
+milestone G4 → 4/5/5
+milestone G5 → 4/4/4
+```
+NO CERTIFIED before G8.
 
 ## 9. Reviewer-requested corrections (2026-09-12)
 
@@ -176,8 +198,8 @@ Correcciones solicitadas por el reviewer del PR #26:
 | LEGACY_PLUGIN_IDS counter | 12 | 6 |
 | CanonicalCoreStepMetadata rows | 12 | 6 |
 | per-Step dispatchers | 12 | 6 |
-| Status | "G3 CERTIFIED, READY_FOR_AUTHORITY_FLIP" | "G3 IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false" |
+| Status | "G3 CERTIFIED, READY_FOR_AUTHORITY_FLIP" | "G3 IMPLEMENTED_UNCERTIFIED" (HISTORICAL mid-review; final = IMPLEMENTED_UNCERTIFIED + AUTHORITY_FLIP_READY=true per §6) |
 
 ---
-**G3 CLOSED — core.milestone IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false.**
-**PROHIBIDO: ningún CERTIFIED antes de G8/LEGACY_REMOVED.**
+**G3 CLOSED — core.milestone IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=true, CERTIFIED=false.**
+**PROHIBIDO: ningún CERTIFIED antes de G8.**

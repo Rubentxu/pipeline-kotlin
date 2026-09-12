@@ -1,405 +1,178 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
-import dev.rubentxu.pipeline.v2.application.durable.OpId
-import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
-import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
-import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
-import dev.rubentxu.pipeline.v2.domain.DefinitionId
-import dev.rubentxu.pipeline.v2.domain.Digest
-import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
-import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
-import dev.rubentxu.pipeline.v2.domain.StageBody
-import dev.rubentxu.pipeline.v2.domain.StageId
-import dev.rubentxu.pipeline.v2.domain.StageNode
-import dev.rubentxu.pipeline.v2.domain.StepId
-import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
-import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
-import dev.rubentxu.pipeline.v2.domain.step.StepCapability
-import dev.rubentxu.pipeline.v2.domain.step.StepContract
-import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
-import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
-import dev.rubentxu.pipeline.v2.events.DirDeleted
+import dev.rubentxu.pipeline.v2.application.stepcontract.certifyStep
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
-import dev.rubentxu.pipeline.v2.events.StepFinished
-import dev.rubentxu.pipeline.v2.events.StepStarted
-import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import java.nio.file.Files
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
 /**
- * StepContractSuite — LFC-2E1 / S2-A7 / G6 for `core.deleteDir`.
- *
- * Certifies `core.deleteDir` end-to-end across the registry-driven, open-world Step seam
- * following the certified `core.pwd` model (S2-A6/G6). Effectful pattern (like `core.sh`):
- * ONE required capability ([DELETE_DIR_OPERATIONS_CAPABILITY]) — the handler reaches the
- * typed `DeleteDirOperations` seam; all filesystem semantics, workspace resolution, and
- * `DirDeleted` emission live in `DeleteDirOperationsAdapter`.
+ * StepContractSuite — LFC-2E1 / S2-A7 / G6 for `core.deleteDir`, expressed through the
+ * generic [dev.rubentxu.pipeline.v2.application.stepcontract.StepContractCertification]
+ * harness. Each `@Test` maps 1:1 to a coverage-matrix row; generic rows are one-line
+ * delegations to the harness (ONE implementation of the law), and only deleteDir-specific
+ * semantics live here.
  *
  * deleteDir-specific semantics (S2-A7/G3-fix):
  *  - input envelope is `{"kind":"deleteDir","path":"."}` (path defaults to ".");
- *  - effects are `{ WRITES_WORKSPACE }`, replayPolicy is MEMOIZED;
- *  - the capability is conditionally exposed only when `controlDirRoot != null`;
- *  - output is `DeleteDirOutput(path, deletedCount, sha256)`;
- *  - durable observation: one `DirDeleted` event per fresh execution.
+ *  - effects are `{ WRITES_WORKSPACE }`, replayPolicy is MEMOIZED → journaled decision RERUN;
+ *  - the DELETE_DIR_OPERATIONS capability is conditionally exposed only when
+ *    `controlDirRoot != null` (row 12b, bespoke);
+ *  - replay idempotence: re-execution on the already-deleted workspace emits
+ *    `DirDeleted` with `deletedCount=0` (row 17, bespoke payload assertions on top of
+ *    the generic RERUN matrix row);
+ *  - durable observation: one `DirDeleted` event per fresh execution (row 19, bespoke).
  *
- * Coverage matrix:
+ * Coverage matrix (row → harness builder):
  * ```
- *  1.  identity                                              REQUIRED
- *  2.  contract completeness                                 REQUIRED (descriptor + 1 cap + MEMOIZED)
- *  3.  input codec round-trip (default path)                  REQUIRED
- *  3b. input codec legacy envelope without path field        REQUIRED
- *  4.  input codec rejection (foreign envelope)              REQUIRED
- *  5.  output codec round-trip                               REQUIRED
- *  6.  output codec rejection (non-deleteDir kind)           REQUIRED
- *  7.  canonical envelope (byte-identical to legacy dsl-v1)  REQUIRED
- *  8.  production registry resolution                        REQUIRED
- *  9.  fresh factory consistency                             REQUIRED
- * 10.  capability declaration (exactly DELETE_DIR_OPERATIONS) REQUIRED
- * 11.  capability admission (available → Ready)              REQUIRED
- * 12.  missing DELETE_DIR_OPERATIONS rejects fail-closed     REQUIRED
- * 12b. conditional exposure: controlDirRoot=null →           REQUIRED
- *      capability absent → admission Rejected
- * 14.  success via canonical coordinator (typed outcome)     REQUIRED
- * 15.  typed failure (handler exception)                     REQUIRED
- * 16.  fresh durable (1 terminal SUCCEEDED row)              REQUIRED
- * 17.  replay (MEMOIZED + WRITES_WORKSPACE: RERUN           REQUIRED
- *      idempotently; same operation identity, second
- *      DirDeleted with deletedCount=0)
- * 18.  observability (StepStarted + StepFinished pair)       REQUIRED
- * 19.  DirDeleted event payload (path, deletedCount, sha256) REQUIRED (deleteDir-specific)
- * 20.  real registry path scenario                           REQUIRED
+ *  1.  identity                                    → suite.row01_identity()
+ *  2.  contract completeness                       → expectEffects/expectReplay/capability pins + row02
+ *  3.  input codec round-trip (default path)       → row03
+ *  3b. legacy envelope without path defaults '.'   → bespoke (deleteDir defaulting law)
+ *  4.  input codec rejection (foreign envelope)    → rejectInput pin + row04
+ *  5.  output codec round-trip                     → output pin + row05
+ *  6.  output codec rejection (non-deleteDir kind) → rejectOutput pin + row06
+ *  7.  canonical envelope (byte-identical dsl-v1)  → envelope pin (builder fail-fast) + row07
+ *  8.  production registry resolution              → row08
+ *  9.  fresh factory consistency                   → row09
+ * 10.  capability declaration (exactly the 1 cap)  → capability pin + row10
+ * 11.  capability admission (available → Ready)    → row11
+ * 12.  missing DELETE_DIR_OPERATIONS rejects       → row12
+ * 12b. conditional exposure (controlDirRoot=null)  → bespoke
+ * 14.  success via canonical coordinator           → row14
+ * 15.  typed failure (handler exception)           → row15
+ * 16.  fresh durable (1 terminal SUCCEEDED row)    → row16
+ * 17.  replay (MEMOIZED + WRITES_WORKSPACE RERUN)  → expectReplay pin + row17 + bespoke payload
+ * 17b. replay decision unit pin                   → row17b
+ * 18.  observability (StepStarted/Finished pair)   → row18
+ * 19.  DirDeleted event payload                    → bespoke
+ * 20.  real registry path scenario                 → row20
  * ```
  */
 @Timeout(30)
 class CoreDeleteDirStepContractSuiteTest {
 
-    private fun registry(): InMemoryStepRegistry =
-        InMemoryStepRegistry().apply { CoreDeleteDirStep.registerInto(this) }
-
-    private fun noOpCredentialScopePort(): CredentialScopePort =
-        CredentialScopePort { _, _ ->
-            CredentialScopeOutcome.Unavailable(
-                CredentialScopeFailure.StoreUnavailable("step-contract-suite stub"),
-            )
-        }
-
-    private fun freshHarness(
-        eventStore: InMemoryEventStore,
-        workDir: java.nio.file.Path = Files.createTempDirectory("deletedir-contract-"),
-    ): Harness {
-        val clock = SystemClock()
-        val journal = InMemoryOperationJournal(clock)
-        val cursorStore = InMemoryReplayCursorStore(clock)
-        val registryForCoord = CoreStepRegistryFactory.registry()
-        val coord = CanonicalDurableRunCoordinator(
-            dispatcher = CanonicalNodeDispatcher(),
-            journal = journal,
-            cursorStore = cursorStore,
-            clock = clock,
-            effectReplayPolicy = DefaultEffectReplayPolicy(),
-            eventSink = eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            controlDirRoot = workDir.resolve("control"),
-            shOptions = ShOptions.EMPTY,
-            stepRegistry = registryForCoord,
+    private val suite = certifyStep(CoreDeleteDirStep.definition, DeleteDirInput(path = ".")) {
+        envelope("""{"kind":"deleteDir","path":"."}""")
+        output(DeleteDirOutput(path = "/tmp/ws-a/workspace/test-0", deletedCount = 7, sha256 = "abc123"))
+        expectEffects(setOf(Effect.WRITES_WORKSPACE))
+        expectReplay(ReplayPolicy.MEMOIZED, ReplayDecision.RERUN)
+        capability(DELETE_DIR_OPERATIONS_CAPABILITY)
+        rejectInput(EncodedStepValue("""{"kind":"echo","path":"."}"""), because = "foreign envelope kind")
+        rejectOutput(
+            EncodedStepValue("""{"kind":"echo","path":"/x","deletedCount":0,"sha256":"y"}"""),
+            because = "non-deleteDir kind",
         )
-        return Harness(coord, journal, eventStore, registryForCoord, workDir)
     }
-
-    private data class Harness(
-        val coord: CanonicalDurableRunCoordinator,
-        val journal: InMemoryOperationJournal,
-        val eventStore: InMemoryEventStore,
-        val registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry,
-        val workDir: java.nio.file.Path,
-    )
-
-    private fun deleteDirNode(nodeId: String = "build/deleteDir") = OpaqueStepNode(
-        id = StepId(nodeId),
-        pluginStepId = CoreDeleteDirStep.KEY,
-        // The canonical legacy dsl-v1 envelope for deleteDir() is {"kind":"deleteDir","path":"."}.
-        payload = VersionedStepPayload(
-            schemaVersion = "dsl-v1",
-            encoded = """{"kind":"deleteDir","path":"."}""",
-        ),
-    )
-
-    private fun pipeline(vararg nodes: OpaqueStepNode) = CompiledPipeline(
-        id = DefinitionId("deletedir-contract-suite"),
-        source = SourceDescriptor("Pipeline.kts", Digest("source")),
-        pluginLockDigest = Digest("lock"),
-        stages = listOf(
-            StageNode(
-                id = StageId("build"),
-                name = "build",
-                body = StageBody.Steps(nodes.toList()),
-            ),
-        ),
-    )
 
     // ===== 1. identity =====
 
     @Test
-    fun `identity — CoreDeleteDirStep KEY is core dot deleteDir and duplicate registration fails`() {
-        assertEquals(PluginStepId("core.deleteDir"), CoreDeleteDirStep.KEY)
-        assertEquals("core.deleteDir", CoreDeleteDirStep.KEY.value)
-        assertEquals("core.deleteDir", CoreDeleteDirStep.definition.contract.descriptor.stepId)
-        assertEquals("deleteDir", CoreDeleteDirStep.definition.contract.descriptor.name)
-        val r = registry()
-        assertTrue(
-            runCatching { CoreDeleteDirStep.registerInto(r) }.isFailure,
-            "duplicate registration of core.deleteDir must fail",
-        )
-    }
+    fun `identity — CoreDeleteDirStep KEY is core dot deleteDir and duplicate registration fails`() =
+        suite.row01_identity()
 
     // ===== 2. contract completeness =====
 
     @Test
-    fun `contract completeness — key, descriptor, codecs, single capability, WRITES_WORKSPACE, MEMOIZED`() {
-        val contract = CoreDeleteDirStep.definition.contract
-        assertEquals(CoreDeleteDirStep.KEY, contract.key)
-        assertNotNull(contract.descriptor, "StepDescriptor must be present")
-        assertEquals("deleteDir", contract.descriptor.name)
-        assertEquals(
-            setOf(Effect.WRITES_WORKSPACE),
-            contract.descriptor.effects.toSet(),
-            "core.deleteDir effects MUST be WRITES_WORKSPACE (deletes workspace contents)",
-        )
-        assertEquals(
-            ReplayPolicy.MEMOIZED,
-            contract.descriptor.replayPolicy,
-            "core.deleteDir replayPolicy MUST be MEMOIZED (replay reproduces the persisted observation)",
-        )
-        assertEquals(
-            setOf(DELETE_DIR_OPERATIONS_CAPABILITY),
-            contract.requiredCapabilities,
-            "core.deleteDir MUST declare EXACTLY {DELETE_DIR_OPERATIONS} as required capabilities",
-        )
-        assertNotNull(contract.inputCodec, "input codec must be present")
-        assertNotNull(contract.outputCodec, "output codec must be present")
-    }
+    fun `contract completeness — key, descriptor, codecs, single capability, WRITES_WORKSPACE, MEMOIZED`() =
+        suite.row02_contractCompleteness()
 
     // ===== 3. input codec round-trip =====
 
     @Test
-    fun `codec input — default-path input encodes to the canonical legacy envelope and round-trips`() {
-        val encoded = CoreDeleteDirStep.definition.contract.inputCodec.encode(DeleteDirInput(path = "."))
-        assertEquals(
-            """{"kind":"deleteDir","path":"."}""",
-            encoded.value,
-            "input codec must emit the canonical legacy dsl-v1 envelope",
-        )
-        val decoded = CoreDeleteDirStep.definition.contract.inputCodec.decode(encoded)
-        assertEquals(DeleteDirInput(path = "."), decoded, "round-trip must reconstruct DeleteDirInput(path=.)")
-    }
+    fun `codec input — default-path input encodes to the canonical legacy envelope and round-trips`() =
+        suite.row03_inputCodecRoundTrip()
 
-    // ===== 3b. input codec — legacy envelope without path =====
+    // ===== 3b. input codec — legacy envelope without path (deleteDir-specific) =====
 
     @Test
     fun `codec input — decode accepts the legacy envelope without path and defaults to dot`() {
         val legacy = EncodedStepValue("""{"kind":"deleteDir"}""")
-        val decoded = CoreDeleteDirStep.definition.contract.inputCodec.decode(legacy)
+        val decoded = suite.contract.inputCodec.decode(legacy)
         assertEquals(DeleteDirInput(path = "."), decoded, "missing path MUST default to '.'")
     }
 
     // ===== 4. input codec rejection =====
 
     @Test
-    fun `codec input — decode rejects a foreign envelope kind`() {
-        val bad = EncodedStepValue("""{"kind":"echo","path":"."}""")
-        assertTrue(
-            runCatching { CoreDeleteDirStep.definition.contract.inputCodec.decode(bad) }.isFailure,
-            "input decode must fail closed on a non-deleteDir kind",
-        )
-    }
+    fun `codec input — decode rejects a foreign envelope kind`() =
+        suite.row04_inputCodecRejection(suite.inputRejections.single())
 
     // ===== 5. output codec round-trip =====
 
     @Test
-    fun `codec output — DeleteDirOutput round-trips byte-identically`() {
-        val value = DeleteDirOutput(path = "/tmp/ws-a/workspace/test-0", deletedCount = 7, sha256 = "abc123")
-        val encoded = CoreDeleteDirStep.definition.contract.outputCodec.encode(value)
-        val decoded = CoreDeleteDirStep.definition.contract.outputCodec.decode(encoded)
-        assertEquals(value, decoded, "round-trip decode must reconstruct DeleteDirOutput")
-        // Field-level: durable persistence round-trips path, deletedCount, sha256.
-        val persisted: String = encoded.value
-        assertEquals(
-            value,
-            CoreDeleteDirStep.definition.contract.outputCodec.decode(EncodedStepValue(persisted)),
-            "durable persistence (string round-trip) MUST decode to the same values",
-        )
-    }
+    fun `codec output — DeleteDirOutput round-trips byte-identically`() = suite.row05_outputCodecRoundTrip()
 
     // ===== 6. output codec rejection =====
 
     @Test
-    fun `codec output — decode rejects a non-deleteDir kind`() {
-        val bad = EncodedStepValue("""{"kind":"echo","path":"/x","deletedCount":0,"sha256":"y"}""")
-        assertTrue(
-            runCatching { CoreDeleteDirStep.definition.contract.outputCodec.decode(bad) }.isFailure,
-            "output decode must fail closed on a non-deleteDir kind",
-        )
-    }
+    fun `codec output — decode rejects a non-deleteDir kind`() =
+        suite.row06_outputCodecRejection(suite.outputRejections.single())
 
     // ===== 7. canonical envelope =====
 
     @Test
-    fun `canonical envelope — input codec envelope is byte-identical to legacy dsl-v1 deleteDir envelope`() {
-        // Continuous durable fingerprint/journal identity requires byte-identical envelopes.
-        val registryEnvelope = CoreDeleteDirStep.definition.contract.inputCodec.encode(DeleteDirInput(path = ".")).value
-        val legacyEnvelope = """{"kind":"deleteDir","path":"."}"""
-        assertEquals(
-            legacyEnvelope,
-            registryEnvelope,
-            "registry input codec MUST emit a byte-identical dsl-v1 envelope",
-        )
-    }
+    fun `canonical envelope — input codec envelope is byte-identical to legacy dsl-v1 deleteDir envelope`() =
+        suite.row07_canonicalEnvelope()
 
     // ===== 8. production registry resolution =====
 
     @Test
-    fun `registry resolution — production factory contains core dot deleteDir`() {
-        val registry = CoreStepRegistryFactory.registry()
-        assertTrue(registry.contains(CoreDeleteDirStep.KEY), "production registry must contain core.deleteDir")
-        val definition = registry.definition(CoreDeleteDirStep.KEY)
-        assertNotNull(definition, "production registry MUST resolve core.deleteDir to a StepDefinition")
-        assertSame(
-            CoreDeleteDirStep.definition,
-            definition,
-            "production registry MUST return the canonical CoreDeleteDirStep.definition instance",
-        )
-    }
+    fun `registry resolution — production factory contains core dot deleteDir`() = suite.row08_registryResolution()
 
     // ===== 9. fresh factory consistency =====
 
     @Test
-    fun `registry resolution — production factory registry is fresh per call and consistent across calls`() {
-        val r1 = CoreStepRegistryFactory.registry()
-        val r2 = CoreStepRegistryFactory.registry()
-        assertFalse(r1 === r2, "factory must produce fresh per-call registries")
-        assertTrue(r1.contains(CoreDeleteDirStep.KEY))
-        assertTrue(r2.contains(CoreDeleteDirStep.KEY))
-        assertSame(r1.definition(CoreDeleteDirStep.KEY), r2.definition(CoreDeleteDirStep.KEY))
-    }
+    fun `registry resolution — production factory registry is fresh per call and consistent across calls`() =
+        suite.row09_registryFactoryFreshness()
 
     // ===== 10. capability declaration =====
 
     @Test
-    fun `capability declaration — core deleteDir declares EXACTLY DELETE_DIR_OPERATIONS`() {
-        // The handler reaches ONE capability: DeleteDirOperations. This pins the typed boundary —
-        // the handler MUST never touch the filesystem, the EventSink, sha256, or controlDirRoot
-        // directly; all of that is bound by DeleteDirOperationsAdapter.
-        val declared = CoreDeleteDirStep.definition.contract.requiredCapabilities
-        assertEquals(
-            1,
-            declared.size,
-            "core.deleteDir MUST declare exactly 1 required capability; got ${declared.map { it.key }}",
-        )
-        assertTrue(
-            DELETE_DIR_OPERATIONS_CAPABILITY in declared,
-            "DELETE_DIR_OPERATIONS_CAPABILITY MUST be declared",
-        )
-    }
+    fun `capability declaration — core deleteDir declares EXACTLY DELETE_DIR_OPERATIONS`() =
+        suite.row10_capabilityDeclaration()
 
     // ===== 11. capability admission (available) =====
 
     @Test
-    fun `capability admission — the capability available prepares Ready`() {
-        runBlocking {
-            val preparation = RegistryExecutionPreparation.prepare(
-                registry = CoreStepRegistryFactory.registry(),
-                key = CoreDeleteDirStep.KEY,
-                encodedInput = CoreDeleteDirStep.definition.contract.inputCodec.encode(DeleteDirInput(path = ".")),
-                availableCapabilities = setOf(DELETE_DIR_OPERATIONS_CAPABILITY),
-            )
-            assertTrue(
-                preparation is ExecutionPreparation.Ready,
-                "admission must succeed when DELETE_DIR_OPERATIONS_CAPABILITY is available",
-            )
-        }
-    }
+    fun `capability admission — the capability available prepares Ready`() = suite.row11_capabilityAdmission()
 
     // ===== 12. missing DELETE_DIR_OPERATIONS =====
 
     @Test
-    fun `missing capability — admission rejects when DELETE_DIR_OPERATIONS is absent`() {
-        runBlocking {
-            val preparation = RegistryExecutionPreparation.prepare(
-                registry = CoreStepRegistryFactory.registry(),
-                key = CoreDeleteDirStep.KEY,
-                encodedInput = CoreDeleteDirStep.definition.contract.inputCodec.encode(DeleteDirInput(path = ".")),
-                availableCapabilities = emptySet(),
-            )
-            assertTrue(
-                preparation is ExecutionPreparation.Rejected,
-                "missing DELETE_DIR_OPERATIONS must surface as Rejected admission (fail-closed)",
-            )
-            val rejected = assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
-            assertTrue(
-                rejected.reason.contains(DELETE_DIR_OPERATIONS_CAPABILITY.key),
-                "Rejection MUST identify the missing DELETE_DIR_OPERATIONS capability",
-            )
-        }
-    }
+    fun `missing capability — admission rejects when DELETE_DIR_OPERATIONS is absent`() =
+        suite.row12_missingCapability(DELETE_DIR_OPERATIONS_CAPABILITY)
 
-    // ===== 12b. conditional exposure (controlDirRoot == null) =====
+    // ===== 12b. conditional exposure (controlDirRoot == null) — deleteDir-specific =====
 
     @Test
     fun `conditional exposure — controlDirRoot null means DELETE_DIR_OPERATIONS absent and admission rejects`() {
         // Capability-scoped controlDirRoot: CanonicalRuntimeCapabilityAccess must not throw on
         // controlDirRoot=null; the capability is simply NOT registered and core.deleteDir
         // admission fails closed.
-        val nullContext = CanonicalRuntimeContext(
-            opId = OpId("deletedir-null-ctrl", 0, 0),
-            runId = "deletedir-null-ctrl",
-            stageName = "build",
-            stageIndex = 0,
-            stepIndex = 0,
-            shOptions = ShOptions.EMPTY,
-            controlDirRoot = null,
-            eventSink = InMemoryEventStore(),
+        val access = CanonicalRuntimeCapabilityAccess(
+            suite.runtimeContext(controlDirRoot = null, opId = "deletedir-null-ctrl"),
         )
-        val access = CanonicalRuntimeCapabilityAccess(nullContext)
         val available = access.available()
         assertTrue(
             DELETE_DIR_OPERATIONS_CAPABILITY !in available,
             "DELETE_DIR_OPERATIONS_CAPABILITY must NOT be available when controlDirRoot is null",
         )
         runBlocking {
-            val preparation = RegistryExecutionPreparation.prepare(
+            val preparation = dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation.prepare(
                 registry = CoreStepRegistryFactory.registry(),
-                key = CoreDeleteDirStep.KEY,
-                encodedInput = CoreDeleteDirStep.definition.contract.inputCodec.encode(DeleteDirInput(path = ".")),
+                key = suite.key,
+                encodedInput = suite.contract.inputCodec.encode(suite.canonicalInput),
                 availableCapabilities = available,
             )
             assertTrue(
@@ -412,112 +185,45 @@ class CoreDeleteDirStepContractSuiteTest {
     // ===== 14. success via canonical coordinator =====
 
     @Test
-    fun `success — registry-routed deleteDir SUCCEEDS with one terminal SUCCEEDED operation and typed output`() {
-        runBlocking {
-            val eventStore = InMemoryEventStore()
-            val h = freshHarness(eventStore)
-            val outcome = h.coord.run(pipeline(deleteDirNode()), RunId("deletedir-ok"))
-            assertEquals(
-                RunOutcome.Success,
-                outcome,
-                "a deleteDir against the canonical stage workspace must succeed",
-            )
-            val rows = h.journal.listForRun("deletedir-ok")
-            assertEquals(1, rows.size, "exactly one terminal operation row is journaled")
-            assertEquals(OperationStatus.SUCCEEDED, rows.single().status)
-        }
-    }
+    fun `success — registry-routed deleteDir SUCCEEDS with one terminal SUCCEEDED operation and typed output`() =
+        suite.row14_successViaCoordinator()
 
     // ===== 15. typed failure (handler exception) =====
 
     @Test
-    fun `typed failure — a registry-routed deleteDir whose handler throws surfaces as RunOutcome Failure`() {
-        val throwingHandler: StepHandler<DeleteDirInput, DeleteDirOutput> =
-            StepHandler { _: DeleteDirInput, _: StepHandlerContext ->
-                throw IllegalStateException("core.deleteDir handler contract violated for test")
-            }
-        val throwingRegistry = InMemoryStepRegistry().apply {
-            register(
-                object : StepDefinition<DeleteDirInput, DeleteDirOutput> {
-                    override val contract: StepContract<DeleteDirInput, DeleteDirOutput> = StepContract(
-                        key = CoreDeleteDirStep.KEY,
-                        descriptor = CoreDeleteDirStep.definition.contract.descriptor,
-                        inputCodec = CoreDeleteDirStep.definition.contract.inputCodec,
-                        outputCodec = CoreDeleteDirStep.definition.contract.outputCodec,
-                        requiredCapabilities = setOf(DELETE_DIR_OPERATIONS_CAPABILITY),
-                    )
-                    override val handler: StepHandler<DeleteDirInput, DeleteDirOutput> = throwingHandler
-                },
-            )
-        }
-        val clock = SystemClock()
-        val journal = InMemoryOperationJournal(clock)
-        val cursorStore = InMemoryReplayCursorStore(clock)
-        val eventStore = InMemoryEventStore()
-        val coord = CanonicalDurableRunCoordinator(
-            dispatcher = CanonicalNodeDispatcher(),
-            journal = journal,
-            cursorStore = cursorStore,
-            clock = clock,
-            effectReplayPolicy = DefaultEffectReplayPolicy(),
-            eventSink = eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            controlDirRoot = Files.createTempDirectory("deletedir-contract-fail-"),
-            shOptions = ShOptions.EMPTY,
-            stepRegistry = throwingRegistry,
-        )
-        runBlocking {
-            val outcome = coord.run(pipeline(deleteDirNode()), RunId("deletedir-throw"))
-            assertTrue(
-                outcome is RunOutcome.Failure,
-                "handler exceptions must surface as a typed RunOutcome.Failure, not silent success; got $outcome",
-            )
-        }
-    }
+    fun `typed failure — a registry-routed deleteDir whose handler throws surfaces as RunOutcome Failure`() =
+        suite.row15_typedFailure()
 
     // ===== 16. fresh durable =====
 
     @Test
-    fun `fresh durable — first execution of core dot deleteDir writes one terminal SUCCEEDED operation`() {
-        runBlocking {
-            val eventStore = InMemoryEventStore()
-            val h = freshHarness(eventStore)
-            h.coord.run(pipeline(deleteDirNode()), RunId("deletedir-first"))
-            val rows = h.journal.listForRun("deletedir-first")
-            assertEquals(1, rows.size, "exactly one terminal operation row is journaled")
-            assertEquals(OperationStatus.SUCCEEDED, rows.single().status)
-        }
-    }
+    fun `fresh durable — first execution of core dot deleteDir writes one terminal SUCCEEDED operation`() =
+        suite.row16_freshDurable()
 
-    // ===== 17. replay (MEMOIZED, WRITES_WORKSPACE) =====
+    // ===== 17. replay (MEMOIZED, WRITES_WORKSPACE → RERUN) + deleteDir idempotence payload =====
 
     @Test
     fun `replay — MEMOIZED deleteDir with WRITES_WORKSPACE reruns idempotently (deletedCount collapses to 0)`() {
-        // Decision matrix (EffectReplayPolicy): MEMOIZED + WRITES_WORKSPACE → RERUN. The
-        // durable law for deleteDir is IDEMPOTENCE, not memoized skip: re-execution on the
-        // already-deleted workspace emits a new DirDeleted with deletedCount=0 (same path,
-        // same sha), and the run still SUCCEEDS with one terminal row per fresh execution.
+        // Generic RERUN matrix law first (observed execution: handler re-runs, same op row).
+        suite.row17_replayMatrix()
+
+        // deleteDir-specific durable law: IDEMPOTENCE. Re-execution on the already-deleted
+        // workspace emits a NEW DirDeleted with deletedCount=0 (same path), run still SUCCEEDS.
         runBlocking {
             val eventStore = InMemoryEventStore()
-            val h = freshHarness(eventStore)
-            val firstOutcome = h.coord.run(pipeline(deleteDirNode()), RunId("deletedir-replay"))
-            assertEquals(RunOutcome.Success, firstOutcome)
-            val firstDeleted = h.eventStore.eventsFor("deletedir-replay").filterIsInstance<DirDeleted>().toList()
+            val ctx = suite.freshContext(eventStore)
+            val runId = "deletedir-replay"
+            ctx.run(suite.pipeline(suite.canonicalNode()), runId)
+
+            val firstDeleted = ctx.eventsOf<dev.rubentxu.pipeline.v2.events.DirDeleted>(runId)
             assertEquals(1, firstDeleted.size, "first execution emits exactly one DirDeleted")
             assertTrue(
                 firstDeleted.single().deletedCount >= 0,
                 "first execution deletes whatever the fresh workspace contained",
             )
 
-            // Second execution at the SAME runId: policy decides RERUN (WRITES_WORKSPACE);
-            // the handler re-runs safely and the deletion is idempotent.
-            val secondOutcome = h.coord.run(pipeline(deleteDirNode()), RunId("deletedir-replay"))
-            assertEquals(
-                RunOutcome.Success,
-                secondOutcome,
-                "replay of a WRITES_WORKSPACE deleteDir MUST rerun and succeed (idempotent)",
-            )
-            val allDeleted = h.eventStore.eventsFor("deletedir-replay").filterIsInstance<DirDeleted>().toList()
+            ctx.run(suite.pipeline(suite.canonicalNode()), runId)
+            val allDeleted = ctx.eventsOf<dev.rubentxu.pipeline.v2.events.DirDeleted>(runId)
             assertEquals(2, allDeleted.size, "rerun emits exactly one additional DirDeleted")
             assertEquals(
                 0,
@@ -529,56 +235,31 @@ class CoreDeleteDirStepContractSuiteTest {
                 allDeleted.last().path,
                 "both observations MUST target the same canonical stage workspace path",
             )
-            val rows = h.journal.listForRun("deletedir-replay")
-            assertEquals(1, rows.size, "the rerun updates the SAME operation row (one row per op identity)")
-            assertEquals(
-                OperationStatus.SUCCEEDED,
-                rows.single().status,
-                "the terminal row stays SUCCEEDED after the idempotent rerun",
-            )
         }
     }
 
     // ===== 17b. replay decision — policy unit property =====
 
     @Test
-    fun `replay decision — DefaultEffectReplayPolicy reruns MEMOIZED WRITES_WORKSPACE with a SUCCEEDED entry`() {
-        val decision = DefaultEffectReplayPolicy().decide(
-            replayPolicy = ReplayPolicy.MEMOIZED,
-            effects = setOf(Effect.WRITES_WORKSPACE),
-            hasJournalEntry = true,
-            journaledOutcome = OperationStatus.SUCCEEDED,
-        )
-        assertEquals(
-            ReplayDecision.RERUN,
-            decision,
-            "the frozen decision matrix pins MEMOIZED+WRITES_WORKSPACE+journaled → RERUN",
-        )
-    }
+    fun `replay decision — DefaultEffectReplayPolicy reruns MEMOIZED WRITES_WORKSPACE with a SUCCEEDED entry`() =
+        suite.row17b_replayDecisionUnit()
 
     // ===== 18. observability =====
 
     @Test
-    fun `observability — every core dot deleteDir run emits a StepStarted StepFinished pair`() {
-        runBlocking {
-            val eventStore = InMemoryEventStore()
-            val h = freshHarness(eventStore)
-            h.coord.run(pipeline(deleteDirNode()), RunId("deletedir-obs"))
-            val events = h.eventStore.eventsFor("deletedir-obs").toList()
-            assertTrue(events.any { it is StepStarted }, "StepStarted must be emitted (lifecycle observability)")
-            assertTrue(events.any { it is StepFinished }, "StepFinished must be emitted (lifecycle observability)")
-        }
-    }
+    fun `observability — every core dot deleteDir run emits a StepStarted StepFinished pair`() =
+        suite.row18_observability()
 
-    // ===== 19. DirDeleted event payload =====
+    // ===== 19. DirDeleted event payload — deleteDir-specific =====
 
     @Test
     fun `DirDeleted event payload — exactly one event with workspace path, non-negative deletedCount, 64-hex sha256`() {
         runBlocking {
             val eventStore = InMemoryEventStore()
-            val h = freshHarness(eventStore)
-            h.coord.run(pipeline(deleteDirNode()), RunId("deletedir-event"))
-            val events = eventStore.eventsFor("deletedir-event").toList().filterIsInstance<DirDeleted>()
+            val ctx = suite.freshContext(eventStore)
+            val runId = "deletedir-event"
+            ctx.run(suite.pipeline(suite.canonicalNode()), runId)
+            val events = ctx.eventsOf<dev.rubentxu.pipeline.v2.events.DirDeleted>(runId)
             assertEquals(1, events.size, "exactly one DirDeleted event is emitted")
             val event = events.single()
             assertEquals("DirDeleted", event.kind)
@@ -604,62 +285,13 @@ class CoreDeleteDirStepContractSuiteTest {
     // ===== 20. real registry path scenario =====
 
     @Test
-    fun `real registry path — canonical coordinator + capability bridge exercises core dot deleteDir end-to-end`() {
-        // Full registry seam: RegistryExecutionPreparation → capability admission → handler execution
-        // → typed output → durable journal → DirDeleted observation. Exercises the SAME code path
-        // the production canonical coordinator uses, without coupling the suite to the DSL compiler.
-        runBlocking {
-            val eventStore = InMemoryEventStore()
-            val h = freshHarness(eventStore)
-
-            val encoded = CoreDeleteDirStep.definition.contract.inputCodec.encode(DeleteDirInput(path = "."))
-            val node = OpaqueStepNode(
-                id = StepId("real/deleteDir"),
-                pluginStepId = CoreDeleteDirStep.KEY,
-                payload = VersionedStepPayload(
-                    schemaVersion = "dsl-v1",
-                    encoded = encoded.value,
-                ),
-            )
-
-            val preparation = RegistryExecutionPreparation.prepare(
-                registry = h.registry,
-                key = CoreDeleteDirStep.KEY,
-                encodedInput = encoded,
-                availableCapabilities = setOf(DELETE_DIR_OPERATIONS_CAPABILITY),
-            )
-            val ready = assertInstanceOf(ExecutionPreparation.Ready::class.java, preparation)
-            val prepared = assertInstanceOf(PreparedRegistryExecution::class.java, ready.prepared)
-
-            val outcome = h.coord.run(pipeline(node), RunId("deletedir-real"))
-            assertEquals(RunOutcome.Success, outcome, "registry seam end-to-end must succeed")
-
-            // Independently exercise the boundary coexecute path to prove the typed outcome.
-            val boundaryEventStore = InMemoryEventStore()
-            val ctx = CanonicalRuntimeContext(
-                opId = OpId("deletedir-real-boundary", 0, 0),
-                runId = "deletedir-real-boundary",
-                stageName = "build",
-                stageIndex = 0,
-                stepIndex = 0,
-                shOptions = ShOptions.EMPTY,
-                controlDirRoot = Files.createTempDirectory("deletedir-real-boundary-"),
-                eventSink = boundaryEventStore,
-            )
-            val result = RegistryExecutionBoundary.coexecute(prepared, ctx)
-            assertEquals(dev.rubentxu.pipeline.v2.domain.StepOutcome.Success, result.outcome)
-            val typed = CoreDeleteDirStep.definition.contract.outputCodec.decode(result.encodedOutput!!)
+    fun `real registry path — canonical coordinator + capability bridge exercises core dot deleteDir end-to-end`() =
+        suite.row20_realRegistryPath { typed ->
             assertTrue(
                 typed.path.isNotEmpty(),
                 "DeleteDirOutput.path MUST carry the deleted workspace path",
             )
             assertTrue(typed.deletedCount >= 0)
             assertEquals(64, typed.sha256.length)
-            assertEquals(
-                1,
-                boundaryEventStore.eventsFor("deletedir-real-boundary").toList().filterIsInstance<DirDeleted>().size,
-                "the boundary path must emit exactly one DirDeleted observation",
-            )
         }
-    }
 }

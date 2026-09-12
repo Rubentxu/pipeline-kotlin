@@ -138,6 +138,19 @@ object CoreMilestoneStep {
      */
     private var lastReachedOrdinal: Int? = null
 
+    /**
+     * Resets the per-run state to its initial value.
+     *
+     * This is ONLY for test isolation. In production, the state is scoped per
+     * `CoreMilestoneStep` classloader instance (per coordinator), so a new pipeline
+     * run gets a fresh state. Test harnesses that run multiple milestone tests
+     * in the same JVM process MUST call this between tests to ensure isolation.
+     */
+    @JvmStatic
+    fun resetState() {
+        lastReachedOrdinal = null
+    }
+
     private val inputCodec = object : StepCodec<MilestoneInput> {
         override fun encode(value: MilestoneInput): EncodedStepValue =
             EncodedStepValue(

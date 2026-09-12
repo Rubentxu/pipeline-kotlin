@@ -67,5 +67,20 @@ object CoreStepRegistryFactory {
         // exposes TYPED_RUNTIME_OUTPUT (CANDIDATE_ARCHITECTURAL_DELTA, NOT YET APPROVED)
         // and classifies with PATH_B verbatim; the canonical-policy decision is G2.
         CoreIsUnixStep.registerInto(this)
+        // LFC-2E1-S2-A6 / G1: candidate registration only. `core.pwd` remains in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
+        // keeps LegacyCore as the canonical production authority. No legacy decoder,
+        // metadata, dispatcher, or catalogue entry changes in this gate.
+        //
+        // The candidate is SCOPED to `pwd(tmp=false)` only (decision D3 frozen at G2).
+        // The input codec rejects `tmp=true` at decode time (PWD_TMP_TRUE_DISPOSITION);
+        // therefore the StepKey authority CANNOT be flipped for `core.pwd` until a
+        // separate disposition lands for `tmp=true`. See S2_A6_CORE_PWD_G0.
+        //
+        // Capability: requires the new WORKSPACE_IDENTITY_CAPABILITY (S2-A6 / G1),
+        // mirroring the PLATFORM_IDENTITY pattern from core.isUnix — narrow
+        // observation of the canonical stage workspace path, derived by the bridge
+        // from context.shOptions.workspaceRoot.
+        CorePwdStep.registerInto(this)
     }
 }

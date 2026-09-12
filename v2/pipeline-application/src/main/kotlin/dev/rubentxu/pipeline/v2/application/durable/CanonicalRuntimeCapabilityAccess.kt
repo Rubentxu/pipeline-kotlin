@@ -8,6 +8,8 @@ import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.StageIdentity
 import dev.rubentxu.pipeline.v2.application.ShellOperations
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
@@ -88,6 +90,14 @@ open class CanonicalRuntimeCapabilityAccess(
         // in the bridge adapter — never inside a handler.
         builder[PLATFORM_IDENTITY_CAPABILITY] = PlatformIdentity(
             osName = System.getProperty("os.name", ""),
+        )
+        // S2-A6 / G1: canonical stage workspace observation for workspace-projection
+        // handlers (core.pwd). The handler sees ONLY the resolved workspace path;
+        // it does NOT reach for controlDirRoot, user.dir, or the raw context. The
+        // bridge derives workspaceRoot from context.shOptions.workspaceRoot — the
+        // SAME source the legacy `pwdContext()` consumed (PATH_B byte-equivalence).
+        builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
+            workspaceRoot = context.shOptions.workspaceRoot,
         )
         return builder.toMap()
     }

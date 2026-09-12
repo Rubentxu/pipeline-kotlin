@@ -62,3 +62,28 @@ data class PlatformIdentity(
 )
 
 val PLATFORM_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.platform-identity")
+
+/**
+ * Runtime stage workspace observation supplied to a handler that must resolve the CURRENT
+ * canonical stage workspace as a default (S2-A6 / G1), e.g. `core.pwd` returning its
+ * per-stage workspace root.
+ *
+ * Deliberately carries ONLY the canonical stage workspace path — NOT a derived `pwd`
+ * string and NOT a generic filesystem accessor: the WORKSPACE itself belongs to the
+ * canonical execution substrate (WorkspaceResolver under controlDirRoot), and the Step
+ * decides what to project from it. This separation lets the canonical path be decided
+ * (G2) without changing how the workspace is acquired, and keeps the handler from
+ * reading `System.getProperty("user.dir")` or `Paths.get(".")` directly.
+ *
+ * Bridge wiring: `CanonicalRuntimeCapabilityAccess.buildProvided` populates this
+ * capability from `context.shOptions.workspaceRoot` (the same source the legacy
+ * `pwdContext()` consumed) — preserving byte-equivalent truth with PATH_B.
+ *
+ * Declared in `StepContract.requiredCapabilities`; admission is fail-closed before
+ * the handler runs when it is not available.
+ */
+data class WorkspaceIdentity(
+    val workspaceRoot: java.nio.file.Path,
+)
+
+val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.workspace-identity")

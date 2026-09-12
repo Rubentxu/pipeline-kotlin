@@ -138,8 +138,8 @@ sealed interface CanonicalCoreStepCommand {
 
     /**
      * T-05: deleteDir step — DELETED at S2-A7 / G5 (2026-09-12, LEGACY_REMOVED).
-     * Production authority is exclusively the registry (CoreDeleteStep.definition /
-     * CoreDeleteDirStep via RegistryStepMetadataResolver). Legacy forms removed in this
+     * Production authority is exclusively the registry (CoreDeleteDirStep.definition
+     * via RegistryStepMetadataResolver). Legacy forms removed in this
      * slice: DeleteDir subtype, DELETE_DIR_PLUGIN_ID + decoder branch,
      * CanonicalCoreStepMetadata["core.deleteDir"] row, CanonicalDeleteDirNodeDispatcher.kt,
      * and the CanonicalNodeDispatcher deleteDir seams (field, when branch, deleteDirContext()).

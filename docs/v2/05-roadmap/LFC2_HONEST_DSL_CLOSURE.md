@@ -57,7 +57,8 @@ real distribution, via the common StepContractSuite). Until then LFC-2 stays OPE
 | `@DslMarker` narrow receivers | 🔲 absent | no `@DslMarker` in `pipeline-scripting-api` main |
 | Closed `StageBody` (no arbitrary receiver escaping) | 🟡 | `StageScope` concrete, nested inner scopes, no marker |
 | Formal `.pipeline.kts` `@KotlinScript` | 🟡 | `Kotlin24ScriptingHost` compiles `.kts`; formal marker not evidenced |
-| `pwd()`/`isUnix()` real return (no fake `StubRuntimeConfig`) | 🔲 | Stub fallback exists; Main injects host config, which is not the stage/dir executor context; canonical admission must also be checked |
+| `isUnix()` real return (no fake `StubRuntimeConfig`) | ✅ CLOSED | `LFC-2R` R1..R4B (commits `7ade760a`..`3e194ee0`); runtime-returning seam through `ScriptedFrontendRunner`; `D3 DSL_RUNTIME_RETURN_GAP = CLOSED` for the `isUnix` seam. S2-A5/G3..G8 still pending for full certification. See `docs/v2/07-uat/LFC2R_R4B_INSTALLED_PRODUCTION_WIRING.md`. |
+| `pwd()` real return (no fake `StubRuntimeConfig`) | 🔲 OPEN | Stub fallback still exists at `PipelineDsl.pwd()` (`pipeline-scripting-api/.../PipelineDsl.kt:1438`, per `EM_DEAD_CODE_AUDIT.md` A3). Canonical admission + runtime-returning seam NOT wired for `pwd` (distinct slice from `isUnix`); see `IMPLEMENTATION_BACKLOG.md` B14. Out of scope this cycle. |
 | `waitUntil` honest semantics (vs throw RuntimeException) | 🔲 | placeholder poll + throw |
 | `post`/`whenCondition` execution on canonical path | 🔲 | `toStageBuilder` omits post; `whenCondition` discards expression and appends body unconditionally |
 | `node` no-op with only AgentResolved | 🟡 | documented no-op; fake-return risk on label/workspace |

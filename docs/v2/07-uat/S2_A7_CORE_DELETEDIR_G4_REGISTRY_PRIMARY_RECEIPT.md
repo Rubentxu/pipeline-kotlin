@@ -61,11 +61,18 @@ events  : DirDeleted {path=.../dd-g4-0, deletedCount=0, sha256=df6c1af1...}
 log sha256 = 22f7add2ab8d3240c14f81e22ecc4a98c66cb29eddfc0667bc9016d61b582744
 ```
 
-The typed `DirDeleted` event with adapter sha256 marker is emitted only through
-the capability-routed registry handler; production classification routes
-`core.deleteDir` to `StructuralStepFamily.Registry` (asserted in
-`CoreDeleteDirStepUnitTest`). The legacy dispatcher file remains on disk for
-G5 physical removal — presence without reachability is exactly the G4 contract.
+Installed CLI confirms post-flip deleteDir behaviour. Routing authority is
+proven by:
+- `core.deleteDir` absent from `LEGACY_PLUGIN_IDS`
+- `StructuralFamilyResolver.classify(core.deleteDir, registry) = Registry`
+  (asserted in `CoreDeleteDirStepUnitTest`)
+
+The event shape itself is NOT path-exclusive: the legacy dispatcher (still on
+disk until G5) constructs the same `DeleteDirExecutor` and emits the same
+`DirDeleted(path, deletedCount, sha256)` contract. The CLI canary therefore
+demonstrates functional parity post-flip; unreachability rests on the routing
+authorities above. Legacy dispatcher presence without reachability is exactly
+the G4 contract.
 
 ## STOP
 

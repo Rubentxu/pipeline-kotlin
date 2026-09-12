@@ -18,7 +18,11 @@ binary   : v2/pipeline-application/build/install/pipeline-application/bin/pipeli
            (installDist UP-TO-DATE at run time, main @ cac9b587)
 host dir : /tmp/pwd-g7-ws (workspace root resolved under control dir)
 scenarios: PWD-G7-01..04 as separate .pipeline.kts fixtures (pipeline { ... } form)
-logs     : docs/v2/07-uat/evidence/s2-a6-g7-stop/{fresh.json,resume.json}
+raw archived (sha256):
+  fresh.json       388bd2cff65c6d74bca91340b96a7bba4ce17f6080ca8ee4d2db75888bac40d7  (G7-02 fresh)
+  resume.json      5ad286d7453bed3a00176388b0579e7972ede9e2a014e9294bc9686db4c37372  (G7-02 resume)
+  pwd-g7-01.json   b81bac472b69ea515971f0075f5984475275877ec7c8bc07eb7f1c8454b476d9
+  pwd-g7-03.json   bdf4de6154094e025e5d55fe3f0ea9f33354ef53edb84b7cffdbb3a478dbf899
 ```
 
 ## Results
@@ -27,6 +31,7 @@ logs     : docs/v2/07-uat/evidence/s2-a6-g7-stop/{fresh.json,resume.json}
 PWD-G7-01  pwd() runtime return            FAIL
            PwdResolved path  = .../workspace/pwd-g7-01-0        (correct, Registry family)
            echo captured     = <repo root> (host CWD placeholder)
+           raw archived: pwd-g7-01.json
 
 PWD-G7-02  pwd(tmp=true) durable effect    PASS
            deterministic tmp-pwd-<sha256(opId)> path, no timestamp/UUID
@@ -36,6 +41,7 @@ PWD-G7-02  pwd(tmp=true) durable effect    PASS
 PWD-G7-03  downstream Kotlin consume       FAIL
            (both values consumed the eager placeholder; conditional branch
             took the FAIL path inside the script)
+           raw archived: pwd-g7-03.json (EchoOutputCaptured PWD_G7_03_FAIL...)
 
 PWD-G7-04  replay / resume (same --db)     PASS
            same runId, same deterministic path, same sha256

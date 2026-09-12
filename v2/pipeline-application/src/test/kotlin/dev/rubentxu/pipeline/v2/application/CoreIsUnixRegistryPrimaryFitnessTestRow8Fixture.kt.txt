@@ -1,0 +1,35 @@
+package dev.rubentxu.pipeline.v2.application
+
+/**
+ * S2-A5 / G5 — Historical fixture archive (verbatim copy of the G4 row 8 of
+ * `CoreIsUnixRegistryPrimaryFitnessTest`).
+ *
+ * Original test body, preserved as evidence of the G4 REGISTRY_PRIMARY state where
+ * the legacy execution forms were physically present but unreachable through
+ * production routing (LEGACY_UNREACHABLE, not LEGACY_REMOVED):
+ *
+ * ```kotlin
+ * fun `G4 flip — legacy source code is physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED)`() {
+ *     // The four pieces of legacy machinery that G5 will delete are still on disk:
+ *     //   - CanonicalCoreStepCommand.IsUnix subtype (sealed hierarchy)
+ *     //   - IS_UNIX_PLUGIN_ID decoder branch (CanonicalCoreStepDecoder)
+ *     //   - CanonicalIsUnixNodeDispatcher.kt file
+ *     //   - CanonicalCoreStepMetadata["core.isUnix"] row
+ *     // All four are asserted present so that a future G5 fitness has stable ground.
+ *     val subtype = CanonicalCoreStepCommand.IsUnix()
+ *     assertEquals("core.isUnix", subtype.pluginId)
+ *     assertNotNull(CanonicalIsUnixNodeDispatcher())
+ *     assertNotNull(CanonicalCoreStepMetadata.metadata("core.isUnix"))
+ *     // Legacy metadata row still present at G4 (LEGACY_REMOVED is G5 work).
+ *     assertTrue(
+ *         "core.isUnix" in CanonicalCoreStepMetadata.pluginIds,
+ *         "legacy metadata row for core.isUnix MUST still be present at G4",
+ *     )
+ * }
+ * ```
+ *
+ * The body cannot live in the active `.kt` file because `CanonicalCoreStepCommand.IsUnix`
+ * and `CanonicalIsUnixNodeDispatcher` were physically removed at G5 (LEGACY_REMOVED), so
+ * the source would not compile. The source-level absence proof lives in
+ * `S3IsUnixLegacyRemovedFitnessTest.kt`.
+ */

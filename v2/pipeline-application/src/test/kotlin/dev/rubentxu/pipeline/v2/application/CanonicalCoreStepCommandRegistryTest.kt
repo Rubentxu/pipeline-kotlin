@@ -28,9 +28,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 9 entries`() {
+    fun `sealedSubclasses has exactly 8 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(8, subclasses.size, "Expected exactly 8 sealed subtypes (EmitEvent removed at S2-A4/G5). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(7, subclasses.size, "Expected exactly 7 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix removed at S2-A5/G5). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -40,11 +40,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // core.file.writeFile removed at LFC-2E1-S2-A3 / G4 (registry-routed).
             // core.emit.event removed at LFC-2E1-S2-A4 / G4 (registry-routed).
             // S2-A5 / G4 (2026-09-12): "core.isUnix" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CoreIsUnixStep.definition via the open
-            // registry. The legacy CanonicalCoreStepCommand.IsUnix subtype, the
-            // IS_UNIX_PLUGIN_ID decoder branch, and CanonicalIsUnixNodeDispatcher.kt remain
-            // physically present until G5 (LEGACY_REMOVED), but no longer constitute the
-            // production authority for "core.isUnix".
+            // S2-A5 / G5 (2026-09-12): "core.isUnix" legacy subtype/decoder/dispatcher/metadata
+            // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
+            // open registry (CoreIsUnixStep.descriptor via RegistryStepMetadataResolver).
             "core.milestone",
             // P1a — workflow-control (v0.33.0)
             "core.deleteDir",
@@ -108,13 +106,9 @@ class CanonicalCoreStepCommandRegistryTest {
         assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
     }
 
-    @Test
-    fun `IsUnix has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.IsUnix()
-        assertEquals("core.isUnix", instance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // S2-A5 / G5: IsUnix test removed (LEGACY_REMOVED). The pluginId/Effects/ReplayPolicy
+    // invariants of core.isUnix are now asserted in S3IsUnixLegacyRemovedFitnessTest against
+    // CoreIsUnixStep.descriptor — the registry authority.
 
     @Test
     fun `WaitUntil has correct pluginId and defaultMetadata`() {

@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalIsUnixNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.OpId
@@ -188,21 +187,15 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
     }
 
     @Test
+    @org.junit.jupiter.api.Disabled(
+        "S2-A5 / G5 historical — G4 row 8 preserved verbatim as REGISTRY_PRIMARY evidence " +
+            "in CoreIsUnixRegistryPrimaryFitnessTestRow8Fixture.kt.txt. The original body " +
+            "references CanonicalCoreStepCommand.IsUnix and CanonicalIsUnixNodeDispatcher, " +
+            "both physically removed at G5 (LEGACY_REMOVED) — would not compile here. " +
+            "Source-level absence proof lives in S3IsUnixLegacyRemovedFitnessTest.kt."
+    )
     fun `G4 flip — legacy source code is physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED)`() {
-        // The four pieces of legacy machinery that G5 will delete are still on disk:
-        //   - CanonicalCoreStepCommand.IsUnix subtype (sealed hierarchy)
-        //   - IS_UNIX_PLUGIN_ID decoder branch (CanonicalCoreStepDecoder)
-        //   - CanonicalIsUnixNodeDispatcher.kt file
-        //   - CanonicalCoreStepMetadata["core.isUnix"] row
-        // All four are asserted present so that a future G5 fitness has stable ground.
-        val subtype = CanonicalCoreStepCommand.IsUnix()
-        assertEquals("core.isUnix", subtype.pluginId)
-        assertNotNull(CanonicalIsUnixNodeDispatcher())
-        assertNotNull(CanonicalCoreStepMetadata.metadata("core.isUnix"))
-        // Legacy metadata row still present at G4 (LEGACY_REMOVED is G5 work).
-        assertTrue(
-            "core.isUnix" in CanonicalCoreStepMetadata.pluginIds,
-            "legacy metadata row for core.isUnix MUST still be present at G4",
-        )
+        // G5 historical stub. Verbatim body archived in
+        // CoreIsUnixRegistryPrimaryFitnessTestRow8Fixture.kt.txt.
     }
 }

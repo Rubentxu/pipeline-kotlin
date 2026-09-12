@@ -166,15 +166,6 @@ sealed interface CanonicalCoreStepCommand {
     }
 
     /**
-     * T-07: isUnix step — checks if the current OS is Unix-like (Linux/macOS/Darwin).
-     */
-    data class IsUnix(
-        val unused: Unit = Unit, // sealed class requires at least one field; no params from DSL
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.isUnix"
-    }
-
-    /**
      * T-07: waitUntil step — polls a condition lambda until it returns true or deadline elapses.
      * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000)
      * @param quiet If true, suppress output during polling
@@ -212,7 +203,7 @@ object CanonicalCoreStepDecoder {
     private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
     private const val LOAD_PLUGIN_ID = "core.load"
     private const val PWD_PLUGIN_ID = "core.pwd"
-    private const val IS_UNIX_PLUGIN_ID = "core.isUnix"
+    // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
     private const val ARCHIVE_ARTIFACTS_PLUGIN_ID = "core.archiveArtifacts"
 
@@ -277,12 +268,9 @@ object CanonicalCoreStepDecoder {
                 val tmp = payload["tmp"]?.jsonPrimitive?.booleanOrNull ?: false
                 CanonicalCoreStepCommand.Pwd(tmp = tmp)
             }
-            IS_UNIX_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "isUnix") {
-                    "Payload kind must be 'isUnix' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.IsUnix()
-            }
+            // S2-A5 / G5: IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
+            // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode)
+            // and executively by CoreIsUnixStep via the registry — never here.
             WAIT_UNTIL_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "waitUntil") {
                     "Payload kind must be 'waitUntil' for '${node.id.value}'"

@@ -22,7 +22,7 @@ class S3SleepLegacyRemovedFitnessTest {
 
     private val expectedIds = setOf(
         "core.milestone", "core.deleteDir", "core.cleanWs",
-        "core.load", "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
+        "core.load", "core.pwd", "core.waitUntil", "core.archiveArtifacts",
     )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
@@ -57,7 +57,7 @@ class S3SleepLegacyRemovedFitnessTest {
         assertFalse(Regex("\\\"core\\.sleep\\\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    @Test fun `transitional snapshot converges to 8 IDs 8 metadata rows 8 dispatchers S2-A4-G5 convergence`() {
+    @Test fun `transitional snapshot converges to 7 IDs 7 metadata rows 7 dispatchers S2-A5-G5 convergence`() {
         assertEquals(expectedIds, legacyIds())
         val metadataKeys = Regex("\\\"(core\\.[a-zA-Z.]+)\\\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
@@ -69,11 +69,11 @@ class S3SleepLegacyRemovedFitnessTest {
         assertEquals(setOf(
             "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
             "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt", "CanonicalPwdNodeDispatcher.kt",
-            "CanonicalIsUnixNodeDispatcher.kt", "CanonicalWaitUntilNodeDispatcher.kt",
+            "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
-        assertEquals(8, legacyIds().size)
-        assertEquals(8, metadataKeys.size)
-        assertEquals(8, actualDispatchers.size)
+        assertEquals(7, legacyIds().size)
+        assertEquals(7, metadataKeys.size)
+        assertEquals(7, actualDispatchers.size)
     }
 }

@@ -588,9 +588,9 @@ class EmitEventStepContractSuiteTest {
             ),
         )
         assertEquals(
-            8,
+            7,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "counters stay 8/8/8 — a contract-suite fix must not resurrect legacy",
+            "counters stay 7/7/7 (post-S2-A4/G5 + S2-A5/G5: isUnix physically removed) — a contract-suite fix must not resurrect legacy",
         )
     }
 }

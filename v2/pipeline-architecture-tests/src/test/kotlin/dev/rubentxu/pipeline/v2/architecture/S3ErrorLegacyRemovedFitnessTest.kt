@@ -48,7 +48,7 @@ import java.nio.file.Files
  *
  * Plus the **residual exact-set equality** of `LEGACY_PLUGIN_IDS`:
  *   `{core.emit.event, core.milestone, core.deleteDir, core.cleanWs, core.load,
- *     core.pwd, core.isUnix, core.waitUntil, core.archiveArtifacts}` (9 entries).
+ *     core.pwd, core.waitUntil, core.archiveArtifacts}` (8 entries).
  *
  * State at G6 close:
  *   REGISTERED          = true
@@ -58,9 +58,9 @@ import java.nio.file.Files
  *   CERTIFIED           = false (G7/G8 will mark it)
  *
  * Counters at G6 close:
- *   LEGACY_PLUGIN_IDS  : 9
- *   metadata rows       : 9
- *   dispatcher files    : 8
+ *   LEGACY_PLUGIN_IDS  : 7
+ *   metadata rows       : 7
+ *   dispatcher files    : 7
  */
 class S3ErrorLegacyRemovedFitnessTest {
 
@@ -117,9 +117,9 @@ class S3ErrorLegacyRemovedFitnessTest {
         )
     }
 
-    /** 2b. LEGACY_PLUGIN_IDS is exactly the 9 residual legacy keys (full-set equality). */
+    /** 2b. LEGACY_PLUGIN_IDS is exactly the 8 residual legacy keys (full-set equality). */
     @Test
-    fun `LEGACY_PLUGIN_IDS is exactly the 9 residual keys (post-G6 full-set equality)`() {
+    fun `LEGACY_PLUGIN_IDS is exactly the 8 residual keys (post-G6 full-set equality)`() {
         val source = codeOnly(read(decoderSource))
         val legacyBlock = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)").find(source)?.value
             ?: error("LEGACY_PLUGIN_IDS declaration not found in $decoderSource")
@@ -131,7 +131,6 @@ class S3ErrorLegacyRemovedFitnessTest {
             "\"core.cleanWs\"",
             "\"core.load\"",
             "\"core.pwd\"",
-            "\"core.isUnix\"",
             "\"core.waitUntil\"",
             "\"core.archiveArtifacts\"",
         )
@@ -306,7 +305,7 @@ class S3ErrorLegacyRemovedFitnessTest {
      */
 
     @Test
-    fun `counter snapshot at G6 close -- LEGACY_PLUGIN_IDS equals the 9 residual legacy keys`() {
+    fun `counter snapshot at G6 close -- LEGACY_PLUGIN_IDS equals the 8 residual legacy keys`() {
         val decoder = codeOnly(read(decoderSource))
         val legacyBlock = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)").find(decoder)?.value
             ?: error("LEGACY_PLUGIN_IDS declaration not found")
@@ -317,16 +316,15 @@ class S3ErrorLegacyRemovedFitnessTest {
             "core.cleanWs",
             "core.load",
             "core.pwd",
-            "core.isUnix",
             "core.waitUntil",
             "core.archiveArtifacts",
         )
-        assertEquals(expected, legacyIds, "LEGACY_PLUGIN_IDS MUST equal the 8 residual legacy keys (post-S2-A4/G4)")
-        assertEquals(8, legacyIds.size)
+        assertEquals(expected, legacyIds, "LEGACY_PLUGIN_IDS MUST equal the 7 residual legacy keys (post-S2-A5/G5)")
+        assertEquals(7, legacyIds.size)
     }
 
     @Test
-    fun `counter snapshot at G6 close -- CanonicalCoreStepMetadata table keys equal the 9 residual legacy keys`() {
+    fun `counter snapshot at G6 close -- CanonicalCoreStepMetadata table keys equal the 7 residual legacy keys`() {
         // Metadata rows: extract via the concrete entry shape `"core.x" to StepMetadata(`
         // (matches the actual literal form in CanonicalCoreStepMetadata).
         val metadata = codeOnly(read(metadataSource))
@@ -340,21 +338,20 @@ class S3ErrorLegacyRemovedFitnessTest {
             "core.cleanWs",
             "core.load",
             "core.pwd",
-            "core.isUnix",
             "core.waitUntil",
             "core.archiveArtifacts",
         )
         assertEquals(
             expected,
             metadataKeys,
-            "CanonicalCoreStepMetadata.table keys MUST equal the 8 residual legacy keys (post-S2-A4/G5)",
+            "CanonicalCoreStepMetadata.table keys MUST equal the 7 residual legacy keys (post-S2-A5/G5)",
         )
-        assertEquals(8, metadataKeys.size)
+        assertEquals(7, metadataKeys.size)
         assertFalse("core.error" in metadataKeys, "core.error MUST NOT be in legacy metadata")
     }
 
     @Test
-    fun `counter snapshot at G6 close -- per-Step dispatcher files equal the 8 residual legacy dispatcher classes`() {
+    fun `counter snapshot at G6 close -- per-Step dispatcher files equal the 7 residual legacy dispatcher classes`() {
         // Per-Step dispatcher files are HARDCODED (NOT derived from plugin ids) because the
         // plugin id -> class name mapping is a historical naming accident, not a contract.
         val durableDir = ScannerSupport.v2Root()
@@ -373,16 +370,15 @@ class S3ErrorLegacyRemovedFitnessTest {
             "CanonicalCleanWsNodeDispatcher.kt",
             "CanonicalLoadNodeDispatcher.kt",
             "CanonicalPwdNodeDispatcher.kt",
-            "CanonicalIsUnixNodeDispatcher.kt",
             "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         )
         assertEquals(
             expectedDispatchers,
             actualDispatchers,
-            "Per-Step dispatcher files in durable/ MUST equal the 8 expected Canonical<Node>NodeDispatcher.kt (emit.event removed at S2-A4/G5)",
+            "Per-Step dispatcher files in durable/ MUST equal the 7 expected Canonical<Node>NodeDispatcher.kt (isUnix removed at S2-A5/G5)",
         )
-        assertEquals(8, actualDispatchers.size)
+        assertEquals(7, actualDispatchers.size)
         assertFalse(
             "CanonicalErrorNodeDispatcher.kt" in actualDispatchers,
             "CanonicalErrorNodeDispatcher.kt MUST NOT exist at G6 (LEGACY_REMOVED)",

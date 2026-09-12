@@ -27,7 +27,8 @@ class CanonicalNodeDispatcher {
     private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
     private val loadDispatcher = CanonicalLoadNodeDispatcher()
     private val pwdDispatcher = CanonicalPwdNodeDispatcher()
-    private val isUnixDispatcher = CanonicalIsUnixNodeDispatcher()
+    // S2-A5 / G5: isUnixDispatcher removed (LEGACY_REMOVED) — core.isUnix executes
+    // exclusively through CoreIsUnixStep via the registry.
     private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
     private val archiveArtifactsDispatcher = CanonicalArchiveArtifactsNodeDispatcher()
 
@@ -39,7 +40,7 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
             is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
             is CanonicalCoreStepCommand.Pwd -> pwdDispatcher.dispatch(command, context.pwdContext())
-            is CanonicalCoreStepCommand.IsUnix -> isUnixDispatcher.dispatch(command, context.isUnixContext())
+            // S2-A5 / G5: IsUnix when-branch removed (LEGACY_REMOVED).
             // waitUntil: condition is not serializable; emit stub events and return success
             // Full condition evaluation requires the in-memory path where lambdas are preserved
             is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
@@ -88,11 +89,7 @@ class CanonicalNodeDispatcher {
         workspaceRoot = shOptions.workspaceRoot,
     )
 
-    private fun CanonicalRuntimeContext.isUnixContext() = CanonicalIsUnixDispatchContext(
-        runId = runId,
-        stepIndex = stepIndex,
-        eventSink = eventSink,
-    )
+    // S2-A5 / G5: isUnixContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.waitUntilContext() = CanonicalWaitUntilDispatchContext(
         runId = runId,

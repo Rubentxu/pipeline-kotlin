@@ -49,10 +49,10 @@ class S3EmitEventLegacyRemovedFitnessTest {
     private val emitEventStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStep.kt")
     private val registryFactory = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt")
 
-    /** The exact 8 residual legacy keys authorized at G4 and converged at G5. */
+    /** The exact 7 residual legacy keys converged at G5 (after `core.isUnix` removal in S2-A5). */
     private val residualIds = setOf(
         "core.milestone", "core.deleteDir", "core.cleanWs", "core.load",
-        "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
+        "core.pwd", "core.waitUntil", "core.archiveArtifacts",
     )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
@@ -106,7 +106,7 @@ class S3EmitEventLegacyRemovedFitnessTest {
 
     // ===== counter convergence 8 / 8 / 8 =====
 
-    @Test fun `three residual legacy authorities converge to exact eight step snapshots`() {
+    @Test fun `three residual legacy authorities converge to exact seven step snapshots`() {
         assertEquals(residualIds, legacyIds())
         val metadataKeys = Regex("\\\"(core\\.[a-zA-Z.]+)\\\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
@@ -118,12 +118,12 @@ class S3EmitEventLegacyRemovedFitnessTest {
         assertEquals(setOf(
             "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
             "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt", "CanonicalPwdNodeDispatcher.kt",
-            "CanonicalIsUnixNodeDispatcher.kt", "CanonicalWaitUntilNodeDispatcher.kt",
+            "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
-        assertEquals(8, legacyIds().size)
-        assertEquals(8, metadataKeys.size)
-        assertEquals(8, actualDispatchers.size)
+        assertEquals(7, legacyIds().size)
+        assertEquals(7, metadataKeys.size)
+        assertEquals(7, actualDispatchers.size)
     }
 
     // ===== anti-over-removal: the structural protocol is ALIVE =====

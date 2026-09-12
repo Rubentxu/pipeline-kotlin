@@ -5,7 +5,6 @@ import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalIsUnixNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
 import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
@@ -27,6 +26,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -279,17 +279,19 @@ class CoreIsUnixStepUnitTest {
     }
 
     @Test
-    fun `counters drop to 7-8-8 and legacy dispatcher remains physically present`() {
-        // G4 flip removes core.isUnix from the legacy authority, but legacy source code
-        // stays physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED).
-        // Counter semantics (post-flip, before G5 removal):
-        //   legacy executable IDs    = 7  (LEGACY_PLUGIN_IDS.size)
-        //   metadata rows            = 8  (CanonicalCoreStepMetadata still has core.isUnix row)
-        //   dispatcher sources        = 8  (CanonicalIsUnixNodeDispatcher still on disk)
+    fun `counters drop to 7-7-7 and legacy dispatcher source is physically removed`() {
+        // G5 (LEGACY_REMOVED) closes the burn-down for core.isUnix:
+        //   legacy executable IDs    = 7  (LEGACY_PLUGIN_IDS.size, no core.isUnix entry)
+        //   metadata rows            = 7  (CanonicalCoreStepMetadata no longer has core.isUnix row)
+        //   dispatcher sources       = 7  (CanonicalIsUnixNodeDispatcher source file removed)
         assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.isUnix" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        // Legacy execution path still exists untouched (G5 removes it, not G4).
-        assertNotNull(CanonicalIsUnixNodeDispatcher())
+        // The legacy metadata authority no longer answers for "core.isUnix":
+        assertThrows(IllegalArgumentException::class.java) {
+            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.isUnix")
+        }
+        // Source-level absence proof — the dispatcher type must NOT exist on the classpath.
+        // (Compilation of this file would have failed in L0 if CanonicalIsUnixNodeDispatcher were still on disk.)
     }
 
     @Test

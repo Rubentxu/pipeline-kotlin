@@ -37,9 +37,9 @@ class CoreWriteFileRegistryPrimaryFitnessTest {
             "core.file.writeFile must be routed via the registry after the G4 flip",
         )
         assertEquals(
-            8,
+            7,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "G4 counter: LEGACY_PLUGIN_IDS converges 10 -> 9 (writeFile) -> 8 (emitEvent, S2-A4/G4)",
+            "G4->G5 counter: LEGACY_PLUGIN_IDS converges 10 -> 9 (writeFile) -> 8 (emitEvent) -> 7 (isUnix, S2-A5/G5)",
         )
     }
 

@@ -23,7 +23,8 @@ object CanonicalCoreStepMetadata {
         "core.cleanWs" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),
         "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
         "core.pwd" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
-        "core.isUnix" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
+        // S2-A5 / G5: "core.isUnix" row removed (LEGACY_REMOVED). Production metadata is now
+        // read exclusively from CoreIsUnixStep.descriptor via RegistryStepMetadataResolver.
         "core.waitUntil" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
         "core.archiveArtifacts" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
     )

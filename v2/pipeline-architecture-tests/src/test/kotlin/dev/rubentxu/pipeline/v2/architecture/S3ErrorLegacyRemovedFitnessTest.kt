@@ -117,28 +117,12 @@ class S3ErrorLegacyRemovedFitnessTest {
         )
     }
 
-    /** 2b. LEGACY_PLUGIN_IDS is exactly the 8 residual legacy keys (full-set equality). */
+    /** 2b. LEGACY_PLUGIN_IDS is exactly the 6 residual legacy keys (full-set equality via the shared snapshot). */
     @Test
     fun `LEGACY_PLUGIN_IDS is exactly the 6 residual keys (post-S2-A6-G5 full-set equality)`() {
-        val source = codeOnly(read(decoderSource))
-        val legacyBlock = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)").find(source)?.value
-            ?: error("LEGACY_PLUGIN_IDS declaration not found in $decoderSource")
-        // Extract every "core.xxx" literal that is on its own line.
-        val ids = Regex("\"core\\.[a-zA-Z.]+\"").findAll(legacyBlock).map { it.value }.toSet()
-        val expected = setOf(
-            "\"core.milestone\"",
-            "\"core.deleteDir\"",
-            "\"core.cleanWs\"",
-            "\"core.load\"",
-            "\"core.waitUntil\"",
-            "\"core.archiveArtifacts\"",
-        )
-        assertEquals(
-            expected,
-            ids,
-            "LEGACY_PLUGIN_IDS MUST equal the 6 residual legacy keys post-S2-A6/G5 (no core.error, no core.echo, no core.sh, no core.emit.event, no core.pwd, no core.isUnix, no extras); " +
-                "got $ids",
-        )
+        // Single shared authority: LegacyResidualSnapshot is the ONLY place that
+        // declares the residual set; this assertion delegates to it.
+        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
     }
 
     /** 3. core.error is NOT decodable by CanonicalCoreStepDecoder (no ERROR_PLUGIN_ID, no when-branch, no Error data class). */
@@ -305,76 +289,20 @@ class S3ErrorLegacyRemovedFitnessTest {
 
     @Test
     fun `counter snapshot at G6 close -- LEGACY_PLUGIN_IDS equals the 6 residual legacy keys`() {
-        val decoder = codeOnly(read(decoderSource))
-        val legacyBlock = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)").find(decoder)?.value
-            ?: error("LEGACY_PLUGIN_IDS declaration not found")
-        val legacyIds = Regex("\"(core\\.[a-zA-Z.]+)\"").findAll(legacyBlock).map { it.groupValues[1] }.toSet()
-        val expected = setOf(
-            "core.milestone",
-            "core.deleteDir",
-            "core.cleanWs",
-            "core.load",
-            "core.waitUntil",
-            "core.archiveArtifacts",
-        )
-        assertEquals(expected, legacyIds, "LEGACY_PLUGIN_IDS MUST equal the 6 residual legacy keys (post-S2-A6/G5)")
-        assertEquals(6, legacyIds.size)
+        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
     }
 
     @Test
     fun `counter snapshot at G6 close -- CanonicalCoreStepMetadata table keys equal the 6 residual legacy keys`() {
-        // Metadata rows: extract via the concrete entry shape `"core.x" to StepMetadata(`
-        // (matches the actual literal form in CanonicalCoreStepMetadata).
-        val metadata = codeOnly(read(metadataSource))
-        val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
-            .findAll(metadata)
-            .map { it.groupValues[1] }
-            .toSet()
-        val expected = setOf(
-            "core.milestone",
-            "core.deleteDir",
-            "core.cleanWs",
-            "core.load",
-            "core.waitUntil",
-            "core.archiveArtifacts",
-        )
-        assertEquals(
-            expected,
-            metadataKeys,
-            "CanonicalCoreStepMetadata.table keys MUST equal the 6 residual legacy keys (post-S2-A6/G5)",
-        )
-        assertEquals(6, metadataKeys.size)
+        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
+        val metadataKeys = LegacyResidualSnapshot.liveMetadataRows(ScannerSupport.v2Root())
         assertFalse("core.error" in metadataKeys, "core.error MUST NOT be in legacy metadata")
     }
 
     @Test
     fun `counter snapshot at G6 close -- per-Step dispatcher files equal the 6 residual legacy dispatcher classes`() {
-        // Per-Step dispatcher files are HARDCODED (NOT derived from plugin ids) because the
-        // plugin id -> class name mapping is a historical naming accident, not a contract.
-        val durableDir = ScannerSupport.v2Root()
-            .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
-        val actualDispatchers: Set<String> = Files.list(durableDir).use { paths ->
-            paths
-                .map { it.fileName.toString() }
-                .filter { it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") }
-                .filter { it != "CanonicalNodeDispatcher.kt" } // facade, not a per-Step dispatcher
-                .toList()
-                .toSet()
-        }
-        val expectedDispatchers = setOf(
-            "CanonicalMilestoneNodeDispatcher.kt",
-            "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt",
-            "CanonicalLoadNodeDispatcher.kt",
-            "CanonicalWaitUntilNodeDispatcher.kt",
-            "CanonicalArchiveArtifactsNodeDispatcher.kt",
-        )
-        assertEquals(
-            expectedDispatchers,
-            actualDispatchers,
-            "Per-Step dispatcher files in durable/ MUST equal the 6 expected Canonical<Node>NodeDispatcher.kt (isUnix removed at S2-A5/G5; pwd removed at S2-A6/G5)",
-        )
-        assertEquals(6, actualDispatchers.size)
+        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
+        val actualDispatchers = LegacyResidualSnapshot.liveDispatcherFiles(ScannerSupport.v2Root())
         assertFalse(
             "CanonicalErrorNodeDispatcher.kt" in actualDispatchers,
             "CanonicalErrorNodeDispatcher.kt MUST NOT exist at G6 (LEGACY_REMOVED)",

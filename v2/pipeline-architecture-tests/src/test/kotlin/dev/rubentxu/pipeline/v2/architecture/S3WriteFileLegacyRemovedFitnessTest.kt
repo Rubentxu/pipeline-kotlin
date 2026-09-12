@@ -20,24 +20,15 @@ class S3WriteFileLegacyRemovedFitnessTest {
     private val registry = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt")
     private val writeFileStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStep.kt")
 
-    private val expectedIds = setOf(
-        "core.milestone", "core.deleteDir", "core.cleanWs",
-        "core.load", "core.waitUntil", "core.archiveArtifacts",
-    )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
     private fun codeOnly(source: String): String = Regex("//[^\\n]*").replace(source, "")
         .let { Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(it, "") }
-    private fun legacyIds(): Set<String> {
-        val block = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)").find(codeOnly(read(decoder)))?.value
-            ?: error("LEGACY_PLUGIN_IDS declaration not found")
-        return Regex("\\\"(core\\.[a-zA-Z.]+)\\\"").findAll(block).map { it.groupValues[1] }.toSet()
-    }
 
     @Test fun `core file writeFile remains registered and structurally registry owned`() {
         assertTrue(read(registry).contains("CoreWriteFileStep.registerInto(this)"))
         assertTrue(read(writeFileStep).contains("PluginStepId(\"core.file.writeFile\")"))
-        assertFalse("core.file.writeFile" in legacyIds())
+        assertFalse("core.file.writeFile" in LegacyResidualSnapshot.liveLegacyIds(root))
     }
 
     @Test fun `legacy command decoder and dispatcher forms are absent`() {
@@ -57,25 +48,8 @@ class S3WriteFileLegacyRemovedFitnessTest {
         assertFalse(Regex("\\\"core\\.file\\.writeFile\\\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    @Test fun `transitional snapshot converges to 6 IDs 6 metadata rows 6 dispatchers S2-A6-G5 convergence`() {
-        assertEquals(expectedIds, legacyIds())
-        val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
-            .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
-        // S2-A6/G5 window: core.pwd physically deleted from all three legacy authorities
-        // (LEGACY_PLUGIN_IDS dropped at G4; metadata row + dispatcher file deleted at G5).
-        assertEquals(expectedIds, metadataKeys)
-        val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
-        val actualDispatchers = Files.list(durable).use { paths -> paths.map { it.fileName.toString() }
-            .filter { it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") && it != "CanonicalNodeDispatcher.kt" }
-            .toList().toSet() }
-        assertEquals(setOf(
-            "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt",
-            "CanonicalWaitUntilNodeDispatcher.kt",
-            "CanonicalArchiveArtifactsNodeDispatcher.kt",
-        ), actualDispatchers)
-        assertEquals(6, legacyIds().size)
-        assertEquals(6, metadataKeys.size)
-        assertEquals(6, actualDispatchers.size)
+    @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
+        // Single shared authority: ONE place to flip 6 -> 5 at the next G4/G5.
+        LegacyResidualSnapshot.assertConverged(root)
     }
 }

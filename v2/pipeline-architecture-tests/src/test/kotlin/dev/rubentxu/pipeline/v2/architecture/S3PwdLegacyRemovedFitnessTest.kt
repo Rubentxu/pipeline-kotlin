@@ -50,25 +50,7 @@ class S3PwdLegacyRemovedFitnessTest {
     private val pwdDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalPwdNodeDispatcher.kt")
     private val pwdStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdStep.kt")
 
-    /** The exact 6 residual legacy keys converged at G5 (after `core.pwd` removal). */
-    private val residualIds = setOf(
-        "core.milestone", "core.deleteDir", "core.cleanWs",
-        "core.load", "core.waitUntil", "core.archiveArtifacts",
-    )
-
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
-    private fun codeOnly(source: String): String =
-        Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
-            Regex("//[^\\n]*").replace(source, ""),
-            "",
-        )
-
-    private fun legacyIds(): Set<String> {
-        val block = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)")
-            .find(codeOnly(read(decoder)))?.value
-            ?: error("LEGACY_PLUGIN_IDS declaration not found")
-        return Regex("\"(core\\.[a-zA-Z.]+)\"").findAll(block).map { it.groupValues[1] }.toSet()
-    }
 
     // ===== registry authority intact =====
 
@@ -80,50 +62,40 @@ class S3PwdLegacyRemovedFitnessTest {
             StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(PluginStepId("core.pwd"), production),
         )
-        assertFalse("core.pwd" in legacyIds())
+        assertFalse("core.pwd" in LegacyResidualSnapshot.liveLegacyIds(root))
     }
 
     // ===== irreversible removals =====
 
     @Test fun `legacy command subtype and decoder branch are absent`() {
-        val decoderSource = codeOnly(read(decoder))
+        val decoderSource = LegacyResidualSnapshot.run {
+            Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
+                Regex("//[^\\n]*").replace(Files.readString(decoder), ""), "")
+        }
         assertFalse(decoderSource.contains("data class Pwd"))
         assertFalse(decoderSource.contains("PWD_PLUGIN_ID"))
     }
 
     @Test fun `legacy dispatcher is absent as file facade field branch and context helper`() {
         assertFalse(Files.exists(pwdDispatcher), "CanonicalPwdNodeDispatcher.kt MUST be deleted")
-        val facade = codeOnly(read(nodeDispatcher))
+        val facade = Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
+            Regex("//[^\\n]*").replace(read(nodeDispatcher), ""), "")
         assertFalse(facade.contains("pwdDispatcher"))
         assertFalse(facade.contains("CanonicalCoreStepCommand.Pwd"))
         assertFalse(facade.contains("pwdContext"))
     }
 
     @Test fun `legacy metadata has no core pwd row`() {
-        val source = codeOnly(read(metadata))
+        val source = Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
+            Regex("//[^\\n]*").replace(read(metadata), ""), "")
         assertFalse(Regex("\"core\\.pwd\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
     // ===== counter convergence 6 / 6 / 6 =====
 
     @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
-        assertEquals(residualIds, legacyIds())
-        val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
-            .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
-        assertEquals(residualIds, metadataKeys)
-        val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
-        val actualDispatchers = Files.list(durable).use { paths -> paths.map { it.fileName.toString() }
-            .filter { it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") && it != "CanonicalNodeDispatcher.kt" }
-            .toList().toSet() }
-        assertEquals(setOf(
-            "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt",
-            "CanonicalWaitUntilNodeDispatcher.kt",
-            "CanonicalArchiveArtifactsNodeDispatcher.kt",
-        ), actualDispatchers)
-        assertEquals(6, legacyIds().size)
-        assertEquals(6, metadataKeys.size)
-        assertEquals(6, actualDispatchers.size)
+        // Single shared authority: ONE place to flip 6 -> 5 at the next G4/G5.
+        LegacyResidualSnapshot.assertConverged(root)
     }
 
     // ===== anti-over-removal: PwdResolved emission is ALIVE =====

@@ -49,11 +49,6 @@ class S3EmitEventLegacyRemovedFitnessTest {
     private val emitEventStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStep.kt")
     private val registryFactory = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt")
 
-    /** The exact 6 residual legacy keys converged at S2-A6/G5 (after `core.pwd` removal). */
-    private val residualIds = setOf(
-        "core.milestone", "core.deleteDir", "core.cleanWs", "core.load",
-        "core.waitUntil", "core.archiveArtifacts",
-    )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
     private fun codeOnly(source: String): String =
@@ -62,12 +57,6 @@ class S3EmitEventLegacyRemovedFitnessTest {
             "",
         )
 
-    private fun legacyIds(): Set<String> {
-        val block = Regex("val LEGACY_PLUGIN_IDS: Set<String> = setOf\\(([\\s\\S]*?)\\)")
-            .find(codeOnly(read(decoder)))?.value
-            ?: error("LEGACY_PLUGIN_IDS declaration not found")
-        return Regex("\\\"(core\\.[a-zA-Z.]+)\\\"").findAll(block).map { it.groupValues[1] }.toSet()
-    }
 
     // ===== registry authority intact =====
 
@@ -80,7 +69,7 @@ class S3EmitEventLegacyRemovedFitnessTest {
             StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(PluginStepId("core.emit.event"), production),
         )
-        assertFalse("core.emit.event" in legacyIds())
+        assertFalse("core.emit.event" in LegacyResidualSnapshot.liveLegacyIds(root))
     }
 
     // ===== irreversible removals =====
@@ -107,23 +96,8 @@ class S3EmitEventLegacyRemovedFitnessTest {
     // ===== counter convergence 6 / 6 / 6 (post S2-A6/G5 `core.pwd` removal) =====
 
     @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
-        assertEquals(residualIds, legacyIds())
-        val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
-            .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
-        assertEquals(residualIds, metadataKeys)
-        val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
-        val actualDispatchers = Files.list(durable).use { paths -> paths.map { it.fileName.toString() }
-            .filter { it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") && it != "CanonicalNodeDispatcher.kt" }
-            .toList().toSet() }
-        assertEquals(setOf(
-            "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt",
-            "CanonicalWaitUntilNodeDispatcher.kt",
-            "CanonicalArchiveArtifactsNodeDispatcher.kt",
-        ), actualDispatchers)
-        assertEquals(6, legacyIds().size)
-        assertEquals(6, metadataKeys.size)
-        assertEquals(6, actualDispatchers.size)
+        // Single shared authority: ONE place to flip 6 -> 5 at the next G4/G5.
+        LegacyResidualSnapshot.assertConverged(root)
     }
 
     // ===== anti-over-removal: the structural protocol is ALIVE =====

@@ -14,6 +14,9 @@ import dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.ArchiveArtifactsOperations
+import dev.rubentxu.pipeline.v2.application.ArchiveArtifactsOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
@@ -176,6 +179,28 @@ open class CanonicalRuntimeCapabilityAccess(
                 eventSink = context.eventSink,
             )
             builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
+        }
+        // LFC-2E1 S2-B10 / G1: archiveArtifacts operations for core.archiveArtifacts.
+        // The adapter binds runId, StageIdentity, controlDirRoot and the EventSink —
+        // exactly the inputs needed to glob the stage workspace via the certified
+        // AntStyleGlob substrate, copy matched files into the artefacts retention
+        // directory, and emit ArtifactArchived / ArtifactArchiveFailed.
+        //
+        // Conditional exposure mirrors DELETE_DIR_OPERATIONS_CAPABILITY: registered
+        // ONLY when controlDirRoot != null; absent otherwise so capability admission
+        // fails closed for core.archiveArtifacts without affecting the rest of the
+        // registry.
+        context.controlDirRoot?.let { root ->
+            val archiveOps: ArchiveArtifactsOperations = ArchiveArtifactsOperationsAdapter(
+                runIdString = context.runId,
+                stageIdentity = StageIdentity(
+                    name = context.stageName,
+                    index = context.stageIndex,
+                ),
+                controlDirRoot = root,
+                eventSink = context.eventSink,
+            )
+            builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
         }
         // S2-A9 spike: milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the

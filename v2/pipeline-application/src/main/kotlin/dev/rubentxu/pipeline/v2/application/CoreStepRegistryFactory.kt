@@ -55,6 +55,12 @@ object CoreStepRegistryFactory {
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreWriteFileStep.registerInto(this)
+        // LFC-2E1 S2-B10 / G1: candidate registration only. `core.archiveArtifacts`
+        // remains in LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's
+        // legacy-membership-wins rule keeps LegacyCore as the canonical production
+        // authority. No legacy decoder, metadata, dispatcher, or catalogue entry
+        // changes in this gate.
+        CoreArchiveArtifactsStep.registerInto(this)
         // LFC-2E1-S2-A4 / G1: candidate registration only. `core.emit.event` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,

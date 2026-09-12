@@ -1,0 +1,8 @@
+base tests 60 failures 7
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CoreErrorRegistryPrimaryFitnessTest :: LEGACY_PLUGIN_IDS post-S2-A6-G4 — 6 residual legacy keys remain()
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CoreEmitEventRegistryPrimaryFitnessTest :: core pwd registry flip — 6 residual legacy keys remain post-S2-A6-G4()
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CoreIsUnixRegistryPrimaryFitnessTest :: G4 flip - core dot isUnix stays absent from LEGACY_PLUGIN_IDS post-S2-A6-G4()
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CoreWriteFileRegistryPrimaryFitnessTest :: G4 flip post-S2-A6-G4 - 6 residual legacy keys remain()
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest :: registry post-S2-A6-G4 — 6 residual legacy keys remain()
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest :: production registry contains exactly the registered core steps (post-S2-A6-G4)()
+  BASE-RED: dev.rubentxu.pipeline.v2.application.CorePwdRegistryPrimaryFitnessTest :: G4 flip - core dot pwd is absent from LEGACY_PLUGIN_IDS()

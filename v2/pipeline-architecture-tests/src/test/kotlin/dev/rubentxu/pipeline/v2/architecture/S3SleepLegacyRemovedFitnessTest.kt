@@ -22,7 +22,7 @@ class S3SleepLegacyRemovedFitnessTest {
 
     private val expectedIds = setOf(
         "core.milestone", "core.deleteDir", "core.cleanWs",
-        "core.load", "core.pwd", "core.waitUntil", "core.archiveArtifacts",
+        "core.load", "core.waitUntil", "core.archiveArtifacts",
     )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
@@ -57,9 +57,9 @@ class S3SleepLegacyRemovedFitnessTest {
         assertFalse(Regex("\\\"core\\.sleep\\\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    @Test fun `transitional snapshot converges to 7 IDs 7 metadata rows 7 dispatchers S2-A5-G5 convergence`() {
+    @Test fun `transitional snapshot converges to 6 IDs 6 metadata rows 6 dispatchers S2-A6-G5 convergence`() {
         assertEquals(expectedIds, legacyIds())
-        val metadataKeys = Regex("\\\"(core\\.[a-zA-Z.]+)\\\"\\s+to\\s+StepMetadata\\(")
+        val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
         assertEquals(expectedIds, metadataKeys)
         val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
@@ -68,12 +68,12 @@ class S3SleepLegacyRemovedFitnessTest {
             .toList().toSet() }
         assertEquals(setOf(
             "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt", "CanonicalPwdNodeDispatcher.kt",
+            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt",
             "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
-        assertEquals(7, legacyIds().size)
-        assertEquals(7, metadataKeys.size)
-        assertEquals(7, actualDispatchers.size)
+        assertEquals(6, legacyIds().size)
+        assertEquals(6, metadataKeys.size)
+        assertEquals(6, actualDispatchers.size)
     }
 }

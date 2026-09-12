@@ -49,10 +49,10 @@ class S3IsUnixLegacyRemovedFitnessTest {
     private val platformAccess = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt")
     private val registryFactory = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt")
 
-    /** The exact 7 residual legacy keys converged at G5 (after `core.isUnix` removal). */
+    /** The exact 6 residual legacy keys converged at S2-A6/G5 (after `core.pwd` removal). */
     private val residualIds = setOf(
         "core.milestone", "core.deleteDir", "core.cleanWs", "core.load",
-        "core.pwd", "core.waitUntil", "core.archiveArtifacts",
+        "core.waitUntil", "core.archiveArtifacts",
     )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
@@ -104,9 +104,9 @@ class S3IsUnixLegacyRemovedFitnessTest {
         assertFalse(Regex("\"core\\.isUnix\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    // ===== counter convergence 7 / 7 / 7 =====
+    // ===== counter convergence 6 / 6 / 6 (post S2-A6/G5 `core.pwd` removal) =====
 
-    @Test fun `three residual legacy authorities converge to exact seven step snapshots`() {
+    @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
         assertEquals(residualIds, legacyIds())
         val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
@@ -117,13 +117,13 @@ class S3IsUnixLegacyRemovedFitnessTest {
             .toList().toSet() }
         assertEquals(setOf(
             "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt", "CanonicalPwdNodeDispatcher.kt",
+            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt",
             "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
-        assertEquals(7, legacyIds().size)
-        assertEquals(7, metadataKeys.size)
-        assertEquals(7, actualDispatchers.size)
+        assertEquals(6, legacyIds().size)
+        assertEquals(6, metadataKeys.size)
+        assertEquals(6, actualDispatchers.size)
     }
 
     // ===== anti-over-removal: the structural protocol is ALIVE =====

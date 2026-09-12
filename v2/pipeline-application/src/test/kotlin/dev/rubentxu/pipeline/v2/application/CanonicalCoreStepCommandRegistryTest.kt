@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 7 entries`() {
+    fun `sealedSubclasses has exactly 6 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
         assertEquals(6, subclasses.size, "Expected exactly 6 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix at S2-A5/G5; Pwd at S2-A6/G5). Found: ${subclasses.map { it.simpleName }}")
     }

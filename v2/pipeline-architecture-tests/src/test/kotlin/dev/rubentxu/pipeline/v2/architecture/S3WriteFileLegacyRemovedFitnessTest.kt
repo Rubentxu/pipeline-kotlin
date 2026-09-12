@@ -22,7 +22,7 @@ class S3WriteFileLegacyRemovedFitnessTest {
 
     private val expectedIds = setOf(
         "core.milestone", "core.deleteDir", "core.cleanWs",
-        "core.load", "core.pwd", "core.waitUntil", "core.archiveArtifacts",
+        "core.load", "core.waitUntil", "core.archiveArtifacts",
     )
 
     private fun read(path: java.nio.file.Path): String = Files.readString(path)
@@ -57,12 +57,12 @@ class S3WriteFileLegacyRemovedFitnessTest {
         assertFalse(Regex("\\\"core\\.file\\.writeFile\\\"\\s+to\\s+StepMetadata\\(").containsMatchIn(source))
     }
 
-    @Test fun `transitional snapshot converges to 7 IDs 7 metadata rows 7 dispatchers S2-A5-G5 convergence`() {
+    @Test fun `transitional snapshot converges to 6 IDs 6 metadata rows 6 dispatchers S2-A6-G5 convergence`() {
         assertEquals(expectedIds, legacyIds())
-        val metadataKeys = Regex("\\\"(core\\.[a-zA-Z.]+)\\\"\\s+to\\s+StepMetadata\\(")
+        val metadataKeys = Regex("\"(core\\.[a-zA-Z.]+)\"\\s+to\\s+StepMetadata\\(")
             .findAll(codeOnly(read(metadata))).map { it.groupValues[1] }.toSet()
-        // S2-A5/G4 window: core.isUnix routing flipped (IDs) but its legacy metadata row and
-        // dispatcher were physically present until S2-A5/G5 (LEGACY_UNREACHABLE -> REMOVED).
+        // S2-A6/G5 window: core.pwd physically deleted from all three legacy authorities
+        // (LEGACY_PLUGIN_IDS dropped at G4; metadata row + dispatcher file deleted at G5).
         assertEquals(expectedIds, metadataKeys)
         val durable = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable")
         val actualDispatchers = Files.list(durable).use { paths -> paths.map { it.fileName.toString() }
@@ -70,12 +70,12 @@ class S3WriteFileLegacyRemovedFitnessTest {
             .toList().toSet() }
         assertEquals(setOf(
             "CanonicalMilestoneNodeDispatcher.kt", "CanonicalDeleteDirNodeDispatcher.kt",
-            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt", "CanonicalPwdNodeDispatcher.kt",
+            "CanonicalCleanWsNodeDispatcher.kt", "CanonicalLoadNodeDispatcher.kt",
             "CanonicalWaitUntilNodeDispatcher.kt",
             "CanonicalArchiveArtifactsNodeDispatcher.kt",
         ), actualDispatchers)
-        assertEquals(7, legacyIds().size)
-        assertEquals(7, metadataKeys.size)
-        assertEquals(7, actualDispatchers.size)
+        assertEquals(6, legacyIds().size)
+        assertEquals(6, metadataKeys.size)
+        assertEquals(6, actualDispatchers.size)
     }
 }

@@ -77,19 +77,51 @@ and one dispatcher file).
 
 ## Pin updates (test-side counters)
 
-- `CanonicalCoreStepCommandRegistryTest.sealedSubclasses has exactly 7 entries` (was 8 at G4).
+- `CanonicalCoreStepCommandRegistryTest.sealedSubclasses has exactly 6 entries` (test name
+  corrected from the stale "7 entries" wording to match the actual pin; was 8 at G4).
   Expected set updated to 6 (drop `core.pwd`).
 
-## Sibling fitness pin updates
+## Sibling fitness pin updates (7/7/7 → 6/6/6, corrective commit)
 
-The four sibling `S3*LegacyRemovedFitnessTest` classes pin the residual legacy keys / metadata
-rows / dispatcher files. At S2-A5/G5 they pinned 7/7/7; at S2-A6/G5 they pin 6/6/6.
+The five prior `S3*LegacyRemovedFitnessTest` classes pin the residual legacy keys / metadata
+rows / dispatcher files. At S2-A5/G5 they pinned 7/7/7; at S2-A6/G5 (this corrective commit)
+they pin 6/6/6. The pre-existing `S3PwdLegacyRemovedFitnessTest` already pinned 6/6/6 (was
+created fresh at this slice) and remains the canonical authority for the new residual.
 
-(The sibling fitness classes — `S3EmitEventLegacyRemovedFitnessTest`,
-`S3ErrorLegacyRemovedFitnessTest`, `S3SleepLegacyRemovedFitnessTest`,
-`S3WriteFileLegacyRemovedFitnessTest` — were NOT touched at S2-A6/G5: S2-A6 was the SECOND
-family to be burned down past these classes, and the counter pin pattern was already
-proven stable. Their pre-existing 7/7/7 pins remain valid; this slice does not modify them.)
+Updated at this corrective commit:
+
+- `S3IsUnixLegacyRemovedFitnessTest` — `residualIds` drops `core.pwd`; `expectedDispatchers`
+  drops `CanonicalPwdNodeDispatcher.kt`; counters `assertEquals(7, ...)` → `assertEquals(6, ...)`;
+  test method renamed `converge to exact seven step snapshots` → `converge to exact six step
+  snapshots`. Doc comment updated: 7 → 6 residual.
+- `S3EmitEventLegacyRemovedFitnessTest` — same pattern (residualIds, expectedDispatchers,
+  counters, method name).
+- `S3ErrorLegacyRemovedFitnessTest` — `LEGACY_PLUGIN_IDS is exactly the 8 residual keys` →
+  `the 6 residual keys`; the three `counter snapshot at G6 close` tests updated from 7/7/7 to
+  6/6/6 (LEGACY_PLUGIN_IDS, metadata rows, dispatcher files); `expectedDispatchers` drops
+  `CanonicalPwdNodeDispatcher.kt`. Doc header updated: 8 → 6 residual.
+- `S3SleepLegacyRemovedFitnessTest` — `expectedIds` drops `core.pwd`; `expectedDispatchers`
+  drops `CanonicalPwdNodeDispatcher.kt`; counters 7 → 6; method name updated
+  `S2-A5-G5 convergence` → `S2-A6-G5 convergence`.
+- `S3WriteFileLegacyRemovedFitnessTest` — same pattern as Sleep; inline comment updated to
+  document the S2-A6/G5 window instead of S2-A5/G4.
+
+The `S3EchoLegacyRemovedFitnessTest` is NOT touched (its pin only references `core.echo`, which
+was already removed in S3.4 and is unaffected by the pwd burn-down).
+
+### Verification (corrective commit, fresh XML/SHA-256)
+
+| Class | Tests | Failures | SHA256 |
+| --- | --- | --- | --- |
+| S3IsUnixLegacyRemovedFitnessTest | 9 | 0 | 741affde00c35d3d |
+| S3EmitEventLegacyRemovedFitnessTest | 8 | 0 | fdd288db20160d00 |
+| S3ErrorLegacyRemovedFitnessTest | 12 | 0 | 1e16778ebd9bceca |
+| S3SleepLegacyRemovedFitnessTest | 4 | 0 | b5236e272e492d14 |
+| S3WriteFileLegacyRemovedFitnessTest | 4 | 0 | f8a6d10ab5066872 |
+| S3EchoLegacyRemovedFitnessTest | 7 | 0 | 6c3ffe30c0e6f4bb |
+| S3PwdLegacyRemovedFitnessTest | 8 | 0 | 71f1bf592f751f71 |
+
+**S3 family total: 52 tests / 0 failures / 0 errors across 7 fitness classes.**
 
 ## Anti-over-removal (the G5 law)
 

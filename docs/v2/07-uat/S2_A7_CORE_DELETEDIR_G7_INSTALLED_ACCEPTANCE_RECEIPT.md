@@ -123,12 +123,12 @@ window) with `deletedCount=0`, same path, same operation identity (sha256 =
 marker sha of the original deletion, byte-verified against the on-disk `.deleted`
 file). No duplicate deletion of data; no re-creation of child effects.
 
-OBSERVATION (non-blocking, structural — not a replay-law violation): each rerun
-emits two DirDeleted events (the fresh projection deletedCount=5 followed by the
-live rerun result deletedCount=0). Durable truth is the live (last) result and is
-correct; the replayed projection of the original effect is also a correct
-projection. Flagged as an evolutive note for the replay-projection channel, NOT a
-G7 gap: idempotency, identity, and outcome are all correct.
+OBSERVATION (clarification): the archived event query is cumulative for the
+reused runId. Therefore each post-rerun dump contains the original
+DirDeleted(deletedCount=5) plus one newly persisted DirDeleted(deletedCount=0)
+for each rerun. This is historical event accumulation, NOT evidence that one
+rerun emits two DirDeleted events. No replay-projection anomaly was observed in
+G7: each rerun contributes exactly one new DirDeleted(deletedCount=0).
 
 ### DD-G7-04 — legacy absence (PASS)
 
@@ -166,4 +166,5 @@ legacy counters = 5 / 5 / 5  (UNCHANGED — no authority mutation in this slice)
 
 INSTALLED_ACCEPTANCE=true. Next authorized gate: **G8 — CERTIFIED** for
 `core.deleteDir` (per ADR-0074, requires the full certification review; not
-performed here). The DD-G7-03 projection note is evolutive and does not block G8.
+performed here). DD-G7-03 requires no projection note: event dumps are
+cumulative by construction (same runId reused); no anomaly observed.

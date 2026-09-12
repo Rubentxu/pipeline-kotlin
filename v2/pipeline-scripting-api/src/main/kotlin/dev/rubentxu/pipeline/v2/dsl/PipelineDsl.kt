@@ -1568,8 +1568,30 @@ class StageScope(
      * @param tmp If true, creates a temp subdirectory and returns its path
      */
     fun pwd(tmp: Boolean = false): String {
-        val step = StepSpec.Pwd(tmp = tmp)
-        steps.add(step)
+        // S2-A6 / G3R: pwd(tmp=true) lowers to the registry candidate `core.pwd.tmp`
+        // (deterministic tmp workspace). The structural StepSpec carries the plugin
+        // StepKey + encoded envelope verbatim; the runtime resolves the StepDefinition
+        // through the open registry. The compile-time DSL still returns the
+        // synchronous userDir() placeholder so the in-memory scripting host stays
+        // backward-compatible; the actual tmp path is computed by the runtime using
+        // the canonical OpId (sha256(opId.format())). Returning the real tmp path
+        // synchronously is out of G3R scope (the PWD_RUNTIME_RETURN_RECONNECTION
+        // blocker; see S2-A6 / G3R receipt).
+        //
+        // pwd(tmp=false) is unchanged: it still lowers to the legacy `StepSpec.Pwd`
+        // because `core.pwd` is NOT yet AUTHORITY_FLIP_READY (G4).
+        if (tmp) {
+            val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
+            steps.add(
+                StepSpec.RegistryStepSpec(
+                    stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.pwd.tmp"),
+                    schemaVersion = "dsl-v1",
+                    encodedInput = encoded,
+                ),
+            )
+        } else {
+            steps.add(StepSpec.Pwd(tmp = false))
+        }
         // Return real workspace path synchronously for in-memory scripting host.
         // Reads through the RuntimeConfig port so :pipeline-scripting-api does
         // not couple to global JVM state; Lfc0GlobalStateFitnessTest enforces

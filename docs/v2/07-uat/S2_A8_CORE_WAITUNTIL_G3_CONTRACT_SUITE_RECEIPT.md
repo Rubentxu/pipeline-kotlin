@@ -1,26 +1,37 @@
-# S2-A8 / G3 — `core.waitUntil` Contract Suite Receipt
+# S2-A8 / G3 — `core.waitUntil` Contract Suite Receipt (EVIDENCE CORRECTION)
 
 **Batch**: LFC-2E1 / WAVE 1
 **Step**: `core.waitUntil`
-**Base SHA**: `f5e4003d`
-**This SHA**: `HEAD` (58a10fe6 + G3 changes)
+**Base SHA**: `2a247b18`
+**This SHA**: `ee2616f9`
 **Branch**: `cycle/lfc2-e1-wait-until`
 **Date**: 2026-09-12
-**Gate**: G3 — **READY_FOR_AUTHORITY_FLIP**
+**Gate**: G3 — **PARTIAL CANDIDATE CONTRACT/READINESS** (NOT final certification)
+
+## Evidence Validation Post-Rebase
+
+- **Base revalidation SHA**: `ee2616f9`
+- **Rebase from**: `f5e4003d` → `2a247b18`
+- **Test execution**: WaitUntilStepContractSuiteTest (18 tests) + CoreWaitUntilDifferentialContractTest (8 tests)
+- **XML SHA-256 (WaitUntilStepContractSuiteTest)**: `2e3689aa50e6e4346c9696d6be038d576a1ac26ebf66eb6ef3b54084b101168d`
+- **XML SHA-256 (CoreWaitUntilDifferentialContractTest)**: `f03a4489921c289870e513ab3ca403a96a3a59d3291bd18444ca621857467ea2`
+
+## Registry State Declaration
+
+```
+REGISTERED              = true   (Step registered in CoreStepRegistryFactory)
+IMPLEMENTED_UNCERTIFIED = true   (stub body, BodyInvoker not integrated)
+AUTHORITY_FLIP_READY    = false  (BLOCKER present)
+BLOCKER                 = WAITUNTIL_BODY_INVOKER
+```
 
 ## 1. Purpose
 
-Implement `WaitUntilStepContractSuiteTest` following the `CorePwdStepContractSuiteTest` pattern to certify `core.waitUntil` end-to-end across the registry-driven, open-world Step seam.
+Correct G3 evidence to reflect that `core.waitUntil` is in `IMPLEMENTED_UNCERTIFIED` state, not `CERTIFIED` or `READY_FOR_AUTHORITY_FLIP`. The Step uses a stub body pattern; full polling loop evaluation requires `BodyInvoker` (ADR-0073) integration, which is mandatory before G4/G5.
 
-## 2. Changes
+## 2. Test Results
 
-### 2.1 New Files
-
-| File | Purpose |
-|------|---------|
-| `v2/pipeline-application/src/test/kotlin/.../WaitUntilStepContractSuiteTest.kt` | Contract suite tests |
-
-## 3. Contract Suite Coverage Matrix
+### 2.1 WaitUntilStepContractSuiteTest (18 tests)
 
 | # | Test | Result |
 |---|------|--------|
@@ -45,53 +56,89 @@ Implement `WaitUntilStepContractSuiteTest` following the `CorePwdStepContractSui
 
 **Total: 18 tests, 18 PASS, 0 FAIL**
 
-## 4. Test Suite Summary
+### 2.2 CoreWaitUntilDifferentialContractTest (8 tests)
+
+| # | Test | Result |
+|---|------|--------|
+| 1 | handler — WaitUntilPolled and WaitUntilCompleted events (stub pattern) | PASS |
+| 2 | handler — WaitUntilPolled has correct attempt and duration fields | PASS |
+| 3 | handler — WaitUntilCompleted has correct totalAttempts and totalDurationMs | PASS |
+| 4 | handler — stub output has completed outcome with zero attempts-durations | PASS |
+| 5 | output codec — WaitUntilOutput round-trips correctly | PASS |
+| 6 | codec round-trip — encoded by registry, decodeable as legacy expects | PASS |
+| 7 | input codec — default values produce expected envelope | PASS |
+| 8 | input codec — WaitUntilInput produces canonical dsl-v1 envelope | PASS |
+
+**Total: 8 tests, 8 PASS, 0 FAIL**
+
+### 2.3 Test Suite Summary
 
 | Suite | Tests | Pass | Fail |
 |-------|-------|------|------|
 | `WaitUntilStepContractSuiteTest` | 18 | 18 | 0 |
-| `CoreWaitUntilStepUnitTest` | 9 | 9 | 0 |
 | `CoreWaitUntilDifferentialContractTest` | 8 | 8 | 0 |
-| `CanonicalWaitUntilNodeDispatcherTest` | 2 | 2 | 0 |
 
-**Grand Total: 37 tests, 37 PASS, 0 FAIL**
+**Grand Total: 26 tests, 26 PASS, 0 FAIL**
 
-## 5. Pre-Existing Tests (Unchanged)
+## 3. Pre-Existing Tests (Unchanged)
 
 | Test | Result |
 |------|--------|
 | `UatLocal011WorkflowControlTest.SC-011-12` | PASS |
 | `CompatibilityCorpusTest.fixture13` | PASS |
 
-## 6. Counter State
+## 4. Counter State
 
 ```
-LEGACY_PLUGIN_IDS       = 6   (UNCHANGED)
+LEGACY_PLUGIN_IDS       = 6   (UNCHANGED — behind LegacyCore)
 metadata rows           = 6   (UNCHANGED)
 dispatcher files        = 6   (UNCHANGED)
 ```
 
-## 7. Block Step Note
+## 5. Block Step Status — STUB PATTERN
 
-`waitUntil` is a Block Step with a condition body. The registry candidate follows the stub pattern:
+`waitUntil` is a Block Step with a condition body. The current implementation follows the **stub pattern**:
 - Emits `WaitUntilPolled` with `conditionResult=true`
 - Emits `WaitUntilCompleted` with `outcome="completed"`
 
-The actual polling loop with condition evaluation requires BodyInvoker (ADR-0073).
+**CRITICAL**: The actual polling loop with real condition evaluation requires `BodyInvoker` (ADR-0073) integration. This is a prerequisite for G4/G5. The stub does not validate the user's condition DSL.
 
-## 8. What G3 Does NOT Change
+## 6. G3 Classification: PARTIAL CANDIDATE
 
-- `LEGACY_PLUGIN_IDS` — unchanged (flip is G4)
+This gate validates:
+- Contract completeness (key, descriptor, codecs, capabilities)
+- Registry registration and resolution
+- Capability admission (fail-closed)
+- Stub body execution through canonical coordinator
+- Durable journal correctness for stub path
+- Observability events
+
+This gate does NOT validate:
+- Real condition body evaluation
+- BodyInvoker integration
+- Polling loop semantics
+- Condition timeout handling
+
+## 7. What G3 Does NOT Change
+
+- `LEGACY_PLUGIN_IDS` — unchanged (flip is G4, blocked by WAITUNTIL_BODY_INVOKER)
 - Legacy decoder — unchanged
 - Legacy metadata — unchanged
 - Legacy dispatcher — unchanged
+- Body evaluation — unchanged (stub only)
 
-## 9. Authority Flip Readiness
+## 8. Blockers for Authority Flip
 
-The registry candidate is now certified through the contract suite. The `core.waitUntil` Step is **READY_FOR_AUTHORITY_FLIP**.
+| Blocker | Description | Required For |
+|---------|-------------|--------------|
+| `WAITUNTIL_BODY_INVOKER` | BodyInvoker (ADR-0073) integration for real condition evaluation | G4, G5, CERTIFIED |
 
-Next gate (G4): Single edit to remove `"core.waitUntil"` from `LEGACY_PLUGIN_IDS`.
+Until `WAITUNTIL_BODY_INVOKER` is resolved:
+- `AUTHORITY_FLIP_READY = false`
+- Cannot proceed to G4 (remove from LEGACY_PLUGIN_IDS)
+- Cannot proceed to G5 (remove legacy execution paths)
+- Cannot proceed to CERTIFIED
 
 ---
 
-**STOP**: G3 complete. `core.waitUntil` is READY_FOR_AUTHORITY_FLIP.
+**G3 evidence correction complete.** `core.waitUntil` is registered and functional through the stub pattern, but remains in `IMPLEMENTED_UNCERTIFIED` state. Authority flip blocked by `WAITUNTIL_BODY_INVOKER`.

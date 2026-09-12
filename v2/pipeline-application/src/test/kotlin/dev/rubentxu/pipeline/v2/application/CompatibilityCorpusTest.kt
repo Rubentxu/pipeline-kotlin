@@ -131,6 +131,8 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture18CleanWs() = runFixturePass("18-cleanWs.pipeline.kts")
 
+    @Test fun fixture19IsUnix() = runFixturePass("19-isunix.pipeline.kts")
+
     /**
      * Verifies that a script with compilation errors exits with non-zero code.
      * INC-R10-ARC-001: compilation failure is a FAILURE outcome, not success.
@@ -138,7 +140,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(17, fixtures.size, "Corpus must have 17 valid fixtures in v0.33.1")
+        assertEquals(18, fixtures.size, "Corpus must have 18 valid fixtures (S2-A5/G8 added 19-isunix)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))
@@ -158,5 +160,6 @@ class CompatibilityCorpusTest {
         assertTrue(names.contains("16-sleep.pipeline.kts"))
         assertTrue(names.contains("17-writeFile.pipeline.kts"))
         assertTrue(names.contains("18-cleanWs.pipeline.kts"))
+        assertTrue(names.contains("19-isunix.pipeline.kts"))
     }
 }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-12T09:20:46.536Z" hostname="bazzite-rubentxu" time="0.133">
+  <properties/>
+  <testcase name="CP-002 corpus has exactly 13 valid fixture files(Path)" classname="dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest" time="0.072"/>
+  <testcase name="CP-001 original 4 corpus files byte-identical to base commit(Path)" classname="dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest" time="0.059"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

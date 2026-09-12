@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-12T09:20:24.228Z" hostname="bazzite-rubentxu" time="4.809">
+  <properties/>
+  <testcase name="fixture19IsUnix()" classname="dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest" time="4.809"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

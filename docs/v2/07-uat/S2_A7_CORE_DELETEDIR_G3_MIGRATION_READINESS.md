@@ -83,7 +83,7 @@ Gate plan:
 ## 6. G3 summary
 
 The `CoreDeleteDirStep` registry candidate is **MIGRATION_READY**:
-- 20/0 unit tests prove handler + codecs + capability admission
+- 18/0 unit tests prove handler + codecs + capability admission + controlDirRoot=null fail-closed rows
 - Architecture fitness tests pass (Lfc2RegistryFamilyFitnessTest: 67 tests)
 - UAT deleteDir test passes (SC-011-04)
 - Counter invariant 6/6/6 preserved

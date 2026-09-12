@@ -11,9 +11,11 @@ import dev.rubentxu.pipeline.v2.application.TEMPORARY_WORKSPACE_OPERATIONS_CAPAB
 import dev.rubentxu.pipeline.v2.application.TemporaryWorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.WORKSPACE_RESOLVER_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.WorkspaceResolverPort
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -121,6 +123,16 @@ open class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
         )
         builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps
+        // S2-A7 / G1: workspace resolver for core.deleteDir. The adapter wraps
+        // the canonical WorkspaceResolver with the WORKSPACE_RESOLVER_PORT interface,
+        // binding controlDirRoot from the runtime context.
+        builder[WORKSPACE_RESOLVER_CAPABILITY] = object : WorkspaceResolverPort {
+            private val resolver = WorkspaceResolver(context.controlDirRoot!!)
+            override fun resolve(stageName: String, stageIndex: Int): java.nio.file.Path =
+                resolver.resolve(stageName, stageIndex)
+            override fun ensureCreated(path: java.nio.file.Path): java.nio.file.Path =
+                resolver.ensureCreated(path)
+        }
         return builder.toMap()
     }
 }

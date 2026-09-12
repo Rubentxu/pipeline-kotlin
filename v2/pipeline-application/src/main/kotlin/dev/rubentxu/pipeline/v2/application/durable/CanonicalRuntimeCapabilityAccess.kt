@@ -44,8 +44,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  */
 open class CanonicalRuntimeCapabilityAccess(
     context: CanonicalRuntimeContext,
-    // S2-A9 spike: optional milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
-    // When null, the capability is absent and milestone steps fail capability admission.
+    // S2-A9: milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
+    // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
     private val milestoneStateStore: MilestoneStateStore? = null,
 ) : StepCapabilityAccess {
 

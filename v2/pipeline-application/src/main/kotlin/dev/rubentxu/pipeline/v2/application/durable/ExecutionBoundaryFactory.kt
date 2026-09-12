@@ -70,8 +70,9 @@ object ExecutionBoundaryFactory {
         stepRegistry: StepRegistry?,
         stepKey: PluginStepId? = null,
         recorder: CommonExecutionBoundary? = null,
-        // S2-A9 spike: milestone state store scoped to the coordinator/run. When provided,
-        // the RegistryExecutionBoundary is created with milestone capability support.
+        // S2-A9: milestone state store scoped to the coordinator/run. The coordinator always
+        // creates a MilestoneStateStore instance (no longer nullable), so this parameter is
+        // always non-null when called from production code. Nullable kept for test/adapter flexibility.
         milestoneStateStore: MilestoneStateStore? = null,
     ): CommonExecutionBoundary {
         // Binary policy preserved bit-a-bit from the original `if (stepRegistry != null)` inline

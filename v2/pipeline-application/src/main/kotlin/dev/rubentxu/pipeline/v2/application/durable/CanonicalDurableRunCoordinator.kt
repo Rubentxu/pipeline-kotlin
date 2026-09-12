@@ -367,13 +367,13 @@ class CanonicalDurableRunCoordinator(
     // routes through RetryReconciliationDriver (ADR-0075 §11). When null, the pre-ADR-0075
     // inline retry loop is preserved bit-equivalent — existing callers and tests see no change.
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
-    // S2-A9 spike: optional milestone state store scoped to this coordinator/run. When bound,
-    // the MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter backed
-    // by this store. When null, the capability is absent and milestone steps will fail
-    // capability admission (fail-closed). The store lives at coordinator lifetime, not per
-    // handler invocation — mirroring the legacy CanonicalMilestoneNodeDispatcher.lastReachedOrdinal
-    // scope (per run, not global classloader).
-    private val milestoneStateStore: MilestoneStateStore? = null,
+    // S2-A9: milestone state store scoped to this coordinator/run. Each coordinator instance
+    // creates its own MilestoneStateStore by default, so all milestone invocations within a run
+    // share the same store (shared by all pipeline stages in the run) while concurrent runs
+    // are fully isolated. This mirrors the legacy CanonicalMilestoneNodeDispatcher.lastReachedOrdinal
+    // scope (per run, not global classloader). No longer nullable — production always gets
+    // a store; tests that need to control the store explicitly pass their own instance.
+    private val milestoneStateStore: MilestoneStateStore = MilestoneStateStore(),
 ) {
     /** Active context stack for body scope tracking (EM-4). */
 

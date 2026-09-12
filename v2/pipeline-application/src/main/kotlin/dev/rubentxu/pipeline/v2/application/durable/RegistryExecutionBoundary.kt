@@ -58,6 +58,7 @@ object RegistryExecutionBoundary {
      *
      * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
      *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
+     *   Always non-null in production; nullable for test/adapter flexibility.
      */
     fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->

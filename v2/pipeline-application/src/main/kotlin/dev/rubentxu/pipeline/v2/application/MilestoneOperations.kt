@@ -70,7 +70,7 @@ sealed class MilestoneAdvanceResult {
 /**
  * Thread-safe milestone state store scoped to a single pipeline run.
  *
- * This is the *durable* state carrier: it lives alongside the coordinator
+ * This is the *run-scoped in-memory state carrier*: it lives alongside the coordinator
  * (same lifetime = one pipeline run), not inside the handler. The handler
  * sees only the [MilestoneOperations] capability interface.
  *

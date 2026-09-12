@@ -94,7 +94,7 @@ core.milestone:
   registry      = present (CoreMilestoneStep.registered in CoreStepRegistryFactory)
   certification = G3 IMPLEMENTED_UNCERTIFIED
   AUTHORITY_FLIP_READY = false (pending G4 REGISTRY_PRIMARY)
-  characterization evidence = THIS RECEIPT (revised)
+  characterization evidence = THIS RECEIPT (revised; final evidence in §6)
 ```
 
 ## 5. State machine transition
@@ -110,14 +110,33 @@ Per ADR-0074, `core.milestone` NO PUEDE ser CERTIFIED hasta que:
 2. Se complete G5 (LEGACY_REMOVED)
 3. Se complete G8 (CERTIFIED formal)
 
-## 6. Revalidation post-rebase
+## 6. Revalidation post-rebase (FINAL EVIDENCE)
 
-**Base SHA**: `2a247b18`
-**Revalidation SHA**: `ec37ed3f` (post-rebase)
-**Test counts re-ejecutados**:
-- CoreMilestoneStepContractSuiteTest: 19 tests
-- CoreMilestoneStepUnitTest: 18 tests
-- UatLocal013MilestoneTimingTest: 4 tests
+**Base SHA**: `ffc39f63` (main with S2-A8 waitUntil readiness merged)
+**Revalidation HEAD**: `e192bbba` (wiring + durability decision A + doc-fix; branch rebased)
+**Test counts re-ejecutados (fresh XML)**:
+- CoreMilestoneStepContractSuiteTest: 23 tests, 0/0 (incl. 3 wiring rows: shared store / isolated coordinators / default store present)
+- CoreMilestoneStepUnitTest: 19 tests, 0/0
+- UatLocal013MilestoneTimingTest: green
+- S3*LegacyRemovedFitnessTest (7 suites): 52/0/0 via shared LegacyResidualSnapshot
+
+**Freeze block (third review, 2026-09-12):**
+```text
+Base SHA          = ffc39f63
+Revalidation HEAD = e192bbba
+UnitTest      = 19/0/0
+ContractSuite = 23/0/0
+S3 fitness    = 52/52
+REGISTERED           = true
+MIGRATION_READY      = true
+AUTHORITY_FLIP_READY = true   (no technical blocker; G4 runs in the serial merge queue)
+CERTIFIED            = false  (only G8 sets CERTIFIED)
+durability:
+  decision = A_LEGACY_PARITY
+  state = run/coordinator-scoped in-memory
+  restart persistence = NOT GUARANTEED (equals legacy dispatcher instance state)
+  future debt = durable rehydration (Option B spike: docs/v2/07-uat/S2_A9_MILESTONE_DURABILITY_SPIKE.md)
+```
 
 ## 7. Production code touched in G3
 
@@ -137,12 +156,16 @@ G3 is STOP. Per the batch manifest:
 > stop_after: G3 → estado IMPLEMENTED_UNCERTIFIED y STOP (AUTHORITY_FLIP_READY=false pendiente del fix de estado)
 
 `core.milestone` is now:
-- G1: CoreMilestoneStep implemented and registered
-- G2: Corpus migrated (18 tests green)
-- G3: Contract suite passed (19 tests green, IMPLEMENTED_UNCERTIFIED)
+- G1: CoreMilestoneStep implemented and registered (IMPLEMENTED_UNCERTIFIED)
+- G2: Corpus migrated (19 tests green)
+- G3: Contract suite passed (23 tests green, IMPLEMENTED_UNCERTIFIED)
+- state seam: run-scoped MilestoneStateStore wired at coordinator level (global mutable REMOVED — old PROBLEMA 1 resolved)
 
-**NOT AUTHORITY_FLIP_READY** — `core.milestone` permanece IMPLEMENTED_UNCERTIFIED
-hasta que se resuelva el PROBLEMA 1 (estado global mutable) y se complete G4/LEGACY_REMOVED.
+**AUTHORITY_FLIP_READY = true** (third review) — no technical blocker remains.
+Gate plan when its turn arrives in the merge queue:
+- G4 = REGISTRY_PRIMARY → counters 5-then-4 pattern: milestone G4 → 5/6/6 (only LEGACY_PLUGIN_IDS shrinks)
+- G5 = LEGACY_REMOVED → 5/5/5
+- NO CERTIFIED before G8.
 
 ## 9. Reviewer-requested corrections (2026-09-12)
 

@@ -173,6 +173,22 @@ Failure-by-class breakdown (all pre-existing, not regressions of this slice):
  v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/S3IsUnixLegacyRemovedFitnessTest.kt    (NEW, 171 lines)
 ```
 
+## State at slice close (S2-A5 / G5)
+
+```text
+core.isUnix:
+  REGISTERED         = true
+  REGISTRY_PRIMARY   = true
+  LEGACY_UNREACHABLE = true
+  LEGACY_REMOVED     = true   (this slice)
+  CONTRACT_SUITE     = false  (superseded by S2-A5/G6 — see
+                              docs/v2/07-uat/S2_A5_CORE_ISUNIX_G6_CONTRACT_CERTIFICATION_RECEIPT.md)
+  CERTIFIED          = false  (reserved for G8 with installed-distribution/UAT evidence)
+
+StructuralFamily = Registry
+legacy counters  = 7 / 7 / 7
+```
+
 ## Next step
 
 Await user GO before:

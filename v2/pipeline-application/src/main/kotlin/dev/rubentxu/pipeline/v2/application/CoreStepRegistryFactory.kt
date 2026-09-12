@@ -135,6 +135,9 @@ object CoreStepRegistryFactory {
         // State: MilestoneStateStore is run-scoped (coordinator-owned); see
         // CanonicalDurableRunCoordinator wiring and S2_A9_MILESTONE_DURABILITY_SPIKE.md.
         CoreMilestoneStep.registerInto(this)
+<<<<<<< HEAD
 
+=======
+>>>>>>> e192bbba (S2-A9/rebase-fix — repair CoreStepRegistryFactory after rebase onto ffc39f63)
     }
 }

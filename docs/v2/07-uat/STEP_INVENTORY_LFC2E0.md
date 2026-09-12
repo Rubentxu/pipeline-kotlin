@@ -62,7 +62,7 @@ Columns:
 | `core.file.writeFile` | CORE | legacy | Y (L1302) | N | Y (CanonicalWriteFileNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.emit.event` | CORE | legacy | Y (emits canonical DomainEvent kinds) | N | Y (CanonicalEmitEventNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.milestone` | OFFICIAL_PLUGIN candidate | legacy | Y (L1704) | N | Y (CanonicalMilestoneNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.deleteDir` | CORE candidate | legacy | Y (L1456) | N | Y (CanonicalDeleteDirNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
+| `core.deleteDir` | CORE candidate | registry | Y (L1456) | Y (`CoreDeleteDirStep`) | Y | N (S2-A7 burn-down) | Y/Y | Y (`DELETE_DIR_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A7/G8, PROPOSED — `S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.cleanWs` | OFFICIAL_PLUGIN candidate | legacy | Y (L1469, L1479) | N | Y (CanonicalCleanWsNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.load` | CORE | legacy | Y (L1614) | N | Y (CanonicalLoadNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.pwd` | CORE candidate | legacy | Y (L1570) | N | Y (CanonicalPwdNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
@@ -176,10 +176,28 @@ State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGA
 - **DSL:** `PipelineDsl.kt:1704` `fun milestone(ordinal: Int, label: String? = null)`
 - **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalMilestoneNodeDispatcher.kt`
 
-### `core.deleteDir` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.deleteDir` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A7 closure)
 
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreDeleteDirStep.kt` `val KEY: PluginStepId = PluginStepId("core.deleteDir")`
 - **DSL:** `PipelineDsl.kt:1456` `fun deleteDir(path: String = ".")`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDeleteDirNodeDispatcher.kt`
+- **Descriptor:** `effects = { Effect.WRITES_WORKSPACE }`; `replayPolicy = ReplayPolicy.MEMOIZED`; `requiredCapabilities = { DELETE_DIR_OPERATIONS_CAPABILITY }`
+- **Typed carrier:** `DeleteDirOutput(path, deletedCount, sha256)`; durable event `DirDeleted` emitted by `DeleteDirOperationsAdapter`
+- **Receipts (certification):**
+  - G4 REGISTRY_PRIMARY: `docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G4_REGISTRY_PRIMARY_RECEIPT.md`
+  - G5 LEGACY_REMOVED: `docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G5_LEGACY_REMOVED_RECEIPT.md` (counters 5/5/5)
+  - G6 CONTRACT_SUITE: `CoreDeleteDirStepContractSuiteTest` 22/0/0
+  - G7 INSTALLED_ACCEPTANCE: `docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G7_INSTALLED_ACCEPTANCE_RECEIPT.md` (4/4 PASS)
+  - G8 CERTIFIED: `docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md`
+
+```text
+core.deleteDir:
+  delivery:       CORE
+  execution:      REGISTRY_PRIMARY
+  legacy:         REMOVED
+  certification:  CERTIFIED (proposed by G8 receipt; counters 5/5/5 unchanged)
+```
+
+State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A7 closure)` at LFC-2E1-S2-A7 / G8. LEGACY_PLUGIN_IDS residual remains 5 / 5 / 5.
 
 ### `core.cleanWs` — IMPLEMENTED_UNCERTIFIED (legacy)
 

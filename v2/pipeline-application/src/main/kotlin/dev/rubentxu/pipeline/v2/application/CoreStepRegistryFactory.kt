@@ -98,7 +98,6 @@ object CoreStepRegistryFactory {
         // the deterministic temp path from the canonical OpId.format string — NO
         // timestamp, NO random. Same OpId ⇒ same path; distinct OpId ⇒ distinct path.
         CorePwdTmpStep.registerInto(this)
-        CorePwdTmpStep.registerInto(this)
         // LFC-2E1-S2-A8 / G1: candidate registration only. `core.waitUntil` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,

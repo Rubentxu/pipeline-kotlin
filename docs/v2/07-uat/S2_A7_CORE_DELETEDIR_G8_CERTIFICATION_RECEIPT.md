@@ -164,12 +164,13 @@ Convergence: M -> 0 as cleanWs/load/milestone/waitUntil/archiveArtifacts close.
 Note: the stale E0 snapshot in `STEP_ECOSYSTEM_MATRIX.md` ("CERTIFIED: 3")
 and the E0 inventory header ("CERTIFIED Steps: 4") predate the S2-A2..S2-A5
 G8 closures; the authoritative per-Step states are the merged G8 receipts
-cited above. This slice updates ONLY the `core.deleteDir` rows/sections in
-those documents to CERTIFIED.
+cited above. This slice updates ONLY the `core.deleteDir` row/section in
+STEP_INVENTORY_LFC2E0.md to CERTIFIED.
+STEP_ECOSYSTEM_MATRIX.md remains intentionally unchanged in this slice.
 
 ## 6. Side effects
 
 None. No production source under `v2/**/main/**` was modified. Deliverables:
-this receipt + per-Step ledger state updates (STEP_INVENTORY / ecosystem
-matrix) recording `core.deleteDir` = CERTIFIED. Legacy counters frozen at
+this receipt + per-Step ledger state update
+(STEP_INVENTORY_LFC2E0.md) recording `core.deleteDir` = CERTIFIED. Legacy counters frozen at
 5/5/5.

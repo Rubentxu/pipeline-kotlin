@@ -39,6 +39,12 @@ class CanonicalCoreStepCommandRegistryTest {
             // core.sleep removed at LFC-2E1-S2-A2 / G5 (registry-routed, CERTIFIED).
             // core.file.writeFile removed at LFC-2E1-S2-A3 / G4 (registry-routed).
             // core.emit.event removed at LFC-2E1-S2-A4 / G4 (registry-routed).
+            // S2-A5 / G4 (2026-09-12): "core.isUnix" removed — REGISTRY_PRIMARY flip.
+            // Production routing authority is now CoreIsUnixStep.definition via the open
+            // registry. The legacy CanonicalCoreStepCommand.IsUnix subtype, the
+            // IS_UNIX_PLUGIN_ID decoder branch, and CanonicalIsUnixNodeDispatcher.kt remain
+            // physically present until G5 (LEGACY_REMOVED), but no longer constitute the
+            // production authority for "core.isUnix".
             "core.milestone",
             // P1a — workflow-control (v0.33.0)
             "core.deleteDir",
@@ -46,7 +52,6 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.load",
             // P1b — utility (v0.33.0)
             "core.pwd",
-            "core.isUnix",
             "core.waitUntil",
             // P2 — archiveArtifacts (v0.33.1)
             "core.archiveArtifacts",

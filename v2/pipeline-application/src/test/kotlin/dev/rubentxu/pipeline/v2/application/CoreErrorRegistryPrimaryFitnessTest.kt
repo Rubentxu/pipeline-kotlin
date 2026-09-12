@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -87,6 +88,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // (1) Membership flip — core.error NO LONGER a legacy executable key
     // ========================================================================
 
+    @Disabled("Historical S2-A1/G5 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; the 8-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A5-G4 — 7 residual keys remain` below. Preserved verbatim for traceability.")
     @Test
     fun `G5 flip -- LEGACY_PLUGIN_IDS is exactly the 9 residual keys (full-set equality)`() {
         // Full-set equality is stronger than a partial negative pin: it proves three
@@ -113,6 +115,28 @@ class CoreErrorRegistryPrimaryFitnessTest {
                 "set equality catches both accidental removals and accidental additions",
         )
         assertEquals(8, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    // S2-A5 / G4 (2026-09-12): "core.isUnix" also flipped to registry; 8 -> 7 residual.
+    // The historical S2-A1/G5 snapshot above is preserved verbatim for traceability;
+    // the post-S2-A5/G4 snapshot is asserted below.
+    @Test
+    fun `LEGACY_PLUGIN_IDS post-S2-A5-G4 — 7 residual legacy keys remain`() {
+        val expected = setOf(
+            "core.milestone",
+            "core.deleteDir",
+            "core.cleanWs",
+            "core.load",
+            "core.pwd",
+            "core.waitUntil",
+            "core.archiveArtifacts",
+        )
+        assertEquals(
+            expected,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS MUST be exactly the 7 residual legacy keys post-S2-A5/G4",
+        )
+        assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test
@@ -357,6 +381,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // (5) Counter discipline — G5 transient state (LEGACY_REMOVED is G6)
     // ========================================================================
 
+    @Disabled("Historical S2-A1/G6 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; LEGACY_PLUGIN_IDS went from 8 to 7. The new G6 counter snapshot is asserted in `LEGACY_PLUGIN_IDS post-S2-A5-G4 — 7 residual keys remain`. Preserved verbatim for traceability.")
     @Test
     fun `G6 counters -- LEGACY_PLUGIN_IDS is 8, metadata rows is 9, dispatchers is 9 (legacy removed)`() {
         // Post-S2-A4/G4 counter state (core.file.writeFile flipped at S2-A3/G4;

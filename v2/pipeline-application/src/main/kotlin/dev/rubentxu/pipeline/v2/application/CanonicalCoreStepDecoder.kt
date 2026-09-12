@@ -78,12 +78,23 @@ sealed interface CanonicalCoreStepCommand {
             // StructuralOverlayProjection keeps its own structural dependency on the
             // "core.emit.event" key (pre-decode control context), independent of the legacy
             // execution path.
+            // S2-A5 / G4 (2026-09-12): "core.isUnix" removed — REGISTRY_PRIMARY flip.
+            // Production routing authority is now CoreIsUnixStep.definition via the open
+            // registry (CoreStepRegistryFactory). Legacy `core.isUnix` source remains
+            // physically present until G5 (LEGACY_UNREACHABLE, not LEGACY_REMOVED):
+            //   - CanonicalCoreStepCommand.IsUnix subtype
+            //   - IS_UNIX_PLUGIN_ID decoder branch
+            //   - CanonicalIsUnixNodeDispatcher.kt + CanonicalNodeDispatcher isUnix branch
+            //   - CanonicalCoreStepMetadata["core.isUnix"] row
+            // After this flip StructuralFamilyResolver routes core.isUnix through the
+            // Registry family, and RegistryStepMetadataResolver reads metadata exclusively
+            // from CoreIsUnixStep.descriptor. Legacy execution path remains type-loadable
+            // for parity tests but is unreachable in production.
             "core.milestone",
             "core.deleteDir",
             "core.cleanWs",
             "core.load",
             "core.pwd",
-            "core.isUnix",
             "core.waitUntil",
             "core.archiveArtifacts",
         )

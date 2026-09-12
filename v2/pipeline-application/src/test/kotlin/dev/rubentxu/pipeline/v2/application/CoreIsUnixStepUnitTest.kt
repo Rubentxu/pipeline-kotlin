@@ -262,22 +262,33 @@ class CoreIsUnixStepUnitTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `factory registry resolves the candidate and legacy family still wins`() {
+    fun `factory registry resolves the candidate and registry family wins post-flip`() {
         val registry = CoreStepRegistryFactory.registry()
         assertSame(CoreIsUnixStep.definition, registry.definition(CoreIsUnixStep.KEY))
-        assertTrue("core.isUnix" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // S2-A5 / G4: core.isUnix REMOVED from LEGACY_PLUGIN_IDS; registry is now the
+        // production authority. Historical G1/G3 assertion was `LEGACY_PLUGIN_IDS` membership.
+        assertTrue(
+            "core.isUnix" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "G4 flip: core.isUnix must be outside LEGACY_PLUGIN_IDS; registry is production authority",
+        )
         assertEquals(
-            StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(CoreIsUnixStep.KEY, registry),
-            "G1: legacy membership wins; candidate is registered but not production authority",
+            "G4: legacy-membership no longer applies; candidate is now routed as Registry family",
         )
     }
 
     @Test
-    fun `counters remain 8-8-8 and legacy dispatcher remains present`() {
-        assertEquals(8, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
-        assertTrue("core.isUnix" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        // Legacy execution path still exists untouched (G5 removes it, not G1).
+    fun `counters drop to 7-8-8 and legacy dispatcher remains physically present`() {
+        // G4 flip removes core.isUnix from the legacy authority, but legacy source code
+        // stays physically present (LEGACY_UNREACHABLE, not LEGACY_REMOVED).
+        // Counter semantics (post-flip, before G5 removal):
+        //   legacy executable IDs    = 7  (LEGACY_PLUGIN_IDS.size)
+        //   metadata rows            = 8  (CanonicalCoreStepMetadata still has core.isUnix row)
+        //   dispatcher sources        = 8  (CanonicalIsUnixNodeDispatcher still on disk)
+        assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue("core.isUnix" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // Legacy execution path still exists untouched (G5 removes it, not G4).
         assertNotNull(CanonicalIsUnixNodeDispatcher())
     }
 

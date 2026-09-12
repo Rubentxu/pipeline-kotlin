@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit
 class CoreSleepRegistryPrimaryFitnessTest {
     private val key = PluginStepId("core.sleep")
 
+    @Disabled("Historical S2-A2/G4 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; the 8-key count is superseded by `registry post-S2-A5-G4 — 7 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test fun `registry is primary and legacy counters retain only the nine residual keys`() {
         val registry = CoreStepRegistryFactory.registry()
         assertTrue(registry.contains(key))
@@ -39,6 +40,17 @@ class CoreSleepRegistryPrimaryFitnessTest {
             "core.milestone", "core.deleteDir", "core.cleanWs",
             "core.load", "core.pwd", "core.isUnix", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+    }
+
+    // S2-A5 / G4 (2026-09-12): "core.isUnix" also flipped to registry; 8 -> 7 residual.
+    // The historical S2-A2/G4 snapshot above is preserved verbatim for traceability;
+    // the post-S2-A5/G4 snapshot is asserted below.
+    @Test fun `registry post-S2-A5-G4 — 7 residual legacy keys remain`() {
+        assertEquals(setOf(
+            "core.milestone", "core.deleteDir", "core.cleanWs",
+            "core.load", "core.pwd", "core.waitUntil", "core.archiveArtifacts",
+        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")

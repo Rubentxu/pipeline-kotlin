@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -58,6 +59,7 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
 
     // ===== flip =====
 
+    @Disabled("Historical S2-A4/G4 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; the 8-key count is superseded by `core isUnix registry flip — 7 residual keys remain post-S2-A5-G4` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")
     @Test
     fun `G4 flip — core dot emit dot event is NOT in LEGACY_PLUGIN_IDS and 8 residual keys remain`() {
         assertTrue(
@@ -72,6 +74,22 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
             ),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "the 8 residual legacy keys must be exactly the pre-authorized set",
+        )
+    }
+
+    // S2-A5 / G4 (2026-09-12): "core.isUnix" also flipped to registry. The historical
+    // snapshot above is preserved verbatim for traceability; the post-S2-A5/G4 snapshot
+    // is asserted in `core.isUnix registry flip — 7 residual keys remain` below.
+    @Test
+    fun `core isUnix registry flip — 7 residual legacy keys remain post-S2-A5-G4`() {
+        assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(
+            setOf(
+                "core.milestone", "core.deleteDir", "core.cleanWs", "core.load",
+                "core.pwd", "core.waitUntil", "core.archiveArtifacts",
+            ),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-S2-A5/G4: 7 residual legacy keys; core.isUnix removed (REGISTRY_PRIMARY flip)",
         )
     }
 

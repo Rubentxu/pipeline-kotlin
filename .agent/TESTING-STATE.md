@@ -609,3 +609,77 @@ any `LEGACY_PLUGIN_IDS` change. Do not describe `core.sleep` as CERTIFIED.
 - Out of scope (unchanged): Main.kt, CLI, authority flip, S2-A5 counters 8/8/8.
 - Next decision point: R4 (production wiring) vs S2-A5/G3.
 
+
+
+## Active Change Handoff — LFC-2R / R4B CLOSED (2026-09-12)
+
+### Status
+R4B code COMPLETE, COMMITTED, AND CLOSED on `cycle/lfc2-e1-s2-legacy-catalog-burn-down`:
+- `50ffb299` R4A — production wiring architecture decision
+- `9761ddf0` R4B — installed production wiring (scripted frontend, canonical backend)
+- `5456a2eb` R4B — scope fix (generator-level isUnix-only gate)
+- `2b700c6b` R4B — receipt: `docs/v2/07-uat/LFC2R_R4B_INSTALLED_PRODUCTION_WIRING.md`
+- closure-decision commit appended this session (A/B/C verdicts + final state)
+
+### Closure verdicts (user decisions, end-of-slice)
+- A — Pre-existing reds: **annotated, not quarantined**. Base-vs-head evidence
+  at `50ffb299` (worktree method) proved the failure set identical; reproducible
+  reds do not destroy CI signal. Quarantines reserved for flaky or signal-blocking.
+- B — Handoff: **separate closure commit appended**, no amend of the existing
+  three. Historical record preserved cleanly (each commit reviewable on its own).
+- C — Cross-host physical execution: **PARTIAL accepted, DEFERRED non-blocking**.
+  R4B claims: installed production wiring, one durable authority, one journal
+  namespace, runtime-returning Kotlin control flow, persisted-value reuse, no
+  eager isUnix fallback for the wired path. Physical Mac → Windows resume belongs
+  to the future remote-workers / controller-worker layer, not to `core.isUnix`.
+  Protocol semantics PROVEN (in-process HF1); physical multi-host DEFERRED;
+  not blocking LFC-2R.
+
+### Final state
+```text
+R4B = CLOSED
+D3 DSL_RUNTIME_RETURN_GAP = CLOSED
+LFC-2R Runtime-Returning Step Seam = CLOSED
+Cross-host physical execution: PROVEN semantics / DEFERRED physical / not blocking
+
+Next cycle: S2-A5 / G3 core.isUnix migration readiness
+```
+
+### Evidence fresh (do NOT rerun)
+Green: ScriptedIsUnixCompilerMappingTest 10/0, ScriptedIsUnixRuntimeTest 13/0,
+ScriptedRegistryInvokerTest 10/0, ScriptedScopeTest 13/0, Spike016DurableScriptedReplayTest 24/0,
+UatLocal001/002/003/004/006/010/011, R4BProductionWiringFitnessTest F1/F2, architecture fitness 53/0.
+
+Two regressions caught + fixed in-slice, both proven base-green at `50ffb299`:
+UatLocal002 (mapper over-detected sh; filtered to IsUnix), UatLocal011/SC-011-10
+(isUnix inside stage{} broke compile; generator-level gate).
+
+Full gate reds all proven PRE-EXISTING at base `50ffb299` (worktree method):
+CanonicalDurableRunCoordinatorTest, PipelineDslSealedHierarchyTest, fixture14
+credentials, A4 classifier, CoreLegacyStepMetadataResolverTest x2,
+RegistryStepMetadataResolverTest, UatLocal005/007/008/009, ScriptTextEscaperTest,
+WithCredentialsCompileIntegrationTest, dual-execution/durable-protocol
+characterization. R4B introduced zero new regressions.
+
+### Resumption target (next cycle, NOT this PR)
+S2-A5 burn-down continues on `core.isUnix` (the seam R4B wired):
+```text
+S2-A5/G3 → migration readiness (pre-flip evidence)
+S2-A5/G4 → authority flip + LEGACY_UNREACHABLE
+S2-A5/G5 → physical legacy removal
+S2-A5/G6 → contract suite (IsUnixStepContractSuite)
+installed/final certification
+S2-A5 CLOSED
+```
+
+Do NOT open `pwd`, `milestone`, or any other legacy key while `core.isUnix`
+G3..G8 is in flight. Do NOT reopen G3-A4.2 ShellOperations on this path.
+
+### Gotchas preserved
+- examples/example-uppercase-plugin jar at
+  `examples/example-uppercase-plugin/build/libs/` required for pipeline-application
+  test compile.
+- stash list contains unrelated stashes (feat/ml-r10-2-credentials-join etc) —
+  do not drop.
+- R4A Main.kt snapshot at /tmp/Main.base.kt is ephemeral; will be gone on
+  session restart.

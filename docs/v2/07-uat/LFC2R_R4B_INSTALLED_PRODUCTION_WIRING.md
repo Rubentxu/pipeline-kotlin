@@ -93,3 +93,67 @@ Certified Steps / Legacy executable / Registry-primary: unchanged from R4A recei
 `DSL_RUNTIME_RETURN_GAP`: CLOSED for the `isUnix` seam in installed production
 wiring. `LFC-2R`: CLOSED (R1..R4B complete). S2-A5 remains 8/8/8
 REGISTERED-only: no certification claims, no authority flip.
+
+## Closure decision (user verdict, end-of-slice)
+
+A — Pre-existing reds: **annotated, not quarantined**.
+The base-vs-head evidence against cycle base `50ffb299` (worktree method) proved
+the round-gate failure set identical to pre-R4B. The reds are reproducible, not
+flaky; no signal is destroyed by leaving them as explicit pre-existing debt.
+Quarantines are reserved for flaky tests or tests that block CI-as-signal.
+
+B — Handoff: **separate closure commit appended, no amend**.
+The four commit sequence (`50ffb299` R4A → `9761ddf0` wiring → `5456a2eb`
+scope fix → `2b700c6b` receipt → this closure-decision commit) preserves the
+historical record cleanly. Each commit is reviewable on its own; nothing in
+the wiring or scope-fix commits is rewritten after the fact.
+
+C — Cross-host physical execution: **PARTIAL accepted, DEFERRED non-blocking**.
+R4B does NOT claim real multi-host certification. It claims:
+- installed production wiring
+- one durable authority
+- one journal namespace
+- runtime-returning Kotlin control flow
+- persisted-value reuse semantics
+- no eager `isUnix` fallback for the wired path
+
+Physical controller/worker OS divergence (Mac → Windows resume, etc.) remains a
+future deployment-level acceptance test, owned by the remote-workers /
+controller-worker / Jenkins layer — NOT by `core.isUnix`. The in-process
+proof rows (`ScriptedIsUnixRuntimeTest` 13/0, `Spike016DurableScriptedReplayTest`
+24/0) cover the durable observe / reuse / never-refabricate semantics at HF1.
+Protocol semantics PROVEN; physical multi-host DEFERRED; not blocking LFC-2R.
+
+## Final state (machine-stated)
+
+```text
+R4B = CLOSED
+
+D3 DSL_RUNTIME_RETURN_GAP = CLOSED
+LFC-2R Runtime-Returning Step Seam = CLOSED
+
+Cross-host physical execution:
+  architecture/protocol semantics = PROVEN
+  real multi-host acceptance       = DEFERRED
+  blocking LFC-2R                  = false
+
+Next cycle: S2-A5 / G3 (core.isUnix migration readiness)
+```
+
+## Resumption target (next cycle, NOT this PR)
+
+S2-A5 burn-down continues on `core.isUnix` (the seam R4B wired):
+
+```text
+S2-A5/G3 → migration readiness (pre-flip evidence)
+S2-A5/G4 → authority flip + LEGACY_UNREACHABLE
+S2-A5/G5 → physical legacy removal
+S2-A5/G6 → contract suite (IsUnixStepContractSuite)
+installed/final certification
+S2-A5 CLOSED
+```
+
+Do NOT open `pwd`, `milestone`, or any other legacy key while `core.isUnix`
+G3..G8 is in flight. Do NOT reopen G3-A4.2 ShellOperations on this path (that
+slice belongs to `core.sh` and is unrelated to the current LFC-2R / S2-A5
+block).

@@ -50,7 +50,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // S2-A6 / G5 (2026-09-12): "core.pwd" legacy subtype/decoder/dispatcher/metadata
             // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
             // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
-            "core.milestone",
+            // S2-A8 / G4 (2026-09-12): "core.milestone" removed — REGISTRY_PRIMARY flip.
+            // Legacy forms remain on disk (type-loadable) until G5 physical removal;
+            // production authority is exclusively the open registry (CoreMilestoneStep).
             // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
             // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
             // row/dispatcher physically deleted (LEGACY_REMOVED).

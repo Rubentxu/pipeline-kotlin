@@ -23,11 +23,11 @@ import java.nio.file.Path
  * ```
  * pwd closed                 -> 6 / 6 / 6
  * deleteDir G4 -> 5 / 6 / 6
- * deleteDir G5 -> 5 / 5 / 5   (current — converged)
- * waitUntil G4 -> 4 / 5 / 5
- * waitUntil G5 -> 4 / 4 / 4
- * milestone G4 -> 3 / 4 / 4
- * milestone G5 -> 3 / 3 / 3
+ * deleteDir G5 -> 5 / 5 / 5
+ * milestone G4 -> 4 / 5 / 5   (current — transitional, pending G5)
+ * milestone G5 -> 4 / 4 / 4
+ * waitUntil G4 -> 3 / 4 / 4
+ * waitUntil G5 -> 3 / 3 / 3
  * cleanWs, load, archiveArtifacts -> ... -> 0 / 0 / 0 (burn-down closed)
  * ```
  *
@@ -80,7 +80,7 @@ object LegacyResidualSnapshot {
      *   at G4:     registryPrimaryPendingRemoval = key   -> (N-1) / N / N
      *   at G5:     physicalResidual -= key; back to null -> (N-1) / (N-1) / (N-1)
      */
-    private val registryPrimaryPendingRemoval: String? = null
+    private val registryPrimaryPendingRemoval: String? = "core.milestone"
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

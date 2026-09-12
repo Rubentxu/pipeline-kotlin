@@ -180,6 +180,10 @@ class StepContractCertification<I : Any, O : Any> internal constructor(
         suspend fun run(pipeline: CompiledPipeline, runId: String): RunOutcome =
             coord.run(pipeline, RunId(runId))
 
+        /** Non-suspending wrapper for bespoke rows inside `runBlocking { }`. */
+        suspend fun runIn(pipeline: CompiledPipeline, runId: String): RunOutcome =
+            coord.run(pipeline, RunId(runId))
+
         fun journalRows(runId: String) = journal.listForRun(runId)
 
         fun events(runId: String): List<DomainEvent> = eventStore.eventsFor(runId).toList()

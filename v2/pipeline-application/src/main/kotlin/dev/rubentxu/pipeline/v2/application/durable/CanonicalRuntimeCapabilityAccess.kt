@@ -7,6 +7,8 @@ import dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.StageIdentity
 import dev.rubentxu.pipeline.v2.application.ShellOperations
+import dev.rubentxu.pipeline.v2.application.TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.TemporaryWorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WorkspaceIdentity
@@ -96,9 +98,29 @@ open class CanonicalRuntimeCapabilityAccess(
         // it does NOT reach for controlDirRoot, user.dir, or the raw context. The
         // bridge derives workspaceRoot from context.shOptions.workspaceRoot — the
         // SAME source the legacy `pwdContext()` consumed (PATH_B byte-equivalence).
+        //
+        // NOTE: `WorkspaceIdentity` is a low-level observation capability. The
+        // `core.pwd.tmp` Step does NOT use it directly — it goes through the
+        // dedicated `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` port below, which
+        // composes workspaceRoot + canonical OpId into the deterministic
+        // `tmp-pwd-<sha256(opId)>` resource path (D5–D12, S2-A6 / G3T).
         builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
             workspaceRoot = context.shOptions.workspaceRoot,
         )
+        // S2-A6 / G3T (post-correction): the ONLY capability consumed by
+        // CorePwdTmpStep.handler. The adapter binds the runtime's
+        // [runIdString], [OpId], [ShOptions] (workspaceRoot), [EventSink] —
+        // exactly the inputs needed to derive the deterministic tmp path and
+        // emit the canonical `PwdResolved` event. The handler does NOT see
+        // these inputs directly; it reaches the typed seam, which mirrors the
+        // `core.sh → ShellOperations` pattern.
+        val tmpOps: TemporaryWorkspaceOperations = TemporaryWorkspaceOperationsAdapter(
+            runIdString = context.runId,
+            opId = context.opId,
+            workspaceRoot = context.shOptions.workspaceRoot,
+            eventSink = context.eventSink,
+        )
+        builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps
         return builder.toMap()
     }
 }

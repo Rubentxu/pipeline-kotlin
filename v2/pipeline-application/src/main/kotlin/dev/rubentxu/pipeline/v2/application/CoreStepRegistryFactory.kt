@@ -82,5 +82,21 @@ object CoreStepRegistryFactory {
         // observation of the canonical stage workspace path, derived by the bridge
         // from context.shOptions.workspaceRoot.
         CorePwdStep.registerInto(this)
+        // LFC-2E1-S2-A6 / G3T: register CorePwdTmpStep as the new deterministic
+        // tmp-workspace Step (`core.pwd.tmp`). This is the INTERNAL contract for
+        // `pwd(tmp=true)`; the public DSL (`PipelineDsl.pwd(tmp=true)`) is NOT
+        // rewired yet — that lower-binding is G3R (LFC-2R runtime-return consumer).
+        //
+        // Production routing:
+        //   - `core.pwd`     stays in LEGACY_PLUGIN_IDS → LegacyCore (post-G1 invariant)
+        //   - `core.pwd.tmp` is NOT in LEGACY_PLUGIN_IDS → Registry from the moment
+        //                    of registration (see StructuralFamilyResolver.classify
+        //                    rule: legacy membership wins OR registry resolves the
+        //                    key, but `core.pwd.tmp` is never legacy-routed).
+        //
+        // The candidate uses the new DURABLE_OPERATION_IDENTITY_CAPABILITY to derive
+        // the deterministic temp path from the canonical OpId.format string — NO
+        // timestamp, NO random. Same OpId ⇒ same path; distinct OpId ⇒ distinct path.
+        CorePwdTmpStep.registerInto(this)
     }
 }

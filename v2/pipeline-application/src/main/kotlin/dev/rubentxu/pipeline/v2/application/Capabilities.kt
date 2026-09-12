@@ -87,3 +87,56 @@ data class WorkspaceIdentity(
 )
 
 val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.workspace-identity")
+
+/**
+ * Typed seam for `core.pwd.tmp` (S2-A6 / G3T post-correction) — the ONLY capability
+ * the registry-routed `CorePwdTmpStep.handler` consumes to derive a deterministic
+ * tmp workspace path.
+ *
+ * ## Why a typed seam and not a generic `OpId`/`Files` capability?
+ *
+ * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
+ * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
+ * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
+ * symmetry, the registry `core.pwd.tmp` reaches this `TemporaryWorkspaceOperations`
+ * capability and never touches `Files.createDirectories` directly.
+ *
+ * ## Scope
+ *
+ * The seam intentionally hides:
+ * - canonical OpId — owned by the runtime context (the canonical OpId is the
+ *   durable identity anchor; the adapter, not the handler, derives the per-operation
+ *   resource from it).
+ * - workspaceRoot — owned by the canonical runtime context (`shOptions.workspaceRoot`).
+ * - event sink — the adapter is the only place that emits `PwdResolved`.
+ * - filesystem primitives — the adapter is the only place that calls
+ *   `Files.createDirectories`.
+ *
+ * ## Failure semantics
+ *
+ * Implementations return [TempWorkspaceResult] (closed typed ADT). Re-classification
+ * to [dev.rubentxu.pipeline.v2.domain.StepOutcome] is the responsibility of the
+ * registry execution boundary.
+ *
+ * ## Determinism (D5–D12, S2-A6 / G3T)
+ *
+ * The adapter derives the path from `sha256(opId.format())` so the same OpId lands
+ * on the same directory and a different OpId lands on a different directory. No
+ * `System.currentTimeMillis()`, no `UUID.randomUUID()` on the path identity.
+ */
+interface TemporaryWorkspaceOperations {
+
+    /**
+     * Resolves (creating if necessary) the deterministic tmp workspace for the
+     * current operation. Idempotent: invoking twice with the same OpId returns
+     * the same path and does not throw on the second directory creation.
+     */
+    fun resolveOrCreate(): TempWorkspaceResult
+}
+
+data class TempWorkspaceResult(
+    val path: String,
+)
+
+val TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY: StepCapability =
+    StepCapability("workspace.temporary-operations")

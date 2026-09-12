@@ -34,9 +34,31 @@ class CanonicalRuntimeCapabilityAccessTest {
     private val unknownCapability = StepCapability("some.other.capability")
 
     @Test
-    fun `bridge exposes exactly the declared event sink capability`() {
+    fun `bridge exposes the canonical capability set (event sink + shell + workspace ops + identities)`() {
+        // CDE.3-d1 originally pinned EVENT_SINK as the single exposed capability. Since
+        // then the bridge has accreted the canonical runtime capability set:
+        //   - EVENT_SINK_CAPABILITY
+        //   - SHELL_OPERATIONS_CAPABILITY  (LB-02 / A4)
+        //   - WORKSPACE_OPERATIONS_CAPABILITY  (S2-A3 / G1)
+        //   - STAGE_IDENTITY_CAPABILITY    (S2-A4 / G1)
+        //   - PLATFORM_IDENTITY_CAPABILITY  (S2-A5 / G1)
+        //   - WORKSPACE_IDENTITY_CAPABILITY (S2-A6 / G1)
+        //   - TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY (S2-A6 / G3T post-correction)
+        //
+        // The bridge must expose EXACTLY this set — adding/removing a capability requires
+        // updating both this test and the bridge together. The set must NEVER silently
+        // grow or shrink across cycles.
+        val expected = setOf(
+            EVENT_SINK_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.SHELL_OPERATIONS_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.STAGE_IDENTITY_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.PLATFORM_IDENTITY_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY,
+            dev.rubentxu.pipeline.v2.application.TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY,
+        )
         val access = CanonicalRuntimeCapabilityAccess(runtime(InMemoryEventStore()))
-        assertEquals(setOf(EVENT_SINK_CAPABILITY), access.available())
+        assertEquals(expected, access.available())
     }
 
     @Test

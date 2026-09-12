@@ -62,6 +62,10 @@ CoreMilestoneStepContractSuiteTest
 
 ### 2.2 Complete milestone test suite
 
+> **HISTORICAL (pre-wiring snapshot, G3 initial)**: snapshot captured before the
+> state-seam wiring commits; the suite grew from 19 to 23 tests afterwards.
+> Final truth is the Freeze block (§6): ContractSuite=23, UnitTest=19, Total=42.
+
 ```text
 UatLocal013MilestoneTimingTest              tests="4"   failures="0"  errors="0"   PASS
 CoreMilestoneStepContractSuiteTest          tests="19"  failures="0"  errors="0"   PASS
@@ -131,10 +135,10 @@ Per ADR-0074, `core.milestone` NO PUEDE ser CERTIFIED hasta que:
 - UatLocal013MilestoneTimingTest: green
 - S3*LegacyRemovedFitnessTest (7 suites): 52/0/0 via shared LegacyResidualSnapshot
 
-**Freeze block (third review, 2026-09-12):**
+**Freeze block (fourth review / post-rebase, 2026-09-12):**
 ```text
-Base SHA          = ffc39f63
-Revalidation HEAD = e192bbba
+Base SHA          = bc791118 (post-#24 deleteDir+waitUntil readiness; previous base ffc39f63 HISTORICAL)
+Revalidation HEAD = see branch tip (post-rebase; factory = 12 unique StepKeys)
 UnitTest      = 19/0/0
 ContractSuite = 23/0/0
 S3 fitness    = 52/52

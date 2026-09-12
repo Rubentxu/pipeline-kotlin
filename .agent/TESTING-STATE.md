@@ -683,3 +683,10 @@ G3..G8 is in flight. Do NOT reopen G3-A4.2 ShellOperations on this path.
   do not drop.
 - R4A Main.kt snapshot at /tmp/Main.base.kt is ephemeral; will be gone on
   session restart.
+
+## Handoff S2 2026-09-13 (checkpoint completo: docs/v2/07-uat/S2_SESSION_CHECKPOINT_2026-09-13.md)
+- deleteDir CERTIFIED (8º). Counters 5/5/5. main @ 268e9313 (checkpoint docs-only encima de 51cd021f).
+- PRÓXIMA ACCIÓN: push+PR+review de cycle/lfc2-e1-milestone-g4 (87d998ff+827ffae5, cortado de 51cd021f, rebase trivial sobre checkpoint docs-only si procede).
+- Fresh evidence válida: G4Fitness 8/0, MilestoneContractSuite 23/0, S3 52/0, Lfc2 3/0.
+- Pre-existing red NO regresión: CanonicalDurableRunCoordinatorTest 12/26; 7 pins S3 S2-A6/G4 rojos en base limpia.
+- Branches locales sin push listos: cleanws(G1-G3), archive-artifacts(G0+G1), cert-harness(completo), bodyinvoker(ADR-0081+seam), load-spike, r2-runtime-return, wait-until(spike), wave2-prep, milestone-g4prep.

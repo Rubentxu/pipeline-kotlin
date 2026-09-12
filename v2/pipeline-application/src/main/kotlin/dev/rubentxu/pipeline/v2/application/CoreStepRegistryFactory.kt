@@ -119,6 +119,20 @@ object CoreStepRegistryFactory {
         // Effects: WRITES_WORKSPACE (matches legacy metadata)
         // ReplayPolicy: MEMOIZED (matches legacy metadata, idempotent via .deleted marker)
         CoreDeleteDirStep.registerInto(this)
+        // LFC-2E1-S2-A10 / G1: candidate registration only. `core.cleanWs` remains in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
+        // keeps LegacyCore as the canonical production authority. No legacy decoder,
+        // metadata, dispatcher, or catalogue entry changes in this gate.
+        //
+        // Capability: CLEAN_WS_OPERATIONS_CAPABILITY — conditionally exposed only when
+        // controlDirRoot != null (fail-closed admission if absent). The adapter is the
+        // single WsCleaned emission authority over the existing CleanWsExecutor SDK
+        // substrate (same construction as the legacy CanonicalCleanWsNodeDispatcher).
+        //
+        // Effects: WRITES_WORKSPACE (matches legacy metadata)
+        // ReplayPolicy: MEMOIZED (matches legacy metadata; idempotent via .cleaned marker)
+        // RecoveryPolicy: None (per WAVE-2 G0-G3 prep inventory)
+        CoreCleanWsStep.registerInto(this)
         // LFC-2E1-S2-A9 / G1: candidate registration only. `core.milestone` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,

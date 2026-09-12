@@ -17,6 +17,9 @@ import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.CLEAN_WS_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.CleanWsOperations
+import dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.MILESTONE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.MilestoneOperations
 import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
@@ -151,6 +154,28 @@ open class CanonicalRuntimeCapabilityAccess(
                 eventSink = context.eventSink,
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
+        }
+        // LFC-2E1-S2-A10 / G1: cleanWs operations for core.cleanWs (registry candidate).
+        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
+        // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
+        // workspace, execute the cleanup via the existing CleanWsExecutor SDK substrate,
+        // and emit the canonical `WsCleaned` event (single emission authority).
+        //
+        // Conditional exposure: the capability is registered ONLY when controlDirRoot != null.
+        // If absent, capability admission fails closed for core.cleanWs and the rest of
+        // the registry is unaffected.
+        context.controlDirRoot?.let { root ->
+            val cleanWsOps: CleanWsOperations = CleanWsOperationsAdapter(
+                runIdString = context.runId,
+                stageIdentity = StageIdentity(
+                    name = context.stageName,
+                    index = context.stageIndex,
+                ),
+                stepIndex = context.stepIndex,
+                controlDirRoot = root,
+                eventSink = context.eventSink,
+            )
+            builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
         }
         // S2-A9 spike: milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the

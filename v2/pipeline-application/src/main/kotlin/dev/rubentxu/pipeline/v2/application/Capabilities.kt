@@ -205,6 +205,49 @@ data class DeleteDirResult(
 val DELETE_DIR_OPERATIONS_CAPABILITY: StepCapability = StepCapability("delete-dir.operations")
 
 /**
+ * Typed seam for `core.cleanWs` (LFC-2E1-S2-A10 / G1) — the ONLY capability
+ * the registry candidate `CoreCleanWsStep.handler` consumes to perform
+ * workspace cleanup.
+ *
+ * Mirrors `DeleteDirOperations` (S2-A7 / G3-fix): the handler reaches this typed
+ * seam and never touches `CleanWsExecutor`, `Files`, `EventSink`, or sha256
+ * directly. All filesystem semantics, workspace resolution, and `WsCleaned`
+ * emission live in
+ * [dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter].
+ *
+ * Idempotence law: cleaning an already-clean workspace SUCCEEDS with
+ * deletedFiles=0 / deletedDirs=0 (same semantic shape as deleteDir's
+ * deletedCount=0).
+ */
+interface CleanWsOperations {
+
+    /**
+     * Performs workspace cleanup for the given [CleanWsInput].
+     *
+     * @param input The cleanWs input (deleteDirs flag + optional Ant-style patterns).
+     * @return The closed typed [CleanWsResult].
+     */
+    fun clean(input: CleanWsInput): CleanWsResult
+}
+
+/**
+ * Result of a [CleanWsOperations.clean] operation.
+ *
+ * @property deletedFiles Number of files deleted
+ * @property deletedDirs Number of directories deleted
+ * @property patterns Effective patterns applied (empty list = delete all non-.v2)
+ * @property sha256 SHA-256 hex of the `.cleaned` marker content
+ */
+data class CleanWsResult(
+    val deletedFiles: Int,
+    val deletedDirs: Int,
+    val patterns: List<String>,
+    val sha256: String,
+)
+
+val CLEAN_WS_OPERATIONS_CAPABILITY: StepCapability = StepCapability("clean-ws.operations")
+
+/**
  * Typed seam capability for milestone ordinal state operations (S2-A9 / spike).
  *
  * Declared by `CoreMilestoneStep` in its [dev.rubentxu.pipeline.v2.domain.step.StepContract].

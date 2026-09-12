@@ -92,8 +92,9 @@ import org.junit.jupiter.api.Timeout
  * 14.  success via canonical coordinator (typed outcome)     REQUIRED
  * 15.  typed failure (handler exception)                     REQUIRED
  * 16.  fresh durable (1 terminal SUCCEEDED row)              REQUIRED
- * 17.  replay (MEMOIZED: reuse, no handler re-run,           REQUIRED
- *      no duplicate DirDeleted events)
+ * 17.  replay (MEMOIZED + WRITES_WORKSPACE: RERUN           REQUIRED
+ *      idempotently; same operation identity, second
+ *      DirDeleted with deletedCount=0)
  * 18.  observability (StepStarted + StepFinished pair)       REQUIRED
  * 19.  DirDeleted event payload (path, deletedCount, sha256) REQUIRED (deleteDir-specific)
  * 20.  real registry path scenario                           REQUIRED

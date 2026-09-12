@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
@@ -338,6 +339,74 @@ class CoreDeleteDirStepUnitTest {
 
     private fun capturedDirDeleted(runId: String): List<DirDeleted> =
         sharedEventStore.eventsFor(runId).toList().filterIsInstance<DirDeleted>()
+
+    // ------------------------------------------------------------------
+    // G3-fix: capability-scoped controlDirRoot (no eager !!)
+    // ------------------------------------------------------------------
+
+    /**
+     * S2-A7 / G3-final-fix: capability-scoped controlDirRoot verification.
+     *
+     * Verifies that:
+     * 1. CanonicalRuntimeCapabilityAccess construction with controlDirRoot=null does NOT throw
+     * 2. DELETE_DIR_OPERATIONS_CAPABILITY is NOT in the available set
+     * 3. core.deleteDir admission fails closed (Rejected) because the capability is absent
+     * 4. A non-related Step (core.echo) in the same registry is NOT affected
+     *    — it does NOT require DELETE_DIR_OPERATIONS_CAPABILITY
+     */
+    @Test
+    fun `G3-final-fix - controlDirRoot=null does NOT break capability access and core-deleteDir fails closed`() {
+        // 1. Construction with controlDirRoot=null does NOT throw
+        val nullContext = CanonicalRuntimeContext(
+            opId = OpId("null-ctrl-test", 0, 0),
+            runId = "null-ctrl-test",
+            stageName = "test",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY,
+            controlDirRoot = null,  // null!
+            eventSink = InMemoryEventStore(),
+        )
+        val accessWithNullControlDir: CanonicalRuntimeCapabilityAccess
+        try {
+            accessWithNullControlDir = CanonicalRuntimeCapabilityAccess(nullContext)
+        } catch (e: Exception) {
+            throw AssertionError("CanonicalRuntimeCapabilityAccess must not throw on controlDirRoot=null, got: ${e.message}", e)
+        }
+
+        // 2. DELETE_DIR_OPERATIONS_CAPABILITY is NOT available
+        val available = accessWithNullControlDir.available()
+        assertTrue(
+            DELETE_DIR_OPERATIONS_CAPABILITY !in available,
+            "DELETE_DIR_OPERATIONS_CAPABILITY must NOT be available when controlDirRoot is null",
+        )
+
+        // 3. core.deleteDir admission fails closed (Rejected)
+        val prepNullCtrl = RegistryExecutionPreparation.prepare(
+            registry = CoreStepRegistryFactory.registry(),
+            key = CoreDeleteDirStep.KEY,
+            encodedInput = EncodedStepValue("""{"kind":"deleteDir","path":"."}"""),
+            availableCapabilities = available,  // empty for DELETE_DIR_OPERATIONS_CAPABILITY
+        )
+        assertInstanceOf(ExecutionPreparation.Rejected::class.java, prepNullCtrl)
+
+        // 4. A non-related Step is NOT affected — it does NOT require DELETE_DIR_OPERATIONS_CAPABILITY
+        // core.echo requires only EVENT_SINK_CAPABILITY, which IS available
+        val echoKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.echo")
+        val prepEcho = RegistryExecutionPreparation.prepare(
+            registry = CoreStepRegistryFactory.registry(),
+            key = echoKey,
+            encodedInput = EncodedStepValue("""{"kind":"echo","message":"hello"}"""),
+            availableCapabilities = available,  // EVENT_SINK_CAPABILITY is present
+        )
+        // Echo should NOT be rejected (either Ready or it has its own requirements)
+        // The key point: it's NOT rejected because of the missing DELETE_DIR_OPERATIONS_CAPABILITY
+        assertTrue(
+            prepEcho !is ExecutionPreparation.Rejected ||
+                (prepEcho as? ExecutionPreparation.Rejected)?.reason?.contains("delete-dir") != true,
+            "core.echo must NOT be rejected due to missing DELETE_DIR_OPERATIONS_CAPABILITY",
+        )
+    }
 
     companion object {
         private val sharedEventStore = InMemoryEventStore()

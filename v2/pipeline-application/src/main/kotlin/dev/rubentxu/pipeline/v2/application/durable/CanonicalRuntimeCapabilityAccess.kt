@@ -11,11 +11,9 @@ import dev.rubentxu.pipeline.v2.application.TEMPORARY_WORKSPACE_OPERATIONS_CAPAB
 import dev.rubentxu.pipeline.v2.application.TemporaryWorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WORKSPACE_IDENTITY_CAPABILITY
-import dev.rubentxu.pipeline.v2.application.WORKSPACE_RESOLVER_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperations
 import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
-import dev.rubentxu.pipeline.v2.application.WorkspaceResolverPort
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
@@ -126,33 +124,27 @@ open class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
         )
         builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps
-        // S2-A7 / G1: workspace resolver for core.deleteDir. The adapter wraps
-        // the canonical WorkspaceResolver with the WORKSPACE_RESOLVER_PORT interface,
-        // binding controlDirRoot from the runtime context.
-        builder[WORKSPACE_RESOLVER_CAPABILITY] = object : WorkspaceResolverPort {
-            private val resolver = WorkspaceResolver(context.controlDirRoot!!)
-            override fun resolve(stageName: String, stageIndex: Int): java.nio.file.Path =
-                resolver.resolve(stageName, stageIndex)
-            override fun ensureCreated(path: java.nio.file.Path): java.nio.file.Path =
-                resolver.ensureCreated(path)
+        // S2-A7 / G3-fix: deleteDir operations for core.deleteDir.
+        // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
+        // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
+        // workspace, execute deletion, and emit the canonical `DirDeleted` event.
+        //
+        // Conditional exposure: the capability is registered ONLY when controlDirRoot != null.
+        // If absent, capability admission fails closed for core.deleteDir and the rest of
+        // the registry is unaffected.
+        context.controlDirRoot?.let { root ->
+            val deleteOps: DeleteDirOperations = DeleteDirOperationsAdapter(
+                runIdString = context.runId,
+                stageIdentity = StageIdentity(
+                    name = context.stageName,
+                    index = context.stageIndex,
+                ),
+                stepIndex = context.stepIndex,
+                controlDirRoot = root,
+                eventSink = context.eventSink,
+            )
+            builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         }
-        // S2-A7 / G3-fix: deleteDir operations for core.deleteDir. The adapter binds
-        // the runtime's [runIdString], [StageIdentity], [stepIndex], [controlDirRoot],
-        // and [EventSink] — exactly the inputs needed to resolve the workspace,
-        // execute deletion, and emit the canonical `DirDeleted` event. The handler
-        // does NOT see these inputs directly; it reaches the typed seam, which
-        // mirrors the `core.sh → ShellOperations → ShOperationsAdapter` pattern.
-        val deleteOps: DeleteDirOperations = DeleteDirOperationsAdapter(
-            runIdString = context.runId,
-            stageIdentity = StageIdentity(
-                name = context.stageName,
-                index = context.stageIndex,
-            ),
-            stepIndex = context.stepIndex,
-            controlDirRoot = context.controlDirRoot!!,
-            eventSink = context.eventSink,
-        )
-        builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         return builder.toMap()
     }
 }

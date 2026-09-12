@@ -142,52 +142,6 @@ val TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("workspace.temporary-operations")
 
 /**
- * Typed seam for `core.deleteDir` (S2-A7 / G1) — provides access to the
- * canonical [dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver] for
- * handlers that must resolve stage workspace paths.
- *
- * ## Why a typed seam and not direct WorkspaceResolver access?
- *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
- * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
- * symmetry, `core.deleteDir` reaches this capability and never touches
- * `WorkspaceResolver` construction directly.
- *
- * ## Scope
- *
- * The seam intentionally hides:
- * - canonical `controlDirRoot` — owned by the runtime context.
- * - event sink — the handler is responsible for emitting `DirDeleted`.
- *
- * ## Failure semantics
- *
- * Implementations return workspace paths (closed typed ADT). Re-classification
- * to [dev.rubentxu.pipeline.v2.domain.StepOutcome] is the responsibility of the
- * registry execution boundary.
- */
-interface WorkspaceResolverPort {
-    /**
-     * Resolves the workspace path for a given stage.
-     *
-     * @param stageName The name of the stage.
-     * @param stageIndex The index of the stage (for disambiguation in parallel).
-     * @return The deterministic workspace path.
-     */
-    fun resolve(stageName: String, stageIndex: Int): java.nio.file.Path
-
-    /**
-     * Ensures the workspace directory exists, creating it if necessary.
-     *
-     * @param path The workspace path to ensure exists.
-     * @return The same path (for chaining).
-     */
-    fun ensureCreated(path: java.nio.file.Path): java.nio.file.Path
-}
-
-val WORKSPACE_RESOLVER_CAPABILITY: StepCapability = StepCapability("workspace.resolver")
-
-/**
  * Typed seam for `core.deleteDir` (S2-A7 / G3-fix) — the ONLY capability
  * the registry-routed `CoreDeleteDirStep.handler` consumes to perform atomic
  * workspace directory deletion.

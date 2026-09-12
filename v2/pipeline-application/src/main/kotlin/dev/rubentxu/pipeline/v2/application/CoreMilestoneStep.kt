@@ -98,17 +98,16 @@ sealed class MilestoneStatus {
  * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
  * decoder, the metadata row, or the legacy dispatcher:
  * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
- * the production authority until the G3/G4 flip. Counters stay 12 / 12 / 12.
+ * the production authority until the G3/G4 flip. Counters stay 6 / 6 / 6.
  *
  * **Semantics (per Jenkins verbatim, ADR-0046 §ML / ML-R9 T-09):**
  * - Strictly increasing ordinal (within this pipeline run) → MilestoneReached event + Success.
  * - Non-increasing ordinal → MilestoneAborted event + Unstable (record-only, never aborts run).
  *
- * **State tracking:** the handler tracks `lastReachedOrdinal` in its companion object,
- * which is scoped per `CoreMilestoneStep` classloader instance. In the local single-run
- * model (no cross-build coordination), this is the correct scope: each pipeline run
- * gets its own coordinator instance, each coordinator instance gets its own handler
- * classloader instance, and state is isolated per run.
+ * **State tracking:** the handler delegates ordinal state to [MILESTONE_OPERATIONS_CAPABILITY].
+ * The capability is backed by a [MilestoneStateStore] created at coordinator construction time,
+ * giving it the same per-run scope as the legacy [CanonicalMilestoneNodeDispatcher]. The handler
+ * itself holds no mutable state.
  *
  * ## Capability separation
  *

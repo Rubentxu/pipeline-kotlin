@@ -19,7 +19,7 @@ observability, missing capability, and a real pipeline scenario.
 
 G3 adds:
 - `CoreMilestoneStepContractSuiteTest.kt` — 19 tests
-- `CoreMilestoneStep.resetState()` for test isolation
+- State-seam fix: handler delegates to `MilestoneStateStore` via capability (no mutable handler state)
 
 G3 does NOT:
 - Change LEGACY_PLUGIN_IDS (milestone stays legacy-executed until G4)
@@ -93,7 +93,7 @@ core.milestone:
   execution     = LegacyCore (CanonicalMilestoneNodeDispatcher)
   registry      = present (CoreMilestoneStep.registered in CoreStepRegistryFactory)
   certification = G3 IMPLEMENTED_UNCERTIFIED
-  AUTHORITY_FLIP_READY = false (pending PROBLEMA 1 state seam fix)
+  AUTHORITY_FLIP_READY = false (pending G4 REGISTRY_PRIMARY)
   characterization evidence = THIS RECEIPT (revised)
 ```
 
@@ -106,8 +106,8 @@ core.milestone: G2 (IMPLEMENTED_UNCERTIFIED)
 
 **NOTA IMPORTANTE**: Este receipt declara IMPLEMENTED_UNCERTIFIED, NO CERTIFIED.
 Per ADR-0074, `core.milestone` NO PUEDE ser CERTIFIED hasta que:
-1. Se resuelva el PROBLEMA 1 (estado global mutable en handler)
-2. Se complete G4 (LEGACY_REMOVED)
+1. Se complete G4 (REGISTRY_PRIMARY)
+2. Se complete G5 (LEGACY_REMOVED)
 3. Se complete G8 (CERTIFIED formal)
 
 ## 6. Revalidation post-rebase
@@ -123,7 +123,7 @@ Per ADR-0074, `core.milestone` NO PUEDE ser CERTIFIED hasta que:
 
 ```text
 M v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStep.kt
-  + resetState() method for test isolation
+  + MilestoneStateStore delegation via MILESTONE_OPERATIONS_CAPABILITY (state seam fix)
 A v2/pipeline-application/src/test/kotlin/.../CoreMilestoneStepContractSuiteTest.kt
 A docs/v2/07-uat/S2_A9_CORE_MILESTONE_G3_RECEIPT.md
 ```
@@ -137,7 +137,7 @@ G3 is STOP. Per the batch manifest:
 > stop_after: G3 → estado IMPLEMENTED_UNCERTIFIED y STOP (AUTHORITY_FLIP_READY=false pendiente del fix de estado)
 
 `core.milestone` is now:
-- G1: CoreMilestoneStep implemented and registered (CERTIFIED)
+- G1: CoreMilestoneStep implemented and registered
 - G2: Corpus migrated (18 tests green)
 - G3: Contract suite passed (19 tests green, IMPLEMENTED_UNCERTIFIED)
 

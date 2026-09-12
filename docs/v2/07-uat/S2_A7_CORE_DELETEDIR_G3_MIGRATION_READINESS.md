@@ -2,7 +2,8 @@
 
 **Cycle:** `lfc2-e1-s2-a7-core-deletedir`
 **Branch:** `cycle/lfc2-e1-delete-dir`
-**Base:** `f5e4003d` (LFC-2E1 harness — LegacyResidualSnapshot: single residual authority)
+**Base:** `2a247b18` (LFC-2E1 harness — LEGACY_PLUGIN_IDS baseline)
+**Post-rebase revalidation:** SHA `c7d9fca1` (rebase applied 2026-09-12); suites re-executed post-rebase with counts in §4.
 **Date:** 2026-09-12T14:43Z
 **Status:** MIGRATION_READY — STOP after G3; READY_FOR_AUTHORITY_FLIP.
 
@@ -92,10 +93,19 @@ The `CoreDeleteDirStep` registry candidate is **MIGRATION_READY**:
 G3 ends here. The next slice (`S2-A7 / G4` — authority flip) requires explicit GO.
 Status: `deleteDir G3 READY_FOR_AUTHORITY_FLIP`.
 
-Re-entry path for `S2-A7 / G4` (NOT in this wave, requires explicit GO):
+## 7. G4 / G5 burn-down sequence clarification
+
 ```text
-G4 → remove "core.deleteDir" from LEGACY_PLUGIN_IDS + CanonicalCoreStepMetadata row
-G5 → physical legacy removal (dispatcher, decoder branch, subtype)
+G4 (authority flip) → removes "core.deleteDir" from LEGACY_PLUGIN_IDS
+                      produces 5/6/6 (metadata + dispatcher still present)
+
+G5 (legacy removal) → removes CanonicalCoreStepMetadata row
+                      → removes dispatcher case
+                      → removes decoder branch
+                      produces 5/5/5 (LEGACY_PLUGIN_IDS entry gone)
+
 G6 → CoreDeleteDirStepContractSuiteTest (16-22 tests)
 G8 → final certification
 ```
+
+> NOTE: G4 does NOT remove metadata or dispatcher — those are G5 artifacts.

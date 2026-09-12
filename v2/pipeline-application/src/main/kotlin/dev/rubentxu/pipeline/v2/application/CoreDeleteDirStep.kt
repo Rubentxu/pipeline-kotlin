@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
+
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -13,23 +13,16 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
-import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.events.DirDeleted
-import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.security.MessageDigest
-import java.time.Instant
-import java.util.UUID
 
 /**
- * Typed input payload of `core.deleteDir` (S2-A7 / G1).
+ * Typed input payload of `core.deleteDir` (S2-A7 / G3-fix).
  *
  * The legacy wire payload for `core.deleteDir` is `{"kind":"deleteDir","path":"."}`
  * (compiler `encodePayload` else-branch). The `path` field defaults to "." (current
@@ -62,27 +55,36 @@ data class DeleteDirOutput(
 }
 
 /**
- * Registry candidate for `core.deleteDir` (S2-A7 / G1 registry seam proof).
+ * Registry candidate for `core.deleteDir` (S2-A7 / G3-fix).
  *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
- * decoder, the metadata row, or the legacy dispatcher:
- * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
- * the production authority until the G3/G4 flip. Counters stay 6 / 6 / 6.
+ * ## Architecture (G3-fix)
  *
- * Classification policy is **PATH_B verbatim** (G0 characterization):
- * - `DeleteDirExecutor` handles path resolution and deletion
- * - Workspace-root guard is enforced
- * - MEMOIZED replay via `.deleted` marker
+ * The handler is a thin typed seam — it receives [DeleteDirInput] and returns
+ * [DeleteDirOutput]. Zero infrastructure in the handler:
+ * - NO `DeleteDirExecutor` construction
+ * - NO `EventSink` access
+ * - NO `Files.*` calls
+ * - NO sha256 computation (comes from typed operation result)
  *
- * Capability separation:
- * - [WORKSPACE_RESOLVER_CAPABILITY] provides the canonical workspace resolver
- *   (stage workspace resolution and creation)
- * - [EVENT_SINK_CAPABILITY] publishes the durable `DirDeleted` observation
+ * All filesystem semantics, workspace resolution, and event emission live in
+ * [DeleteDirOperationsAdapter], accessed via [DELETE_DIR_OPERATIONS_CAPABILITY].
  *
- * Adjective checks: input codec preserves the legacy `{"kind":"deleteDir"}`
- * envelope; the handler is total (no exceptions as semantics); `DirDeleted`
- * fields mirror the legacy dispatcher byte-for-byte (uuid eventId, sequence 0L,
- * sha256 hex of path).
+ * This follows the certified pattern of:
+ * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
+ * - `TemporaryWorkspaceOperations` / `TemporaryWorkspaceOperationsAdapter` (S2-A6 / G3T)
+ * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)
+ *
+ * ## Capability discipline
+ *
+ * [DELETE_DIR_OPERATIONS_CAPABILITY] is the ONLY declared capability. The handler
+ * does NOT consume `WORKSPACE_RESOLVER_CAPABILITY`, `EVENT_SINK_CAPABILITY`, or
+ * `STAGE_IDENTITY_CAPABILITY` directly — those are bound by the adapter.
+ *
+ * ## Re-entry (G1 → G3-fix)
+ *
+ * G1 registered the candidate with three capabilities. G3-fix refactors to the
+ * single-capability pattern per ADR-0070..0074 and AGENTS.md STEP CONSTITUTION.
+ * Counters remain 6 / 6 / 6 (LEGACY_PLUGIN_IDS unchanged until G4).
  */
 object CoreDeleteDirStep {
 
@@ -147,51 +149,31 @@ object CoreDeleteDirStep {
         replayPolicy = ReplayPolicy.MEMOIZED,
     )
 
+    /**
+     * Thin handler — zero infrastructure.
+     *
+     * The handler reaches the typed [DeleteDirOperations] seam via
+     * [DELETE_DIR_OPERATIONS_CAPABILITY] and delegates to `ops.delete(input)`.
+     * All filesystem semantics, workspace resolution, and `DirDeleted` emission
+     * live in [dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter].
+     *
+     * Handler contract:
+     * - Declares exactly ONE capability: [DELETE_DIR_OPERATIONS_CAPABILITY]
+     * - Receives [DeleteDirInput], returns [DeleteDirOutput]
+     * - Never constructs [dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor]
+     * - Never accesses [dev.rubentxu.pipeline.v2.events.EventSink]
+     * - Never calls `Files.*` or computes sha256
+     */
     private val capabilityRoutedHandler: StepHandler<DeleteDirInput, DeleteDirOutput> =
         StepHandler { input, ctx ->
-            val stageIdentity: StageIdentity = ctx.capabilities.get(STAGE_IDENTITY_CAPABILITY)
-            val resolver: WorkspaceResolverPort = ctx.capabilities.get(WORKSPACE_RESOLVER_CAPABILITY)
-            val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
-
-            val stageWorkspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
-            resolver.ensureCreated(stageWorkspace)
-
-            val executor = DeleteDirExecutor(
-                workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
-            )
-
-            val spec = dev.rubentxu.pipeline.v2.dsl.StepSpec.DeleteDir(path = input.path)
-            val result = executor.execute(
-                stageName = stageIdentity.name,
-                stageIndex = stageIdentity.index,
-                stepIndex = ctx.stepIndex,
-                spec = spec,
-            )
-
-            sink.append(
-                DirDeleted(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = ctx.runId.value,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    path = result.path.toString(),
-                    deletedCount = result.deletedCount,
-                    sha256 = result.sha256,
-                ),
-            )
-
+            val ops: DeleteDirOperations = ctx.capabilities.get(DELETE_DIR_OPERATIONS_CAPABILITY)
+            val result = ops.delete(input)
             DeleteDirOutput(
-                path = result.path.toString(),
+                path = result.path,
                 deletedCount = result.deletedCount,
                 sha256 = result.sha256,
             )
         }
-
-    internal fun sha256(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(input.toByteArray())
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
 
     val definition: StepDefinition<DeleteDirInput, DeleteDirOutput> =
         object : StepDefinition<DeleteDirInput, DeleteDirOutput> {
@@ -200,11 +182,9 @@ object CoreDeleteDirStep {
                 descriptor = descriptor,
                 inputCodec = inputCodec,
                 outputCodec = outputCodec,
-                requiredCapabilities = setOf(
-                    WORKSPACE_RESOLVER_CAPABILITY,
-                    STAGE_IDENTITY_CAPABILITY,
-                    EVENT_SINK_CAPABILITY,
-                ) as Set<StepCapability>,
+                // G3-fix: single capability — all workspace resolution, execution,
+                // and event emission are bound by the adapter.
+                requiredCapabilities = setOf(DELETE_DIR_OPERATIONS_CAPABILITY) as Set<StepCapability>,
             )
 
             override val handler: StepHandler<DeleteDirInput, DeleteDirOutput> =

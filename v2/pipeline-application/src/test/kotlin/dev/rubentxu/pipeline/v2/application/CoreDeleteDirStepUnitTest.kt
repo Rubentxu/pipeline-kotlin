@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
@@ -30,20 +31,23 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Unit + handler tests for [CoreDeleteDirStep] (S2-A7 / G1 registry candidate).
+ * Unit + handler tests for [CoreDeleteDirStep] (S2-A7 / G3-fix).
  *
- * These tests pin the candidate contract BEFORE any authority flip:
+ * These tests pin the candidate contract after the G3-fix refactor:
  *   - typed I/O codec round-trip (input `DeleteDirInput(path)`, output `DeleteDirOutput`)
  *   - declared effect `{ WRITES_WORKSPACE }` + replay `MEMOIZED`
- *   - declared capabilities = `{ WORKSPACE_RESOLVER_CAPABILITY, STAGE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY }`
+ *   - declared capability = `{ DELETE_DIR_OPERATIONS_CAPABILITY }` (single capability)
  *   - handler emits a single `DirDeleted` event with path, deletedCount, sha256
  *   - missing capability fail-closed admission: no handler invocation, no event
  *   - structural family: while `core.deleteDir` is in LEGACY_PLUGIN_IDS, classify returns LegacyCore
  *     (registry-membership does NOT change production authority at G1)
- *   - counter invariant 6 / 6 / 6 unchanged (pre-G1 frozen state preserved)
+ *   - counter invariant 6 / 6 / 6 unchanged (pre-G4 frozen state preserved)
  *
- * Parallel to `CorePwdStepUnitTest`; reuses the same pattern.
- * Authority: G1 slice burn-down template.
+ * Architecture: handler is a thin typed seam with ZERO infrastructure
+ * (no DeleteDirExecutor, no EventSink, no Files.*, no sha256 computation).
+ *
+ * Reference: WorkspaceOperations (S2-A3 / G1) and TemporaryWorkspaceOperations (S2-A6 / G3T).
+ * Authority: G3-fix burn-down template.
  */
 @Timeout(20)
 class CoreDeleteDirStepUnitTest {
@@ -80,9 +84,9 @@ class CoreDeleteDirStepUnitTest {
     }
 
     @Test
-    fun `required capabilities = WORKSPACE_RESOLVER + STAGE_IDENTITY + EVENT_SINK`() {
+    fun `required capabilities = DELETE_DIR_OPERATIONS_CAPABILITY only (G3-fix single capability)`() {
         assertEquals(
-            setOf(WORKSPACE_RESOLVER_CAPABILITY, STAGE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
+            setOf(DELETE_DIR_OPERATIONS_CAPABILITY),
             CoreDeleteDirStep.definition.contract.requiredCapabilities,
         )
     }
@@ -160,7 +164,7 @@ class CoreDeleteDirStepUnitTest {
     }
 
     // ------------------------------------------------------------------
-    // Handler: emits a single DirDeleted with path, deletedCount, sha256
+    // Handler: thin seam — emits a single DirDeleted with path, deletedCount, sha256
     // ------------------------------------------------------------------
 
     @Test
@@ -200,12 +204,12 @@ class CoreDeleteDirStepUnitTest {
     }
 
     // ------------------------------------------------------------------
-    // Counter invariant — pre-G1 frozen state must NOT widen at G1
+    // Counter invariant — pre-G4 frozen state must NOT widen at G3-fix
     // ------------------------------------------------------------------
 
     @Test
-    fun `counters - 6 6 6 unchanged by S2-A7 G1 registration only`() {
-        // G1 invariant: registration alone MUST NOT widen the burn-down counters.
+    fun `counters - 6 6 6 unchanged by S2-A7 G3-fix refactor only`() {
+        // G3-fix invariant: refactoring to single capability MUST NOT widen the burn-down counters.
         // The existing frozen state is preserved; legacy authority for `core.deleteDir`
         // is intact until a separate G4 flip.
         assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -217,60 +221,41 @@ class CoreDeleteDirStepUnitTest {
 
     // ------------------------------------------------------------------
     // Real seam: preparation (fail-closed admission) -> boundary -> handler
+    // G3-fix: single DELETE_DIR_OPERATIONS_CAPABILITY admission
     // ------------------------------------------------------------------
 
     @Test
-    fun `real seam - missing WORKSPACE_RESOLVER_CAPABILITY rejects admission with handler invocation 0 and no event`() {
+    fun `real seam - missing DELETE_DIR_OPERATIONS_CAPABILITY rejects admission with handler invocation 0 and no event`() {
         val preparation = RegistryExecutionPreparation.prepare(
             registry = CoreStepRegistryFactory.registry(),
             key = CoreDeleteDirStep.KEY,
             encodedInput = EncodedStepValue("""{"kind":"deleteDir","path":"."}"""),
-            availableCapabilities = setOf(STAGE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY),
-        )
-        assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
-        assertEquals(0, capturedDirDeleted("g1-deletedir-missing-resolver").size)
-    }
-
-    @Test
-    fun `real seam - missing STAGE_IDENTITY_CAPABILITY rejects admission with handler invocation 0 and no event`() {
-        val preparation = RegistryExecutionPreparation.prepare(
-            registry = CoreStepRegistryFactory.registry(),
-            key = CoreDeleteDirStep.KEY,
-            encodedInput = EncodedStepValue("""{"kind":"deleteDir","path":"."}"""),
-            availableCapabilities = setOf(WORKSPACE_RESOLVER_CAPABILITY, EVENT_SINK_CAPABILITY),
-        )
-        assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
-        assertEquals(0, capturedDirDeleted("g1-deletedir-missing-stage-identity").size)
-    }
-
-    @Test
-    fun `real seam - missing EVENT_SINK_CAPABILITY rejects admission with handler invocation 0 and no event`() {
-        val preparation = RegistryExecutionPreparation.prepare(
-            registry = CoreStepRegistryFactory.registry(),
-            key = CoreDeleteDirStep.KEY,
-            encodedInput = EncodedStepValue("""{"kind":"deleteDir","path":"."}"""),
-            availableCapabilities = setOf(WORKSPACE_RESOLVER_CAPABILITY, STAGE_IDENTITY_CAPABILITY),
-        )
-        assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
-        assertEquals(0, capturedDirDeleted("g1-deletedir-missing-sink").size)
-    }
-
-    @Test
-    fun `real seam - all capabilities missing rejects admission with handler invocation 0 and no event`() {
-        val preparation = RegistryExecutionPreparation.prepare(
-            registry = CoreStepRegistryFactory.registry(),
-            key = CoreDeleteDirStep.KEY,
-            encodedInput = EncodedStepValue("""{"kind":"deleteDir","path":"."}"""),
+            // G3-fix: single capability — none available means rejection
             availableCapabilities = emptySet(),
         )
         assertInstanceOf(ExecutionPreparation.Rejected::class.java, preparation)
-        assertEquals(0, capturedDirDeleted("g1-deletedir-missing-all").size)
+        assertEquals(0, capturedDirDeleted("g3fix-deletedir-missing-cap").size)
     }
 
     @Test
+    fun `duplicate registration fails closed`() {
+        val registry = InMemoryStepRegistry().also { CoreDeleteDirStep.registerInto(it) }
+        try {
+            CoreDeleteDirStep.registerInto(registry)
+            throw AssertionError("expected duplicate-key rejection")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("core.deleteDir"), "got: ${e.message}")
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Handler with full capabilities executes through preparation and boundary
+    // ------------------------------------------------------------------
+
+    @Test
     fun `real seam - full capabilities execute through preparation and boundary with typed output and exactly one event`() = runBlocking {
-        val runId = "g1-deletedir-real-seam"
-        val workspace = Files.createTempDirectory("g1-deletedir-real-seam-").toAbsolutePath()
+        val runId = "g3fix-deletedir-real-seam"
+        val workspace = Files.createTempDirectory("g3fix-deletedir-real-seam-").toAbsolutePath()
         val prepared = prepareReal(runId, workspace)
         val ctx = context(runId, workspace, sharedEventStore)
         val result = RegistryExecutionBoundary.coexecute(prepared, ctx)
@@ -288,17 +273,6 @@ class CoreDeleteDirStepUnitTest {
         assertEquals(64, event.sha256.length)
     }
 
-    @Test
-    fun `duplicate registration fails closed`() {
-        val registry = InMemoryStepRegistry().also { CoreDeleteDirStep.registerInto(it) }
-        try {
-            CoreDeleteDirStep.registerInto(registry)
-            throw AssertionError("expected duplicate-key rejection")
-        } catch (e: IllegalArgumentException) {
-            assertTrue(e.message!!.contains("core.deleteDir"), "got: ${e.message}")
-        }
-    }
-
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
@@ -308,11 +282,8 @@ class CoreDeleteDirStepUnitTest {
             registry = CoreStepRegistryFactory.registry(),
             key = CoreDeleteDirStep.KEY,
             encodedInput = EncodedStepValue("""{"kind":"deleteDir","path":"."}"""),
-            availableCapabilities = setOf(
-                WORKSPACE_RESOLVER_CAPABILITY,
-                STAGE_IDENTITY_CAPABILITY,
-                EVENT_SINK_CAPABILITY,
-            ),
+            // G3-fix: single DELETE_DIR_OPERATIONS_CAPABILITY
+            availableCapabilities = setOf(DELETE_DIR_OPERATIONS_CAPABILITY),
         )
         val ready = assertInstanceOf(ExecutionPreparation.Ready::class.java, preparation)
         return assertInstanceOf(PreparedRegistryExecution::class.java, ready.prepared)
@@ -320,8 +291,11 @@ class CoreDeleteDirStepUnitTest {
 
     /**
      * Synthesises a [dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext] with a
-     * capability access that returns a fresh [WorkspaceResolverPort] for [WORKSPACE_RESOLVER_CAPABILITY],
-     * [StageIdentity] for [STAGE_IDENTITY_CAPABILITY], and the supplied [sink] for [EVENT_SINK_CAPABILITY].
+     * capability access that returns a [DeleteDirOperationsAdapter] for
+     * [DELETE_DIR_OPERATIONS_CAPABILITY].
+     *
+     * G3-fix: the adapter itself contains the workspace resolver, delete executor,
+     * and event sink — the handler only sees the typed seam.
      */
     private fun stepHandlerContext(
         runId: String,
@@ -333,20 +307,18 @@ class CoreDeleteDirStepUnitTest {
             stepIndex = 0,
             capabilities = object : dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess {
                 override fun available(): Set<dev.rubentxu.pipeline.v2.domain.step.StepCapability> =
-                    setOf(WORKSPACE_RESOLVER_CAPABILITY, STAGE_IDENTITY_CAPABILITY, EVENT_SINK_CAPABILITY)
+                    setOf(DELETE_DIR_OPERATIONS_CAPABILITY)
 
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : Any> get(key: dev.rubentxu.pipeline.v2.domain.step.StepCapability): T =
                     when (key) {
-                        WORKSPACE_RESOLVER_CAPABILITY -> object : WorkspaceResolverPort {
-                            private val resolver = dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver(workspace)
-                            override fun resolve(stageName: String, stageIndex: Int): java.nio.file.Path =
-                                resolver.resolve(stageName, stageIndex)
-                            override fun ensureCreated(path: java.nio.file.Path): java.nio.file.Path =
-                                resolver.ensureCreated(path)
-                        } as T
-                        STAGE_IDENTITY_CAPABILITY -> StageIdentity(name = "test", index = 0) as T
-                        EVENT_SINK_CAPABILITY -> sink as T
+                        DELETE_DIR_OPERATIONS_CAPABILITY -> DeleteDirOperationsAdapter(
+                            runIdString = runId,
+                            stageIdentity = StageIdentity(name = "test", index = 0),
+                            stepIndex = 0,
+                            controlDirRoot = workspace,
+                            eventSink = sink,
+                        ) as T
                         else -> throw IllegalArgumentException("unexpected capability $key")
                     }
             },

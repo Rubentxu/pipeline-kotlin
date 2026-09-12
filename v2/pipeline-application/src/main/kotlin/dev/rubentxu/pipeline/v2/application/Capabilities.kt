@@ -186,3 +186,66 @@ interface WorkspaceResolverPort {
 }
 
 val WORKSPACE_RESOLVER_CAPABILITY: StepCapability = StepCapability("workspace.resolver")
+
+/**
+ * Typed seam for `core.deleteDir` (S2-A7 / G3-fix) — the ONLY capability
+ * the registry-routed `CoreDeleteDirStep.handler` consumes to perform atomic
+ * workspace directory deletion.
+ *
+ * ## Why a typed seam and not `DeleteDirExecutor` directly?
+ *
+ * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
+ * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
+ * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
+ * symmetry, `core.deleteDir` reaches this `DeleteDirOperations` capability and
+ * never touches `DeleteDirExecutor`, `Files`, `EventSink`, or `sha256` directly.
+ *
+ * ## Scope
+ *
+ * The seam intentionally hides:
+ * - [dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver] — canonical
+ *   stage workspace resolution (workspace root guard enforced here).
+ * - [dev.rubentxu.pipeline.v2.sdk.files.DeleteDirExecutor] — atomic filesystem
+ *   semantics (walk+delete, workspace-root guard, `.deleted` marker).
+ * - stage identity — derived from the adapter's runtime context binding.
+ * - event emission — the adapter is the ONLY thing that emits `DirDeleted`.
+ * - sha256 computation — the marker sha256 is computed by the executor and
+ *   surfaced through the typed [DeleteDirResult].
+ *
+ * ## Failure semantics
+ *
+ * Implementations return [DeleteDirResult] (closed typed ADT). Re-classification
+ * to [dev.rubentxu.pipeline.v2.domain.StepOutcome] is the responsibility of the
+ * registry execution boundary.
+ *
+ * ## Reference
+ *
+ * Mirrors `WorkspaceOperations` (S2-A3 / G1) and `TemporaryWorkspaceOperations`
+ * (S2-A6 / G3T). The adapter is constructed once per capability-access lookup,
+ * binding the canonical runtime inputs so the handler receives only the typed seam.
+ */
+interface DeleteDirOperations {
+
+    /**
+     * Performs atomic workspace directory deletion for the given [DeleteDirInput].
+     *
+     * @param input The deleteDir input containing the path to delete.
+     * @return The closed typed [DeleteDirResult] with path, deletedCount, and sha256.
+     */
+    fun delete(input: DeleteDirInput): DeleteDirResult
+}
+
+/**
+ * Result of a [DeleteDirOperations.delete] operation.
+ *
+ * @property path Resolved absolute path that was deleted
+ * @property deletedCount Number of files/directories deleted (0 if already deleted)
+ * @property sha256 SHA-256 hex of the `.deleted` marker content
+ */
+data class DeleteDirResult(
+    val path: String,
+    val deletedCount: Int,
+    val sha256: String,
+)
+
+val DELETE_DIR_OPERATIONS_CAPABILITY: StepCapability = StepCapability("delete-dir.operations")

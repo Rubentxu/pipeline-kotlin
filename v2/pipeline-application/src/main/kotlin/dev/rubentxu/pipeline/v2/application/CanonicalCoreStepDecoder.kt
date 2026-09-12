@@ -99,8 +99,13 @@ sealed interface CanonicalCoreStepCommand {
             // The legacy CanonicalPwdNodeDispatcher.kt file is deleted in this slice;
             // CanonicalNodeDispatcher.pwd branch + pwdContext() helper are removed too.
             // Counter converges 6 / 8 / 8 -> 6 / 6 / 6 at the end of this slice.
+            // S2-A7 / G4 (2026-09-12): "core.deleteDir" flipped REGISTRY_PRIMARY.
+            // Removed from LEGACY_PLUGIN_IDS; StructuralFamilyResolver routes
+            // core.deleteDir through the Registry family (CoreDeleteDirStep).
+            // Legacy forms stay type-loadable but UNREACHABLE in production until
+            // the G5 physical removal (command subtype, metadata row, dispatcher
+            // file deleted at G5; counter converges 5/6/6 -> 5/5/5 there).
             "core.milestone",
-            "core.deleteDir",
             "core.cleanWs",
             "core.load",
             "core.waitUntil",

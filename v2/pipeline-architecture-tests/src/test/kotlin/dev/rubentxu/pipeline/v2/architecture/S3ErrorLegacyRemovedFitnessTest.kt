@@ -122,7 +122,9 @@ class S3ErrorLegacyRemovedFitnessTest {
     fun `LEGACY_PLUGIN_IDS is exactly the 6 residual keys (post-S2-A6-G5 full-set equality)`() {
         // Single shared authority: LegacyResidualSnapshot is the ONLY place that
         // declares the residual set; this assertion delegates to it.
-        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
+        // TRANSITIONAL (deleteDir G4 window): assertCurrentState instead of assertConverged;
+        // restore assertConverged at deleteDir G5 closure.
+        LegacyResidualSnapshot.assertCurrentState(ScannerSupport.v2Root())
     }
 
     /** 3. core.error is NOT decodable by CanonicalCoreStepDecoder (no ERROR_PLUGIN_ID, no when-branch, no Error data class). */
@@ -289,19 +291,25 @@ class S3ErrorLegacyRemovedFitnessTest {
 
     @Test
     fun `counter snapshot at G6 close -- LEGACY_PLUGIN_IDS equals the 6 residual legacy keys`() {
-        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
+        // TRANSITIONAL (deleteDir G4 window): assertCurrentState instead of assertConverged;
+        // restore assertConverged at deleteDir G5 closure.
+        LegacyResidualSnapshot.assertCurrentState(ScannerSupport.v2Root())
     }
 
     @Test
     fun `counter snapshot at G6 close -- CanonicalCoreStepMetadata table keys equal the 6 residual legacy keys`() {
-        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
+        // TRANSITIONAL (deleteDir G4 window): assertCurrentState instead of assertConverged;
+        // restore assertConverged at deleteDir G5 closure.
+        LegacyResidualSnapshot.assertCurrentState(ScannerSupport.v2Root())
         val metadataKeys = LegacyResidualSnapshot.liveMetadataRows(ScannerSupport.v2Root())
         assertFalse("core.error" in metadataKeys, "core.error MUST NOT be in legacy metadata")
     }
 
     @Test
     fun `counter snapshot at G6 close -- per-Step dispatcher files equal the 6 residual legacy dispatcher classes`() {
-        LegacyResidualSnapshot.assertConverged(ScannerSupport.v2Root())
+        // TRANSITIONAL (deleteDir G4 window): assertCurrentState instead of assertConverged;
+        // restore assertConverged at deleteDir G5 closure.
+        LegacyResidualSnapshot.assertCurrentState(ScannerSupport.v2Root())
         val actualDispatchers = LegacyResidualSnapshot.liveDispatcherFiles(ScannerSupport.v2Root())
         assertFalse(
             "CanonicalErrorNodeDispatcher.kt" in actualDispatchers,

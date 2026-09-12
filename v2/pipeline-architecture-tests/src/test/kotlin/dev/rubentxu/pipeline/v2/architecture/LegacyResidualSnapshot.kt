@@ -21,8 +21,8 @@ import java.nio.file.Path
  * pending), so the burn-down progresses as:
  *
  * ```
- * pwd closed                 -> 6 / 6 / 6   (current)
- * deleteDir G4 -> 5 / 6 / 6
+ * pwd closed                 -> 6 / 6 / 6
+ * deleteDir G4 -> 5 / 6 / 6   (current — transitional, pending G5)
  * deleteDir G5 -> 5 / 5 / 5
  * waitUntil G4 -> 4 / 5 / 5
  * waitUntil G5 -> 4 / 4 / 4
@@ -78,7 +78,7 @@ object LegacyResidualSnapshot {
      *   at G4:     registryPrimaryPendingRemoval = key   -> (N-1) / N / N
      *   at G5:     physicalResidual -= key; back to null -> (N-1) / (N-1) / (N-1)
      */
-    private val registryPrimaryPendingRemoval: String? = null
+    private val registryPrimaryPendingRemoval: String? = "core.deleteDir"
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

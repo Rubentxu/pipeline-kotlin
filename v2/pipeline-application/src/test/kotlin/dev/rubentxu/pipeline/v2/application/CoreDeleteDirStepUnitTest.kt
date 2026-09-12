@@ -192,29 +192,28 @@ class CoreDeleteDirStepUnitTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `structural family - core deleteDir stays LegacyCore while in LEGACY_PLUGIN_IDS (no authority flip at G1)`() {
-        // G1 invariant: registration alone MUST NOT change production authority.
-        // While "core.deleteDir" remains in LEGACY_PLUGIN_IDS, StructuralFamilyResolver returns
-        // LegacyCore regardless of whether the registry resolves the key.
-        assertTrue("core.deleteDir" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+    fun `structural family - core deleteDir routes Registry after G4 flip`() {
+        // G4 invariant: authority flipped. "core.deleteDir" is OUT of LEGACY_PLUGIN_IDS and
+        // StructuralFamilyResolver returns Registry (legacy forms remain on disk until G5,
+        // but are UNREACHABLE in production classification).
+        assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         val registry = CoreStepRegistryFactory.registry()
         assertEquals(
-            StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(CoreDeleteDirStep.KEY, registry),
         )
     }
 
     // ------------------------------------------------------------------
-    // Counter invariant — pre-G4 frozen state must NOT widen at G3-fix
+    // Counter invariant — G4 transitional state: 5 / 6 / 6
     // ------------------------------------------------------------------
 
     @Test
-    fun `counters - 6 6 6 unchanged by S2-A7 G3-fix refactor only`() {
-        // G3-fix invariant: refactoring to single capability MUST NOT widen the burn-down counters.
-        // The existing frozen state is preserved; legacy authority for `core.deleteDir`
-        // is intact until a separate G4 flip.
-        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
-        assertTrue("core.deleteDir" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+    fun `counters - G4 transitional 5 6 6 with legacy forms still on disk`() {
+        // G4 invariant: LEGACY_PLUGIN_IDS shrinks to 5; the metadata row and dispatcher
+        // file remain physically present (pending G5 physical removal).
+        assertEquals(5, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         val meta = CanonicalCoreStepMetadata.metadata("core.deleteDir")
         assertEquals(setOf(Effect.WRITES_WORKSPACE), meta.effects.toSet())
         assertEquals(ReplayPolicy.MEMOIZED, meta.replayPolicy)

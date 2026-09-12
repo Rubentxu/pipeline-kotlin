@@ -51,8 +51,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
             // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
             "core.milestone",
+            // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip
+            // (legacy forms remain on disk until G5 physical removal).
             // P1a — workflow-control (v0.33.0)
-            "core.deleteDir",
             "core.cleanWs",
             "core.load",
             // P1b — utility (v0.33.0)

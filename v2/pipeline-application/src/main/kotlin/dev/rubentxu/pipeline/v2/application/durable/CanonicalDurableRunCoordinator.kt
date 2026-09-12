@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
+import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
@@ -366,6 +367,13 @@ class CanonicalDurableRunCoordinator(
     // routes through RetryReconciliationDriver (ADR-0075 §11). When null, the pre-ADR-0075
     // inline retry loop is preserved bit-equivalent — existing callers and tests see no change.
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
+    // S2-A9 spike: optional milestone state store scoped to this coordinator/run. When bound,
+    // the MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter backed
+    // by this store. When null, the capability is absent and milestone steps will fail
+    // capability admission (fail-closed). The store lives at coordinator lifetime, not per
+    // handler invocation — mirroring the legacy CanonicalMilestoneNodeDispatcher.lastReachedOrdinal
+    // scope (per run, not global classloader).
+    private val milestoneStateStore: MilestoneStateStore? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
 
@@ -394,7 +402,14 @@ class CanonicalDurableRunCoordinator(
     private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
         // CDE.3-e4.5 / B1.2c3-S2.5.7 WU-5: structural switch lives in ExecutionBoundaryFactory.build
         // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
-        ?: ExecutionBoundaryFactory.build(dispatcher, invocationExecutor, stepRegistry)
+        // S2-A9 spike: pass milestoneStateStore so RegistryExecutionBoundary can provide
+        // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
+        ?: ExecutionBoundaryFactory.build(
+            dispatcher = dispatcher,
+            invocationExecutor = invocationExecutor,
+            stepRegistry = stepRegistry,
+            milestoneStateStore = milestoneStateStore,
+        )
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success
@@ -777,7 +792,10 @@ class CanonicalDurableRunCoordinator(
                             registry = registry,
                             key = step.pluginStepId,
                             encodedInput = EncodedStepValue(step.payload.encoded),
-                            availableCapabilities = CanonicalRuntimeCapabilityAccess(runtime).available(),
+                            availableCapabilities = CanonicalRuntimeCapabilityAccess(
+                                runtime,
+                                milestoneStateStore = milestoneStateStore,
+                            ).available(),
                         )
                         when (admission) {
                             is ExecutionPreparation.Rejected -> return Dispatched(rejectSchema(

@@ -203,3 +203,24 @@ data class DeleteDirResult(
 )
 
 val DELETE_DIR_OPERATIONS_CAPABILITY: StepCapability = StepCapability("delete-dir.operations")
+ * Typed seam capability for milestone ordinal state operations (S2-A9 / spike).
+ *
+ * Declared by `CoreMilestoneStep` in its [dev.rubentxu.pipeline.v2.domain.step.StepContract].
+ * The handler consumes [dev.rubentxu.pipeline.v2.application.MilestoneOperations] to
+ * peek the current ordinal and advance it atomically — WITHOUT holding mutable state.
+ *
+ * The adapter ([dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter]) binds to a
+ * [dev.rubentxu.pipeline.v2.application.MilestoneStateStore] that lives at the
+ * coordinator/run lifetime (created by coordinator wiring, not by handler invocation).
+ * This mirrors the legacy `CanonicalMilestoneNodeDispatcher.lastReachedOrdinal` scope.
+ *
+ * ## Why a capability and not a var in the handler?
+ *
+ * AGENTS.md §STEP IMPLEMENTATION: handler MUST NOT hold mutable state. The previous
+ * `CoreMilestoneStep` implementation used `private var lastReachedOrdinal: Int? = null`
+ * in the singleton object — global classloader state that bleeds across runs and JVM
+ * classloader boundaries. The capability system + run-scoped store provides proper
+ * isolation.
+ */
+val MILESTONE_OPERATIONS_CAPABILITY: StepCapability =
+    StepCapability("milestone.operations")

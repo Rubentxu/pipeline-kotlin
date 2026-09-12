@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
+import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -45,14 +46,30 @@ import kotlinx.coroutines.CancellationException
  */
 object RegistryExecutionBoundary {
 
-    fun adapt(): CommonExecutionBoundary = CommonExecutionBoundary { prepared, context ->
-        when (prepared) {
-            is PreparedRegistryExecution -> coexecute(prepared, context)
-            is PreparedLegacyExecution -> throw EngineInvariantViolation(
-                "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",
-            )
+    /**
+     * Creates a [CommonExecutionBoundary] that executes registry Steps.
+     * Uses a default [CanonicalRuntimeCapabilityAccess] without milestone store support.
+     */
+    fun adapt(): CommonExecutionBoundary = adapt(milestoneStateStore = null)
+
+    /**
+     * Creates a [CommonExecutionBoundary] that executes registry Steps, with optional
+     * [MilestoneStateStore] support for milestone Steps.
+     *
+     * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
+     *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
+     */
+    fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
+        CommonExecutionBoundary { prepared, context ->
+            when (prepared) {
+                is PreparedRegistryExecution -> coexecute(prepared, context) { ctx ->
+                    CanonicalRuntimeCapabilityAccess(ctx, milestoneStateStore = milestoneStateStore)
+                }
+                is PreparedLegacyExecution -> throw EngineInvariantViolation(
+                    "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",
+                )
+            }
         }
-    }
 
     /**
      * Executes a [PreparedRegistryExecution] and returns both the closed

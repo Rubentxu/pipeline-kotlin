@@ -17,6 +17,10 @@ import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.MILESTONE_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.MilestoneOperations
+import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -40,6 +44,9 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  */
 open class CanonicalRuntimeCapabilityAccess(
     context: CanonicalRuntimeContext,
+    // S2-A9 spike: optional milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
+    // When null, the capability is absent and milestone steps fail capability admission.
+    private val milestoneStateStore: MilestoneStateStore? = null,
 ) : StepCapabilityAccess {
 
     private val provided: Map<StepCapability, Any> = buildProvided(context)
@@ -144,6 +151,14 @@ open class CanonicalRuntimeCapabilityAccess(
                 eventSink = context.eventSink,
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
+        // S2-A9 spike: milestone state operations (core.milestone). The store is optional
+        // so existing call-sites that don't bind it see no change; when bound, the
+        // MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter
+        // backed by the run-scoped store. The store lifetime is the coordinator lifetime,
+        // NOT per handler invocation — mirroring the legacy dispatcher's per-run semantics.
+        milestoneStateStore?.let { store ->
+            val milestoneOps: MilestoneOperations = MilestoneOperationsAdapter(store)
+            builder[MILESTONE_OPERATIONS_CAPABILITY] = milestoneOps
         }
         return builder.toMap()
     }

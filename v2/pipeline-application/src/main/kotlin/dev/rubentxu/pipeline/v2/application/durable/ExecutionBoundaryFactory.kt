@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
@@ -69,6 +70,9 @@ object ExecutionBoundaryFactory {
         stepRegistry: StepRegistry?,
         stepKey: PluginStepId? = null,
         recorder: CommonExecutionBoundary? = null,
+        // S2-A9 spike: milestone state store scoped to the coordinator/run. When provided,
+        // the RegistryExecutionBoundary is created with milestone capability support.
+        milestoneStateStore: MilestoneStateStore? = null,
     ): CommonExecutionBoundary {
         // Binary policy preserved bit-a-bit from the original `if (stepRegistry != null)` inline
         // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
@@ -79,7 +83,9 @@ object ExecutionBoundaryFactory {
                     dispatcher.dispatch(command, context)
                 },
             )
-            val registry = RegistryExecutionBoundary.adapt()
+            // S2-A9 spike: pass milestoneStateStore to RegistryExecutionBoundary so it can
+            // populate MILESTONE_OPERATIONS_CAPABILITY when building CanonicalRuntimeCapabilityAccess.
+            val registry = RegistryExecutionBoundary.adapt(milestoneStateStore = milestoneStateStore)
             // stepKey is intentionally not consumed here; the canonical coordinator does not know
             // the key at boundary-build time and the registry boundary decides reachability per
             // prepared execution.

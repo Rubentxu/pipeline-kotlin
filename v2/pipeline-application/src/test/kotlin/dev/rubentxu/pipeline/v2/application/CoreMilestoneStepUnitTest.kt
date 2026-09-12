@@ -29,27 +29,32 @@ import org.junit.jupiter.api.Timeout
  * 4. Typed MilestoneOutput carries the correct status.
  * 5. The registry contains core.milestone via CoreStepRegistryFactory.
  *
- * State management: the handler tracks lastReachedOrdinal in its companion object
- * (scoped per classloader = per coordinator in production). In unit tests, the JVM
- * may fork a new process per test class, providing natural isolation. If multiple
- * tests run in the same JVM, the companion object state is shared — but each test
- * class exercises its own handler instance, so the critical monotonicity assertions
- * within a single test remain valid.
+ * ## S2-A9 Spike: State seam
+ *
+ * State management uses the new MilestoneStateStore pattern (S2-A9 spike):
+ * - Each test creates its own MilestoneStateStore (test isolation)
+ * - The store is wrapped in MilestoneOperationsAdapter and provided via capability
+ * - The handler delegates state management to the capability, NOT holding mutable state
+ * - No resetState() call needed — each test gets its own fresh store
  */
 @Timeout(30)
 class CoreMilestoneStepUnitTest {
 
     private lateinit var eventStore: InMemoryEventStore
+    private lateinit var milestoneStore: MilestoneStateStore
     private lateinit var handlerContext: StepHandlerContext
 
     @BeforeEach
     fun setup() {
-        // Reset per-run state for test isolation.
-        // Each test gets a clean lastReachedOrdinal.
-        CoreMilestoneStep.resetState()
+        // S2-A9 spike: create a fresh MilestoneStateStore for this test.
+        // Each test gets its own store — no resetState() call needed.
+        milestoneStore = MilestoneStateStore()
         eventStore = InMemoryEventStore()
         val capabilities = MapStepCapabilityAccess(
-            mapOf(EVENT_SINK_CAPABILITY to eventStore)
+            mapOf(
+                EVENT_SINK_CAPABILITY to eventStore,
+                MILESTONE_OPERATIONS_CAPABILITY to MilestoneOperationsAdapter(milestoneStore),
+            ),
         )
         handlerContext = StepHandlerContext(
             runId = RunId("test-run"),
@@ -60,7 +65,8 @@ class CoreMilestoneStepUnitTest {
 
     @AfterEach
     fun teardown() {
-        CoreMilestoneStep.resetState()
+        // S2-A9 spike: no resetState() call needed.
+        // Each test has its own MilestoneStateStore that is garbage-collected.
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -93,12 +99,12 @@ class CoreMilestoneStepUnitTest {
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `capability declaration — requires only EVENT_SINK_CAPABILITY`() {
+    fun `capability declaration — requires EVENT_SINK_CAPABILITY and MILESTONE_OPERATIONS_CAPABILITY`() {
         val contract = CoreMilestoneStep.definition.contract
         assertEquals(
-            setOf(EVENT_SINK_CAPABILITY),
+            setOf(EVENT_SINK_CAPABILITY, MILESTONE_OPERATIONS_CAPABILITY),
             contract.requiredCapabilities,
-            "core.milestone requires only EVENT_SINK_CAPABILITY",
+            "core.milestone requires EVENT_SINK_CAPABILITY and MILESTONE_OPERATIONS_CAPABILITY",
         )
     }
 
@@ -225,6 +231,7 @@ class CoreMilestoneStepUnitTest {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Handler — ordinal monotonicity (G2 canonical milestone characterization)
+    // S2-A9 spike: state delegated to MilestoneOperations capability
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
@@ -346,10 +353,13 @@ class CoreMilestoneStepUnitTest {
 
     @Test
     fun `missing capability — execution fails when EVENT_SINK is absent`() = runBlocking {
+        // Create a context without EVENT_SINK_CAPABILITY
         val noSinkContext = StepHandlerContext(
             runId = RunId("test-run"),
             stepIndex = 0,
-            capabilities = MapStepCapabilityAccess(emptyMap()),
+            capabilities = MapStepCapabilityAccess(
+                mapOf(MILESTONE_OPERATIONS_CAPABILITY to MilestoneOperationsAdapter(milestoneStore)),
+            ),
         )
         val input = MilestoneInput(ordinal = 1, label = "orphan")
         val exception = runCatching {
@@ -358,6 +368,26 @@ class CoreMilestoneStepUnitTest {
         assertTrue(
             exception != null,
             "handler must throw when EVENT_SINK capability is absent",
+        )
+    }
+
+    @Test
+    fun `missing capability — execution fails when MILESTONE_OPERATIONS is absent`() = runBlocking {
+        // Create a context without MILESTONE_OPERATIONS_CAPABILITY
+        val noOpsContext = StepHandlerContext(
+            runId = RunId("test-run"),
+            stepIndex = 0,
+            capabilities = MapStepCapabilityAccess(
+                mapOf(EVENT_SINK_CAPABILITY to eventStore),
+            ),
+        )
+        val input = MilestoneInput(ordinal = 1, label = "orphan")
+        val exception = runCatching {
+            CoreMilestoneStep.definition.handler.execute(input, noOpsContext)
+        }.exceptionOrNull()
+        assertTrue(
+            exception != null,
+            "handler must throw when MILESTONE_OPERATIONS capability is absent",
         )
     }
 

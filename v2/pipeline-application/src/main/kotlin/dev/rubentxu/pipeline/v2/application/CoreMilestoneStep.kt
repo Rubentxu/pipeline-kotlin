@@ -110,9 +110,12 @@ sealed class MilestoneStatus {
  * gets its own coordinator instance, each coordinator instance gets its own handler
  * classloader instance, and state is isolated per run.
  *
- * **Capability separation:**
- * - [EVENT_SINK_CAPABILITY] publishes the durable MilestoneReached/MilestoneAborted observation.
- *   The handler reaches the event sink ONLY through the declared capability.
+ * ## Capability separation
+ *
+ * - [MILESTONE_OPERATIONS_CAPABILITY] provides milestone ordinal state operations
+ *   (`peek`, `advance`). The handler delegates state management to this capability.
+ * - [EVENT_SINK_CAPABILITY] publishes the durable MilestoneReached/MilestoneAborted
+ *   observation. The handler reaches the event sink ONLY through the declared capability.
  *
  * **Input codec:** encodes `{"kind":"milestone","ordinal":N,"label":...}` — byte-identical
  * to the legacy `DslCompiledPipelineCompiler.milestonePayload` output, ensuring durable
@@ -125,31 +128,6 @@ sealed class MilestoneStatus {
 object CoreMilestoneStep {
 
     val KEY: PluginStepId = PluginStepId("core.milestone")
-
-    /**
-     * Tracks the last reached ordinal within a single pipeline run.
-     *
-     * Scoped per `CoreMilestoneStep` classloader instance: in the local single-run
-     * model, each `CanonicalDurableRunCoordinator` instance gets its own classloader,
-     * so state is isolated per run. This mirrors the legacy
-     * `CanonicalMilestoneNodeDispatcher.lastReachedOrdinal: Int?` in-memory state
-     * but moves it into the handler's own scope (the handler is the new authority
-     * for milestone semantics, not the coordinator's dispatcher).
-     */
-    private var lastReachedOrdinal: Int? = null
-
-    /**
-     * Resets the per-run state to its initial value.
-     *
-     * This is ONLY for test isolation. In production, the state is scoped per
-     * `CoreMilestoneStep` classloader instance (per coordinator), so a new pipeline
-     * run gets a fresh state. Test harnesses that run multiple milestone tests
-     * in the same JVM process MUST call this between tests to ensure isolation.
-     */
-    @JvmStatic
-    fun resetState() {
-        lastReachedOrdinal = null
-    }
 
     private val inputCodec = object : StepCodec<MilestoneInput> {
         override fun encode(value: MilestoneInput): EncodedStepValue =
@@ -229,41 +207,47 @@ object CoreMilestoneStep {
     private val capabilityRoutedHandler: StepHandler<MilestoneInput, MilestoneOutput> =
         StepHandler { input, ctx ->
             val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
-            val previous = lastReachedOrdinal
-            if (previous != null && input.ordinal <= previous) {
-                sink.append(
-                    MilestoneAborted(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = ctx.runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
-                        ordinal = input.ordinal,
-                        reason = "ordinal-already-reached (previous=$previous)",
-                    ),
-                )
-                lastReachedOrdinal = previous // unchanged
-                MilestoneOutput(
-                    ordinal = input.ordinal,
-                    label = input.label,
-                    status = MilestoneStatus.Aborted("ordinal-already-reached (previous=$previous)"),
-                )
-            } else {
-                lastReachedOrdinal = input.ordinal
-                sink.append(
-                    MilestoneReached(
-                        eventId = UUID.randomUUID().toString(),
-                        runId = ctx.runId.value,
-                        sequence = 0L,
-                        occurredAt = Instant.now(),
+            val ops: MilestoneOperations = ctx.capabilities.get(MILESTONE_OPERATIONS_CAPABILITY)
+
+            // Delegate state management to the capability (run-scoped MilestoneStateStore).
+            // The handler does NOT hold mutable state.
+            val advanceResult = ops.advance(input.ordinal)
+
+            when (advanceResult) {
+                is MilestoneAdvanceResult.Aborted -> {
+                    sink.append(
+                        MilestoneAborted(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = ctx.runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            ordinal = input.ordinal,
+                            reason = advanceResult.reason,
+                        ),
+                    )
+                    MilestoneOutput(
                         ordinal = input.ordinal,
                         label = input.label,
-                    ),
-                )
-                MilestoneOutput(
-                    ordinal = input.ordinal,
-                    label = input.label,
-                    status = MilestoneStatus.Reached,
-                )
+                        status = MilestoneStatus.Aborted(advanceResult.reason),
+                    )
+                }
+                is MilestoneAdvanceResult.Reached -> {
+                    sink.append(
+                        MilestoneReached(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = ctx.runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            ordinal = input.ordinal,
+                            label = input.label,
+                        ),
+                    )
+                    MilestoneOutput(
+                        ordinal = input.ordinal,
+                        label = input.label,
+                        status = MilestoneStatus.Reached,
+                    )
+                }
             }
         }
 
@@ -276,6 +260,7 @@ object CoreMilestoneStep {
                 outputCodec = outputCodec,
                 requiredCapabilities = setOf(
                     EVENT_SINK_CAPABILITY,
+                    MILESTONE_OPERATIONS_CAPABILITY,
                 ) as Set<StepCapability>,
             )
 

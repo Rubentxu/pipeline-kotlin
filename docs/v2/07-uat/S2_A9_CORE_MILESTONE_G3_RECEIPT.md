@@ -1,10 +1,13 @@
-# S2-A9 / G3 — Contract Certification Receipt
+# S2-A9 / G3 — Contract Certification Receipt (REVISED)
 
 > Cycle: `cycle/lfc2-e1-milestone`
 > Slice: S2-A9 (`core.milestone`)
 > Gate: **G3 — Contract Suite (CoreMilestoneStepContractSuiteTest)**
 > Branch HEAD: `cf220563` (G2 closed, this gate)
 > Date: 2026-09-12T14:48Z
+> **REVISION NOTE**: Receipt previously declared "G3 CERTIFIED" with wrong counters (12/12/12).
+> This revision corrects counters to 6/6/6 and status to IMPLEMENTED_UNCERTIFIED
+> per reviewer request. PROHIBIDO: ningún CERTIFIED antes de G8/LEGACY_REMOVED.
 
 ## 1. Purpose
 
@@ -81,29 +84,42 @@ ffa75fe851d9ce42ea5e9031b4a7ac437433338ae0d804421ac63956b235a0d9  CoreMilestoneS
 ## 4. State machine
 
 ```
-LEGACY_PLUGIN_IDS              = 12   (unchanged — milestone still in set)
-CanonicalCoreStepMetadata rows = 12   (unchanged)
-per-Step dispatchers           = 12   (unchanged)
-registry entries              = 10   (unchanged)
+LEGACY_PLUGIN_IDS              = 6    (unchanged — milestone still in set)
+CanonicalCoreStepMetadata rows = 6    (unchanged)
+per-Step dispatchers           = 6    (unchanged)
+registry entries              = 10   (unchanged — includes milestone)
 
 core.milestone:
   execution     = LegacyCore (CanonicalMilestoneNodeDispatcher)
   registry      = present (CoreMilestoneStep.registered in CoreStepRegistryFactory)
-  certification = G3 CERTIFIED
-  characterization evidence = THIS RECEIPT
+  certification = G3 IMPLEMENTED_UNCERTIFIED
+  AUTHORITY_FLIP_READY = false (pending PROBLEMA 1 state seam fix)
+  characterization evidence = THIS RECEIPT (revised)
 ```
 
 ## 5. State machine transition
 
 ```
 core.milestone: G2 (IMPLEMENTED_UNCERTIFIED)
-  → G3 (CERTIFIED, READY_FOR_AUTHORITY_FLIP)
+  → G3 (IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false)
 ```
 
-Per ADR-0074, `core.milestone` is now **CERTIFIED** and ready for the G4
-authority flip (removing `core.milestone` from LEGACY_PLUGIN_IDS).
+**NOTA IMPORTANTE**: Este receipt declara IMPLEMENTED_UNCERTIFIED, NO CERTIFIED.
+Per ADR-0074, `core.milestone` NO PUEDE ser CERTIFIED hasta que:
+1. Se resuelva el PROBLEMA 1 (estado global mutable en handler)
+2. Se complete G4 (LEGACY_REMOVED)
+3. Se complete G8 (CERTIFIED formal)
 
-## 6. Production code touched in G3
+## 6. Revalidation post-rebase
+
+**Base SHA**: `2a247b18`
+**Revalidation SHA**: `ec37ed3f` (post-rebase)
+**Test counts re-ejecutados**:
+- CoreMilestoneStepContractSuiteTest: 19 tests
+- CoreMilestoneStepUnitTest: 18 tests
+- UatLocal013MilestoneTimingTest: 4 tests
+
+## 7. Production code touched in G3
 
 ```text
 M v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStep.kt
@@ -114,19 +130,31 @@ A docs/v2/07-uat/S2_A9_CORE_MILESTONE_G3_RECEIPT.md
 
 No changes to LEGACY_PLUGIN_IDS, legacy decoder, legacy dispatcher, or legacy metadata.
 
-## 7. Stop condition
+## 8. Stop condition
 
 G3 is STOP. Per the batch manifest:
 
-> stop_after: G3 → estado READY_FOR_AUTHORITY_FLIP y STOP
+> stop_after: G3 → estado IMPLEMENTED_UNCERTIFIED y STOP (AUTHORITY_FLIP_READY=false pendiente del fix de estado)
 
 `core.milestone` is now:
 - G1: CoreMilestoneStep implemented and registered (CERTIFIED)
 - G2: Corpus migrated (18 tests green)
-- G3: Contract suite passed (19 tests green, CERTIFIED)
+- G3: Contract suite passed (19 tests green, IMPLEMENTED_UNCERTIFIED)
 
-**READY_FOR_AUTHORITY_FLIP** — milestone is CERTIFIED for the registry authority flip.
-The next gate (G4) is handled by the lane owner.
+**NOT AUTHORITY_FLIP_READY** — `core.milestone` permanece IMPLEMENTED_UNCERTIFIED
+hasta que se resuelva el PROBLEMA 1 (estado global mutable) y se complete G4/LEGACY_REMOVED.
+
+## 9. Reviewer-requested corrections (2026-09-12)
+
+Correcciones solicitadas por el reviewer del PR #26:
+
+| Campo | Valor anterior (INCORRECTO) | Valor correcto |
+|-------|---------------------------|----------------|
+| LEGACY_PLUGIN_IDS counter | 12 | 6 |
+| CanonicalCoreStepMetadata rows | 12 | 6 |
+| per-Step dispatchers | 12 | 6 |
+| Status | "G3 CERTIFIED, READY_FOR_AUTHORITY_FLIP" | "G3 IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false" |
 
 ---
-**G3 CLOSED — core.milestone CERTIFIED, READY_FOR_AUTHORITY_FLIP.**
+**G3 CLOSED — core.milestone IMPLEMENTED_UNCERTIFIED, AUTHORITY_FLIP_READY=false.**
+**PROHIBIDO: ningún CERTIFIED antes de G8/LEGACY_REMOVED.**

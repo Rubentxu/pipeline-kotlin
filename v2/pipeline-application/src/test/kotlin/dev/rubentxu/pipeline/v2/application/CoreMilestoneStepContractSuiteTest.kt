@@ -27,6 +27,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.application.MilestoneOperations
+import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.application.support.PipelineRule
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.dsl.pipeline
@@ -46,7 +49,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -111,6 +113,9 @@ class CoreMilestoneStepContractSuiteTest {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)
+        // S2-A9 spike: create a MilestoneStateStore scoped to this harness instance.
+        // The store is passed to the coordinator so it can provide MILESTONE_OPERATIONS_CAPABILITY.
+        val milestoneStore = MilestoneStateStore()
         val registryForCoord = CoreStepRegistryFactory.registry()
         val coord = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
@@ -123,8 +128,12 @@ class CoreMilestoneStepContractSuiteTest {
             controlDirRoot = workDir.resolve("control"),
             shOptions = ShOptions.EMPTY,
             stepRegistry = registryForCoord,
+            // S2-A9 spike: bind the milestone store to the coordinator.
+            // The coordinator wires it through ExecutionBoundaryFactory to RegistryExecutionBoundary,
+            // which populates MILESTONE_OPERATIONS_CAPABILITY when building CanonicalRuntimeCapabilityAccess.
+            milestoneStateStore = milestoneStore,
         )
-        return Harness(coord, journal, eventStore, registryForCoord, workDir)
+        return Harness(coord, journal, eventStore, registryForCoord, workDir, milestoneStore)
     }
 
     private data class Harness(
@@ -133,6 +142,9 @@ class CoreMilestoneStepContractSuiteTest {
         val eventStore: InMemoryEventStore,
         val registry: dev.rubentxu.pipeline.v2.domain.step.StepRegistry,
         val workDir: java.nio.file.Path,
+        // S2-A9 spike: milestone store for this harness instance.
+        // Tests can create MilestoneOperations from it for direct handler testing.
+        val milestoneStore: MilestoneStateStore,
     )
 
     private fun milestoneNode(ordinal: Int, label: String?, nodeId: String = "build/milestone"): OpaqueStepNode {
@@ -164,15 +176,11 @@ class CoreMilestoneStepContractSuiteTest {
         ),
     )
 
-    // Reset handler state before each test for monotonicity isolation.
+    // S2-A9 spike: fresh milestone store created per test — no resetState() needed.
     @BeforeEach
     fun setup() {
-        CoreMilestoneStep.resetState()
-    }
-
-    @AfterEach
-    fun teardown() {
-        CoreMilestoneStep.resetState()
+        // No longer calling CoreMilestoneStep.resetState()
+        // Each test gets its own MilestoneStateStore via freshHarness
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -195,7 +203,7 @@ class CoreMilestoneStepContractSuiteTest {
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `contract completeness — key, descriptor, codecs, EVENT_SINK_CAPABILITY, MEMOIZED`() {
+    fun `contract completeness — key, descriptor, codecs, EVENT_SINK_CAPABILITY, MILESTONE_OPERATIONS_CAPABILITY, MEMOIZED`() {
         val contract = CoreMilestoneStep.definition.contract
         assertEquals(CoreMilestoneStep.KEY, contract.key)
         assertNotNull(contract.descriptor, "StepDescriptor must be present")
@@ -210,10 +218,11 @@ class CoreMilestoneStepContractSuiteTest {
             contract.descriptor.replayPolicy,
             "core.milestone replayPolicy MUST be MEMOIZED",
         )
+        // S2-A9 spike: milestone now requires both EVENT_SINK and MILESTONE_OPERATIONS capabilities
         assertEquals(
-            setOf<StepCapability>(EVENT_SINK_CAPABILITY),
+            setOf<StepCapability>(EVENT_SINK_CAPABILITY, MILESTONE_OPERATIONS_CAPABILITY),
             contract.requiredCapabilities,
-            "core.milestone MUST declare EVENT_SINK_CAPABILITY as required",
+            "core.milestone MUST declare both EVENT_SINK_CAPABILITY and MILESTONE_OPERATIONS_CAPABILITY as required",
         )
         assertNotNull(contract.inputCodec, "input codec must be present")
         assertNotNull(contract.outputCodec, "output codec must be present")
@@ -362,7 +371,7 @@ class CoreMilestoneStepContractSuiteTest {
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
-    fun `capability admission — admission succeeds when EVENT_SINK_CAPABILITY is present`() {
+    fun `capability admission — admission succeeds when both EVENT_SINK_CAPABILITY and MILESTONE_OPERATIONS_CAPABILITY are present`() {
         val encoded = CoreMilestoneStep.definition.contract.inputCodec.encode(
             MilestoneInput(ordinal = 1, label = "admitted"),
         )
@@ -370,11 +379,15 @@ class CoreMilestoneStepContractSuiteTest {
             registry = registry(),
             key = CoreMilestoneStep.KEY,
             encodedInput = encoded,
-            availableCapabilities = setOf<StepCapability>(EVENT_SINK_CAPABILITY),
+            // S2-A9 spike: milestone now requires MILESTONE_OPERATIONS_CAPABILITY
+            availableCapabilities = setOf<StepCapability>(
+                EVENT_SINK_CAPABILITY,
+                MILESTONE_OPERATIONS_CAPABILITY,
+            ),
         )
         assertTrue(
             preparation is ExecutionPreparation.Ready,
-            "admission must succeed when EVENT_SINK is available",
+            "admission must succeed when both EVENT_SINK and MILESTONE_OPERATIONS are available",
         )
     }
 
@@ -497,7 +510,8 @@ class CoreMilestoneStepContractSuiteTest {
                     descriptor = CoreMilestoneStep.definition.contract.descriptor,
                     inputCodec = CoreMilestoneStep.definition.contract.inputCodec,
                     outputCodec = CoreMilestoneStep.definition.contract.outputCodec,
-                    requiredCapabilities = setOf(absent),
+                    // S2-A9 spike: milestone requires both capabilities
+                    requiredCapabilities = setOf(absent, MILESTONE_OPERATIONS_CAPABILITY),
                 )
                 override val handler = CoreMilestoneStep.definition.handler
             })
@@ -508,11 +522,44 @@ class CoreMilestoneStepContractSuiteTest {
             encodedInput = CoreMilestoneStep.definition.contract.inputCodec.encode(
                 MilestoneInput(ordinal = 1, label = "orphan"),
             ),
+            // Only MILESTONE_OPERATIONS present, not EVENT_SINK
+            availableCapabilities = setOf(MILESTONE_OPERATIONS_CAPABILITY),
+        )
+        assertTrue(
+            admission is ExecutionPreparation.Rejected,
+            "missing EVENT_SINK capability must surface as Rejected admission (fail-closed)",
+        )
+    }
+
+    // S2-A9 spike: test that missing MILESTONE_OPERATIONS also fails admission
+    @Test
+    fun `missing capability — admission rejects when MILESTONE_OPERATIONS is absent`() {
+        val absent = StepCapability("missing.capability.never.declared")
+        val altRegistry = InMemoryStepRegistry().apply {
+            register(object : StepDefinition<MilestoneInput, MilestoneOutput> {
+                override val contract = StepContract(
+                    key = CoreMilestoneStep.KEY,
+                    descriptor = CoreMilestoneStep.definition.contract.descriptor,
+                    inputCodec = CoreMilestoneStep.definition.contract.inputCodec,
+                    outputCodec = CoreMilestoneStep.definition.contract.outputCodec,
+                    // S2-A9 spike: milestone requires both capabilities
+                    requiredCapabilities = setOf(EVENT_SINK_CAPABILITY, absent),
+                )
+                override val handler = CoreMilestoneStep.definition.handler
+            })
+        }
+        val admission = RegistryExecutionPreparation.prepare(
+            registry = altRegistry,
+            key = CoreMilestoneStep.KEY,
+            encodedInput = CoreMilestoneStep.definition.contract.inputCodec.encode(
+                MilestoneInput(ordinal = 1, label = "orphan"),
+            ),
+            // Only EVENT_SINK present, not MILESTONE_OPERATIONS
             availableCapabilities = setOf(EVENT_SINK_CAPABILITY),
         )
         assertTrue(
             admission is ExecutionPreparation.Rejected,
-            "missing capability must surface as Rejected admission (fail-closed)",
+            "missing MILESTONE_OPERATIONS capability must surface as Rejected admission (fail-closed)",
         )
     }
 

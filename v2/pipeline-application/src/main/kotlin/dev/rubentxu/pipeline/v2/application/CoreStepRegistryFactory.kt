@@ -98,5 +98,15 @@ object CoreStepRegistryFactory {
         // the deterministic temp path from the canonical OpId.format string — NO
         // timestamp, NO random. Same OpId ⇒ same path; distinct OpId ⇒ distinct path.
         CorePwdTmpStep.registerInto(this)
+        // LFC-2E1-S2-A8 / G1: candidate registration only. `core.waitUntil` remains in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
+        // keeps LegacyCore as the canonical production authority. No legacy decoder,
+        // metadata, dispatcher, or catalogue entry changes in this gate.
+        //
+        // waitUntil is a Block Step with a condition body. The registry candidate
+        // emits typed events (WaitUntilPolled / WaitUntilCompleted) but the actual
+        // condition evaluation requires BodyInvoker (ADR-0073). This G1 candidate
+        // follows the stub pattern from the legacy dispatcher.
+        CoreWaitUntilStep.registerInto(this)
     }
 }

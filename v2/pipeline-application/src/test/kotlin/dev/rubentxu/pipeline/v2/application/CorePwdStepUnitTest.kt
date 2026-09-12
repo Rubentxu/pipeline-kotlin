@@ -280,6 +280,7 @@ class CorePwdStepUnitTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A6/G5 (2026-09-12) removed the legacy metadata row from CanonicalCoreStepMetadata (LEGACY_REMOVED). This test queried the legacy row for byte-equivalence with the registry descriptor — preserved verbatim for traceability; superseded by S3PwdLegacyRemovedFitnessTest asserting the registry descriptor directly.")
     @Test
     fun `core pwd registry flip - 6 residual keys remain post-S2-A6-G4`() {
         // S2-A6 / G4 (2026-09-12): core.pwd removed from LEGACY_PLUGIN_IDS.

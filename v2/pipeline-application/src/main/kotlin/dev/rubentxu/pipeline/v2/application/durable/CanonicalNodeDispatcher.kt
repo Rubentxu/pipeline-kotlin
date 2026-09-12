@@ -26,7 +26,8 @@ class CanonicalNodeDispatcher {
     private val deleteDirDispatcher = CanonicalDeleteDirNodeDispatcher()
     private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
     private val loadDispatcher = CanonicalLoadNodeDispatcher()
-    private val pwdDispatcher = CanonicalPwdNodeDispatcher()
+    // S2-A6 / G5: pwdDispatcher removed (LEGACY_REMOVED) — core.pwd executes
+    // exclusively through CorePwdStep via the registry.
     // S2-A5 / G5: isUnixDispatcher removed (LEGACY_REMOVED) — core.isUnix executes
     // exclusively through CoreIsUnixStep via the registry.
     private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
@@ -39,7 +40,7 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.DeleteDir -> deleteDirDispatcher.dispatch(command, context.deleteDirContext())
             is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
             is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
-            is CanonicalCoreStepCommand.Pwd -> pwdDispatcher.dispatch(command, context.pwdContext())
+            // S2-A6 / G5: Pwd when-branch removed (LEGACY_REMOVED).
             // S2-A5 / G5: IsUnix when-branch removed (LEGACY_REMOVED).
             // waitUntil: condition is not serializable; emit stub events and return success
             // Full condition evaluation requires the in-memory path where lambdas are preserved
@@ -82,13 +83,7 @@ class CanonicalNodeDispatcher {
         loadedFingerprints = mutableSetOf(), // Per-run fingerprint cache
     )
 
-    private fun CanonicalRuntimeContext.pwdContext() = CanonicalPwdDispatchContext(
-        runId = runId,
-        stepIndex = stepIndex,
-        eventSink = eventSink,
-        workspaceRoot = shOptions.workspaceRoot,
-    )
-
+    // S2-A6 / G5: pwdContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A5 / G5: isUnixContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.waitUntilContext() = CanonicalWaitUntilDispatchContext(

@@ -9,8 +9,8 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 9 entries (EmitEvent, Milestone,
- *   DeleteDir, CleanWs, Load, Pwd, IsUnix, WaitUntil, ArchiveArtifacts).
+ * - sealedSubclasses has exactly 6 entries (Milestone, DeleteDir, CleanWs,
+ *   Load, WaitUntil, ArchiveArtifacts).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
@@ -19,6 +19,9 @@ import org.junit.jupiter.api.Test
  *   via CoreSleepStep; CERTIFIED at S2-A2/G8).
  *   LFC-2E1-S2-A3 / G5 removed WriteFile (core.file.writeFile migrated to the open
  *   StepRegistry via CoreWriteFileStep).
+ *   LFC-2E1-S2-A4 / G5 removed EmitEvent.
+ *   LFC-2E1-S2-A5 / G5 removed IsUnix.
+ *   LFC-2E1-S2-A6 / G5 removed Pwd.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -28,9 +31,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 8 entries`() {
+    fun `sealedSubclasses has exactly 7 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(7, subclasses.size, "Expected exactly 7 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix removed at S2-A5/G5). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(6, subclasses.size, "Expected exactly 6 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix at S2-A5/G5; Pwd at S2-A6/G5). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -44,16 +47,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
             // open registry (CoreIsUnixStep.descriptor via RegistryStepMetadataResolver).
             // S2-A6 / G4 (2026-09-12): "core.pwd" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CorePwdStep.definition via the open
-            // registry (CoreStepRegistryFactory). Legacy `core.pwd` source remains
-            // physically present until G5 (LEGACY_UNREACHABLE, not LEGACY_REMOVED):
-            //   - CanonicalCoreStepCommand.Pwd subtype
-            //   - PWD_PLUGIN_ID decoder branch (kind="pwd")
-            //   - CanonicalPwdNodeDispatcher.kt + CanonicalNodeDispatcher pwd branch
-            //   - CanonicalCoreStepMetadata["core.pwd"] row
-            // The S2-A6/G3R slice already redirects the DSL `pwd(tmp=false)` through the
-            // open registry; this G4 flip removes the legacy-membership fallback so the
-            // production decoder routes through CorePwdStep.definition.
+            // S2-A6 / G5 (2026-09-12): "core.pwd" legacy subtype/decoder/dispatcher/metadata
+            // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
+            // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
             "core.milestone",
             // P1a — workflow-control (v0.33.0)
             "core.deleteDir",
@@ -108,13 +104,9 @@ class CanonicalCoreStepCommandRegistryTest {
 
     // P1b — utility canonical step families
 
-    @Test
-    fun `Pwd has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.Pwd(tmp = false)
-        assertEquals("core.pwd", instance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // S2-A6 / G5: Pwd test removed (LEGACY_REMOVED). The pluginId/Effects/ReplayPolicy
+    // invariants of core.pwd are now asserted in S3PwdLegacyRemovedFitnessTest against
+    // CorePwdStep.descriptor — the registry authority.
 
     // S2-A5 / G5: IsUnix test removed (LEGACY_REMOVED). The pluginId/Effects/ReplayPolicy
     // invariants of core.isUnix are now asserted in S3IsUnixLegacyRemovedFitnessTest against

@@ -54,7 +54,7 @@ class SeamedExecutionRouterTest {
         val registry = RecordingBoundary()
         val routed = SeamedExecutionRouter.route(legacy, registry)
 
-        routed.execute(PreparedLegacyExecution(CanonicalCoreStepCommand.Pwd()), runtime())
+        routed.execute(PreparedLegacyExecution(CanonicalCoreStepCommand.CleanWs()), runtime())
 
         assertEquals(1, legacy.calls, "legacy family must reach the legacy executor exactly once")
         assertEquals(0, registry.calls, "legacy family must never reach the registry executor")

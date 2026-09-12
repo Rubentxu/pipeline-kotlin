@@ -296,6 +296,7 @@ class CoreIsUnixStepUnitTest {
         // (Compilation of this file would have failed in L0 if CanonicalIsUnixNodeDispatcher were still on disk.)
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A6/G5 (2026-09-12) flipped core.pwd to LEGACY_REMOVED; the 6-6-7 counter is superseded by `counters drop to 6-6-6 post-S2-A6-G5` below. Preserved verbatim for traceability.")
     @Test
     fun `counters drop to 6-6-7 post-S2-A6-G4 and legacy dispatcher source is physically removed`() {
         // S2-A6 / G4 (2026-09-12): "core.pwd" flipped to REGISTRY_PRIMARY; counter 7 -> 6.
@@ -309,6 +310,27 @@ class CoreIsUnixStepUnitTest {
         // The legacy metadata authority still answers for "core.pwd" (LEGACY_UNREACHABLE):
         val pwdMeta = dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.pwd")
         assertEquals(setOf(dev.rubentxu.pipeline.v2.domain.durable.Effect.READ_ONLY), pwdMeta.effects.toSet())
+        // The legacy metadata authority no longer answers for "core.isUnix" (G5 REMOVED):
+        assertThrows(IllegalArgumentException::class.java) {
+            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.isUnix")
+        }
+    }
+
+    @Test
+    fun `counters drop to 6-6-6 post-S2-A6-G5 and legacy dispatcher source is physically removed`() {
+        // S2-A6 / G5 (2026-09-12): "core.pwd" legacy execution authority physically deleted
+        // (LEGACY_REMOVED). The legacy metadata row for "core.pwd" is also gone; the
+        // canonical-core counter converges to 6-6-6: 6 executable IDs in LEGACY_PLUGIN_IDS,
+        // 6 metadata rows (core.pwd row removed), 6 dispatcher sources (CanonicalPwdNodeDispatcher
+        // physically deleted in this slice; CanonicalNodeDispatcher.pwd branch + pwdContext()
+        // helper removed).
+        assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue("core.isUnix" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.pwd" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // The legacy metadata authority no longer answers for "core.pwd" (G5 REMOVED):
+        assertThrows(IllegalArgumentException::class.java) {
+            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.pwd")
+        }
         // The legacy metadata authority no longer answers for "core.isUnix" (G5 REMOVED):
         assertThrows(IllegalArgumentException::class.java) {
             dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.metadata("core.isUnix")

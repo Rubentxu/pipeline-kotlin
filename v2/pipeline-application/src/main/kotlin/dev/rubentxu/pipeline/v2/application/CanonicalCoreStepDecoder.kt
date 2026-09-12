@@ -90,22 +90,15 @@ sealed interface CanonicalCoreStepCommand {
             // Registry family, and RegistryStepMetadataResolver reads metadata exclusively
             // from CoreIsUnixStep.descriptor. Legacy execution path remains type-loadable
             // for parity tests but is unreachable in production.
-            // S2-A6 / G4 (2026-09-12): "core.pwd" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CorePwdStep.definition via the open
-            // registry (CoreStepRegistryFactory). Legacy `core.pwd` source remains
-            // physically present until G5 (LEGACY_UNREACHABLE, not LEGACY_REMOVED):
-            //   - CanonicalCoreStepCommand.Pwd subtype
-            //   - PWD_PLUGIN_ID decoder branch (kind="pwd")
-            //   - CanonicalPwdNodeDispatcher.kt + CanonicalNodeDispatcher pwd branch
-            //   - CanonicalCoreStepMetadata["core.pwd"] row
-            // After this flip StructuralFamilyResolver routes core.pwd through the
-            // Registry family, and RegistryStepMetadataResolver reads metadata exclusively
-            // from CorePwdStep.descriptor. The S2-A6/G3R slice already redirects the DSL
-            // `pwd(tmp=false)` through the open registry by lower-binding to the same
-            // opaque IR; this G4 flip removes the legacy-membership fallback so the
-            // production decoder routes through CorePwdStep.definition. The legacy
-            // dispatcher remains type-loadable for parity tests but is unreachable in
-            // production.
+            // S2-A6 / G5 (2026-09-12): "core.pwd" legacy execution authority physically
+            // deleted (LEGACY_REMOVED). All four legacy forms are gone:
+            //   - CanonicalCoreStepCommand.Pwd subtype (line ~177, replaced with provenance comment)
+            //   - PWD_PLUGIN_ID decoder branch (line ~278, replaced with provenance comment)
+            //   - PWD_PLUGIN_ID constant (line ~219, replaced with provenance comment)
+            //   - CanonicalCoreStepMetadata["core.pwd"] row (already removed in this slice)
+            // The legacy CanonicalPwdNodeDispatcher.kt file is deleted in this slice;
+            // CanonicalNodeDispatcher.pwd branch + pwdContext() helper are removed too.
+            // Counter converges 6 / 8 / 8 -> 6 / 6 / 6 at the end of this slice.
             "core.milestone",
             "core.deleteDir",
             "core.cleanWs",
@@ -171,14 +164,13 @@ sealed interface CanonicalCoreStepCommand {
     }
 
     /**
-     * T-07: pwd step — returns the current workspace directory as an absolute path.
-     * @param tmp If true, creates and returns a temp subdirectory path instead
+     * T-07: pwd step — DELETED at S2-A6 / G5 (LEGACY_REMOVED). The `core.pwd` execution
+     * authority is now exclusively the registry (CorePwdStep.definition via
+     * RegistryStepMetadataResolver). The DSL `pwd()` / `pwd(tmp=false)` lower to
+     * `StepSpec.RegistryStepSpec(core.pwd, ...)` (S2-A6 / G3R); the canonical decoder
+     * no longer recognises a Pwd data class. The raw `core.pwd` envelope is consumed
+     * structurally (PwdResolved event, pre-decode) and executively by CorePwdStep.
      */
-    data class Pwd(
-        val tmp: Boolean = false,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.pwd"
-    }
 
     /**
      * T-07: waitUntil step — polls a condition lambda until it returns true or deadline elapses.
@@ -217,7 +209,7 @@ object CanonicalCoreStepDecoder {
     private const val DELETE_DIR_PLUGIN_ID = "core.deleteDir"
     private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
     private const val LOAD_PLUGIN_ID = "core.load"
-    private const val PWD_PLUGIN_ID = "core.pwd"
+    // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
     private const val ARCHIVE_ARTIFACTS_PLUGIN_ID = "core.archiveArtifacts"
@@ -276,13 +268,10 @@ object CanonicalCoreStepDecoder {
                     path = payload.requiredString("path"),
                 )
             }
-            PWD_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "pwd") {
-                    "Payload kind must be 'pwd' for '${node.id.value}'"
-                }
-                val tmp = payload["tmp"]?.jsonPrimitive?.booleanOrNull ?: false
-                CanonicalCoreStepCommand.Pwd(tmp = tmp)
-            }
+            // S2-A6 / G5: PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd
+            // envelope is consumed structurally (PwdResolved event, pre-decode) and
+            // executively by CorePwdStep via the registry — never here. The DSL
+            // `pwd()` / `pwd(tmp=false)` lower to StepSpec.RegistryStepSpec (S2-A6 / G3R).
             // S2-A5 / G5: IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode)
             // and executively by CoreIsUnixStep via the registry — never here.

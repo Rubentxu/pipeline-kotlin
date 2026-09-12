@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -199,6 +200,7 @@ class CorePwdRegistryPrimaryFitnessTest {
         }
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A6/G5 (2026-09-12) removed the legacy metadata row from CanonicalCoreStepMetadata (LEGACY_REMOVED). This test compared the registry descriptor metadata to the legacy row — preserved verbatim for traceability; the byte-equivalence invariants are now asserted in S3PwdLegacyRemovedFitnessTest against the registry descriptor directly.")
     @Test
     fun `G4 flip - registry descriptor metadata matches legacy row (effects + replayPolicy)`() {
         // Defensive equivalence check: the registry descriptor MUST carry the same

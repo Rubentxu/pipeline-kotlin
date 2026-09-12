@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -19,10 +20,11 @@ import org.junit.jupiter.api.Timeout
 @Timeout(10)
 class CoreLegacyStepMetadataResolverTest {
 
+    @Disabled("S2-A6 / G5 (2026-09-12): CanonicalCoreStepCommand.Pwd subtype physically deleted (LEGACY_REMOVED). This test compared the legacy Pwd default metadata to the resolver — preserved verbatim for traceability; superseded by S3PwdLegacyRemovedFitnessTest asserting descriptor metadata against the same effect+replayPolicy invariants.")
     @Test
     fun `resolves sleep metadata by step key matching the decoded command`() {
         val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep"))
-        val decoded = CanonicalCoreStepCommand.Pwd().defaultMetadata
+        val decoded = CanonicalCoreStepCommand.CleanWs().defaultMetadata
         assertEquals(decoded, resolved)
     }
 

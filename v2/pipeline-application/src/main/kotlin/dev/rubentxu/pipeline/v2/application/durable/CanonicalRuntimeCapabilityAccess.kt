@@ -151,6 +151,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 eventSink = context.eventSink,
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
+        }
         // S2-A9 spike: milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the
         // MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter

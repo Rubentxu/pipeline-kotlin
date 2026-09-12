@@ -203,6 +203,8 @@ data class DeleteDirResult(
 )
 
 val DELETE_DIR_OPERATIONS_CAPABILITY: StepCapability = StepCapability("delete-dir.operations")
+
+/**
  * Typed seam capability for milestone ordinal state operations (S2-A9 / spike).
  *
  * Declared by `CoreMilestoneStep` in its [dev.rubentxu.pipeline.v2.domain.step.StepContract].

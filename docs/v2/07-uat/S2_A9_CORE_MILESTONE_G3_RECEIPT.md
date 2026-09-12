@@ -138,7 +138,7 @@ Per ADR-0074, `core.milestone` NO PUEDE ser CERTIFIED hasta que:
 **Freeze block (fourth review / post-rebase, 2026-09-12):**
 ```text
 Base SHA          = bc791118 (post-#24 deleteDir+waitUntil readiness; previous base ffc39f63 HISTORICAL)
-Revalidation HEAD = see branch tip (post-rebase; factory = 12 unique StepKeys)
+Revalidation HEAD = 86e3eefa (post-rebase onto bc791118; factory = 12 unique StepKeys; pre-rebase 7e776c9a HISTORICAL)
 UnitTest      = 19/0/0
 ContractSuite = 23/0/0
 S3 fitness    = 52/52

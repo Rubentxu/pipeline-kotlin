@@ -16,16 +16,19 @@ import java.nio.file.Path
  * hand-syncing SIX sibling fitness tests (and G4's commit message recorded
  * the wrong count because of exactly this duplication).
  *
- * This object is the ONE place that changes at each G4/G5 authority flip:
+ * This object is the ONE place that changes at each G4/G5 authority flip.
+ * It models the TRANSITIONAL G4 state (registry-primary flipped, physical removal
+ * pending), so the burn-down progresses as:
  *
  * ```
- * pwd            -> 6/6/6   (current, after S2-A6/G5)
- * deleteDir      -> 5/5/5
- * waitUntil      -> 4/4/4
- * milestone      -> 3/3/3
- * cleanWs        -> 2/2/2
- * load           -> 1/1/1
- * archiveArtifacts -> 0/0/0  (burn-down closed)
+ * pwd closed                 -> 6 / 6 / 6   (current)
+ * deleteDir G4 -> 5 / 6 / 6
+ * deleteDir G5 -> 5 / 5 / 5
+ * waitUntil G4 -> 4 / 5 / 5
+ * waitUntil G5 -> 4 / 4 / 4
+ * milestone G4 -> 3 / 4 / 4
+ * milestone G5 -> 3 / 3 / 3
+ * cleanWs, load, archiveArtifacts -> ... -> 0 / 0 / 0 (burn-down closed)
  * ```
  *
  * Per-Step suites MUST call [assertConverged] (global residual) plus their own
@@ -56,13 +59,26 @@ object LegacyResidualSnapshot {
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable"
 
     /**
-     * The CURRENT converged residual. ONE line to change per G4/G5 flip.
-     * Removing an entry here is the authority flip for the whole test corpus.
+     * The PHYSICAL residual: keys that still have a legacy metadata row and/or
+     * a legacy dispatcher file on disk. shrinks ONLY at G5 (physical removal).
+     * ONE line to change per G5.
      */
-    private val residualIds: Set<String> = setOf(
+    private val physicalResidual: Set<String> = setOf(
         "core.milestone", "core.deleteDir", "core.cleanWs",
         "core.load", "core.waitUntil", "core.archiveArtifacts",
     )
+
+    /**
+     * The key that has REGISTRY_PRIMARY-flipped (G4) but is NOT yet physically
+     * removed (G5). Its LEGACY_PLUGIN_IDS entry is already gone, while its
+     * metadata row and dispatcher file remain until G5.
+     *
+     * State machine per burn-down lane:
+     *   before G4: null                       -> N / N / N
+     *   at G4:     registryPrimaryPendingRemoval = key   -> (N-1) / N / N
+     *   at G5:     physicalResidual -= key; back to null -> (N-1) / (N-1) / (N-1)
+     */
+    private val registryPrimaryPendingRemoval: String? = null
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
@@ -106,34 +122,36 @@ object LegacyResidualSnapshot {
         return "Canonical${stem}NodeDispatcher.kt"
     }
 
-    /** The EXPECTED snapshot at the current burn-down stage. */
+    /** The EXPECTED snapshot at the current burn-down stage (transitional-aware). */
     fun expected(): Snapshot {
-        val pluginIds = residualIds
+        val pluginIds = physicalResidual - listOfNotNull(registryPrimaryPendingRemoval)
         return Snapshot(
             pluginIds = pluginIds,
-            metadataRows = pluginIds,
-            dispatcherFiles = pluginIds.map { dispatcherFileFor(it) }.toSet(),
+            metadataRows = physicalResidual,
+            dispatcherFiles = physicalResidual.map { dispatcherFileFor(it) }.toSet(),
         )
     }
 
     /**
-     * Global convergence assertion: live residual == expected residual AND
-     * the three counters agree. Call this from every per-Step S3 fitness test.
+     * Transitional-aware global assertion: live residual == expected residual for
+     * the CURRENT stage (including the G4 transitional N-1/N/N state).
+     * Call this from every per-Step S3 fitness test.
      */
-    fun assertConverged(root: Path) {
+    fun assertCurrentState(root: Path) {
         val expected = expected()
         val live = Snapshot(
             pluginIds = liveLegacyIds(root),
             metadataRows = liveMetadataRows(root),
             dispatcherFiles = liveDispatcherFiles(root),
         )
-        check(expected.isConverged()) {
+        check(expected.dispatcherFiles.size == expected.metadataRows.size) {
             "LegacyResidualSnapshot.expected() is itself inconsistent: $expected"
         }
         check(live.pluginIds == expected.pluginIds) {
             "LEGACY_PLUGIN_IDS residual drifted.\n expected=${expected.pluginIds}\n live=${live.pluginIds}\n" +
-                "If this is an authority flip (G4/G5), update LegacyResidualSnapshot.residualIds FIRST, " +
-                "then re-run; never hand-edit counters in sibling fitness tests."
+                "If this is an authority flip (G4/G5), update LegacyResidualSnapshot FIRST " +
+                "(physicalResidual at G5; registryPrimaryPendingRemoval at G4), then re-run; " +
+                "never hand-edit counters in sibling fitness tests."
         }
         check(live.metadataRows == expected.metadataRows) {
             "CanonicalCoreStepMetadata residual drifted.\n expected=${expected.metadataRows}\n live=${live.metadataRows}"
@@ -141,5 +159,18 @@ object LegacyResidualSnapshot {
         check(live.dispatcherFiles == expected.dispatcherFiles) {
             "Canonical*NodeDispatcher.kt residual drifted.\n expected=${expected.dispatcherFiles}\n live=${live.dispatcherFiles}"
         }
+    }
+
+    /**
+     * Strict convergence assertion: same as [assertCurrentState] but ALSO requires
+     * that no G4 flip is in flight (the corpus is at a converged N/N/N point).
+     * Use at G5 closure proofs.
+     */
+    fun assertConverged(root: Path) {
+        check(registryPrimaryPendingRemoval == null) {
+            "Convergence requires no in-flight REGISTRY_PRIMARY flip; " +
+                "registryPrimaryPendingRemoval=${registryPrimaryPendingRemoval} (G5 not closed)"
+        }
+        assertCurrentState(root)
     }
 }

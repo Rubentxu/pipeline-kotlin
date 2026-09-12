@@ -119,5 +119,22 @@ object CoreStepRegistryFactory {
         // Effects: WRITES_WORKSPACE (matches legacy metadata)
         // ReplayPolicy: MEMOIZED (matches legacy metadata, idempotent via .deleted marker)
         CoreDeleteDirStep.registerInto(this)
+        // LFC-2E1-S2-A9 / G1: candidate registration only. `core.milestone` remains in
+        // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
+        // keeps LegacyCore as the canonical production authority. No legacy decoder,
+        // metadata, dispatcher, or catalogue entry changes in this gate.
+        //
+        // Capability: requires EVENT_SINK_CAPABILITY only — the handler reaches the event
+        // sink ONLY through the declared capability (capability-routed handler discipline,
+        // LB-02 / G3-A4.2).
+        //
+        // Semantics: strictly increasing ordinal -> MilestoneReached + Success;
+        // non-increasing ordinal -> MilestoneAborted + Unstable (record-only, per ML-R9 T-09
+        // and ADR-0046 §ML — local single-run model, no cross-build coordination).
+        //
+        // State: MilestoneStateStore is run-scoped (coordinator-owned); see
+        // CanonicalDurableRunCoordinator wiring and S2_A9_MILESTONE_DURABILITY_SPIKE.md.
+        CoreMilestoneStep.registerInto(this)
+
     }
 }

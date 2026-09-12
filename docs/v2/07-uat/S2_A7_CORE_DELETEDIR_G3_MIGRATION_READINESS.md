@@ -2,21 +2,21 @@
 
 **Cycle:** `lfc2-e1-s2-a7-core-deletedir`
 **Branch:** `cycle/lfc2-e1-delete-dir`
-**Base:** `2a247b18` (LFC-2E1 harness — LEGACY_PLUGIN_IDS baseline)
-**Post-rebase revalidation:** SHA `c7d9fca1` (rebase applied 2026-09-12); suites re-executed post-rebase with counts in §4.
-**Date:** 2026-09-12T14:43Z
-**Status:** MIGRATION_READY — STOP after G3; READY_FOR_AUTHORITY_FLIP.
+**Base:** `ffc39f63` (main with S2-A8 waitUntil readiness merged)
+**Revalidation HEAD:** `0bf28534` (final-fix: DELETE_DIR_OPERATIONS capability + controlDirRoot-scoped wiring; rebase artifact repaired)
+**Date:** 2026-09-12T14:43Z (superseded by evidence correction 2026-09-12T18:53Z)
+**Status:** MIGRATION_READY — AUTHORITY_FLIP_READY=true (merge readiness; G4 executes only in the serial merge queue)
 
 ## 1. Scope (user GO, 2026-09-12T14:27Z)
 
 First pass: `core.deleteDir` registration only. Authority flip (G4) explicitly NOT in scope.
 
 Production allowed (S2-A7 / G0..G3):
-- `CoreDeleteDirStep.kt` — StepDefinition, codecs, capability-routed handler.
-- `WorkspaceResolverPort` capability declared in `Capabilities.kt`.
-- `CanonicalRuntimeCapabilityAccess` wiring provides `WorkspaceResolverPort`.
+- `CoreDeleteDirStep.kt` — StepDefinition, codecs, capability-routed handler (single capability: `DELETE_DIR_OPERATIONS_CAPABILITY`).
+- `DeleteDirOperations` / `DeleteDirResult` in `Capabilities.kt` (adapter-owned: WorkspaceResolver + DeleteDirExecutor + stage identity + EventSink + DirDeleted emission).
+- `CanonicalRuntimeCapabilityAccess` wiring publishes the capability conditionally (`controlDirRoot?.let`); no `!!`, unrelated Steps unaffected when root is absent.
 - `CoreStepRegistryFactory` registration of `CoreDeleteDirStep`.
-- `CoreDeleteDirStepUnitTest` — 20 tests proving handler + codecs + capability admission.
+- `CoreDeleteDirStepUnitTest` — 18 tests proving handler + codecs + capability admission + controlDirRoot=null fail-closed rows.
 
 Production forbidden (per slice firewall):
 - no `LEGACY_PLUGIN_IDS` change
@@ -49,25 +49,27 @@ core.deleteDir:
   CERTIFIED         = false
 
 deleteDir:
-  MIGRATION_READY   = true     (handler + codecs + capability admission proven)
+  MIGRATION_READY      = true     (handler + codecs + capability admission proven)
+  AUTHORITY_FLIP_READY = true     (no technical blocker; G4 runs in the serial merge queue)
+
+Capability = DELETE_DIR_OPERATIONS_CAPABILITY (only step-specific capability;
+  exposed conditionally on controlDirRoot; fail-closed admission when absent)
 
 legacy counters    = 6 / 6 / 6   (unchanged)
+
+Gate plan:
+  G4 → 5 / 6 / 6   (only LEGACY_PLUGIN_IDS shrinks)
+  G5 → 5 / 5 / 5   (metadata row + dispatcher file removed)
 ```
 
-## 4. Verification (fresh XML, this session, this branch)
+## 4. Verification (fresh XML, this branch, Base ffc39f63 / HEAD 0bf28534)
 
-| Suite | Tests | Failures | Errors | Timestamp |
-|-------|-------|----------|--------|-----------|
-| `CoreDeleteDirStepUnitTest` | 20 | 0 | 0 | 2026-09-12T14:42:35Z |
-| `Lfc2RegistryFamilyFitnessTest` | 67 | 0 | 0 | 2026-09-12T14:43:39Z |
-| `UatLocal011WorkflowControlTest.SC-011-04` | 1 | 0 | 0 | 2026-09-12T14:41:49Z |
-
-Command (L1 evidence):
-```bash
-timeout 600 ./v2/gradlew -p v2 :pipeline-application:test \
-  --tests 'CoreDeleteDirStepUnitTest' --rerun-tasks
-# BUILD SUCCESSFUL in 34s, 20 actionable tests executed
-```
+| Suite | Tests | Failures | Errors | Note |
+|-------|-------|----------|--------|------|
+| `CoreDeleteDirStepUnitTest` | 18 | 0 | 0 | incl. controlDirRoot=null fail-closed rows |
+| `Lfc2RegistryFamilyFitnessTest` | green | 0 | 0 | re-executed post-rebase |
+| `UatLocal011WorkflowControlTest.SC-011-04` | 1 | 0 | 0 | differential UAT |
+| `S3*LegacyRemovedFitnessTest` (7 suites) | 52 | 0 | 0 | via shared LegacyResidualSnapshot |
 
 ## 5. Decision freeze
 

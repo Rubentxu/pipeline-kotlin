@@ -610,4 +610,122 @@ class CoreMilestoneStepContractSuiteTest {
                 workDir.toFile().deleteRecursively()
             }
         }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // S2-A9 wiring tests (production default + store isolation)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * S2-A9 wiring: a coordinator built with NO explicit milestoneStateStore
+     * (uses the default `MilestoneStateStore()`) still provides MILESTONE_OPERATIONS_CAPABILITY
+     * and milestone steps succeed. This is the production default wiring path.
+     */
+    @Test
+    fun `wiring — default store — coordinator without explicit store still provides milestone capability`() =
+        runBlocking {
+            val sourcePath = "Pipeline.kts"
+            val sourceContent = """
+                pipeline {
+                    stages {
+                        stage("build") {
+                            milestone(1, "default-store")
+                        }
+                    }
+                }
+            """.trimIndent()
+            val spec: PipelineSpec = pipeline {
+                stages {
+                    stage("build") {
+                        milestone(1, "default-store")
+                    }
+                }
+            }
+            val workDir = Files.createTempDirectory("milestone-wiring-default-")
+            try {
+                // PipelineRule.run uses the production coordinator wiring path
+                // (no explicit milestoneStateStore — relies on the default).
+                // If this test passes, the default wiring provides MILESTONE_OPERATIONS_CAPABILITY.
+                val run = PipelineRule.run(
+                    spec = spec,
+                    sourcePath = sourcePath,
+                    sourceContent = sourceContent,
+                    runIdValue = "wiring-default",
+                    workDir = workDir,
+                )
+                assertEquals(
+                    RunOutcome.Success,
+                    run.outcome,
+                    "pipeline with default store wiring must succeed",
+                )
+                val reached = run.events.filterIsInstance<MilestoneReached>()
+                assertEquals(1, reached.size, "exactly one MilestoneReached must be emitted")
+                assertEquals(1, reached.single().ordinal)
+            } finally {
+                workDir.toFile().deleteRecursively()
+            }
+        }
+
+    /**
+     * S2-A9 wiring: two milestones in the same pipeline run share the same store
+     * (coordinator-scoped, not per-handler). Milestone 1 (ordinal 5) runs first and
+     * reaches. Milestone 2 (ordinal 3) runs second and aborts because 3 ≤ 5.
+     * This proves the store is shared across milestone invocations in the same run.
+     */
+    @Test
+    fun `wiring — shared store — two milestones in same run share the same MilestoneStateStore`() {
+        val eventStore = InMemoryEventStore()
+        val h = freshHarness(eventStore)
+        runBlocking {
+            val outcome = h.coord.run(
+                pipeline(
+                    milestoneNode(ordinal = 5, label = "first", nodeId = "build/m5"),
+                    milestoneNode(ordinal = 3, label = "second", nodeId = "build/m3"),
+                ),
+                RunId("milestone-shared-store"),
+            )
+            // If stores were isolated, milestone 3 would also Reached (each has its own fresh store).
+            // With a shared store, milestone 3 must Abort because 3 ≤ 5.
+            assertEquals(RunOutcome.Unstable, outcome)
+            val reached = eventStore.eventsFor("milestone-shared-store")
+                .toList().filterIsInstance<MilestoneReached>()
+            val aborted = eventStore.eventsFor("milestone-shared-store")
+                .toList().filterIsInstance<MilestoneAborted>()
+            assertEquals(1, reached.size, "exactly one MilestoneReached (ordinal 5)")
+            assertEquals(5, reached.single().ordinal)
+            assertEquals(1, aborted.size, "exactly one MilestoneAborted (ordinal 3)")
+            assertEquals(3, aborted.single().ordinal)
+        }
+    }
+
+    /**
+     * S2-A9 wiring: two independent coordinators each get their own MilestoneStateStore.
+     * Coordinator A reaches milestone 1. Coordinator B (fresh) should also reach milestone 1 —
+     * not abort because its store is isolated from A's store.
+     */
+    @Test
+    fun `wiring — isolated stores — two coordinators do not share MilestoneStateStore`() {
+        val eventStoreA = InMemoryEventStore()
+        val eventStoreB = InMemoryEventStore()
+        val hA = freshHarness(eventStoreA)
+        val hB = freshHarness(eventStoreB)
+        runBlocking {
+            val outcomeA = hA.coord.run(
+                pipeline(milestoneNode(ordinal = 1, label = "coord-A")),
+                RunId("milestone-iso-A"),
+            )
+            val outcomeB = hB.coord.run(
+                pipeline(milestoneNode(ordinal = 1, label = "coord-B")),
+                RunId("milestone-iso-B"),
+            )
+            // Both must succeed: B's store is fresh, not polluted by A's store.
+            assertEquals(RunOutcome.Success, outcomeA, "coordinator A must succeed")
+            assertEquals(RunOutcome.Success, outcomeB, "coordinator B must succeed (isolated store)")
+            val reachedA = eventStoreA.eventsFor("milestone-iso-A")
+                .toList().filterIsInstance<MilestoneReached>()
+            val reachedB = eventStoreB.eventsFor("milestone-iso-B")
+                .toList().filterIsInstance<MilestoneReached>()
+            assertEquals(1, reachedA.size)
+            assertEquals(1, reachedB.size, "coordinator B must also reach ordinal 1 (isolated store)")
+        }
+    }
 }

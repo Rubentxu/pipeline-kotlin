@@ -205,18 +205,16 @@ class CoreDeleteDirStepUnitTest {
     }
 
     // ------------------------------------------------------------------
-    // Counter invariant — G4 transitional state: 5 / 6 / 6
+    // Counter invariant — G5 converged state: 5 / 5 / 5
     // ------------------------------------------------------------------
 
     @Test
-    fun `counters - G4 transitional 5 6 6 with legacy forms still on disk`() {
-        // G4 invariant: LEGACY_PLUGIN_IDS shrinks to 5; the metadata row and dispatcher
-        // file remain physically present (pending G5 physical removal).
+    fun `counters - G5 converged 5 5 5 legacy physically removed`() {
+        // G5 invariant: legacy forms are physically deleted; the legacy metadata row is
+        // gone and production metadata is exclusively CoreDeleteDirStep.descriptor.
         assertEquals(5, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        val meta = CanonicalCoreStepMetadata.metadata("core.deleteDir")
-        assertEquals(setOf(Effect.WRITES_WORKSPACE), meta.effects.toSet())
-        assertEquals(ReplayPolicy.MEMOIZED, meta.replayPolicy)
+        assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
     }
 
     // ------------------------------------------------------------------

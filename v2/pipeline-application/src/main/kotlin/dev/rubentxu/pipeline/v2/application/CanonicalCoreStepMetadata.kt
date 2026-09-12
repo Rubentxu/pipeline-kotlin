@@ -19,7 +19,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 object CanonicalCoreStepMetadata {
     private val table: Map<String, StepMetadata> = mapOf(
         "core.milestone" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
-        "core.deleteDir" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),
+        // S2-A7 / G5 (2026-09-12): "core.deleteDir" row removed (LEGACY_REMOVED).
+        // Production metadata is CoreDeleteDirStep.descriptor via RegistryStepMetadataResolver.
         "core.cleanWs" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),
         "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
         // S2-A6 / G5: "core.pwd" row removed (LEGACY_REMOVED). Production metadata is now

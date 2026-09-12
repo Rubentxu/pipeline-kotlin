@@ -137,14 +137,13 @@ sealed interface CanonicalCoreStepCommand {
     }
 
     /**
-     * T-05: deleteDir step — recursively deletes workspace contents, leaves workspace intact.
-     * Idempotent: re-execution on already-deleted path emits DirDeleted with deletedCount=0.
+     * T-05: deleteDir step — DELETED at S2-A7 / G5 (2026-09-12, LEGACY_REMOVED).
+     * Production authority is exclusively the registry (CoreDeleteStep.definition /
+     * CoreDeleteDirStep via RegistryStepMetadataResolver). Legacy forms removed in this
+     * slice: DeleteDir subtype, DELETE_DIR_PLUGIN_ID + decoder branch,
+     * CanonicalCoreStepMetadata["core.deleteDir"] row, CanonicalDeleteDirNodeDispatcher.kt,
+     * and the CanonicalNodeDispatcher deleteDir seams (field, when branch, deleteDirContext()).
      */
-    data class DeleteDir(
-        val path: String = ".",
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.deleteDir"
-    }
 
     /**
      * T-05: cleanWs step — cleans workspace with optional Ant-style glob filtering.
@@ -211,7 +210,6 @@ object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
     // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     private const val MILESTONE_PLUGIN_ID = "core.milestone"
-    private const val DELETE_DIR_PLUGIN_ID = "core.deleteDir"
     private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
     private const val LOAD_PLUGIN_ID = "core.load"
     // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
@@ -241,14 +239,7 @@ object CanonicalCoreStepDecoder {
                     label = payload["label"]?.jsonPrimitive?.contentOrNull,
                 )
             }
-            DELETE_DIR_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "deleteDir") {
-                    "Payload kind must be 'deleteDir' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.DeleteDir(
-                    path = payload["path"]?.jsonPrimitive?.contentOrNull ?: ".",
-                )
-            }
+            // S2-A7 / G5 (2026-09-12): DELETE_DIR_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
             CLEAN_WS_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "cleanWs") {
                     "Payload kind must be 'cleanWs' for '${node.id.value}'"

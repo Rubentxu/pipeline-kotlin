@@ -33,7 +33,7 @@ class CanonicalCoreStepCommandRegistryTest {
     @Test
     fun `sealedSubclasses has exactly 6 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(6, subclasses.size, "Expected exactly 6 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix at S2-A5/G5; Pwd at S2-A6/G5). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(5, subclasses.size, "Expected exactly 5 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix at S2-A5/G5; Pwd at S2-A6/G5; DeleteDir at S2-A7/G5). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -51,8 +51,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
             // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
             "core.milestone",
-            // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip
-            // (legacy forms remain on disk until G5 physical removal).
+            // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
+            // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
+            // row/dispatcher physically deleted (LEGACY_REMOVED).
             // P1a — workflow-control (v0.33.0)
             "core.cleanWs",
             "core.load",
@@ -78,14 +79,9 @@ class CanonicalCoreStepCommandRegistryTest {
     }
 
     // P1a — workflow-control canonical step families
-
-    @Test
-    fun `DeleteDir has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.DeleteDir(path = ".")
-        assertEquals("core.deleteDir", instance.pluginId)
-        assertEquals(setOf(Effect.WRITES_WORKSPACE), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // S2-A7 / G5: `DeleteDir has correct pluginId and defaultMetadata` removed —
+    // the legacy subtype no longer exists (LEGACY_REMOVED); metadata authority is
+    // CoreDeleteDirStep.descriptor via RegistryStepMetadataResolver.
 
     @Test
     fun `CleanWs has correct pluginId and defaultMetadata`() {

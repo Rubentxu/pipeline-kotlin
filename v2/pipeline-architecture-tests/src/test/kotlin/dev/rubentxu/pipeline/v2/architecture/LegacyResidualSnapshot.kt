@@ -22,8 +22,8 @@ import java.nio.file.Path
  *
  * ```
  * pwd closed                 -> 6 / 6 / 6
- * deleteDir G4 -> 5 / 6 / 6   (current — transitional, pending G5)
- * deleteDir G5 -> 5 / 5 / 5
+ * deleteDir G4 -> 5 / 6 / 6
+ * deleteDir G5 -> 5 / 5 / 5   (current — converged)
  * waitUntil G4 -> 4 / 5 / 5
  * waitUntil G5 -> 4 / 4 / 4
  * milestone G4 -> 3 / 4 / 4
@@ -64,9 +64,11 @@ object LegacyResidualSnapshot {
      * ONE line to change per G5.
      */
     private val physicalResidual: Set<String> = setOf(
-        "core.milestone", "core.deleteDir", "core.cleanWs",
+        "core.milestone", "core.cleanWs",
         "core.load", "core.waitUntil", "core.archiveArtifacts",
     )
+    // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
+    // (subtype, decoder branch, metadata row, dispatcher file all deleted).
 
     /**
      * The key that has REGISTRY_PRIMARY-flipped (G4) but is NOT yet physically
@@ -78,7 +80,7 @@ object LegacyResidualSnapshot {
      *   at G4:     registryPrimaryPendingRemoval = key   -> (N-1) / N / N
      *   at G5:     physicalResidual -= key; back to null -> (N-1) / (N-1) / (N-1)
      */
-    private val registryPrimaryPendingRemoval: String? = "core.deleteDir"
+    private val registryPrimaryPendingRemoval: String? = null
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

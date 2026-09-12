@@ -23,7 +23,8 @@ class CanonicalNodeDispatcher {
     // S2-A4 / G5: emitEventDispatcher removed (LEGACY_REMOVED) — core.emit.event executes
     // exclusively through CoreEmitEventStep via the registry.
     private val milestoneDispatcher = CanonicalMilestoneNodeDispatcher()
-    private val deleteDirDispatcher = CanonicalDeleteDirNodeDispatcher()
+    // S2-A7 / G5: deleteDirDispatcher removed (LEGACY_REMOVED) — core.deleteDir executes
+    // exclusively through CoreDeleteDirStep via the registry.
     private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
     private val loadDispatcher = CanonicalLoadNodeDispatcher()
     // S2-A6 / G5: pwdDispatcher removed (LEGACY_REMOVED) — core.pwd executes
@@ -37,7 +38,7 @@ class CanonicalNodeDispatcher {
         when (command) {
             // S2-A4 / G5: EmitEvent when-branch removed (LEGACY_REMOVED).
             is CanonicalCoreStepCommand.Milestone -> milestoneDispatcher.dispatch(command, context.milestoneContext())
-            is CanonicalCoreStepCommand.DeleteDir -> deleteDirDispatcher.dispatch(command, context.deleteDirContext())
+            // S2-A7 / G5: DeleteDir when-branch removed (LEGACY_REMOVED).
             is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
             is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
             // S2-A6 / G5: Pwd when-branch removed (LEGACY_REMOVED).
@@ -55,14 +56,7 @@ class CanonicalNodeDispatcher {
         eventSink = eventSink,
     )
 
-    private fun CanonicalRuntimeContext.deleteDirContext() = CanonicalDeleteDirDispatchContext(
-        runId = runId,
-        stageName = stageName,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-    )
+    // S2-A7 / G5: deleteDirContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.cleanWsContext() = CanonicalCleanWsDispatchContext(
         runId = runId,

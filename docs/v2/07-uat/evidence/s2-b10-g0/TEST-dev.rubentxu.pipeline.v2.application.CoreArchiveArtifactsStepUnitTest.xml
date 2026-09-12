@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" tests="21" skipped="0" failures="0" errors="0" timestamp="2026-09-12T21:59:33.158Z" hostname="bazzite-rubentxu" time="0.244">
+  <properties/>
+  <testcase name="output codec round-trip - typed failure shape preserves kind and message()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.083"/>
+  <testcase name="handler applies excludes patterns (recorded candidate delta vs legacy ignore)()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.086"/>
+  <testcase name="handler archives matched files with exactly one ArtifactArchived event()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.007"/>
+  <testcase name="archived bytes are byte-identical to the source file()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.005"/>
+  <testcase name="input codec requires artifacts field (legacy requiredString parity)()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.002"/>
+  <testcase name="durable law - encoded output survives durable persistence and decodes to the same values()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="descriptor effects = WRITES_WORKSPACE (recorded delta vs legacy READ_ONLY row)()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="input codec round-trip preserves the legacy archiveArtifacts envelope()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.002"/>
+  <testcase name="output codec round-trip - success shape()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="handler empty match with allowEmptyArchive=true succeeds with empty ArtifactArchived (legacy parity)()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.002"/>
+  <testcase name="duplicate registration fails closed()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.003"/>
+  <testcase name="handler empty match with allowEmptyArchive=false returns typed SCRIPT failure and emits ArtifactArchiveFailed()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.003"/>
+  <testcase name="structural family - core archiveArtifacts stays LegacyCore while in LEGACY_PLUGIN_IDS()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.02"/>
+  <testcase name="input codec rejects foreign envelope kind at decode()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="counters - G1 leaves legacy counters at 5 5 5()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.0"/>
+  <testcase name="ReplayPolicy MEMOIZED byte-equivalent with legacy metadata row()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="required capabilities = ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY only()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.0"/>
+  <testcase name="real seam - full capability executes through preparation and boundary with typed output()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.014"/>
+  <testcase name="identity - KEY is core archiveArtifacts and matches descriptor()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="input codec decodes legacy payload with defaults for absent fields()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.001"/>
+  <testcase name="real seam - missing ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY rejects admission with no event()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepUnitTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

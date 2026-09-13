@@ -1,0 +1,240 @@
+> Task :pipeline-credentials-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-multipart:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-kotlin24:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-event-harness:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:runtime:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-executor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:processor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:files:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-events:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-application:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-artefacts-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-architecture-tests:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-binding-factory:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:processResources NO-SOURCE
+> Task :pipeline-testkit:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-step-sdk:files:processResources NO-SOURCE
+> Task :pipeline-step-sdk:runtime:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-step-sdk:api:processResources NO-SOURCE
+> Task :pipeline-credentials-local:processResources NO-SOURCE
+> Task :pipeline-events:processResources NO-SOURCE
+> Task :pipeline-credentials-api:processResources NO-SOURCE
+> Task :pipeline-scripting-kotlin24:processResources NO-SOURCE
+> Task :pipeline-credentials-multipart:processResources NO-SOURCE
+> Task :pipeline-step-sdk:processor:processResources UP-TO-DATE
+> Task :pipeline-credentials-executor:processResources UP-TO-DATE
+> Task :pipeline-artefacts-local:processResources NO-SOURCE
+> Task :pipeline-events:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-binding-factory:processResources UP-TO-DATE
+> Task :pipeline-step-sdk:processor:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-binding-factory:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-event-harness:processResources NO-SOURCE
+> Task :pipeline-scripting-api:processResources NO-SOURCE
+> Task :pipeline-step-sdk:api:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-application:processResources NO-SOURCE
+> Task :pipeline-architecture-tests:compileKotlin NO-SOURCE
+> Task :pipeline-architecture-tests:compileJava NO-SOURCE
+> Task :pipeline-architecture-tests:processResources NO-SOURCE
+> Task :pipeline-architecture-tests:classes UP-TO-DATE
+> Task :pipeline-application:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-architecture-tests:jar UP-TO-DATE
+> Task :pipeline-architecture-tests:processTestResources NO-SOURCE
+> Task :pipeline-application:processTestResources
+> Task :pipeline-scripting-api:generatePomFileForSdkPublication
+> Task :pipeline-scripting-api:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-domain:compileKotlin UP-TO-DATE
+> Task :pipeline-domain:compileJava NO-SOURCE
+> Task :pipeline-domain:processResources NO-SOURCE
+> Task :pipeline-domain:classes UP-TO-DATE
+> Task :pipeline-domain:jar UP-TO-DATE
+> Task :pipeline-scripting-api:compileKotlin UP-TO-DATE
+> Task :pipeline-scripting-api:compileJava NO-SOURCE
+> Task :pipeline-scripting-api:classes UP-TO-DATE
+> Task :pipeline-scripting-api:jar UP-TO-DATE
+> Task :pipeline-domain:generateMetadataFileForSdkPublication
+> Task :pipeline-domain:generatePomFileForSdkPublication
+> Task :pipeline-events:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:api:compileKotlin UP-TO-DATE
+> Task :pipeline-events:compileJava NO-SOURCE
+> Task :pipeline-events:classes UP-TO-DATE
+> Task :pipeline-step-sdk:api:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:api:classes UP-TO-DATE
+> Task :pipeline-events:jar UP-TO-DATE
+> Task :pipeline-step-sdk:api:jar UP-TO-DATE
+> Task :pipeline-credentials-api:compileKotlin UP-TO-DATE
+> Task :pipeline-binding-factory:compileKotlin UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-api:compileJava NO-SOURCE
+> Task :pipeline-binding-factory:compileJava NO-SOURCE
+> Task :pipeline-scripting-kotlin24:compileJava NO-SOURCE
+> Task :pipeline-binding-factory:classes UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:classes UP-TO-DATE
+> Task :pipeline-step-sdk:processor:compileKotlin UP-TO-DATE
+> Task :pipeline-event-harness:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-api:classes UP-TO-DATE
+> Task :pipeline-binding-factory:jar UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:jar UP-TO-DATE
+> Task :pipeline-step-sdk:processor:compileJava NO-SOURCE
+> Task :pipeline-event-harness:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:processor:classes UP-TO-DATE
+> Task :pipeline-credentials-api:jar UP-TO-DATE
+> Task :pipeline-event-harness:classes UP-TO-DATE
+> Task :pipeline-step-sdk:processor:jar UP-TO-DATE
+> Task :pipeline-event-harness:jar UP-TO-DATE
+> Task :pipeline-domain:publishSdkPublicationToSdkRepository
+> Task :pipeline-domain:runtimeClasspathCapture UP-TO-DATE
+> Task :pipeline-scripting-api:generateMetadataFileForSdkPublication
+> Task :pipeline-credentials-executor:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-multipart:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-multipart:compileJava NO-SOURCE
+> Task :pipeline-credentials-multipart:classes UP-TO-DATE
+> Task :pipeline-credentials-executor:compileJava NO-SOURCE
+> Task :pipeline-credentials-multipart:jar UP-TO-DATE
+> Task :pipeline-credentials-executor:classes UP-TO-DATE
+> Task :pipeline-credentials-local:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-executor:jar UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:kspKotlin UP-TO-DATE
+> Task :pipeline-credentials-local:compileJava NO-SOURCE
+> Task :pipeline-credentials-local:classes UP-TO-DATE
+> Task :pipeline-credentials-local:jar UP-TO-DATE
+> Task :pipeline-scripting-api:publishSdkPublicationToSdkRepository
+> Task :publishSdkForExternalPlugin
+> Task :pipeline-step-sdk:runtime:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:runtime:processResources UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:classes UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:jar UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:files:compileKotlin UP-TO-DATE
+> Task :pipeline-artefacts-local:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:jar UP-TO-DATE
+> Task :pipeline-artefacts-local:classes UP-TO-DATE
+> Task :pipeline-step-sdk:files:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:files:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:jar UP-TO-DATE
+> Task :pipeline-step-sdk:files:jar UP-TO-DATE
+> Task :pipeline-application:compileKotlin UP-TO-DATE
+> Task :pipeline-application:compileJava NO-SOURCE
+> Task :pipeline-application:classes UP-TO-DATE
+> Task :pipeline-application:jar UP-TO-DATE
+> Task :pipeline-architecture-tests:compileTestKotlin UP-TO-DATE
+> Task :pipeline-architecture-tests:compileTestJava NO-SOURCE
+> Task :pipeline-architecture-tests:testClasses UP-TO-DATE
+> Task :pipeline-application:startScripts
+> Task :pipeline-application:installDist
+> Task :pipeline-architecture-tests:test
+
+> Task :buildExamplePlugin
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :processResources
+> Task :compileKotlin
+> Task :compileJava NO-SOURCE
+> Task :classes
+> Task :jar
+
+BUILD SUCCESSFUL in 1s
+3 actionable tasks: 3 executed
+
+> Task :pipeline-application:compileTestKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A4_3TypedShellOutputIntegrationTest.kt:112:40 The corresponding parameter in the supertype 'StepCapabilityAccess' is named 'key'. This may cause problems when calling this function with named arguments.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A4_3TypedShellOutputIntegrationTest.kt:200:20 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A4_8LegacyRegistrySemanticParityTest.kt:522:13 Check for instance is always 'true'. This will become an error in language version 2.4. See https://youtrack.jetbrains.com/issue/KTLC-365.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A5_CoreShLegacyUnreachableProofTest.kt:124:63 Call uses reflection API which is not found in compilation classpath. Make sure you have kotlin-reflect.jar in the classpath.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepCommandRegistryTest.kt:44:58 Call uses reflection API which is not found in compilation classpath. Make sure you have kotlin-reflect.jar in the classpath.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ClockContractTest.kt:104:13 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStepUnitTest.kt:73:20 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStepUnitTest.kt:205:20 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreLegacyStepMetadataResolverTest.kt:55:17 Condition is always 'false'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepUnitTest.kt:403:20 Condition is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepUnitTest.kt:404:20 Condition is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:143:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:171:21 'fun unstable(message: String): Unit' is deprecated. LFC1-007: unstable is pre-compiler-rewritten. Use emitEvent('StageMarkedUnstable', ...) instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:197:21 'fun warnError(message: String, catchInterruptions: Boolean = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: warnError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:228:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:265:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:266:25 'fun unstable(message: String): Unit' is deprecated. LFC1-007: unstable is pre-compiler-rewritten. Use emitEvent('StageMarkedUnstable', ...) instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:303:21 'fun warnError(message: String, catchInterruptions: Boolean = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: warnError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:304:25 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:359:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ShStepContractSuiteTest.kt:330:56 Call uses reflection API which is not found in compilation classpath. Make sure you have kotlin-reflect.jar in the classpath.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal007SandboxProfileTest.kt:738:42 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/DualExecutionSeamCharacterizationTest.kt:58:45 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/LegacyExecutionAdapterTest.kt:30:45 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionOutcomeTest.kt:86:82 Expression is unused.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/ReplayOutputDecouplingTest.kt:203:28 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/retry/RetryAcceptanceMatrixTest.kt:362:17 Check for instance is always 'true'. This will become an error in language version 2.4. See https://youtrack.jetbrains.com/issue/KTLC-365.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/spike/Spike016DurableScriptedReplayTest.kt:55:90 This class is not recommended for use in Kotlin. Use 'kotlin.Long' instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/spike/Spike016DurableScriptedReplayTest.kt:55:131 This class is not recommended for use in Kotlin. Use 'kotlin.collections.List' instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/support/PipelineRuleParityTest.kt:44:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/support/PipelineRuleParityTest.kt:107:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+
+> Task :pipeline-application:compileTestJava NO-SOURCE
+> Task :pipeline-application:testClasses
+> Task :pipeline-application:test
+
+CompatibilityCorpusTest > allCorpusFixturesAreDiscoverable() FAILED
+    org.opentest4j.AssertionFailedError at CompatibilityCorpusTest.kt:154
+
+CompatibilityCorpusTest > fixture14CredentialsBindings() FAILED
+    org.opentest4j.AssertionFailedError at CompatibilityCorpusTest.kt:73
+
+CanonicalDurableRunCoordinatorTest > Exactly-once discipline - 3 steps emits 3 StepStarted and 3 StepFinished() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:839
+
+CanonicalDurableRunCoordinatorTest > withCredentials cleanup failure folds a successful body to failure() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:1050
+
+CanonicalDurableRunCoordinatorTest > withCredentials acquires scope overlays env and always closes() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:977
+
+CanonicalDurableRunCoordinatorTest > journals a supported block child with its body path(Path) FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:259
+
+CanonicalDurableRunCoordinatorTest > ReplayDecision ABORT emits one failed lifecycle without dispatching() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:806
+
+CanonicalDurableRunCoordinatorTest > journals and checkpoints a linear canonical echo run() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:468
+
+CanonicalDurableRunCoordinatorTest > dispatch decodes each StepNode before delegating to the typed dispatcher() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:520
+
+CanonicalDurableRunCoordinatorTest > run emits StepFinished after dispatch() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:692
+
+CanonicalDurableRunCoordinatorTest > run emits StepStarted before dispatch() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:663
+
+CanonicalDurableRunCoordinatorTest > No step events for ReplayDecision SKIP() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:767
+
+CanonicalDurableRunCoordinatorTest > dispatch returns SCHEMA for a fresh structurally-valid but typed-invalid payload without executor() FAILED
+    org.opentest4j.AssertionFailedError at CanonicalDurableRunCoordinatorTest.kt:618
+
+87 tests completed, 13 failed
+
+> Task :pipeline-application:test FAILED
+
+[Incubating] Problems report is available at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':pipeline-application:test'.
+> There were failing tests. See the report at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-bodyinvoker/v2/pipeline-application/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 2m 30s
+64 actionable tasks: 13 executed, 51 up-to-date

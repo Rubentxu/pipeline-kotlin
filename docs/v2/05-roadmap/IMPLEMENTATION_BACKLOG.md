@@ -325,7 +325,7 @@ This is the extensibility half of the LFC-2 gate; the DSL-surface honesty half s
 | B7 external plugin proof | LFC-2 → external plugin runs with **zero core change** (extensibility gate) | HF2; ADR-0070/0071 |
 | B8 Step certification | LFC-2 → StepContractSuite/PluginContractSuite; Step reaches CERTIFIED | HF0..HF2; ADR-0074 / STEP_PLUGIN_CERTIFICATION |
 | B9 strict DSL | LFC-2 → DslMarker/scopes/smart constructors; fake-return closure; source fidelity | HF1; DSL_SPEC |
-| B10 BodyInvoker/BranchInvoker | LFC-2 → block Steps re-enter engine; no `dispatch*Block` collection | HF1/HF3; ADR-0073 / BLOCK_STEP_EXECUTION |
+| B10 BodyInvoker/BranchInvoker | LFC-2 → block Steps re-enter engine; no `dispatch*Block` collection — **W0 ✅ inner seam (PR #47) · W1 preflight ✅ G0** (`07-uat/B10_W1_PREFLIGHT.md`); W1a..W1d open | HF1/HF3; ADR-0073 / BLOCK_STEP_EXECUTION |
 | B11 dir/withEnv/timestamps | LFC-2 → context-only blocks via BodyInvoker | HF1; ADR-0073 |
 | B12 retry/timeout | LFC-2 → real semantics over BodyInvoker (steers E-EM-11 D1/D2) | HF3; E-EM-11 + ADR-0073 |
 | B13 composable parallel | LFC-2 → Named Bodies + BranchInvoker; durable branch machinery | HF3; E-EM-11 D3 + ADR-0073 |

@@ -676,9 +676,14 @@ Do NOT open `pwd`, `milestone`, or any other legacy key while `core.isUnix`
 G3..G8 is in flight. Do NOT reopen G3-A4.2 ShellOperations on this path.
 
 ### Gotchas preserved
-- examples/example-uppercase-plugin jar at
-  `examples/example-uppercase-plugin/build/libs/` required for pipeline-application
-  test compile.
+- FIXED by Lane R (`cycle/build-example-plugin-reproducibility`, receipt
+  `docs/v2/07-uat/LANE_R_CLEAN_BUILD_REPRODUCIBILITY_RECEIPT.md`). No manual step
+  is needed any more: `:pipeline-application:compileTestKotlin` and `:test` now build
+  the external plugin themselves via
+  `:publishSdkForExternalPlugin -> :buildExamplePlugin`. Do NOT reintroduce a
+  committed `examples/example-uppercase-plugin/libs/*.jar` snapshot, a `files(...)`
+  SDK dependency in the plugin, or an absolute path to a checkout in any test — the
+  Lane R verifier asserts against all three.
 - stash list contains unrelated stashes (feat/ml-r10-2-credentials-join etc) —
   do not drop.
 - R4A Main.kt snapshot at /tmp/Main.base.kt is ephemeral; will be gone on

@@ -1,0 +1,25 @@
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :processResources UP-TO-DATE
+
+> Task :compileKotlin FAILED
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/examples/example-uppercase-plugin/src/main/kotlin/example/uppercase/UppercaseDsl.kt:29:5 Cannot access class 'dev.rubentxu.pipeline.v2.domain.PluginStepId'. Check your module classpath for missing or conflicting dependencies.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/examples/example-uppercase-plugin/src/main/kotlin/example/uppercase/UppercaseStepDefinition.kt:4:40 Unresolved reference 'PluginStepId'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/examples/example-uppercase-plugin/src/main/kotlin/example/uppercase/UppercaseStepDefinition.kt:53:15 Unresolved reference 'PluginStepId'.
+
+[Incubating] Problems report is available at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/examples/example-uppercase-plugin/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1s
+2 actionable tasks: 1 executed, 1 up-to-date

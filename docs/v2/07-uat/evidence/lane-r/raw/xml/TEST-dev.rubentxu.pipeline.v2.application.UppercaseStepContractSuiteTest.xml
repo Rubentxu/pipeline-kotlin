@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-09-13T16:27:43.320Z" hostname="bazzite-rubentxu" time="0.686">
+  <properties/>
+  <testcase name="divergence - replaying a SUCCEEDED run with different input fails closed as typed divergence()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.606"/>
+  <testcase name="capability admission - prepares Ready with declared (empty) capabilities()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.002"/>
+  <testcase name="capability admission - missing capability surfaces as Rejected fail-closed()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.004"/>
+  <testcase name="codec output - typed output round-trips symmetrically()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.003"/>
+  <testcase name="contract completeness - key, descriptor, codecs, no privileged capabilities()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.001"/>
+  <testcase name="codec input - decode fails closed on a foreign payload kind()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.005"/>
+  <testcase name="handler - uppercase hello produces HELLO through the typed handler seam()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.001"/>
+  <testcase name="replay - a previously SUCCEEDED uppercase run is reused without re-running the handler()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.007"/>
+  <testcase name="real pipeline scenario - DSL with external uppercase step runs end-to-end through the canonical spine()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.029"/>
+  <testcase name="observability - run emits StepStarted and StepFinished for the external step()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.006"/>
+  <testcase name="registry resolution - ServiceLoader discovery finds the contributor without manual registration()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.002"/>
+  <testcase name="identity - KEY is example dot uppercase and duplicate registration fails closed()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.001"/>
+  <testcase name="fresh durable - first execution writes exactly one terminal SUCCEEDED operation()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.005"/>
+  <testcase name="codec input - encode and round-trip preserve text and canonical envelope shape()" classname="dev.rubentxu.pipeline.v2.application.UppercaseStepContractSuiteTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

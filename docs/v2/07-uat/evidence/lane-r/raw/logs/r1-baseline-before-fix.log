@@ -1,0 +1,164 @@
+> Task :pipeline-credentials-executor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-artefacts-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-events:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-multipart:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-application:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:files:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-kotlin24:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-event-harness:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:runtime:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:processor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:processResources NO-SOURCE
+> Task :pipeline-credentials-local:processResources NO-SOURCE
+> Task :pipeline-scripting-kotlin24:processResources NO-SOURCE
+> Task :pipeline-artefacts-local:processResources NO-SOURCE
+> Task :pipeline-step-sdk:api:processResources NO-SOURCE
+> Task :pipeline-application:processResources NO-SOURCE
+> Task :pipeline-scripting-api:processResources NO-SOURCE
+> Task :pipeline-step-sdk:files:processResources NO-SOURCE
+> Task :pipeline-credentials-multipart:processResources NO-SOURCE
+> Task :pipeline-credentials-api:processResources NO-SOURCE
+> Task :pipeline-events:processResources NO-SOURCE
+> Task :pipeline-event-harness:processResources NO-SOURCE
+> Task :pipeline-step-sdk:processor:processResources
+> Task :pipeline-credentials-executor:processResources
+> Task :pipeline-domain:compileKotlin FROM-CACHE
+> Task :pipeline-domain:compileJava NO-SOURCE
+> Task :pipeline-domain:processResources NO-SOURCE
+> Task :pipeline-domain:classes UP-TO-DATE
+> Task :pipeline-domain:jar
+> Task :pipeline-scripting-api:compileKotlin FROM-CACHE
+> Task :pipeline-scripting-api:compileJava NO-SOURCE
+> Task :pipeline-scripting-api:classes UP-TO-DATE
+> Task :pipeline-scripting-api:jar
+> Task :pipeline-step-sdk:api:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:api:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:api:classes UP-TO-DATE
+> Task :pipeline-step-sdk:api:jar
+> Task :pipeline-events:compileKotlin FROM-CACHE
+> Task :pipeline-events:compileJava NO-SOURCE
+> Task :pipeline-events:classes UP-TO-DATE
+> Task :pipeline-step-sdk:processor:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:processor:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:processor:classes
+> Task :pipeline-step-sdk:processor:jar
+> Task :pipeline-events:jar
+> Task :pipeline-scripting-kotlin24:compileKotlin FROM-CACHE
+> Task :pipeline-scripting-kotlin24:compileJava NO-SOURCE
+> Task :pipeline-scripting-kotlin24:classes UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:kspKotlin FROM-CACHE
+> Task :pipeline-credentials-api:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-api:compileJava NO-SOURCE
+> Task :pipeline-credentials-api:classes UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:jar
+> Task :pipeline-event-harness:compileKotlin FROM-CACHE
+> Task :pipeline-event-harness:compileJava NO-SOURCE
+> Task :pipeline-event-harness:classes UP-TO-DATE
+> Task :pipeline-credentials-api:jar
+> Task :pipeline-event-harness:jar
+> Task :pipeline-step-sdk:runtime:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:runtime:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:runtime:processResources
+> Task :pipeline-step-sdk:runtime:classes
+> Task :pipeline-credentials-executor:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-executor:compileJava NO-SOURCE
+> Task :pipeline-credentials-executor:classes
+> Task :pipeline-credentials-multipart:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-multipart:compileJava NO-SOURCE
+> Task :pipeline-credentials-multipart:classes UP-TO-DATE
+> Task :pipeline-credentials-executor:jar
+> Task :pipeline-credentials-multipart:jar
+> Task :pipeline-credentials-local:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-local:compileJava NO-SOURCE
+> Task :pipeline-credentials-local:classes UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:jar
+> Task :pipeline-credentials-local:jar
+> Task :pipeline-step-sdk:files:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:files:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:files:classes UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:compileKotlin FROM-CACHE
+> Task :pipeline-artefacts-local:compileKotlin FROM-CACHE
+> Task :pipeline-artefacts-local:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:compileJava NO-SOURCE
+> Task :pipeline-artefacts-local:classes UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:classes UP-TO-DATE
+> Task :pipeline-step-sdk:files:jar
+> Task :pipeline-artefacts-local:jar
+> Task :pipeline-step-sdk:scm-git:jar
+> Task :pipeline-application:compileKotlin FROM-CACHE
+> Task :pipeline-application:compileJava NO-SOURCE
+> Task :pipeline-application:classes UP-TO-DATE
+> Task :pipeline-application:jar
+
+> Task :pipeline-application:compileTestKotlin FAILED
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:40:8 Unresolved reference 'example'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:41:8 Unresolved reference 'example'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:42:8 Unresolved reference 'example'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:43:8 Unresolved reference 'example'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:44:8 Unresolved reference 'example'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:109:24 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:112:23 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:112:45 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:139:57 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:140:43 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:143:38 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:152:24 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:153:22 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:168:23 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:168:45 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:173:22 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:173:53 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:183:13 Cannot infer type for type parameter 'R'. Specify it explicitly.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:183:27 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:192:19 Unresolved reference 'UppercaseOutput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:193:27 Unresolved reference 'UppercaseOutputCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:193:55 Unresolved reference 'UppercaseOutputCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:201:31 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:203:13 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:204:26 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:214:19 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:215:28 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:215:50 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:225:46 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:225:62 Unresolved reference 'UppercaseOutput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:226:30 Type of 'val contract: StepContract<??? (Unknown type for type parameter I), ??? (Unknown type for type parameter O)>' is not a subtype of overridden property 'val contract: StepContract<??? (Unresolved qualified name: UppercaseInput), ??? (Unresolved qualified name: UppercaseOutput)>' defined in 'dev.rubentxu.pipeline.v2.application.<anonymous>'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:226:41 Cannot infer type for type parameter 'I'. Specify it explicitly.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:226:41 Cannot infer type for type parameter 'O'. Specify it explicitly.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:227:27 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:228:34 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:229:34 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:230:35 Unresolved reference 'UppercaseOutputCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:233:40 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:238:19 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:239:28 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:239:50 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:250:19 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:250:59 Unresolved reference 'UppercaseInput'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:316:35 Unresolved reference 'UppercaseStepDefinition'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:317:40 Unresolved reference 'UppercaseCodec'.
+e: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt:317:62 Unresolved reference 'UppercaseInput'.
+
+[Incubating] Problems report is available at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':pipeline-application:compileTestKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 14s
+37 actionable tasks: 20 executed, 17 from cache

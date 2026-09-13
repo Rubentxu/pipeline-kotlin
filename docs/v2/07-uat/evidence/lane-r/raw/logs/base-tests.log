@@ -1,0 +1,143 @@
+Starting a Gradle Daemon, 1 busy and 1 incompatible Daemons could not be reused, use --status for details
+> Task :pipeline-credentials-executor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-application:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-multipart:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-events:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:processor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-event-harness:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-artefacts-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:files:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-kotlin24:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:runtime:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-multipart:processResources NO-SOURCE
+> Task :pipeline-event-harness:processResources NO-SOURCE
+> Task :pipeline-step-sdk:files:processResources NO-SOURCE
+> Task :pipeline-credentials-local:processResources NO-SOURCE
+> Task :pipeline-events:processResources NO-SOURCE
+> Task :pipeline-artefacts-local:processResources NO-SOURCE
+> Task :pipeline-credentials-api:processResources NO-SOURCE
+> Task :pipeline-scripting-kotlin24:processResources NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:processResources NO-SOURCE
+> Task :pipeline-application:processResources NO-SOURCE
+> Task :pipeline-scripting-api:processResources NO-SOURCE
+> Task :pipeline-step-sdk:api:processResources NO-SOURCE
+> Task :pipeline-step-sdk:processor:processResources
+> Task :pipeline-events:runtimeClasspathCapture
+> Task :pipeline-credentials-executor:processResources
+> Task :pipeline-events:processTestResources NO-SOURCE
+> Task :pipeline-application:runtimeClasspathCapture
+> Task :pipeline-application:processTestResources
+> Task :pipeline-domain:compileKotlin FROM-CACHE
+> Task :pipeline-domain:compileJava NO-SOURCE
+> Task :pipeline-domain:processResources NO-SOURCE
+> Task :pipeline-domain:classes UP-TO-DATE
+> Task :pipeline-domain:jar
+> Task :pipeline-scripting-api:compileKotlin FROM-CACHE
+> Task :pipeline-scripting-api:compileJava NO-SOURCE
+> Task :pipeline-scripting-api:classes UP-TO-DATE
+> Task :pipeline-scripting-api:jar
+> Task :pipeline-step-sdk:api:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:api:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:api:classes UP-TO-DATE
+> Task :pipeline-step-sdk:api:jar
+> Task :pipeline-events:compileKotlin FROM-CACHE
+> Task :pipeline-events:compileJava NO-SOURCE
+> Task :pipeline-events:classes UP-TO-DATE
+> Task :pipeline-step-sdk:processor:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:processor:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:processor:classes
+> Task :pipeline-events:jar
+> Task :pipeline-step-sdk:processor:jar
+> Task :pipeline-credentials-api:compileKotlin FROM-CACHE
+> Task :pipeline-event-harness:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-api:compileJava NO-SOURCE
+> Task :pipeline-credentials-api:classes UP-TO-DATE
+> Task :pipeline-event-harness:compileJava NO-SOURCE
+> Task :pipeline-event-harness:classes UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:compileKotlin FROM-CACHE
+> Task :pipeline-scripting-kotlin24:compileJava NO-SOURCE
+> Task :pipeline-scripting-kotlin24:classes UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:kspKotlin FROM-CACHE
+> Task :pipeline-credentials-api:jar
+> Task :pipeline-scripting-kotlin24:jar
+> Task :pipeline-event-harness:jar
+> Task :pipeline-credentials-executor:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:runtime:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-executor:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:runtime:compileJava NO-SOURCE
+> Task :pipeline-credentials-executor:classes
+> Task :pipeline-credentials-multipart:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-local:compileKotlin FROM-CACHE
+> Task :pipeline-credentials-multipart:compileJava NO-SOURCE
+> Task :pipeline-credentials-multipart:classes UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:processResources
+> Task :pipeline-credentials-local:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:runtime:classes
+> Task :pipeline-credentials-executor:jar
+> Task :pipeline-credentials-local:classes UP-TO-DATE
+> Task :pipeline-credentials-multipart:jar
+> Task :pipeline-credentials-local:jar
+> Task :pipeline-step-sdk:runtime:jar
+> Task :pipeline-step-sdk:files:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:files:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:files:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:scm-git:compileKotlin FROM-CACHE
+> Task :pipeline-step-sdk:scm-git:compileJava NO-SOURCE
+> Task :pipeline-artefacts-local:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:classes UP-TO-DATE
+> Task :pipeline-step-sdk:files:jar
+> Task :pipeline-artefacts-local:jar
+> Task :pipeline-step-sdk:scm-git:jar
+> Task :pipeline-application:compileKotlin FROM-CACHE
+> Task :pipeline-application:compileJava NO-SOURCE
+> Task :pipeline-application:classes UP-TO-DATE
+> Task :pipeline-application:jar
+> Task :pipeline-application:compileTestKotlin FROM-CACHE
+> Task :pipeline-application:compileTestJava NO-SOURCE
+> Task :pipeline-application:startScripts
+> Task :pipeline-application:installDist
+> Task :pipeline-application:testClasses
+
+> Task :pipeline-events:compileTestKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+
+> Task :pipeline-events:compileTestJava NO-SOURCE
+> Task :pipeline-events:testClasses UP-TO-DATE
+> Task :pipeline-events:test
+
+> Task :pipeline-application:test
+
+UatLocal005CorpusUntouchedTest > CP-002 corpus has exactly 13 valid fixture files(Path) FAILED
+    org.opentest4j.AssertionFailedError at UatLocal005CorpusUntouchedTest.kt:119
+
+UatLocal008CredentialsTest > UAT-L8-CP-001 original 4 corpus files byte-identical to cycle base() FAILED
+    org.opentest4j.AssertionFailedError at UatLocal008CredentialsTest.kt:171
+
+UatLocal008CredentialsTest > CR-BD-027 CredentialUsed per use(Path) FAILED
+    org.opentest4j.AssertionFailedError at UatLocal008CredentialsTest.kt:846
+
+40 tests completed, 3 failed, 1 skipped
+
+> Task :pipeline-application:test FAILED
+
+[Incubating] Problems report is available at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-laneR-baseline/v2/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':pipeline-application:test'.
+> There were failing tests. See the report at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-laneR-baseline/v2/pipeline-application/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 2m 37s
+45 actionable tasks: 27 executed, 18 from cache

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest" tests="2" skipped="0" failures="1" errors="0" timestamp="2026-09-13T16:22:00.415Z" hostname="bazzite-rubentxu" time="0.091">
+  <properties/>
+  <testcase name="CP-002 corpus has exactly 13 valid fixture files(Path)" classname="dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest" time="0.013">
+    <failure message="org.opentest4j.AssertionFailedError: Corpus must have exactly 19 valid pipeline fixtures (07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo; S2-A5/G8 added 19-isunix; S2-A6/G3R added 20-pwd-tmp). Found: 01-basic.pipeline.kts, 02-environment.pipeline.kts, 03-stages.pipeline.kts, 04-sh.pipeline.kts, 05-scripted-if.pipeline.kts, 06-loop.pipeline.kts, 08-withEnv-pipeline.pipeline.kts, 09-sh-then-echo.pipeline.kts, 10-smoke-e2e.pipeline.kts, 11-workflow-control.pipeline.kts, 12-error-handling.pipeline.kts, 13-workspace-helpers.pipeline.kts, 14-credentials-bindings.pipeline.kts, 15-error.pipeline.kts, 16-sleep.pipeline.kts, 17-writeFile.pipeline.kts, 18-cleanWs.pipeline.kts, 19-isunix.pipeline.kts, 20-pwd-tmp.pipeline.kts, 21-milestone.pipeline.kts ==&gt; expected: &lt;19&gt; but was: &lt;20&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: Corpus must have exactly 19 valid pipeline fixtures (07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo; S2-A5/G8 added 19-isunix; S2-A6/G3R added 20-pwd-tmp). Found: 01-basic.pipeline.kts, 02-environment.pipeline.kts, 03-stages.pipeline.kts, 04-sh.pipeline.kts, 05-scripted-if.pipeline.kts, 06-loop.pipeline.kts, 08-withEnv-pipeline.pipeline.kts, 09-sh-then-echo.pipeline.kts, 10-smoke-e2e.pipeline.kts, 11-workflow-control.pipeline.kts, 12-error-handling.pipeline.kts, 13-workspace-helpers.pipeline.kts, 14-credentials-bindings.pipeline.kts, 15-error.pipeline.kts, 16-sleep.pipeline.kts, 17-writeFile.pipeline.kts, 18-cleanWs.pipeline.kts, 19-isunix.pipeline.kts, 20-pwd-tmp.pipeline.kts, 21-milestone.pipeline.kts ==&gt; expected: &lt;19&gt; but was: &lt;20&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at app//dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest.CP-002 corpus has exactly 13 valid fixture files(UatLocal005CorpusUntouchedTest.kt:119)
+	at java.base@21.0.8/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <testcase name="CP-001 original 4 corpus files byte-identical to base commit(Path)" classname="dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest" time="0.077"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

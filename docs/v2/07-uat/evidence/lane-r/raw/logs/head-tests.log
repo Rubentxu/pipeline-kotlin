@@ -1,0 +1,145 @@
+> Task :pipeline-scripting-kotlin24:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-executor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-multipart:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:files:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-events:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-event-harness:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:processor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-artefacts-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-application:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:runtime:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-events:processResources NO-SOURCE
+> Task :pipeline-scripting-kotlin24:processResources NO-SOURCE
+> Task :pipeline-event-harness:processResources NO-SOURCE
+> Task :pipeline-step-sdk:files:processResources NO-SOURCE
+> Task :pipeline-artefacts-local:processResources NO-SOURCE
+> Task :pipeline-step-sdk:api:processResources NO-SOURCE
+> Task :pipeline-credentials-api:processResources NO-SOURCE
+> Task :pipeline-application:processResources NO-SOURCE
+> Task :pipeline-credentials-local:processResources NO-SOURCE
+> Task :pipeline-credentials-multipart:processResources NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:processResources NO-SOURCE
+> Task :pipeline-credentials-executor:processResources UP-TO-DATE
+> Task :pipeline-scripting-api:processResources NO-SOURCE
+> Task :pipeline-step-sdk:processor:processResources UP-TO-DATE
+> Task :pipeline-events:runtimeClasspathCapture
+> Task :pipeline-events:processTestResources NO-SOURCE
+> Task :pipeline-scripting-api:generatePomFileForSdkPublication
+> Task :pipeline-application:runtimeClasspathCapture
+> Task :pipeline-domain:compileKotlin UP-TO-DATE
+> Task :pipeline-domain:compileJava NO-SOURCE
+> Task :pipeline-domain:processResources NO-SOURCE
+> Task :pipeline-domain:classes UP-TO-DATE
+> Task :pipeline-domain:jar UP-TO-DATE
+> Task :pipeline-application:processTestResources
+> Task :pipeline-scripting-api:compileKotlin UP-TO-DATE
+> Task :pipeline-scripting-api:compileJava NO-SOURCE
+> Task :pipeline-scripting-api:classes UP-TO-DATE
+> Task :pipeline-scripting-api:jar UP-TO-DATE
+> Task :pipeline-step-sdk:api:compileKotlin UP-TO-DATE
+> Task :pipeline-events:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:api:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:api:classes UP-TO-DATE
+> Task :pipeline-step-sdk:api:jar UP-TO-DATE
+> Task :pipeline-events:compileJava NO-SOURCE
+> Task :pipeline-events:classes UP-TO-DATE
+> Task :pipeline-events:jar UP-TO-DATE
+> Task :pipeline-step-sdk:processor:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:processor:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:processor:classes UP-TO-DATE
+> Task :pipeline-step-sdk:processor:jar UP-TO-DATE
+> Task :pipeline-credentials-api:compileKotlin UP-TO-DATE
+> Task :pipeline-event-harness:compileKotlin UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:compileKotlin UP-TO-DATE
+> Task :pipeline-event-harness:compileJava NO-SOURCE
+> Task :pipeline-event-harness:classes UP-TO-DATE
+> Task :pipeline-credentials-api:compileJava NO-SOURCE
+> Task :pipeline-event-harness:jar UP-TO-DATE
+> Task :pipeline-credentials-api:classes UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:compileJava NO-SOURCE
+> Task :pipeline-scripting-kotlin24:classes UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:jar UP-TO-DATE
+> Task :pipeline-credentials-api:jar UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:kspKotlin UP-TO-DATE
+> Task :pipeline-events:compileTestKotlin UP-TO-DATE
+> Task :pipeline-events:compileTestJava NO-SOURCE
+> Task :pipeline-events:testClasses UP-TO-DATE
+> Task :pipeline-credentials-executor:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-executor:compileJava NO-SOURCE
+> Task :pipeline-credentials-executor:classes UP-TO-DATE
+> Task :pipeline-credentials-local:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-local:compileJava NO-SOURCE
+> Task :pipeline-credentials-executor:jar UP-TO-DATE
+> Task :pipeline-credentials-local:classes UP-TO-DATE
+> Task :pipeline-credentials-multipart:compileKotlin UP-TO-DATE
+> Task :pipeline-credentials-local:jar UP-TO-DATE
+> Task :pipeline-credentials-multipart:compileJava NO-SOURCE
+> Task :pipeline-credentials-multipart:classes UP-TO-DATE
+> Task :pipeline-credentials-multipart:jar UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:runtime:processResources UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:classes UP-TO-DATE
+> Task :pipeline-step-sdk:runtime:jar UP-TO-DATE
+> Task :pipeline-step-sdk:files:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:files:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:files:classes UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:compileKotlin UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:jar UP-TO-DATE
+> Task :pipeline-step-sdk:files:jar UP-TO-DATE
+> Task :pipeline-artefacts-local:compileJava NO-SOURCE
+> Task :pipeline-artefacts-local:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:jar UP-TO-DATE
+> Task :pipeline-application:compileKotlin UP-TO-DATE
+> Task :pipeline-application:compileJava NO-SOURCE
+> Task :pipeline-application:classes UP-TO-DATE
+> Task :pipeline-application:jar UP-TO-DATE
+> Task :pipeline-domain:generateMetadataFileForSdkPublication
+> Task :pipeline-domain:generatePomFileForSdkPublication
+> Task :pipeline-domain:publishSdkPublicationToSdkRepository
+> Task :pipeline-application:startScripts
+> Task :pipeline-scripting-api:generateMetadataFileForSdkPublication
+> Task :pipeline-scripting-api:publishSdkPublicationToSdkRepository
+> Task :publishSdkForExternalPlugin
+> Task :buildExamplePlugin UP-TO-DATE
+> Task :pipeline-application:installDist
+> Task :pipeline-application:compileTestKotlin UP-TO-DATE
+> Task :pipeline-application:compileTestJava NO-SOURCE
+> Task :pipeline-application:testClasses
+> Task :pipeline-events:test
+
+> Task :pipeline-application:test
+
+UatLocal005CorpusUntouchedTest > CP-002 corpus has exactly 13 valid fixture files(Path) FAILED
+    org.opentest4j.AssertionFailedError at UatLocal005CorpusUntouchedTest.kt:119
+
+UatLocal008CredentialsTest > UAT-L8-CP-001 original 4 corpus files byte-identical to cycle base() FAILED
+    org.opentest4j.AssertionFailedError at UatLocal008CredentialsTest.kt:171
+
+UatLocal008CredentialsTest > CR-BD-027 CredentialUsed per use(Path) FAILED
+    org.opentest4j.AssertionFailedError at UatLocal008CredentialsTest.kt:846
+
+40 tests completed, 3 failed, 1 skipped
+
+> Task :pipeline-application:test FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':pipeline-application:test'.
+> There were failing tests. See the report at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-build-repro/v2/pipeline-application/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 2m 25s
+52 actionable tasks: 13 executed, 39 up-to-date

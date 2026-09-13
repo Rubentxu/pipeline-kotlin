@@ -1,0 +1,33 @@
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :compileKotlin FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileKotlin'.
+> Could not resolve all files for configuration ':compileClasspath'.
+   > Could not find dev.rubentxu.pipeline.v2:pipeline-domain:0.1.0-SNAPSHOT.
+     Searched in the following locations:
+       - https://repo.maven.apache.org/maven2/dev/rubentxu/pipeline/v2/pipeline-domain/0.1.0-SNAPSHOT/maven-metadata.xml
+       - https://repo.maven.apache.org/maven2/dev/rubentxu/pipeline/v2/pipeline-domain/0.1.0-SNAPSHOT/pipeline-domain-0.1.0-SNAPSHOT.pom
+       - file:/tmp/laneR-empty-sdk-repo/dev/rubentxu/pipeline/v2/pipeline-domain/0.1.0-SNAPSHOT/maven-metadata.xml
+       - file:/tmp/laneR-empty-sdk-repo/dev/rubentxu/pipeline/v2/pipeline-domain/0.1.0-SNAPSHOT/pipeline-domain-0.1.0-SNAPSHOT.pom
+     Required by:
+         root project :
+   > Could not find dev.rubentxu.pipeline.v2:pipeline-scripting-api:0.1.0-SNAPSHOT.
+     Searched in the following locations:
+       - https://repo.maven.apache.org/maven2/dev/rubentxu/pipeline/v2/pipeline-scripting-api/0.1.0-SNAPSHOT/maven-metadata.xml
+       - https://repo.maven.apache.org/maven2/dev/rubentxu/pipeline/v2/pipeline-scripting-api/0.1.0-SNAPSHOT/pipeline-scripting-api-0.1.0-SNAPSHOT.pom
+       - file:/tmp/laneR-empty-sdk-repo/dev/rubentxu/pipeline/v2/pipeline-scripting-api/0.1.0-SNAPSHOT/maven-metadata.xml
+       - file:/tmp/laneR-empty-sdk-repo/dev/rubentxu/pipeline/v2/pipeline-scripting-api/0.1.0-SNAPSHOT/pipeline-scripting-api-0.1.0-SNAPSHOT.pom
+     Required by:
+         root project :
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1s
+1 actionable task: 1 executed

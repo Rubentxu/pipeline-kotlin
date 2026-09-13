@@ -175,44 +175,47 @@ class Lfc2BodyExecutionPolicyFitnessTest {
     // ===== scope firewall =====
 
     /**
-     * W1b creates the mechanism; W1c migrates the consumers. Until that slice lands, the
-     * coordinator must be byte-identical in behaviour and must not reference the policy at
-     * all. When W1c starts routing bodies through the policy this law fails on purpose, and
-     * the failure names the slice that owns the change.
+     * W1b created the mechanism; W1c migrated the consumers. The coordinator now resolves
+     * bodies through the policy port, and this law is the inverse of the W1b firewall it
+     * replaces: the routing MUST go through the declared policy, and the Step-identity
+     * switch that used to key it must stay gone (pinned by the W1a ledger scan below).
      */
     @Test
-    fun `the coordinator does not yet resolve body policies`() {
+    fun `the coordinator resolves body policies through the port`() {
         val code = codeOnly(read(coordinatorSource))
 
-        val forbidden = listOf("BodyExecutionPolicy", "BodyPolicyResolver", "resolveBodyExecutionPolicy")
-        val offenders = forbidden.filter { code.contains(it) }
+        val required = listOf("BodyPolicyResolver", "BodyExecutionOwner")
+        val missing = required.filterNot { code.contains(it) }
 
         assertEquals(
             emptyList<String>(),
-            offenders,
-            "W1b introduces the policy mechanism only; routing bodies through it is W1c. " +
-                "The coordinator still routes by StepKey and must stay inside the W1a debt ledger",
+            missing,
+            "W1c: body routing is policy-driven. A coordinator that stopped resolving the " +
+                "declared policy, or that re-introduced a hard-coded body Step set, must fail here",
         )
     }
 
     /**
-     * W1b is debt-neutral: it must not add a single concrete routing site. W1a's ledger is
-     * the authority for that number and the real coordinator is re-scanned here.
+     * W1a's ledger is the authority for the debt number, and the real coordinator is
+     * re-scanned here. W1b was debt-neutral (18); W1c retires the step-id switch, the
+     * hard-coded body id set and the name-keyed credential bypass, leaving 4.
      */
     @Test
-    fun `W1b leaves the pinned concrete routing debt unchanged`() {
+    fun `W1c lowers the pinned concrete routing debt to the measured value`() {
         val discovered = ConcreteBodyRoutingScanner.scan(read(coordinatorSource))
         val pinned = PinnedConcreteBodyRoutingDebt.value
 
         assertEquals(
             pinned.total,
             discovered.total,
-            "W1b must be debt-neutral: it neither introduces nor retires concrete routing",
+            "The ledger must equal the coordinator's measured concrete routing debt",
         )
         assertEquals(
-            18,
+            4,
             discovered.total,
-            "The measured coordinator debt at W1b must remain the W1a high-water mark",
+            "W1c retires the step-id switch, the hard-coded body id set and the name-keyed " +
+                "credential bypass: 4 items remain (the credential dispatcher plus the two " +
+                "durable identities that are not body routing)",
         )
     }
 }

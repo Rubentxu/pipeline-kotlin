@@ -38,13 +38,24 @@ package dev.rubentxu.pipeline.v2.architecture
  * The scan is deliberately conservative in the other direction: a site is detected when its
  * identifier appears anywhere in the file, including a call site or a comment, so it can
  * over-report rather than under-report. Over-reporting fails the guard, which is the safe way
- * to be wrong.
+ * to be wrong. Prose is inside the scanned surface by design: do not spell a forbidden routing
+ * form even in a comment that says it is forbidden (`W1c` had to rephrase one).
  */
 
 /** A structural site in the durable coordinator known to route on concrete block identities. */
 enum class BodyRoutingSite {
+    /**
+     * Retired by W1c: the coordinator derives body eligibility from declared ownership. The
+     * case stays so that RE-INTRODUCING a hard-coded body id set is detected and fails.
+     */
     CANONICAL_BODY_STEP_IDS,
+
+    /**
+     * Retired by W1c: scope projection is keyed by the declared policy. The case stays so
+     * that RE-INTRODUCING a keyed scope projection is detected and fails.
+     */
     PROJECT_SHELL_SCOPE,
+
     DISPATCH_WITH_CREDENTIALS_BLOCK,
 }
 
@@ -96,6 +107,13 @@ sealed interface RoutingDebtVerdict {
 /**
  * The pinned ledger. These values are the state measured at `1afb4799`; every one of them is
  * an item that ADR-0073's burn-down is supposed to remove.
+ *
+ * W1c re-measured and lowered the ledger: the step-id switch, the hard-coded body step id set,
+ * the five Step names only the switch and the messages used, and the two sites that carried them
+ * are gone: 14 of the 18 items retired, 4 left. What remains is the credential-lifecycle
+ * dispatcher, which is still a separate execution path, plus two concrete durable identities
+ * that are NOT body routing (`core.parallel` names the PAR-D stage aggregate operation row,
+ * `core.retry` names the RETRY-D retry control row).
  */
 object PinnedConcreteBodyRoutingDebt {
 
@@ -107,32 +125,20 @@ object PinnedConcreteBodyRoutingDebt {
 
     val value = ConcreteBodyRoutingDebt(
         concreteStepNames = setOf(
-            "core.dir",
-            "core.timeout",
-            "core.retry",
-            "core.withCredentials",
-            "core.timestamps",
-            "core.withEnv",
             "core.parallel",
-        ),
-        bodyStepIds = setOf(
-            "core.dir",
-            "core.timeout",
             "core.retry",
-            "core.withCredentials",
-            "core.timestamps",
-            "core.withEnv",
         ),
+        // W1c: empty. Body eligibility is derived from declared ownership
+        // (`StepDescriptorRegistry.bodyStepIds`), so there is no hard-coded set left to pin.
+        bodyStepIds = emptySet(),
         // Named explicitly, not BodyRoutingSite.entries.toSet(): "all entries" would
         // silently absorb a fourth site the day someone adds one, which is exactly the
         // slack this ledger exists to prevent.
         sites = setOf(
-            BodyRoutingSite.CANONICAL_BODY_STEP_IDS,
-            BodyRoutingSite.PROJECT_SHELL_SCOPE,
             BodyRoutingSite.DISPATCH_WITH_CREDENTIALS_BLOCK,
         ),
         blockBypasses = setOf("dispatchWithCredentialsBlock"),
-        stepIdSwitches = 1,
+        stepIdSwitches = 0,
     )
 }
 

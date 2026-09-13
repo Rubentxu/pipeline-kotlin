@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.domain
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 
 /**
@@ -71,6 +72,23 @@ data class StepDescriptor(
      * is rejected at resolution time, never silently honoured.
      */
     val bodyExecutionPolicy: BodyExecutionPolicy = BodyExecutionPolicy.DEFAULT,
+
+    /**
+     * Which engine executes this Step's body (B10 / W1c).
+     *
+     * Declared next to [bodyExecutionPolicy] because the two answer different
+     * questions: the policy is the SHAPE of the body, this is its OWNER. The
+     * canonical durable runner derives the set of body Steps it may execute from
+     * this field, so a Step is routed to the engine that implements its semantics
+     * rather than to whichever engine happens to recognise its key.
+     *
+     * Default [BodyExecutionOwner.CANONICAL_ENGINE] states the target state:
+     * a new body Step is owned by the canonical body engine unless it explicitly
+     * declares otherwise. `core.catchError` / `core.warnError` declare
+     * [BodyExecutionOwner.LEGACY_LINEAR] because their containment and decoration
+     * semantics are still implemented by the legacy workflow-control rewrite.
+     */
+    val bodyExecutionOwner: BodyExecutionOwner = BodyExecutionOwner.CANONICAL_ENGINE,
 ) {
     /** Legacy terminology retained for consumers of the legacy definition model. */
     val id: String get() = stepId

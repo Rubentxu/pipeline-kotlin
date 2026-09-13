@@ -1,0 +1,207 @@
+{
+ "pipeline-application": {
+  "errors": 0,
+  "failures": 36,
+  "red": {
+   "dev.rubentxu.pipeline.v2.application.A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test": [
+    "family classifier routes core sh through Registry (not LegacyCore) post-A4()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest": [
+    "allCorpusFixturesAreDiscoverable()",
+    "fixture14CredentialsBindings()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolverTest": [
+    "ordinary steps declare no recovery()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolverTest": [
+    "a remaining legacy core key delegates to the legacy core authority even when absent from the registry()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.UatCompat001CorpusSmokeRunTest": [
+    "corpus smoke-runs green and satisfies M2 exit criterion()",
+    "each corpus fixture produces non-empty event stream()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.UatLocal005CheckoutGitTest": [
+    "SC-007 poll detects changed SHA and emits GitPollChanged(Path)"
+   ],
+   "dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest": [
+    "CP-002 corpus has exactly 13 valid fixture files(Path)"
+   ],
+   "dev.rubentxu.pipeline.v2.application.UatLocal007SandboxProfileTest": [
+    "SB-S-008 parallel branches have isolated cwds(Path)",
+    "SB-S-010 resume with profile change none-to-local re-attaches(Path)"
+   ],
+   "dev.rubentxu.pipeline.v2.application.UatLocal008CredentialsTest": [
+    "CR-BD-027 CredentialUsed per use(Path)",
+    "UAT-L8-CP-001 original 4 corpus files byte-identical to cycle base()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.UatLocal009TopStepsTest": [
+    "CR-U9-001 writeFile readFile round-trip with sha256 event()",
+    "CR-U9-002 fileExists true after writeFile()",
+    "CR-U9-003 writeFile atomic write succeeds()",
+    "CR-U9-004 writeFile cross-fs fallback documented in atomicallyMoved()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest": [
+    "Exactly-once discipline - 3 steps emits 3 StepStarted and 3 StepFinished()",
+    "No step events for ReplayDecision SKIP()",
+    "ReplayDecision ABORT emits one failed lifecycle without dispatching()",
+    "dispatch decodes each StepNode before delegating to the typed dispatcher()",
+    "dispatch returns SCHEMA for a fresh structurally-valid but typed-invalid payload without executor()",
+    "journals a supported block child with its body path(Path)",
+    "journals and checkpoints a linear canonical echo run()",
+    "run emits StepFinished after dispatch()",
+    "run emits StepStarted before dispatch()",
+    "withCredentials acquires scope overlays env and always closes()",
+    "withCredentials cleanup failure folds a successful body to failure()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.durable.DualExecutionSeamCharacterizationTest": [
+    "fresh valid legacy executes exactly once through both seams()",
+    "replay reuse never reaches either seam()",
+    "running shell recovery never reaches either seam(Path)"
+   ],
+   "dev.rubentxu.pipeline.v2.application.durable.DurableProtocolInvocationCharacterizationTest": [
+    "a1-4 lifecycle spine owns StepStarted and StepFinished around the semantic event()"
+   ],
+   "dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest": [
+    "build returns LegacyOnly boundary when registry is null()",
+    "build returns SeamedExecutionRouter when registry is present and stepKey is owned()",
+    "build with null recorder returns the produced boundary without wrapping()",
+    "build with recorder wraps the produced boundary and increments recorder counter on execute()"
+   ]
+  },
+  "tests": 1392
+ },
+ "pipeline-architecture-tests": {
+  "errors": 0,
+  "failures": 1,
+  "red": {
+   "dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest": [
+    "production code does not access the controller user directory property()"
+   ]
+  },
+  "tests": 261
+ },
+ "pipeline-artefacts-local": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 32
+ },
+ "pipeline-binding-factory": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 37
+ },
+ "pipeline-credentials-api": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 48
+ },
+ "pipeline-credentials-executor": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 7
+ },
+ "pipeline-credentials-local": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 52
+ },
+ "pipeline-credentials-multipart": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 30
+ },
+ "pipeline-domain": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 388
+ },
+ "pipeline-event-harness": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 19
+ },
+ "pipeline-events": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 123
+ },
+ "pipeline-scripting-api": {
+  "errors": 0,
+  "failures": 1,
+  "red": {
+   "StepSpec sealed hierarchy tests": [
+    "sealed_hierarchy_is_exhaustive_with_28_kinds()"
+   ]
+  },
+  "tests": 39
+ },
+ "pipeline-scripting-kotlin24": {
+  "errors": 0,
+  "failures": 7,
+  "red": {
+   "dev.rubentxu.pipeline.v2.scripting.ScriptTextEscaperTest": [
+    "SCR-N2 block comment is not processed()",
+    "SCR-N2 line comment is not processed()",
+    "SCR-N2 single quotes string is not processed()"
+   ],
+   "dev.rubentxu.pipeline.v2.scripting.WithCredentialsCompileIntegrationTest": [
+    "IT-001 simple usernameColonPassword binding compiles and returns success()",
+    "IT-002 multiple bindings in single withCredentials compile successfully()",
+    "IT-003 mixed file and credential bindings compile successfully()",
+    "IT-006 zip factory binding compiles successfully()"
+   ]
+  },
+  "tests": 43
+ },
+ "pipeline-step-sdk/api": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 8
+ },
+ "pipeline-step-sdk/files": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 27
+ },
+ "pipeline-step-sdk/processor": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 11
+ },
+ "pipeline-step-sdk/runtime": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 181
+ },
+ "pipeline-step-sdk/scm-git": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 24
+ },
+ "pipeline-step-sdk/workflow-control": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 10
+ },
+ "pipeline-testkit": {
+  "errors": 0,
+  "failures": 0,
+  "red": {},
+  "tests": 2
+ }
+}

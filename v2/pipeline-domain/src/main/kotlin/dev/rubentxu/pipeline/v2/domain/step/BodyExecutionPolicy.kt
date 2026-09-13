@@ -112,6 +112,58 @@ enum class BodyExecutionPolicyShape {
 }
 
 /**
+ * Which engine executes a Step's body (B10 / W1c).
+ *
+ * ## Why this is a declaration and not a shape
+ *
+ * [BodyExecutionPolicy] says WHAT shape the body has. It deliberately cannot say
+ * WHO executes it, and the two do not agree today:
+ *
+ * ```text
+ * core.catchError   Sequential  -> legacy linear workflow-control rewrite
+ * core.dir          Scoped(CWD) -> canonical durable body engine
+ * core.withEnv      Scoped(ENV) -> canonical durable body engine
+ * ```
+
+ * `Sequential` is not the discriminator, because the canonical engine can run a
+ * plain sequential body too. What differs is that `catchError` / `warnError`
+ * semantics (containment of a failing body, output decoration) live in the legacy
+ * workflow-control rewrite and their nodes are refused by the canonical
+ * eligibility gate. Claiming `Scoped`/`Retrying` ownership for them, or inferring
+ * ownership from the shape, would silently route them to an engine that does not
+ * implement their semantics.
+ *
+ * This enum is therefore the declared migration frontier of body execution: the
+ * canonical eligible body set is derived from it (never from a hard-coded list of
+ * StepKeys), and `LEGACY_LINEAR` counts what is left to migrate.
+ *
+ * ## Relationship to the decode/dispatch family
+ *
+ * Different axis, deliberately not merged. `StructuralStepFamily` (application
+ * layer) classifies DECODE/DISPATCH routing: registry Step vs legacy decode +
+ * dispatch. This classifies BODY EXECUTION ownership. A Step can be a legacy
+ * decoded Step whose body is owned by the canonical body engine (`core.dir`), so
+ * neither can be derived from the other without a false equivalence.
+ */
+enum class BodyExecutionOwner {
+
+    /**
+     * The body is re-entered and executed by the canonical durable body engine:
+     * scope projection, attempt re-dispatch, and typed event emission all live
+     * there. This is the default because it is the target state.
+     */
+    CANONICAL_ENGINE,
+
+    /**
+     * The body's semantics are still implemented by the legacy linear
+     * workflow-control rewrite. A Step declaring this is NOT eligible for the
+     * canonical durable runner and must be rejected there before any effect,
+     * never executed as an empty shell.
+     */
+    LEGACY_LINEAR,
+}
+
+/**
  * Which single context dimension a [BodyExecutionPolicy.Scoped] body projects.
  *
  * Closed ADT, 1:1 with the scope kinds the engine can derive. It names the
@@ -200,6 +252,24 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
          */
         val SEQUENTIAL_ONLY: BodyExecutionSupport =
             BodyExecutionSupport(setOf(BodyExecutionPolicyShape.SEQUENTIAL))
+
+        /**
+         * The W1c engine support: the coordinator projects scoped bodies, re-dispatches
+         * retrying bodies and runs plain sequential bodies, and it resolves all three
+         * from the declared policy instead of from a StepKey switch.
+         *
+         * `PARALLEL` is deliberately absent: branch fan-out is still executed as a plain
+         * sequence, so a Step declaring `Parallel` is rejected fail-closed rather than
+         * silently run sequentially (B13 owns the fan-out).
+         */
+        val SCOPED_SEQUENTIAL_RETRYING: BodyExecutionSupport =
+            BodyExecutionSupport(
+                setOf(
+                    BodyExecutionPolicyShape.SEQUENTIAL,
+                    BodyExecutionPolicyShape.SCOPED,
+                    BodyExecutionPolicyShape.RETRYING,
+                ),
+            )
 
         /** Every shape the closed family can express (representability proofs). */
         val FULL: BodyExecutionSupport =

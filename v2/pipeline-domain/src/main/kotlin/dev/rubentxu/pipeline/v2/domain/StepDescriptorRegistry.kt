@@ -1,8 +1,13 @@
 package dev.rubentxu.pipeline.v2.domain
 
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.RetryPolicy
+import dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy
 
 /**
  * Registry for [StepDescriptor] metadata, populated at compile time.
@@ -31,6 +36,40 @@ class StepDescriptorRegistry private constructor(
      */
     fun keys(): Set<PluginStepId> = descriptors.keys
 
+    /**
+     * Every body Step whose body is executed by [owner] (B10 / W1c).
+     *
+     * This is the authority from which an engine derives the body Step families it
+     * may execute. It replaces a hard-coded list of StepKeys in the engine with a
+     * declared property of the Step:
+     *
+     * ```text
+     * canonical eligibility  <- declared ownership, never a StepKey list
+     * a new body Step        <- ONE descriptor row, no engine change
+     * ```
+     *
+     * Derived from [StepDescriptor.takesBody] AND
+     * [StepDescriptor.bodyExecutionOwner]: a terminal Step has no body to own, and a
+     * body Step declares who owns it.
+     */
+    fun bodyStepIds(owner: BodyExecutionOwner): Set<PluginStepId> =
+        descriptors.filter { (_, descriptor) ->
+            descriptor.takesBody && descriptor.bodyExecutionOwner == owner
+        }.keys
+
+    /**
+     * The [BodyPolicyResolver] over this descriptor table, the authority for Step
+     * families that are declared here without a registered handler (the core block
+     * Steps). Same laws as [dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver]:
+     * unknown, incoherent, and unsupported declarations are rejected, never defaulted.
+     */
+    fun bodyPolicyResolver(support: BodyExecutionSupport): BodyPolicyResolver =
+        BodyPolicyResolver { key -> resolveBodyExecutionPolicy(key, get(key), support) }
+
+    /** Resolves one key's policy with the same fail-closed laws. */
+    fun bodyPolicy(key: PluginStepId, support: BodyExecutionSupport): BodyPolicyResolution =
+        resolveBodyExecutionPolicy(key, get(key), support)
+
     companion object {
         /**
          * Creates a registry with the standard canonical core step descriptors.
@@ -49,6 +88,11 @@ class StepDescriptorRegistry private constructor(
                     // Containment is a FOLD of the body's typed outcome, not an execution
                     // reshape: the body still runs once, in the caller's own context.
                     bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
+                    // W1c: containment semantics live in the legacy workflow-control
+                    // rewrite (`CatchErrorOverlay` propagation), not in the canonical body
+                    // engine, so this Step's body is NOT owned there. Declared, not inferred:
+                    // `Sequential` is also the shape of a plain body the canonical engine runs.
+                    bodyExecutionOwner = BodyExecutionOwner.LEGACY_LINEAR,
                 ))
                 put(PluginStepId("core.warnError"), StepDescriptor(
                     stepId = "core.warnError",
@@ -58,6 +102,9 @@ class StepDescriptorRegistry private constructor(
                     bodyInvocations = BodyInvocationPolicy.AT_MOST_ONCE,
                     introducesContext = ContextKind.OUTPUT_DECORATOR,
                     bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
+                    // W1c: output decoration is applied by the legacy workflow-control
+                    // rewrite, same reasoning as `core.catchError`.
+                    bodyExecutionOwner = BodyExecutionOwner.LEGACY_LINEAR,
                 ))
                 put(PluginStepId("core.withEnv"), StepDescriptor(
                     stepId = "core.withEnv",
@@ -96,6 +143,20 @@ class StepDescriptorRegistry private constructor(
                     // Deadline is a projected scope; CANCELLATION alone cannot say so
                     // because catchError declares the same kind with Sequential.
                     bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Deadline),
+                ))
+                put(PluginStepId("core.timestamps"), StepDescriptor(
+                    stepId = "core.timestamps",
+                    name = "timestamps",
+                    configRef = "",
+                    takesBody = true,
+                    bodyInvocations = BodyInvocationPolicy.ONCE,
+                    // A timestamp source is none of the declared ContextKinds; the
+                    // projection declares `requiredContextKind = null` for the same reason.
+                    introducesContext = null,
+                    // W1c: closes the declared W1b gap. The coordinator already projects a
+                    // timestamp scope around this body; the row is what makes that routing
+                    // registry-derived instead of a hard-coded StepKey.
+                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Timestamps),
                 ))
                 put(PluginStepId("core.retry"), StepDescriptor(
                     stepId = "core.retry",

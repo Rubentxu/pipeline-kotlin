@@ -12,7 +12,15 @@ import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyShape
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
@@ -99,14 +107,21 @@ import java.util.UUID
 private val canonicalStepIds: Set<String> =
     CanonicalCoreStepMetadata.pluginIds +
         CoreStepRegistryFactory.registry().keys().map { it.value }
-private val canonicalBodyStepIds: Set<String> = setOf(
-    "core.dir",
-    "core.timeout",
-    "core.retry",
-    "core.withCredentials",
-    "core.timestamps",
-    "core.withEnv",
-)
+
+/**
+ * Block Step families whose body is executed by THIS engine (B10 / W1c).
+ *
+ * Derived from the declared [StepDescriptor] metadata, never from a list of StepKeys:
+ * a Step is canonical-body-eligible when it declares `takesBody` and names this engine
+ * as its [BodyExecutionOwner]. `core.catchError` / `core.warnError` declare
+ * `LEGACY_LINEAR` because their semantics live in the legacy workflow-control rewrite,
+ * so they stay refused here rather than being executed as empty shells.
+ *
+ * Adding a body Step therefore takes ONE descriptor row and no engine change, and this
+ * engine cannot silently gain a body family it does not implement.
+ */
+private val canonicalBodyStepIds: Set<PluginStepId> =
+    StepDescriptorRegistry.standard().bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE)
 
 /**
  * Describes a non-canonical step detected during pipeline analysis.
@@ -166,8 +181,8 @@ fun CompiledPipeline.supportsCanonicalDurableExecution(effectiveRegistry: StepRe
 private fun StepNode.checkCanonicalExecution(eligibleStepIds: Set<String> = canonicalStepIds): String? {
     return when (this) {
         is BlockStepNode -> {
-            if (pluginStepId.value !in canonicalBodyStepIds) {
-                "block step plugin not in canonical body step IDs"
+            if (pluginStepId !in canonicalBodyStepIds) {
+                "block step '${pluginStepId.value}' is not owned by the canonical body engine"
             } else {
                 body.forEach { child ->
                     val childIssue = child.checkCanonicalExecution(eligibleStepIds)
@@ -290,48 +305,107 @@ private sealed interface BlockShellScope {
     data class Retry(val maxAttempts: Int) : BlockShellScope
 }
 
-private fun BlockStepNode.projectShellScope(options: ShOptions): BlockShellScope = when (pluginStepId.value) {
-    "core.dir" -> {
-        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
-        val path = payload["path"]?.jsonPrimitive?.contentOrNull
-            ?: throw IllegalArgumentException("core.dir requires a path")
-        require(path.isNotBlank()) { "core.dir path must not be blank" }
+/**
+ * How one body is executed, decided from its DECLARED policy (B10 / W1c).
+ *
+ * Total over [BodyExecutionPolicy]: every declared shape either has an interpretation
+ * here or is named as rejected. No case carries a StepKey, and no case falls back to
+ * "run the children in sequence" — a shape without an interpretation is refused, so a
+ * body family can never be executed by an engine that does not implement it.
+ */
+private sealed interface BodyExecutionProjection {
 
-        val previous = options.workingDirectory ?: options.workspaceRoot
-        val target = Path.of(path).let { candidate ->
-            if (candidate.isAbsolute) candidate else previous.resolve(candidate)
-        }.normalize()
-        require(Path.of(path).isAbsolute || target.startsWith(previous)) {
-            "core.dir path escapes workspace: $path"
-        }
-        BlockShellScope.Directory(target, previous)
+    /** The generic body machinery runs this body with [scope] projected around it. */
+    data class Scope(val scope: BlockShellScope) : BodyExecutionProjection
+
+    /**
+     * The body is run by the credential-lease dispatcher (acquire -> environment
+     * overlay -> always close). Not a `BlockShellScope`: a lease is not a context
+     * dimension that children inherit from [ShOptions].
+     */
+    data object CredentialLifecycle : BodyExecutionProjection
+
+    /** Decoded input is invalid: a typed SCHEMA rejection, never a fallback. */
+    data class InvalidInput(val detail: String) : BodyExecutionProjection
+
+    /**
+     * The declared shape has no interpretation in this engine build. Unreachable by
+     * construction (policy resolution rejects a shape outside
+     * [BodyExecutionSupport]), kept total so that widening the support without
+     * implementing the shape fails closed instead of silently degrading.
+     */
+    data class Unimplemented(val shape: BodyExecutionPolicyShape) : BodyExecutionProjection
+}
+
+/**
+ * Projects body execution from the DECLARED policy and the node's typed payload.
+ *
+ * `(policy, options) -> BodyExecutionProjection`: pure, no effects, no Step name. The
+ * SHAPE is the declaration; the runtime VALUES (`dir`'s path, `timeout`'s seconds,
+ * `retry`'s budget) are decoded input. Malformed input is returned as a typed
+ * [BodyExecutionProjection.InvalidInput], never thrown as domain control flow.
+ */
+private fun BlockStepNode.projectBodyExecution(
+    policy: BodyExecutionPolicy,
+    options: ShOptions,
+): BodyExecutionProjection = when (policy) {
+    is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
+    is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
+    is BodyExecutionPolicy.Retrying -> decodeAttemptBudget()
+    is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)
+}
+
+/** Which context dimension a scoped body projects, and how its value is decoded. */
+private fun BlockStepNode.projectScopedBody(
+    projection: BodyContextProjection,
+    options: ShOptions,
+): BodyExecutionProjection = when (projection) {
+    is BodyContextProjection.WorkingDirectory -> projectWorkingDirectory(options)
+    is BodyContextProjection.Environment -> projectEnvironment(options)
+    is BodyContextProjection.Timestamps -> BodyExecutionProjection.Scope(BlockShellScope.TimestampsScope(runId = ""))
+    is BodyContextProjection.Deadline -> decodeDeadline()
+    is BodyContextProjection.CredentialLease -> BodyExecutionProjection.CredentialLifecycle
+}
+
+private fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val path = payload["path"]?.jsonPrimitive?.contentOrNull
+        ?: return BodyExecutionProjection.InvalidInput("requires a path")
+    if (path.isBlank()) return BodyExecutionProjection.InvalidInput("path must not be blank")
+
+    val previous = options.workingDirectory ?: options.workspaceRoot
+    val target = Path.of(path).let { candidate ->
+        if (candidate.isAbsolute) candidate else previous.resolve(candidate)
+    }.normalize()
+    if (!Path.of(path).isAbsolute && !target.startsWith(previous)) {
+        return BodyExecutionProjection.InvalidInput("path escapes the workspace: $path")
     }
-    "core.timestamps" -> {
-        BlockShellScope.TimestampsScope(runId = "")
-    }
-    "core.withEnv" -> {
-        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
-        val overridesArray = payload["overrides"]?.jsonArray
-        val overrides = overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
-        BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env)
-    }
-    // B13/E-EM-11: fail-closed contract decode — malformed retry/timeout payloads
-    // are typed schema rejections, never a silent plain-sequence fallback.
-    "core.timeout" -> {
-        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
-        val seconds = payload["seconds"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-            ?: throw IllegalArgumentException("core.timeout requires integer seconds")
-        require(seconds > 0) { "core.timeout seconds must be > 0, got $seconds" }
-        BlockShellScope.Timeout(budgetMs = seconds * 1000L)
-    }
-    "core.retry" -> {
-        val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
-        val maxAttempts = payload["maxAttempts"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-            ?: throw IllegalArgumentException("core.retry requires integer maxAttempts")
-        require(maxAttempts >= 1) { "core.retry maxAttempts must be >= 1, got $maxAttempts" }
-        BlockShellScope.Retry(maxAttempts = maxAttempts)
-    }
-    else -> BlockShellScope.None
+    return BodyExecutionProjection.Scope(BlockShellScope.Directory(target, previous))
+}
+
+private fun BlockStepNode.projectEnvironment(options: ShOptions): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val overridesArray = payload["overrides"]?.jsonArray
+    val overrides = overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+    return BodyExecutionProjection.Scope(BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env))
+}
+
+// B13/E-EM-11: fail-closed contract decode — malformed deadline/attempt payloads are
+// typed schema rejections, never a silent plain-sequence fallback.
+private fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val seconds = payload["seconds"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        ?: return BodyExecutionProjection.InvalidInput("requires integer seconds")
+    if (seconds <= 0) return BodyExecutionProjection.InvalidInput("seconds must be > 0, got $seconds")
+    return BodyExecutionProjection.Scope(BlockShellScope.Timeout(budgetMs = seconds * 1000L))
+}
+
+private fun BlockStepNode.decodeAttemptBudget(): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val maxAttempts = payload["maxAttempts"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+        ?: return BodyExecutionProjection.InvalidInput("requires integer maxAttempts")
+    if (maxAttempts < 1) return BodyExecutionProjection.InvalidInput("maxAttempts must be >= 1, got $maxAttempts")
+    return BodyExecutionProjection.Scope(BlockShellScope.Retry(maxAttempts = maxAttempts))
 }
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
@@ -374,6 +448,13 @@ class CanonicalDurableRunCoordinator(
     // scope (per run, not global classloader). No longer nullable — production always gets
     // a store; tests that need to control the store explicitly pass their own instance.
     private val milestoneStateStore: MilestoneStateStore = MilestoneStateStore(),
+
+    // B10/W1c: the body execution policy authority. The production default resolves the
+    // DECLARED policy of a block Step from the descriptor registry, bounded by the shapes
+    // this engine executes; a caller may inject another authority to characterize the
+    // fail-closed laws. Appended last so existing positional call-sites compile unchanged.
+    private val bodyPolicyResolver: BodyPolicyResolver =
+        StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING),
 ) {
     /** Active context stack for body scope tracking (EM-4). */
 
@@ -1334,12 +1415,34 @@ class CanonicalDurableRunCoordinator(
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
     ): StepOutcome {
-        // EM-7/LFC-5.3 (INC-022): withCredentials has its own scope lifecycle
-        // (acquire -> env overlay -> always close), so it bypasses the generic
-        // dir/env/timestamps scope machinery entirely. Never dispatched as an
-        // empty shell.
-        if (block.pluginStepId.value == "core.withCredentials") {
-            return dispatchWithCredentialsBlock(
+        // B10/W1c: the body family is decided by its DECLARED policy, resolved from the
+        // registry BEFORE any effect. No switch on the Step identity and no per-Step case: an
+        // unknown, incoherent or unsupported declaration is a typed ENGINE rejection
+        // with zero children launched.
+        val policy = when (val resolution = bodyPolicyResolver.resolve(block.pluginStepId)) {
+            is BodyPolicyResolution.Rejected -> return StepOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    "body execution policy rejected for '${block.pluginStepId.value}': ${resolution.reason}",
+                ),
+            )
+            is BodyPolicyResolution.Resolved -> resolution.policy
+        }
+        val projection = try {
+            block.projectBodyExecution(policy, stageShOptions)
+        } catch (error: IllegalArgumentException) {
+            // Platform-level decode guard (e.g. InvalidPathException on a malformed path);
+            // the typed decoders above report expected invalid input as a value.
+            BodyExecutionProjection.InvalidInput(error.message ?: "invalid body input")
+        }
+        // CTX-P2: no parent capture, no restore — executionContext is the caller's value and stays it.
+        var contextInBody = executionContext
+        var outcome: StepOutcome = StepOutcome.Success
+        val scope = when (projection) {
+            // EM-7/LFC-5.3 (INC-022): the credential lease owns its own scope lifecycle
+            // (acquire -> env overlay -> always close). Routed BY POLICY, never by Step
+            // name, and never dispatched as an empty shell.
+            is BodyExecutionProjection.CredentialLifecycle -> return dispatchWithCredentialsBlock(
                 block,
                 runId,
                 stageName,
@@ -1349,16 +1452,20 @@ class CanonicalDurableRunCoordinator(
                 parentBodyPath,
                 executionContext,
             )
-        }
-        // CTX-P2: no parent capture, no restore — executionContext is the caller's value and stays it.
-        var contextInBody = executionContext
-        var outcome: StepOutcome = StepOutcome.Success
-        val scope = try {
-            block.projectShellScope(stageShOptions)
-        } catch (error: IllegalArgumentException) {
-            return StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, error.message ?: "Invalid block scope"),
+            is BodyExecutionProjection.InvalidInput -> return StepOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    "${block.pluginStepId.value}: ${projection.detail}",
+                ),
             )
+            is BodyExecutionProjection.Unimplemented -> return StepOutcome.Failure(
+                PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    "body execution shape '${projection.shape}' is declared by " +
+                        "'${block.pluginStepId.value}' but not implemented by this engine",
+                ),
+            )
+            is BodyExecutionProjection.Scope -> projection.scope
         }
         val childShOptions = when (scope) {
             BlockShellScope.None -> stageShOptions
@@ -1375,7 +1482,8 @@ class CanonicalDurableRunCoordinator(
                 // effective deadline is computed and governs all children via
                 // childShOptions. Project the scheduling transition once, here,
                 // BEFORE any child StepStarted. Invalid payloads never reach this
-                // point (projectShellScope fails closed above with no children).
+                // point (policy projection and scheduling-scope construction fail
+                // closed above, before any child runs).
                 eventSink.append(
                     dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
                         eventId = UUID.randomUUID().toString(),

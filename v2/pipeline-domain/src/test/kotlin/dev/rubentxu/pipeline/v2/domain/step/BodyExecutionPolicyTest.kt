@@ -34,11 +34,12 @@ class BodyExecutionPolicyTest {
      * The body-bearing Step families the engine handles today, and the policy each one's
      * CURRENT behaviour corresponds to.
      *
-     * Authority for each row is the existing routing code, not this model:
-     * `CanonicalDurableRunCoordinator.projectShellScope` (dir / timestamps / withEnv /
-     * timeout / retry), `dispatchWithCredentialsBlock` (withCredentials), the PAR-D
-     * stage branch aggregate (parallel), and `StructuralOverlayProjection` containment
-     * (catchError / warnError).
+     * Authority for each row is the existing routing code, not this model: since W1c the
+     * coordinator projects the DECLARED policy (`projectBodyExecution` / `projectScopedBody`,
+     * replacing the pre-W1c keyed scope projection) for dir / timestamps / withEnv / timeout /
+     * retry, routes the credential lease to `dispatchWithCredentialsBlock` by projection, the
+     * PAR-D stage branch aggregate owns parallel, and `StructuralOverlayProjection` containment
+     * owns catchError / warnError.
      */
     private val currentEngineBehaviour: List<Pair<String, BodyExecutionPolicy>> = listOf(
         "core.dir" to BodyExecutionPolicy.Scoped(BodyContextProjection.WorkingDirectory),
@@ -57,8 +58,12 @@ class BodyExecutionPolicyTest {
      * by the model but not yet declared by any descriptor. Declared as a GAP on purpose:
      * the assertion is two-directional, so adding or losing a row forces this ledger to
      * be updated rather than letting the gap drift silently.
+     *
+     * `core.timestamps` left this gap in W1c. `core.parallel` stays: it is a PAR-D stage
+     * branch aggregate, not a body the body engine re-enters, and declaring a policy for it
+     * before the fan-out exists would codify the current sequential execution as correct.
      */
-    private val familiesWithoutDescriptorRow: Set<String> = setOf("core.timestamps", "core.parallel")
+    private val familiesWithoutDescriptorRow: Set<String> = setOf("core.parallel")
 
     private fun descriptorOf(key: String): StepDescriptor? =
         StepDescriptorRegistry.standard().get(PluginStepId(key))
@@ -417,6 +422,143 @@ class BodyExecutionPolicyTest {
                 BodyExecutionPolicyShape.entries.toSet(),
                 BodyExecutionSupport.FULL.shapes,
                 "FULL must admit every expressible shape; a new shape widens this set explicitly",
+            )
+        }
+
+        /**
+         * W1c: the engine support is the shape set the coordinator actually interprets.
+         * PARALLEL is absent because branch fan-out is not implemented, so a Step declaring
+         * it is rejected instead of being silently executed as a plain sequence.
+         */
+        @Test
+        fun `the W1c engine support admits every shape it interprets and not the silent one`() {
+            val support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING
+
+            assertTrue(support.supports(BodyExecutionPolicy.Sequential))
+            assertTrue(support.supports(BodyExecutionPolicy.Scoped(BodyContextProjection.WorkingDirectory)))
+            assertTrue(support.supports(BodyExecutionPolicy.Retrying(RetryPolicy())))
+            assertTrue(
+                !support.supports(BodyExecutionPolicy.Parallel(ParallelPolicy())),
+                "PARALLEL is not implemented: admitting it would run branches in sequence",
+            )
+        }
+    }
+
+    /**
+     * B10 / W1c — body execution OWNERSHIP.
+     *
+     * The canonical runner derives the body families it may execute from
+     * [StepDescriptor.bodyExecutionOwner]. These laws pin that derivation in both
+     * directions, because it is production routing: adding a row silently widens what the
+     * durable engine executes, and losing one silently narrows it.
+     */
+    @Nested
+    inner class Ownership {
+
+        private val registry = StepDescriptorRegistry.standard()
+
+        @Test
+        fun `the canonical body set is the six families whose bodies this engine executes`() {
+            assertEquals(
+                setOf(
+                    PluginStepId("core.dir"),
+                    PluginStepId("core.timestamps"),
+                    PluginStepId("core.withEnv"),
+                    PluginStepId("core.timeout"),
+                    PluginStepId("core.withCredentials"),
+                    PluginStepId("core.retry"),
+                ),
+                registry.bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE),
+                "Canonical body eligibility is registry-derived: a change here is a routing change",
+            )
+        }
+
+        @Test
+        fun `containment families declare legacy ownership and are not eligible`() {
+            assertEquals(
+                setOf(PluginStepId("core.catchError"), PluginStepId("core.warnError")),
+                registry.bodyStepIds(BodyExecutionOwner.LEGACY_LINEAR),
+                "catchError / warnError bodies belong to the legacy workflow-control rewrite",
+            )
+            assertEquals(
+                BodyExecutionOwner.LEGACY_LINEAR,
+                registry.get(PluginStepId("core.catchError"))?.bodyExecutionOwner,
+                "catchError declares no canonical ownership even though its shape is Sequential",
+            )
+        }
+
+        /**
+         * Ownership is not derivable from the shape: both owners declare `Sequential`
+         * somewhere. This is why the field exists.
+         */
+        @Test
+        fun `ownership is independent of the declared shape`() {
+            assertEquals(
+                BodyExecutionPolicy.Sequential,
+                registry.get(PluginStepId("core.catchError"))?.bodyExecutionPolicy,
+            )
+            assertEquals(
+                BodyExecutionPolicy.Retrying(RetryPolicy()),
+                registry.get(PluginStepId("core.retry"))?.bodyExecutionPolicy,
+            )
+            assertEquals(
+                BodyExecutionOwner.CANONICAL_ENGINE,
+                registry.get(PluginStepId("core.retry"))?.bodyExecutionOwner,
+            )
+            assertEquals(
+                BodyExecutionOwner.CANONICAL_ENGINE,
+                StepDescriptor(stepId = "example.bare", name = "bare", configRef = "").bodyExecutionOwner,
+                "The default owner is the target state: a new body Step is canonical unless it says otherwise",
+            )
+        }
+
+        @Test
+        fun `a terminal Step owns no body regardless of its owner declaration`() {
+            val terminal = StepDescriptor(
+                stepId = "example.terminal",
+                name = "terminal",
+                configRef = "",
+                bodyExecutionOwner = BodyExecutionOwner.CANONICAL_ENGINE,
+            )
+
+            assertTrue(!terminal.takesBody, "The fixture must be terminal for this law to mean anything")
+            assertTrue(
+                registry.bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE)
+                    .none { key -> registry.get(key)?.takesBody != true },
+                "A terminal Step must never appear in the body set",
+            )
+        }
+
+        /**
+         * The descriptor-table resolver is the authority for the core block families, which
+         * have no registered handler. Its laws are the same as the registry port's: fail closed.
+         */
+        @Test
+        fun `the descriptor resolver rejects unknown families and resolves declared ones`() {
+            val resolver = registry.bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING)
+
+            assertInstanceOf(
+                BodyPolicyResolution.Resolved::class.java,
+                resolver.resolve(PluginStepId("core.retry")),
+            )
+            assertInstanceOf(
+                BodyPolicyResolution.Rejected::class.java,
+                resolver.resolve(PluginStepId("example.unregistered.body")),
+                "An unknown family must never resolve to a default shape",
+            )
+        }
+
+        @Test
+        fun `an engine without the retrying shape rejects a retrying declaration`() {
+            val result = registry
+                .bodyPolicyResolver(BodyExecutionSupport.SEQUENTIAL_ONLY)
+                .resolve(PluginStepId("core.retry"))
+
+            assertInstanceOf(BodyPolicyResolution.Rejected::class.java, result)
+            assertInstanceOf(
+                BodyPolicyRejection.UnsupportedByEngine::class.java,
+                (result as BodyPolicyResolution.Rejected).reason,
+                "A retrying declaration is rejected by an engine that only runs sequential bodies",
             )
         }
     }

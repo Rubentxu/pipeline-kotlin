@@ -810,3 +810,62 @@ python3 docs/v2/07-uat/evidence/b10-w1b/verify-b10-w1b-receipt.py --controls # 1
 W1c — burn the W1a ledger: route the coordinator's scoped/retrying bodies through
 `BodyPolicyResolver` (widening `BodyExecutionSupport`), add the missing descriptor rows for
 `core.timestamps`/`core.parallel`, and lower the pinned total and the ceiling in the same commit.
+
+---
+
+## LFC-2E1 / B10 W1c — body execution policy routing (2026-09-13, base `bd82e1eb`)
+
+Receipt: `docs/v2/07-uat/B10_W1C_BODY_EXECUTION_ROUTING_RECEIPT.md`
+Verifier: `docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py`
+Evidence: `docs/v2/07-uat/evidence/b10-w1c/raw/xml/{module-suites,base-failing-classes}-xml.tar.gz`
+(collected by `build-evidence-archives.sh`; head suite XML from the round gate, base XML from
+`../pipeline-w1c-base` detached at the slice parent).
+
+### What landed
+- `pipeline-domain`: `BodyExecutionOwner { CANONICAL_ENGINE, LEGACY_LINEAR }`;
+  `StepDescriptor.bodyExecutionOwner` (default canonical); `StepDescriptorRegistry.bodyStepIds(owner)`
+  / `.bodyPolicyResolver(support)` / `.bodyPolicy(key, support)`; `BodyExecutionSupport`
+  `SCOPED_SEQUENTIAL_RETRYING`; `core.timestamps` row added (`Scoped(Timestamps)`, no context kind);
+  `core.catchError`/`core.warnError` declare `LEGACY_LINEAR`.
+- `pipeline-application`: `canonicalBodyStepIds` now derived from declared ownership;
+  `projectShellScope(pluginStepId.value)` replaced by `projectBodyExecution(policy)` +
+  `projectScopedBody(projection)` with a sealed `BodyExecutionProjection`
+  (`Scope`/`CredentialLifecycle`/`InvalidInput`/`Unimplemented`); credential lifecycle routed by
+  policy; malformed payloads become typed `SCHEMA` failures, not thrown control flow.
+- `pipeline-architecture-tests`: pinned ledger **18 → 4** (`HISTORICAL_CEILING` left at 18 —
+  provenance, and lowering it is a pending user decision); W1b firewall law inverted; guard control
+  fixtures updated for the retired sites.
+
+### Baselines after W1c (result truth = JUnit XML)
+- `:pipeline-domain:test` = **395 / 0 / 0** (W1b: 388/0/0; +7 = ownership laws).
+- `:pipeline-architecture-tests:test` = **262 / 1 / 0**; the 1 red is still
+  `Lfc0GlobalStateFitnessTest`, confirmed red at the slice parent too (13 s filtered run).
+- `:pipeline-application:test` = **1392 / 36 / 0**, 14 red classes. Base-vs-head, name for name:
+  identical. `CanonicalDurableRunCoordinatorTest` is **26 / 11** at base and at W1c.
+- W1a pinned debt = **4** (`{core.parallel, core.retry}`, no body ids, `DISPATCH_WITH_CREDENTIALS_BLOCK`,
+  switches 0); ceiling 18 untouched.
+
+### Run it
+```bash
+./v2/gradlew -p v2 :pipeline-domain:test --tests 'BodyExecutionPolicyTest*'
+./v2/gradlew -p v2 :pipeline-architecture-tests:test --tests 'Lfc2*Body*'
+python3 docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py
+python3 docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py --controls
+```
+
+### Lessons recorded by this slice
+- The W1a scanner scans **prose** too: a comment saying "the deleted `projectShellScope(` fails
+  closed" re-arms the site detector. Rephrase, do not annotate.
+- The W1b note ("lower the ceiling with the total") conflicts with the provenance rule. The ledger
+  is living state and must fall; the ceiling records the measured high-water mark and stays. Record
+  the divergence explicitly instead of quietly picking one.
+- A comment-only edit to production or test source still invalidates the collected XML (compiled
+  debug info changes). Budget for a re-run rather than reusing the pre-edit run.
+- `nohup gradle &` inside a backgrounded tool call makes the tool report success immediately: the
+  Gradle log, not the wrapper status, is the completion oracle.
+- Full `:pipeline-application:test` is ~18 min wall clock with a cold Kotlin daemon; the L5
+  `check` remains the only full round gate.
+
+### Next
+W1d candidates: burn `dispatchWithCredentialsBlock` (the last genuine routing site), or the PAR-D
+stage aggregate's `core.parallel` row (needs a stage-level declaration, not a body one).

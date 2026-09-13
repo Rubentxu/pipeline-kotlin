@@ -140,22 +140,31 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
             )
         }
 
-        /** A second step-id switch in the real source is rejected. */
+        /** Any added step-identity switch in the real source is rejected. */
         @Test
-        fun `real coordinator with a second step id switch is rejected`() {
+        fun `real coordinator with an added step id switch is rejected`() {
             val mutated = coordinatorText() +
                 "\nprivate fun injected(otherStepId: String) = when (otherStepId.value) { else -> 0 }\n"
 
-            assertDeclares(violationsFor(mutated), ConcreteRoutingDebtItem.StepIdSwitch(2))
+            assertDeclares(
+                violationsFor(mutated),
+                ConcreteRoutingDebtItem.StepIdSwitch(baseline.stepIdSwitches + 1),
+            )
         }
 
-        /** A new body step id added to the allowlist is rejected. */
+        /**
+         * W1c made canonical body eligibility registry-derived. Re-introducing a hard-coded
+         * body allowlist is therefore the regression this fixture pins, and it must be
+         * reported twice: as a re-appeared routing site and as unnamed body Step ids.
+         */
         @Test
-        fun `widening the body step allowlist is rejected`() {
+        fun `re-introducing a hard-coded body allowlist is rejected`() {
             val mutated = coordinatorText()
-                .replace("\"core.withEnv\",", "\"core.withEnv\",\n    \"core.echo\",")
+                .plus("\nprivate val canonicalBodyStepIds: Set<String> = setOf(\"core.echo\")\n")
 
-            assertDeclares(violationsFor(mutated), ConcreteRoutingDebtItem.BodyStepId("core.echo"))
+            val found = violationsFor(mutated)
+            assertDeclares(found, ConcreteRoutingDebtItem.BodyStepId("core.echo"))
+            assertDeclares(found, ConcreteRoutingDebtItem.RoutingSite(BodyRoutingSite.CANONICAL_BODY_STEP_IDS))
         }
 
         /** Removing a site must drag the ledger down with it, not silently reduce the debt. */
@@ -164,7 +173,7 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
             // Rename EVERY occurrence: the detector keys on the identifier appearing anywhere
             // in the file (declaration, call, comment), so renaming only the declaration leaves
             // the site detectable and the fixture would pass for the wrong reason.
-            val mutated = coordinatorText().replace("projectShellScope", "removedScope")
+            val mutated = coordinatorText().replace("dispatchWithCredentialsBlock", "removedCredentialsDispatch")
 
             val found = violationsFor(mutated)
             assertTrue(
@@ -173,17 +182,42 @@ class Lfc2ConcreteBodyRoutingDebtFitnessTest {
             )
         }
 
-        /** Raising the pinned ledger is the one edit that must never pass. */
+        /**
+         * Since W1c the ledger (4) sits far below the high-water mark (18), so a ledger
+         * padded with an item the coordinator does not contain is caught by the total
+         * comparison rather than by the ceiling.
+         */
         @Test
-        fun `raising the pinned ledger beyond the ceiling is rejected`() {
-            val raised = pinned.copy(
+        fun `a pinned ledger padded with a phantom item is rejected`() {
+            val padded = pinned.copy(
                 concreteStepNames = pinned.concreteStepNames + "core.echo",
             )
-            val verdict = ConcreteBodyRoutingVerdict.decide(baseline, pinned = raised)
+            val verdict = ConcreteBodyRoutingVerdict.decide(baseline, pinned = padded)
 
             assertTrue(
                 verdict is RoutingDebtVerdict.DebtMustBeAddressed,
-                "A raised ledger must be rejected, got $verdict",
+                "A ledger that does not describe the measured source must be rejected, got $verdict",
+            )
+            assertTrue(
+                (verdict as RoutingDebtVerdict.DebtMustBeAddressed).violations.any {
+                    it is RoutingDebtViolation.LedgerOutOfSync
+                },
+                "Expected LedgerOutOfSync; violations were ${verdict.violations}",
+            )
+        }
+
+        /** The burn-down ceiling is absolute: no ledger may be pinned above the high-water mark. */
+        @Test
+        fun `a pinned ledger above the historical ceiling is rejected`() {
+            val inflated = pinned.copy(
+                concreteStepNames = pinned.concreteStepNames +
+                    (1..PinnedConcreteBodyRoutingDebt.HISTORICAL_CEILING).map { "core.injected$it" }.toSet(),
+            )
+            val verdict = ConcreteBodyRoutingVerdict.decide(baseline, pinned = inflated)
+
+            assertTrue(
+                verdict is RoutingDebtVerdict.DebtMustBeAddressed,
+                "A ledger above the high-water mark must be rejected, got $verdict",
             )
             assertTrue(
                 (verdict as RoutingDebtVerdict.DebtMustBeAddressed).violations.any {

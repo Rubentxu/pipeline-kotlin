@@ -1,0 +1,53 @@
+[
+  {
+    "eventId": "40c1a86e-a6fe-4d12-ab83-017c0b54c38e",
+    "runId": "c75eced1-0e90-42a4-a009-b5e52e952dbd",
+    "sequence": 14,
+    "kind": "StepStarted",
+    "occurredAt": "2026-09-13T11:34:19.319311536Z",
+    "stageIndex": 1,
+    "stepIndex": 1,
+    "stepName": "build/archiveartifacts-0",
+    "stepType": "archiveArtifacts"
+  },
+  {
+    "eventId": "d33c8e7b-42cf-43c6-bae4-d3d2c7b88131",
+    "runId": "c75eced1-0e90-42a4-a009-b5e52e952dbd",
+    "sequence": 15,
+    "kind": "ArtifactArchiveFailed",
+    "occurredAt": "2026-09-13T11:34:19.323264466Z",
+    "reason": "No files matched glob pattern 'build/libs/*.jar' and allowEmptyArchive is false"
+  },
+  {
+    "eventId": "4288ae2d-43a5-4e40-a3c0-307c084da0d0",
+    "runId": "c75eced1-0e90-42a4-a009-b5e52e952dbd",
+    "sequence": 16,
+    "kind": "StepFailed",
+    "occurredAt": "2026-09-13T11:34:19.326914480Z",
+    "stepIndex": 1,
+    "stepName": "build/archiveartifacts-0",
+    "stepType": "archiveArtifacts",
+    "failureKind": "SCRIPT",
+    "message": "archiveArtifacts: no files matched 'build/libs/*.jar'"
+  },
+  {
+    "eventId": "983d139c-6e61-4df2-87f9-09ee02e2f1d8",
+    "runId": "c75eced1-0e90-42a4-a009-b5e52e952dbd",
+    "sequence": 17,
+    "kind": "StepFinished",
+    "occurredAt": "2026-09-13T11:34:19.327684889Z",
+    "stageIndex": 1,
+    "stepIndex": 1,
+    "stepName": "build/archiveartifacts-0",
+    "stepType": "archiveArtifacts"
+  },
+  {
+    "eventId": "935af52a-544a-4ed6-9567-4ad0316b624a",
+    "runId": "c75eced1-0e90-42a4-a009-b5e52e952dbd",
+    "sequence": 18,
+    "kind": "RunFinished",
+    "occurredAt": "2026-09-13T11:34:19.329538448Z",
+    "outcome": "failure",
+    "diagnostics": []
+  }
+]

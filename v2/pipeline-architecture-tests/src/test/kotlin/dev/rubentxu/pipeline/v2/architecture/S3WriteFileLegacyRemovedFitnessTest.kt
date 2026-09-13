@@ -50,6 +50,6 @@ class S3WriteFileLegacyRemovedFitnessTest {
 
     @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
         // Single shared authority: ONE place to flip 6 -> 5 at the next G4/G5.
-        LegacyResidualSnapshot.assertCurrentState(root)
+        LegacyResidualSnapshot.assertConverged(root)
     }
 }

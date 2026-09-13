@@ -77,7 +77,7 @@ class A3DurableProjectionCharacterizationTest {
         val legacyExecutor = CanonicalInvocationExecutor { _, _ -> StepOutcome.Success }
         val boundary: CommonExecutionBoundary = LegacyExecutionAdapter.adapt(legacyExecutor)
         val preparedLegacy = PreparedLegacyExecution(
-            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.CleanWs(),
+            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts"),
         )
         val result = boundary.execute(preparedLegacy, ctx)
         assertEquals(StepOutcome.Success, result.outcome)

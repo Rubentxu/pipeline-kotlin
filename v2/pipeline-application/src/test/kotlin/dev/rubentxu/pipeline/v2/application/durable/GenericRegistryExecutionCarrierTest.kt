@@ -275,7 +275,7 @@ class GenericRegistryExecutionCarrierTest {
         // The boundary throws on legacy-family prepared, as the docstring states.
         val legacyOutcome = runCatching {
             boundary.execute(
-                PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.CleanWs()),
+                PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")),
                 ctx,
             )
         }

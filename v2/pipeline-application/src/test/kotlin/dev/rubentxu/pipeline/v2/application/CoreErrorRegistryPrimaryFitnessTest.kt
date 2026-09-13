@@ -198,6 +198,24 @@ class CoreErrorRegistryPrimaryFitnessTest {
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
+    // S2-A10 / G5 (2026-09-13): core.cleanWs legacy forms physically removed (LEGACY_REMOVED).
+    // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
+    // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Test
+    fun `LEGACY_PLUGIN_IDS post-S2-A10-G5 — 3 residual legacy keys remain after LEGACY_REMOVED`() {
+        val expected = setOf(
+            "core.load",
+            "core.waitUntil",
+            "core.archiveArtifacts",
+        )
+        assertEquals(
+            expected,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS MUST be exactly the 3 residual legacy keys post-S2-A10/G5 (LEGACY_REMOVED closed)",
+        )
+        assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
     @Test
     fun `G5 flip -- StructuralFamilyResolver classifies core error as Registry (not LegacyCore)`() {
         val registry = factoryRegistry()

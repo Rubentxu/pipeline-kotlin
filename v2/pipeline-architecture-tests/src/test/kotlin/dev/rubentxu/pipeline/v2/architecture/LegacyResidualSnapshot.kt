@@ -64,7 +64,6 @@ object LegacyResidualSnapshot {
      * ONE line to change per G5.
      */
     private val physicalResidual: Set<String> = setOf(
-        "core.cleanWs",
         "core.load", "core.waitUntil", "core.archiveArtifacts",
     )
     // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
@@ -74,6 +73,11 @@ object LegacyResidualSnapshot {
     // file, CanonicalNodeDispatcher Milestone seams all deleted). Counter converges
     // 4/5/5 -> 4/4/4 (registry-primary pending removed; metadata + dispatcher physical
     // forms removed too).
+    // S2-A10 / G5 (2026-09-13): "core.cleanWs" removed from the physical residual
+    // (CleanWs subtype, CLEAN_WS_PLUGIN_ID decoder branch + constant, metadata row,
+    // CanonicalCleanWsNodeDispatcher.kt file, CanonicalNodeDispatcher cleanWs seams all
+    // deleted). Counter converges 3/4/4 -> 3/3/3 (registry-primary pending removed;
+    // metadata + dispatcher physical forms removed too).
 
     /**
      * The key that has REGISTRY_PRIMARY-flipped (G4) but is NOT yet physically
@@ -88,7 +92,10 @@ object LegacyResidualSnapshot {
     // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY.
     // Legacy decoder branch / dispatcher file / metadata row remain physically
     // present (UNREACHABLE in production) until S2-A10 / G5 closes this lane.
-    private val registryPrimaryPendingRemoval: String? = "core.cleanWs"
+    // S2-A10 / G5 (2026-09-13): registryPrimaryPendingRemoval back to null (LEGACY_REMOVED
+    // closed). core.cleanWs physical forms are gone; only the 3 residual legacy keys
+    // (core.load, core.waitUntil, core.archiveArtifacts) remain for their own G4/G5 lanes.
+    private val registryPrimaryPendingRemoval: String? = null
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

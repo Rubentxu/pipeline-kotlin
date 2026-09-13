@@ -121,6 +121,12 @@ sealed interface CanonicalCoreStepCommand {
             //   - CanonicalCoreStepMetadata["core.cleanWs"] row
             // Until G5 the legacy dispatcher is unreachable in production but still
             // type-loadable. Counter converges 4/4/4 -> 3/4/4 (ids only).
+            // S2-A10 / G5 (2026-09-13): physical removal of legacy forms (LEGACY_REMOVED).
+            // CleanWs subtype, CLEAN_WS_PLUGIN_ID constant + decoder branch,
+            // CanonicalCoreStepMetadata["core.cleanWs"] row, CanonicalCleanWsNodeDispatcher.kt,
+            // and the CanonicalNodeDispatcher cleanWs seams (field, when branch, cleanWsContext)
+            // are all removed in this slice. Production routing is exclusively
+            // CoreCleanWsStep.definition via the registry. Counter converges 3/4/4 -> 3/3/3.
             "core.load",
             "core.waitUntil",
             "core.archiveArtifacts",
@@ -157,16 +163,13 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-05: cleanWs step — cleans workspace with optional Ant-style glob filtering.
-     * @param deleteDirs If true, delete all subdirectories too
-     * @param patterns Additional glob patterns to delete
+     * T-05: cleanWs step — DELETED at S2-A10 / G5 (2026-09-13, LEGACY_REMOVED).
+     * Production authority is exclusively the registry (CoreCleanWsStep.definition
+     * via RegistryStepMetadataResolver). Legacy forms removed in this
+     * slice: CleanWs subtype, CLEAN_WS_PLUGIN_ID + decoder branch,
+     * CanonicalCoreStepMetadata["core.cleanWs"] row, CanonicalCleanWsNodeDispatcher.kt,
+     * and the CanonicalNodeDispatcher cleanWs seams (field, when branch, cleanWsContext()).
      */
-    data class CleanWs(
-        val deleteDirs: Boolean = true,
-        val patterns: List<String> = emptyList(),
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.cleanWs"
-    }
 
     /**
      * T-05: load step — reads and evaluates a pipeline script file in the workspace.
@@ -223,7 +226,10 @@ object CanonicalCoreStepDecoder {
     // S2-A9 / G5: MILESTONE_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED). The raw
     // core.milestone envelope is consumed structurally (pre-decode) and executively by
     // CoreMilestoneStep via the registry — never here.
-    private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
+    // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
+    // The raw core.cleanWs envelope is consumed structurally (WsCleaned event, pre-decode)
+    // and executively by CoreCleanWsStep via the registry — never here. The DSL `cleanWs(...)`
+    // lowers directly to StepSpec.RegistryStepSpec (S2-A10 / G5).
     private const val LOAD_PLUGIN_ID = "core.load"
     // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
@@ -243,22 +249,9 @@ object CanonicalCoreStepDecoder {
             // core.milestone envelope is consumed structurally and executively by
             // CoreMilestoneStep via the registry — never here.
             // S2-A7 / G5 (2026-09-12): DELETE_DIR_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
-            CLEAN_WS_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "cleanWs") {
-                    "Payload kind must be 'cleanWs' for '${node.id.value}'"
-                }
-                val deleteDirs = payload["deleteDirs"]?.jsonPrimitive?.booleanOrNull ?: true
-                val patternsRaw = payload["patterns"]
-                val patterns = if (patternsRaw != null) {
-                    patternsRaw.jsonArray.map { it.jsonPrimitive.contentOrNull ?: "" }
-                } else {
-                    emptyList()
-                }
-                CanonicalCoreStepCommand.CleanWs(
-                    deleteDirs = deleteDirs,
-                    patterns = patterns,
-                )
-            }
+            // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
+            // The raw core.cleanWs envelope is consumed structurally (WsCleaned event,
+            // pre-decode) and executively by CoreCleanWsStep via the registry — never here.
             LOAD_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "load") {
                     "Payload kind must be 'load' for '${node.id.value}'"

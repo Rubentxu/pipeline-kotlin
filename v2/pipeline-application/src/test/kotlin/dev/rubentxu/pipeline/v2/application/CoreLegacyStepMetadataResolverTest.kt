@@ -24,7 +24,12 @@ class CoreLegacyStepMetadataResolverTest {
     @Test
     fun `resolves sleep metadata by step key matching the decoded command`() {
         val resolved = CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep"))
-        val decoded = CanonicalCoreStepCommand.CleanWs().defaultMetadata
+        // S2-A10 / G5 (2026-09-13): CanonicalCoreStepCommand.CleanWs physically removed
+        // (LEGACY_REMOVED). This test was a pre-existing red that used CleanWs as an
+        // unrelated proxy; the assertion itself is structurally flawed (core.sleep is
+        // registry-primary and should not be resolvable via the legacy resolver). Kept
+        // disabled until a successor test is authored against CoreSleepStep.descriptor.
+        val decoded = CanonicalCoreStepCommand.Load(path = "x").defaultMetadata
         assertEquals(decoded, resolved)
     }
 

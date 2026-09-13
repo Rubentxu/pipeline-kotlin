@@ -66,7 +66,10 @@ class ExecutionBoundaryFactoryTest {
     private fun dispatcher(): CanonicalNodeDispatcher = CanonicalNodeDispatcher()
 
     private fun legacyPrepared(): PreparedLegacyExecution =
-        PreparedLegacyExecution(CanonicalCoreStepCommand.CleanWs())
+        // S2-A10 / G5 (2026-09-13): core.cleanWs physically removed (LEGACY_REMOVED). This
+        // helper prepares ANY legacy subtype to exercise the legacy execution seam; using
+        // core.load (the simplest remaining legacy subtype) as a representative fixture.
+        PreparedLegacyExecution(CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts"))
 
     private fun registryPrepared(): PreparedRegistryExecution = PreparedRegistryExecution(
         key = CoreEchoStep.KEY,

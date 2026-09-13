@@ -22,7 +22,9 @@ object CanonicalCoreStepMetadata {
         // now read exclusively from CoreMilestoneStep.descriptor via RegistryStepMetadataResolver.
         // S2-A7 / G5 (2026-09-12): "core.deleteDir" row removed (LEGACY_REMOVED).
         // Production metadata is CoreDeleteDirStep.descriptor via RegistryStepMetadataResolver.
-        "core.cleanWs" to StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED),
+        // S2-A10 / G5 (2026-09-13): "core.cleanWs" row removed (LEGACY_REMOVED). Production
+        // metadata is CoreCleanWsStep.descriptor via RegistryStepMetadataResolver.
+        // S2-A10 / G5 metadata counter converges 4/4/4 -> 3/3/3.
         "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
         // S2-A6 / G5: "core.pwd" row removed (LEGACY_REMOVED). Production metadata is now
         // read exclusively from CorePwdStep.descriptor via RegistryStepMetadataResolver.

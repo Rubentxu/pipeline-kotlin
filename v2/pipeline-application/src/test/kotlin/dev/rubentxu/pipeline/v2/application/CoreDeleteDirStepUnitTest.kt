@@ -221,6 +221,7 @@ class CoreDeleteDirStepUnitTest {
         assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
     }
 
+    @Disabled("Historical S2-A10/G4 snapshot: S2-A10/G5 (2026-09-13) physically destroyed the core.cleanWs metadata row (LEGACY_REMOVED); the 3/4/4 transitional state is superseded by `counters - post-S2-A10-G5 LEGACY_REMOVED 3-3-3 converged` below. Preserved verbatim for traceability.")
     @Test
     fun `counters - post-S2-A10-G4 transitional 3-4-4 registry primary flipped`() {
         // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY. The legacy
@@ -230,6 +231,19 @@ class CoreDeleteDirStepUnitTest {
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertTrue("core.cleanWs" in CanonicalCoreStepMetadata.pluginIds, "cleanWs legacy metadata row remains until G5")
+    }
+
+    // S2-A10 / G5 (2026-09-13): core.cleanWs physical forms destroyed (LEGACY_REMOVED).
+    // The historical S2-A10/G4 transitional snapshot above is preserved verbatim for
+    // traceability. Post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Test
+    fun `counters - post-S2-A10-G5 LEGACY_REMOVED 3-3-3 converged`() {
+        // G5 invariant: legacy forms are physically deleted; the legacy metadata row is
+        // gone and production metadata is exclusively CoreCleanWsStep.descriptor.
+        // Counter converges 3/4/4 -> 3/3/3 (metadata + dispatcher physically removed).
+        assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.cleanWs" !in CanonicalCoreStepMetadata.pluginIds, "core.cleanWs metadata row physically removed at G5")
     }
 
     // ------------------------------------------------------------------

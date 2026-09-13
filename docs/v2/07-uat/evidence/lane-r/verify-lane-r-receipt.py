@@ -23,6 +23,7 @@ import hashlib
 import os
 import re
 import sys
+import tarfile
 import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -158,6 +159,98 @@ r2 = os.path.join(xml_dir, "TEST-dev.rubentxu.pipeline.v2.application.UppercaseS
 check(counts(r2) == (14, 0, 0), f"R2 clean-room suite is {counts(r2)}, expected (14, 0, 0)")
 
 # --------------------------------------------------------------------------
+# 2b. Whole-module suites: re-derive the totals from the archived tarball.
+#     The receipt's 4b table is not trusted as written; it is recomputed, and
+#     the claim "the only failures are pre-existing" is checked by re-reading
+#     the base XML for exactly those failing classes.
+# --------------------------------------------------------------------------
+
+MODULE_XML = os.path.join(xml_dir, "module-suites")
+TARBALL = os.path.join(MODULE_XML, "head-module-suites-xml.tar.gz")
+BASE_MODULES = os.path.join(MODULE_XML, "base-module-suites")
+
+EXPECTED_TOTALS = {
+    "pipeline-scripting-api": (39, 1, 0),
+    "pipeline-events": (123, 0, 0),
+    "pipeline-architecture-tests": (241, 1, 0),
+}
+EXPECTED_FAILING = {
+    "pipeline-scripting-api": ["PipelineDslSealedHierarchyTest"],
+    "pipeline-events": [],
+    "pipeline-architecture-tests": ["Lfc0GlobalStateFitnessTest"],
+}
+# class -> (tests, failures, errors) in the base worktree
+EXPECTED_BASE = {
+    "dev.rubentxu.pipeline.v2.dsl.PipelineDslSealedHierarchyTest": (1, 1, 0),
+    "dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest": (2, 1, 0),
+}
+
+
+def strip_worktree(message: str) -> str:
+    """Failure messages embed the checkout path; normalise it away."""
+    return re.sub(r"/[^ \"]*?/v2/", "v2/", message)
+
+
+def failure_messages(path: str) -> list[str]:
+    return [f.get("message") or "" for f in ET.parse(path).getroot().iter("failure")]
+
+
+check(os.path.isfile(TARBALL), "module-suite tarball missing")
+
+totals: dict[str, tuple[int, int, int, list[str]]] = {}
+head_messages: dict[str, list[str]] = {}
+head_by_basename: dict[str, str] = {}
+
+with tarfile.open(TARBALL) as tar:
+    for member in tar.getmembers():
+        if not member.name.endswith(".xml"):
+            continue
+        module = member.name.split("/")[0]
+        basename = os.path.basename(member.name)
+        payload = tar.extractfile(member).read()
+        root = ET.fromstring(payload)
+        t = int(root.get("tests"))
+        f = int(root.get("failures"))
+        e = int(root.get("errors"))
+        seen_t, seen_f, seen_e, bad = totals.get(module, (0, 0, 0, []))
+        bad = list(bad)
+        if f + e:
+            bad.append(basename[5:-4].split(".")[-1])
+        totals[module] = (seen_t + t, seen_f + f, seen_e + e, bad)
+        head_by_basename[basename] = member.name
+        head_messages[basename] = [m.get("message") or "" for m in root.iter("failure")]
+
+for module, expected in EXPECTED_TOTALS.items():
+    got = totals.get(module)
+    check(got is not None, f"{module}: absent from the archived module-suite XML")
+    if got is not None:
+        check(got[:3] == expected, f"{module}: totals {got[:3]} != {expected}")
+
+for module, expected in EXPECTED_FAILING.items():
+    got = totals.get(module)
+    if got is not None:
+        check(
+            sorted(got[3]) == sorted(expected),
+            f"{module}: failing classes {sorted(got[3])} != {sorted(expected)}",
+        )
+
+# The claim is not "these classes fail" but "they fail the same way at base".
+# Compare counts AND the normalised assertion text, head against base.
+for cls, expected in EXPECTED_BASE.items():
+    basename = f"TEST-{cls}.xml"
+    base_path = os.path.join(BASE_MODULES, basename)
+    check(os.path.isfile(base_path), f"base module-suite XML missing for {cls}")
+    check(basename in head_by_basename, f"{cls} absent from the head module-suite tarball")
+    if os.path.isfile(base_path) and basename in head_by_basename:
+        check(counts(base_path) == expected, f"base {cls.rsplit('.', 1)[-1]} is {counts(base_path)}, expected {expected}")
+        base_msgs = [strip_worktree(m) for m in failure_messages(base_path)]
+        head_msgs = [strip_worktree(m) for m in head_messages[basename]]
+        check(
+            base_msgs == head_msgs,
+            f"{cls.rsplit('.', 1)[-1]}: failure text differs between base and head",
+        )
+
+# --------------------------------------------------------------------------
 # 3. Resolve every sha256 citation in the receipt
 # --------------------------------------------------------------------------
 
@@ -193,4 +286,5 @@ if failures:
 
 print("OK: no absolute checkout paths, no committed SDK snapshots, plugin wired to live SDK")
 print("OK: archived XML reproduce the base-vs-head table and the R2 result")
+print("OK: module-suite tarball re-derives the 4b totals and the pre-existing failures")
 print("OK: every cited sha256 resolves to an archived file")

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest" tests="2" skipped="0" failures="1" errors="0" timestamp="2026-09-13T16:45:25.524Z" hostname="bazzite-rubentxu" time="0.336">
+  <properties/>
+  <testcase name="production code does not retain the removed credentials debug directory()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest" time="0.198"/>
+  <testcase name="production code does not access the controller user directory property()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest" time="0.135">
+    <failure message="org.opentest4j.AssertionFailedError: Forbidden production global-state access: [Finding(file=/var/home/rubentxu/Proyectos/kotlin/pipeline-laneR-baseline/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Capabilities.kt, line=76, token=System.getProperty(&quot;user.dir&quot;, excerpt=* reading `System.getProperty(&quot;user.dir&quot;)` or `Paths.get(&quot;.&quot;)` directly.)] ==&gt; expected: &lt;true&gt; but was: &lt;false&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: Forbidden production global-state access: [Finding(file=/var/home/rubentxu/Proyectos/kotlin/pipeline-laneR-baseline/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Capabilities.kt, line=76, token=System.getProperty(&quot;user.dir&quot;, excerpt=* reading `System.getProperty(&quot;user.dir&quot;)` or `Paths.get(&quot;.&quot;)` directly.)] ==&gt; expected: &lt;true&gt; but was: &lt;false&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+	at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+	at app//dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest.assertNoProductionOccurrences(Lfc0GlobalStateFitnessTest.kt:44)
+	at app//dev.rubentxu.pipeline.v2.architecture.Lfc0GlobalStateFitnessTest.production code does not access the controller user directory property(Lfc0GlobalStateFitnessTest.kt:18)
+	at java.base@21.0.8/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -3,6 +3,8 @@
 > code-under-test: `370a2350`
 > branch: `cycle/build-example-plugin-reproducibility`
 > base: `2b391e76` (= `origin/main` after the G8 certification PR #45 landed)
+> evidence: PR #46 — this file is carried by the evidence commit, whose SHA the PR
+>           body records; the two identities are deliberately not the same commit
 
 ## 1. Why this lane exists
 
@@ -224,6 +226,51 @@ assertions have been evaluated against their own worktree.
 `UatLocal005CorpusUntouchedTest`'s own comment already names the addition
 (`S2-A6/G3R added 20-pwd-tmp`) without updating the count.
 
+### 4b. Whole-module evidence for the modules this lane touches
+
+The seven classes above were chosen because this lane edits them. The whole-module runs
+below were executed at `ed4a6d6b`, which is `370a2350` plus this receipt's first
+docs-only commit, so the code under test is byte-identical to `370a2350`. This lane also
+changes a **production** file (`ScriptDefinition` in `pipeline-scripting-api`) and two
+build files, so the affected module suites were run whole rather than by class. Raw
+head XML for all three modules is archived as a single tarball
+(`raw/xml/module-suites/head-module-suites-xml.tar.gz`, 82 files); the verifier opens
+it and re-derives these totals.
+
+```text
+module                        tests  skipped  failed  errors   failing class
+pipeline-scripting-api           39        0       1       0   PipelineDslSealedHierarchyTest
+pipeline-events                 123        0       0       0   (none)
+pipeline-architecture-tests     241        0       1       0   Lfc0GlobalStateFitnessTest
+```
+
+Both failures are pre-existing. The two failing classes were executed at base as well,
+and the archived base XML
+(`raw/xml/module-suites/base-module-suites/`) carry the same counts:
+
+```text
+class                                    base       head
+PipelineDslSealedHierarchyTest           1/1/0      1/1/0     (run whole: 39/1)
+Lfc0GlobalStateFitnessTest               2/1/0      2/1/0     (run whole: 241/1)
+```
+
+The argument closes without a whole-suite base run: the head failure set of a module is
+compared against base, and a module whose *only* failures are base-identical has no new
+regression. A class that failed at base and passes at head would be an improvement, not
+a regression, and is not claimed here either way.
+
+Neither failure is reachable from this lane:
+
+- `PipelineDslSealedHierarchyTest` asserts the `StepSpec` sealed hierarchy has exactly
+  28 variants and finds 29, naming `ArchiveArtifacts`. That step landed in E1. The class
+  is untouched by this lane and the message is byte-identical at base and head.
+- `Lfc0GlobalStateFitnessTest` reports `Capabilities.kt:76
+  System.getProperty("user.dir")`. `Capabilities.kt` is **not modified by this lane**
+  (`git diff 2b391e76 -- …/application/Capabilities.kt` is empty), the token is at the
+  same line in base, and line 76 is KDoc prose describing what handlers must *not* do.
+  The fitness scanner matches the comment. That is a defect in the scanner, not in the
+  code it reports, and it is out of scope here.
+
 ## 5. Out of scope
 
 - The two pre-existing failures above are **not** fixed here. They are corpus
@@ -260,3 +307,45 @@ dependency cache (that requires network access and is not what R6 tests). It cla
 that no git-carried state — committed jars, inherited build outputs, or absolute
 paths into a specific checkout — is required for `:pipeline-application` to compile
 and test from a clean checkout.
+
+## 8. Verifier controls
+
+`verify-lane-r-receipt.py` asserts properties, not string presence, so it is only worth
+something if mutating the thing it claims to protect makes it fail. Ten controls were
+run; each one was expected to fail the verifier for a *specific* reason, the reason was
+read, and the mutated artefact was then restored and re-hashed before the next control.
+The final run is green and the restored files are byte-identical to their originals.
+
+Against the repository assertions and the citation resolver:
+
+```text
+1   reintroducing an absolute path into a test source
+2   restoring a committed SDK snapshot under the plugin's libs directory
+3   relaxing the SNAPSHOT cache invalidation in the plugin build
+4   dropping the producer edge from the consuming module's test compile
+5   advancing one hex digit of a cited sha256
+6   mutating an archived XML so it no longer matches its base counterpart
+```
+
+Against the module-suite section:
+
+```text
+7   corrupting a module total inside the archived tarball
+8   editing a base XML so a failing class looks green
+9   rewriting the assertion text of a base failure while keeping its count
+10  removing a class from the archived tarball
+```
+
+Control 9 carries the most weight. Controls 7, 8 and 10 can all be caught by comparing
+counts, so a verifier that only compares counts still looks healthy. Control 9 mutates
+nothing but prose inside the failure message, keeps `tests/failures/errors` identical,
+and still has to be caught: the receipt says the failure is *the same failure* at base,
+not merely the same number of them. The comparison normalises the embedded checkout
+path, otherwise the head and base messages would differ for a reason that has nothing
+to do with the code.
+
+Controls 7 and 10 were run a second time. The first attempt rebuilt the tarball with a
+different member-name prefix, which made the verifier fail for the wrong reason — it
+could no longer attribute members to a module. A control that discriminates for an
+unintended reason proves nothing about the intended one, so both were re-run preserving
+member names and only then accepted.

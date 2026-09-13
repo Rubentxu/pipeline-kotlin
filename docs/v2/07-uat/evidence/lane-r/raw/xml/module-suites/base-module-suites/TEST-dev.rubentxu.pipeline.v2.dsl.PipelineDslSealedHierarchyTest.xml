@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="StepSpec sealed hierarchy tests" tests="1" skipped="0" failures="1" errors="0" timestamp="2026-09-13T16:41:35.091Z" hostname="bazzite-rubentxu" time="0.337">
+  <properties/>
+  <testcase name="sealed_hierarchy_is_exhaustive_with_28_kinds()" classname="dev.rubentxu.pipeline.v2.dsl.PipelineDslSealedHierarchyTest" time="0.337">
+    <failure message="org.opentest4j.AssertionFailedError: StepSpec sealed hierarchy must have exactly 28 variants. Found 29: AnsiColor, ArchiveArtifacts, CatchError, Checkout, CleanWs, DeleteDir, Dir, Echo, Error, FileExists, IsUnix, Load, Milestone, NodeNoOp, Parallel, Pwd, ReadFile, RegistryStepSpec, RetryBlock, Shell, Sleep, TimeoutBlock, Timestamps, Unstable, WaitUntil, WarnError, WithCredentialsBlock, WithEnv, WriteFile ==&gt; expected: &lt;28&gt; but was: &lt;29&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: StepSpec sealed hierarchy must have exactly 28 variants. Found 29: AnsiColor, ArchiveArtifacts, CatchError, Checkout, CleanWs, DeleteDir, Dir, Echo, Error, FileExists, IsUnix, Load, Milestone, NodeNoOp, Parallel, Pwd, ReadFile, RegistryStepSpec, RetryBlock, Shell, Sleep, TimeoutBlock, Timestamps, Unstable, WaitUntil, WarnError, WithCredentialsBlock, WithEnv, WriteFile ==&gt; expected: &lt;28&gt; but was: &lt;29&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at app//dev.rubentxu.pipeline.v2.dsl.PipelineDslSealedHierarchyTest.sealed_hierarchy_is_exhaustive_with_28_kinds(PipelineDslSealedHierarchyTest.kt:26)
+	at java.base@21.0.8/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-09-13T16:53:18.122Z" hostname="bazzite-rubentxu" time="0.014">
+  <properties/>
+  <testcase name="BodyOutcome is a closed algebra with distinct semantics()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.002"/>
+  <testcase name="handler re-enters through the port and folds typed outcomes()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.008"/>
+  <testcase name="BodyRef is deterministic for the same bodyPath()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.0"/>
+  <testcase name="branch and named refs derive distinct deterministic refs()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.0"/>
+  <testcase name="BodyRef rejects blank encoding()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.001"/>
+  <testcase name="AttemptSegment index must be positive()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.0"/>
+  <testcase name="capability key is the neutral bodyInvoker token()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.0"/>
+  <testcase name="BodyRef round-trips through serialization()" classname="dev.rubentxu.pipeline.v2.domain.step.BodyInvokerSeamTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

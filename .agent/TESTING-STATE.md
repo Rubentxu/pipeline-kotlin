@@ -752,3 +752,61 @@ must NOT do that. `Capabilities.kt` is untouched.
 ### Next
 W1b — typed body policy on the block Step contract, resolved by registry lookup (not by step
 name). Never add a `dispatch*Block` collection: route through `BodyInvoker.invoke`.
+
+## W1b 2026-09-13 — typed body execution policy on the Step contract (mechanism only)
+
+Base `5168a064` (= `origin/main` post PR #49). Slice commit: the commit that introduced
+`docs/v2/07-uat/B10_W1B_BODY_EXECUTION_POLICY_RECEIPT.md` (resolved by the verifier via
+`git log -1 -- <receipt>`; do not hard-code it, amending the slice would invalidate the copy).
+
+### What landed
+`v2/pipeline-domain/.../domain/step/BodyExecutionPolicy.kt` — closed ADT of execution **shapes**
+(`Sequential` / `Scoped(projection)` / `Retrying` / `Parallel`, `ParallelPolicy`), the projection
+ADT (`WorkingDirectory`/`Environment`/`Timestamps`/`Deadline`/`CredentialLease`), engine support
+(`BodyExecutionSupport` over `Set<BodyExecutionPolicyShape>`), and the closed rejection algebra
+(`UnknownStep`/`NotABodyStep`/`IncoherentMetadata`/`UnsupportedByEngine`) with
+`BodyPolicyResolution` as a two-case result. `StepDescriptor` gained
+`bodyExecutionPolicy = BodyExecutionPolicy.DEFAULT` (Sequential); `StepDescriptorRegistry` declares
+six rows. Resolution is a pure function of (declaration, engine support) reading
+`registry.definition(key)?.contract?.descriptor`, never a name table.
+
+**The coordinator is untouched.** W1b creates the mechanism; W1c migrates consumers. A fitness law
+fails on purpose if the coordinator starts resolving policies.
+
+### Baselines after W1b
+- `:pipeline-domain:test` = **388 / 0 / 0** (base 368, derived: +20 = `BodyExecutionPolicyTest`).
+- `:pipeline-architecture-tests:test` = **261 / 1** (base 252/1, W1a-measured; +9 = new laws).
+  The 1 red is still `Lfc0GlobalStateFitnessTest`, unchanged, byte-identical to the Lane R base.
+- W1a pinned debt = **18**, unchanged; `HISTORICAL_CEILING` 18, never raise.
+- Pre-existing `CanonicalDurableRunCoordinatorTest` 26/11 and `CompatibilityCorpusTest` 20/2: not
+  widened.
+
+### Declared gap (do not let it widen silently)
+`core.timestamps` and `core.parallel` are routed as bodies by the coordinator but have **no
+descriptor row at all**, so they cannot declare a policy. Asserted in both directions in the
+domain tests; W1c needs those rows before it can migrate them.
+
+### Run it
+```bash
+./v2/gradlew -p v2 --no-build-cache :pipeline-domain:test --tests 'BodyExecutionPolicyTest*'
+./v2/gradlew -p v2 --no-build-cache :pipeline-architecture-tests:test --tests 'Lfc2BodyExecutionPolicyFitnessTest*'
+python3 docs/v2/07-uat/evidence/b10-w1b/verify-b10-w1b-receipt.py            # 47/47
+python3 docs/v2/07-uat/evidence/b10-w1b/verify-b10-w1b-receipt.py --controls # 11/11 (~51 s)
+```
+
+### Lessons recorded by this slice
+- The build cache restores deleted output XMLs **with their original timestamps**, so a canary
+  check that only proves "the XML exists" is not a freshness check. Use `--no-build-cache` when
+  the point of the run is freshness.
+- A control harness that measures dirtiness with `git diff BASE..CODE` measures the *commit*, not
+  the tree, so every control reports a dirty tree and the assertion says nothing. Measure with
+  `git status --porcelain`.
+- A control that fails with `COMPILE_ERROR` is not a valid red (rule 21). The first C2 mutation
+  was a syntax error; it was rewritten to a compiling `when (stepName)`.
+- The verifier's expected-file list is part of the slice: forgetting the edited regression-test
+  file turns a scope check into a false red.
+
+### Next
+W1c — burn the W1a ledger: route the coordinator's scoped/retrying bodies through
+`BodyPolicyResolver` (widening `BodyExecutionSupport`), add the missing descriptor rows for
+`core.timestamps`/`core.parallel`, and lower the pinned total and the ceiling in the same commit.

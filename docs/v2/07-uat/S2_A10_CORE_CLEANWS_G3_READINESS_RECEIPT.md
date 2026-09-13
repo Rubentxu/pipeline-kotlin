@@ -80,9 +80,22 @@ Capability = CLEAN_WS_OPERATIONS_CAPABILITY (only step-specific capability;
 
 legacy counters    = 4 / 4 / 4   (post-S2-A9/G5 milestone baseline; UNCHANGED by this slice)
 
-Gate plan:
-  G4 → 4 / 4 / 4   (LEGACY_PLUGIN_IDS -= "core.cleanWs")
-  G5 → 4 / 4 / 4 → 3 / 4 / 4 (metadata row + dispatcher file removed; LEGACY_PLUGIN_IDS -= "core.cleanWs" already done at G4)
+Gate plan (per AGENTS.md §LB-02 burn-down template and the S2-A9/G5 law
+that we applied to milestone: G4 = N/N/N → (N-1)/N/N (ids only);
+G5 = (N-1)/N/N → (N-1)/(N-1)/(N-1) (metadata row + dispatcher file
+physically deleted)):
+  G4 REGISTRY_PRIMARY
+    4 / 4 / 4   (current baseline)
+        ↓ LEGACY_PLUGIN_IDS -= "core.cleanWs"  (ids only; one source file)
+    3 / 4 / 4
+    STOP
+
+  G5 LEGACY_REMOVED
+    3 / 4 / 4   (post-G4)
+        ↓ CanonicalCoreStepMetadata -= "core.cleanWs" row  (metadata)
+        ↓ CanonicalCleanWsNodeDispatcher.kt physical deletion  (dispatcher)
+    3 / 3 / 3
+    STOP
 ```
 
 ## 4. Verification (fresh XML, this branch, Base `2c4885f1` / HEAD `4803f696`)
@@ -139,7 +152,13 @@ Reconciliation (this slice, 4803f696):
   M v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreCleanWsStepContractSuiteTest.kt  +23/-3 (G1 invariant baseline 5/5/5 → 4/4/4)
   M v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepRegistryPrimaryFitnessTest.kt  +15/-0 (@Disabled post-S2-A9-G5 snapshot + new post-S2-A10-G1 truth)
 
-Total: 7 files changed (5 new, 5 modified; some files appear in both lists)
+Total: 9 files changed (5 new, 3 production-modified, 1 test-modified,
+1 receipt new). The CoreCleanWsStepContractSuiteTest.kt appears once
+in this list — it was created by G3 cherry-pick (721 lines) and
+extended by 4803f696 (counter reconciliation; +23/-3 surgical update
+to a single test method's baseline value). Both changes land in the
+same file because the reconciliation updates the G3 contract-suite
+itself.
 Production source under v2/**/main/**: 5 files (2 new, 3 modified) — all G1 production
 Production forbidden NOT touched (verified): LEGACY_PLUGIN_IDS unchanged; metadata row unchanged; dispatcher file unchanged
 ```
@@ -157,13 +176,21 @@ flip), the orchestrator STOPS here and waits for explicit user GO before:
 2. opening the next change cycle (`G4 REGISTRY_PRIMARY authority flip`,
    `G5 LEGACY_REMOVED`, `G6 architecture fitness`, `G8 CERTIFIED`).
 
-The G4 slice will be a destructive change touching `CanonicalCoreStepDecoder.kt`
-(`LEGACY_PLUGIN_IDS -= "core.cleanWs"`) and the legacy dispatcher metadata row
-deletion in `CanonicalCoreStepMetadata.kt`, plus stale G1-era invariant
-updates in `CoreCleanWsStepContractSuiteTest` and the post-G4 snapshot in
-`CoreCleanWsRegistryPrimaryFitnessTest` (or analogous). Per the precedent
+The G4 slice will be a destructive change touching only
+`CanonicalCoreStepDecoder.kt` (`LEGACY_PLUGIN_IDS -= "core.cleanWs"`; the
+single source-of-truth for the LEGACY_PLUGIN_IDS set), plus stale G1-era
+invariant updates in `CoreCleanWsStepContractSuiteTest` and the post-G4
+snapshot in `CoreSleepRegistryPrimaryFitnessTest`. Per the precedent
 deleteDir G4, the G4 slice must update `LegacyResidualSnapshot`'s
 `registryPrimaryPendingRemoval` field and toggle the S3 sibling fitness
 tests from `assertConverged` to `assertCurrentState` for the flip window.
+
+NOT in G4 scope: metadata row deletion in `CanonicalCoreStepMetadata.kt`
+and physical removal of `CanonicalCleanWsNodeDispatcher.kt` are G5
+properties (LEGACY_REMOVED), per the S2-A9/G5 law we applied to milestone.
+G5 will also update `CoreCleanWsStepContractSuiteTest` to assert
+`LEGACY_PLUGIN_IDS.size == 3` (post-G4) and the corresponding
+`sealedSubclasses` count, and update the post-G5 snapshot in
+`CoreSleepRegistryPrimaryFitnessTest`.
 
 End of G3.

@@ -103,3 +103,18 @@ set dotenv-load := false
     if [[ $docs_only -eq 1 ]]; then
         echo "docs-only change: markdown/link validation suffices"
     fi
+
+# ─── merge train (docs/v2/09-operations/MERGE_TRAIN_LAW.md) ──────
+# Parallel development, serialized global merges. Run AFTER every merge.
+
+# Drift oracle: fetch + classify every open PR against current origin/main
+@train:
+    ./scripts/train/drift.sh
+
+# Machine-readable drift (for tooling)
+@train-json:
+    ./scripts/train/drift.sh --json
+
+# Single-PR verdict; exit 0 iff the mechanical clauses of READY_TO_MERGE hold
+@ready pr:
+    ./scripts/train/drift.sh {{pr}}

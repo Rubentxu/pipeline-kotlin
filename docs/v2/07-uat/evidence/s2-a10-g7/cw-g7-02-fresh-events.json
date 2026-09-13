@@ -1,0 +1,13 @@
+{
+  "eventId": "fddee830-2504-499c-aef2-c68cf0cdbe69",
+  "runId": "30841d27-5db1-42b9-965d-2d27acd1b27b",
+  "sequence": 8,
+  "kind": "WsCleaned",
+  "occurredAt": "2026-09-13T11:00:01.085855378Z",
+  "deletedFiles": 3,
+  "deletedDirs": 2,
+  "patterns": [
+    "test/**"
+  ],
+  "sha256": "a231f74908a9491df5a0b0cb63a9ee8f12ad1dc8eda76e709c7ec2cf353e13d2"
+}

@@ -1,0 +1,5 @@
+== legacy archiveArtifacts dispatcher in SOURCE (expect: none) ==
+== ...in src/test (expect: none active) ==
+== per-jar scan of the installed distribution ==
+  registry control present: pipeline-application-0.1.0-SNAPSHOT.jar
+jars_scanned=37 legacy_jar_hits=0 registry_control_jars=1

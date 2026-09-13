@@ -1,0 +1,1 @@
+/var/home/rubentxu/Proyectos/kotlin/pipeline-archive-artifacts-g7/v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application

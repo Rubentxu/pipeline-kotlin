@@ -1,0 +1,2 @@
+workspace/ar-g7-04-0/build/libs/keep.jar
+workspace/ar-g7-04-0/build/libs/skip.jar

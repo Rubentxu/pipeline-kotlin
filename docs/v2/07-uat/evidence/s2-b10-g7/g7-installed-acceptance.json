@@ -1,0 +1,162 @@
+{
+ "slice": "S2-B10 / G7",
+ "gate": "installed-distribution acceptance (real CLI, registry-only spine)",
+ "claim": "core.archiveArtifacts, burned down to LEGACY_REMOVED at G5 and certified against the 17/17 contract matrix at G6, behaves correctly as an INSTALLED distribution: the archived payload is byte-identical to the workspace source, the empty-match policy fails closed with the typed SCRIPT failure, the discriminator proves that failure is policy- rather than glob-driven, the frozen excludes delta (D2) holds on the real path, and the deleted legacy dispatcher is absent from source and from every shipped jar.",
+ "binary": "/var/home/rubentxu/Proyectos/kotlin/pipeline-archive-artifacts-g7/v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application",
+ "distribution_jar_sha256": "814d8d801551bf69260ab3aa958badd65427545ce5d930f88be326e05c19678e",
+ "independence": "The AR-G7-01 expected sha256 is computed OUTSIDE the engine (`seq 1 2000 | sha256sum`) and compared against both the ArtifactArchived event payload and the archived file on disk. No assertion is derived from the engine's own claim.",
+ "scenarios": {
+  "AR-G7-01": {
+   "run_id": "f3291167-8b57-4a82-abea-8b6322d66139",
+   "raw_stdout": "raw/s1-stdout.log",
+   "purpose": "non-empty match -> byte-identical archived payload",
+   "exit_code": 0,
+   "archive_step": {
+    "stepName": "ar-g7-01/archiveartifacts-0",
+    "stepType": "archiveArtifacts"
+   },
+   "expected_source_sha256": "6251e5743b6fd6a7d606130bdf7c15077ce85ebd3a0fdee284d15a46df199e38",
+   "event_sha256": "6251e5743b6fd6a7d606130bdf7c15077ce85ebd3a0fdee284d15a46df199e38",
+   "disk_sha256": "6251e5743b6fd6a7d606130bdf7c15077ce85ebd3a0fdee284d15a46df199e38",
+   "size": 8893,
+   "relPath": "build/libs/artifact.jar",
+   "run_outcome": "success",
+   "artefacts": [
+    {
+     "eventId": "fdaa0d7e-9c24-4fe8-b231-c148c5a6661c",
+     "runId": "f3291167-8b57-4a82-abea-8b6322d66139",
+     "sequence": 8,
+     "kind": "ArtifactArchived",
+     "occurredAt": "2026-09-13T15:34:25.088121397Z",
+     "files": [
+      {
+       "runId": "f3291167-8b57-4a82-abea-8b6322d66139",
+       "stageName": "ar-g7-01",
+       "relPath": "build/libs/artifact.jar",
+       "sha256": "6251e5743b6fd6a7d606130bdf7c15077ce85ebd3a0fdee284d15a46df199e38",
+       "size": 8893,
+       "archivedAt": "2026-09-13T15:34:25.088481746Z"
+      }
+     ]
+    }
+   ],
+   "verdict": "PASS"
+  },
+  "AR-G7-02": {
+   "run_id": "ff71f9de-fa79-48d0-a0e8-fc88aa3e2254",
+   "raw_stdout": "raw/s2-stdout.log",
+   "purpose": "empty match + allowEmptyArchive=false -> fail closed, archive nothing",
+   "exit_code": 1,
+   "reason": "No files matched glob pattern 'build/libs/*.jar' and allowEmptyArchive is false",
+   "failure_kind": "SCRIPT",
+   "message": "archiveArtifacts: no files matched 'build/libs/*.jar'",
+   "run_outcome": "failure",
+   "artefacts_on_disk": 0,
+   "workspace_files_retained": [
+    "workspace/ar-g7-02-0/build/libs/README.txt"
+   ],
+   "events": [
+    {
+     "eventId": "97b86481-469c-42ff-88dd-8930e49e1e78",
+     "runId": "ff71f9de-fa79-48d0-a0e8-fc88aa3e2254",
+     "sequence": 8,
+     "kind": "ArtifactArchiveFailed",
+     "occurredAt": "2026-09-13T15:34:31.423591255Z",
+     "reason": "No files matched glob pattern 'build/libs/*.jar' and allowEmptyArchive is false"
+    },
+    {
+     "eventId": "9afb91fe-47bc-489a-b6a2-962ca0c2dcc5",
+     "runId": "ff71f9de-fa79-48d0-a0e8-fc88aa3e2254",
+     "sequence": 9,
+     "kind": "StepFailed",
+     "occurredAt": "2026-09-13T15:34:31.432956098Z",
+     "stepIndex": 1,
+     "stepName": "ar-g7-02/archiveartifacts-0",
+     "stepType": "archiveArtifacts",
+     "failureKind": "SCRIPT",
+     "message": "archiveArtifacts: no files matched 'build/libs/*.jar'"
+    },
+    {
+     "eventId": "83ea098f-0b4a-417a-83e9-47321b7553d6",
+     "runId": "ff71f9de-fa79-48d0-a0e8-fc88aa3e2254",
+     "sequence": 11,
+     "kind": "RunFinished",
+     "occurredAt": "2026-09-13T15:34:31.441036814Z",
+     "outcome": "failure",
+     "diagnostics": []
+    }
+   ],
+   "verdict": "PASS"
+  },
+  "AR-G7-03": {
+   "run_id": "6335c9de-af39-47fa-836f-9805a6ef5d50",
+   "raw_stdout": "raw/s3-stdout.log",
+   "purpose": "DISCRIMINATOR \u2014 byte-identical to AR-G7-02 except the policy flag: same glob, same workspace, same absence of *.jar",
+   "exit_code": 0,
+   "archived_count": 0,
+   "run_outcome": "success",
+   "artefacts": [
+    {
+     "eventId": "d0013a2b-53ba-4a65-878c-d85c3418dd73",
+     "runId": "6335c9de-af39-47fa-836f-9805a6ef5d50",
+     "sequence": 8,
+     "kind": "ArtifactArchived",
+     "occurredAt": "2026-09-13T15:34:37.594990282Z",
+     "files": []
+    }
+   ],
+   "verdict": "PASS"
+  },
+  "AR-G7-04": {
+   "run_id": "9a1fcba4-a1d4-4a41-8811-a8a894884bf6",
+   "raw_stdout": "raw/s4-stdout.log",
+   "purpose": "frozen delta D2 \u2014 excludes are APPLIED (legacy silently ignored them)",
+   "exit_code": 0,
+   "archived_relpaths": [
+    "build/libs/keep.jar"
+   ],
+   "excluded_relpath": "build/libs/skip.jar",
+   "run_outcome": "success",
+   "artefacts": [
+    {
+     "eventId": "041b9d2f-d21b-4e6e-a49c-48b087e48e98",
+     "runId": "9a1fcba4-a1d4-4a41-8811-a8a894884bf6",
+     "sequence": 8,
+     "kind": "ArtifactArchived",
+     "occurredAt": "2026-09-13T15:34:43.816461526Z",
+     "files": [
+      {
+       "runId": "9a1fcba4-a1d4-4a41-8811-a8a894884bf6",
+       "stageName": "ar-g7-04",
+       "relPath": "build/libs/keep.jar",
+       "sha256": "f660a7996deacfbc7560e4240054a8ad82eb02fe25a95064257e07084bcacb85",
+       "size": 5,
+       "archivedAt": "2026-09-13T15:34:43.817055666Z"
+      }
+     ]
+    }
+   ],
+   "verdict": "PASS"
+  }
+ },
+ "legacy_absence_probe": {
+  "jars_scanned": 37,
+  "legacy_dispatcher_jar_hits": 0,
+  "registry_control_jars": 1,
+  "source_hits": []
+ },
+ "verdicts": {
+  "AR-G7-01": "PASS",
+  "AR-G7-02": "PASS",
+  "AR-G7-03": "PASS",
+  "AR-G7-04": "PASS",
+  "AR-G7-04-legacy-absence": "PASS"
+ },
+ "discriminator": {
+  "same_glob_same_workspace": true,
+  "allowEmptyArchive_false_fails": true,
+  "allowEmptyArchive_true_succeeds": true,
+  "empty_match_failure_is_policy_driven_not_glob_defect": true
+ },
+ "all_pass": true
+}

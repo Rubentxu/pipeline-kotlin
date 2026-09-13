@@ -34,7 +34,8 @@ class CanonicalNodeDispatcher {
     // S2-A5 / G5: isUnixDispatcher removed (LEGACY_REMOVED) — core.isUnix executes
     // exclusively through CoreIsUnixStep via the registry.
     private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
-    private val archiveArtifactsDispatcher = CanonicalArchiveArtifactsNodeDispatcher()
+    // S2-B10 / G5 (2026-09-13): archiveArtifactsDispatcher removed (LEGACY_REMOVED) —
+    // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the registry.
 
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
@@ -50,13 +51,19 @@ class CanonicalNodeDispatcher {
             // waitUntil: condition is not serializable; emit stub events and return success
             // Full condition evaluation requires the in-memory path where lambdas are preserved
             is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
-            is CanonicalCoreStepCommand.ArchiveArtifacts -> archiveArtifactsDispatcher.dispatch(command, context.archiveArtifactsContext())
+            // S2-B10 / G5 (2026-09-13): ArchiveArtifacts when-branch removed (LEGACY_REMOVED) —
+            // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the
+            // registry. The `when` stays EXHAUSTIVE over the surviving sealed subtypes: a
+            // reintroduced legacy subtype is now a compile error, not a silent fall-through.
         }
 
     // S2-A4 / G5: emitEventContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A9 / G5: milestoneContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A7 / G5: deleteDirContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A10 / G5 (2026-09-13): cleanWsContext() removed with the legacy dispatcher (LEGACY_REMOVED).
+    // S2-B10 / G5 (2026-09-13): archiveArtifactsContext() removed with the legacy dispatcher
+    // (LEGACY_REMOVED). Its `workspaceRoot = shOptions.workspaceRoot` absolute-path anchor was
+    // the frozen-glob defect root cause (frozen delta D1).
 
     private fun CanonicalRuntimeContext.loadContext() = CanonicalLoadDispatchContext(
         runId = runId,
@@ -76,16 +83,6 @@ class CanonicalNodeDispatcher {
         stepIndex = stepIndex,
         eventSink = eventSink,
         condition = { true }, // Stub: condition not serializable in canonical path
-    )
-
-    private fun CanonicalRuntimeContext.archiveArtifactsContext() = CanonicalArchiveArtifactsDispatchContext(
-        runId = runId,
-        stageName = stageName,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-        workspaceRoot = shOptions.workspaceRoot,
     )
 
 }

@@ -79,6 +79,7 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY; legacy decoder
     // branch / dispatcher file / metadata row remain physically present (UNREACHABLE in
     // production) until S2-A10 / G5 closes this lane. Counter converges 4/4/4 -> 3/4/4.
+    @Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `registry post-S2-B10-g5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")
     @Test fun `registry post-S2-A10-g4 — 3 residual legacy keys remain`() {
         assertEquals(setOf(
             "core.load", "core.waitUntil", "core.archiveArtifacts",
@@ -89,11 +90,22 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // S2-A10 / G5 (2026-09-13): core.cleanWs legacy forms physically removed (LEGACY_REMOVED).
     // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
     // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `registry post-S2-B10-g5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")
     @Test fun `registry post-S2-A10-g5 — 3 residual legacy keys remain after LEGACY_REMOVED`() {
         assertEquals(setOf(
             "core.load", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
+    // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. Historical S2-A10/G4 and S2-A10/G5
+    // snapshots above preserved verbatim for traceability.
+    @Test fun `registry post-S2-B10-g5 — 2 residual legacy keys remain`() {
+        assertEquals(setOf(
+            "core.load", "core.waitUntil",
+        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")
@@ -138,6 +150,7 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // post-S2-A10/G1 (2026-09-13): core.cleanWs registered as a candidate-only
     // registry entry (LEGACY_PLUGIN_IDS still contains core.cleanWs; production
     // authority remains the legacy dispatcher until G4 REGISTRY_PRIMARY flips).
+    @Disabled("Historical S2-A10/G1 snapshot: S2-B10/G1..G3 (2026-09-13) registered CoreArchiveArtifactsStep, so the 13-key registry shape is superseded by `production registry contains exactly the registered core steps (post-S2-B10-G3)` below. This row was ALREADY red at the S2-B10/G4 base (fresh base evidence: 435f5f8b), i.e. it was stale from S2-B10/G3, not broken by G5. Preserved verbatim for traceability.")
     @Test fun `production registry contains exactly the registered core steps (post-S2-A10-G1)`() {
         assertEquals(
             setOf(
@@ -146,6 +159,26 @@ class CoreSleepRegistryPrimaryFitnessTest {
                 "core.pwd", "core.pwd.tmp",
                 "core.waitUntil", "core.deleteDir", "core.milestone",
                 "core.cleanWs",
+            ),
+            CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
+        )
+    }
+
+    // S2-B10 / G3 (2026-09-13): CoreArchiveArtifactsStep registered behind the open registry.
+    // The registry shape gains core.archiveArtifacts (13 -> 14 keys). The historical
+    // S2-A10/G1 snapshot above is preserved verbatim for traceability.
+    //
+    // Note the two DIFFERENT states this row pins: the registry key set is REGISTRATION truth
+    // and is independent of the LEGACY_PLUGIN_IDS residual. core.archiveArtifacts is present
+    // here while being absent from the residual — exactly the S2-B10 post-G5 shape.
+    @Test fun `production registry contains exactly the registered core steps (post-S2-B10-G3)`() {
+        assertEquals(
+            setOf(
+                "core.echo", "core.sh", "core.error", "core.sleep",
+                "core.file.writeFile", "core.emit.event", "core.isUnix",
+                "core.pwd", "core.pwd.tmp",
+                "core.waitUntil", "core.deleteDir", "core.milestone",
+                "core.cleanWs", "core.archiveArtifacts",
             ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )

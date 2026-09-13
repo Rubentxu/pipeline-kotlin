@@ -76,21 +76,25 @@ class CoreArchiveArtifactsStepUnitTest {
             setOf(Effect.WRITES_WORKSPACE),
             CoreArchiveArtifactsStep.definition.contract.descriptor.effects.toSet(),
         )
-        // Legacy row parity note (frozen at G2): CanonicalCoreStepMetadata still declares
-        // READ_ONLY; the delta is a documented G1 candidate decision.
-        assertTrue("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
+        // S2-B10/G5 (LEGACY_REMOVED): the legacy metadata row that declared READ_ONLY is now
+        // physically deleted, so the G1/G2-era delta (READ_ONLY vs WRITES_WORKSPACE) is no
+        // longer a comparison between two live authorities. It is recorded history, and the
+        // registry descriptor is the sole surviving statement. Asserting the row's ABSENCE
+        // keeps the removal locked here as well as in the contract suite.
+        assertFalse("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
     }
 
     @Test
-    fun `ReplayPolicy MEMOIZED byte-equivalent with legacy metadata row`() {
+    fun `ReplayPolicy MEMOIZED preserved across the legacy metadata row removal`() {
         assertEquals(
             ReplayPolicy.MEMOIZED,
             CoreArchiveArtifactsStep.definition.contract.descriptor.replayPolicy,
         )
-        assertEquals(
-            ReplayPolicy.MEMOIZED,
-            CanonicalCoreStepMetadata.metadata("core.archiveArtifacts").replayPolicy,
-        )
+        // Frozen at G2: the legacy row declared MEMOIZED too, so the registry descriptor
+        // preserves the pre-migration replay semantics exactly. The legacy row is deleted at
+        // G5, so the parity can no longer be asserted live — it is asserted structurally by
+        // the registry value above and preserved in the G2 differential receipt.
+        assertFalse("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
     }
 
     @Test
@@ -345,16 +349,20 @@ class CoreArchiveArtifactsStepUnitTest {
     }
 
     @Test
-    fun `core archiveArtifacts registry flip - residual counters are 2 ids 3 metadata rows 3 dispatcher files`() {
+    fun `core archiveArtifacts LEGACY_REMOVED - residual counters are 2 ids 2 metadata rows 2 dispatcher files`() {
         assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertEquals(setOf("core.load", "core.waitUntil"), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        // G4 does NOT physically remove the legacy forms (that is G5/LEGACY_REMOVED).
-        assertTrue("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
-        assertNotNull(CanonicalCoreStepMetadata.metadata("core.archiveArtifacts"))
+        // S2-B10/G5: metadata + dispatcher physical forms removed too (2 / 2 / 2).
+        assertEquals(
+            setOf("core.load", "core.waitUntil"),
+            CanonicalCoreStepMetadata.pluginIds,
+            "the two unrelated residual keys MUST survive while core.archiveArtifacts converges",
+        )
+        assertFalse("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
     }
 
     // ------------------------------------------------------------------
-    // Counter invariant — G1 leaves legacy counters untouched: 5 / 5 / 5
+    // Counter invariant — per-stage snapshots (all superseded, archived)
     // ------------------------------------------------------------------
 
     @Test
@@ -363,7 +371,7 @@ class CoreArchiveArtifactsStepUnitTest {
             "(c0e27f21: LEGACY_PLUGIN_IDS.size == 3 after the S2-A9/S2-A10 G5 closures; this row failed at base too, " +
             "recorded as pre-existing red). S2-B10/G4 then flipped core.archiveArtifacts, taking the residual to " +
             "2 / 3 / 3, which is asserted by CoreArchiveArtifactsStepContractSuiteTest > " +
-            "`G4 invariant - core dot archiveArtifacts is registry-primary with counters 2 3 3`. " +
+            "`G5 LEGACY_REMOVED invariant - core dot archiveArtifacts physical forms destroyed and counters are 2 2 2`. " +
             "Preserved verbatim for traceability.",
     )
     fun `counters - G1 leaves legacy counters at 5 5 5`() {

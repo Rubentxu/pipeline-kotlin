@@ -64,6 +64,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -91,21 +92,26 @@ import org.junit.jupiter.api.Timeout
  *  - failures are TYPED (`FailureKind.SCRIPT`, the legacy contract) and never thrown:
  *    a thrown handler would be re-classified ENGINE by the boundary (test 18 pins both sides).
  *
- * ## G4 transitional honesty
+ * ## G5 LEGACY_REMOVED — closed
  *
- * From G4 the key is ABSENT from `LEGACY_PLUGIN_IDS`, so `StructuralFamilyResolver`
- * classifies it Registry and `CoreArchiveArtifactsStep.definition` is the production
- * authority (rows 17b/17c assert the resolver output and drive a real non-empty archive
- * through the production coordinator, an input the legacy authority could not satisfy —
- * frozen delta D1).
+ * The key is ABSENT from `LEGACY_PLUGIN_IDS` (G4) AND every legacy form is now physically
+ * destroyed (G5): the `ArchiveArtifacts` command subtype, the `ARCHIVE_ARTIFACTS_PLUGIN_ID`
+ * decoder branch + constant, the `CanonicalCoreStepMetadata` row, the
+ * `CanonicalArchiveArtifactsNodeDispatcher.kt` file, and the `CanonicalNodeDispatcher`
+ * archiveArtifacts seams. Residual converged 3 / 3 / 3 -> 2 / 3 / 3 -> 2 / 2 / 2.
  *
- * The legacy forms are still PHYSICALLY present (decoder branch, `ArchiveArtifacts`
- * subtype, metadata row, `CanonicalArchiveArtifactsNodeDispatcher.kt`); they are
- * UNREACHABLE in production but type-loadable until G5/LEGACY_REMOVED. That is why the
- * residual is 2 / 3 / 3 and not 2 / 2 / 2, and row 17 asserts BOTH halves of that law.
+ * `CoreArchiveArtifactsStep.definition` is the ONLY execution authority in production
+ * (rows 17b/17c assert the resolver output and drive a real non-empty archive through the
+ * production coordinator, an input the legacy authority could not satisfy — frozen delta D1).
  *
- * The G3 receipt recorded the pre-flip state (3 / 3 / 3); this suite now pins the G4
- * state deliberately, as that receipt's §6 required.
+ * Because removal is destructive, this suite keeps three independent LOCKS on it rather than
+ * trusting the diff:
+ *  - row 5 asserts the encoder still emits the byte-identical dsl-v1 envelope AND that the
+ *    legacy decoder now REJECTS the key (no silent no-op fall-through);
+ *  - row 17 asserts the counters converge to 2 / 2 / 2 with the two unrelated residual keys
+ *    intact (anti-over-removal control) and the legacy metadata lookup failing fast;
+ *  - the `S3*LegacyRemovedFitnessTest` suites + `LegacyResidualConvergenceFitnessTest`
+ *    assert the static source absence and the convergence property.
  *
  * S2-B10 / G3 — AGENTS.md 17/17 coverage (per Step Constitution §LB-02):
  * ```
@@ -461,25 +467,28 @@ class CoreArchiveArtifactsStepContractSuiteTest {
             envelope,
             "registry input codec MUST emit a byte-identical dsl-v1 envelope",
         )
-        // Cross-acceptance: the legacy decoder consumes the candidate payload verbatim.
-        val decoded = assertInstanceOf(
-            CanonicalCoreStepCommand.ArchiveArtifacts::class.java,
+        // S2-B10 / G5 (LEGACY_REMOVED): the envelope SHAPE is preserved byte-identically
+        // (asserted above) but the legacy decoder no longer recognises the key. This is the
+        // behavioural half of LEGACY_REMOVED: absence of a source line is a static property,
+        // whereas this row proves the routing consequence — the key cannot be served by the
+        // legacy path even if some caller tries.
+        //
+        // Failing closed matters more than the throw itself: a decoder that returned a
+        // plausible-but-defaulted command would silently re-create a second authority. The
+        // assertion pins the REJECTION and its message, so a future "compat" branch that
+        // re-accepts the key turns this row red instead of quietly reintroducing the legacy path.
+        val rejected = assertThrows(IllegalArgumentException::class.java) {
             CanonicalCoreStepDecoder.decode(
                 OpaqueStepNode(
                     id = StepId("archive-0"),
                     pluginStepId = CoreArchiveArtifactsStep.KEY,
                     payload = VersionedStepPayload("dsl-v1", envelope),
                 ),
-            ),
-        )
-        assertEquals(
-            CanonicalCoreStepCommand.ArchiveArtifacts(
-                artifacts = "build/libs/*.jar",
-                allowEmptyArchive = true,
-                excludes = "**/*.tmp",
-                fingerprint = true,
-            ),
-            decoded,
+            )
+        }
+        assertTrue(
+            rejected.message!!.contains("Unsupported core plugin step 'core.archiveArtifacts'"),
+            "the legacy decoder MUST reject core.archiveArtifacts by key, was: ${rejected.message}",
         )
     }
 
@@ -834,14 +843,16 @@ class CoreArchiveArtifactsStepContractSuiteTest {
     // ===== 15. real DSL scenario =====
 
     @Test
-    fun `real DSL scenario — pipeline DSL lowers archiveArtifacts and the run succeeds on both authorities`() {
+    fun `real DSL scenario — pipeline DSL lowers archiveArtifacts and the run succeeds through the canonical spine`() {
         runBlocking {
             val spec: PipelineSpec = pipeline {
                 stages {
                     stage("build") {
                         // allowEmptyArchive=true with a non-matching pattern is chosen deliberately:
-                        // the legacy and registry authorities AGREE on this input (both succeed with
-                        // an empty ArtifactArchived), so this row stays green across the G4 flip.
+                        // it keeps this row deterministic (one empty ArtifactArchived) and therefore
+                        // independent of the host filesystem. It was ALSO the input on which the legacy
+                        // and registry authorities agreed, which is why it stayed green across the G4
+                        // flip; post-G5 only the registry authority exists at all (frozen delta D1).
                         archiveArtifacts(artifacts = "nope/*.jar", allowEmptyArchive = true)
                     }
                 }
@@ -874,32 +885,53 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         }
     }
 
-    // ===== 17. G4 counters invariant =====
+    // ===== 17. G5 LEGACY_REMOVED invariant =====
 
     @Test
-    fun `G4 invariant — core dot archiveArtifacts is registry-primary with counters 2 3 3`() {
-        // S2-B10/G4 flipped this key to REGISTRY_PRIMARY. The residual is now
-        // 2 ids / 3 metadata rows / 3 dispatcher files: the id is gone from the routing
-        // authority while the metadata row and dispatcher file remain PHYSICALLY present
-        // (UNREACHABLE in production) until G5/LEGACY_REMOVED converges them to 2 / 2 / 2.
+    fun `G5 LEGACY_REMOVED invariant — core dot archiveArtifacts physical forms destroyed and counters are 2 2 2`() {
+        // S2-B10/G5 (2026-09-13): physical removal of all core.archiveArtifacts legacy forms
+        // (LEGACY_REMOVED — closed). Production routing is exclusively
+        // CoreArchiveArtifactsStep.definition via the open registry.
+        //
+        // Burn-down law: G5 = (N-1)/N/N -> (N-1)/(N-1)/(N-1) (metadata + dispatcher physical).
+        //   pre-G4:  3 / 3 / 3
+        //   post-G4: 2 / 3 / 3   (REGISTRY_PRIMARY flip, ids only)
+        //   post-G5: 2 / 2 / 2   (this slice — LEGACY_REMOVED closed)
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "core.archiveArtifacts MUST be absent from LEGACY_PLUGIN_IDS after the G4 flip",
+            "core.archiveArtifacts MUST be absent from LEGACY_PLUGIN_IDS post-G5 (LEGACY_REMOVED)",
         )
         assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertEquals(
             setOf("core.load", "core.waitUntil"),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
         )
-        // G4 does NOT physically remove the legacy forms; asserting they survive is the
-        // anti-over-removal half of the counter law (2 / 3 / 3, not 2 / 2 / 2).
+        // The legacy metadata row is physically gone. Asserting the WHOLE surviving id set (not
+        // just the absence of one key) is the anti-over-removal control: a G5 that deleted an
+        // unrelated residual row would pass a bare absence check and fail here.
+        assertEquals(
+            setOf("core.load", "core.waitUntil"),
+            CanonicalCoreStepMetadata.pluginIds,
+            "metadata rows MUST converge to exactly the two unrelated residual keys",
+        )
+        assertFalse(
+            "core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds,
+            "the legacy metadata row MUST be physically removed post-G5 (LEGACY_REMOVED)",
+        )
+        // Fail-fast preserved: the legacy metadata authority must NOT answer for this key at
+        // all. This is what makes the registry the pre-decode metadata authority rather than a
+        // second opinion — there is no row left to fall back to.
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.archiveArtifacts")
+        }
+        // The retained keys keep answering, so the removal did not disable the authority.
         assertNotNull(
-            CanonicalCoreStepMetadata.metadata("core.archiveArtifacts"),
-            "the legacy metadata row MUST survive G4 (physical removal is G5)",
+            CanonicalCoreStepMetadata.metadata("core.waitUntil"),
+            "the two residual keys MUST still resolve through the legacy metadata table",
         )
         // Dispatcher-file presence is a static source property asserted by
         // LegacyResidualSnapshot in :pipeline-architecture-tests, which pins
-        // 2 / 3 / 3 for this transitional stage.
+        // 2 / 2 / 2 post-G5 and is guarded by LegacyResidualConvergenceFitnessTest.
     }
 
     // ===== 17b. G4 routing (StructuralFamilyResolver, runtime seam) =====

@@ -183,6 +183,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY; legacy decoder
     // branch / dispatcher file / metadata row remain physically present (UNREACHABLE in
     // production) until S2-A10 / G5 closes this lane. Counter converges 4/4/4 -> 3/4/4.
+    @Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")
     @Test
     fun `LEGACY_PLUGIN_IDS post-S2-A10-G4 — 3 residual legacy keys remain`() {
         val expected = setOf(
@@ -201,6 +202,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // S2-A10 / G5 (2026-09-13): core.cleanWs legacy forms physically removed (LEGACY_REMOVED).
     // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
     // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")
     @Test
     fun `LEGACY_PLUGIN_IDS post-S2-A10-G5 — 3 residual legacy keys remain after LEGACY_REMOVED`() {
         val expected = setOf(
@@ -214,6 +216,23 @@ class CoreErrorRegistryPrimaryFitnessTest {
             "LEGACY_PLUGIN_IDS MUST be exactly the 3 residual legacy keys post-S2-A10/G5 (LEGACY_REMOVED closed)",
         )
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
+    // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. The historical S2-A10/G4 and
+    // S2-A10/G5 snapshots above are preserved verbatim for traceability.
+    @Test
+    fun `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`() {
+        val expected = setOf(
+            "core.load",
+            "core.waitUntil",
+        )
+        assertEquals(
+            expected,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS MUST be exactly the 2 residual legacy keys post-S2-B10/G5 (LEGACY_REMOVED closed for core.archiveArtifacts)",
+        )
+        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test

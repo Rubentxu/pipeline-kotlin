@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 3 entries (Load, WaitUntil, ArchiveArtifacts).
+ * - sealedSubclasses has exactly 2 entries (Load, WaitUntil).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
@@ -27,6 +27,10 @@ import org.junit.jupiter.api.Test
  *   dispatcher file/metadata row physically deleted (LEGACY_REMOVED). Production
  *   routing is exclusively CoreCleanWsStep.definition via the open registry.
  *   Counter converges 3/4/4 -> 3/3/3.
+ *   LFC-2E1-S2-B10 / G5 (2026-09-13): "core.archiveArtifacts" legacy subtype/decoder
+ *   branch + constant/dispatcher file/metadata row physically deleted (LEGACY_REMOVED).
+ *   Production routing is exclusively CoreArchiveArtifactsStep.definition via the open
+ *   registry. Counter converges 2/3/3 -> 2/2/2.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -36,9 +40,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 3 entries`() {
+    fun `sealedSubclasses has exactly 2 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(3, subclasses.size, "Expected exactly 3 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone/CleanWs all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(2, subclasses.size, "Expected exactly 2 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone/CleanWs/ArchiveArtifacts all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -67,8 +71,7 @@ class CanonicalCoreStepCommandRegistryTest {
             "core.load",
             // P1b — utility (v0.33.0)
             "core.waitUntil",
-            // P2 — archiveArtifacts (v0.33.1)
-            "core.archiveArtifacts",
+            // P2 — archiveArtifacts (v0.33.1): removed at S2-B10 / G5 (LEGACY_REMOVED).
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
@@ -118,18 +121,9 @@ class CanonicalCoreStepCommandRegistryTest {
         assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
     }
 
-    // P2 — archiveArtifacts canonical step family (v0.33.1)
-
-    @Test
-    fun `ArchiveArtifacts has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.ArchiveArtifacts(
-            artifacts = "build/**/*.jar",
-            allowEmptyArchive = false,
-            excludes = "",
-            fingerprint = true,
-        )
-        assertEquals("core.archiveArtifacts", instance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // S2-B10 / G5 (2026-09-13): the archiveArtifacts test removed (LEGACY_REMOVED). The
+    // pluginId / effects / replayPolicy invariants of core.archiveArtifacts are now asserted
+    // against CoreArchiveArtifactsStep.descriptor — the registry authority — in
+    // CoreArchiveArtifactsStepUnitTest and CoreArchiveArtifactsStepContractSuiteTest.
+    // P2 (v0.33.1) introduced the legacy canonical family; S2-B10 retired it.
 }

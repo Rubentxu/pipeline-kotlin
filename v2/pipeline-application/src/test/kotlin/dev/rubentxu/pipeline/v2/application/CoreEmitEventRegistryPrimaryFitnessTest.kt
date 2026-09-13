@@ -129,6 +129,7 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY; legacy decoder
     // branch / dispatcher file / metadata row remain physically present (UNREACHABLE in
     // production) until S2-A10 / G5 closes this lane. Counter converges 4/4/4 -> 3/4/4.
+    @Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test
     fun `G4 flip post-S2-A10-G4 — 3 residual legacy keys remain`() {
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -149,6 +150,7 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
     // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed; 3 keys remain for
     // their own G4/G5 lanes).
+    @Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test
     fun `G5 LEGACY_REMOVED — 3 residual legacy keys remain post-S2-A10-G5`() {
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -158,6 +160,29 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
             ),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "post-S2-A10/G5: 3 residual legacy keys (core.load, core.waitUntil, core.archiveArtifacts); core.cleanWs fully removed (LEGACY_REMOVED)",
+        )
+        assertFalse(
+            "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.cleanWs MUST NOT be in LEGACY_PLUGIN_IDS post-S2-A10/G5",
+        )
+    }
+
+    // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
+    // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. The historical S2-A10/G4 and
+    // S2-A10/G5 snapshots above are preserved verbatim for traceability.
+    @Test
+    fun `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain`() {
+        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(
+            setOf(
+                "core.load", "core.waitUntil",
+            ),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-S2-B10/G5: 2 residual legacy keys (core.load, core.waitUntil); core.archiveArtifacts fully removed (LEGACY_REMOVED)",
+        )
+        assertFalse(
+            "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.archiveArtifacts MUST NOT be in LEGACY_PLUGIN_IDS post-S2-B10/G5",
         )
         assertFalse(
             "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,

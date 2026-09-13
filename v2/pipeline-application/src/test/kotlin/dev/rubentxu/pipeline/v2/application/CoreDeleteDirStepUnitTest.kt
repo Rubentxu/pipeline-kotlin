@@ -236,6 +236,7 @@ class CoreDeleteDirStepUnitTest {
     // S2-A10 / G5 (2026-09-13): core.cleanWs physical forms destroyed (LEGACY_REMOVED).
     // The historical S2-A10/G4 transitional snapshot above is preserved verbatim for
     // traceability. Post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-3-3 converged counter is superseded by `counters - post-S2-B10-G5 LEGACY_REMOVED 2-2-2 converged` below. Preserved verbatim for traceability.")
     @Test
     fun `counters - post-S2-A10-G5 LEGACY_REMOVED 3-3-3 converged`() {
         // G5 invariant: legacy forms are physically deleted; the legacy metadata row is
@@ -244,6 +245,32 @@ class CoreDeleteDirStepUnitTest {
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertTrue("core.cleanWs" !in CanonicalCoreStepMetadata.pluginIds, "core.cleanWs metadata row physically removed at G5")
+    }
+
+    // S2-B10 / G5 (2026-09-13): core.archiveArtifacts physical forms destroyed
+    // (LEGACY_REMOVED). The historical S2-A10/G5 snapshot above is preserved verbatim for
+    // traceability. Counter converges 3/3/3 -> 2/2/2.
+    @Test
+    fun `counters - post-S2-B10-G5 LEGACY_REMOVED 2-2-2 converged`() {
+        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(
+            setOf("core.load", "core.waitUntil"),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-S2-B10/G5: only the two keys still awaiting their own G4/G5 lanes remain",
+        )
+        // Keys retired by EARLIER lanes stay retired (no resurrection).
+        assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.archiveArtifacts" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // Metadata authority follows the same convergence.
+        assertEquals(
+            setOf("core.load", "core.waitUntil"),
+            CanonicalCoreStepMetadata.pluginIds,
+            "the legacy metadata table MUST converge to the same two residual keys",
+        )
+        assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
+        assertTrue("core.cleanWs" !in CanonicalCoreStepMetadata.pluginIds)
+        assertTrue("core.archiveArtifacts" !in CanonicalCoreStepMetadata.pluginIds)
     }
 
     // ------------------------------------------------------------------

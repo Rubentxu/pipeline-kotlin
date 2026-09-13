@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" tests="3" skipped="0" failures="3" errors="0" timestamp="2026-09-13T13:35:17.653Z" hostname="bazzite-rubentxu" time="0.097">
+  <properties/>
+  <testcase name="converged residual is the same exact key set in all three legacy authorities()" classname="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" time="0.091">
+    <failure message="org.opentest4j.AssertionFailedError: ids vs metadata rows disagree (not converged) ==&gt; expected: &lt;2&gt; but was: &lt;3&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: ids vs metadata rows disagree (not converged) ==&gt; expected: &lt;2&gt; but was: &lt;3&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at app//dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest.converged residual is the same exact key set in all three legacy authorities(LegacyResidualConvergenceFitnessTest.kt:71)
+	at java.base@21.0.8/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <testcase name="converged residual is non-vacuous while the burn-down is still open()" classname="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" time="0.002">
+    <failure message="org.opentest4j.AssertionFailedError: every residual key must still have a dispatcher file while not converged ==&gt; expected: &lt;2&gt; but was: &lt;3&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: every residual key must still have a dispatcher file while not converged ==&gt; expected: &lt;2&gt; but was: &lt;3&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at app//dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest.converged residual is non-vacuous while the burn-down is still open(LegacyResidualConvergenceFitnessTest.kt:92)
+	at java.base@21.0.8/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base@21.0.8/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <testcase name="legacy residual is converged with no in-flight registry primary flip()" classname="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" time="0.002">
+    <failure message="java.lang.IllegalStateException: Convergence requires no in-flight REGISTRY_PRIMARY flip; registryPrimaryPendingRemoval=core.archiveArtifacts (G5 not closed)" type="java.lang.IllegalStateException">java.lang.IllegalStateException: Convergence requires no in-flight REGISTRY_PRIMARY flip; registryPrimaryPendingRemoval=core.archiveArtifacts (G5 not closed)
+	at dev.rubentxu.pipeline.v2.architecture.LegacyResidualSnapshot.assertConverged(LegacyResidualSnapshot.kt:201)
+	at dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest.legacy residual is converged with no in-flight registry primary flip(LegacyResidualConvergenceFitnessTest.kt:51)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

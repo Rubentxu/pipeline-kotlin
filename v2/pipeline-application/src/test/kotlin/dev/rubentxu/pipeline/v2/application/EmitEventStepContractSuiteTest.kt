@@ -596,6 +596,7 @@ class EmitEventStepContractSuiteTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: later lanes (S2-A7/A9/A10/B10 G4+G5) retired core.deleteDir, core.milestone, core.cleanWs and core.archiveArtifacts, so the 6/6/6 counter is superseded by `no legacy resurrection — irreversible G5 state holds post-S2-B10-G5` below. Preserved verbatim for traceability.")
     @Test
     fun `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4`() {
         val decoderRaw = Files.readString(
@@ -623,6 +624,44 @@ class EmitEventStepContractSuiteTest {
             6,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
             "counters stay 6/6/6 (post-S2-A4/G5 + S2-A5/G4 + S2-A6/G4: isUnix + pwd physically removed in code; counter 7 -> 6) — a contract-suite fix must not resurrect legacy",
+        )
+    }
+
+    // S2-B10 / G5 (2026-09-13): core.archiveArtifacts physical forms destroyed
+    // (LEGACY_REMOVED). The historical S2-A6/G4 snapshot above is preserved verbatim for
+    // traceability. This row keeps the PERMANENT invariant (no resurrected legacy form) and
+    // pins the current counter instead of the 6/6/6 stage value.
+    @Test
+    fun `no legacy resurrection — irreversible G5 state holds post-S2-B10-G5`() {
+        val decoderRaw = Files.readString(
+            java.nio.file.Paths.get(
+                "src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt",
+            ),
+        )
+        // Strip comments: historical kdoc MAY mention the removed forms; CODE must not.
+        val decoderSource = Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(
+            Regex("//[^\\n]*").replace(decoderRaw, ""),
+            "",
+        )
+        // The permanent invariant: every retired key stays out of CODE.
+        listOf("EmitEvent", "IsUnix", "Pwd", "DeleteDir", "Milestone", "CleanWs", "ArchiveArtifacts")
+            .forEach { name ->
+                assertFalse(decoderSource.contains("data class $name"), "data class $name MUST stay deleted")
+            }
+        assertFalse(decoderSource.contains("ARCHIVE_ARTIFACTS_PLUGIN_ID"))
+        assertFalse(decoderSource.contains("CLEAN_WS_PLUGIN_ID"))
+        assertFalse(
+            Files.exists(
+                java.nio.file.Paths.get(
+                    "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalArchiveArtifactsNodeDispatcher.kt",
+                ),
+            ),
+            "the legacy archiveArtifacts dispatcher source MUST stay deleted",
+        )
+        assertEquals(
+            2,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "counters converge to 2/2/2 post-S2-B10/G5 (post-S2-A4/G5 + S2-A5/G5 + S2-A6/G5 + S2-A7/A9/A10/B10 G4+G5) — a contract-suite fix must never resurrect legacy",
         )
     }
 }

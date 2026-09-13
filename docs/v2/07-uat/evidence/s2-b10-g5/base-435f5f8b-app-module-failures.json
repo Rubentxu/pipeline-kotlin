@@ -1,0 +1,279 @@
+{
+ "sha": "435f5f8b",
+ "tests": 1393,
+ "skipped": 95,
+ "failures": [
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test",
+   "name": "family classifier routes core sh through Registry (not LegacyCore) post-A4()",
+   "msg": "org.opentest4j.AssertionFailedError: core.sleep remains a legacy key (surgical flip on `core.sh` only) ==> expected: <LegacyCore> but was: <Registry>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommandRegistryTest",
+   "name": "LEGACY_PLUGIN_IDS matches expected set()",
+   "msg": "org.opentest4j.AssertionFailedError: LEGACY_PLUGIN_IDS must match expected set ==> expected: <[core.load, core.waitUntil, core.archiveArtifacts]> but was: <[core.load, core.waitUntil]>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest",
+   "name": "allCorpusFixturesAreDiscoverable()",
+   "msg": "org.opentest4j.AssertionFailedError: Corpus must have 19 valid fixtures (S2-A6/G3R added 20-pwd-tmp) ==> expected: <19> but was: <20>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest",
+   "name": "fixture14CredentialsBindings()",
+   "msg": "org.opentest4j.AssertionFailedError: Fixture 14-credentials-bindings.pipeline.kts exited with code 1. stderr: WARNING: A terminally deprecated method in sun.misc.Unsafe has been called | WARNING: sun.misc.Unsafe::invokeC"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreCleanWsStepContractSuiteTest",
+   "name": "G5 LEGACY_REMOVED invariant \u2014 core dot cleanWs physical forms destroyed and counters are 3 3 3()",
+   "msg": "org.opentest4j.AssertionFailedError: LEGACY_PLUGIN_IDS count MUST be 3 post-S2-A10/G5 ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreDeleteDirStepUnitTest",
+   "name": "counters - post-S2-A10-G5 LEGACY_REMOVED 3-3-3 converged()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreEmitEventRegistryPrimaryFitnessTest",
+   "name": "G4 flip post-S2-A10-G4 \u2014 3 residual legacy keys remain()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreEmitEventRegistryPrimaryFitnessTest",
+   "name": "G5 LEGACY_REMOVED \u2014 3 residual legacy keys remain post-S2-A10-G5()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreErrorRegistryPrimaryFitnessTest",
+   "name": "LEGACY_PLUGIN_IDS post-S2-A10-G4 \u2014 3 residual legacy keys remain()",
+   "msg": "org.opentest4j.AssertionFailedError: LEGACY_PLUGIN_IDS MUST be exactly the 3 residual legacy keys post-S2-A10/G4 ==> expected: <[core.load, core.waitUntil, core.archiveArtifacts]> but was: <[core.load, core.waitUntil]>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreErrorRegistryPrimaryFitnessTest",
+   "name": "LEGACY_PLUGIN_IDS post-S2-A10-G5 \u2014 3 residual legacy keys remain after LEGACY_REMOVED()",
+   "msg": "org.opentest4j.AssertionFailedError: LEGACY_PLUGIN_IDS MUST be exactly the 3 residual legacy keys post-S2-A10/G5 (LEGACY_REMOVED closed) ==> expected: <[core.load, core.waitUntil, core.archiveArtifacts]> but was: <[core."
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreIsUnixRegistryPrimaryFitnessTest",
+   "name": "G4 flip - core dot isUnix stays absent post-S2-A10-G4()",
+   "msg": "org.opentest4j.AssertionFailedError: G4 counter: LEGACY_PLUGIN_IDS converges 4 (post-S2-A9/G5) -> 3 (post-S2-A10/G4) ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreIsUnixRegistryPrimaryFitnessTest",
+   "name": "G5 LEGACY_REMOVED - core dot isUnix stays absent post-S2-A10-G5()",
+   "msg": "org.opentest4j.AssertionFailedError: G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G4) -> 3 (post-S2-A10/G5, LEGACY_REMOVED closed) ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreIsUnixStepUnitTest",
+   "name": "counters drop to 6-6-6 post-S2-A6-G5 and legacy dispatcher source is physically removed()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <6> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolverTest",
+   "name": "ordinary steps declare no recovery()",
+   "msg": "java.lang.IllegalArgumentException: No canonical core metadata registered for plugin 'core.sleep'"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CorePwdRegistryPrimaryFitnessTest",
+   "name": "G4 flip - core dot pwd stays absent post-S2-A10-G4()",
+   "msg": "org.opentest4j.AssertionFailedError: G4 counter: LEGACY_PLUGIN_IDS converges 4 (post-S2-A9/G5) -> 3 (post-S2-A10/G4) ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CorePwdRegistryPrimaryFitnessTest",
+   "name": "G5 LEGACY_REMOVED - core dot pwd stays absent post-S2-A10-G5()",
+   "msg": "org.opentest4j.AssertionFailedError: G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G4) -> 3 (post-S2-A10/G5, LEGACY_REMOVED closed) ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest",
+   "name": "production registry contains exactly the registered core steps (post-S2-A10-G1)()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <[core.echo, core.sh, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.pwd, core.pwd.tmp, core.waitUntil, core.deleteDir, core.milestone, core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest",
+   "name": "registry post-S2-A10-g4 \u2014 3 residual legacy keys remain()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <[core.load, core.waitUntil, core.archiveArtifacts]> but was: <[core.load, core.waitUntil]>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest",
+   "name": "registry post-S2-A10-g5 \u2014 3 residual legacy keys remain after LEGACY_REMOVED()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <[core.load, core.waitUntil, core.archiveArtifacts]> but was: <[core.load, core.waitUntil]>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreWriteFileRegistryPrimaryFitnessTest",
+   "name": "G4 flip - core dot writeFile stays absent post-S2-A10-G4()",
+   "msg": "org.opentest4j.AssertionFailedError: G4 counter: LEGACY_PLUGIN_IDS converges 4 (post-S2-A9/G5) -> 3 (post-S2-A10/G4) ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.CoreWriteFileRegistryPrimaryFitnessTest",
+   "name": "G5 LEGACY_REMOVED - core dot writeFile stays absent post-S2-A10-G5()",
+   "msg": "org.opentest4j.AssertionFailedError: G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G4) -> 3 (post-S2-A10/G5, LEGACY_REMOVED closed) ==> expected: <3> but was: <2>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.EmitEventStepContractSuiteTest",
+   "name": "no legacy resurrection \u2014 irreversible G5 state holds post-S2-A6-G4()",
+   "msg": "org.opentest4j.AssertionFailedError: counters stay 6/6/6 (post-S2-A4/G5 + S2-A5/G4 + S2-A6/G4: isUnix + pwd physically removed in code; counter 7 -> 6) \u2014 a contract-suite fix must not resurrect legacy ==> expected: <6> b"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolverTest",
+   "name": "a remaining legacy core key delegates to the legacy core authority even when absent from the registry()",
+   "msg": "dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation: No durable metadata for step 'core.sleep': not a legacy executable and not in the registry"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatCompat001CorpusSmokeRunTest",
+   "name": "corpus smoke-runs green and satisfies M2 exit criterion()",
+   "msg": "org.opentest4j.AssertionFailedError: Corpus must have 17 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources; v0.33.1 added fixtures 15-error, 16-sleep"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatCompat001CorpusSmokeRunTest",
+   "name": "each corpus fixture produces non-empty event stream()",
+   "msg": "org.opentest4j.AssertionFailedError: Corpus must have 17 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources; v0.33.1 added fixtures 15-error, 16-sleep"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal005CheckoutGitTest",
+   "name": "SC-007 poll detects changed SHA and emits GitPollChanged(Path)",
+   "msg": "java.lang.IllegalStateException: git command failed: git -C /tmp/junit-2563873544099060186/work commit -m New commit, exit=1, err=git-wrapper: repo NO CLASIFICADO, no firmo commits (fail-closed). |   remotes: ninguno |  "
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal005CorpusUntouchedTest",
+   "name": "CP-002 corpus has exactly 13 valid fixture files(Path)",
+   "msg": "org.opentest4j.AssertionFailedError: Corpus must have exactly 19 valid pipeline fixtures (07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artef"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal007SandboxProfileTest",
+   "name": "SB-S-008 parallel branches have isolated cwds(Path)",
+   "msg": "org.opentest4j.AssertionFailedError: b1 pwd should contain branch workspace marker (-b0 or stage-0-0), got: /tmp/junit-9734695167607930730/ctrl/workspace/TestStage-0 (SB-S-008) ==> expected: <true> but was: <false>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal007SandboxProfileTest",
+   "name": "SB-S-010 resume with profile change none-to-local re-attaches(Path)",
+   "msg": "org.opentest4j.AssertionFailedError: Resume with profile change (none->local) must fail closed per D4 fingerprint. stdout=[{\"eventId\":\"6604c43d-978a-49a5-a30d-99c9bc0e4cfc\",\"runId\":\"894e7120-8b98-49f2-affd-41b1b3503c5e\","
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal008CredentialsTest",
+   "name": "CR-BD-027 CredentialUsed per use(Path)",
+   "msg": "org.opentest4j.AssertionFailedError: Should have at least 2 CredentialUsed events (one per use). Got: 0 ==> expected: <true> but was: <false>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal008CredentialsTest",
+   "name": "UAT-L8-CP-001 original 4 corpus files byte-identical to cycle base()",
+   "msg": "org.opentest4j.AssertionFailedError: Original corpus file must be byte-identical to base: 06-loop.pipeline.kts ==> expected: <34cb00a76c72add46799d0a3131902f73cb85960bbb0b6679e6248d0b4d591e5> but was: <26cc0fc90d3a56a5ee"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal009TopStepsTest",
+   "name": "CR-U9-001 writeFile readFile round-trip with sha256 event()",
+   "msg": "org.opentest4j.AssertionFailedError: Should emit FileWritten event. Events: [CompilationStarted, CompilationFinished, RunStarted, StageStarted, StepStarted, StepFinished, StepStarted, EchoOutputCaptured, StepFinished, St"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal009TopStepsTest",
+   "name": "CR-U9-002 fileExists true after writeFile()",
+   "msg": "org.opentest4j.AssertionFailedError: Should emit FileWritten event for exists.txt. Events: [CompilationStarted, CompilationFinished, RunStarted, StageStarted, StepStarted, StepFinished, StepStarted, StepFinished, StageFi"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal009TopStepsTest",
+   "name": "CR-U9-003 writeFile atomic write succeeds()",
+   "msg": "org.opentest4j.AssertionFailedError: Should emit FileWritten event ==> expected: <true> but was: <false>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.UatLocal009TopStepsTest",
+   "name": "CR-U9-004 writeFile cross-fs fallback documented in atomicallyMoved()",
+   "msg": "org.opentest4j.AssertionFailedError: Should emit FileWritten event ==> expected: <true> but was: <false>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "Exactly-once discipline - 3 steps emits 3 StepStarted and 3 StepFinished()",
+   "msg": "org.opentest4j.AssertionFailedError: Must have exactly 3 StepStarted events for 3 steps ==> expected: <3> but was: <0>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "No step events for ReplayDecision SKIP()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "ReplayDecision ABORT emits one failed lifecycle without dispatching()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <1> but was: <0>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "dispatch decodes each StepNode before delegating to the typed dispatcher()",
+   "msg": "org.opentest4j.AssertionFailedError: Both echo steps must succeed, proving decoder was invoked for each ==> expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error duri"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "dispatch returns SCHEMA for a fresh structurally-valid but typed-invalid payload without executor()",
+   "msg": "org.opentest4j.AssertionFailedError: Failure kind must be SCHEMA ==> expected: <SCHEMA> but was: <INFRASTRUCTURE>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "journals a supported block child with its body path(Path)",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "journals and checkpoints a linear canonical echo run()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "run emits StepFinished after dispatch()",
+   "msg": "org.opentest4j.AssertionFailedError: Must have at least one StepFinished event ==> expected: <true> but was: <false>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "run emits StepStarted before dispatch()",
+   "msg": "org.opentest4j.AssertionFailedError: Must have at least one StepStarted event ==> expected: <true> but was: <false>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "withCredentials acquires scope overlays env and always closes()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinatorTest",
+   "name": "withCredentials cleanup failure folds a successful body to failure()",
+   "msg": "org.opentest4j.AssertionFailedError: scope close must still have run ==> expected: <1> but was: <0>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.DualExecutionSeamCharacterizationTest",
+   "name": "fresh valid legacy executes exactly once through both seams()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.DualExecutionSeamCharacterizationTest",
+   "name": "replay reuse never reaches either seam()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.DualExecutionSeamCharacterizationTest",
+   "name": "running shell recovery never reaches either seam(Path)",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.DurableProtocolInvocationCharacterizationTest",
+   "name": "a1-4 lifecycle spine owns StepStarted and StepFinished around the semantic event()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=Unexpected error during pipeline run: No canonical core metadata registered for plugin 'core"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest",
+   "name": "build returns LegacyOnly boundary when registry is null()",
+   "msg": "org.opentest4j.AssertionFailedError: LegacyOnly boundary must succeed for a legacy PreparedExecution ==> expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=controlDirRoot is requir"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest",
+   "name": "build returns SeamedExecutionRouter when registry is present and stepKey is owned()",
+   "msg": "org.opentest4j.AssertionFailedError: seamed router must route legacy family to the legacy boundary ==> expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=controlDirRoot is required"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest",
+   "name": "build with null recorder returns the produced boundary without wrapping()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=controlDirRoot is required for load, cause=null))>"
+  },
+  {
+   "class": "dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest",
+   "name": "build with recorder wraps the produced boundary and increments recorder counter on execute()",
+   "msg": "org.opentest4j.AssertionFailedError: expected: <Success> but was: <Failure(failure=PipelineFailure(kind=INFRASTRUCTURE, message=controlDirRoot is required for load, cause=null))>"
+  }
+ ],
+ "errors": 0,
+ "failure_count": 54
+}

@@ -25,11 +25,15 @@ object CanonicalCoreStepMetadata {
         // S2-A10 / G5 (2026-09-13): "core.cleanWs" row removed (LEGACY_REMOVED). Production
         // metadata is CoreCleanWsStep.descriptor via RegistryStepMetadataResolver.
         // S2-A10 / G5 metadata counter converges 4/4/4 -> 3/3/3.
+        // S2-B10 / G5 (2026-09-13): "core.archiveArtifacts" row removed (LEGACY_REMOVED).
+        // Production metadata is CoreArchiveArtifactsStep.descriptor via
+        // RegistryStepMetadataResolver. This is what makes the registry the pre-decode
+        // metadata authority for the key: no legacy row exists to fall back to.
+        // S2-B10 / G5 metadata counter converges 3/3/3 -> 2/2/2.
         "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
         // S2-A6 / G5: "core.pwd" row removed (LEGACY_REMOVED). Production metadata is now
         // read exclusively from CorePwdStep.descriptor via RegistryStepMetadataResolver.
         "core.waitUntil" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
-        "core.archiveArtifacts" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
     )
 
     /** Durable metadata for a canonical core plugin; fails fast when a plugin id is not registered. */

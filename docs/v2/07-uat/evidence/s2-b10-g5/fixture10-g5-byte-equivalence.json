@@ -1,0 +1,45 @@
+{
+ "slice": "S2-B10 / G5",
+ "claim": "LEGACY_REMOVED preserves the observable archive payload byte-for-byte relative to the REGISTRY_PRIMARY (G4) authority, and the fixture now passes through the registry-only spine (no legacy fallback exists).",
+ "method": "Same installed distribution command, same fixture, fresh --db per run, twice at HEAD (post-LEGACY_REMOVED). Payload compared to the G4 B_head capture.",
+ "command": "v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application run v2/compatibility/10-smoke-e2e.pipeline.kts --db <tmp>/db",
+ "G4_B_head_payload": {
+  "relPath": "build/libs/smoke.jar",
+  "sha256": "fb8ce05502991565de98e3e21d9ab98151c1cd1715b14a3f7c349cba300cb2b9",
+  "size": 4,
+  "stageName": "build"
+ },
+ "G5_run1": {
+  "exit_code": 0,
+  "artifacts": [
+   {
+    "relPath": "build/libs/smoke.jar",
+    "sha256": "fb8ce05502991565de98e3e21d9ab98151c1cd1715b14a3f7c349cba300cb2b9",
+    "size": 4,
+    "stageName": "build"
+   }
+  ],
+  "stdout_sha256": "54e9c7d3c031d9004942975c14a418d652f7cff405593d5be1e2ce816d9cf98e",
+  "stdout_bytes": 4633
+ },
+ "G5_run2": {
+  "exit_code": 0,
+  "artifacts": [
+   {
+    "relPath": "build/libs/smoke.jar",
+    "sha256": "fb8ce05502991565de98e3e21d9ab98151c1cd1715b14a3f7c349cba300cb2b9",
+    "size": 4,
+    "stageName": "build"
+   }
+  ],
+  "stdout_sha256": "eafdc0f87a9ae1096333ea598c0d15579c48b2e6504367ae8bda7a5c18278664",
+  "stdout_bytes": 4633
+ },
+ "verdict": {
+  "g5_run1_matches_g4": true,
+  "g5_run2_matches_g4": true,
+  "g5_run1_equals_g5_run2": true,
+  "byte_identical_payload_preserved": true
+ },
+ "note": "stdout_sha256 differs across runs (runId/eventId/occurredAt are run-scoped identifiers), which is why equivalence is asserted on the ARTIFACT PAYLOAD (relPath/sha256/size/stageName), the observable domain output."
+}

@@ -72,7 +72,7 @@ object LegacyResidualSnapshot {
      * ONE line to change per G5.
      */
     private val physicalResidual: Set<String> = setOf(
-        "core.load", "core.waitUntil", "core.archiveArtifacts",
+        "core.load", "core.waitUntil",
     )
     // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
     // (subtype, decoder branch, metadata row, dispatcher file all deleted).
@@ -86,6 +86,11 @@ object LegacyResidualSnapshot {
     // CanonicalCleanWsNodeDispatcher.kt file, CanonicalNodeDispatcher cleanWs seams all
     // deleted). Counter converges 3/4/4 -> 3/3/3 (registry-primary pending removed;
     // metadata + dispatcher physical forms removed too).
+    // S2-B10 / G5 (2026-09-13): "core.archiveArtifacts" removed from the physical residual
+    // (ArchiveArtifacts subtype, ARCHIVE_ARTIFACTS_PLUGIN_ID decoder branch + constant,
+    // metadata row, CanonicalArchiveArtifactsNodeDispatcher.kt file, CanonicalNodeDispatcher
+    // archiveArtifacts seams all deleted). Counter converges 2/3/3 -> 2/2/2
+    // (registry-primary pending removed; metadata + dispatcher physical forms removed too).
 
     /**
      * The key that has REGISTRY_PRIMARY-flipped (G4) but is NOT yet physically
@@ -109,7 +114,11 @@ object LegacyResidualSnapshot {
     // branch + constant, the CanonicalCoreStepCommand.ArchiveArtifacts subtype and the
     // CanonicalCoreStepMetadata["core.archiveArtifacts"] row remain physically present
     // (UNREACHABLE in production) until S2-B10 / G5 closes this lane.
-    private val registryPrimaryPendingRemoval: String? = "core.archiveArtifacts"
+    // S2-B10 / G5 (2026-09-13): back to null — LEGACY_REMOVED closed. All core.archiveArtifacts
+    // legacy forms are physically deleted. This closes the 3/3/3 -> 2/3/3 -> 2/2/2 chain and
+    // restores CONVERGENCE, which LegacyResidualConvergenceFitnessTest now asserts. Only the
+    // two residual legacy keys (core.load, core.waitUntil) remain for their own G4/G5 lanes.
+    private val registryPrimaryPendingRemoval: String? = null
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

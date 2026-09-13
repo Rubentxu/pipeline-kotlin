@@ -137,14 +137,18 @@ sealed interface CanonicalCoreStepCommand {
             // registry path uses the certified AntStyleGlob engine (frozen delta D1), which turns
             // CompatibilityCorpusTest.fixture10SmokeE2E green (runFixtureFail -> runFixturePass).
             // Evidence: docs/v2/07-uat/evidence/s2-b10-g2/fixture10-legacy-glob-defect.json
-            // Legacy `core.archiveArtifacts` source remains physically present until G5
-            // (LEGACY_REMOVED, not LEGACY_UNREACHABLE):
-            //   - CanonicalCoreStepCommand.ArchiveArtifacts subtype
-            //   - ARCHIVE_ARTIFACTS_PLUGIN_ID decoder branch + constant
-            //   - CanonicalArchiveArtifactsNodeDispatcher.kt file
-            //   - CanonicalCoreStepMetadata["core.archiveArtifacts"] row
-            // Until G5 the legacy dispatcher is unreachable in production but still
-            // type-loadable. Counter converges 3/3/3 -> 2/3/3 (ids only).
+            // S2-B10 / G5 (2026-09-13): physical removal of legacy forms (LEGACY_REMOVED).
+            // CanonicalCoreStepCommand.ArchiveArtifacts subtype, the ARCHIVE_ARTIFACTS_PLUGIN_ID
+            // constant + decoder branch, the CanonicalCoreStepMetadata["core.archiveArtifacts"]
+            // row, CanonicalArchiveArtifactsNodeDispatcher.kt, and the CanonicalNodeDispatcher
+            // archiveArtifacts seams (field, when branch, archiveArtifactsContext) are all
+            // removed in this slice. Production routing is exclusively
+            // CoreArchiveArtifactsStep.definition via the registry. The behaviour-level proof
+            // that the legacy glob authority is gone (not merely textually absent) is the
+            // counter-preserved A/B: CompatibilityCorpusTest.fixture10SmokeE2E archives
+            // build/libs/smoke.jar with a real sha256 where the legacy authority failed with
+            // `No files matched glob pattern 'build/libs/*.jar'`. Counter converges
+            // 2/3/3 -> 2/2/2.
             "core.load",
             "core.waitUntil",
         )
@@ -220,20 +224,12 @@ sealed interface CanonicalCoreStepCommand {
     }
 
     /**
-     * T-08: archiveArtifacts step — archives build artifacts for retention.
-     * @param artifacts Ant-style glob pattern for files to archive
-     * @param allowEmptyArchive If true, allow empty glob results
-     * @param excludes Ant-style pattern for files to exclude
-     * @param fingerprint If true, compute SHA-256 fingerprint of archived files
+     * T-08: archiveArtifacts step — DELETED at S2-B10 / G5 (LEGACY_REMOVED). The
+     * `core.archiveArtifacts` execution authority is now exclusively the registry
+     * (CoreArchiveArtifactsStep.definition via CoreStepRegistryFactory). The DSL
+     * `archiveArtifacts(...)` lowers to `StepSpec.RegistryStepSpec(core.archiveArtifacts, ...)`;
+     * the canonical decoder no longer recognises an ArchiveArtifacts data class.
      */
-    data class ArchiveArtifacts(
-        val artifacts: String,
-        val allowEmptyArchive: Boolean = false,
-        val excludes: String = "",
-        val fingerprint: Boolean = false,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.archiveArtifacts"
-    }
 }
 
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
@@ -251,7 +247,12 @@ object CanonicalCoreStepDecoder {
     // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
-    private const val ARCHIVE_ARTIFACTS_PLUGIN_ID = "core.archiveArtifacts"
+    // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID removed with the legacy branch
+    // (LEGACY_REMOVED). The raw core.archiveArtifacts dsl-v1 envelope is consumed executively by
+    // CoreArchiveArtifactsStep via the registry — never here. The envelope SHAPE is preserved
+    // byte-identically (pinned by the contract suite's codec row); only the legacy decoder's
+    // ability to recognise the key is destroyed, which the contract suite asserts behaviourally
+    // as an `Unsupported core plugin step` rejection.
 
     fun decode(node: StepNode): CanonicalCoreStepCommand {
         require(node.payload.schemaVersion == SCHEMA_VERSION) {
@@ -295,17 +296,11 @@ object CanonicalCoreStepDecoder {
                     quiet = quiet,
                 )
             }
-            ARCHIVE_ARTIFACTS_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "archiveArtifacts") {
-                    "Payload kind must be 'archiveArtifacts' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.ArchiveArtifacts(
-                    artifacts = payload.requiredString("artifacts"),
-                    allowEmptyArchive = payload["allowEmptyArchive"]?.jsonPrimitive?.booleanOrNull ?: false,
-                    excludes = payload["excludes"]?.jsonPrimitive?.contentOrNull ?: "",
-                    fingerprint = payload["fingerprint"]?.jsonPrimitive?.booleanOrNull ?: false,
-                )
-            }
+            // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID branch removed
+            // (LEGACY_REMOVED). A core.archiveArtifacts node now falls through to the
+            // `else` rejection below — as it must, since the registry and not this decoder
+            // is its execution authority. That rejection is asserted behaviourally by the
+            // contract suite (no silent fall-through to a no-op).
             else -> throw IllegalArgumentException(
                 "Unsupported core plugin step '${node.pluginStepId.value}' for '${node.id.value}'"
             )

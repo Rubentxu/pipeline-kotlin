@@ -79,6 +79,7 @@ class CoreWriteFileRegistryPrimaryFitnessTest {
     // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY; legacy decoder
     // branch / dispatcher file / metadata row remain physically present (UNREACHABLE in
     // production) until S2-A10 / G5 closes this lane. Counter converges 4/4/4 -> 3/4/4.
+    @Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot writeFile stays absent`. Preserved verbatim for traceability.")
     @Test
     fun `G4 flip - core dot writeFile stays absent post-S2-A10-G4`() {
         assertTrue(
@@ -95,6 +96,7 @@ class CoreWriteFileRegistryPrimaryFitnessTest {
     // S2-A10 / G5 (2026-09-13): core.cleanWs legacy forms physically removed (LEGACY_REMOVED).
     // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
     // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot writeFile stays absent`. Preserved verbatim for traceability.")
     @Test
     fun `G5 LEGACY_REMOVED - core dot writeFile stays absent post-S2-A10-G5`() {
         assertTrue(
@@ -105,6 +107,27 @@ class CoreWriteFileRegistryPrimaryFitnessTest {
             3,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
             "G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G4) -> 3 (post-S2-A10/G5, LEGACY_REMOVED closed)",
+        )
+    }
+
+    // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
+    // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. Historical S2-A10/G4 and S2-A10/G5
+    // snapshots above preserved verbatim for traceability.
+    @Test
+    fun `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot writeFile stays absent`() {
+        assertTrue(
+            key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.file.writeFile MUST remain routed via the registry post-S2-B10/G5 LEGACY_REMOVED of core.archiveArtifacts",
+        )
+        assertEquals(
+            2,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G5) -> 2 (post-S2-B10/G5, LEGACY_REMOVED closed)",
+        )
+        assertEquals(
+            setOf("core.load", "core.waitUntil"),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-S2-B10/G5: the residual is exactly the two keys still awaiting their own G4/G5 lanes",
         )
     }
 

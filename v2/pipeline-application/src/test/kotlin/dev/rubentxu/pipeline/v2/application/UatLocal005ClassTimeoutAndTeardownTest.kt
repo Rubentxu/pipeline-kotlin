@@ -167,7 +167,7 @@ class UatLocal005ClassTimeoutAndTeardownTest {
      */
     @Test
     fun `TC-009 no maxParallelForks in any UatLocal005 test class`(@TempDir tempDir: Path) {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
         val testFiles = listOf(
             "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal005CheckoutGitTest.kt",
             "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/GitCheckoutExecutorAdversarialTest.kt",

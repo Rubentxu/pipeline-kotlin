@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    `maven-publish`
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -22,4 +23,22 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// Lane R: publish this SDK module into a build-local Maven repository so the
+// independent external plugin build can compile against artifacts produced from
+// THIS source revision. Replaces the committed libs/*.jar snapshots, which could
+// silently drift from the live SDK.
+publishing {
+    publications {
+        create<MavenPublication>("sdk") {
+            from(components["java"])
+        }
+    }
+    repositories {
+        maven {
+            name = "sdk"
+            url = uri(rootProject.layout.buildDirectory.dir("sdk-repo"))
+        }
+    }
 }

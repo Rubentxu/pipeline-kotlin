@@ -51,7 +51,7 @@ class UatLocal005CorpusUntouchedTest {
      */
     @Test
     fun `CP-001 original 4 corpus files byte-identical to base commit`(@TempDir tempDir: Path) {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
         val baseCommit = findBaseCommit()
 
         // The original 6 files — but 02, 04, and 06 have LEGITIMATE changes:
@@ -108,7 +108,7 @@ class UatLocal005CorpusUntouchedTest {
      */
     @Test
     fun `CP-002 corpus has exactly 13 valid fixture files`(@TempDir tempDir: Path) {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
         val compatibilityDir = projectRoot.resolve("v2/compatibility")
 
         val pipelineFiles = Files.list(compatibilityDir)
@@ -153,7 +153,7 @@ class UatLocal005CorpusUntouchedTest {
     }
 
     private fun gitCatFile(commit: String, path: String): String {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
         val pb = ProcessBuilder(
             "git", "show", "$commit:$path"
         )
@@ -179,7 +179,7 @@ class UatLocal005CorpusUntouchedTest {
      * Per AGENTS.md rule 16: comparison point is cycle base (4db480d), not ML-R5 base.
      */
     private fun findBaseCommit(): String {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
 
         // Cycle base: fix(application): exit non-zero on script compilation failure (INC-R10-ARC-001)
         val cycleBase = "4db480d"

@@ -39,7 +39,9 @@ class UatComp003CredentialsDefaultImportTest {
         // the domain JAR (CredentialsId/CredentialsRef) and the DSL API JAR
         // (pipeline/stages/stage/sh). Using absolute path for domain JAR since
         // it is a direct implementation dep of pipeline-scripting-kotlin24.
-        val domainJar = "/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin/v2/pipeline-domain/build/libs/pipeline-domain-0.1.0-SNAPSHOT.jar"
+        val domainJar = requireNotNull(ScriptDefinition.domainJar()) {
+            "pipeline-domain JAR must be on the test runtime classpath"
+        }
         val dslJar = ScriptDefinition.dslApiJar()
         val fullClasspath = buildList {
             add(domainJar)
@@ -77,7 +79,9 @@ class UatComp003CredentialsDefaultImportTest {
         """.trimIndent()
 
         // updateClasspath REPLACES the host classpath — must include both domain + DSL JARs
-        val domainJar = "/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin/v2/pipeline-domain/build/libs/pipeline-domain-0.1.0-SNAPSHOT.jar"
+        val domainJar = requireNotNull(ScriptDefinition.domainJar()) {
+            "pipeline-domain JAR must be on the test runtime classpath"
+        }
         val dslJar = ScriptDefinition.dslApiJar()
         val fullClasspath = buildList {
             add(domainJar)

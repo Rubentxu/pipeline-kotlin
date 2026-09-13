@@ -51,7 +51,7 @@ class UatLocal005BannedImportsTest {
      */
     @Test
     fun `IMP-001 no jgit imports in v2 main source`(@TempDir tempDir: Path) {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
         val results = mutableListOf<String>()
 
         val scanDirs = listOf(
@@ -84,7 +84,7 @@ class UatLocal005BannedImportsTest {
      */
     @Test
     fun `IMP-002 no hardcoded git binary paths in v2 main source`(@TempDir tempDir: Path) {
-        val projectRoot = Path.of("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir.toPath()
         val results = mutableListOf<String>()
 
         val scanDirs = listOf(

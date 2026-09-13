@@ -16,7 +16,9 @@ class WithCredentialsCompileIntegrationTest {
 
     private val scriptingHost: Kotlin24ScriptingHost = Kotlin24ScriptingHost()
 
-    private val domainJar = "/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin/v2/pipeline-domain/build/libs/pipeline-domain-0.1.0-SNAPSHOT.jar"
+    private val domainJar = requireNotNull(ScriptDefinition.domainJar()) {
+            "pipeline-domain JAR must be on the test runtime classpath"
+        }
     private val dslJar: String? = ScriptDefinition.dslApiJar()
 
     private fun fullClasspath(): List<String> = buildList {

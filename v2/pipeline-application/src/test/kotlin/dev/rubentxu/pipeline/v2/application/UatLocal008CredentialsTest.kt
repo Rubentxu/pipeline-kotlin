@@ -123,7 +123,7 @@ class UatLocal008CredentialsTest {
                 "v2/pipeline-credentials-api/src/main/",
                 "v2/pipeline-credentials-local/src/main/"
             ))
-            .directory(java.io.File("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin"))
+            .directory(TestProjectRoot.dir)
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -144,7 +144,7 @@ class UatLocal008CredentialsTest {
         // - 02-environment.pipeline.kts: Groovy environment{} → Kotlin withEnv(listOf())
         // - 04-sh.pipeline.kts: Array literal → string arg
         val baseCommit = "4db480d"  // Cycle base per AGENTS.md rule 16
-        val projectRoot = java.io.File("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin")
+        val projectRoot = TestProjectRoot.dir
 
         // The original 6 files — but 02 and 04 have legitimate changes
         val unchangedFiles = listOf(

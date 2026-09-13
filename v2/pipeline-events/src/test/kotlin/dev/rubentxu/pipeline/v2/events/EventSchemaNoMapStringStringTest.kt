@@ -46,7 +46,7 @@ class EventSchemaNoMapStringStringTest {
 
         fun run(command: String, args: List<String>): Result {
             val process = ProcessBuilder(listOf(command) + args)
-                .directory(java.io.File("/var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin"))
+                .directory(TestProjectRoot.dir)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
                 .start()
 

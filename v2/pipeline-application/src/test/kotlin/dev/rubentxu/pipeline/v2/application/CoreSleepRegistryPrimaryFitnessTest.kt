@@ -67,12 +67,23 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // Counters converge 4/5/5 -> 4/4/4 (registry-primary pending removed; metadata + dispatcher
     // physical forms removed too). Historical G4 snapshots preserved verbatim above for
     // traceability. S2-A6/G4 snapshot also @Disabled above to make room for this G5 truth.
+    @Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `registry post-S2-A10-G4 — 3 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test fun `registry post-S2-A9-G5 — 4 residual legacy keys remain`() {
         assertEquals(setOf(
             "core.cleanWs",
             "core.load", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertEquals(4, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY; legacy decoder
+    // branch / dispatcher file / metadata row remain physically present (UNREACHABLE in
+    // production) until S2-A10 / G5 closes this lane. Counter converges 4/4/4 -> 3/4/4.
+    @Test fun `registry post-S2-A10-g4 — 3 residual legacy keys remain`() {
+        assertEquals(setOf(
+            "core.load", "core.waitUntil", "core.archiveArtifacts",
+        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")

@@ -95,7 +95,7 @@ class S3PwdLegacyRemovedFitnessTest {
 
     @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
         // Single shared authority: ONE place to flip 6 -> 5 at the next G4/G5.
-        LegacyResidualSnapshot.assertConverged(root)
+        LegacyResidualSnapshot.assertCurrentState(root)
     }
 
     // ===== anti-over-removal: PwdResolved emission is ALIVE =====

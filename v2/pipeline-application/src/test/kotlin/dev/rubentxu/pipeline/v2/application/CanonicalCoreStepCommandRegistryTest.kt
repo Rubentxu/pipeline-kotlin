@@ -23,6 +23,9 @@ import org.junit.jupiter.api.Test
  *   LFC-2E1-S2-A6 / G5 removed Pwd.
  *   LFC-2E1-S2-A7 / G5 removed DeleteDir.
  *   LFC-2E1-S2-A9 / G5 removed Milestone.
+ *   LFC-2E1-S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
+ *   Legacy subtype/decoder branch/dispatcher/metadata row still physically present
+ *   (UNREACHABLE in production) until S2-A10 / G5 closes this lane.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -55,8 +58,8 @@ class CanonicalCoreStepCommandRegistryTest {
             // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
             // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
             // row/dispatcher physically deleted (LEGACY_REMOVED).
+            // S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
             // P1a — workflow-control (v0.33.0)
-            "core.cleanWs",
             "core.load",
             // P1b — utility (v0.33.0)
             "core.waitUntil",

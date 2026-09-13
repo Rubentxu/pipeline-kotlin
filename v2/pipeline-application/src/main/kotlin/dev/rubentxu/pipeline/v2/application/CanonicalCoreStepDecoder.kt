@@ -112,7 +112,15 @@ sealed interface CanonicalCoreStepCommand {
             // decoder branch + constant, metadata row, CanonicalMilestoneNodeDispatcher.kt
             // file, CanonicalNodeDispatcher Milestone seams) are all removed in this slice.
             // Production routing is exclusively CoreMilestoneStep.definition via the registry.
-            "core.cleanWs",
+            // S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
+            // Production routing authority is now CoreCleanWsStep.definition via the open
+            // registry (CoreStepRegistryFactory). Legacy `core.cleanWs` source remains
+            // physically present until G5 (LEGACY_REMOVED, not LEGACY_UNREACHABLE):
+            //   - CLEAN_WS_PLUGIN_ID decoder branch + constant
+            //   - CanonicalCleanWsNodeDispatcher.kt file
+            //   - CanonicalCoreStepMetadata["core.cleanWs"] row
+            // Until G5 the legacy dispatcher is unreachable in production but still
+            // type-loadable. Counter converges 4/4/4 -> 3/4/4 (ids only).
             "core.load",
             "core.waitUntil",
             "core.archiveArtifacts",

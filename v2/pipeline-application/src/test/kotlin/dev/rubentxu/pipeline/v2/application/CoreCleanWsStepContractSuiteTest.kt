@@ -697,28 +697,32 @@ class CoreCleanWsStepContractSuiteTest {
         }
     }
 
-    // ===== 21. G1 candidate invariant (cleanWs-specific) =====
+    // ===== 21. G4 post-flip invariant (cleanWs-specific) =====
 
     @Test
-    fun `G1 candidate invariant — core dot cleanWs stays LegacyCore and counters remain 4 4 4 (post-S2-A9-G5 baseline)`() {
-        // Candidate-only registration: while core.cleanWs remains in LEGACY_PLUGIN_IDS,
-        // StructuralFamilyResolver's legacy-membership-wins rule keeps LegacyCore as the
-        // production authority. No legacy mutation, no counter change at G1..G3.
-        // S2-A9 / G5 (2026-09-13): core.milestone added to the set of LEGACY_REMOVED
-        // keys, so the post-G5 baseline is 4/4/4 (was 5/5/5 pre-G5). This test must
-        // assert against the CURRENT baseline (4), not the pre-G5 one (5).
-        assertTrue(
+    fun `G4 post-flip invariant — core dot cleanWs flipped to Registry and counters are 3 4 4`() {
+        // S2-A10 / G4 (2026-09-13): core.cleanWs removed from LEGACY_PLUGIN_IDS — the
+        // REGISTRY_PRIMARY authority flip. Production routing is now exclusively
+        // CoreCleanWsStep.definition via the open registry (CoreStepRegistryFactory).
+        // The legacy decoder branch / dispatcher file / metadata row remain physically
+        // present (UNREACHABLE in production) until S2-A10 / G5 closes this lane.
+        //
+        // Per the S2-A9/G5 law: G4 = N/N/N → (N-1)/N/N (ids only).
+        //   pre-G4:  4 / 4 / 4
+        //   post-G4: 3 / 4 / 4   (this slice)
+        //   post-G5: 3 / 3 / 3   (next slice — LEGACY_REMOVED)
+        assertFalse(
             "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "core.cleanWs MUST remain in LEGACY_PLUGIN_IDS at G1..G3 (candidate-only registration)",
+            "core.cleanWs MUST NOT be in LEGACY_PLUGIN_IDS post-G4 (REGISTRY_PRIMARY flipped)",
         )
         assertEquals(
-            4,
+            3,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "LEGACY_PLUGIN_IDS count MUST stay 4 post-S2-A9/G5 (no G4/G5 mutations in THIS slice)",
+            "LEGACY_PLUGIN_IDS count MUST be 3 post-S2-A10/G4 (one fewer id; metadata + dispatcher still in)",
         )
         assertTrue(
             "core.cleanWs" in CanonicalCoreStepMetadata.pluginIds,
-            "the legacy metadata row MUST remain untouched at G1..G3",
+            "the legacy metadata row MUST remain present until G5 (LEGACY_REMOVED)",
         )
     }
 }

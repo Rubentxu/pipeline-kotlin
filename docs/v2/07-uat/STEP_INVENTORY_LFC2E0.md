@@ -34,7 +34,7 @@ Production Step keys total: 15
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900)
 Real .pipeline.kts examples: 10 (01..10)
 Event Harness contracts: 4 (07, 08, 09, 10)
-CERTIFIED Steps: 9 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone)
+CERTIFIED Steps: 10 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs)
 ```
 
 ## Inventory table
@@ -63,7 +63,7 @@ Columns:
 | `core.emit.event` | CORE | legacy | Y (emits canonical DomainEvent kinds) | N | Y (CanonicalEmitEventNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.milestone` | CORE | registry | Y (L1704, registryStep generic) | Y (`CoreMilestoneStep`) | Y | N (S2-A9 burn-down) | Y/Y | Y (`EVENT_SINK_CAPABILITY` + `MILESTONE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 21-milestone | — | **CERTIFIED** (S2-A9/G8, `S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.deleteDir` | CORE candidate | registry | Y (L1456) | Y (`CoreDeleteDirStep`) | Y | N (S2-A7 burn-down) | Y/Y | Y (`DELETE_DIR_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A7/G8, PROPOSED — `S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md`) |
-| `core.cleanWs` | OFFICIAL_PLUGIN candidate | legacy | Y (L1469, L1479) | N | Y (CanonicalCleanWsNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
+| `core.cleanWs` | OFFICIAL_PLUGIN candidate | registry | Y (L1469, L1479, registryStep generic) | Y (`CoreCleanWsStep`) | Y | N (S2-A10 burn-down) | Y/Y | Y (`CLEAN_WS_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A10/G8, PROPOSED — `S2_A10_CORE_CLEANWS_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.load` | CORE | legacy | Y (L1614) | N | Y (CanonicalLoadNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.pwd` | CORE candidate | legacy | Y (L1570) | N | Y (CanonicalPwdNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.isUnix` | CORE candidate | legacy | Y (L1590) | N | Y (CanonicalIsUnixNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
@@ -219,10 +219,28 @@ core.deleteDir:
 
 State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A7 closure)` at LFC-2E1-S2-A7 / G8. LEGACY_PLUGIN_IDS residual remains 5 / 5 / 5.
 
-### `core.cleanWs` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.cleanWs` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A10 closure)
 
-- **DSL:** `PipelineDsl.kt:1469/1479` `fun cleanWs(...)`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalCleanWsNodeDispatcher.kt`
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreCleanWsStep.kt` `val KEY: PluginStepId = PluginStepId("core.cleanWs")`
+- **DSL:** `PipelineDsl.kt:1469/1479` `fun cleanWs(deleteDirs: Boolean = true, patterns: List<String>? = null)` (S2-A10/G5 lowered to `StepSpec.RegistryStepSpec` direct, byte-equivalent to `CoreCleanWsStep.inputCodec.encode`).
+- **Descriptor:** `effects = { Effect.WRITES_WORKSPACE }`; `replayPolicy = ReplayPolicy.MEMOIZED` (deleteAll) / `RERUN` (selective patterns); `requiredCapabilities = { CLEAN_WS_OPERATIONS_CAPABILITY }`.
+- **Typed carrier:** `CleanWsOutput(deletedFiles, deletedDirs, patterns, sha256)`; durable event `WsCleaned` emitted by `CleanWsOperationsAdapter` (single emission authority over the existing `CleanWsExecutor` SDK substrate).
+- **Receipts (certification):**
+  - G4 REGISTRY_PRIMARY: `docs/v2/07-uat/S2_A10_CORE_CLEANWS_G4_REGISTRY_PRIMARY_RECEIPT.md` (counter 4 → 3)
+  - G5 LEGACY_REMOVED: `docs/v2/07-uat/S2_A10_CORE_CLEANWS_G5_LEGACY_REMOVED_RECEIPT.md` (counters 3/4/4 → 3/3/3; `CanonicalCleanWsNodeDispatcher.kt` deleted; `cleanWs` removed from LEGACY_PLUGIN_IDS)
+  - G6 CONTRACT_SUITE: `CoreCleanWsStepContractSuiteTest` 17/17 coverage matrix (observability row 13 provenanced to §LB-02; row 14 architecture fitness DELEGATED to `Lfc2RegistryFamilyFitnessTest` + `S3*LegacyRemovedFitnessTest` + `Core*RegistryPrimaryFitnessTest`)
+  - G7 INSTALLED_ACCEPTANCE: `docs/v2/07-uat/S2_A10_CORE_CLEANWS_G7_INSTALLED_ACCEPTANCE_RECEIPT.md` (4/4 PASS — fresh deletion, event contract, rerun idempotency, legacy absence)
+  - G8 CERTIFIED: `docs/v2/07-uat/S2_A10_CORE_CLEANWS_G8_CERTIFICATION_RECEIPT.md` (this receipt)
+
+```text
+core.cleanWs:
+  delivery:       OFFICIAL_PLUGIN candidate (registry seam)
+  execution:      REGISTRY_PRIMARY
+  legacy:         REMOVED
+  certification:  CERTIFIED (proposed by G8 receipt; counters 3/3/3 unchanged)
+```
+
+State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A10 closure)` at LFC-2E1-S2-A10 / G8. LEGACY_PLUGIN_IDS residual remains **3 / 3 / 3** (core.load, core.waitUntil, core.archiveArtifacts — each with own burn-down lane).
 
 ### `core.load` — IMPLEMENTED_UNCERTIFIED (legacy)
 

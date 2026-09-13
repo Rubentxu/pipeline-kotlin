@@ -118,6 +118,22 @@ Result truth is the JUnit XML under `v2/<module>/build/test-results/test/`, arch
 `docs/v2/07-uat/evidence/b10-w1d/raw/xml/` (`build-evidence-archives.sh` records the exact selection;
 `suite-inventory.py` is byte-identical to the W1c copy, sha256 `2a50f03c…`).
 
+Recorded digests (sha256, first 16 hex; full XML trees, not console transcripts):
+
+```text
+head worktree HEAD          bdb22c7204c78d56df1d8178abe57afc39650519
+base worktree HEAD          45b26c495f86b54987f09854ed0aaf741bc37cee
+raw/xml/module-suites-xml.tar.gz        afe7372cbe16295b…   (head: every module's XML)
+raw/xml/base-module-suites-xml.tar.gz   58199fe90fcedc4a…   (base: the same module set)
+raw/head-inventory.json                 35a09487f5d878ce…
+raw/base-inventory.json                 56601ab8bedc2f02…
+/tmp/w1d-gate-head.log                  44c74bcc359f79b0…   (21:02Z, BUILD FAILED 18m 39s, 107/107)
+/tmp/w1d-gate-base.log                  542035ea24b33362…   (21:24Z, BUILD FAILED 18m 39s, 107/107)
+```
+
+Both logs contain an interleaved `BUILD SUCCESSFUL in 1s` around line 128: that is a nested Gradle
+build run *by a test* (testkit), not this round gate. The gate result is the final summary line.
+
 ### 4.2 Zero new regressions, whole repository
 
 | Module | base `45b26c49` | W1d head | delta |
@@ -138,6 +154,12 @@ base failing names - head failing names = { "withCredentials cleanup failure fol
 
 The verifier re-derives both of those sets from the archived XML and requires the subtraction to be
 exactly that one name. No class red at head is green at base.
+
+`suite-inventory.py diff` reports `regression signals: 1` and exits 1 for this slice. That signal is
+the *class with a changed failing set*, which the tool classifies pessimistically as a re-baseline
+because it cannot see the direction. The direction is the whole claim here and it is checked
+explicitly: the head set is a strict SUBSET of the base set, one name smaller, and a re-baseline
+(the failure that changes is a *new* one) would fail both of the verifier's subtraction checks.
 
 ### 4.3 Guard and migration suites
 

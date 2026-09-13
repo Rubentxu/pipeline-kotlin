@@ -101,25 +101,62 @@ re-derives this comparison from the archived XML rather than trusting the table 
 
 ### 4.3 Round gate
 
-`./v2/gradlew -p v2 check`, with a budget derived per AGENTS.md §V2 TESTING RULES rule 4
-(last green round gate 977 s × 1.3 = **1270 s**; observed duration is recorded below).
+`check` was run in **both** worktrees with the same argv, because a plain `check` is not a
+whole-suite oracle in a tree with pre-existing reds: the first attempt failed in 1 m 34 s at
+`:pipeline-scripting-api:test` and Gradle then short-circuited the rest of the graph, so
+`:pipeline-application:test` never ran. `--continue` executes every module's `test` task and is
+what makes the inventory below complete.
 
 ```text
-argv:    timeout 1270 ./v2/gradlew -p v2 check
-result:  see the fresh XML canary recorded in §4.4
+argv (head):  timeout 1270 ./v2/gradlew -p v2 check --continue
+argv (base):  timeout 1800 ./v2/gradlew -p v2 check --continue      # in ../pipeline-w1c-base, detached at bd82e1eb
 ```
 
-### 4.4 Independent verification
+| Run | Budget derivation | Observed | Result |
+| --- | --- | --- | --- |
+| head | last green round gate 977 s × 1.3 = 1270 s | **18 m 18 s (1098 s)** | BUILD FAILED — 18 pre-existing red classes |
+| base | cold worktree (nothing compiled); budget clamped to the documented ceiling 1800 s | **18 m 11 s (1091 s)** | BUILD FAILED — the same 18 red classes |
+
+The base budget is the ceiling rather than `977 × 1.3` because the base worktree starts with no
+build output at all, which is the regime the ceiling exists for. It finished well inside it, so
+no timeout was raised mid-run and no run was killed.
+
+### 4.4 Zero new regressions, whole repository
+
+`suite-inventory.py` derives a per-module inventory from the XML of both runs and diffs them.
+Modules are restricted to the 20 project paths declared in `v2/settings.gradle.kts`; a stale
+`v2/pipeline-protocol/build/` directory (removed from the build graph, XMLs from 2026-09-03)
+is excluded because it is not part of the current build.
 
 ```text
-python3 docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py
+modules compared            20
+regression signals           0
+suite-total changes          pipeline-domain 388 -> 395  (+7, intended)
+                             pipeline-architecture-tests 261 -> 262  (+1, intended)
+                             every other module: identical, test for test
 ```
 
-The verifier reads every code claim from `git show <slice>:<path>` (the slice SHA is resolved from
-this receipt's own history, so a later slice editing these files cannot move it), re-derives the
-policy table, the ownership table, the canonical body set and the coordinator debt in Python, and
-compares against expectation tables stated inside the verifier. Negative controls mutate the
-working tree and must each turn the verifier red for the intended law:
+The 18 red classes are red at base with identical failing test names:
+
+```text
+pipeline-application        14 classes / 36 failing tests   (incl. CanonicalDurableRunCoordinatorTest 26/11)
+pipeline-architecture-tests  1 class  /  1 failing test     Lfc0GlobalStateFitnessTest
+pipeline-scripting-api       1 class  /  1 failing test
+pipeline-scripting-kotlin24  2 classes/  7 failing tests
+```
+
+### 4.5 Independent verification
+
+```text
+python3 docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py             # 71/71 checks passed
+python3 docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py --controls  # 10/10 controls red
+```
+
+The verifier reads every code claim from `git show <slice>:<path>` (the slice SHA is resolved
+from this receipt's own history, so a later slice editing these files cannot move it), re-derives
+the policy table, the ownership table, the canonical body set and the coordinator debt in Python,
+and compares against expectation tables stated inside the verifier. Negative controls mutate the
+working tree (verified clean first) and must each turn the verifier red for the intended law:
 
 ```text
 K1  catchError declares canonical ownership          -> legacy body set check
@@ -134,8 +171,8 @@ K9  the descriptor default owner becomes legacy      -> canonical default check
 K10 eligibility compares string names again          -> typed id check
 ```
 
-K7 is the important one: the pin is not an authority, so an edit that makes the ledger agree with a
-drifted source still fails against the verifier's own number.
+K7 is the important one: the pin is not an authority, so an edit that makes the ledger agree with
+a drifted source still fails against the verifier's own number.
 
 ## 5. Open items carried forward
 

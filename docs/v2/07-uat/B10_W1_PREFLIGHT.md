@@ -104,6 +104,16 @@ receipts, and this run does not exceed them:
 the known corpus accounting defect (asserts 19 fixtures, corpus holds 20), independently
 found during Lane R and left unfixed there.
 
+**The run is canary-verified, not merely recent.** The first pass archived XML whose mtime
+matched the run window, which is suggestive but is not the canary discipline of rule 25.
+So the 16 pinned XMLs were deleted and the same argv re-run: all 16 regenerated in a later
+window, and **every total reproduced exactly** (26/11, 20/2, 3/0, 8/0, 11/0, 1/0, 4/0, and
+every nested retry suite green). Deleting a task output invalidates Gradle's up-to-date
+check, so the canary is also what forced the re-execution. Both runs are archived —
+`g0-baseline-xml.tar.gz` and `g0-canary-xml.tar.gz` — and the verifier requires them to
+agree and requires the canary timestamps to be strictly newer, so a future edit cannot
+quietly replace one with the other.
+
 **These 11 failures are not fixed by W1 and must not be widened by it.** They are the
 ordinary-vs-registry coordinator construction gap described in
 `LB02_A5_3B_COORDINATOR_CONSTRUCTION_CLASSIFICATION.md`: those rows construct the
@@ -177,13 +187,13 @@ happen to the W0 verifier when it became historical (`B10_W0_INNER_SEAM_RECEIPT.
 
 ## 8. Verifier and negative controls
 
-`evidence/b10-w1-g0/verify-b10-w1-preflight.py` re-derives all 36 claims in this document.
+`evidence/b10-w1-g0/verify-b10-w1-preflight.py` re-derives all 50 claims in this document.
 It reads every code claim out of the base commit (`git show` / `git grep` against
 `W1_G0_BASE`), never off the working tree, so it does not expire when the first W1 slice
 lands. Env overrides `W1_G0_BASE` / `W1_G0_DOC` / `W1_G0_TAR` exist so the controls below
 can drive it.
 
-Six controls, each run **independently from the clean base** (a control runs cumulatively
+Eight controls, each run **independently from the clean base** (a control runs cumulatively
 over a previous control's commit inherits its failures and proves nothing — the mistake
 made on the first pass here), each with a real temporary commit and an env override:
 
@@ -195,10 +205,16 @@ made on the first pass here), each with a real temporary commit and an env overr
 | CD | remove the `12/26` token from a closure receipt | C9 only fails | yes |
 | CE | change the literal count in this document | C11 only fails | yes |
 | CF | corrupt the archived XML failure total | C8 fails, and C11 reports doc-vs-XML mismatch | yes |
+| CG | corrupt the canary XML failure total | the matching C13 reproduction row fails, alone | yes |
+| CH | point the canary at the archived run itself | C13's freshness row fails, alone | yes |
 
 CF is the control that matters most: it shows the document cannot silently drift from the
 XML, because the baseline rows are re-derived rather than transcribed. It does not trip C10,
 and should not — 9 is still within the documented ceiling of 12.
+
+CH is the control that makes the canary real: replaying the archived run as if it were the
+canary is rejected, so "the canary reproduced the baseline" cannot be satisfied by citing
+the same evidence twice.
 
 Three claims in an earlier draft of this document were **false**, and the verifier is what
 caught them:

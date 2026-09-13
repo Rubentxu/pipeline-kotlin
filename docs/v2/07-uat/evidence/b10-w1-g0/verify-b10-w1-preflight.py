@@ -28,6 +28,7 @@ BASE = os.environ.get("W1_G0_BASE", "1afb4799")
 DOC = os.environ.get("W1_G0_DOC", "HEAD")
 EV = REPO / "docs/v2/07-uat/evidence/b10-w1-g0"
 TAR = Path(os.environ.get("W1_G0_TAR", EV / "raw/xml/g0-baseline-xml.tar.gz"))
+CANARY = Path(os.environ.get("W1_G0_CANARY", EV / "raw/xml/g0-canary-xml.tar.gz"))
 COORD = (
     "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/"
     "durable/CanonicalDurableRunCoordinator.kt"
@@ -82,10 +83,10 @@ def base_grep_lines(pattern: str, pathspec: str) -> list[str]:
     return [ln for ln in out.splitlines() if ln.strip()]
 
 
-def xml_rows(name: str) -> list[tuple[str, str, str, str]]:
+def xml_rows(name: str, tar: Path | None = None) -> list[tuple[str, str, str, str]]:
     """Yield (class-name, tests, failures, errors) for archived XML matching name."""
     rows = []
-    with tarfile.open(TAR, "r:gz") as t:
+    with tarfile.open(tar or TAR, "r:gz") as t:
         for m in t.getmembers():
             if name not in m.name or not m.name.endswith(".xml"):
                 continue
@@ -96,6 +97,19 @@ def xml_rows(name: str) -> list[tuple[str, str, str, str]]:
             if r:
                 rows.append((m.name.split("/")[-1][5:-4], *r.groups()))
     return rows
+
+
+def xml_timestamps(tar: Path) -> list[str]:
+    out = []
+    with tarfile.open(tar, "r:gz") as t:
+        for m in t.getmembers():
+            if not m.name.endswith(".xml"):
+                continue
+            text = t.extractfile(m).read().decode("utf-8", "replace")
+            ts = re.search(r'<testsuite[^>]*timestamp="([^"]+)"', text)
+            if ts:
+                out.append(ts.group(1))
+    return out
 
 
 print(f"B10/W1 G0 pre-flight verifier -- base {BASE}")
@@ -261,6 +275,34 @@ check(
 
 # ---- C12: the pre-flight declares implementation not started ----------------
 check("C12 doc marks implementation as not started", "implementation NOT started" in doc)
+
+# ---- C13: the canary run regenerated the same baseline ----------------------
+# The pinned XMLs were DELETED before the canary run (deleting a task output
+# invalidates Gradle's up-to-date check, so the canary is also what forced
+# re-execution). Two independent universes: the archived run and the canary.
+check("C13 canary archive exists", CANARY.is_file(), str(CANARY))
+if CANARY.is_file():
+    for cls, want in expected.items():
+        rows = xml_rows(cls, CANARY)
+        got = rows[0][1:] if rows else None
+        check(f"C13 canary {cls} reproduces {want[0]}/{want[1]}/{want[2]}", got == want, f"got {got}")
+    base_ts, can_ts = xml_timestamps(TAR), xml_timestamps(CANARY)
+    check(
+        "C13 canary timestamps are strictly newer than the archived run",
+        bool(base_ts) and bool(can_ts) and min(can_ts) > max(base_ts),
+        f"base max {max(base_ts) if base_ts else '-'} vs canary min {min(can_ts) if can_ts else '-'}",
+    )
+    check(
+        "C13 archived and canary archives cover the same classes",
+        sorted(r[0] for r in xml_rows("Test", TAR)) == sorted(r[0] for r in xml_rows("Test", CANARY)),
+    )
+
+    # And the reverse direction: the canary must reproduce the pinned classes that
+    # are NOT the baseline subject, i.e. the green suites stay green.
+    for cls in ("UatTimeoutBlockDurableTest", "OpIdBodyPathTest",
+                "FileBasedRetryControlJournalTest", "Lfc2DurableCoordinatorScopeFitnessTest"):
+        check(f"C13 canary keeps {cls} green",
+              xml_rows(cls, CANARY) and xml_rows(cls, CANARY)[0][2:] == ("0", "0"))
 
 print()
 if failures:

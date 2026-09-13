@@ -695,3 +695,60 @@ G3..G8 is in flight. Do NOT reopen G3-A4.2 ShellOperations on this path.
 - Fresh evidence válida: G4Fitness 8/0, MilestoneContractSuite 23/0, S3 52/0, Lfc2 3/0.
 - Pre-existing red NO regresión: CanonicalDurableRunCoordinatorTest 12/26; 7 pins S3 S2-A6/G4 rojos en base limpia.
 - Branches locales sin push listos: cleanws(G1-G3), archive-artifacts(G0+G1), cert-harness(completo), bodyinvoker(ADR-0081+seam), load-spike, r2-runtime-return, wait-until(spike), wave2-prep, milestone-g4prep.
+
+## W1a 2026-09-13 — B10 concrete block-Step routing debt pinned (fitness only)
+
+Base `da594bb6` (= `origin/main` post PR #48). W1a touches **fitness only**: no semantic
+migration, no production edit.
+
+### The W1 target area, measured
+`v2/pipeline-application/.../durable/CanonicalDurableRunCoordinator.kt` (1971 lines) routes on
+concrete block Step identities at three structural sites: `canonicalBodyStepIds` (6 ids),
+`projectShellScope` (`when (pluginStepId.value)`, 5 arms), and a `dispatchWithCredentialsBlock`
+bypass called from `dispatchBody`. 15 `"core.*"` literals over 7 distinct names.
+
+### Pre-existing red baseline — do NOT widen
+- `CanonicalDurableRunCoordinatorTest` = **26 tests / 11 failures**. Documented at 12/26 in
+  `CTX_P_CLOSURE_RECEIPT.md` and `E_EM_11_CLOSURE_RECEIPT.md`, and 24/14 in
+  `LB02_A5_45_RECOVERY_AND_UNREACHABLE.md`. 11 ≤ 12, so pre-existing, not a regression.
+- Root cause: those rows construct the coordinator without the production registry
+  composition (see `LB02_A5_3B_COORDINATOR_CONSTRUCTION_CLASSIFICATION.md`).
+- `CompatibilityCorpusTest` = 20/2: known corpus accounting defect (asserts 19, corpus holds 20).
+
+### New guard (W1a)
+`v2/pipeline-architecture-tests/.../ConcreteBodyRoutingDebt.kt` — typed ledger
+(`ConcreteRoutingDebtItem` sealed ADT) + pure `ConcreteBodyRoutingScanner` and
+`ConcreteBodyRoutingVerdict`. `Lfc2ConcreteBodyRoutingDebtFitnessTest` enforces it:
+new concrete name / new step-id switch / new `dispatch*Block` / removing a site without
+lowering the ledger / raising the pinned total — all FAIL. Pinned total 18,
+`HISTORICAL_CEILING` 18, **never raise it**; burn-down lowers both.
+
+Run it: `./gradlew -p v2 :pipeline-architecture-tests:test --tests '*Lfc2ConcreteBodyRoutingDebtFitnessTest*'`
+(~4 s). Its violation fixtures are **in-process** (synthetic source + injected text into the
+real coordinator source), so a control costs a test run, not a mutated Gradle build.
+
+Known coverage boundary (documented in the model's KDoc, do not assume more): the scan cannot
+see a Step name built at runtime (concatenation, lookup, value from a caller) nor routing on an
+enum ordinal/numeric id. It keys on identifiers appearing anywhere in the file, so it
+over-reports rather than under-reports (calls and comments count) — failing closed is intended.
+
+### The old guard is a partial guard — do not mistake it for coverage
+`Lfc2DurableCoordinatorScopeFitnessTest` asserts only `core.sh`/`core.echo` are absent, and
+neither is routed in the coordinator, so it is green 4/4 while the six block names are present.
+It stays; the new ledger is what makes the debt measurable.
+
+### Module baselines
+`:pipeline-architecture-tests:test` = **252 tests / 1 failure** (was 241/1). The +11 are exactly
+the new guard. The 1 red is `Lfc0GlobalStateFitnessTest`, unchanged and byte-identical to the
+Lane R base XML after checkout-path normalization: a scanner false positive, it flags
+`Capabilities.kt:76 System.getProperty("user.dir")` which sits in KDoc prose stating handlers
+must NOT do that. `Capabilities.kt` is untouched.
+
+### Evidence
+- G0 pre-flight + baseline/canary XML: `docs/v2/07-uat/evidence/b10-w1-g0/`,
+  verifier `verify-b10-w1-preflight.py` (50/50, 8 independent controls).
+- W1a: `docs/v2/07-uat/evidence/b10-w1a/` (architecture suite XML + log).
+
+### Next
+W1b — typed body policy on the block Step contract, resolved by registry lookup (not by step
+name). Never add a `dispatch*Block` collection: route through `BodyInvoker.invoke`.

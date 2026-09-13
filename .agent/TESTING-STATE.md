@@ -832,9 +832,22 @@ Evidence: `docs/v2/07-uat/evidence/b10-w1c/raw/xml/{module-suites,base-failing-c
   `projectScopedBody(projection)` with a sealed `BodyExecutionProjection`
   (`Scope`/`CredentialLifecycle`/`InvalidInput`/`Unimplemented`); credential lifecycle routed by
   policy; malformed payloads become typed `SCHEMA` failures, not thrown control flow.
-- `pipeline-architecture-tests`: pinned ledger **18 → 4** (`HISTORICAL_CEILING` left at 18 —
-  provenance, and lowering it is a pending user decision); W1b firewall law inverted; guard control
+- `pipeline-architecture-tests`: pinned ledger **18 → 4**; W1b firewall law inverted; guard control
   fixtures updated for the retired sites.
+
+**Ceiling law (user decision 2026-09-13): `HISTORICAL_CEILING = 18` is INMUTABLE.** It is
+provenance (the debt measured when the guard was introduced); the pin is the living state. The
+W1b note "lower the ceiling with the ledger" is **superseded by W1c** — collapsing the two numbers
+would destroy the only record of the original debt. Do not lower it in W1d either.
+
+### W1d entry criteria (recorded from the W1c review)
+- Burn `dispatchWithCredentialsBlock` (the last routing site the ledger counts) → pin falls to 2,
+  ceiling stays 18.
+- Make the incoherent declaration unrepresentable: `bodyExecutionOwner` currently defaults to
+  `CANONICAL_ENGINE`, so a new `takesBody = true` row that omits the owner silently acquires
+  canonical semantics. Target: "takes a body and nobody owns it" not expressible.
+- `core.parallel` / `core.retry` are durable identity questions (PAR-D row / RETRY-D control row),
+  not body-routing debt.
 
 ### Baselines after W1c (result truth = JUnit XML)
 - `:pipeline-domain:test` = **395 / 0 / 0** (W1b: 388/0/0; +7 = ownership laws).

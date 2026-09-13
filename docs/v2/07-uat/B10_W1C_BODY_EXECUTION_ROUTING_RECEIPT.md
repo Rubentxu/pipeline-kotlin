@@ -48,10 +48,19 @@ per-class JUnit XML, both of which are reproducible.
 ## 3. Debt ledger
 
 ```text
-HISTORICAL_CEILING            18   (unchanged: it is provenance, never raised)
+HISTORICAL_CEILING            18   INMUTABLE — provenance/high-water mark
 pinned debt before W1c         18
-pinned debt after  W1c          4
+pinned debt after  W1c          4   living state
+discovered debt at W1c          4   must equal the pin
 ```
+
+The two numbers answer different questions and are deliberately not collapsed: the ceiling
+records how much concrete routing debt existed when the guard was introduced, the pin is the
+current measured state. The W1b note that the ceiling should be lowered in the same commit as
+the ledger is **superseded by W1c** (user decision, 2026-09-13): lowering it would destroy the
+only record of the original debt. The guard keeps the two laws separate — a ledger raised above
+the ceiling fails as `LedgerRaisedBeyondCeiling`, and a fine-grained pin test asserts the
+literal 4 against an independent re-scan.
 
 The four remaining items are one genuine routing site and two concrete identities that are not body
 routing at all:
@@ -183,3 +192,18 @@ a drifted source still fails against the verifier's own number.
    `ExecutionBoundaryFactoryTest`, legacy metadata resolvers) are out of W1c scope. They were not
    re-baselined and not widened.
 4. `Lfc0GlobalStateFitnessTest` remains the single pre-existing architecture red at base and at W1c.
+
+### W1d entry criteria (from the W1c review)
+
+1. **Burn the credential dispatcher.** `dispatchWithCredentialsBlock` is the last routing site that
+   the ledger still counts. Removing it must lower the pin to 2 (`core.parallel`, `core.retry`) and
+   keep `HISTORICAL_CEILING` at 18.
+2. **Make the incoherent declaration unrepresentable.** `StepDescriptor.bodyExecutionOwner`
+   currently defaults to `CANONICAL_ENGINE`, so a new `takesBody = true` row that omits the owner
+   would silently acquire canonical semantics without demonstrating them. The target is a model in
+   which "this Step takes a body and nobody owns it" cannot be expressed — ownership required for
+   body Steps, or ownership carried by a type that only body Steps can use. Non-blocking for W1c
+   because every current row is characterised and the routing is already registry-derived.
+3. `core.parallel` / `core.retry` are durable identity questions (PAR-D row, RETRY-D control row),
+   not body-routing questions; retire them from the ledger by giving them a durable identity
+   declaration rather than by re-filing them as routing debt.

@@ -700,18 +700,21 @@ class CoreCleanWsStepContractSuiteTest {
     // ===== 21. G1 candidate invariant (cleanWs-specific) =====
 
     @Test
-    fun `G1 candidate invariant — core dot cleanWs stays LegacyCore and counters remain 5 5 5`() {
+    fun `G1 candidate invariant — core dot cleanWs stays LegacyCore and counters remain 4 4 4 (post-S2-A9-G5 baseline)`() {
         // Candidate-only registration: while core.cleanWs remains in LEGACY_PLUGIN_IDS,
         // StructuralFamilyResolver's legacy-membership-wins rule keeps LegacyCore as the
         // production authority. No legacy mutation, no counter change at G1..G3.
+        // S2-A9 / G5 (2026-09-13): core.milestone added to the set of LEGACY_REMOVED
+        // keys, so the post-G5 baseline is 4/4/4 (was 5/5/5 pre-G5). This test must
+        // assert against the CURRENT baseline (4), not the pre-G5 one (5).
         assertTrue(
             "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.cleanWs MUST remain in LEGACY_PLUGIN_IDS at G1..G3 (candidate-only registration)",
         )
         assertEquals(
-            5,
+            4,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "LEGACY_PLUGIN_IDS count MUST stay 5 (no G4/G5 mutations in this slice)",
+            "LEGACY_PLUGIN_IDS count MUST stay 4 post-S2-A9/G5 (no G4/G5 mutations in THIS slice)",
         )
         assertTrue(
             "core.cleanWs" in CanonicalCoreStepMetadata.pluginIds,

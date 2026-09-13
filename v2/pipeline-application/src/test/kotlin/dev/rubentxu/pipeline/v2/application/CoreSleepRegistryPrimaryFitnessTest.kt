@@ -101,6 +101,7 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // addition to the S2-A6/G4 set. Legacy authority for these steps lives exclusively in
     // their respective StepDefinitions (CoreWaitUntilStep, CoreDeleteDirStep, CoreMilestoneStep);
     // the LEGACY_PLUGIN_IDS row was physically removed in this slice.
+    @Disabled("Historical S2-A9/G5 snapshot: S2-A10/G1 (2026-09-13) registered CoreCleanWsStep as a candidate-only registry entry; the 12-key shape is superseded by `production registry contains exactly the registered core steps (post-S2-A10-G1)` below. Preserved verbatim for traceability.")
     @Test fun `production registry contains exactly the registered core steps (post-S2-A9-G5)`() {
         assertEquals(
             setOf(
@@ -108,6 +109,22 @@ class CoreSleepRegistryPrimaryFitnessTest {
                 "core.file.writeFile", "core.emit.event", "core.isUnix",
                 "core.pwd", "core.pwd.tmp",
                 "core.waitUntil", "core.deleteDir", "core.milestone",
+            ),
+            CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
+        )
+    }
+
+    // post-S2-A10/G1 (2026-09-13): core.cleanWs registered as a candidate-only
+    // registry entry (LEGACY_PLUGIN_IDS still contains core.cleanWs; production
+    // authority remains the legacy dispatcher until G4 REGISTRY_PRIMARY flips).
+    @Test fun `production registry contains exactly the registered core steps (post-S2-A10-G1)`() {
+        assertEquals(
+            setOf(
+                "core.echo", "core.sh", "core.error", "core.sleep",
+                "core.file.writeFile", "core.emit.event", "core.isUnix",
+                "core.pwd", "core.pwd.tmp",
+                "core.waitUntil", "core.deleteDir", "core.milestone",
+                "core.cleanWs",
             ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )

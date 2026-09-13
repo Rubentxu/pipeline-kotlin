@@ -1463,21 +1463,47 @@ class StageScope(
      * Jenkins verbatim (catalog §1.1 line 44):
      * `cleanWs(deleteDirs: Boolean = true, patterns: List<String>? = null)`
      *
+     * S2-A10 / G5 (2026-09-13): this DSL lowers directly to `StepSpec.RegistryStepSpec`
+     * (open-world registry path). The payload is encoded inline here to match the canonical
+     * codec of `CoreCleanWsStep.inputCodec` byte-for-byte, so the durable fingerprint is
+     * preserved across the G5 destructive flip. The legacy `StepSpec.CleanWs` subtype still
+     * exists as a sealed-interface member because `CleanWsExecutor` (SDK files) types its
+     * parameter against it; this DSL was the only producer that routed through the legacy
+     * decoder, and that producer is gone.
+     *
      * @param deleteDirs If true, remove empty parent directories after deletion
      * @param patterns Ant-style glob patterns (null = delete all non-.v2 files)
      */
     fun cleanWs(deleteDirs: Boolean = true, patterns: List<String>? = null) {
-        steps.add(StepSpec.CleanWs(deleteDirs = deleteDirs, patterns = patterns))
+        // Canonical envelope: {"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}
+        // Matches CoreCleanWsStep.inputCodec.encode output (S2-A10 / G5).
+        val canonicalPatterns: List<String> = patterns ?: emptyList()
+        val sb = StringBuilder()
+        sb.append("{\"kind\":\"cleanWs\",\"deleteDirs\":").append(deleteDirs).append(",\"patterns\":[")
+        canonicalPatterns.forEachIndexed { i, p ->
+            if (i > 0) sb.append(",")
+            sb.append('"').append(escapeJsonString(p)).append('"')
+        }
+        sb.append("]}")
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.cleanWs"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(sb.toString()),
+            ),
+        )
     }
 
     /**
      * Cleans the workspace with array syntax (Jenkins-faithful overload).
      *
+     * S2-A10 / G5 (2026-09-13): same RegistryStepSpec lowering as the primary overload.
+     *
      * @param deleteDirs If true, remove empty parent directories after deletion
      * @param patterns Ant-style glob patterns as vararg
      */
     fun cleanWs(deleteDirs: Boolean = true, vararg patterns: String) {
-        steps.add(StepSpec.CleanWs(deleteDirs = deleteDirs, patterns = patterns.toList()))
+        cleanWs(deleteDirs = deleteDirs, patterns = patterns.toList())
     }
 
     // =============================================================================

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 4 entries (CleanWs, Load, WaitUntil, ArchiveArtifacts).
+ * - sealedSubclasses has exactly 3 entries (Load, WaitUntil, ArchiveArtifacts).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
@@ -23,9 +23,10 @@ import org.junit.jupiter.api.Test
  *   LFC-2E1-S2-A6 / G5 removed Pwd.
  *   LFC-2E1-S2-A7 / G5 removed DeleteDir.
  *   LFC-2E1-S2-A9 / G5 removed Milestone.
- *   LFC-2E1-S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
- *   Legacy subtype/decoder branch/dispatcher/metadata row still physically present
- *   (UNREACHABLE in production) until S2-A10 / G5 closes this lane.
+ *   LFC-2E1-S2-A10 / G5 (2026-09-13): "core.cleanWs" legacy subtype/decoder branch/
+ *   dispatcher file/metadata row physically deleted (LEGACY_REMOVED). Production
+ *   routing is exclusively CoreCleanWsStep.definition via the open registry.
+ *   Counter converges 3/4/4 -> 3/3/3.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -35,9 +36,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 4 entries`() {
+    fun `sealedSubclasses has exactly 3 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(4, subclasses.size, "Expected exactly 4 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(3, subclasses.size, "Expected exactly 3 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone/CleanWs all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -59,6 +60,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
             // row/dispatcher physically deleted (LEGACY_REMOVED).
             // S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
+            // S2-A10 / G5 (2026-09-13): "core.cleanWs" legacy subtype/decoder branch/
+            // dispatcher file/metadata row physically deleted (LEGACY_REMOVED). Counter
+            // converges 3/4/4 -> 3/3/3.
             // P1a — workflow-control (v0.33.0)
             "core.load",
             // P1b — utility (v0.33.0)
@@ -83,13 +87,10 @@ class CanonicalCoreStepCommandRegistryTest {
     // the legacy subtype no longer exists (LEGACY_REMOVED); metadata authority is
     // CoreDeleteDirStep.descriptor via RegistryStepMetadataResolver.
 
-    @Test
-    fun `CleanWs has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.CleanWs(deleteDirs = true, patterns = emptyList())
-        assertEquals("core.cleanWs", instance.pluginId)
-        assertEquals(setOf(Effect.WRITES_WORKSPACE), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // S2-A10 / G5 (2026-09-13): "core.cleanWs" legacy command removed (LEGACY_REMOVED);
+    // its historical pluginId/Effects/ReplayPolicy invariants are now asserted in
+    // CoreCleanWsStepContractSuiteTest against CoreCleanWsStep.descriptor — the
+    // registry authority.
 
     @Test
     fun `Load has correct pluginId and defaultMetadata`() {

@@ -110,6 +110,22 @@ class CorePwdRegistryPrimaryFitnessTest {
         )
     }
 
+    // S2-A10 / G5 (2026-09-13): core.cleanWs legacy forms physically removed (LEGACY_REMOVED).
+    // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
+    // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Test
+    fun `G5 LEGACY_REMOVED - core dot pwd stays absent post-S2-A10-G5`() {
+        assertTrue(
+            key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.pwd MUST remain absent from LEGACY_PLUGIN_IDS post-S2-A10/G5 LEGACY_REMOVED of core.cleanWs",
+        )
+        assertEquals(
+            3,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G4) -> 3 (post-S2-A10/G5, LEGACY_REMOVED closed)",
+        )
+    }
+
     @Test
     fun `G4 flip - StructuralFamilyResolver classifies pwd as Registry with the production registry`() {
         assertEquals(

@@ -59,7 +59,7 @@ class LegacyExecutionAdapterTest {
         val legacy = RecordingLegacyExecutor()
         val boundary = LegacyExecutionAdapter.adapt(legacy)
         val store = InMemoryEventStore()
-        val command = CanonicalCoreStepCommand.CleanWs()
+        val command = CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")
 
         val outcome = boundary.execute(PreparedLegacyExecution(command), runtime(store))
 

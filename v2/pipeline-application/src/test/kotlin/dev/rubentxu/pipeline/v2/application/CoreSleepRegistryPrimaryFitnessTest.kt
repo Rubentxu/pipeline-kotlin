@@ -86,6 +86,16 @@ class CoreSleepRegistryPrimaryFitnessTest {
         assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
+    // S2-A10 / G5 (2026-09-13): core.cleanWs legacy forms physically removed (LEGACY_REMOVED).
+    // The historical S2-A10/G4 snapshot above is preserved verbatim for traceability. The
+    // post-S2-A10/G5 counter converges to 3/3/3 (LEGACY_REMOVED closed).
+    @Test fun `registry post-S2-A10-g5 — 3 residual legacy keys remain after LEGACY_REMOVED`() {
+        assertEquals(setOf(
+            "core.load", "core.waitUntil", "core.archiveArtifacts",
+        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")
     @Test fun `G4 transitional snapshot retained eleven legacy metadata rows`() {
         assertEquals(11, CanonicalCoreStepMetadata.pluginIds.size)

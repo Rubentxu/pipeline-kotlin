@@ -26,7 +26,8 @@ class CanonicalNodeDispatcher {
     // exclusively through CoreMilestoneStep via the registry.
     // S2-A7 / G5: deleteDirDispatcher removed (LEGACY_REMOVED) — core.deleteDir executes
     // exclusively through CoreDeleteDirStep via the registry.
-    private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
+    // S2-A10 / G5 (2026-09-13): cleanWsDispatcher removed (LEGACY_REMOVED) — core.cleanWs executes
+    // exclusively through CoreCleanWsStep via the registry.
     private val loadDispatcher = CanonicalLoadNodeDispatcher()
     // S2-A6 / G5: pwdDispatcher removed (LEGACY_REMOVED) — core.pwd executes
     // exclusively through CorePwdStep via the registry.
@@ -41,7 +42,8 @@ class CanonicalNodeDispatcher {
             // S2-A9 / G5: Milestone when-branch removed (LEGACY_REMOVED) — core.milestone executes
             // exclusively through CoreMilestoneStep via the registry.
             // S2-A7 / G5: DeleteDir when-branch removed (LEGACY_REMOVED).
-            is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
+            // S2-A10 / G5 (2026-09-13): CleanWs when-branch removed (LEGACY_REMOVED) —
+            // core.cleanWs executes exclusively through CoreCleanWsStep via the registry.
             is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
             // S2-A6 / G5: Pwd when-branch removed (LEGACY_REMOVED).
             // S2-A5 / G5: IsUnix when-branch removed (LEGACY_REMOVED).
@@ -54,15 +56,7 @@ class CanonicalNodeDispatcher {
     // S2-A4 / G5: emitEventContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A9 / G5: milestoneContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A7 / G5: deleteDirContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-
-    private fun CanonicalRuntimeContext.cleanWsContext() = CanonicalCleanWsDispatchContext(
-        runId = runId,
-        stageName = stageName,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-    )
+    // S2-A10 / G5 (2026-09-13): cleanWsContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.loadContext() = CanonicalLoadDispatchContext(
         runId = runId,

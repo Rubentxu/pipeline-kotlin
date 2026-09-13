@@ -2,8 +2,9 @@
 type: adr
 id: ADR-0081
 title: "BodyInvoker / Continuation Execution Model — typed body seam and durable control rows"
-status: proposed
+status: accepted
 date: 2026-09-12
+accepted: 2026-09-13
 deciders: "Rubentxu (product owner)"
 supersedes: null
 superseded_by: null
@@ -193,6 +194,18 @@ through the public plugin SDK surface. A plugin declares
 `BODY_INVOKER_CAPABILITY` in `StepContract.requiredCapabilities` exactly like
 core Steps. Zero production-core semantic changes are required for a plugin to
 add a block Step.
+
+## Acceptance record
+
+Accepted 2026-09-13 by the product owner (`deciders`), on the same day PR #47 landed the
+proposed text plus the inner contract under `status: proposed`. The acceptance is recorded
+here rather than inferred from the merge: #47 explicitly did not accept the ADR, and a
+merge must not be able to promote a design decision by accident.
+
+Acceptance settles D1–D10. It does **not** settle the migration order of the existing
+`dispatchBody` call sites onto the port — see §"What this ADR does NOT decide". That
+ordering is a B10 implementation slice decision, recorded in
+`docs/v2/07-uat/B10_W1_PREFLIGHT.md`.
 
 ## What this ADR does NOT decide
 

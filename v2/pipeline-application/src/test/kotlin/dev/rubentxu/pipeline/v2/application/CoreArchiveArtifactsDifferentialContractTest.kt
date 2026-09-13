@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -577,6 +578,12 @@ class CoreArchiveArtifactsDifferentialContractTest {
     // ===== 11. counters are untouched by G2 =====
 
     @Test
+    @Disabled(
+        "Historical S2-B10/G2 snapshot: S2-B10/G4 (2026-09-13) performed the REGISTRY_PRIMARY flip, taking the " +
+            "residual to 2 / 3 / 3. The G3 freeze is superseded by CoreArchiveArtifactsStepContractSuiteTest > " +
+            "`G4 invariant - core dot archiveArtifacts is registry-primary with counters 2 3 3`. " +
+            "Preserved verbatim for traceability; this suite is deleted when G5 closes LEGACY_REMOVED.",
+    )
     fun `counters — G2 leaves the legacy residual at 3 3 3 (no flip in this gate)`() {
         assertTrue("core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertNotNull(CanonicalCoreStepMetadata.metadata("core.archiveArtifacts"))

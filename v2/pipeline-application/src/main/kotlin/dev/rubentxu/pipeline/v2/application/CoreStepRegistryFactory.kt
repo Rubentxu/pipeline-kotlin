@@ -55,11 +55,12 @@ object CoreStepRegistryFactory {
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreWriteFileStep.registerInto(this)
-        // LFC-2E1 S2-B10 / G1: candidate registration only. `core.archiveArtifacts`
-        // remains in LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's
-        // legacy-membership-wins rule keeps LegacyCore as the canonical production
-        // authority. No legacy decoder, metadata, dispatcher, or catalogue entry
-        // changes in this gate.
+        // LFC-2E1 S2-B10 / G1: candidate registration.
+        // LFC-2E1 S2-B10 / G4 (2026-09-13): REGISTRY_PRIMARY flip. `core.archiveArtifacts`
+        // was removed from LEGACY_PLUGIN_IDS, so StructuralFamilyResolver.classify now
+        // returns Registry for this key and this definition is the canonical production
+        // authority. Legacy decoder branch / metadata row / dispatcher file are NOT changed
+        // in this gate (physical removal is G5); they are UNREACHABLE in production from here.
         CoreArchiveArtifactsStep.registerInto(this)
         // LFC-2E1-S2-A4 / G1: candidate registration only. `core.emit.event` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule

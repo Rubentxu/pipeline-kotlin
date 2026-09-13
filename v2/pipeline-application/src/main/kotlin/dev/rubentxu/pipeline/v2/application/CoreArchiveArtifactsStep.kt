@@ -24,11 +24,15 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * Registry candidate for `core.archiveArtifacts` (LFC-2E1 S2-B10 / G1 registry seam proof).
  *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
- * the `CanonicalCoreStepMetadata["core.archiveArtifacts"]` row, or the legacy
- * `CanonicalArchiveArtifactsNodeDispatcher`: `StructuralFamilyResolver`'s
- * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * G3/G4 flip.
+ * G1 registered this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`. **G4 (2026-09-13) flipped
+ * the authority**: `"core.archiveArtifacts"` was removed from `LEGACY_PLUGIN_IDS`, so
+ * `StructuralFamilyResolver` now classifies the key `Registry` and this definition is the
+ * production authority (wired through `CoreStepRegistryFactory`).
+ *
+ * The legacy decoder branch, the `CanonicalCoreStepMetadata["core.archiveArtifacts"]` row and
+ * `CanonicalArchiveArtifactsNodeDispatcher` remain physically present but are UNREACHABLE in
+ * production until G5 (LEGACY_REMOVED) deletes them. Counter: 2 ids / 3 metadata rows /
+ * 3 dispatcher files.
  *
  * ## Capability discipline
  *

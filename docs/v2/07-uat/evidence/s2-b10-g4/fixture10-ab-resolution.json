@@ -1,0 +1,31 @@
+{
+  "slice": "S2-B10 / G4",
+  "claim": "The core.archiveArtifacts REGISTRY_PRIMARY flip changes observable end-to-end behaviour, not just routing metadata.",
+  "method": "Same installed distribution command at both SHAs; same fixture; fresh --db per run.",
+  "command": "<module>/build/install/pipeline-application/bin/pipeline-application run v2/compatibility/10-smoke-e2e.pipeline.kts --db <tmp>/db",
+  "A_base": {
+    "sha": "c0e27f211ef533943a502cee1faa95119023c6be",
+    "authority": "legacy CanonicalArchiveArtifactsNodeDispatcher (core.archiveArtifacts in LEGACY_PLUGIN_IDS)",
+    "exit_code": 1,
+    "event_kind": "ArtifactArchiveFailed",
+    "reason": "No files matched glob pattern 'build/libs/*.jar' and allowEmptyArchive is false",
+    "stdout_sha256": "33336be6ce918a370126cca5b1397c68a0931eb3d9dd16d2568110c216e5bb8b",
+    "junit_assertion": "CompatibilityCorpusTest.fixture10SmokeE2E == runFixtureFail -> PASS (the fixture FAILING is the expectation)"
+  },
+  "B_head": {
+    "sha": "<this G4 commit>",
+    "authority": "registry CoreArchiveArtifactsStep.definition via CoreStepRegistryFactory",
+    "exit_code": 0,
+    "event_kind": "ArtifactArchived",
+    "artifacts": [
+      {
+        "relPath": "build/libs/smoke.jar",
+        "sha256": "fb8ce05502991565de98e3e21d9ab98151c1cd1715b14a3f7c349cba300cb2b9",
+        "size": 4,
+        "stageName": "build"
+      }
+    ],
+    "stdout_sha256": "920a45629dc5ca88d81497c84d076930155c973cd09594671dc71ae964706ed3",
+    "junit_assertion": "CompatibilityCorpusTest.fixture10SmokeE2E == runFixturePass -> PASS (the fixture SUCCEEDING is the expectation)"
+  }
+}

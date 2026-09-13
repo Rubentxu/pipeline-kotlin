@@ -95,9 +95,9 @@ class S3EmitEventLegacyRemovedFitnessTest {
 
     // ===== counter convergence 6 / 6 / 6 (post S2-A6/G5 `core.pwd` removal) =====
 
-    @Test fun `three residual legacy authorities converge to exact six step snapshots`() {
-        // Single shared authority: ONE place to flip 6 -> 5 at the next G4/G5.
-        LegacyResidualSnapshot.assertConverged(root)
+    @Test fun `three residual legacy authorities match the declared burn-down stage snapshot`() {
+        // Single shared authority: S2-B10/G4: transitional-aware (the authoritative expected() encodes the in-flight REGISTRY_PRIMARY flip as (N-1)/N/N).
+        LegacyResidualSnapshot.assertCurrentState(root)
     }
 
     // ===== anti-over-removal: the structural protocol is ALIVE =====

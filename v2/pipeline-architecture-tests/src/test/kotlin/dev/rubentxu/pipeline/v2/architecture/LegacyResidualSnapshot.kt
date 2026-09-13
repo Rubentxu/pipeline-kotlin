@@ -31,9 +31,17 @@ import java.nio.file.Path
  * cleanWs, load, archiveArtifacts -> ... -> 0 / 0 / 0 (burn-down closed)
  * ```
  *
- * Per-Step suites MUST call [assertConverged] (global residual) plus their own
- * step-specific absence/anti-over-removal assertions. They MUST NOT declare
- * their own residual set or counters.
+ * Per-Step suites MUST call [assertCurrentState] (the DECLARED stage snapshot, which
+ * encodes an in-flight REGISTRY_PRIMARY flip as (N-1)/N/N) plus their own step-specific
+ * absence/anti-over-removal assertions. They MUST NOT declare their own residual set or
+ * counters.
+ *
+ * [assertConverged] is the STRICTER G5-closure proof (it additionally rejects any in-flight
+ * flip). Per-Step suites MUST NOT call it: during a G4 mutation the flip is in flight BY
+ * DESIGN, so a per-Step absence suite would go red for a reason unrelated to that Step —
+ * which is exactly what happened to all seven S3 suites when S2-B10/G4 landed on its own
+ * (S2-B10, 2026-09-13). The two functions assert the same substantive invariant
+ * (live == expected); they differ only in whether an in-flight flip is tolerated.
  */
 object LegacyResidualSnapshot {
 
@@ -95,7 +103,13 @@ object LegacyResidualSnapshot {
     // S2-A10 / G5 (2026-09-13): registryPrimaryPendingRemoval back to null (LEGACY_REMOVED
     // closed). core.cleanWs physical forms are gone; only the 3 residual legacy keys
     // (core.load, core.waitUntil, core.archiveArtifacts) remain for their own G4/G5 lanes.
-    private val registryPrimaryPendingRemoval: String? = null
+    // S2-B10 / G4 (2026-09-13): core.archiveArtifacts flipped to REGISTRY_PRIMARY
+    // (transitional 3/3/3 -> 2/3/3; ids only). The legacy
+    // CanonicalArchiveArtifactsNodeDispatcher, its ARCHIVE_ARTIFACTS_PLUGIN_ID decoder
+    // branch + constant, the CanonicalCoreStepCommand.ArchiveArtifacts subtype and the
+    // CanonicalCoreStepMetadata["core.archiveArtifacts"] row remain physically present
+    // (UNREACHABLE in production) until S2-B10 / G5 closes this lane.
+    private val registryPrimaryPendingRemoval: String? = "core.archiveArtifacts"
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

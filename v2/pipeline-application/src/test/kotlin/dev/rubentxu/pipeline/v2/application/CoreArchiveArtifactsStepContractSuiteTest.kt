@@ -10,6 +10,8 @@ import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
+import dev.rubentxu.pipeline.v2.application.durable.StructuralFamilyResolver
+import dev.rubentxu.pipeline.v2.application.durable.StructuralStepFamily
 import dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
@@ -89,15 +91,21 @@ import org.junit.jupiter.api.Timeout
  *  - failures are TYPED (`FailureKind.SCRIPT`, the legacy contract) and never thrown:
  *    a thrown handler would be re-classified ENGINE by the boundary (test 18 pins both sides).
  *
- * ## G3 transitional honesty
+ * ## G4 transitional honesty
  *
- * `core.archiveArtifacts` is STILL in `LEGACY_PLUGIN_IDS` at G3, so the production
- * coordinator classifies it LegacyCore and never reaches this registry handler in a real
- * run. This suite therefore asserts the exact seam G4 will promote
- * (`RegistryExecutionPreparation` → `RegistryExecutionBoundary.coexecute`) rather than
- * asserting routing that does not exist yet. Row 23 selects an input on which BOTH
- * authorities agree (`allowEmptyArchive=true`, non-matching pattern) so it stays green
- * across the G4 flip by construction.
+ * From G4 the key is ABSENT from `LEGACY_PLUGIN_IDS`, so `StructuralFamilyResolver`
+ * classifies it Registry and `CoreArchiveArtifactsStep.definition` is the production
+ * authority (rows 17b/17c assert the resolver output and drive a real non-empty archive
+ * through the production coordinator, an input the legacy authority could not satisfy —
+ * frozen delta D1).
+ *
+ * The legacy forms are still PHYSICALLY present (decoder branch, `ArchiveArtifacts`
+ * subtype, metadata row, `CanonicalArchiveArtifactsNodeDispatcher.kt`); they are
+ * UNREACHABLE in production but type-loadable until G5/LEGACY_REMOVED. That is why the
+ * residual is 2 / 3 / 3 and not 2 / 2 / 2, and row 17 asserts BOTH halves of that law.
+ *
+ * The G3 receipt recorded the pre-flip state (3 / 3 / 3); this suite now pins the G4
+ * state deliberately, as that receipt's §6 required.
  *
  * S2-B10 / G3 — AGENTS.md 17/17 coverage (per Step Constitution §LB-02):
  * ```
@@ -143,8 +151,8 @@ import org.junit.jupiter.api.Timeout
  *                                                              G3 readiness receipt)
  * 15.  real DSL scenario                                    REQUIRED
  * 16.  ArtifactArchived payload (relPath/sha256/size)       REQUIRED (archiveArtifacts-specific)
- * 17.  G3 REGISTRY_PRIMARY-pending invariant (3/3/3)        REQUIRED (archiveArtifacts-specific; G4
- *                                                              supersedes it with 2/3/3)
+ * 17.  G4 counters invariant (2/3/3) + routing             REQUIRED (archiveArtifacts-specific;
+ *      17b/17c)                                               G3 pinned 3/3/3, G4 pins 2/3/3)
  * ```
  */
 @Timeout(60)
@@ -866,23 +874,96 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         }
     }
 
-    // ===== 17. G3 counters invariant =====
+    // ===== 17. G4 counters invariant =====
 
     @Test
-    fun `G3 invariant — core dot archiveArtifacts is registry-primary-pending with counters 3 3 3`() {
-        // S2-A10/G5 closed core.cleanWs. At S2-B10/G3 the residual is
-        // {core.load, core.waitUntil, core.archiveArtifacts}: 3 ids / 3 metadata rows /
-        // 3 dispatcher files. G4 will flip this key to 2 / 3 / 3 and G5 to 2 / 2 / 2.
-        assertTrue(
+    fun `G4 invariant — core dot archiveArtifacts is registry-primary with counters 2 3 3`() {
+        // S2-B10/G4 flipped this key to REGISTRY_PRIMARY. The residual is now
+        // 2 ids / 3 metadata rows / 3 dispatcher files: the id is gone from the routing
+        // authority while the metadata row and dispatcher file remain PHYSICALLY present
+        // (UNREACHABLE in production) until G5/LEGACY_REMOVED converges them to 2 / 2 / 2.
+        assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "core.archiveArtifacts is still legacy-routed at G3 (the flip is G4)",
+            "core.archiveArtifacts MUST be absent from LEGACY_PLUGIN_IDS after the G4 flip",
         )
-        assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
-        assertTrue("core.load" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        assertTrue("core.waitUntil" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        assertNotNull(CanonicalCoreStepMetadata.metadata("core.archiveArtifacts"))
-        // Dispatcher-file presence (the third legacy authority) is a static source property
-        // asserted by the architecture fitness suite (Lfc2RegistryFamilyFitnessTest +
-        // LegacyResidualSnapshot), not here.
+        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(
+            setOf("core.load", "core.waitUntil"),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+        )
+        // G4 does NOT physically remove the legacy forms; asserting they survive is the
+        // anti-over-removal half of the counter law (2 / 3 / 3, not 2 / 2 / 2).
+        assertNotNull(
+            CanonicalCoreStepMetadata.metadata("core.archiveArtifacts"),
+            "the legacy metadata row MUST survive G4 (physical removal is G5)",
+        )
+        // Dispatcher-file presence is a static source property asserted by
+        // LegacyResidualSnapshot in :pipeline-architecture-tests, which pins
+        // 2 / 3 / 3 for this transitional stage.
+    }
+
+    // ===== 17b. G4 routing (StructuralFamilyResolver, runtime seam) =====
+
+    @Test
+    fun `G4 routing — StructuralFamilyResolver classifies core dot archiveArtifacts as Registry`() {
+        // The counter law alone cannot prove the flip: LEGACY_PLUGIN_IDS is the input to
+        // BOTH production consumers, so this row asserts the resolver's actual output.
+        assertEquals(
+            StructuralStepFamily.Registry,
+            StructuralFamilyResolver.classify(
+                CoreArchiveArtifactsStep.KEY,
+                CoreStepRegistryFactory.registry(),
+            ),
+            "after G4 the key MUST classify as Registry, never LegacyCore",
+        )
+        // Negative controls: the rule is membership-based, not key-name-based.
+        assertEquals(
+            StructuralStepFamily.LegacyCore,
+            StructuralFamilyResolver.classify(
+                PluginStepId("core.waitUntil"),
+                CoreStepRegistryFactory.registry(),
+            ),
+            "a key still in LEGACY_PLUGIN_IDS MUST stay LegacyCore (legacy-membership-wins)",
+        )
+        assertEquals(
+            StructuralStepFamily.LegacyCore,
+            StructuralFamilyResolver.classify(CoreArchiveArtifactsStep.KEY, null),
+            "with no registry injected the key MUST stay LegacyCore (legacy coordinator unchanged)",
+        )
+    }
+
+    // ===== 17c. G4 routing, end-to-end (the behavioural proof) =====
+
+    @Test
+    fun `G4 routing end-to-end — a non-empty archive succeeds through production wiring where legacy failed`() {
+        runBlocking {
+            // The strongest evidence that the flip is live: drive a NON-EMPTY, REAL match
+            // through the full production wiring. Before G4 this input failed end-to-end
+            // (legacy glob anchored on absolute paths, frozen delta D1), so a green run here
+            // can only mean the registry adapter executed.
+            val eventStore = InMemoryEventStore()
+            val h = freshHarness(eventStore)
+            seedStageWorkspace(
+                h.workDir.resolve("control"),
+                mapOf("build/libs/smoke.jar" to "jar\n"),
+            )
+
+            val outcome = h.coord.run(
+                pipeline(archiveNode(artifacts = "build/libs/*.jar", allowEmptyArchive = false)),
+                RunId("archive-g4-e2e"),
+            )
+
+            assertEquals(
+                RunOutcome.Success,
+                outcome,
+                "the registry authority MUST archive a real match; the legacy authority could not (D1)",
+            )
+            val archived = events(h.eventStore, "archive-g4-e2e").filterIsInstance<ArtifactArchived>().single()
+            assertEquals(
+                listOf("build/libs/smoke.jar"),
+                archived.files.map { it.relPath },
+                "a non-empty ArtifactArchived proves the certified AntStyleGlob engine ran",
+            )
+        }
     }
 }

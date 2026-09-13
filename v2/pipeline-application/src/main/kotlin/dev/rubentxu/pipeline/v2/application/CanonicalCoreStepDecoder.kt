@@ -127,9 +127,26 @@ sealed interface CanonicalCoreStepCommand {
             // and the CanonicalNodeDispatcher cleanWs seams (field, when branch, cleanWsContext)
             // are all removed in this slice. Production routing is exclusively
             // CoreCleanWsStep.definition via the registry. Counter converges 3/4/4 -> 3/3/3.
+            // S2-B10 / G4 (2026-09-13): "core.archiveArtifacts" removed — REGISTRY_PRIMARY flip.
+            // Production routing authority is now CoreArchiveArtifactsStep.definition via the open
+            // registry (CoreStepRegistryFactory). This flip is behaviourally observable, not just
+            // structural: the legacy CanonicalArchiveArtifactsNodeDispatcher anchored its glob
+            // against absolute paths (workspaceRoot = controlDirRoot.resolve("workspace")) and
+            // therefore could never match, so `10-smoke-e2e.pipeline.kts` failed end-to-end with
+            // `ArtifactArchiveFailed: No files matched glob pattern 'build/libs/*.jar'`. The
+            // registry path uses the certified AntStyleGlob engine (frozen delta D1), which turns
+            // CompatibilityCorpusTest.fixture10SmokeE2E green (runFixtureFail -> runFixturePass).
+            // Evidence: docs/v2/07-uat/evidence/s2-b10-g2/fixture10-legacy-glob-defect.json
+            // Legacy `core.archiveArtifacts` source remains physically present until G5
+            // (LEGACY_REMOVED, not LEGACY_UNREACHABLE):
+            //   - CanonicalCoreStepCommand.ArchiveArtifacts subtype
+            //   - ARCHIVE_ARTIFACTS_PLUGIN_ID decoder branch + constant
+            //   - CanonicalArchiveArtifactsNodeDispatcher.kt file
+            //   - CanonicalCoreStepMetadata["core.archiveArtifacts"] row
+            // Until G5 the legacy dispatcher is unreachable in production but still
+            // type-loadable. Counter converges 3/3/3 -> 2/3/3 (ids only).
             "core.load",
             "core.waitUntil",
-            "core.archiveArtifacts",
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */

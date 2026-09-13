@@ -25,9 +25,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -314,6 +316,12 @@ class CoreArchiveArtifactsStepUnitTest {
     // ------------------------------------------------------------------
 
     @Test
+    @Disabled(
+        "Historical S2-B10/G1 snapshot: S2-B10/G4 (2026-09-13) flipped core.archiveArtifacts to REGISTRY_PRIMARY, " +
+            "so the LegacyCore expectation is no longer true. Superseded by " +
+            "`core archiveArtifacts registry flip - structural family resolves to Registry post-G4` below. " +
+            "Preserved verbatim for traceability.",
+    )
     fun `structural family - core archiveArtifacts stays LegacyCore while in LEGACY_PLUGIN_IDS`() {
         assertTrue("core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         val registry = CoreStepRegistryFactory.registry()
@@ -324,10 +332,40 @@ class CoreArchiveArtifactsStepUnitTest {
     }
 
     // ------------------------------------------------------------------
+    // S2-B10/G4: the authority flip (supersedes the archived G1 snapshots)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `core archiveArtifacts registry flip - structural family resolves to Registry post-G4`() {
+        assertFalse("core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(
+            StructuralStepFamily.Registry,
+            StructuralFamilyResolver.classify(CoreArchiveArtifactsStep.KEY, CoreStepRegistryFactory.registry()),
+        )
+    }
+
+    @Test
+    fun `core archiveArtifacts registry flip - residual counters are 2 ids 3 metadata rows 3 dispatcher files`() {
+        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(setOf("core.load", "core.waitUntil"), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // G4 does NOT physically remove the legacy forms (that is G5/LEGACY_REMOVED).
+        assertTrue("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
+        assertNotNull(CanonicalCoreStepMetadata.metadata("core.archiveArtifacts"))
+    }
+
+    // ------------------------------------------------------------------
     // Counter invariant — G1 leaves legacy counters untouched: 5 / 5 / 5
     // ------------------------------------------------------------------
 
     @Test
+    @Disabled(
+        "Historical S2-B10/G1 snapshot: the 5/5/5 counter was already STALE at the S2-B10/G4 base " +
+            "(c0e27f21: LEGACY_PLUGIN_IDS.size == 3 after the S2-A9/S2-A10 G5 closures; this row failed at base too, " +
+            "recorded as pre-existing red). S2-B10/G4 then flipped core.archiveArtifacts, taking the residual to " +
+            "2 / 3 / 3, which is asserted by CoreArchiveArtifactsStepContractSuiteTest > " +
+            "`G4 invariant - core dot archiveArtifacts is registry-primary with counters 2 3 3`. " +
+            "Preserved verbatim for traceability.",
+    )
     fun `counters - G1 leaves legacy counters at 5 5 5`() {
         assertEquals(5, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)

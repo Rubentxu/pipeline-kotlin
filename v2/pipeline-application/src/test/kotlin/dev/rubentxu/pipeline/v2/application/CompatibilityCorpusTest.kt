@@ -113,7 +113,16 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture09ShThenEcho() = runFixturePass("09-sh-then-echo.pipeline.kts")
 
-    @Test fun fixture10SmokeE2E() = runFixtureFail("10-smoke-e2e.pipeline.kts")
+    // S2-B10 / G4 (2026-09-13): flipped from runFixtureFail. The legacy
+    // CanonicalArchiveArtifactsNodeDispatcher anchored its glob against absolute paths
+    // (workspaceRoot = controlDirRoot.resolve("workspace")) and therefore could never match,
+    // so this fixture failed end-to-end with
+    // `ArtifactArchiveFailed: No files matched glob pattern 'build/libs/*.jar'`.
+    // The REGISTRY_PRIMARY flip routes core.archiveArtifacts through CoreArchiveArtifactsStep,
+    // whose adapter uses the certified AntStyleGlob engine (frozen delta D1), so the fixture
+    // now genuinely passes. Evidence of the pre-flip defect:
+    // docs/v2/07-uat/evidence/s2-b10-g2/fixture10-legacy-glob-defect.json
+    @Test fun fixture10SmokeE2E() = runFixturePass("10-smoke-e2e.pipeline.kts")
 
     @Test fun fixture11WorkflowControl() = runFixturePass("11-workflow-control.pipeline.kts")
 

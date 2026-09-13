@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.745Z" hostname="bazzite-rubentxu" time="0.012">
+  <properties/>
+  <testcase name="legacy command subtype and decoder branch are absent()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="core isUnix remains registered and structurally registry owned()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="legacy metadata has no core isUnix row()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="three residual legacy authorities match the declared burn-down stage snapshot()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="legacy dispatcher is absent as file facade field branch and context helper()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="production metadata resolver serves core isUnix from the descriptor()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.0"/>
+  <testcase name="CoreIsUnixStep keeps the PlatformIdentity capability declaration()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="CoreIsUnixStep handler emits the UnixDetected event after execution()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.0"/>
+  <testcase name="PlatformIdentity capability remains the single os-name read authority()" classname="dev.rubentxu.pipeline.v2.architecture.S3IsUnixLegacyRemovedFitnessTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

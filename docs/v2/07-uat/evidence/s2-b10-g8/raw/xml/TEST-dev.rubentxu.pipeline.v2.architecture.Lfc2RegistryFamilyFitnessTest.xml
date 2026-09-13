@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.Lfc2RegistryFamilyFitnessTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.629Z" hostname="bazzite-rubentxu" time="0.015">
+  <properties/>
+  <testcase name="coordinator carries no concrete plugin-name registry routing()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2RegistryFamilyFitnessTest" time="0.006"/>
+  <testcase name="coordinator prepares by closed structural family, never by step name()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2RegistryFamilyFitnessTest" time="0.006"/>
+  <testcase name="structural family is closed over legacy-core and registry only()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2RegistryFamilyFitnessTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

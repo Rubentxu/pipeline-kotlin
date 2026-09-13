@@ -34,7 +34,7 @@ Production Step keys total: 15
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900)
 Real .pipeline.kts examples: 10 (01..10)
 Event Harness contracts: 4 (07, 08, 09, 10)
-CERTIFIED Steps: 10 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs)
+CERTIFIED Steps: 11 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs, core.archiveArtifacts)
 ```
 
 ## Inventory table
@@ -68,7 +68,7 @@ Columns:
 | `core.pwd` | CORE candidate | legacy | Y (L1570) | N | Y (CanonicalPwdNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.isUnix` | CORE candidate | legacy | Y (L1590) | N | Y (CanonicalIsUnixNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.waitUntil` | CORE candidate | legacy | Y (L1629) | N | Y (CanonicalWaitUntilNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.archiveArtifacts` | CORE candidate | legacy | Y (L1408) | N | Y (CanonicalArchiveArtifactsNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
+| `core.archiveArtifacts` | CORE | registry | Y (L1408, registryStep generic) | Y (`CoreArchiveArtifactsStep`) | Y | N (S2-B10 burn-down) | Y/Y | Y (`ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-B10/G8, PROPOSED — `S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md`) |
 | `example.uppercase` | EXTERNAL_REFERENCE | external | Y (`UppercaseDsl.kt`) | Y (`UppercaseStepDefinition`) | Y (via ServiceLoader + registry) | N (no legacy path) | Y/Y | N | — (or implicit?) | none in 01..10 | — | **CERTIFIED** (EP burn-down) |
 
 ## Row citations
@@ -263,10 +263,31 @@ State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LE
 - **DSL:** `PipelineDsl.kt:1629` `fun waitUntil(...)`
 - **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalWaitUntilNodeDispatcher.kt:21`
 
-### `core.archiveArtifacts` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.archiveArtifacts` — CERTIFIED + LEGACY_REMOVED (production registry, S2-B10 closure)
 
-- **DSL:** `PipelineDsl.kt:1408` `fun archiveArtifacts(...)`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalArchiveArtifactsNodeDispatcher.kt:28`
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreArchiveArtifactsStep.kt` `val KEY: PluginStepId = PluginStepId("core.archiveArtifacts")`
+- **DSL:** `PipelineDsl.kt:1408` `fun archiveArtifacts(...)` (lowered to `StepSpec.RegistryStepSpec`).
+- **Descriptor:** `effects = { Effect.WRITES_WORKSPACE }`; `replayPolicy = ReplayPolicy.MEMOIZED`; `requiredCapabilities = { ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY }`.
+- **Typed carrier:** `ArchiveArtifactsOutput` / `ArchiveArtifactsFailureOutput`; durable effect emitted by `ArchiveArtifactsOperations` (the adapter is the single observability authority; the handler does not consume `EVENT_SINK_CAPABILITY`).
+- **Receipts (certification):**
+  - G0 CLASSIFICATION: `S2_B10_ARCHIVEARTIFACTS_G0_CLASSIFICATION_MEMO.md`
+  - G2 CONTRACT FREEZE: `S2_B10_ARCHIVEARTIFACTS_G2_DIFFERENTIAL_CONTRACT_FREEZE.md`
+  - G3 READINESS: `S2_B10_ARCHIVEARTIFACTS_G3_READINESS_RECEIPT.md`
+  - G4 REGISTRY_PRIMARY: `S2_B10_ARCHIVEARTIFACTS_G4_REGISTRY_PRIMARY_RECEIPT.md` (id counter 3 → 2; state 2/3/3)
+  - G5 LEGACY_REMOVED: `S2_B10_ARCHIVEARTIFACTS_G5_LEGACY_REMOVED_RECEIPT.md` (counters 2/3/3 → 2/2/2; `CanonicalArchiveArtifactsNodeDispatcher.kt` deleted; metadata row removed; id removed from `LEGACY_PLUGIN_IDS`)
+  - G6 CONTRACT_SUITE: `S2_B10_ARCHIVEARTIFACTS_G6_CONTRACT_CERTIFICATION_RECEIPT.md` (17/17 coverage matrix; `CoreArchiveArtifactsStepContractSuiteTest` 27 tests)
+  - G7 INSTALLED_ACCEPTANCE: `S2_B10_ARCHIVEARTIFACTS_G7_INSTALLED_ACCEPTANCE_RECEIPT.md` (5/5 PASS — non-empty byte-identical, empty-match failure, allow-empty discriminator, excludes delta, legacy-absence probe over 37 jars)
+  - G8 CERTIFIED: `S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md` (this receipt)
+
+```text
+core.archiveArtifacts:
+  delivery:       CORE (registry seam)
+  execution:      REGISTRY_PRIMARY
+  legacy:         REMOVED
+  certification:  CERTIFIED (proposed by G8 receipt; counters 2/2/2 unchanged)
+```
+
+State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-B10 closure)` at LFC-2E1-S2-B10 / G8. LEGACY_PLUGIN_IDS residual remains **2 / 2 / 2** (core.load, core.waitUntil — each with its own burn-down lane).
 
 ### `example.uppercase` — CERTIFIED (external plugin)
 

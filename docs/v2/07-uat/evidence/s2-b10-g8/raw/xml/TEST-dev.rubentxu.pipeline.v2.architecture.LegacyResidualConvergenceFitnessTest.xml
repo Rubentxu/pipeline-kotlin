@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.242Z" hostname="bazzite-rubentxu" time="0.093">
+  <properties/>
+  <testcase name="converged residual is the same exact key set in all three legacy authorities()" classname="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" time="0.085"/>
+  <testcase name="converged residual is non-vacuous while the burn-down is still open()" classname="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" time="0.001"/>
+  <testcase name="legacy residual is converged with no in-flight registry primary flip()" classname="dev.rubentxu.pipeline.v2.architecture.LegacyResidualConvergenceFitnessTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

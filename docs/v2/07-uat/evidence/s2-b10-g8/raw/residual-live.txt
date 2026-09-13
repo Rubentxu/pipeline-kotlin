@@ -1,0 +1,4 @@
+ids            = ['core.load', 'core.waitUntil']  (2)
+metadata rows  = ['core.load', 'core.waitUntil']  (2)
+dispatcher files (per-Step, excl. generic CanonicalNodeDispatcher.kt) = ['CanonicalLoadNodeDispatcher.kt', 'CanonicalWaitUntilNodeDispatcher.kt']  (2)
+RESIDUAL TRIPLE = 2/2/2

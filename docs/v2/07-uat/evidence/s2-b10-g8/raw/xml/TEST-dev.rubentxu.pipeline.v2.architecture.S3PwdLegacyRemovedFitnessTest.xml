@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.759Z" hostname="bazzite-rubentxu" time="0.011">
+  <properties/>
+  <testcase name="legacy command subtype and decoder branch are absent()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="three residual legacy authorities match the declared burn-down stage snapshot()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="CorePwdStep handler emits the PwdResolved event after execution()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.0"/>
+  <testcase name="CorePwdStep handler keeps the WorkspaceIdentity + EventSink capability declaration()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="legacy dispatcher is absent as file facade field branch and context helper()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="production metadata resolver serves core pwd from the descriptor()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="core pwd remains registered and structurally registry owned()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="legacy metadata has no core pwd row()" classname="dev.rubentxu.pipeline.v2.architecture.S3PwdLegacyRemovedFitnessTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

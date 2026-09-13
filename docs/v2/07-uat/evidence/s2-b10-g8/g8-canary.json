@@ -1,0 +1,123 @@
+{
+  "classes": {
+    "CoreArchiveArtifactsStepContractSuiteTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-application",
+      "skipped": 0,
+      "tests": 27,
+      "timestamp_utc": "2026-09-13T15:51:58.925Z",
+      "xml_sha256": "3374a09ce519e6964aec6770d480e8f6a87b8e4f4691838443bf6a2e7897b075"
+    },
+    "LegacyResidualConvergenceFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 3,
+      "timestamp_utc": "2026-09-13T15:50:37.242Z",
+      "xml_sha256": "d8b4569064e11634cee4ff3d6fe17c5ae124657b258beaa63a492dc67ec9296a"
+    },
+    "Lfc0GlobalStateFitnessTest": {
+      "errors": 0,
+      "failures": 1,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 2,
+      "timestamp_utc": "2026-09-13T15:50:37.339Z",
+      "xml_sha256": "1dd870c5b6627f4dd2c554879d3e383921566f651f02e75a174bb234d4d5be5c"
+    },
+    "Lfc2DurableCoordinatorScopeFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 4,
+      "timestamp_utc": "2026-09-13T15:50:37.608Z",
+      "xml_sha256": "91f644ef894a815d27fca48bd01abdc430e1f09fecf4a33e4d0a3cf0b71631cb"
+    },
+    "Lfc2RegistryFamilyFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 3,
+      "timestamp_utc": "2026-09-13T15:50:37.629Z",
+      "xml_sha256": "1ac4719fb364bb51022271f3dd7cb8f06859e3bd2de770ddb84694fdf023a2ed"
+    },
+    "S3EchoLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 7,
+      "timestamp_utc": "2026-09-13T15:50:37.645Z",
+      "xml_sha256": "229037231d9f0330bccb8f2a038c50b08b330214e88328ba789ddb11701b15a2"
+    },
+    "S3EmitEventLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 8,
+      "timestamp_utc": "2026-09-13T15:50:37.662Z",
+      "xml_sha256": "188faf955da12ff4c1fa7b35f9886d12e08ae669733159faba0d6738e1e189da"
+    },
+    "S3ErrorLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 12,
+      "timestamp_utc": "2026-09-13T15:50:37.720Z",
+      "xml_sha256": "7f5d4a1303281db4637407351589c7b956d90044b2a72040aa3232d600cb4dfd"
+    },
+    "S3IsUnixLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 9,
+      "timestamp_utc": "2026-09-13T15:50:37.745Z",
+      "xml_sha256": "173ecea437de32f8be4ee517fe5957de952e18723302466350b3fbe75c6989b9"
+    },
+    "S3PwdLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 8,
+      "timestamp_utc": "2026-09-13T15:50:37.759Z",
+      "xml_sha256": "43e2e121322c4e15833d5076624dc9ba0912a4abfb8ddabcb82d213f95d458e7"
+    },
+    "S3SleepLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 4,
+      "timestamp_utc": "2026-09-13T15:50:37.772Z",
+      "xml_sha256": "1013266fe379bd5ac266796164256964026a3a3a2abcce4fead33afc1e437b76"
+    },
+    "S3WriteFileLegacyRemovedFitnessTest": {
+      "errors": 0,
+      "failures": 0,
+      "module": "pipeline-architecture-tests",
+      "skipped": 0,
+      "tests": 4,
+      "timestamp_utc": "2026-09-13T15:50:37.780Z",
+      "xml_sha256": "7945074511d0535246502e80292dd79f020c69751ebf86ffcb043ed878ddc795"
+    }
+  },
+  "code_under_test": "e7ea54ba",
+  "gate": "S2-B10/G8",
+  "result_truth": "JUnit XML (build outputs, not committed); sha256 recorded below",
+  "totals": {
+    "contract_suite_tests": 27,
+    "expected_red_classes": [
+      "Lfc0GlobalStateFitnessTest"
+    ],
+    "s3_legacy_removed_failures": 0,
+    "s3_legacy_removed_tests": 52
+  }
+}

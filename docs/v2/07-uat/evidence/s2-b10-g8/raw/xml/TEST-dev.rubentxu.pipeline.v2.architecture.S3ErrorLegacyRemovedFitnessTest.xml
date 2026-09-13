@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.720Z" hostname="bazzite-rubentxu" time="0.024">
+  <properties/>
+  <testcase name="core error satisfies the LEGACY_REMOVED rule (id AND command AND decoder AND dispatcher AND metadata absent)()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="core error is registered in the production StepRegistry()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="counter snapshot at G6 close -- LEGACY_PLUGIN_IDS equals the residual legacy keys for the declared stage()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.003"/>
+  <testcase name="certified registry-routed plugins are disjoint from LEGACY_PLUGIN_IDS()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="CanonicalErrorNodeDispatcher kt does NOT exist on disk()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.0"/>
+  <testcase name="LEGACY_PLUGIN_IDS is exactly the 6 residual keys (post-S2-A6-G5 full-set equality)()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="core error is NOT in the closed legacy authority LEGACY_PLUGIN_IDS()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="core error is NOT in the legacy metadata table()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="counter snapshot at G6 close -- per-Step dispatcher files equal the declared residual legacy dispatcher classes()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="core error is NOT decodable by CanonicalCoreStepDecoder()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="counter snapshot at G6 close -- CanonicalCoreStepMetadata table keys equal the 6 residual legacy keys()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="core error is NOT dispatched by CanonicalNodeDispatcher()" classname="dev.rubentxu.pipeline.v2.architecture.S3ErrorLegacyRemovedFitnessTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

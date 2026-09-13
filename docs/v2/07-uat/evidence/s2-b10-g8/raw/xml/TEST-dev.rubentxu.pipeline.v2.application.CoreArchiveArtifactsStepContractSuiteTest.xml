@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" tests="27" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:51:58.925Z" hostname="bazzite-rubentxu" time="0.736">
+  <properties/>
+  <testcase name="observability — every core dot archiveArtifacts run emits a StepStarted StepFinished pair()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.582"/>
+  <testcase name="registry resolution — production factory contains core dot archiveArtifacts()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="identity — KEY is core dot archiveArtifacts and duplicate registration fails()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.004"/>
+  <testcase name="replay — MEMOIZED archiveArtifacts with WRITES_WORKSPACE reruns idempotently with identical entries()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.04"/>
+  <testcase name="typed failure negative control — a thrown handler is re-classified ENGINE by the boundary()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.005"/>
+  <testcase name="conditional exposure — controlDirRoot null means the capability is absent and admission rejects()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.002"/>
+  <testcase name="typed failure — an empty match without allowEmptyArchive surfaces as the step's own SCRIPT failure()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.013"/>
+  <testcase name="G4 routing end-to-end — a non-empty archive succeeds through production wiring where legacy failed()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.013"/>
+  <testcase name="real DSL scenario — pipeline DSL lowers archiveArtifacts and the run succeeds through the canonical spine()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.027"/>
+  <testcase name="codec input — default input encodes to the canonical envelope and round-trips()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.0"/>
+  <testcase name="canonical envelope — input codec is byte-identical to the legacy compiler lowering for non-default fields()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.003"/>
+  <testcase name="codec output — ArchiveArtifactsOutput round-trips byte-identically and survives durable string form()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="codec input — decode rejects a foreign envelope kind()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="codec input — decode accepts the legacy envelope without optional fields with tolerant defaults()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="registry resolution — production factory registry is fresh per call and consistent across calls()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="fresh durable — first execution of core dot archiveArtifacts writes one terminal SUCCEEDED operation()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.006"/>
+  <testcase name="codec output — ArchiveArtifactsFailureOutput round-trips with its SCRIPT kind and message()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="capability declaration — core dot archiveArtifacts declares EXACTLY ARTIFACT_ARCHIVE_OPERATIONS()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="capability admission — the capability available prepares Ready()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="missing capability — admission rejects and names the missing capability()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.002"/>
+  <testcase name="ArtifactArchived payload — relPath sha256 size and archivedAt are present and self-consistent()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.009"/>
+  <testcase name="contract completeness — key, descriptor, codecs, single capability, WRITES_WORKSPACE, MEMOIZED, None()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.0"/>
+  <testcase name="success — boundary coexecute archives matched files into retention and returns typed success()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.005"/>
+  <testcase name="replay decision — DefaultEffectReplayPolicy reruns MEMOIZED WRITES_WORKSPACE with a SUCCEEDED entry()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="codec output — decode rejects a non-archiveArtifacts kind()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="G5 LEGACY_REMOVED invariant — core dot archiveArtifacts physical forms destroyed and counters are 2 2 2()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.001"/>
+  <testcase name="G4 routing — StructuralFamilyResolver classifies core dot archiveArtifacts as Registry()" classname="dev.rubentxu.pipeline.v2.application.CoreArchiveArtifactsStepContractSuiteTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

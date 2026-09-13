@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.S3SleepLegacyRemovedFitnessTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.772Z" hostname="bazzite-rubentxu" time="0.007">
+  <properties/>
+  <testcase name="legacy metadata has no core sleep row()" classname="dev.rubentxu.pipeline.v2.architecture.S3SleepLegacyRemovedFitnessTest" time="0.0"/>
+  <testcase name="core sleep remains registered and structurally registry owned()" classname="dev.rubentxu.pipeline.v2.architecture.S3SleepLegacyRemovedFitnessTest" time="0.001"/>
+  <testcase name="three residual legacy authorities match the declared burn-down stage snapshot()" classname="dev.rubentxu.pipeline.v2.architecture.S3SleepLegacyRemovedFitnessTest" time="0.002"/>
+  <testcase name="legacy command decoder and dispatcher forms are absent()" classname="dev.rubentxu.pipeline.v2.architecture.S3SleepLegacyRemovedFitnessTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

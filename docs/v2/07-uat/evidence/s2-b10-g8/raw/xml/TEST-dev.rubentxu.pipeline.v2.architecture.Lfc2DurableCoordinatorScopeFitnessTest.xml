@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="dev.rubentxu.pipeline.v2.architecture.Lfc2DurableCoordinatorScopeFitnessTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-13T15:50:37.608Z" hostname="bazzite-rubentxu" time="0.02">
+  <properties/>
+  <testcase name="durable coordinator does not reference CanonicalCoreStepDecoder()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2DurableCoordinatorScopeFitnessTest" time="0.006"/>
+  <testcase name="legacy decode boundary owns the core typed decoder()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2DurableCoordinatorScopeFitnessTest" time="0.0"/>
+  <testcase name="durable coordinator has no concrete core step routing()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2DurableCoordinatorScopeFitnessTest" time="0.005"/>
+  <testcase name="durable coordinator does not reference CanonicalCoreStepCommand()" classname="dev.rubentxu.pipeline.v2.architecture.Lfc2DurableCoordinatorScopeFitnessTest" time="0.006"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

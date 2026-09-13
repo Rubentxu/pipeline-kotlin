@@ -140,6 +140,7 @@ class CoreErrorRegistryPrimaryFitnessTest {
         assertEquals(7, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone (LEGACY_REMOVED); the 6-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A9-G5 — 4 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test
     fun `LEGACY_PLUGIN_IDS post-S2-A6-G4 — 6 residual legacy keys remain`() {
         val expected = setOf(
@@ -156,6 +157,26 @@ class CoreErrorRegistryPrimaryFitnessTest {
             "LEGACY_PLUGIN_IDS MUST be exactly the 6 residual legacy keys post-S2-A6/G4",
         )
         assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    // S2-A9 / G5 (2026-09-13): core.milestone physically removed (LEGACY_REMOVED). The
+    // historical S2-A6/G4 snapshot above is preserved verbatim for traceability. S2-A7/G5
+    // (2026-09-12) had already removed core.deleteDir from this set, so the post-S2-A9/G5
+    // counter converges to 4/4/4.
+    @Test
+    fun `LEGACY_PLUGIN_IDS post-S2-A9-G5 — 4 residual legacy keys remain`() {
+        val expected = setOf(
+            "core.cleanWs",
+            "core.load",
+            "core.waitUntil",
+            "core.archiveArtifacts",
+        )
+        assertEquals(
+            expected,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS MUST be exactly the 4 residual legacy keys post-S2-A9/G5",
+        )
+        assertEquals(4, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test

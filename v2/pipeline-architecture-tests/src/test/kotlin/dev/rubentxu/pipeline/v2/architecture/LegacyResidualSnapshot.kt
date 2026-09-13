@@ -64,11 +64,16 @@ object LegacyResidualSnapshot {
      * ONE line to change per G5.
      */
     private val physicalResidual: Set<String> = setOf(
-        "core.milestone", "core.cleanWs",
+        "core.cleanWs",
         "core.load", "core.waitUntil", "core.archiveArtifacts",
     )
     // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
     // (subtype, decoder branch, metadata row, dispatcher file all deleted).
+    // S2-A9 / G5 (2026-09-13): "core.milestone" removed from the physical residual
+    // (subtype, decoder branch + constant, metadata row, CanonicalMilestoneNodeDispatcher.kt
+    // file, CanonicalNodeDispatcher Milestone seams all deleted). Counter converges
+    // 4/5/5 -> 4/4/4 (registry-primary pending removed; metadata + dispatcher physical
+    // forms removed too).
 
     /**
      * The key that has REGISTRY_PRIMARY-flipped (G4) but is NOT yet physically

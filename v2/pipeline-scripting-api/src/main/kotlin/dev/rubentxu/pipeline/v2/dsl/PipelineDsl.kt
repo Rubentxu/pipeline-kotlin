@@ -1720,11 +1720,57 @@ class StageScope(
      *
      * Jenkins verbatim: `milestone(ordinal: Int, label: String? = null)`
      *
+     * S2-A9 / G5: this DSL lowers directly to `StepSpec.RegistryStepSpec` (open-world registry
+     * path). The payload is encoded inline here to match the canonical codec of
+     * `CoreMilestoneStep.inputCodec` byte-for-byte, so the durable fingerprint is preserved
+     * across the G5 destructive flip. The legacy `StepSpec.Milestone` subtype and its compiler
+     * branch are removed at G5; this DSL was the only producer.
+     *
      * @param ordinal The milestone ordinal (must be monotonically increasing)
      * @param label Optional label for the milestone
      */
     fun milestone(ordinal: Int, label: String? = null) {
-        steps.add(StepSpec.Milestone(ordinal = ordinal, label = label))
+        require(ordinal > 0) { "milestone ordinal must be positive: $ordinal" }
+        // Canonical envelope: {"kind":"milestone","ordinal":N,"label":...?}
+        // Matches CoreMilestoneStep.inputCodec.encode output (S2-A9 / G5).
+        val encoded = buildString {
+            append("{\"kind\":\"milestone\",\"ordinal\":")
+            append(ordinal)
+            if (label != null) {
+                append(",\"label\":\"")
+                append(escapeJsonString(label))
+                append("\"")
+            }
+            append("}")
+        }
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.milestone"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(encoded),
+            ),
+        )
+    }
+
+    private fun escapeJsonString(s: String): String {
+        val sb = StringBuilder(s.length + 2)
+        for (c in s) {
+            when (c) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                '\b' -> sb.append("\\b")
+                '\u000C' -> sb.append("\\f")
+                else -> if (c.code < 0x20) {
+                    sb.append("\\u").append("%04x".format(c.code))
+                } else {
+                    sb.append(c)
+                }
+            }
+        }
+        return sb.toString()
     }
 
     // =============================================================================

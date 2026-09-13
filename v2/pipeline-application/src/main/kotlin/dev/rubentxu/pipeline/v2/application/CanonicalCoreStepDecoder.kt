@@ -105,7 +105,13 @@ sealed interface CanonicalCoreStepCommand {
             // Legacy forms stay type-loadable but UNREACHABLE in production until
             // the G5 physical removal (command subtype, metadata row, dispatcher
             // file deleted at G5; counter converges 5/6/6 -> 5/5/5 there).
-            "core.milestone",
+            // S2-A9 / G4 (2026-09-13): "core.milestone" flipped REGISTRY_PRIMARY.
+            // S2-A9 / G5 (2026-09-13): "core.milestone" removed from LEGACY_PLUGIN_IDS
+            // (LEGACY_REMOVED — physical destructive). Counter converges 4/5/5 -> 4/4/4.
+            // Legacy forms (CanonicalCoreStepCommand.Milestone subtype, MILESTONE_PLUGIN_ID
+            // decoder branch + constant, metadata row, CanonicalMilestoneNodeDispatcher.kt
+            // file, CanonicalNodeDispatcher Milestone seams) are all removed in this slice.
+            // Production routing is exclusively CoreMilestoneStep.definition via the registry.
             "core.cleanWs",
             "core.load",
             "core.waitUntil",
@@ -125,16 +131,13 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * ML-R9 T-09: local single-run milestone marker (ADR-0046 §ML — no cross-build abort).
-     * Emits the typed MilestoneReached event; ordinal monotonicity is validated
-     * within the run by the dispatcher.
+     * S2-A9 / G5: the legacy `Milestone` command subtype was removed (LEGACY_REMOVED).
+     * Production routing is exclusively `CoreMilestoneStep.definition` via the registry.
+     * The DSL `milestone(ordinal, label)` now lowers to `StepSpec.RegistryStepSpec` carrying
+     * the same canonical envelope (`{"kind":"milestone","ordinal":N,"label":...}`); the raw
+     * `core.milestone` envelope is consumed structurally and executively by CoreMilestoneStep
+     * through the registry — never here.
      */
-    data class Milestone(
-        val ordinal: Int,
-        val label: String?,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.milestone"
-    }
 
     /**
      * T-05: deleteDir step — DELETED at S2-A7 / G5 (2026-09-12, LEGACY_REMOVED).
@@ -209,7 +212,9 @@ sealed interface CanonicalCoreStepCommand {
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
     // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
-    private const val MILESTONE_PLUGIN_ID = "core.milestone"
+    // S2-A9 / G5: MILESTONE_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED). The raw
+    // core.milestone envelope is consumed structurally (pre-decode) and executively by
+    // CoreMilestoneStep via the registry — never here.
     private const val CLEAN_WS_PLUGIN_ID = "core.cleanWs"
     private const val LOAD_PLUGIN_ID = "core.load"
     // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
@@ -226,19 +231,9 @@ object CanonicalCoreStepDecoder {
             // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.emit.event envelope is consumed structurally (StructuralOverlayProjection,
             // pre-decode) and executively by CoreEmitEventStep via the registry — never here.
-            MILESTONE_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "milestone") {
-                    "Payload kind must be 'milestone' for '${node.id.value}'"
-                }
-                val ordinal = payload.requiredInt("ordinal")
-                require(ordinal > 0) {
-                    "dsl-v1 payload requires a positive milestone ordinal for '${node.id.value}': $ordinal"
-                }
-                CanonicalCoreStepCommand.Milestone(
-                    ordinal = ordinal,
-                    label = payload["label"]?.jsonPrimitive?.contentOrNull,
-                )
-            }
+            // S2-A9 / G5: MILESTONE_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
+            // core.milestone envelope is consumed structurally and executively by
+            // CoreMilestoneStep via the registry — never here.
             // S2-A7 / G5 (2026-09-12): DELETE_DIR_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
             CLEAN_WS_PLUGIN_ID -> {
                 require(payload.requiredString("kind") == "cleanWs") {

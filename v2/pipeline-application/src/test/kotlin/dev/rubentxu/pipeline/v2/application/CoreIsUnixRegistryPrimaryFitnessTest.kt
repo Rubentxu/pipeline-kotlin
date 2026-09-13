@@ -81,6 +81,7 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `G5 milestone - core dot isUnix stays absent post-S2-A9-G5` below. Preserved verbatim for traceability.")
     @Test
     fun `G4 flip - core dot isUnix stays absent from LEGACY_PLUGIN_IDS post-S2-A6-G4`() {
         assertTrue(
@@ -91,6 +92,22 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
             6,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
             "G4 counter: LEGACY_PLUGIN_IDS converges 7 (post-S2-A5/G4) -> 6 (post-S2-A6/G4)",
+        )
+    }
+
+    // S2-A9 / G5 (2026-09-13): core.milestone physically removed (LEGACY_REMOVED). The
+    // historical S2-A6/G4 snapshot above is preserved verbatim for traceability. The
+    // post-S2-A9/G5 counter for core.isUnix (still registry-primary) converges to 4.
+    @Test
+    fun `G5 milestone - core dot isUnix stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5`() {
+        assertTrue(
+            key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.isUnix MUST remain absent from LEGACY_PLUGIN_IDS post-S2-A9/G5 flip of core.milestone",
+        )
+        assertEquals(
+            4,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "G5 counter: LEGACY_PLUGIN_IDS converges 6 (post-S2-A6/G4) -> 4 (post-S2-A9/G5)",
         )
     }
 

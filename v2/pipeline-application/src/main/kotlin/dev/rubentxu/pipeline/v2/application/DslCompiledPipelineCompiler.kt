@@ -217,16 +217,10 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            is StepSpec.Milestone -> listOf(
-                OpaqueStepNode(
-                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
-                    pluginStepId = PluginStepId("core.milestone"),
-                    payload = VersionedStepPayload(
-                        PAYLOAD_SCHEMA_VERSION,
-                        milestonePayload(step.ordinal, step.label),
-                    ),
-                ),
-            )
+            // S2-A9 / G5: StepSpec.Milestone branch removed (LEGACY_REMOVED). The DSL
+            // `milestone(ordinal, label)` now lowers directly to StepSpec.RegistryStepSpec
+            // (open-world registry path); no dedicated compiler branch needed. Legacy
+            // milestonePayload() removed at G5.
             else -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
@@ -608,14 +602,10 @@ object DslCompiledPipelineCompiler {
         })
     }
 
-    /** ML-R9 T-09: typed canonical milestone payload (ordinal required, label optional). */
-    private fun milestonePayload(ordinal: Int, label: String?): String {
-        return Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-            put("kind", "milestone")
-            put("ordinal", ordinal)
-            if (label != null) put("label", label)
-        })
-    }
+    // S2-A9 / G5: milestonePayload removed (LEGACY_REMOVED). The canonical envelope for
+    // core.milestone is produced by the DSL `milestone(...)` function (scripting-api) which
+    // lowers to StepSpec.RegistryStepSpec; the runtime decoder/handler is CoreMilestoneStep
+    // via the registry. No compiler-side payload construction needed.
 
     private fun shellPayload(command: String, isScriptBlock: Boolean, returnStdout: Boolean): String {
         return Json.encodeToString(JsonObject.serializer(), buildJsonObject {

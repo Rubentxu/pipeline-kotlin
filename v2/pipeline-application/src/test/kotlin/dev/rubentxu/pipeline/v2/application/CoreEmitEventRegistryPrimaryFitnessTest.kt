@@ -94,6 +94,7 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `core milestone G5 — 4 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test
     fun `core pwd registry flip — 6 residual legacy keys remain post-S2-A6-G4`() {
         assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -104,6 +105,23 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
             ),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "post-S2-A6/G4: 6 residual legacy keys; core.pwd removed (REGISTRY_PRIMARY flip)",
+        )
+    }
+
+    // S2-A9 / G5 (2026-09-13): core.milestone physically removed (LEGACY_REMOVED). The
+    // historical S2-A6/G4 snapshot above is preserved verbatim for traceability. S2-A7/G5
+    // (2026-09-12) had already removed core.deleteDir from this set, so the post-S2-A9/G5
+    // counter converges to 4/4/4.
+    @Test
+    fun `core milestone G5 — 4 residual legacy keys remain post-S2-A9-G5`() {
+        assertEquals(4, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(
+            setOf(
+                "core.cleanWs",
+                "core.load", "core.waitUntil", "core.archiveArtifacts",
+            ),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-S2-A9/G5: 4 residual legacy keys; core.milestone removed (LEGACY_REMOVED)",
         )
     }
 

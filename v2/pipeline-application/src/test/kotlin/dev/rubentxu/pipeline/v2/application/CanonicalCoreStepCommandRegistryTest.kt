@@ -70,13 +70,9 @@ class CanonicalCoreStepCommandRegistryTest {
     // metadata row assertions live in the G1/G2 receipts. Metadata authority is now
     // CoreEmitEventStep.descriptor via RegistryStepMetadataResolver.
 
-    @Test
-    fun `Milestone has correct pluginId and defaultMetadata`() {
-        val milestoneInstance = CanonicalCoreStepCommand.Milestone(ordinal = 1, label = "post-error")
-        assertEquals("core.milestone", milestoneInstance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), milestoneInstance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, milestoneInstance.defaultMetadata.replayPolicy)
-    }
+    // S2-A9 / G5: Milestone legacy command removed (LEGACY_REMOVED); its historical
+    // metadata row assertions live in the G1/G2 receipts. Metadata authority is now
+    // CoreMilestoneStep.descriptor via RegistryStepMetadataResolver.
 
     // P1a — workflow-control canonical step families
     // S2-A7 / G5: `DeleteDir has correct pluginId and defaultMetadata` removed —

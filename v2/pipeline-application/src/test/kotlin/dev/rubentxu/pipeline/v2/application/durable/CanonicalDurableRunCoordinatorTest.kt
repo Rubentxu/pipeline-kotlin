@@ -84,8 +84,13 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // S2-A9 / G5: registry-aware routing required for core.echo (no longer in legacy
+            // metadata table — metadata authority lives in CoreEchoStep.descriptor via the
+            // registry). The catchError block itself is a legacy structural projection
+            // (StructuralOverlayProjection), but its inner echoStep now requires stepRegistry.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         assertEquals(RunOutcome.Unstable, outcome)
@@ -905,8 +910,13 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // S2-A9 / G5: core.milestone executes exclusively through CoreMilestoneStep via
+            // the registry. The legacy decoder branch + metadata row + dispatcher file were
+            // removed in this slice, so the no-registry coordinator construction can no longer
+            // resolve core.milestone (it now requires stepRegistry for registry-aware routing).
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         assertEquals(RunOutcome.Success, outcome)
@@ -935,8 +945,13 @@ class CanonicalDurableRunCoordinatorTest {
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), InMemoryOperationJournal(clock), InMemoryReplayCursorStore(clock), clock,
             DefaultEffectReplayPolicy(), eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // S2-A9 / G5: core.milestone executes exclusively through CoreMilestoneStep via
+            // the registry. The legacy decoder branch + metadata row + dispatcher file were
+            // removed in this slice, so the no-registry coordinator construction can no longer
+            // resolve core.milestone (it now requires stepRegistry for registry-aware routing).
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         // ML-R9 T-09 local single-run semantics: record-only, never abort the run.

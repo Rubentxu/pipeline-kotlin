@@ -22,7 +22,8 @@ data class CanonicalRuntimeContext(
 class CanonicalNodeDispatcher {
     // S2-A4 / G5: emitEventDispatcher removed (LEGACY_REMOVED) — core.emit.event executes
     // exclusively through CoreEmitEventStep via the registry.
-    private val milestoneDispatcher = CanonicalMilestoneNodeDispatcher()
+    // S2-A9 / G5: milestoneDispatcher removed (LEGACY_REMOVED) — core.milestone executes
+    // exclusively through CoreMilestoneStep via the registry.
     // S2-A7 / G5: deleteDirDispatcher removed (LEGACY_REMOVED) — core.deleteDir executes
     // exclusively through CoreDeleteDirStep via the registry.
     private val cleanWsDispatcher = CanonicalCleanWsNodeDispatcher()
@@ -37,7 +38,8 @@ class CanonicalNodeDispatcher {
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
         when (command) {
             // S2-A4 / G5: EmitEvent when-branch removed (LEGACY_REMOVED).
-            is CanonicalCoreStepCommand.Milestone -> milestoneDispatcher.dispatch(command, context.milestoneContext())
+            // S2-A9 / G5: Milestone when-branch removed (LEGACY_REMOVED) — core.milestone executes
+            // exclusively through CoreMilestoneStep via the registry.
             // S2-A7 / G5: DeleteDir when-branch removed (LEGACY_REMOVED).
             is CanonicalCoreStepCommand.CleanWs -> cleanWsDispatcher.dispatch(command, context.cleanWsContext())
             is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
@@ -50,12 +52,7 @@ class CanonicalNodeDispatcher {
         }
 
     // S2-A4 / G5: emitEventContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-
-    private fun CanonicalRuntimeContext.milestoneContext() = CanonicalMilestoneDispatchContext(
-        runId = runId,
-        eventSink = eventSink,
-    )
-
+    // S2-A9 / G5: milestoneContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A7 / G5: deleteDirContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.cleanWsContext() = CanonicalCleanWsDispatchContext(

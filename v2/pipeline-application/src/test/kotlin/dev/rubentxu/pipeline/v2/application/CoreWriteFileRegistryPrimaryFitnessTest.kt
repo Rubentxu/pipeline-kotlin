@@ -45,6 +45,7 @@ class CoreWriteFileRegistryPrimaryFitnessTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `G5 milestone - core dot writeFile counter post-S2-A9-G5` below. Preserved verbatim for traceability.")
     @Test
     fun `G4 flip post-S2-A6-G4 - 6 residual legacy keys remain`() {
         assertTrue(
@@ -55,6 +56,22 @@ class CoreWriteFileRegistryPrimaryFitnessTest {
             6,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
             "G4->G5 counter post-S2-A6/G4: LEGACY_PLUGIN_IDS converges 7 -> 6 (core.pwd, S2-A6/G4)",
+        )
+    }
+
+    // S2-A9 / G5 (2026-09-13): core.milestone physically removed (LEGACY_REMOVED). The
+    // historical S2-A6/G4 snapshot above is preserved verbatim for traceability. The
+    // post-S2-A9/G5 counter for core.file.writeFile (still registry-primary) converges to 4.
+    @Test
+    fun `G5 milestone - core dot writeFile stays absent from LEGACY_PLUGIN_IDS post-S2-A9-G5`() {
+        assertTrue(
+            key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.file.writeFile must remain routed via the registry post-S2-A9/G5 flip of core.milestone",
+        )
+        assertEquals(
+            4,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
+            "G5 counter: LEGACY_PLUGIN_IDS converges 6 (post-S2-A6/G4) -> 4 (post-S2-A9/G5)",
         )
     }
 

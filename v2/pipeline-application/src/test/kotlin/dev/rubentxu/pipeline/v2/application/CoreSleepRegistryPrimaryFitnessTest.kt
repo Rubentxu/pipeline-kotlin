@@ -54,12 +54,25 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // S2-A6 / G4 (2026-09-12): "core.pwd" also flipped to registry; 7 -> 6 residual.
     // The historical S2-A5/G4 snapshot above is preserved verbatim for traceability;
     // the post-S2-A6/G4 snapshot is asserted below.
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone (LEGACY_REMOVED); the 6-key count is superseded by `registry post-S2-A9-G5 — 4 residual legacy keys remain` below. Preserved verbatim for traceability.")
     @Test fun `registry post-S2-A6-G4 — 6 residual legacy keys remain`() {
         assertEquals(setOf(
             "core.milestone", "core.deleteDir", "core.cleanWs",
             "core.load", "core.waitUntil", "core.archiveArtifacts",
         ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertEquals(6, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    }
+
+    // S2-A9 / G5 (2026-09-13): core.milestone physically removed (LEGACY_REMOVED).
+    // Counters converge 4/5/5 -> 4/4/4 (registry-primary pending removed; metadata + dispatcher
+    // physical forms removed too). Historical G4 snapshots preserved verbatim above for
+    // traceability. S2-A6/G4 snapshot also @Disabled above to make room for this G5 truth.
+    @Test fun `registry post-S2-A9-G5 — 4 residual legacy keys remain`() {
+        assertEquals(setOf(
+            "core.cleanWs",
+            "core.load", "core.waitUntil", "core.archiveArtifacts",
+        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(4, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")
@@ -75,9 +88,27 @@ class CoreSleepRegistryPrimaryFitnessTest {
         )
     }
 
+    @Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) added core.waitUntil, core.deleteDir and core.milestone registrations; the 9-key shape is superseded by `production registry contains exactly the registered core steps (post-S2-A9-G5)` below. Preserved verbatim for traceability.")
     @Test fun `production registry contains exactly the registered core steps (post-S2-A6-G4)`() {
         assertEquals(
             setOf("core.echo", "core.sh", "core.error", "core.sleep", "core.file.writeFile", "core.emit.event", "core.isUnix", "core.pwd", "core.pwd.tmp"),
+            CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
+        )
+    }
+
+    // S2-A9 / G5 (2026-09-13): the production registry shape is updated to include the
+    // registry-primary candidate steps (core.waitUntil, core.deleteDir, core.milestone) in
+    // addition to the S2-A6/G4 set. Legacy authority for these steps lives exclusively in
+    // their respective StepDefinitions (CoreWaitUntilStep, CoreDeleteDirStep, CoreMilestoneStep);
+    // the LEGACY_PLUGIN_IDS row was physically removed in this slice.
+    @Test fun `production registry contains exactly the registered core steps (post-S2-A9-G5)`() {
+        assertEquals(
+            setOf(
+                "core.echo", "core.sh", "core.error", "core.sleep",
+                "core.file.writeFile", "core.emit.event", "core.isUnix",
+                "core.pwd", "core.pwd.tmp",
+                "core.waitUntil", "core.deleteDir", "core.milestone",
+            ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )
     }

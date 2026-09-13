@@ -49,6 +49,118 @@ style where it improves correctness and makes invalid states unrepresentable:
 6. Exceptions remain appropriate at process/framework boundaries and for
    irrecoverable programmer defects. Expected operational outcomes MUST use the
    corresponding typed result algebra.
+7. Separate decision from interpretation. Logic SHOULD first produce an
+   immutable typed decision and only then interpret that value at an effect
+   boundary. A function that can decide without performing I/O MUST be pure. Do
+   not mix policy selection, validation and effect execution in one function for
+   convenience.
+
+   ```text
+   input
+     -> pure decode/validation
+     -> pure ADT decision
+     -> interpreter
+     -> capability/port
+     -> effect
+   ```
+
+   Coordinators and interpreters MUST consume decisions. They MUST NOT infer
+   Step semantics from concrete Step names, and a method that both selects a
+   policy and applies it is a defect even when it is short.
+8. ADT-first modelling. Before introducing a `Boolean`, a nullable field, an
+   integer/string mode flag, mutually dependent properties, or a map used as
+   state, ask whether the state space is finite and belongs in a sealed ADT.
+   Constructors SHOULD make invalid combinations unrepresentable.
+
+   ```kotlin
+   // Rejected: three independent flags encode more states than exist, and
+   // most of those states are meaningless.
+   retry: Boolean
+   timeoutMs: Long?
+   parallel: Boolean
+
+   // Preferred: one case per legitimate shape, each carrying its own typed
+   // payload. Live reference: BodyExecutionPolicy, B10/W1b
+   // (docs/v2/07-uat/B10_W1B_BODY_EXECUTION_POLICY_RECEIPT.md).
+   sealed interface BodyExecutionPolicy {
+       data object Sequential : BodyExecutionPolicy
+       data class Scoped(val projection: BodyContextProjection) : BodyExecutionPolicy
+       data class Retrying(val policy: RetryPolicy) : BodyExecutionPolicy
+       data class Parallel(val policy: ParallelPolicy) : BodyExecutionPolicy
+   }
+   ```
+
+   Each case carries the payload meaningful for it. Do not give a case a
+   nullable payload it does not need, and do not collapse two cases into one
+   plus a discriminator.
+
+   Collapsing is a defect when the cases carry **different payloads**, or when
+   the union makes an illegal combination representable. A single constructor
+   whose only payload is another **closed ADT** (as `Scoped(BodyContextProjection)`
+   above) is not a flag bag. A `Boolean`, a `String` mode, an `Int` code or an
+   open `Map` used as a discriminator is.
+9. Functional core, effectful shell. Parsing normalized inputs, validation,
+   policy resolution, replay decisions, reconciliation, identity derivation,
+   state transitions and result classification SHOULD be pure transformations
+   whenever practical. Filesystem, process execution, clocks, randomness,
+   credentials, persistence, network and event transport belong behind
+   capabilities/ports. Pure logic MUST be testable without constructing the
+   coordinator, filesystem, database, process runner or framework runtime.
+10. DSL describes; interpreters execute. Public Kotlin DSL code MUST construct
+    typed declarative values/IR. A DSL builder MUST NOT perform runtime effects,
+    inspect global mutable state, execute processes, access persistence, or
+    manufacture placeholder runtime-return values.
+
+    ```text
+    DSL -> typed ADT/IR -> validation -> durable interpreter -> effects
+    ```
+11. Typed errors are values. Expected validation, admission, replay, policy and
+    operational failure modes SHOULD use explicit error/result ADTs. Exceptions
+    are reserved for adapter/framework boundaries and programmer/invariant
+    defects.
+
+    ```text
+    Input    -> Either<DomainError, Decision>
+    Decision -> Effect Interpreter -> Outcome
+    ```
+
+    Kotlin need not imitate Haskell syntax; preserve the semantic property.
+12. Composition over branching. When behavior varies by capability, policy or
+    strategy, compose typed functions or values through ports and registries. Do
+    not grow a central `when(stepKey)`, `if (pluginName == ...)`, a dispatcher
+    collection, or a service-locator branch. See "Closed execution structure,
+    open Step registry" below: the engine matches a closed structural ADT, and
+    variation is read from the declaration (contract, descriptor, capability),
+    never from the Step key.
+13. Use advanced Kotlin only when it strengthens the type model. Context
+    parameters, value classes, sealed hierarchies, contracts and generics are
+    encouraged when they remove invalid states or make required capabilities
+    explicit. Do not add type-level machinery to imitate Haskell or to raise
+    abstraction for its own sake.
+14. Purity is pragmatic, not ceremonial. Prefer purity when it improves
+    determinism, replayability, testability, concurrency safety or architectural
+    separation. An imperative implementation at an adapter boundary beats a
+    convoluted functional abstraction with no measurable benefit. Haskell
+    inspiration, not Haskell cosplay: take the properties (referential
+    transparency where it pays, ADTs, composition, effect isolation, total
+    functions) and use Kotlin's own tools to get them.
+
+### Review checklist (before coding, not only in CI)
+
+Apply these six questions to every non-trivial change. They are cheaper than the
+fitness tests that would otherwise catch the same defect later:
+
+```text
+1. Can this be an ADT?            (finite state space, illegal states unrepresentable)
+2. Can this be pure?              (no clock, fs, process, network, ambient state)
+3. Am I deciding or interpreting? (decide purely first, interpret at the effect boundary)
+4. Does the DSL describe or execute? (declarative values, never placeholder runtime values)
+5. Am I representing an impossible state? (nullable sentinel, boolean pair, flag bag)
+6. Am I introducing a central switch?    (stepKey/stepName branching, dispatcher collection)
+```
+
+A "yes" on 1, 2 or 3, or a "no" on 4, 5 or 6, is a signal to restructure before
+writing tests, not an excuse to add one more branch.
 
 ### Exceptions (require explicit human approval + new Milestone)
 

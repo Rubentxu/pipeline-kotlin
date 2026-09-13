@@ -34,7 +34,7 @@ Production Step keys total: 15
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900)
 Real .pipeline.kts examples: 10 (01..10)
 Event Harness contracts: 4 (07, 08, 09, 10)
-CERTIFIED Steps: 4 (core.echo, core.sh, example.uppercase, core.error)
+CERTIFIED Steps: 9 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone)
 ```
 
 ## Inventory table
@@ -61,7 +61,7 @@ Columns:
 | `core.sleep` | CORE | legacy | Y (L1041) | N | Y (CanonicalSleepNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.file.writeFile` | CORE | legacy | Y (L1302) | N | Y (CanonicalWriteFileNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.emit.event` | CORE | legacy | Y (emits canonical DomainEvent kinds) | N | Y (CanonicalEmitEventNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.milestone` | OFFICIAL_PLUGIN candidate | legacy | Y (L1704) | N | Y (CanonicalMilestoneNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
+| `core.milestone` | CORE | registry | Y (L1704, registryStep generic) | Y (`CoreMilestoneStep`) | Y | N (S2-A9 burn-down) | Y/Y | Y (`EVENT_SINK_CAPABILITY` + `MILESTONE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 21-milestone | — | **CERTIFIED** (S2-A9/G8, `S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.deleteDir` | CORE candidate | registry | Y (L1456) | Y (`CoreDeleteDirStep`) | Y | N (S2-A7 burn-down) | Y/Y | Y (`DELETE_DIR_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A7/G8, PROPOSED — `S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.cleanWs` | OFFICIAL_PLUGIN candidate | legacy | Y (L1469, L1479) | N | Y (CanonicalCleanWsNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.load` | CORE | legacy | Y (L1614) | N | Y (CanonicalLoadNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
@@ -171,10 +171,30 @@ State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGA
 - **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt:11`
 - **Real example:** none direct in 01..10
 
-### `core.milestone` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.milestone` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A9 closure)
 
-- **DSL:** `PipelineDsl.kt:1704` `fun milestone(ordinal: Int, label: String? = null)`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalMilestoneNodeDispatcher.kt`
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStep.kt` `val KEY: PluginStepId = PluginStepId("core.milestone")`
+- **DSL:** `v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1704` `fun milestone(ordinal: Int, label: String? = null)` (now lowers to `StepSpec.RegistryStepSpec` directly, byte-equivalent canonical envelope; legacy `StepSpec.Milestone` subtype removed at G5)
+- **Descriptor:** `effects = { Effect.WRITES_WORKSPACE }` (typed milestone state is persisted); `replayPolicy = ReplayPolicy.MEMOIZED`; `requiredCapabilities = { EVENT_SINK_CAPABILITY, MILESTONE_OPERATIONS_CAPABILITY }`
+- **Typed carriers:** input `MilestoneInput(ordinal: Int, label: String?)`; output `MilestoneOutput(ordinal: Int, label: String?, outcome: StepOutcome, sequence: Int)` (sealed `Reached` / `Aborted`); durable event `MilestoneReached` / `MilestoneAborted`
+- **Receipts (certification):**
+  - G1: `docs/v2/07-uat/S2_A9_CORE_MILESTONE_G1_RECEIPT.md`
+  - G2: `docs/v2/07-uat/S2_A9_CORE_MILESTONE_G2_RECEIPT.md`
+  - G3: `docs/v2/07-uat/S2_A9_CORE_MILESTONE_G3_RECEIPT.md`
+  - G5 LEGACY_REMOVED: `docs/v2/07-uat/S2_A9_CORE_MILESTONE_G5_LEGACY_REMOVED_RECEIPT.md` (counters 5/5/5 → 4/4/4)
+  - G6 CONTRACT_SUITE: `docs/v2/07-uat/S2_A9_CORE_MILESTONE_G6_CONTRACT_CERTIFICATION_RECEIPT.md` (24/0/0 with observability row)
+  - G7 INSTALLED_ACCEPTANCE: implicit via `21-milestone.pipeline.kts` canary executed at G5 (RunFinished{outcome=success} + MilestoneReached{1,2})
+  - G8 CERTIFIED: `docs/v2/07-uat/S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md` (this receipt)
+
+```text
+core.milestone:
+  delivery:       CORE
+  execution:      REGISTRY_PRIMARY
+  legacy:         REMOVED
+  certification:  CERTIFIED (proposed by G8 receipt; counters 4/4/4)
+```
+
+State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A9 closure)` at LFC-2E1-S2-A9 / G8. LEGACY_PLUGIN_IDS residual: **4 / 4 / 4** (cleanWs, load, waitUntil, archiveArtifacts).
 
 ### `core.deleteDir` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A7 closure)
 

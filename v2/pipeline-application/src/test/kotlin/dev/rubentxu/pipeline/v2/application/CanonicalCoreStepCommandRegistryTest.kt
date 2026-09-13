@@ -9,8 +9,7 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 6 entries (Milestone, DeleteDir, CleanWs,
- *   Load, WaitUntil, ArchiveArtifacts).
+ * - sealedSubclasses has exactly 4 entries (CleanWs, Load, WaitUntil, ArchiveArtifacts).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
@@ -22,6 +21,8 @@ import org.junit.jupiter.api.Test
  *   LFC-2E1-S2-A4 / G5 removed EmitEvent.
  *   LFC-2E1-S2-A5 / G5 removed IsUnix.
  *   LFC-2E1-S2-A6 / G5 removed Pwd.
+ *   LFC-2E1-S2-A7 / G5 removed DeleteDir.
+ *   LFC-2E1-S2-A9 / G5 removed Milestone.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -31,9 +32,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 6 entries`() {
+    fun `sealedSubclasses has exactly 4 entries`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(5, subclasses.size, "Expected exactly 5 sealed subtypes (EmitEvent removed at S2-A4/G5; IsUnix at S2-A5/G5; Pwd at S2-A6/G5; DeleteDir at S2-A7/G5). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(4, subclasses.size, "Expected exactly 4 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -50,7 +51,7 @@ class CanonicalCoreStepCommandRegistryTest {
             // S2-A6 / G5 (2026-09-12): "core.pwd" legacy subtype/decoder/dispatcher/metadata
             // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
             // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
-            "core.milestone",
+            // core.milestone removed at LFC-2E1-S2-A9 / G5 (registry-routed, CERTIFIED).
             // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
             // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
             // row/dispatcher physically deleted (LEGACY_REMOVED).

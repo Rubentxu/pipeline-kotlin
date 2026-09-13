@@ -205,14 +205,16 @@ class CoreDeleteDirStepUnitTest {
     }
 
     // ------------------------------------------------------------------
-    // Counter invariant — G5 converged state: 5 / 5 / 5
+    // Counter invariant — post-S2-A9/G5 converged state: 4 / 4 / 4
     // ------------------------------------------------------------------
 
     @Test
-    fun `counters - G5 converged 5 5 5 legacy physically removed`() {
+    fun `counters - post-S2-A9-G5 converged 4-4-4 legacy physically removed`() {
         // G5 invariant: legacy forms are physically deleted; the legacy metadata row is
         // gone and production metadata is exclusively CoreDeleteDirStep.descriptor.
-        assertEquals(5, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        // S2-A9 / G5 (2026-09-13): core.milestone added to the set of removed keys;
+        // counters converge 5/5/5 -> 4/4/4.
+        assertEquals(4, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
     }

@@ -767,6 +767,9 @@ ADT (`WorkingDirectory`/`Environment`/`Timestamps`/`Deadline`/`CredentialLease`)
 (`UnknownStep`/`NotABodyStep`/`IncoherentMetadata`/`UnsupportedByEngine`) with
 `BodyPolicyResolution` as a two-case result. `StepDescriptor` gained
 `bodyExecutionPolicy = BodyExecutionPolicy.DEFAULT` (Sequential); `StepDescriptorRegistry` declares
+> SUPERSEDED by W1d: the six independent body fields were replaced by one `StepBody` value
+> (`StepBody.None` / `StepBody.Declared(invocation, execution, introduces, catchesInterruptions)`)
+> with no defaults. Read the W1d section below for the current model.
 six rows. Resolution is a pure function of (declaration, engine support) reading
 `registry.definition(key)?.contract?.descriptor`, never a name table.
 
@@ -840,12 +843,14 @@ provenance (the debt measured when the guard was introduced); the pin is the liv
 W1b note "lower the ceiling with the ledger" is **superseded by W1c** — collapsing the two numbers
 would destroy the only record of the original debt. Do not lower it in W1d either.
 
-### W1d entry criteria (recorded from the W1c review)
+### W1d entry criteria (recorded from the W1c review) — ALL MET (see the W1d section)
 - Burn `dispatchWithCredentialsBlock` (the last routing site the ledger counts) → pin falls to 2,
-  ceiling stays 18.
+  ceiling stays 18. **Met: the pin is 0, and the ceiling is still 18.**
 - Make the incoherent declaration unrepresentable: `bodyExecutionOwner` currently defaults to
   `CANONICAL_ENGINE`, so a new `takesBody = true` row that omits the owner silently acquires
   canonical semantics. Target: "takes a body and nobody owns it" not expressible.
+  **Met: `StepDescriptor.body: StepBody`; `BodyExecution.owner`/`policy` and
+  `StepBody.Declared.invocation`/`execution` are required parameters.**
 - `core.parallel` / `core.retry` are durable identity questions (PAR-D row / RETRY-D control row),
   not body-routing debt.
 
@@ -882,3 +887,70 @@ python3 docs/v2/07-uat/evidence/b10-w1c/verify-b10-w1c-receipt.py --controls
 ### Next
 W1d candidates: burn `dispatchWithCredentialsBlock` (the last genuine routing site), or the PAR-D
 stage aggregate's `core.parallel` row (needs a stage-level declaration, not a body one).
+
+## LFC-2E1 / B10 W1d — one shared body path + typed durable identities (2026-09-13, base `45b26c49`)
+
+Slice commit: the commit that introduced `docs/v2/07-uat/B10_W1D_BODY_INVOKER_SHARED_PATH_RECEIPT.md`
+(resolved by the verifier via `git log -1 -- <receipt>`; do not hard-code it, amending the slice
+would invalidate the copy).
+
+### What landed
+- `pipeline-domain/.../domain/StepBody.kt` (new): `StepBody.None` / `StepBody.Declared(invocation,
+  execution: BodyExecution, introduces, catchesInterruptions)`; `BodyExecution(owner, policy)`. No
+  defaults on owner/shape/cardinality. `StepDescriptor` keeps ONE body value (`body: StepBody =
+  StepBody.None`); `takesBody`/`bodyInvocations`/`introducesContext`/`bodyExecutionPolicy`/
+  `bodyExecutionOwner`/`catchesInterruptions` are gone from the descriptor.
+- `pipeline-domain/.../domain/step/BodyAggregateIdentity.kt` (new): `RetryControlRow` (`core.retry`,
+  ADR-0075) + `ParallelStageAggregate` (`core.parallel`, ADR-0076) + `AggregateDurableRole` with the
+  owning ADR + the pinned `ALL` list + `fingerprintKey`. This is the RECLASSIFICATION of the last
+  two ledger items: they were never routing branches, they are durable keys.
+- `pipeline-application` `CanonicalDurableRunCoordinator`: ONE `invokeBodyChildren(...)` loop replaces
+  three copies (plain body, retry attempt, credential body); `executeCredentialLeasedBody` is a
+  preamble that acquires → re-enters the shared loop → releases in `finally` → folds both typed
+  outcomes through the pure `mergeBodyAndCleanup`; `dispatchWithCredentialsBlock` and
+  `dispatchAcquiredWithCredentialsBody` removed; the credential payload is decoded once in the pure
+  projection (`decodeCredentialBindings`) as a typed `InvalidInput` before any effect.
+- `pipeline-architecture-tests`: pinned ledger **EMPTY** (0), `HISTORICAL_CEILING` still **18**;
+  `BodyChildLoopInventory(loopDefinitions = 1, credentialAcquisitions = 1)` is the new structural
+  law (a duplicated body path with no literal at all now fails); `ConcreteBodyRoutingVerdict.decide`
+  requires the loop inventory (no default); new `Lfc2DurableAggregateIdentityFitnessTest`.
+
+### Baselines after W1d (result truth = JUnit XML, `check --continue --rerun-tasks`)
+- `:pipeline-domain:test` = **397 / 0 / 0** (W1c: 395/0/0).
+- `:pipeline-architecture-tests:test` = **272 / 1 / 0**; the 1 red is still
+  `Lfc0GlobalStateFitnessTest`, red at the slice parent too.
+- `:pipeline-application:test` = **1392 / 35 / 0**, 14 red classes — one FEWER failure than the slice
+  parent (36) and no new failing name. `CanonicalDurableRunCoordinatorTest` is **26 / 11 at base,
+  26 / 10 at head**: the repaired test is
+  `withCredentials cleanup failure folds a successful body to failure()`, whose base failure was
+  `scope close must still have run ==> expected: <1> but was: <0>` — W1d releases the lease in
+  `finally`, so a throwing child no longer leaks the scope.
+- W1a pinned debt = **0**; ceiling 18 untouched. Certified/legacy counters unchanged by this slice.
+
+### Run it
+```bash
+timeout 600 ./v2/gradlew -p v2 :pipeline-architecture-tests:test --tests 'Lfc2ConcreteBodyRoutingDebtFitnessTest*'
+timeout 600 ./v2/gradlew -p v2 :pipeline-domain:test --tests 'BodyExecutionPolicyTest*'
+python3 docs/v2/07-uat/evidence/b10-w1d/verify-b10-w1d-receipt.py
+python3 docs/v2/07-uat/evidence/b10-w1d/verify-b10-w1d-receipt.py --controls
+```
+
+### Lessons recorded by this slice
+- A ledger that only counts NAMES cannot see a duplicated body path: the second loop can contain no
+  literal and no `dispatch*Block` identifier. Count the STRUCTURE (`BodyChildLoopInventory`), not
+  just the names.
+- A structural check in a verifier must brace-count. A "stop at the first line that is `}`" heuristic
+  silently returns half a function and turns a structural assertion into a tautology.
+- A verifier that extracts a function by name must accept a receiver (`fun Recv.name()`); the pure
+  credential projection is a file-level extension function.
+- The historical verifier's expectation table is written from the SOURCE, then sanity-checked
+  semantically. Copying expectations from the previous slice's table would have pinned a row that
+  never existed (`core.warnError` introduces `OUTPUT_DECORATOR`, not `null`).
+- Repaired vs moved failure: prove it from the archived XML (name sets) AND from an untouched test
+  file (`git diff base..head -- <test>` empty), never from the console.
+
+### Next
+W1e candidates: the parallel stage aggregate's descriptor declaration (PAR-D row), or wiring the
+retry control journal into every run mode. The four pre-existing compatibility/UAT failures
+(`UatLocal008` CP-001/CR-BD-027, `UatLocal009` archiveArtifacts, `WithCredentialsCompileIntegrationTest`)
+remain out of B10 scope and are not regressions from this work.

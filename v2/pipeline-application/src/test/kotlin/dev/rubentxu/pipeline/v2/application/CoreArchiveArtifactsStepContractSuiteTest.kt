@@ -113,7 +113,12 @@ import org.junit.jupiter.api.Timeout
  *  - the `S3*LegacyRemovedFitnessTest` suites + `LegacyResidualConvergenceFitnessTest`
  *    assert the static source absence and the convergence property.
  *
- * S2-B10 / G3 — AGENTS.md 17/17 coverage (per Step Constitution §LB-02):
+ * ## S2-B10 / G6 — AGENTS.md 17/17 coverage matrix (per Step Constitution §LB-02)
+ *
+ * Re-shaped at G6 from the G3/G4 ad-hoc shape. Every REQUIRED row maps to a LIVE test in
+ * this file; rows 12 and 14 carry explicit provenance below. Row 12 (divergence) is
+ * REQUIRED, **not N/A**: each frozen delta D1..D5 has a live authority elsewhere in the
+ * corpus, and the G2 differential suite that owned them historically was deleted at G5.
  * ```
  *  1.  identity                                              REQUIRED
  *  2.  contract completeness                                 REQUIRED
@@ -124,7 +129,7 @@ import org.junit.jupiter.api.Timeout
  *      4a. output codec round-trip (failure variant)         REQUIRED (archiveArtifacts-specific)
  *      4b. output codec rejection (foreign kind)             REQUIRED
  *  5.  canonical envelope (byte-identical to compiler        REQUIRED
- *      lowering)
+ *      lowering) + legacy-decoder rejection lock
  *  6.  production registry resolution                        REQUIRED
  *      6a. fresh factory consistency                         REQUIRED
  *  7.  capability declaration (EXACTLY one)                  REQUIRED
@@ -139,27 +144,68 @@ import org.junit.jupiter.api.Timeout
  * 11.  replay (MEMOIZED + WRITES_WORKSPACE rerun            REQUIRED
  *      idempotent)
  *      11a. replay decision — policy unit property           REQUIRED
- * 12.  divergence                                           COVERED BY G2 — see
- *                                                              `CoreArchiveArtifactsDifferentialContractTest`
- *                                                              (10 differential rows; the
- *                                                              deliberate divergences D1..D5 are
- *                                                              frozen there, including
- *                                                              effect-classification divergence,
- *                                                              which a same-input replay test
- *                                                              cannot express)
+ * 12.  divergence                                           REQUIRED — live D1..D5 map,
+ *                                                              §12 provenance below
  * 13.  observability (StepStarted + StepFinished pair)      REQUIRED
- * 14.  architecture fitness                                 DELEGATED to
- *                                                              `Lfc2RegistryFamilyFitnessTest`,
- *                                                              the six `S3*LegacyRemovedFitnessTest`
- *                                                              suites and the six
- *                                                              `Core*RegistryPrimaryFitnessTest`
- *                                                              suites (evidence recorded in the
- *                                                              G3 readiness receipt)
+ * 14.  architecture fitness                                 DELEGATED — §14 provenance
+ *                                                              below
  * 15.  real DSL scenario                                    REQUIRED
  * 16.  ArtifactArchived payload (relPath/sha256/size)       REQUIRED (archiveArtifacts-specific)
- * 17.  G4 counters invariant (2/3/3) + routing             REQUIRED (archiveArtifacts-specific;
- *      17b/17c)                                               G3 pinned 3/3/3, G4 pins 2/3/3)
+ * 17.  G5 LEGACY_REMOVED invariant (2/2/2 converged)        REQUIRED (archiveArtifacts-specific)
+ *      17b. routing — StructuralFamilyResolver → Registry    REQUIRED (runtime seam)
+ *      17c. routing end-to-end — a non-empty archive        REQUIRED (behavioural proof)
+ *           succeeds where the legacy authority failed
  * ```
+ *
+ * ### 12. divergence — live authority map (historical authority: G2 freeze)
+ *
+ * The differential suite that historically owned divergence
+ * (`CoreArchiveArtifactsDifferentialContractTest`) was **deleted at G5** because the legacy
+ * leg was physically removed and there was nothing left to compare. The frozen deltas and
+ * their HISTORICAL evidence live in
+ * `docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G2_DIFFERENTIAL_CONTRACT_FREEZE.md` (§3 frozen
+ * matrix, §4 divergence register). Each delta retains a **LIVE** authority post-G5:
+ *
+ * ```text
+ * D1  glob engine: absolute-anchored hand-rolled glob      row 17c (this file, non-empty
+ *     → certified AntStyleGlob (frozen LB-02 delta D1)      archive succeeds where legacy
+ *                                                           could not)
+ *                                                         + CompatibilityCorpusTest.fixture10SmokeE2E
+ *                                                         + FArchL7AntStyleGlobShapeTest
+ * D2  excludes silently ignored → applied                  CoreArchiveArtifactsStepUnitTest
+ *                                                           `handler applies excludes patterns`
+ *                                                         + AntStyleGlobTest (user excludes,
+ *                                                           default excludes verbatim,
+ *                                                           DEFAULT_EXCLUDES 13 entries,
+ *                                                           defaultExcludes=false)
+ * D3  effect {READ_ONLY} → {WRITES_WORKSPACE}              row 2 (contract completeness pins
+ *                                                           WRITES_WORKSPACE, cites D3)
+ *                                                         + row 11a (replay decision:
+ *                                                           MEMOIZED + WRITES_WORKSPACE)
+ * D4  retention spelling artifacts/ → artefacts/           row 8 (archived copy lands in
+ *                                                           <controlDirRoot>/artefacts/
+ *                                                           <runId>/<stage>/...)
+ *                                                         + row 11 (same path on rerun)
+ * D5  copy without REPLACE_EXISTING → REPLACE_EXISTING     row 11 (rerun is idempotent with
+ *                                                           byte-identical entries)
+ *                                                         + row 11a
+ * ```
+ *
+ * D1 is a behavioural FIX, not a preservation of a working contract: the legacy engine was
+ * structurally non-functional (G2 §2). "Divergence" here therefore means *the frozen record
+ * of how the candidate deliberately differs*, each entry now anchored to a live test rather
+ * than to a deleted differential leg.
+ *
+ * ### 14. architecture fitness — DELEGATED
+ *
+ * Independently certified green in the G6 canary (see the G6 receipt for the fresh XML
+ * sha256 set): the seven `S3*LegacyRemovedFitnessTest` suites, the
+ * `LegacyResidualConvergenceFitnessTest` (`assertConverged`, `2/2/2`),
+ * `Lfc2RegistryFamilyFitnessTest`, `Lfc2DurableCoordinatorScopeFitnessTest`,
+ * `FArchL7AntStyleGlobShapeTest`, the six `Core*RegistryPrimaryFitnessTest` suites and the
+ * `CoreStepRegistryFactory` registry-shape row. Step-local architecture evidence lives in
+ * `LegacyResidualSnapshot` / `LegacyResidualConvergenceFitnessTest` under
+ * `:pipeline-architecture-tests`.
  */
 @Timeout(60)
 class CoreArchiveArtifactsStepContractSuiteTest {
@@ -964,7 +1010,14 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         )
     }
 
-    // ===== 17c. G4 routing, end-to-end (the behavioural proof) =====
+    // ===== 17c. routing, end-to-end (the behavioural proof; G6 matrix row 17c / D1) =====
+    //
+    // S2-B10 / G6 traceability: this row is the LIVE authority for frozen delta D1. The
+    // suite that owned D1 historically, `CoreArchiveArtifactsDifferentialContractTest`, was
+    // deleted at G5 when the legacy leg was physically removed (nothing left to compare).
+    // The frozen record of the divergence — including the G2 §2 finding that the legacy
+    // engine was structurally non-functional — is preserved in
+    // `docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G2_DIFFERENTIAL_CONTRACT_FREEZE.md`.
 
     @Test
     fun `G4 routing end-to-end — a non-empty archive succeeds through production wiring where legacy failed`() {

@@ -1,4 +1,4 @@
-# ADR-0081 — Structured DSL Runtime Return: suspend structured DSL (design spike LFC-2R2)
+# ADR-0082 — Structured DSL Runtime Return: suspend structured DSL (design spike LFC-2R2)
 
 Status: PROPOSED (design spike LFC-2R2 — resolves blocker `STRUCTURED_DSL_RUNTIME_RETURN_GAP`)
 Date: 2026-09-12

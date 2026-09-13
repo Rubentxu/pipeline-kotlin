@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -205,9 +206,10 @@ class CoreDeleteDirStepUnitTest {
     }
 
     // ------------------------------------------------------------------
-    // Counter invariant — post-S2-A9/G5 converged state: 4 / 4 / 4
+    // Counter invariant — post-S2-A10/G4 transitional state: 3 / 4 / 4
     // ------------------------------------------------------------------
 
+    @Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-id count is superseded by `counters - post-S2-A10-G4 transitional 3-4-4 registry primary flipped` below. Preserved verbatim for traceability.")
     @Test
     fun `counters - post-S2-A9-G5 converged 4-4-4 legacy physically removed`() {
         // G5 invariant: legacy forms are physically deleted; the legacy metadata row is
@@ -217,6 +219,17 @@ class CoreDeleteDirStepUnitTest {
         assertEquals(4, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
+    }
+
+    @Test
+    fun `counters - post-S2-A10-G4 transitional 3-4-4 registry primary flipped`() {
+        // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY. The legacy
+        // decoder branch / dispatcher file / metadata row remain physically present
+        // (UNREACHABLE in production) until S2-A10 / G5 closes this lane.
+        // Counter converges 4/4/4 -> 3/4/4 (ids only; metadata + dispatcher still in).
+        assertEquals(3, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.cleanWs" in CanonicalCoreStepMetadata.pluginIds, "cleanWs legacy metadata row remains until G5")
     }
 
     // ------------------------------------------------------------------

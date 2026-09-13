@@ -85,7 +85,10 @@ object LegacyResidualSnapshot {
      *   at G4:     registryPrimaryPendingRemoval = key   -> (N-1) / N / N
      *   at G5:     physicalResidual -= key; back to null -> (N-1) / (N-1) / (N-1)
      */
-    private val registryPrimaryPendingRemoval: String? = null
+    // S2-A10 / G4 (2026-09-13): core.cleanWs flipped to REGISTRY_PRIMARY.
+    // Legacy decoder branch / dispatcher file / metadata row remain physically
+    // present (UNREACHABLE in production) until S2-A10 / G5 closes this lane.
+    private val registryPrimaryPendingRemoval: String? = "core.cleanWs"
 
     private fun codeOnly(source: String): String =
         Regex("/\\*.*?\\*/", setOf(RegexOption.DOT_MATCHES_ALL)).replace(

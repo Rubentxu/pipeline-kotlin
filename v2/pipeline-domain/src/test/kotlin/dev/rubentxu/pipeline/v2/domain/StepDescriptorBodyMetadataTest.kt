@@ -77,8 +77,8 @@ class StepDescriptorBodyMetadataTest {
         // descriptor with sensible defaults. The named-only fields after recoveryPolicy
         // (`idempotencyModel`, `timeoutModel`, `jenkinsSurface`, `securityProfile`,
         // `deprecation`, `takesBody`, `bodyInvocations`, `introducesContext`,
-        // `catchesInterruptions`) all keep defaults; this regression guard exercises the
-        // pre-A4.1 prefix through the post-A4.1 fields.
+        // `catchesInterruptions`, `bodyExecutionPolicy`) all keep defaults; this regression
+        // guard exercises the pre-A4.1 prefix through the post-A4.1 fields.
         @Suppress("DEPRECATION")
         val descriptor = StepDescriptor(
             "step-id",

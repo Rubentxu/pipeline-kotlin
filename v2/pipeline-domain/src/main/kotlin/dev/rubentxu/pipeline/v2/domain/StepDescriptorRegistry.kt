@@ -1,10 +1,15 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
+import dev.rubentxu.pipeline.v2.domain.step.RetryPolicy
+
 /**
  * Registry for [StepDescriptor] metadata, populated at compile time.
  *
  * Provides a lookup for step kinds to determine body-handling characteristics
- * (takesBody, bodyInvocations, introducesContext, catchesInterruptions).
+ * (takesBody, bodyInvocations, introducesContext, catchesInterruptions,
+ * bodyExecutionPolicy).
  *
  * Seeded with canonical core step descriptors. The registry is consulted by
  * [CompiledPipelineValidator] to enforce takesBody constraints.
@@ -16,6 +21,15 @@ class StepDescriptorRegistry private constructor(
      * Returns the [StepDescriptor] for the given [PluginStepId], or null if not found.
      */
     fun get(id: PluginStepId): StepDescriptor? = descriptors[id]
+
+    /**
+     * All registered step kinds, in declaration order.
+     *
+     * Read-only view used by structural fitness (e.g. every body-bearing row must
+     * declare a coherent body execution policy) and by policy tooling that needs to
+     * enumerate declarations without naming any Step.
+     */
+    fun keys(): Set<PluginStepId> = descriptors.keys
 
     companion object {
         /**
@@ -32,6 +46,9 @@ class StepDescriptorRegistry private constructor(
                     bodyInvocations = BodyInvocationPolicy.ONCE,
                     introducesContext = ContextKind.CANCELLATION,
                     catchesInterruptions = true,
+                    // Containment is a FOLD of the body's typed outcome, not an execution
+                    // reshape: the body still runs once, in the caller's own context.
+                    bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
                 ))
                 put(PluginStepId("core.warnError"), StepDescriptor(
                     stepId = "core.warnError",
@@ -40,6 +57,7 @@ class StepDescriptorRegistry private constructor(
                     takesBody = true,
                     bodyInvocations = BodyInvocationPolicy.AT_MOST_ONCE,
                     introducesContext = ContextKind.OUTPUT_DECORATOR,
+                    bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
                 ))
                 put(PluginStepId("core.withEnv"), StepDescriptor(
                     stepId = "core.withEnv",
@@ -48,6 +66,7 @@ class StepDescriptorRegistry private constructor(
                     takesBody = true,
                     bodyInvocations = BodyInvocationPolicy.ONCE,
                     introducesContext = ContextKind.ENVIRONMENT,
+                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
                 ))
                 put(PluginStepId("core.dir"), StepDescriptor(
                     stepId = "core.dir",
@@ -56,6 +75,7 @@ class StepDescriptorRegistry private constructor(
                     takesBody = true,
                     bodyInvocations = BodyInvocationPolicy.ONCE,
                     introducesContext = ContextKind.CWD,
+                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.WorkingDirectory),
                 ))
                 put(PluginStepId("core.withCredentials"), StepDescriptor(
                     stepId = "core.withCredentials",
@@ -64,6 +84,7 @@ class StepDescriptorRegistry private constructor(
                     takesBody = true,
                     bodyInvocations = BodyInvocationPolicy.ONCE,
                     introducesContext = ContextKind.CREDENTIALS,
+                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.CredentialLease),
                 ))
                 put(PluginStepId("core.timeout"), StepDescriptor(
                     stepId = "core.timeout",
@@ -72,6 +93,9 @@ class StepDescriptorRegistry private constructor(
                     takesBody = true,
                     bodyInvocations = BodyInvocationPolicy.ONCE,
                     introducesContext = ContextKind.CANCELLATION,
+                    // Deadline is a projected scope; CANCELLATION alone cannot say so
+                    // because catchError declares the same kind with Sequential.
+                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Deadline),
                 ))
                 put(PluginStepId("core.retry"), StepDescriptor(
                     stepId = "core.retry",
@@ -80,6 +104,9 @@ class StepDescriptorRegistry private constructor(
                     takesBody = true,
                     bodyInvocations = BodyInvocationPolicy.ZERO_OR_MORE,
                     introducesContext = null,
+                    // Each attempt is a distinct body invocation with its own durable
+                    // identity; cardinality is decoded input, not declaration.
+                    bodyExecutionPolicy = BodyExecutionPolicy.Retrying(RetryPolicy()),
                 ))
 
                 // Terminal steps (no body)

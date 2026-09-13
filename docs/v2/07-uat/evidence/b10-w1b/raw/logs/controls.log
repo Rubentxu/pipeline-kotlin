@@ -1,0 +1,98 @@
+
+[C1] target=policy vocabulary
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: The body execution policy must name execution shapes, not Steps; a policy that needs to know a StepKey is a concreteness regression ==> expected: <[]> but was: <["core.dir"]>
+  reason matches the intended law: True
+
+[C2] target=policy vocabulary
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: Policy resolution must be a total function of the declaration, not a switch over a StepKey or step name: found when (stepName) ==> expected: <true> but was: <false>
+  reason matches the intended law: True
+
+[C3] target=policy vocabulary
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: Every when over the closed policy family must be exhaustive; an else branch would silently absorb a future case ==> expected: <true> but was: <false>
+  reason matches the intended law: True
+
+[C4] target=policy vocabulary
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: Body policy resolution is a decision-layer function: no application, coroutines, or I/O ==> expected: <[]> but was: <[import java.nio.file.Path]>
+  reason matches the intended law: True
+
+[C5] target=descriptor declaration
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: Unexpected null value, expected: <dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection.UnsupportedByEngine> but was: <null> | org.opentest4j.AssertionFailedError: StepDescriptorRegistry declaration for 'core.dir' disagrees with its live routing ==> expected: <Scoped(projection=WorkingDirectory)> but was: <Sequential>
+  reason matches the intended law: True
+
+[C6] target=descriptor coherence
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: Every body-bearing descriptor must declare a policy that is coherent with its own metadata; W1b declares these, so an incoherent row is a declaration defect ==> expected: <[]> but was: <[PluginStepId(value=core.retry) -> Rejected(key=PluginStepId(value=core.retry), reason=IncoherentMetadata(key=PluginStepId(value=core.retry), declared=Retrying(policy=RetryPolic
+  reason matches the intended law: True
+
+[C7] target=descriptor coherence
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: Every body-bearing descriptor must declare a policy that is coherent with its own metadata; W1b declares these, so an incoherent row is a declaration defect ==> expected: <[]> but was: <[PluginStepId(value=core.dir) -> Rejected(key=PluginStepId(value=core.dir), reason=IncoherentMetadata(key=PluginStepId(value=core.dir), declared=Scoped(projection=Environment), 
+  reason matches the intended law: True
+
+[C8] target=descriptor coherence
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: A Step with no body must not declare a body execution shape ==> expected: <[]> but was: <[PluginStepId(value=core.sh) -> Scoped(projection=Environment)]>
+  reason matches the intended law: True
+
+[C9] target=descriptor default
+  touched: ['v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptor.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: The default must preserve existing behaviour for every Step that declares nothing ==> expected: <Sequential> but was: <Scoped(projection=Deadline)>
+  reason matches the intended law: True
+
+[C10] target=scope firewall
+  touched: ['v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt']
+  reset clean: True
+  observed: RED
+  reason: org.opentest4j.AssertionFailedError: W1b introduces the policy mechanism only; routing bodies through it is W1c. The coordinator still routes by StepKey and must stay inside the W1a debt ledger ==> expected: <[]> but was: <[BodyPolicyResolver]>
+  reason matches the intended law: True
+
+[C11] isolating control: source and pin agree, historical measurement does not
+  touched: ['v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt', 'v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/ConcreteBodyRoutingDebt.kt']
+  W1a ledger laws: GREEN 
+  verifier: RED
+  reason: [FAIL] the slice changed exactly the expected code and test files -- unexpected=['v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt', 'v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/ConcreteBodyRoutingDebt.kt'] missing=['v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/Lfc2BodyExecutionPolicyFitnessTest.kt', 'v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptor.kt', 'v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v
+  reset clean: True
+  reason matches the intended law: True
+
+=== control summary ===
+  C1            RED  OK   expected=must name execution shapes, not Steps
+  C2            RED  OK   expected=not a switch over a StepKey or step name
+  C3            RED  OK   expected=else branch would silently absorb
+  C4            RED  OK   expected=no application, coroutines, or I/O
+  C5            RED  OK   expected=disagrees with its live routing
+  C6            RED  OK   expected=must declare a policy that is coherent
+  C7            RED  OK   expected=must declare a policy that is coherent
+  C8            RED  OK   expected=must not declare a body execution shape
+  C9            RED  OK   expected=must preserve existing behaviour
+ C10            RED  OK   expected=routing bodies through it is W1c
+ C11            RED  OK   expected=W1a-measured debt
+
+controls that fail for the intended law: 11/11
+
+controls that make the verifier itself fail: 1/1 (C11)
+C11 is the isolating control: the Kotlin ledger is satisfied because source and pin
+agree, and only the re-scan against W1a's measured inventory fails. That is what makes
+the re-scan an authority rather than a mirror of the pin.

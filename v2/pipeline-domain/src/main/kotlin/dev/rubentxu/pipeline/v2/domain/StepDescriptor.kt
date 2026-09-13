@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.domain
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 
 /**
  * Static metadata for one plugin step kind.
@@ -53,6 +54,23 @@ data class StepDescriptor(
     val bodyInvocations: BodyInvocationPolicy = BodyInvocationPolicy.ONCE,
     val introducesContext: ContextKind? = null,
     val catchesInterruptions: Boolean = false,
+    /**
+     * Declared body execution shape (B10 / W1b): how the engine executes this
+     * Step's body, stated by the Step family instead of being inferred from its
+     * StepKey by the coordinator.
+     *
+     * Declared next to the contract, resolved by a pure function over the open
+     * StepRegistry ([resolveBodyExecutionPolicy]), and rejected fail-closed when
+     * unknown, incoherent with [bodyInvocations] / [introducesContext], or not
+     * executable by the current engine build ([BodyExecutionSupport]).
+     *
+     * The default is [BodyExecutionPolicy.Sequential]: a Step that runs its body
+     * once in the caller's own execution context, which is the existing behaviour
+     * of `catchError` / `warnError`. Declaring a non-[BodyExecutionPolicy.Sequential]
+     * policy on a `takesBody = false` descriptor is an incoherent declaration and
+     * is rejected at resolution time, never silently honoured.
+     */
+    val bodyExecutionPolicy: BodyExecutionPolicy = BodyExecutionPolicy.DEFAULT,
 ) {
     /** Legacy terminology retained for consumers of the legacy definition model. */
     val id: String get() = stepId

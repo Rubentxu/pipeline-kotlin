@@ -38,6 +38,18 @@ READY_TO_MERGE iff
   `S2_A10_CORE_CLEANWS_G6_*`, and archiveArtifacts G6 both do), and the **next**
   gate's receipt records the resolved SHA. "pending" is legal only while the receipt
   is inside the commit it describes.
+- **A gate has two identities, and they are not interchangeable:**
+
+  ```text
+  code-under-test          = the SHA whose behaviour the gate observed
+  evidence/receipt commit  = the SHA that carries the receipt
+  ```
+
+  For a docs-only evidence PR these deliberately differ: the gate ran against the
+  code that was already on `main`, and the receipt landed on top of it as a separate
+  commit. A receipt naming its own commit as `code-under-test` would be wrong; a
+  receipt naming the code SHA is **not** "pending" and must not be rewritten as such.
+  The next gate cites both, e.g. `code 2271fb1e / evidence e7ea54ba`.
 
 ## 3. Lane states (visible in PR title or label)
 
@@ -104,7 +116,58 @@ Each gate's branch is cut from the `origin/main` produced by the previous gate's
 merge. Never stack a gate on the previous gate's unmerged branch and call it a merge
 candidate: it is `[PREP]`/`[STACKED]` until its parent lands.
 
-## 7. Non-goals
+## 7. Serialization: one canonical ancestor per gate
+
+```text
+No gate opens before its prerequisite is in origin/main.
+```
+
+Even when the prerequisite is docs-only and cannot change an executable byte. The
+reason is ancestry, not behaviour: each gate must have exactly one canonical
+ancestor, so that "what did this gate prove?" has one answer. A lane branched from a
+prerequisite that is merged only in a local worktree is not ready to open; it is
+ready once that prerequisite is reachable from `origin/main`.
+
+Worked example: archiveArtifacts G8 does not open until the G7 evidence PR is in
+`origin/main`, even though G7 changes no executable byte.
+
+## 8. Shared-identifier claims (ADR numbers and similar)
+
+Two lanes can independently claim the same global identifier. This hazard is created
+by parallel development, produces **no merge conflict**, and is invisible to
+`drift.sh`.
+
+```text
+Two ADRs may not share one number. Neither may two migrations, two schema
+versions, two event-type ids, or two step keys.
+```
+
+Resolution, in order:
+
+```text
+1. The existing corpus is the tiebreaker. If the rest of the tree already cites the
+   identifier with one meaning, that meaning stands.
+2. Otherwise the prerequisite/earlier lane keeps it and the newcomer renumbers.
+3. The renumbering lane fixes its own index entry itself, including placement: an
+   appended entry must preserve the file's existing order.
+```
+
+Never resolve a collision by editing the other lane, and never by leaving both in
+place.
+
+Provenance of the rule: the `bodyinvoker` and `r2-runtime-return` lanes both claimed
+ADR-0081. SPIKE-018, the step-ecosystem status doc and the session checkpoints all
+already cited "ADR-0081" meaning the BodyInvoker ADR, so the newcomer renumbered to
+0082 (`b7685b97`).
+
+Identifiers are not the only shared resource. Any single-valued field of a document
+or manifest that two lanes both append to is a collision site (indexes, changelogs,
+counters, ordering tables). Treat a clean textual rebase as **no** evidence that two
+lanes are semantically compatible: `git range-diff` proving `=` only proves the
+rebase was content-preserving, not that the content is still consistent with what
+landed underneath it.
+
+## 9. Non-goals
 
 - This law does not replace the V2 TESTING RULES (validation ladder, timeout budgets,
   XML canary truth). It sits above them: those rules define how a canary is produced,

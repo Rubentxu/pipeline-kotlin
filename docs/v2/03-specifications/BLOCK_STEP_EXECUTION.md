@@ -9,6 +9,14 @@ Pipeline Kotlin must model this directly.
 
 ## 2. First-class block contract
 
+> **Implemented model (B10 / W1d).** The descriptor does not carry a bare `takesBody`
+> flag. The implemented declaration is a closed value:
+> `dev.rubentxu.pipeline.v2.domain.StepBody { None, Declared(invocation, execution:
+> BodyExecution(owner, policy), introduces, catchesInterruptions) }`, and body execution
+> is routed from the declared policy, never from the Step name. See
+> `docs/v2/07-uat/B10_W1D_BODY_INVOKER_SHARED_PATH_RECEIPT.md`. The sketch below is the
+> original conceptual framing and is kept as historical intent.
+
 Conceptual descriptor:
 
 ```kotlin

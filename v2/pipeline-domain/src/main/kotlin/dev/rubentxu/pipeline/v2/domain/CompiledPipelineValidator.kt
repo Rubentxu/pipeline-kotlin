@@ -15,7 +15,7 @@ class BlockNestingExceededException(
  * - Stage uniqueness
  * - Step uniqueness within same parent block or stage
  * - Block nesting depth <= 3
- * - BlockStepNode.pluginStepId must have takesBody=true in registry
+ * - BlockStepNode.pluginStepId must declare a body (StepBody.Declared) in the registry
  */
 object CompiledPipelineValidator {
     private val descriptorRegistry = StepDescriptorRegistry.standard()
@@ -71,13 +71,15 @@ object CompiledPipelineValidator {
                 }
             }
             is BlockStepNode -> {
-                val descriptor = descriptorRegistry.get(step.pluginStepId)
-                require(descriptor?.takesBody == true) {
-                    "BlockStepNode '${step.id.value}' (pluginStepId=${step.pluginStepId.value}) has takesBody=false but body is non-empty. " +
-                        "Block steps must have takesBody=true in StepDescriptorRegistry."
+                // W1d: the declaration is one value. A node that carries a body must resolve to a
+                // declared body row; a terminal row (StepBody.None) has no cardinality to consult.
+                val declaredBody = descriptorRegistry.get(step.pluginStepId)?.body?.declared
+                require(declaredBody != null) {
+                    "BlockStepNode '${step.id.value}' (pluginStepId=${step.pluginStepId.value}) carries a body but the registry " +
+                        "declares no body for that Step. Block steps must declare StepBody.Declared in StepDescriptorRegistry."
                 }
-                require(step.body.isNotEmpty() || descriptor.bodyInvocations == BodyInvocationPolicy.ZERO_OR_MORE) {
-                    "BlockStepNode '${step.id.value}' must have non-empty body unless bodyInvocations is ZERO_OR_MORE"
+                require(step.body.isNotEmpty() || declaredBody.invocation == BodyInvocationPolicy.ZERO_OR_MORE) {
+                    "BlockStepNode '${step.id.value}' must have non-empty body unless its declared invocation is ZERO_OR_MORE"
                 }
 
                 // Depth check (fail-closed)

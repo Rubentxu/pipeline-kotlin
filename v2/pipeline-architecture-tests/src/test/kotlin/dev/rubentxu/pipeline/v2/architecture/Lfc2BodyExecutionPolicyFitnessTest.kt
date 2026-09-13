@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.architecture
 
+import dev.rubentxu.pipeline.v2.domain.StepBody
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -35,6 +37,10 @@ class Lfc2BodyExecutionPolicyFitnessTest {
 
     private val coordinatorSource = v2Root.resolve(
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+    )
+
+    private val stepBodyModule = v2Root.resolve(
+        "pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepBody.kt",
     )
 
     private fun read(path: Path): String {
@@ -120,7 +126,8 @@ class Lfc2BodyExecutionPolicyFitnessTest {
     @Test
     fun `every body-bearing descriptor row declares a coherent executable policy`() {
         val registry = StepDescriptorRegistry.standard()
-        val bodyRows = registry.keys().map { it to registry.get(it)!! }.filter { it.second.takesBody }
+        val bodyRows = registry.keys().map { it to registry.get(it)!! }
+            .filter { it.second.body.declared != null }
 
         assertTrue(bodyRows.isNotEmpty(), "The canonical registry must declare body-bearing Steps")
 
@@ -137,38 +144,73 @@ class Lfc2BodyExecutionPolicyFitnessTest {
         )
     }
 
+    /**
+     * W1d: the old form of this law ("a Step with no body must not declare a body execution
+     * shape") described a combination that no longer compiles. What remains to be asserted is
+     * the consequence: a terminal row carries NO body value at all, so there is nothing left
+     * to contradict. The default of a descriptor that declares nothing is [StepBody.None].
+     */
     @Test
-    fun `no body-less descriptor row declares an execution reshape`() {
+    fun `a terminal descriptor row carries no body value at all`() {
         val registry = StepDescriptorRegistry.standard()
-        val nonBodyRows = registry.keys().map { it to registry.get(it)!! }.filter { !it.second.takesBody }
+        val terminalRows = registry.keys().map { it to registry.get(it)!! }
+            .filter { it.second.body == StepBody.None }
 
-        assertTrue(nonBodyRows.isNotEmpty(), "The canonical registry must declare terminal Steps")
+        assertTrue(terminalRows.isNotEmpty(), "The canonical registry must declare terminal Steps")
 
-        val offenders = nonBodyRows.mapNotNull { (key, descriptor) ->
-            val policy = descriptor.bodyExecutionPolicy
-            if (policy == BodyExecutionPolicy.Sequential) null else "$key -> $policy"
-        }
-
-        assertEquals(
-            emptyList<String>(),
-            offenders,
-            "A Step with no body must not declare a body execution shape",
+        val offenders = terminalRows.filter { (it.second.body as? StepBody.Declared) != null }
+        assertTrue(
+            offenders.isEmpty(),
+            "A terminal Step has no field in which to carry body metadata: ${offenders.map { it.first }}",
         )
     }
 
+    /**
+     * The W1d exit criterion, mechanically. Ownership, shape and cardinality MUST NOT carry
+     * defaults, so a body Step cannot acquire an owner or a shape by omission; [StepBody.None]
+     * MUST carry no fields, so a terminal Step cannot hold body metadata. Both halves are read
+     * off the real declaration, so re-introducing either default fails here.
+     */
     @Test
-    fun `the descriptor default is a total sequential policy`() {
+    fun `a body declaration cannot be defaulted into existence`() {
+        val code = codeOnly(read(stepBodyModule))
+
+        val defaulted = Regex("val (execution|owner|policy|invocation)\\s*:\\s*[A-Za-z.]*\\s*=")
+            .findAll(code).map { it.value }.toList()
+        assertTrue(
+            defaulted.isEmpty(),
+            "Ownership, shape and cardinality must be stated by every body row; a default is how " +
+                "an unowned body becomes representable again: $defaulted",
+        )
+
+        val noneBody = Regex("data object None\\s*:\\s*StepBody\\s*\\{([^}]*)\\}")
+            .find(code)?.groupValues?.get(1).orEmpty()
+        assertTrue(
+            noneBody.isBlank(),
+            "StepBody.None must carry no body metadata at all; found '$noneBody'",
+        )
+    }
+
+    /**
+     * W1d: a Step that declares nothing is terminal, and asking for the body policy of a
+     * terminal Step is a typed rejection rather than a permissive `Sequential`. The old law
+     * asserted the opposite (a "sequential default" for every Step), which is exactly the
+     * defaulting W1d removed.
+     */
+    @Test
+    fun `the descriptor default is no body, and its policy is a typed rejection`() {
         val bare = StepDescriptor(stepId = "example.bare", name = "bare", configRef = "")
 
-        assertEquals(
-            BodyExecutionPolicy.Sequential,
-            bare.bodyExecutionPolicy,
-            "The default must preserve existing behaviour for every Step that declares nothing",
+        assertEquals(StepBody.None, bare.body, "A Step that declares nothing declares no body")
+
+        val resolution = resolveBodyExecutionPolicy(bare, BodyExecutionSupport.FULL)
+        assertTrue(
+            resolution.rejectionOrNull is BodyPolicyRejection.NotABodyStep,
+            "A terminal Step must be rejected as NotABodyStep, never answered with a default: $resolution",
         )
-        assertEquals(
-            BodyExecutionPolicy.DEFAULT,
-            bare.bodyExecutionPolicy,
-            "DEFAULT is the single spelling of that default",
+        assertTrue(
+            resolution.policyOrNull == null,
+            "A rejection must never carry a policy",
         )
     }
 
@@ -196,13 +238,17 @@ class Lfc2BodyExecutionPolicyFitnessTest {
     }
 
     /**
-     * W1a's ledger is the authority for the debt number, and the real coordinator is
-     * re-scanned here. W1b was debt-neutral (18); W1c retires the step-id switch, the
-     * hard-coded body id set and the name-keyed credential bypass, leaving 4.
+     * W1a's ledger is the authority for the debt number, and the real coordinator is re-scanned
+     * here. W1b was debt-neutral (18), W1c left 4, and W1d retires the remaining four: the
+     * credential bypass is folded into the shared body path and the two concrete durable
+     * identities are reclassified as typed
+     * [dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity] values (guarded by
+     * `Lfc2DurableAggregateIdentityFitnessTest`, not deleted).
      */
     @Test
-    fun `W1c lowers the pinned concrete routing debt to the measured value`() {
-        val discovered = ConcreteBodyRoutingScanner.scan(read(coordinatorSource))
+    fun `W1d lowers the pinned concrete routing debt to zero`() {
+        val text = read(coordinatorSource)
+        val discovered = ConcreteBodyRoutingScanner.scan(text)
         val pinned = PinnedConcreteBodyRoutingDebt.value
 
         assertEquals(
@@ -211,11 +257,16 @@ class Lfc2BodyExecutionPolicyFitnessTest {
             "The ledger must equal the coordinator's measured concrete routing debt",
         )
         assertEquals(
-            4,
+            0,
             discovered.total,
-            "W1c retires the step-id switch, the hard-coded body id set and the name-keyed " +
-                "credential bypass: 4 items remain (the credential dispatcher plus the two " +
-                "durable identities that are not body routing)",
+            "W1d burns the credential bypass and reclassifies the two durable identities; the " +
+                "coordinator contains no concrete Step literal, no step-id switch, no " +
+                "dispatch*Block identifier and no hard-coded body id set",
+        )
+        assertEquals(
+            BodyChildLoopInventory.EXPECTED,
+            BodyChildLoopScanner.scan(text),
+            "Zero debt is only honest while the body path is genuinely shared",
         )
     }
 }

@@ -1,8 +1,10 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
+import dev.rubentxu.pipeline.v2.domain.BodyExecution
 import dev.rubentxu.pipeline.v2.domain.BodyInvocationPolicy
 import dev.rubentxu.pipeline.v2.domain.ContextKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepBody
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -37,9 +39,10 @@ class BodyExecutionPolicyTest {
      * Authority for each row is the existing routing code, not this model: since W1c the
      * coordinator projects the DECLARED policy (`projectBodyExecution` / `projectScopedBody`,
      * replacing the pre-W1c keyed scope projection) for dir / timestamps / withEnv / timeout /
-     * retry, routes the credential lease to `dispatchWithCredentialsBlock` by projection, the
-     * PAR-D stage branch aggregate owns parallel, and `StructuralOverlayProjection` containment
-     * owns catchError / warnError.
+     * retry, and since W1d the credential lease is acquired as a PREAMBLE of that same shared
+     * body path (the former credential-specific dispatcher is gone). The PAR-D stage branch
+     * aggregate owns parallel, and `StructuralOverlayProjection` containment owns
+     * catchError / warnError.
      */
     private val currentEngineBehaviour: List<Pair<String, BodyExecutionPolicy>> = listOf(
         "core.dir" to BodyExecutionPolicy.Scoped(BodyContextProjection.WorkingDirectory),
@@ -67,6 +70,14 @@ class BodyExecutionPolicyTest {
 
     private fun descriptorOf(key: String): StepDescriptor? =
         StepDescriptorRegistry.standard().get(PluginStepId(key))
+
+    /** The declared body of a registered Step, or `null` when it has none. */
+    private fun declaredBodyOf(key: String): StepBody.Declared? =
+        descriptorOf(key)?.body?.declared
+
+    /** The execution shape a Step declares. W1d: read from the declaration, never defaulted. */
+    private fun policyOf(key: String): BodyExecutionPolicy? =
+        declaredBodyOf(key)?.execution?.policy
 
     @Nested
     inner class Representability {
@@ -124,7 +135,7 @@ class BodyExecutionPolicyTest {
                 val descriptor = descriptorOf(key) ?: return@forEach
                 assertEquals(
                     expected,
-                    descriptor.bodyExecutionPolicy,
+                    policyOf(key),
                     "StepDescriptorRegistry declaration for '$key' disagrees with its live routing",
                 )
             }
@@ -166,22 +177,22 @@ class BodyExecutionPolicyTest {
          */
         @Test
         fun `containment families are sequential and share a context kind with a reshaping family`() {
-            assertEquals(BodyExecutionPolicy.Sequential, descriptorOf("core.catchError")?.bodyExecutionPolicy)
-            assertEquals(BodyExecutionPolicy.Sequential, descriptorOf("core.warnError")?.bodyExecutionPolicy)
+            assertEquals(BodyExecutionPolicy.Sequential, policyOf("core.catchError"))
+            assertEquals(BodyExecutionPolicy.Sequential, policyOf("core.warnError"))
             assertEquals(
                 ContextKind.CANCELLATION,
-                descriptorOf("core.catchError")?.introducesContext,
+                declaredBodyOf("core.catchError")?.introduces,
                 "catchError declares CANCELLATION",
             )
             assertEquals(
                 ContextKind.CANCELLATION,
-                descriptorOf("core.timeout")?.introducesContext,
+                declaredBodyOf("core.timeout")?.introduces,
                 "timeout declares the same CANCELLATION kind, yet is Scoped(Deadline)",
             )
             assertEquals(
                 BodyExecutionPolicyShape.SCOPED,
-                descriptorOf("core.timeout")?.bodyExecutionPolicy?.shape,
-                "Same context kind, different shape: introducesContext cannot determine the policy",
+                policyOf("core.timeout")?.shape,
+                "Same context kind, different shape: the declared context kind cannot determine the policy",
             )
         }
     }
@@ -242,15 +253,15 @@ class BodyExecutionPolicyTest {
             assertEquals(BodyExecutionPolicy.Sequential, resolution.policyOrNull)
         }
 
+        /**
+         * W1d: a Step that declares no body cannot carry a reshape at all — the shape that used
+         * to be constructible (`takesBody = false` plus a `Scoped` policy) is gone. What remains
+         * to prove is the rejection of the ABSENCE: asking for the policy of a terminal Step is
+         * a typed [BodyPolicyRejection.NotABodyStep], never a permissive default.
+         */
         @Test
-        fun `a non-body step declaring an execution reshape is rejected`() {
-            val descriptor = StepDescriptor(
-                stepId = "core.sh",
-                name = "sh",
-                configRef = "",
-                takesBody = false,
-                bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
-            )
+        fun `a step that declares no body is rejected, never defaulted`() {
+            val descriptor = StepDescriptor(stepId = "core.sh", name = "sh", configRef = "")
 
             val rejection = assertInstanceOf(
                 BodyPolicyRejection.NotABodyStep::class.java,
@@ -258,12 +269,9 @@ class BodyExecutionPolicyTest {
             )
             assertEquals(PluginStepId("core.sh"), rejection.key)
             assertEquals(
-                BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
-                rejection.declared,
-            )
-            assertTrue(
-                !descriptor.takesBody,
-                "The rejection reports a descriptor that takes no body",
+                StepBody.None,
+                descriptor.body,
+                "The rejected row has no declaration to read a shape from; that is the point of W1d",
             )
         }
 
@@ -273,9 +281,13 @@ class BodyExecutionPolicyTest {
                 stepId = "core.retry",
                 name = "retry",
                 configRef = "",
-                takesBody = true,
-                bodyInvocations = BodyInvocationPolicy.ONCE,
-                bodyExecutionPolicy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                body = StepBody.Declared(
+                    invocation = BodyInvocationPolicy.ONCE,
+                    execution = BodyExecution(
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                    ),
+                ),
             )
 
             val rejection = assertInstanceOf(
@@ -294,9 +306,13 @@ class BodyExecutionPolicyTest {
                 stepId = "core.retry",
                 name = "retry",
                 configRef = "",
-                takesBody = true,
-                bodyInvocations = BodyInvocationPolicy.ZERO_OR_MORE,
-                bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
+                body = StepBody.Declared(
+                    invocation = BodyInvocationPolicy.ZERO_OR_MORE,
+                    execution = BodyExecution(
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Sequential,
+                    ),
+                ),
             )
 
             val rejection = assertInstanceOf(
@@ -312,9 +328,14 @@ class BodyExecutionPolicyTest {
                 stepId = "core.withEnv",
                 name = "withEnv",
                 configRef = "",
-                takesBody = true,
-                introducesContext = ContextKind.CWD,
-                bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
+                body = StepBody.Declared(
+                    invocation = BodyInvocationPolicy.ONCE,
+                    execution = BodyExecution(
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
+                    ),
+                    introduces = ContextKind.CWD,
+                ),
             )
 
             val rejection = assertInstanceOf(
@@ -358,9 +379,14 @@ class BodyExecutionPolicyTest {
                 stepId = "example.reshape",
                 name = "reshape",
                 configRef = "",
-                takesBody = true,
-                introducesContext = ContextKind.ENVIRONMENT,
-                bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
+                body = StepBody.Declared(
+                    invocation = BodyInvocationPolicy.ONCE,
+                    execution = BodyExecution(
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
+                    ),
+                    introduces = ContextKind.ENVIRONMENT,
+                ),
             )
             registry.register(UnitDefinition(PluginStepId("example.reshape"), descriptor))
 
@@ -384,9 +410,13 @@ class BodyExecutionPolicyTest {
                 stepId = "core.retry",
                 name = "retry",
                 configRef = "",
-                takesBody = true,
-                bodyInvocations = BodyInvocationPolicy.ZERO_OR_MORE,
-                bodyExecutionPolicy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                body = StepBody.Declared(
+                    invocation = BodyInvocationPolicy.ZERO_OR_MORE,
+                    execution = BodyExecution(
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                    ),
+                ),
             )
             val definition = UnitDefinition(PluginStepId("core.retry"), descriptor)
             registry.register(definition)
@@ -447,10 +477,10 @@ class BodyExecutionPolicyTest {
     /**
      * B10 / W1c — body execution OWNERSHIP.
      *
-     * The canonical runner derives the body families it may execute from
-     * [StepDescriptor.bodyExecutionOwner]. These laws pin that derivation in both
-     * directions, because it is production routing: adding a row silently widens what the
-     * durable engine executes, and losing one silently narrows it.
+     * The canonical runner derives the body families it may execute from the declared
+     * [BodyExecutionOwner] on each row. These laws pin that derivation in both directions,
+     * because it is production routing: adding a row silently widens what the durable engine
+     * executes, and losing one silently narrows it.
      */
     @Nested
     inner class Ownership {
@@ -482,7 +512,7 @@ class BodyExecutionPolicyTest {
             )
             assertEquals(
                 BodyExecutionOwner.LEGACY_LINEAR,
-                registry.get(PluginStepId("core.catchError"))?.bodyExecutionOwner,
+                registry.get(PluginStepId("core.catchError"))?.body?.declared?.execution?.owner,
                 "catchError declares no canonical ownership even though its shape is Sequential",
             )
         }
@@ -493,22 +523,34 @@ class BodyExecutionPolicyTest {
          */
         @Test
         fun `ownership is independent of the declared shape`() {
-            assertEquals(
-                BodyExecutionPolicy.Sequential,
-                registry.get(PluginStepId("core.catchError"))?.bodyExecutionPolicy,
-            )
-            assertEquals(
-                BodyExecutionPolicy.Retrying(RetryPolicy()),
-                registry.get(PluginStepId("core.retry"))?.bodyExecutionPolicy,
-            )
+            assertEquals(BodyExecutionPolicy.Sequential, policyOf("core.catchError"))
+            assertEquals(BodyExecutionPolicy.Retrying(RetryPolicy()), policyOf("core.retry"))
             assertEquals(
                 BodyExecutionOwner.CANONICAL_ENGINE,
-                registry.get(PluginStepId("core.retry"))?.bodyExecutionOwner,
+                declaredBodyOf("core.retry")?.execution?.owner,
             )
-            assertEquals(
-                BodyExecutionOwner.CANONICAL_ENGINE,
-                StepDescriptor(stepId = "example.bare", name = "bare", configRef = "").bodyExecutionOwner,
-                "The default owner is the target state: a new body Step is canonical unless it says otherwise",
+        }
+
+        /**
+         * W1d: there is no default owner any more. The old model defaulted
+         * `bodyExecutionOwner` to CANONICAL_ENGINE, which granted canonical semantics to any
+         * row that forgot to state them. The default is now [StepBody.None]: a Step that
+         * declares nothing owns nothing, and declaring a body requires stating its owner.
+         */
+        @Test
+        fun `a descriptor that declares nothing owns no body`() {
+            val bare = StepDescriptor(stepId = "example.bare", name = "bare", configRef = "")
+
+            assertEquals(StepBody.None, bare.body)
+            assertNull(
+                bare.body.declared?.execution?.owner,
+                "A terminal descriptor has no owner to read, so nothing is inherited implicitly",
+            )
+            assertTrue(
+                registry.keys()
+                    .mapNotNull { registry.get(it)?.body?.declared }
+                    .all { it.execution.owner in BodyExecutionOwner.entries },
+                "Every registered body row states an owner explicitly",
             )
         }
 
@@ -518,13 +560,16 @@ class BodyExecutionPolicyTest {
                 stepId = "example.terminal",
                 name = "terminal",
                 configRef = "",
-                bodyExecutionOwner = BodyExecutionOwner.CANONICAL_ENGINE,
             )
 
-            assertTrue(!terminal.takesBody, "The fixture must be terminal for this law to mean anything")
+            assertEquals(
+                StepBody.None,
+                terminal.body,
+                "The fixture must be terminal for this law to mean anything",
+            )
             assertTrue(
                 registry.bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE)
-                    .none { key -> registry.get(key)?.takesBody != true },
+                    .none { key -> registry.get(key)?.body?.declared == null },
                 "A terminal Step must never appear in the body set",
             )
         }

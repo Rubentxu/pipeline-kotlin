@@ -12,12 +12,11 @@ import dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy
 /**
  * Registry for [StepDescriptor] metadata, populated at compile time.
  *
- * Provides a lookup for step kinds to determine body-handling characteristics
- * (takesBody, bodyInvocations, introducesContext, catchesInterruptions,
- * bodyExecutionPolicy).
+ * Provides a lookup for step kinds to determine body-handling characteristics, declared
+ * as ONE value ([StepBody] since B10 / W1d).
  *
  * Seeded with canonical core step descriptors. The registry is consulted by
- * [CompiledPipelineValidator] to enforce takesBody constraints.
+ * [CompiledPipelineValidator] to enforce body-declaration constraints.
  */
 class StepDescriptorRegistry private constructor(
     private val descriptors: Map<PluginStepId, StepDescriptor>,
@@ -48,13 +47,14 @@ class StepDescriptorRegistry private constructor(
      * a new body Step        <- ONE descriptor row, no engine change
      * ```
      *
-     * Derived from [StepDescriptor.takesBody] AND
-     * [StepDescriptor.bodyExecutionOwner]: a terminal Step has no body to own, and a
-     * body Step declares who owns it.
+     * Derived from [StepDescriptor.body], never from a hard-coded key list: a terminal
+     * Step ([StepBody.None]) has no body to own, and a body Step
+     * ([StepBody.Declared]) declares who owns it. W1d removed the possibility of a body
+     * Step with an implicit owner, so this filter cannot silently mis-route a new row.
      */
     fun bodyStepIds(owner: BodyExecutionOwner): Set<PluginStepId> =
         descriptors.filter { (_, descriptor) ->
-            descriptor.takesBody && descriptor.bodyExecutionOwner == owner
+            descriptor.body.declared?.execution?.owner == owner
         }.keys
 
     /**
@@ -81,93 +81,123 @@ class StepDescriptorRegistry private constructor(
                     stepId = "core.catchError",
                     name = "catchError",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ONCE,
-                    introducesContext = ContextKind.CANCELLATION,
-                    catchesInterruptions = true,
-                    // Containment is a FOLD of the body's typed outcome, not an execution
-                    // reshape: the body still runs once, in the caller's own context.
-                    bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
-                    // W1c: containment semantics live in the legacy workflow-control
-                    // rewrite (`CatchErrorOverlay` propagation), not in the canonical body
-                    // engine, so this Step's body is NOT owned there. Declared, not inferred:
-                    // `Sequential` is also the shape of a plain body the canonical engine runs.
-                    bodyExecutionOwner = BodyExecutionOwner.LEGACY_LINEAR,
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ONCE,
+                        // Containment is a FOLD of the body's typed outcome, not an execution
+                        // reshape: the body still runs once, in the caller's own context.
+                        execution = BodyExecution(
+                            // W1c: containment semantics live in the legacy workflow-control
+                            // rewrite (`CatchErrorOverlay` propagation), not in the canonical body
+                            // engine, so this Step's body is NOT owned there. Declared, not inferred:
+                            // `Sequential` is also the shape of a plain body the canonical engine runs.
+                            owner = BodyExecutionOwner.LEGACY_LINEAR,
+                            policy = BodyExecutionPolicy.Sequential,
+                        ),
+                        introduces = ContextKind.CANCELLATION,
+                        catchesInterruptions = true,
+                    ),
                 ))
                 put(PluginStepId("core.warnError"), StepDescriptor(
                     stepId = "core.warnError",
                     name = "warnError",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.AT_MOST_ONCE,
-                    introducesContext = ContextKind.OUTPUT_DECORATOR,
-                    bodyExecutionPolicy = BodyExecutionPolicy.Sequential,
-                    // W1c: output decoration is applied by the legacy workflow-control
-                    // rewrite, same reasoning as `core.catchError`.
-                    bodyExecutionOwner = BodyExecutionOwner.LEGACY_LINEAR,
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.AT_MOST_ONCE,
+                        execution = BodyExecution(
+                            // W1c: output decoration is applied by the legacy workflow-control
+                            // rewrite, same reasoning as `core.catchError`.
+                            owner = BodyExecutionOwner.LEGACY_LINEAR,
+                            policy = BodyExecutionPolicy.Sequential,
+                        ),
+                        introduces = ContextKind.OUTPUT_DECORATOR,
+                    ),
                 ))
                 put(PluginStepId("core.withEnv"), StepDescriptor(
                     stepId = "core.withEnv",
                     name = "withEnv",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ONCE,
-                    introducesContext = ContextKind.ENVIRONMENT,
-                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ONCE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            policy = BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
+                        ),
+                        introduces = ContextKind.ENVIRONMENT,
+                    ),
                 ))
                 put(PluginStepId("core.dir"), StepDescriptor(
                     stepId = "core.dir",
                     name = "dir",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ONCE,
-                    introducesContext = ContextKind.CWD,
-                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.WorkingDirectory),
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ONCE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            policy = BodyExecutionPolicy.Scoped(BodyContextProjection.WorkingDirectory),
+                        ),
+                        introduces = ContextKind.CWD,
+                    ),
                 ))
                 put(PluginStepId("core.withCredentials"), StepDescriptor(
                     stepId = "core.withCredentials",
                     name = "withCredentials",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ONCE,
-                    introducesContext = ContextKind.CREDENTIALS,
-                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.CredentialLease),
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ONCE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            policy = BodyExecutionPolicy.Scoped(BodyContextProjection.CredentialLease),
+                        ),
+                        introduces = ContextKind.CREDENTIALS,
+                    ),
                 ))
                 put(PluginStepId("core.timeout"), StepDescriptor(
                     stepId = "core.timeout",
                     name = "timeout",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ONCE,
-                    introducesContext = ContextKind.CANCELLATION,
-                    // Deadline is a projected scope; CANCELLATION alone cannot say so
-                    // because catchError declares the same kind with Sequential.
-                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Deadline),
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ONCE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            // Deadline is a projected scope; CANCELLATION alone cannot say so
+                            // because catchError declares the same kind with Sequential.
+                            policy = BodyExecutionPolicy.Scoped(BodyContextProjection.Deadline),
+                        ),
+                        introduces = ContextKind.CANCELLATION,
+                    ),
                 ))
                 put(PluginStepId("core.timestamps"), StepDescriptor(
                     stepId = "core.timestamps",
                     name = "timestamps",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ONCE,
-                    // A timestamp source is none of the declared ContextKinds; the
-                    // projection declares `requiredContextKind = null` for the same reason.
-                    introducesContext = null,
-                    // W1c: closes the declared W1b gap. The coordinator already projects a
-                    // timestamp scope around this body; the row is what makes that routing
-                    // registry-derived instead of a hard-coded StepKey.
-                    bodyExecutionPolicy = BodyExecutionPolicy.Scoped(BodyContextProjection.Timestamps),
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ONCE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            // W1c: closes the declared W1b gap. The coordinator already projects a
+                            // timestamp scope around this body; the row is what makes that routing
+                            // registry-derived instead of a hard-coded StepKey.
+                            policy = BodyExecutionPolicy.Scoped(BodyContextProjection.Timestamps),
+                        ),
+                        // A timestamp source is none of the declared ContextKinds; the
+                        // projection declares `requiredContextKind = null` for the same reason.
+                        introduces = null,
+                    ),
                 ))
                 put(PluginStepId("core.retry"), StepDescriptor(
                     stepId = "core.retry",
                     name = "retry",
                     configRef = "",
-                    takesBody = true,
-                    bodyInvocations = BodyInvocationPolicy.ZERO_OR_MORE,
-                    introducesContext = null,
-                    // Each attempt is a distinct body invocation with its own durable
-                    // identity; cardinality is decoded input, not declaration.
-                    bodyExecutionPolicy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ZERO_OR_MORE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            // Each attempt is a distinct body invocation with its own durable
+                            // identity; cardinality is decoded input, not declaration.
+                            policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                        ),
+                        introduces = null,
+                    ),
                 ))
 
                 // Terminal steps (no body)
@@ -175,31 +205,31 @@ class StepDescriptorRegistry private constructor(
                     stepId = "core.emit.event",
                     name = "emitEvent",
                     configRef = "",
-                    takesBody = false,
+                    body = StepBody.None,
                 ))
                 put(PluginStepId("core.sh"), StepDescriptor(
                     stepId = "core.sh",
                     name = "sh",
                     configRef = "",
-                    takesBody = false,
+                    body = StepBody.None,
                 ))
                 put(PluginStepId("core.echo"), StepDescriptor(
                     stepId = "core.echo",
                     name = "echo",
                     configRef = "",
-                    takesBody = false,
+                    body = StepBody.None,
                 ))
                 put(PluginStepId("core.sleep"), StepDescriptor(
                     stepId = "core.sleep",
                     name = "sleep",
                     configRef = "",
-                    takesBody = false,
+                    body = StepBody.None,
                 ))
                 put(PluginStepId("core.file.writeFile"), StepDescriptor(
                     stepId = "core.file.writeFile",
                     name = "writeFile",
                     configRef = "",
-                    takesBody = false,
+                    body = StepBody.None,
                 ))
             }
         )

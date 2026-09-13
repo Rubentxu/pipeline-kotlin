@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.step
 import dev.rubentxu.pipeline.v2.domain.BodyInvocationPolicy
 import dev.rubentxu.pipeline.v2.domain.ContextKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepBody
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import kotlinx.serialization.Serializable
 
@@ -35,8 +36,9 @@ import kotlinx.serialization.Serializable
  *
  * ## Relationship to the existing descriptor metadata
  *
- * [StepDescriptor.bodyInvocations] (cardinality) and [StepDescriptor.introducesContext]
- * (context-kind hint) CANNOT derive the execution shape: `core.timeout` and
+ * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.invocation] (cardinality) and
+ * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.introduces] (context-kind hint) CANNOT
+ * derive the execution shape: `core.timeout` and
  * `core.catchError` both declare [ContextKind.CANCELLATION] yet require different
  * shapes (`Scoped(Deadline)` vs `Sequential`). The policy is therefore declared
  * explicitly and checked for COHERENCE against those hints
@@ -150,7 +152,9 @@ enum class BodyExecutionOwner {
     /**
      * The body is re-entered and executed by the canonical durable body engine:
      * scope projection, attempt re-dispatch, and typed event emission all live
-     * there. This is the default because it is the target state.
+     * there. It is the target state for every body, and since W1d it is also
+     * REQUIRED to be stated: a body row that omits its owner does not compile, so
+     * no Step acquires canonical semantics by defaulting.
      */
     CANONICAL_ENGINE,
 
@@ -291,13 +295,16 @@ sealed interface BodyPolicyRejection {
     data class UnknownStep(val key: PluginStepId) : BodyPolicyRejection
 
     /**
-     * [key] does not take a body, yet declares a policy that reshapes execution.
-     * Either the descriptor's `takesBody` or its policy is wrong.
+     * [key] is a terminal Step ([StepBody.None]): it has no body, so it has no body
+     * execution policy to resolve. Asking for one is a caller error, reported instead of
+     * answered with a default.
+     *
+     * Since W1d the contradictory shape this case used to describe — "declares a reshaping
+     * policy while taking no body" — is no longer constructible: a terminal Step has
+     * nowhere to declare a policy. The case stays because the QUESTION remains answerable
+     * and must stay answerable fail-closed.
      */
-    data class NotABodyStep(
-        val key: PluginStepId,
-        val declared: BodyExecutionPolicy,
-    ) : BodyPolicyRejection
+    data class NotABodyStep(val key: PluginStepId) : BodyPolicyRejection
 
     /**
      * The declared policy contradicts other descriptor metadata: the execution
@@ -377,16 +384,14 @@ fun resolveBodyExecutionPolicy(
         return BodyPolicyResolution.Rejected(key, BodyPolicyRejection.UnknownStep(key))
     }
 
-    val declared = descriptor.bodyExecutionPolicy
+    // W1d: the declaration is one value. A terminal Step has no policy to resolve, so the
+    // only fail-closed answer is a typed rejection; there is no "sequential default" for a
+    // Step with no body, and no contradictory declaration left to detect here.
+    val declaredBody = descriptor.body.declared
+        ?: return BodyPolicyResolution.Rejected(key, BodyPolicyRejection.NotABodyStep(key))
+    val declared = declaredBody.execution.policy
 
-    if (!descriptor.takesBody && declared != BodyExecutionPolicy.Sequential) {
-        return BodyPolicyResolution.Rejected(
-            key,
-            BodyPolicyRejection.NotABodyStep(key, declared),
-        )
-    }
-
-    incoherenceOf(key, descriptor, declared)?.let { detail ->
+    incoherenceOf(key, declaredBody, declared)?.let { detail ->
         return BodyPolicyResolution.Rejected(
             key,
             BodyPolicyRejection.IncoherentMetadata(key, declared, detail),
@@ -450,7 +455,7 @@ class RegistryBodyPolicyResolver(
  * Coherence of a declared policy against the descriptor metadata that predates it.
  *
  * Returns a human-facing detail when the declaration contradicts
- * [StepDescriptor.bodyInvocations] or [StepDescriptor.introducesContext], or `null`
+ * [StepBody.Declared.invocation] or [StepBody.Declared.introduces], or `null`
  * when coherent. Declared checks, in order:
  *
  *  1. Only a repeating shape ([BodyExecutionPolicy.Retrying]) may declare
@@ -465,13 +470,13 @@ class RegistryBodyPolicyResolver(
  */
 private fun incoherenceOf(
     key: PluginStepId,
-    descriptor: StepDescriptor,
+    body: StepBody.Declared,
     declared: BodyExecutionPolicy,
 ): String? {
-    val invocations = descriptor.bodyInvocations
+    val invocations = body.invocation
 
     if (declared is BodyExecutionPolicy.Retrying && invocations != BodyInvocationPolicy.ZERO_OR_MORE) {
-        return "declared Retrying but bodyInvocations=$invocations (requires ZERO_OR_MORE)"
+        return "declared Retrying but invocation=$invocations (requires ZERO_OR_MORE)"
     }
     if (invocations == BodyInvocationPolicy.ZERO_OR_MORE &&
         declared !is BodyExecutionPolicy.Retrying &&
@@ -481,9 +486,9 @@ private fun incoherenceOf(
     }
     if (declared is BodyExecutionPolicy.Scoped) {
         val required = declared.projection.requiredContextKind ?: return null
-        if (descriptor.introducesContext != required) {
-            return "declared Scoped(${declared.projection}) requires introducesContext=$required " +
-                "but descriptor declares ${descriptor.introducesContext}"
+        if (body.introduces != required) {
+            return "declared Scoped(${declared.projection}) requires introduces=$required " +
+                "but the body declares ${body.introduces}"
         }
     }
     return null

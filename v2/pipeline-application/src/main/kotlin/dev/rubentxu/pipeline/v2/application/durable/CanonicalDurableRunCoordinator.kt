@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
+import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyShape
@@ -111,9 +112,10 @@ private val canonicalStepIds: Set<String> =
 /**
  * Block Step families whose body is executed by THIS engine (B10 / W1c).
  *
- * Derived from the declared [StepDescriptor] metadata, never from a list of StepKeys:
- * a Step is canonical-body-eligible when it declares `takesBody` and names this engine
- * as its [BodyExecutionOwner]. `core.catchError` / `core.warnError` declare
+ * Derived from the declared [StepDescriptor] metadata, never from a list of StepKeys: a
+ * Step is canonical-body-eligible when it declares a body row
+ * (`StepBody.Declared`) whose `BodyExecution.owner` is this engine. Since W1d that row has
+ * no implicit owner, so a new body Step cannot become eligible by omission. `core.catchError` / `core.warnError` declare
  * `LEGACY_LINEAR` because their semantics live in the legacy workflow-control rewrite,
  * so they stay refused here rather than being executed as empty shells.
  *
@@ -319,11 +321,18 @@ private sealed interface BodyExecutionProjection {
     data class Scope(val scope: BlockShellScope) : BodyExecutionProjection
 
     /**
-     * The body is run by the credential-lease dispatcher (acquire -> environment
-     * overlay -> always close). Not a `BlockShellScope`: a lease is not a context
-     * dimension that children inherit from [ShOptions].
+     * The body runs under a bound credential lease (acquire -> environment overlay ->
+     * always close). Not a `BlockShellScope`: a lease is not a context dimension children
+     * inherit from [ShOptions], because its value only exists AFTER the acquisition effect.
+     *
+     * Carries the decoded bindings, so the payload is decoded exactly once, in the pure
+     * projector, and a malformed payload is a typed [InvalidInput] before any effect. Before
+     * W1d this projection was a bare marker and the payload was decoded a second time inside
+     * the credential-specific execution path.
      */
-    data object CredentialLifecycle : BodyExecutionProjection
+    data class CredentialLease(
+        val bindings: List<CredentialBindingSpec>,
+    ) : BodyExecutionProjection
 
     /** Decoded input is invalid: a typed SCHEMA rejection, never a fallback. */
     data class InvalidInput(val detail: String) : BodyExecutionProjection
@@ -364,7 +373,7 @@ private fun BlockStepNode.projectScopedBody(
     is BodyContextProjection.Environment -> projectEnvironment(options)
     is BodyContextProjection.Timestamps -> BodyExecutionProjection.Scope(BlockShellScope.TimestampsScope(runId = ""))
     is BodyContextProjection.Deadline -> decodeDeadline()
-    is BodyContextProjection.CredentialLease -> BodyExecutionProjection.CredentialLifecycle
+    is BodyContextProjection.CredentialLease -> decodeCredentialBindings()
 }
 
 private fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExecutionProjection {
@@ -399,6 +408,16 @@ private fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
     if (seconds <= 0) return BodyExecutionProjection.InvalidInput("seconds must be > 0, got $seconds")
     return BodyExecutionProjection.Scope(BlockShellScope.Timeout(budgetMs = seconds * 1000L))
 }
+
+// EM-7/LFC-5.3 (INC-022): the credential bindings are decoded HERE, in the pure projection,
+// so an invalid payload is a typed schema rejection before the acquisition effect runs and
+// before any child is dispatched. There is no second decode on the execution path (W1d).
+private fun BlockStepNode.decodeCredentialBindings(): BodyExecutionProjection =
+    try {
+        BodyExecutionProjection.CredentialLease(CredentialBindingsPayload.decode(payload.encoded))
+    } catch (error: IllegalArgumentException) {
+        BodyExecutionProjection.InvalidInput("withCredentials bindings invalid: ${error.message}")
+    }
 
 private fun BlockStepNode.decodeAttemptBudget(): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
@@ -1134,14 +1153,14 @@ class CanonicalDurableRunCoordinator(
         // launches. The reconciler is pure; this coordinator is the single writer.
         val aggregateId = ParallelAggregateId(runId = runId.value, stageIndex = stageIndex)
         val aggregateInput = OperationInput(
-            stepId = "core.parallel",
+            stepId = BodyAggregateIdentity.ParallelStageAggregate.key.value,
             params = mapOf("control" to kotlinx.serialization.json.JsonPrimitive("aggregate")),
             runId = runId.value,
             attempt = 1,
         )
         val aggregateFingerprint = Fingerprint.compute(
             aggregateInput,
-            "core.parallel[$stageIndex]" + branches.joinToString("|") { it.name },
+            BodyAggregateIdentity.ParallelStageAggregate.fingerprintKey(stageIndex, branches.map { it.name }),
             ReplayPolicy.MEMOIZED,
             1,
         )
@@ -1439,18 +1458,21 @@ class CanonicalDurableRunCoordinator(
         var contextInBody = executionContext
         var outcome: StepOutcome = StepOutcome.Success
         val scope = when (projection) {
-            // EM-7/LFC-5.3 (INC-022): the credential lease owns its own scope lifecycle
-            // (acquire -> env overlay -> always close). Routed BY POLICY, never by Step
-            // name, and never dispatched as an empty shell.
-            is BodyExecutionProjection.CredentialLifecycle -> return dispatchWithCredentialsBlock(
-                block,
-                runId,
-                stageName,
-                stageIndex,
-                stepIndex,
-                stageShOptions,
-                parentBodyPath,
-                executionContext,
+            // EM-7/LFC-5.3 (INC-022), reworked by W1d: the credential lease is a body
+            // PREAMBLE, not a path of its own. Acquisition is an effectful preamble and the
+            // body then re-enters the engine through the same child loop every other block
+            // Step uses. Routed BY POLICY, never by Step name, and never dispatched as an
+            // empty shell.
+            is BodyExecutionProjection.CredentialLease -> return executeCredentialLeasedBody(
+                bindings = projection.bindings,
+                block = block,
+                runId = runId,
+                stageName = stageName,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                stageShOptions = stageShOptions,
+                parentBodyPath = parentBodyPath,
+                executionContext = executionContext,
             )
             is BodyExecutionProjection.InvalidInput -> return StepOutcome.Failure(
                 PipelineFailure(
@@ -1600,51 +1622,34 @@ class CanonicalDurableRunCoordinator(
                     )
                 }
 
-                for ((childIndex, child) in block.body.withIndex()) {
-                    val childOpId = OpId(
-                        runId.value,
-                        stageIndex,
-                        stepIndex,
-                        branchIndex = null,
-                        bodyPath = attemptBasePath + BlockSegment(childIndex, child.pluginStepId),
-                    )
-
-                    // Fresh StepLifecycleContext per child (JEP-029)
-                    val childContext = StepLifecycleContext(
-                        runId = runId.value,
-                        stageIndex = stageIndex,
-                        stepIndex = childIndex,
-                        stepName = child.id.value,
-                        stepType = child.pluginStepId.value,
-                    )
-
-                    val childOutcome = dispatch(
-                        child,
-                        runId,
-                        stageName,
-                        stageIndex,
-                        stepIndex,
-                        childShOptions,
-                        childOpId.bodyPath,
-                        contextInBody,
-                    ).outcome
-                    when (childOutcome) {
-                        is StepOutcome.Failure -> {
-                            outcome = childOutcome
-                            if (attempt < attemptCount) {
-                                attempt++
-                                continue@bodyLoop
-                            }
-                            break@bodyLoop // Stop on first failure after last attempt
+                val attemptOutcome = invokeBodyChildren(
+                    block,
+                    runId,
+                    stageName,
+                    stageIndex,
+                    stepIndex,
+                    childShOptions,
+                    attemptBasePath,
+                    contextInBody,
+                )
+                when (attemptOutcome) {
+                    is StepOutcome.Failure -> {
+                        outcome = attemptOutcome
+                        if (attempt < attemptCount) {
+                            attempt++
+                            continue@bodyLoop
                         }
-                        is StepOutcome.Unstable -> {
-                            outcome = childOutcome
-                            break@bodyLoop
-                        }
-                        else -> { /* continue */ }
+                        break@bodyLoop // Stop on first failure after last attempt
+                    }
+                    is StepOutcome.Unstable -> {
+                        outcome = attemptOutcome
+                        break@bodyLoop
+                    }
+                    else -> {
+                        // Body completed without failure — no extra attempt (WL-R2).
+                        break@bodyLoop
                     }
                 }
-                break@bodyLoop // body completed without failure — no extra attempt (WL-R2)
                 }
             }
         } finally {
@@ -1673,6 +1678,56 @@ class CanonicalDurableRunCoordinator(
         }
 
         return outcome
+    }
+
+    /**
+     * The ONE body-child invocation loop (B10 / W1d).
+     *
+     * Every body-bearing Step re-enters the engine here: a plain scope, a retry attempt and
+     * a credential lease all dispatch their children through this function, keyed by the
+     * length-prefixed bodyPath (JEP-029 exactly-once). Before W1d there were THREE copies of
+     * this loop — one beside [dispatchBody], one in the retry-aware path and one in the
+     * credential path — and each copy was a place where a block Step could acquire execution
+     * semantics the shared engine did not know about.
+     *
+     * Semantics: children run in declaration order under [childShOptions] and
+     * [executionContext]; the first Failure or Unstable stops the body and is returned;
+     * otherwise the body outcome is [StepOutcome.Success].
+     */
+    private suspend fun invokeBodyChildren(
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
+    ): StepOutcome {
+        for ((childIndex, child) in block.body.withIndex()) {
+            val childOpId = OpId(
+                runId.value,
+                stageIndex,
+                stepIndex,
+                branchIndex = null,
+                bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId),
+            )
+            val childOutcome = dispatch(
+                child,
+                runId,
+                stageName,
+                stageIndex,
+                stepIndex,
+                childShOptions,
+                childOpId.bodyPath,
+                executionContext,
+            ).outcome
+            when (childOutcome) {
+                is StepOutcome.Failure, is StepOutcome.Unstable -> return childOutcome
+                else -> { /* continue to the next child */ }
+            }
+        }
+        return StepOutcome.Success
     }
 
     /**
@@ -1770,37 +1825,16 @@ class CanonicalDurableRunCoordinator(
                     val attemptSegment = listOf(BlockSegment(attempt, PluginStepId("retry-attempt")))
                     val attemptBasePath = parentBodyPath + attemptSegment
 
-                    var attemptOutcome: StepOutcome = StepOutcome.Success
-                    for ((childIndex, child) in block.body.withIndex()) {
-                        val childOpId = OpId(
-                            runId.value,
-                            stageIndex,
-                            stepIndex,
-                            branchIndex = null,
-                            bodyPath = attemptBasePath + BlockSegment(childIndex, child.pluginStepId),
-                        )
-                        val childOutcome = dispatch(
-                            child,
-                            runId,
-                            stageName,
-                            stageIndex,
-                            stepIndex,
-                            childShOptions,
-                            childOpId.bodyPath,
-                            executionContext,
-                        ).outcome
-                        when (childOutcome) {
-                            is StepOutcome.Failure -> {
-                                attemptOutcome = childOutcome
-                                break
-                            }
-                            is StepOutcome.Unstable -> {
-                                attemptOutcome = childOutcome
-                                break
-                            }
-                            else -> { /* continue to next child */ }
-                        }
-                    }
+                    val attemptOutcome = invokeBodyChildren(
+                        block,
+                        runId,
+                        stageName,
+                        stageIndex,
+                        stepIndex,
+                        childShOptions,
+                        attemptBasePath,
+                        executionContext,
+                    )
 
                     when (attemptOutcome) {
                         is StepOutcome.Success -> {
@@ -1903,7 +1937,7 @@ class CanonicalDurableRunCoordinator(
         scope: BlockShellScope.Retry,
     ): Fingerprint {
         val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
-            stepId = "core.retry",
+            stepId = BodyAggregateIdentity.RetryControlRow.key.value,
             params = mapOf(
                 "maxAttempts" to kotlinx.serialization.json.JsonPrimitive(scope.maxAttempts),
                 "parentBodyPath" to kotlinx.serialization.json.JsonArray(
@@ -1915,20 +1949,35 @@ class CanonicalDurableRunCoordinator(
             runId = "retry-contract", // Stable per-aggregate, NOT per-attempt.
             attempt = 1,
         )
-        return Fingerprint.compute(input, "core.retry", ReplayPolicy.MEMOIZED, 1)
+        return Fingerprint.compute(
+            input,
+            BodyAggregateIdentity.RetryControlRow.key.value,
+            ReplayPolicy.MEMOIZED,
+            1,
+        )
     }
 
     /**
-     * EM-7/LFC-5.3 (INC-022) — resolves and acquires the withCredentials scope.
+     * EM-7/LFC-5.3 (INC-022), reworked by W1d — a credential lease as a body PREAMBLE.
      *
-     * Decodes the typed [CredentialBindingSpec] list from the node payload
-     * (fail-closed on malformed input -> schema Failure) and acquires a scope via
-     * [credentialScopePort]. On Unavailable/Invalid the body is NEVER dispatched
-     * (fail-closed). On Acquired the body runs with the env overlay and the scope
-     * is always closed; a scope whose cleanup fails folds the block outcome to a
-     * typed operational Failure per design §73.
+     * The acquisition is an effectful preamble that yields an environment overlay; the body
+     * itself re-enters the engine through [invokeBodyChildren], the same loop every other
+     * block Step uses. Release ALWAYS runs — it is the `finally` of the same attempt that
+     * dispatches the body, so it also runs when a child fails — and its typed outcome is
+     * folded with the body's outcome by [mergeBodyAndCleanup], a total pure function of two
+     * values.
+     *
+     * Fail-closed: an [CredentialScopeOutcome.Unavailable] or
+     * [CredentialScopeOutcome.Invalid] acquisition returns BEFORE any child is dispatched, so
+     * a lease that cannot be acquired never runs its body. The bindings were already decoded
+     * by the pure projection (`decodeCredentialBindings`), so a malformed payload never
+     * reaches this function.
+     *
+     * The env overlay reaches children as an immutable derived value (CTX-P): the caller's
+     * execution context is not mutated and needs no restore.
      */
-    private suspend fun dispatchWithCredentialsBlock(
+    private suspend fun executeCredentialLeasedBody(
+        bindings: List<CredentialBindingSpec>,
         block: BlockStepNode,
         runId: RunId,
         stageName: String,
@@ -1938,103 +1987,41 @@ class CanonicalDurableRunCoordinator(
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
     ): StepOutcome {
-        val bindings: List<CredentialBindingSpec> = try {
-            CredentialBindingsPayload.decode(block.payload.encoded)
-        } catch (e: IllegalArgumentException) {
-            return StepOutcome.Failure(
-                PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    "withCredentials bindings invalid: ${e.message}",
-                ),
-            )
-        }
-        return when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
-            is CredentialScopeOutcome.Unavailable -> StepOutcome.Failure(
+        val leased: AcquiredCredentialScope = when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
+            is CredentialScopeOutcome.Unavailable -> return StepOutcome.Failure(
                 PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, acquisition.failure.describe()),
             )
-            is CredentialScopeOutcome.Invalid -> StepOutcome.Failure(
+            is CredentialScopeOutcome.Invalid -> return StepOutcome.Failure(
                 PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, acquisition.failure.describe()),
             )
-            is CredentialScopeOutcome.Acquired -> dispatchAcquiredWithCredentialsBody(
-                executionContext = executionContext,
-                scope = acquisition.scope,
+            is CredentialScopeOutcome.Acquired -> acquisition.scope
+        }
+        val childContext = executionContext.pushed(
+            ContextOverlay.Environment(
+                dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(
+                    leased.env.mapValues { (_, handle) -> handle.borrow { bytes -> String(bytes, Charsets.UTF_8) } },
+                ),
+            ),
+        )
+        val childShOptions = stageShOptions.copy(env = stageShOptions.env + leased.env)
+        // The lease is released on EVERY path (success, typed failure, or an exception out of
+        // the body). `cleanup` is a `val` assigned in `finally`: it cannot be read before it
+        // holds the real outcome, so there is no default value standing in for a fact the
+        // engine has not observed yet. close() is idempotent and never throws by contract.
+        val cleanup: CredentialScopeCleanup
+        val bodyOutcome = try {
+            invokeBodyChildren(
                 block = block,
                 runId = runId,
                 stageName = stageName,
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
-                stageShOptions = stageShOptions,
+                childShOptions = childShOptions,
                 parentBodyPath = parentBodyPath,
+                executionContext = childContext,
             )
-        }
-    }
-
-    /**
-     * EM-7/LFC-5.3 (INC-022) — executes the withCredentials body under the acquired env
-     * overlay and always releases the scope (idempotent, reverse-LIFO).
-     *
-     * Mirrors the generic block child loop (fail-on-first Failure/Unstable) but under
-     * `childShOptions` whose env is `stageShOptions.env + scope.env`. The acquired
-     * env is tracked on the context stack (like core.withEnv) and restored in finally.
-     * Cleanup runs in the same finally that restores the parent stack.
-     */
-    private suspend fun dispatchAcquiredWithCredentialsBody(
-        scope: AcquiredCredentialScope,
-        block: BlockStepNode,
-        runId: RunId,
-        stageName: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        stageShOptions: ShOptions,
-        parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
-    ): StepOutcome {
-        // CTX-P2: ShOptions stays the functional env carrier (unchanged semantics);
-        // the Environment overlay is derived on the immutable context separately.
-        val childContext = executionContext.pushed(
-            ContextOverlay.Environment(
-                dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(
-                    scope.env.mapValues { (_, handle) -> handle.borrow { bytes -> String(bytes, Charsets.UTF_8) } },
-                ),
-            ),
-        )
-        val childShOptions = stageShOptions.copy(env = stageShOptions.env + scope.env)
-        var bodyOutcome: StepOutcome = StepOutcome.Success
-        val cleanup: CredentialScopeCleanup = try {
-            for ((childIndex, child) in block.body.withIndex()) {
-                val childOpId = OpId(
-                    runId.value,
-                    stageIndex,
-                    stepIndex,
-                    branchIndex = null,
-                    bodyPath = parentBodyPath + BlockSegment(childIndex, child.pluginStepId),
-                )
-                val childOutcome = dispatch(
-                    child,
-                    runId,
-                    stageName,
-                    stageIndex,
-                    stepIndex,
-                    childShOptions,
-                    childOpId.bodyPath,
-                    childContext,
-                ).outcome
-                when (childOutcome) {
-                    is StepOutcome.Failure -> {
-                        bodyOutcome = childOutcome
-                        break // Stop on first failure
-                    }
-                    is StepOutcome.Unstable -> {
-                        bodyOutcome = childOutcome
-                        break
-                    }
-                    else -> { /* continue */ }
-                }
-            }
-            scope.close()
         } finally {
-            // CTX-P2: no context restore needed — childContext is a derived value;
-            // the caller still owns its own parent context.
+            cleanup = leased.close()
         }
         return mergeBodyAndCleanup(bodyOutcome, cleanup)
     }

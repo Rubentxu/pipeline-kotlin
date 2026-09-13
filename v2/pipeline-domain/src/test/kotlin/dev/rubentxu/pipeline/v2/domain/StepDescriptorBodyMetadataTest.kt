@@ -1,43 +1,89 @@
 package dev.rubentxu.pipeline.v2.domain
 
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for StepDescriptor body-metadata fields (EM-4).
+ * Tests for StepDescriptor body declaration (EM-4; reworked by B10 / W1d).
+ *
+ * W1d replaced the six independent body-metadata fields with one coherent value,
+ * [StepBody]. These tests are the behavioural half of that change: a Step either declares
+ * no body at all, or declares a body together with its cardinality, owner and shape.
  */
 class StepDescriptorBodyMetadataTest {
 
     @Test
-    fun `default StepDescriptor has safe body-metadata values`() {
+    fun `a StepDescriptor that declares nothing has no body`() {
         val descriptor = StepDescriptor("x", "y", "z")
 
-        assertFalse(descriptor.takesBody, "Default takesBody should be false")
-        assertEquals(BodyInvocationPolicy.ONCE, descriptor.bodyInvocations, "Default bodyInvocations should be ONCE")
-        assertNull(descriptor.introducesContext, "Default introducesContext should be null")
-        assertFalse(descriptor.catchesInterruptions, "Default catchesInterruptions should be false")
+        assertEquals(
+            StepBody.None,
+            descriptor.body,
+            "The default must be 'no body': it is the only value that cannot imply semantics " +
+                "the Step never stated",
+        )
+        assertNull(
+            descriptor.body.declared,
+            "A terminal Step has no declaration, so it has no cardinality, owner or shape to read",
+        )
     }
 
     @Test
-    fun `explicit body-metadata values are preserved`() {
+    fun `explicit body values are preserved`() {
+        val declared = StepBody.Declared(
+            invocation = BodyInvocationPolicy.ZERO_OR_MORE,
+            execution = BodyExecution(
+                owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                policy = BodyExecutionPolicy.Sequential,
+            ),
+            introduces = ContextKind.ENVIRONMENT,
+            catchesInterruptions = true,
+        )
         val descriptor = StepDescriptor(
             stepId = "test-step",
             name = "TestStep",
             configRef = "test-config",
-            takesBody = true,
-            bodyInvocations = BodyInvocationPolicy.ZERO_OR_MORE,
-            introducesContext = ContextKind.ENVIRONMENT,
-            catchesInterruptions = true,
+            body = declared,
         )
 
-        assertTrue(descriptor.takesBody)
-        assertEquals(BodyInvocationPolicy.ZERO_OR_MORE, descriptor.bodyInvocations)
-        assertTrue(descriptor.introducesContext is ContextKind.ENVIRONMENT)
-        assertTrue(descriptor.catchesInterruptions)
+        assertEquals(declared, descriptor.body)
+        assertEquals(BodyInvocationPolicy.ZERO_OR_MORE, descriptor.body.declared?.invocation)
+        assertEquals(
+            BodyExecutionOwner.CANONICAL_ENGINE,
+            descriptor.body.declared?.execution?.owner,
+        )
+        assertEquals(BodyExecutionPolicy.Sequential, descriptor.body.declared?.execution?.policy)
+        assertTrue(descriptor.body.declared?.introduces is ContextKind.ENVIRONMENT)
+        assertTrue(descriptor.body.declared?.catchesInterruptions == true)
+    }
+
+    /**
+     * W1d's exit criterion, as a behaviour: ownership and shape are REQUIRED by the
+     * constructor, so "this Step takes a body and nobody owns it" has no spelling. The old
+     * model defaulted the owner to CANONICAL_ENGINE, which silently granted canonical
+     * semantics to any Step that forgot to state them.
+     */
+    @Test
+    fun `a declared body cannot omit its owner or shape`() {
+        val declared = StepBody.Declared(
+            invocation = BodyInvocationPolicy.ONCE,
+            execution = BodyExecution(
+                owner = BodyExecutionOwner.LEGACY_LINEAR,
+                policy = BodyExecutionPolicy.Sequential,
+            ),
+        )
+
+        // The only way to construct a Declared is to supply both: the fields have no
+        // defaults, so the compiler rejects every other spelling.
+        assertEquals(BodyExecutionOwner.LEGACY_LINEAR, declared.execution.owner)
+        assertEquals(BodyExecutionPolicy.Sequential, declared.execution.policy)
+        assertNull(declared.introduces, "Introducing no context kind is a fact, not a sentinel")
+        assertEquals(false, declared.catchesInterruptions)
     }
 
     @Test
@@ -76,9 +122,9 @@ class StepDescriptorBodyMetadataTest {
         // `recoveryPolicy` slot (added by G3-A4.1.1) must still compile and produce a
         // descriptor with sensible defaults. The named-only fields after recoveryPolicy
         // (`idempotencyModel`, `timeoutModel`, `jenkinsSurface`, `securityProfile`,
-        // `deprecation`, `takesBody`, `bodyInvocations`, `introducesContext`,
-        // `catchesInterruptions`, `bodyExecutionPolicy`) all keep defaults; this regression
-        // guard exercises the pre-A4.1 prefix through the post-A4.1 fields.
+        // `deprecation`, and the single `body` value that replaced six metadata fields in
+        // W1d) all keep defaults; this regression guard exercises the pre-A4.1 prefix
+        // through the post-A4.1 fields.
         @Suppress("DEPRECATION")
         val descriptor = StepDescriptor(
             "step-id",
@@ -104,9 +150,9 @@ class StepDescriptorBodyMetadataTest {
         assertEquals("step-id", descriptor.stepId)
         assertEquals("step-name", descriptor.name)
         assertEquals("config-ref", descriptor.configRef)
-        // New fields should have defaults
-        assertFalse(descriptor.takesBody)
-        assertEquals(BodyInvocationPolicy.ONCE, descriptor.bodyInvocations)
+        // The body default is 'no body', with nothing to read from it.
+        assertEquals(StepBody.None, descriptor.body)
+        assertNull(descriptor.body.declared)
         // A4-1: pre-decode recovery policy defaults to None.
         assertEquals(dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy.None, descriptor.recoveryPolicy)
     }

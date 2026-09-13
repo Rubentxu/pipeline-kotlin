@@ -81,8 +81,8 @@ class CompiledPipelineValidatorTest {
     }
 
     @Test
-    fun `BlockStepNode with takesBody false throws`() {
-        // core.emit.event has takesBody=false in registry
+    fun `BlockStepNode whose Step declares no body throws`() {
+        // core.emit.event declares no body (StepBody.None) in the registry
         val invalidBlock = makeBlockStepNode(
             id = "invalid-block",
             pluginStepId = "core.emit.event",
@@ -95,7 +95,10 @@ class CompiledPipelineValidatorTest {
             CompiledPipelineValidator.validate(pipeline)
         }
 
-        assertTrue(exception.message!!.contains("takesBody=false"))
+        assertTrue(
+            exception.message!!.contains("declares no body"),
+            "The diagnostic must name the missing declaration: ${exception.message}",
+        )
     }
 
     @Test

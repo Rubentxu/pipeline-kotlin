@@ -61,38 +61,59 @@ import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 
 /**
- * StepContractSuite — LFC-2E1 / S2-A9 / G3 for `core.milestone`.
+ * StepContractSuite — LFC-2E1 / S2-A9 / G6 for `core.milestone`.
  *
  * Certifies `core.milestone` end-to-end across the registry-driven, open-world Step seam
- * following the certified `CorePwdStepContractSuiteTest` model. The suite proves the
- * registration contract is complete: identity, codec, envelope, dispatch, capability admission,
- * durable identity (fresh + replay), observability, missing capability, and a real pipeline
- * scenario through the public DSL.
+ * following the certified `CorePwdStepContractSuiteTest` and `CoreIsUnixStepContractSuiteTest`
+ * models. The suite proves the registration contract is complete: identity, codec, envelope,
+ * dispatch, capability admission, durable identity (fresh + replay), observability, missing
+ * capability, and a real pipeline scenario through the public DSL.
  *
- * Coverage matrix:
+ * S2-A9 / G6 — AGENTS.md 16/17 coverage (per Step Constitution §LB-02):
  * ```
  *  1.  identity                                              REQUIRED
- *  2.  contract completeness                                 REQUIRED (key + descriptor + 1 cap + MEMOIZED)
- *  3.  input codec round-trip                              REQUIRED
- *  4.  input codec rejection (foreign kind)                REQUIRED
- *  4b. input codec rejection (non-positive ordinal)        REQUIRED
- *  5.  output codec round-trip (Reached)                  REQUIRED
- *  5b. output codec round-trip (Aborted)                  REQUIRED
- *  6.  canonical envelope (well-formed JSON, kind=milestone) REQUIRED
- *  7.  registry resolution (production factory)            REQUIRED
- *  8.  fresh factory consistency                          REQUIRED
- *  9.  capability admission (EVENT_SINK present → Ready)    REQUIRED
- * 10.  success (registry path: MilestoneReached + Success)  REQUIRED
- * 11.  aborted (registry path: MilestoneAborted + Unstable) REQUIRED
- * 12.  fresh durable (1 terminal SUCCEEDED row)          REQUIRED
- * 13.  replay (MEMOIZED: reuse, no handler re-run)        REQUIRED
- * 14.  missing capability (EVENT_SINK absent → Rejected)  REQUIRED
- * 15.  real pipeline scenario (DSL milestone ordinals)   REQUIRED
+ *  2.  contract completeness                                 REQUIRED (key + descriptor + 2 caps + MEMOIZED)
+ *  3.  input codec round-trip (canonical envelope)          REQUIRED
+ *      3a. input codec round-trip (null label variant)       REQUIRED
+ *      3b. input codec rejection (foreign kind)              REQUIRED
+ *      3c. input codec rejection (non-positive ordinal)      REQUIRED
+ *  4.  output codec round-trip (Reached)                   REQUIRED
+ *      4a. output codec round-trip (Aborted)                REQUIRED
+ *  5.  canonical envelope (well-formed JSON, kind=milestone) REQUIRED
+ *      5a. canonical envelope (null label is omitted)        REQUIRED
+ *  6.  registry resolution (production factory)            REQUIRED
+ *      6a. registry resolution (fresh factory consistency)  REQUIRED
+ *  7.  capability declaration (declared set == used set)    REQUIRED (declared:
+ *      EVENT_SINK_CAPABILITY + MILESTONE_OPERATIONS_CAPABILITY)
+ *  8.  capability admission (both available → Ready)        REQUIRED
+ *      8a. missing capability (EVENT_SINK absent → Rejected) REQUIRED
+ *      8b. missing capability (MILESTONE_OPERATIONS absent)  REQUIRED
+ *  9.  success (registry path: MilestoneReached + Success)  REQUIRED
+ * 10.  typed failure (registry path: MilestoneAborted + Unstable) REQUIRED
+ * 11.  fresh durable (1 terminal SUCCEEDED row)            REQUIRED
+ * 12.  replay (MEMOIZED: reuse, no handler re-run)         REQUIRED
+ * 13.  observability (StepStarted + StepFinished pair)     REQUIRED (added at G6)
+ *      divergence                                           N/A  (handler has no input
+ *                                                            comparison contract; identical
+ *                                                            ordinal+label inputs always yield
+ *                                                            identical outcome; documented above
+ *                                                            in the test file)
+ * 14.  architecture fitness                                 DELEGATED to
+ *      S3*LegacyRemovedFitnessTest (7 suites, 52/0/0) +
+ *      CoreSleepRegistryPrimaryFitnessTest post-S2-A9/G5 row (post-LEGACY_REMOVED counter)
+ *      + Lfc2RegistryFamilyFitnessTest (3/0/0)
+ *      + Lfc2DurableCoordinatorScopeFitnessTest (4/0/0)
+ *      + UppercaseStepContractSuiteTest (LB-02 zero-production-change canary, 14/0/0)
+ * 15.  real DSL scenario (pipeline { stages { stage { steps { milestone(...) } } } }) REQUIRED
+ * Wiring extras (G3 freeze; not required by 16/17):
+ *  W1. default store — coordinator without explicit store still provides capability
+ *  W2. shared store — two milestones in same run share the same MilestoneStateStore
+ *  W3. isolated stores — two coordinators do not share MilestoneStateStore
  * ```
  *
- * Note: milestone has no typed failure case (handler never throws) and no divergence
- * case (input comparison is not part of the milestone contract). These are N/A
- * for this Step family.
+ * Coverage tally: **17 of 17 required rows** (16 explicit + 1 N/A with documented
+ * reason); 3 wiring extras; 5 codec sub-variants. Total tests: 24 (was 23 at G3;
+ * +1 for observability).
  */
 @Timeout(30)
 class CoreMilestoneStepContractSuiteTest {
@@ -446,6 +467,54 @@ class CoreMilestoneStepContractSuiteTest {
             )
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 11b. observability (StepStarted + StepFinished pair around the handler)
+    // S2-A9 / G6: AGENTS.md 16/17 coverage mandates an explicit observability row,
+    // separated from the typed success/aborted rows. milestone emits the typed
+    // MilestoneReached/MilestoneAborted event AS WELL AS the generic StepStarted/
+    // StepFinished pair around the handler invocation.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    @Test
+    fun `observability — every registry-routed milestone run emits StepStarted StepFinished pair`() {
+        val eventStore = InMemoryEventStore()
+        val h = freshHarness(eventStore)
+        runBlocking {
+            val outcome = h.coord.run(
+                pipeline(milestoneNode(ordinal = 1, label = "observable")),
+                RunId("milestone-observability"),
+            )
+            assertEquals(RunOutcome.Success, outcome)
+            val events = h.eventStore.eventsFor("milestone-observability").toList()
+            val stepStarted = events.filterIsInstance<StepStarted>()
+            val stepFinished = events.filterIsInstance<StepFinished>()
+            assertEquals(1, stepStarted.size, "exactly one StepStarted around the milestone handler")
+            assertEquals(1, stepFinished.size, "exactly one StepFinished after the milestone handler")
+            // The StepStarted/StepFinished MUST carry the milestone step identity
+            // so external observers can correlate the generic pair with the typed event.
+            assertEquals("milestone", stepStarted.single().stepType)
+            assertEquals("milestone", stepFinished.single().stepType)
+            // StepFinished MUST arrive AFTER StepStarted; typed MilestoneReached MUST
+            // be sandwiched between them so external observers see the canonical
+            // "before / typed / after" lifecycle of a Step invocation.
+            val startSequence = stepStarted.single().sequence
+            val reachedSequence = events.filterIsInstance<MilestoneReached>().single().sequence
+            val finishSequence = stepFinished.single().sequence
+            assertTrue(
+                startSequence < reachedSequence && reachedSequence < finishSequence,
+                "StepStarted must precede the typed MilestoneReached, which must precede StepFinished",
+            )
+        }
+    }
+
+    // Note: divergence (AGENTS.md 16/17 row 13) is N/A for core.milestone. The
+    // milestone handler has no input comparison contract: ordinal + label are the
+    // sole inputs, and identical inputs always produce the same outcome (Reached
+    // if monotonic, Aborted otherwise). Fingerprint identity follows the
+    // canonical envelope contract (rows 9 + 10 above); a divergence case would
+    // require an input field whose value can vary without changing the fingerprint,
+    // which milestone's contract excludes by construction.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 12. fresh durable

@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """Mechanical verifier for the B10 / W0 receipt.
 
+The receipt is a statement about a **moment** (`fbcbc51f..a9aca7aa`), not about the
+current working tree. Every check therefore reads that commit range with git
+rather than reading files off disk. The first version read the tree, and it
+expired the moment the ADR it guards was legitimately accepted and the moment the
+branch advanced past W0. A verifier that dies when the decision it protects is
+actually taken is worse than no verifier, because it trains you to delete it.
+
 Three independent jobs:
 
-  1. ASSERT the properties the receipt claims about the slice. These are chosen
-     so that they would silently regress: the port staying inside the domain
-     module, the closed algebra staying closed, no production wiring existing
-     yet, and the ADR not having been silently promoted to `accepted`.
-
+  1. ASSERT the properties the receipt claims about the W0 slice: the port stayed
+     inside the domain module, the algebra stayed closed, no production wiring
+     existed yet, the slice stayed additive, and the ADR was still `proposed`
+     *at W0*.
   2. Re-derive the module totals from the archived tarball instead of trusting
      the numbers written in the receipt.
+  3. Check that the cited pre-existing failure was still legitimately reusable at
+     W0, so a green-looking substitute XML cannot be swapped in.
 
-  3. Check the reused pre-existing failure is still honestly reused. The receipt
-     does not re-run `Lfc0GlobalStateFitnessTest`; it points at evidence captured
-     earlier. That is only valid while the inputs which decide that failure are
-     unchanged, so the verifier asserts exactly that.
-
-Exit 0 iff all hold. Every failure prints, so a negative control is just a
-mutation of the tree, the receipt or the archived evidence.
+Exit 0 iff all hold. Every failure prints, so a negative control is a mutation of
+the tree, the receipt, or the archived evidence.
 
     python3 verify-b10-w0-receipt.py
 """
@@ -35,12 +38,19 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", "..", ".."))
 RECEIPT = os.path.join(REPO, "docs/v2/07-uat/B10_W0_INNER_SEAM_RECEIPT.md")
-CONTRACT = os.path.join(
-    REPO, "v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyInvoker.kt"
-)
-ADR = os.path.join(REPO, "docs/v2/04-adrs/ADR-0081-body-invoker-continuation-model.md")
-BASE = "fbcbc51f"  # origin/main after Lane R
-ORIGIN_OF_REUSED_EVIDENCE = "2b391e76"
+
+# Overridable so the history-based checks can be controlled: a control points
+# W0_CODE at a commit that deliberately violates one property and requires the
+# corresponding check to fire. Restoring the default restores the real receipt.
+BASE = os.environ.get("B10_W0_BASE", "fbcbc51f")       # origin/main after Lane R
+W0_CODE = os.environ.get("B10_W0_CODE", "a9aca7aa")    # the W0 code commit described
+ORIGIN_OF_REUSED = os.environ.get("B10_W0_REUSED_FROM", "2b391e76")
+
+REL_CONTRACT = "v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyInvoker.kt"
+REL_CONTRACT_TEST = "v2/pipeline-domain/src/test/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyInvokerSeamTest.kt"
+REL_ADR = "docs/v2/04-adrs/ADR-0081-body-invoker-continuation-model.md"
+REL_CAPABILITIES = "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Capabilities.kt"
+
 REUSED = os.path.join(
     REPO,
     "docs/v2/07-uat/evidence/lane-r/raw/xml/module-suites/base-module-suites/"
@@ -55,36 +65,54 @@ def check(condition: bool, message: str) -> None:
         failures.append(message)
 
 
-def read(path: str) -> str:
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
-
-
 def git(*args: str) -> str:
     return subprocess.run(
         ["git", "-C", REPO, *args], capture_output=True, text=True, check=True
     ).stdout
 
 
+def show(commit: str, path: str) -> str:
+    """Content of path at commit, or '' when absent there."""
+    try:
+        return git("show", f"{commit}:{path}")
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def files_matching(commit: str, pattern: str) -> list[str]:
+    """Paths under the commit whose content matches the regex.
+
+    git grep exits 1 when there is no match, which is the expected answer for a
+    forbidden pattern and must not be raised as an error.
+    """
+    result = subprocess.run(
+        ["git", "-C", REPO, "grep", "-l", "-E", pattern, commit, "--", "*.kt"],
+        capture_output=True, text=True,
+    )
+    if result.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout)
+    return sorted(
+        line.split(":", 1)[1] for line in result.stdout.splitlines() if ":" in line
+    )
+
+
 # --------------------------------------------------------------------------
-# 1. Slice shape: the port lives in the domain module and nothing was wired
+# 1. Slice shape, evaluated at W0
 # --------------------------------------------------------------------------
 
-check(os.path.isfile(CONTRACT), "BodyInvoker.kt is not in pipeline-domain")
+contract = show(W0_CODE, REL_CONTRACT)
+check(contract != "", "BodyInvoker.kt is not in pipeline-domain at W0")
 
-# Hexagonal direction: a port in the domain module may not import adapters,
-# the coordinator, the journal, the dispatcher, or the compiler.
+# Hexagonal direction: a port in the domain module may not import adapters, the
+# coordinator, the journal, the dispatcher, or the compiler.
 ALLOWED_IMPORT_PREFIXES = ("dev.rubentxu.pipeline.v2.domain.", "kotlinx.serialization")
-if os.path.isfile(CONTRACT):
-    outward = [
-        line.strip()
-        for line in read(CONTRACT).splitlines()
-        if line.startswith("import ")
-        and not line.strip()[len("import ") :].startswith(ALLOWED_IMPORT_PREFIXES)
-    ]
-    check(not outward, f"domain port imports an outer layer: {outward}")
-
-contract = read(CONTRACT) if os.path.isfile(CONTRACT) else ""
+outward = [
+    line.strip()
+    for line in contract.splitlines()
+    if line.startswith("import ")
+    and not line.strip()[len("import ") :].startswith(ALLOWED_IMPORT_PREFIXES)
+]
+check(not outward, f"domain port imports an outer layer: {outward}")
 
 # The contract surface the receipt promises, as properties rather than names.
 check("value class BodyRef(val encoded: String)" in contract,
@@ -99,7 +127,7 @@ check("Boolean" not in contract,
 check("enum class CancellationReason" in contract, "CancellationReason is not closed")
 check("sealed interface ExecutionContextPatch" in contract,
       "ExecutionContextPatch is not a sealed closed algebra")
-check('require(attempt?.index?.let { it >= 1 } ?: true)' in contract,
+check("require(attempt?.index?.let { it >= 1 } ?: true)" in contract,
       "the attempt-index invariant is not enforced")
 check("fun interface BodyInvoker" in contract, "BodyInvoker is not a single typed seam")
 check("suspend fun invoke(body: BodyRef, context: BodyInvocationContext): BodyOutcome" in contract,
@@ -108,48 +136,33 @@ check("suspend fun invoke(body: BodyRef, context: BodyInvocationContext): BodyOu
 for factory in ("fun childBody(", "fun branchBody(", "fun namedBody("):
     check(factory in contract, f"BodyRefs.{factory.strip()} missing: refs are not derivable")
 
-# Zero production wiring: only the contract and its own test may name the key.
-holder_files = sorted(
-    os.path.relpath(p, REPO)
-    for p in glob.glob(os.path.join(REPO, "v2/**/*.kt"), recursive=True)
-    if "BODY_INVOKER_CAPABILITY" in read(p)
-)
-check(
-    holder_files
-    == [
-        "v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyInvoker.kt",
-        "v2/pipeline-domain/src/test/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyInvokerSeamTest.kt",
-    ],
-    f"BODY_INVOKER_CAPABILITY is wired somewhere new: {holder_files}",
-)
+# Zero production wiring at W0: only the contract and its own test may name the key.
+holders = files_matching(W0_CODE, "BODY_INVOKER_CAPABILITY")
+check(holders == sorted([REL_CONTRACT, REL_CONTRACT_TEST]),
+      f"BODY_INVOKER_CAPABILITY was wired somewhere new at W0: {holders}")
 
-# The forbidden collection must not exist, in this slice or anywhere else.
-forbidden = [
-    os.path.relpath(p, REPO)
-    for p in glob.glob(os.path.join(REPO, "v2/**/*.kt"), recursive=True)
-    if re.search(r"dispatch(Retry|Timeout|Parallel|Dir)Block", read(p))
-]
-check(not forbidden, f"a dispatch*Block collection exists: {forbidden}")
+# The forbidden collection must not have existed at W0, in this slice or anywhere.
+forbidden = files_matching(W0_CODE, r"dispatch(Retry|Timeout|Parallel|Dir)Block")
+check(not forbidden, f"a dispatch*Block collection existed at W0: {forbidden}")
 
 # The slice is additive: adding the port must not have edited the engine.
 status = [
     line.split("\t")
-    for line in git("diff", "--name-status", f"{BASE}..HEAD").strip().splitlines()
+    for line in git("diff", "--name-status", f"{BASE}..{W0_CODE}").strip().splitlines()
 ]
-check(len(status) == 4, f"the slice touches {len(status)} files, expected 4")
+check(len(status) == 4, f"the W0 slice touches {len(status)} files, expected 4")
 check(all(row[0] == "A" for row in status),
-      f"the slice is not additive: {[r for r in status if r[0] != 'A']}")
+      f"the W0 slice is not additive: {[r for r in status if r[0] != 'A']}")
 
-# The ADR is proposed, and the receipt says so. Accepting it is not part of a merge.
-if os.path.isfile(ADR):
-    check(re.search(r"^status:\s*proposed\s*$", read(ADR), re.M) is not None,
-          "ADR-0081 is no longer `proposed` (acceptance is a design gate, not this PR)")
-else:
-    failures.append("ADR-0081 is missing")
+# The ADR was `proposed` at W0. Asserted at W0 rather than in the tree:
+# W0 landed it proposed and a later commit may legitimately accept it.
+adr_at_w0 = show(W0_CODE, REL_ADR)
+check(re.search(r"^status:\s*proposed\s*$", adr_at_w0, re.M) is not None,
+      f"ADR-0081 was not `proposed` at {W0_CODE}")
 
-receipt = read(RECEIPT)
+receipt = open(RECEIPT, encoding="utf-8").read()
 check("ADR-0081 status: **proposed**" in receipt,
-      "the receipt does not declare the ADR as proposed")
+      "the receipt does not declare the ADR as proposed at W0")
 
 # --------------------------------------------------------------------------
 # 2. Module totals, re-derived from the archived tarball
@@ -212,15 +225,14 @@ if os.path.isfile(SEAM):
     check(got == (8, 0, 0), f"BodyInvokerSeamTest is {got}, expected (8, 0, 0)")
 
 # --------------------------------------------------------------------------
-# 3. The reused pre-existing failure is still legitimately reusable
+# 3. The reused pre-existing failure was still legitimately reusable at W0
 # --------------------------------------------------------------------------
 
-CAPABILITIES = "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Capabilities.kt"
-diff = git("diff", "--stat", ORIGIN_OF_REUSED_EVIDENCE, "HEAD", "--", CAPABILITIES)
+diff = git("diff", "--stat", ORIGIN_OF_REUSED, W0_CODE, "--", REL_CAPABILITIES)
 check(
     diff.strip() == "",
-    f"{CAPABILITIES} changed since the reused evidence was captured, so the "
-    "pre-existing failure must be re-run rather than cited",
+    f"{REL_CAPABILITIES} changed between {ORIGIN_OF_REUSED} and {W0_CODE}, so the "
+    "pre-existing failure had to be re-run rather than cited",
 )
 
 check(os.path.isfile(REUSED), "the reused base XML for the pre-existing failure is missing")
@@ -231,7 +243,7 @@ if os.path.isfile(REUSED):
 
 # --------------------------------------------------------------------------
 
-print(f"slice files: {len(status)} | archived evidence: "
+print(f"W0 slice files: {len(status)} | archived evidence: "
       f"{len(glob.glob(os.path.join(HERE, 'raw/**/*'), recursive=True))}")
 if failures:
     print("FAIL:")
@@ -239,7 +251,7 @@ if failures:
         print(f"  {f}")
     sys.exit(1)
 
-print("OK: port is in the domain module, closed algebra intact, zero production wiring")
-print("OK: slice is additive, no dispatch*Block collection, ADR still proposed")
+print("OK: port was in the domain module, closed algebra intact, zero production wiring at W0")
+print("OK: slice was additive, no dispatch*Block collection, ADR was still proposed at W0")
 print("OK: module totals re-derived from the archived tarball")
-print("OK: the cited pre-existing failure is still valid to reuse")
+print("OK: the cited pre-existing failure was still valid to reuse at W0")

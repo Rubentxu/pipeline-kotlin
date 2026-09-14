@@ -960,10 +960,11 @@ remain out of B10 scope and are not regressions from this work.
 **Status: READY_FOR_RELEASE, awaiting user merge-to-main.**
 
 Branch `origin/refactor/lfc2-e1-b11-context-blocks`:
-- HEAD: `2131e6f7897f9c337910435e2278701fa2276416`  (release-status commit)
-- HEAD~1: `9158e033d289c7694a82ad090046eb7807f63d3d`  (verify-report)
-- HEAD~2: `0b3d4c6bc35405a80c0a391e1d59a4c8c649f701`  (receipt docs+evidence)
-- HEAD~3: `cf541f40eca5f4ae9a7ff6d6176735d5557ab0a7`  (W3b cherry-pick on top of B11 frozen family receipt)
+- HEAD: `f1becff4650853cf744a05e91039174e6a5140eb`  (handoff commit)
+- HEAD~1: `2131e6f7897f9c337910435e2278701fa2276416`  (release-status)
+- HEAD~2: `9158e033d289c7694a82ad090046eb7807f63d3d`  (verify-report)
+- HEAD~3: `0b3d4c6bc35405a80c0a391e1d59a4c8c649f701`  (receipt docs+evidence)
+- HEAD~4: `cf541f40eca5f4ae9a7ff6d6176735d5557ab0a7`  (W3b cherry-pick on top of B11 frozen family receipt)
 - Base: `a66d7f6c28ea5aa5e9c0c81b3a55f5d4ac06fb12`  (B10 W1d evidence, still on main)
 
 ### What changed

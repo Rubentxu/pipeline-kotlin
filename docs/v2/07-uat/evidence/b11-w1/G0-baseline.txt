@@ -1,0 +1,5 @@
+B11 G0 baseline — 2026-09-14T09:04:36Z
+fork_point=a66d7f6c28ea5aa5e9c0c81b3a55f5d4ac06fb12
+subject_branch=refactor/lfc2-e1-b11-context-blocks
+worktree=/var/home/rubentxu/Proyectos/kotlin/pipeline-b11
+ledger_event_count=1

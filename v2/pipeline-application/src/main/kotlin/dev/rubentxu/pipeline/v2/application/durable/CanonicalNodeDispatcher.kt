@@ -6,7 +6,18 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 
-/** Runtime dependencies required by the canonical core step dispatcher. */
+/**
+ * Runtime dependencies required by the canonical core step dispatcher.
+ *
+ * [bodyInvoker] is the B11 / W2 seam: a per-run [CanonicalBodyInvokerAdapter] that re-enters
+ * the canonical body machinery (`invokeBodyChildren`) for block-step handlers that declare
+ * `BODY_INVOKER_CAPABILITY`. Defaulted to `null` so every pre-existing constructor site
+ * (legacy dispatch, registry-aware dispatch, scripted runners, and ~25 unit tests)
+ * compiles bit-equivalent. When `null` the capability bridge does NOT register
+ * `BODY_INVOKER_CAPABILITY` — admission fails closed for any handler that declares it,
+ * which is the correct behaviour: only runs that explicitly wire the adapter expose
+ * the body-reentry seam.
+ */
 data class CanonicalRuntimeContext(
     val opId: OpId,
     val runId: String,
@@ -16,6 +27,7 @@ data class CanonicalRuntimeContext(
     val shOptions: ShOptions,
     val controlDirRoot: Path?,
     val eventSink: EventSink,
+    val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
 )
 
 /** Dispatches the supported canonical core nodes through their durable runtime paths. */

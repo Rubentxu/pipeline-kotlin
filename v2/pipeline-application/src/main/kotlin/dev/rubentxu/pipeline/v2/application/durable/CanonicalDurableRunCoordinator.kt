@@ -474,6 +474,14 @@ class CanonicalDurableRunCoordinator(
     // fail-closed laws. Appended last so existing positional call-sites compile unchanged.
     private val bodyPolicyResolver: BodyPolicyResolver =
         StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING),
+
+    // B11 / W2: the body-reentry adapter bound under BODY_INVOKER_CAPABILITY (ADR-0073 / ADR-0081 D1).
+    // Per-run lifetime: a fresh adapter is constructed when no caller injects one; the canonical
+    // coordinator passes it into CanonicalRuntimeContext for every dispatch so the capability
+    // bridge exposes the seam and any registered handler can re-enter the engine through the
+    // shared body-child loop. When the caller wires a custom adapter (e.g. tests) the
+    // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
+    private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
 ) {
     /** Active context stack for body scope tracking (EM-4). */
 
@@ -867,6 +875,11 @@ class CanonicalDurableRunCoordinator(
                     shOptions = stageShOptions,
                     controlDirRoot = controlDirRoot,
                     eventSink = eventSink,
+                    // B11 / W2: surface the per-run body-reentry adapter under
+                    // BODY_INVOKER_CAPABILITY for any block-step handler that declares it.
+                    // Fail-closed admission (null bodyInvoker → no capability) is preserved
+                    // for legacy callers because the field defaults to null on the context.
+                    bodyInvoker = bodyInvokerAdapter,
                 )
 
                 // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
@@ -1565,6 +1578,28 @@ class CanonicalDurableRunCoordinator(
             }
         }
 
+        // B11 / W2: bind the body-reentry seam by registering the body with the adapter.
+        // The runner closure re-enters the canonical shared body loop (`invokeBodyChildren`)
+        // so any future block-step handler that declares `BODY_INVOKER_CAPABILITY` can
+        // execute its body through the engine exactly as the canonical loop does today.
+        // The canonical loop below still drives production execution — the seam is
+        // dormant until a registry-driven handler invokes it. The single
+        // shared body-child iteration site (BodyChildLoopInventory) stays inside
+        // `invokeBodyChildren`; this adapter NEVER iterates body children itself.
+        val bodyRef = dev.rubentxu.pipeline.v2.domain.step.BodyRefs.childBody(parentBodyPath)
+        bodyInvokerAdapter.open(bodyRef) {
+            invokeBodyChildren(
+                block = block,
+                runId = runId,
+                stageName = stageName,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                childShOptions = childShOptions,
+                parentBodyPath = parentBodyPath,
+                executionContext = contextInBody,
+            )
+        }
+
         try {
             // B13/E-EM-11: `core.retry` re-dispatches the SAME body per attempt.
             // Each attempt appends a deterministic BlockSegment ("{attempt}:retry-attempt")
@@ -1653,6 +1688,10 @@ class CanonicalDurableRunCoordinator(
                 }
             }
         } finally {
+            // B11 / W2: close the body-reentry seam unconditionally so a thrown outcome
+            // still drains the adapter's `openBodies` map. Mirrors the existing DirExited /
+            // TimestampsExited emission: the bracketed finally must always run.
+            bodyInvokerAdapter.close(bodyRef)
             if (scope is BlockShellScope.Directory) {
                 eventSink.append(
                     DirExited(

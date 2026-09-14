@@ -27,6 +27,7 @@ import dev.rubentxu.pipeline.v2.application.MILESTONE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.MilestoneOperations
 import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -210,6 +211,16 @@ open class CanonicalRuntimeCapabilityAccess(
         milestoneStateStore?.let { store ->
             val milestoneOps: MilestoneOperations = MilestoneOperationsAdapter(store)
             builder[MILESTONE_OPERATIONS_CAPABILITY] = milestoneOps
+        }
+        // B11 / W2: body-reentry seam (ADR-0073 / ADR-0081 D1).
+        // BODY_INVOKER_CAPABILITY is exposed ONLY when the canonical runtime context carries
+        // a `bodyInvoker` adapter. The adapter is the engine-side implementation of the
+        // `BodyInvoker` port and is the single reentry point for any future block-step
+        // handler that declares the capability in its StepContract. A handler that asks for
+        // it without the adapter present fails closed at capability admission, exactly like
+        // every other capability in this bridge.
+        context.bodyInvoker?.let { adapter ->
+            builder[BODY_INVOKER_CAPABILITY] = adapter
         }
         return builder.toMap()
     }

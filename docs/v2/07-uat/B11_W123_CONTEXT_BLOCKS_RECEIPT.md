@@ -338,3 +338,38 @@ After B11+W3b release, open a separate `bug` / `compiler-2` finding:
   child node count end-to-end.
 
 WU4 is documentation-only / evidence-only; compiler hardening is out of scope.
+
+## 10. Release status (WU5 verify-report)
+
+| Verification stage | Verdict | Evidence |
+| --- | --- | --- |
+| sddk-verify (orchestrator-issued lightweight, post-WU4) | **PASS** | `docs/v2/07-uat/evidence/b11-w1/verify-report.md` (1, 2, 3, 4, 5, 6, 7) |
+| sddk-debt-verify (orchestrator-issued) | **PASS** | `docs/v2/07-uat/evidence/b11-w1/verify-report.md` §6 (D1..D10) + this §10 |
+| sddk-release (local Git publication) | **DONE** | push to `origin/refactor/lfc2-e1-b11-context-blocks` at `9158e033` |
+| sddk-archive (syncing delta specs into `openspec/specs/`) | **NOT APPLICABLE** for this cycle | The CAS `proposal.md` / `spec.md` / `tasks.md` referenced in §1 were ephemeral worktree state and have been purged; the receipt, evidence file, and verify-report ARE the canonical durable artefacts for this cycle |
+
+### Release-blocking items
+
+None blocking the technical delivery. The branch is at:
+
+```
+HEAD:  9158e033d289c7694a82ad090046eb7807f63d3d  (origin/refactor/lfc2-e1-b11-context-blocks)
+HEAD~1: cf541f40eca5f4ae9a7ff6d6176735d5557ab0a7  (W3b cherry-pick)
+HEAD~2: e48096a7e7fbf1c639685331d2718af871b37e05  (W1 W2 W3 family receipt)
+Base:  a66d7f6c28ea5aa5e9c0c81b3a55f5d4ac06fb12  (B10 W1d evidence, unchanged on main)
+```
+
+The merge to `main` and the v0.29.x tag step are reserved for the user (the orchestrator does
+not perform destructive merges). The branch is ready for that step (`HEAD~1..HEAD` adds 3
+non-conflicting commits; `e48096a7..cf541f40` adds the W3b fix which has no incoming
+dependency on items outside its scope).
+
+### Handoff for the merging step
+
+1. `git -C /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin fetch origin`
+2. `git -C /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin checkout refactor/lfc2-e1-b11-context-blocks`
+3. Open a PR with the receipt (this document) linked. Pre-existing 26 failures are flagged as
+   pre-existing (worktree reproduction method on `a66d7f6c` per §9.8 table); W3b introduces 0.
+4. Tag the merge commit as `v0.29.0-B11-W3b` (or whichever version fits the B11 release plan).
+5. Update `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` if a ledger flip is implied (out of scope
+   for this cycle; B11 does not flip any legacy counter).

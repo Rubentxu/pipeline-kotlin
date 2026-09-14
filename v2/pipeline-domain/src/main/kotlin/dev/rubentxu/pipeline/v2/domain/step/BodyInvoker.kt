@@ -101,6 +101,11 @@ sealed interface BodyOutcome {
  * journal, registry, coroutine scope, or process executor (CTX-P law). The
  * engine adapter projects [patch] into the canonical scope structure
  * (`BlockShellScope`-equivalent); the port does not reimplement scope logic.
+ *
+ * [decorator] propagates non-context-dimension projection state across the
+ * reentry seam (B11 / W1d-W2). The default [BodyDecorator.None] keeps every
+ * existing call site unchanged: sequential, retrying, credential-leased and
+ * plain scoped bodies do not push a decorator frame and stay bit-equivalent.
  */
 data class BodyInvocationContext(
     /**
@@ -112,6 +117,15 @@ data class BodyInvocationContext(
 
     /** Typed execution-scope patch (`dir` / `withEnv` / `withCredentials` projections). */
     val patch: ExecutionContextPatch = ExecutionContextPatch.None,
+
+    /**
+     * Non-context-dimension decorator (B11 / W1d-W2): carries forward the fact
+     * that the body is inside an active scope whose projection declares no
+     * `ContextKind` (today: [BodyContextProjection.Timestamps]). Defaults to
+     * [BodyDecorator.None] — adding the field does not change the equality
+     * semantics of any pre-existing call site.
+     */
+    val decorator: BodyDecorator = BodyDecorator.None,
 ) {
     init {
         require(attempt?.index?.let { it >= 1 } ?: true) { "AttemptSegment.index must be >= 1" }

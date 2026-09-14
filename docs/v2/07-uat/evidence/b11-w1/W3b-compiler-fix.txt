@@ -1,0 +1,171 @@
+B11 W3b — compiler body-exhaustiveness companion fix — evidence
+
+branch:        refactor/lfc2-e1-b11-context-blocks
+subject_head:  e48096a7e7fbf1c639685331d2718af871b37e05 (frozen at W3b trigger)
+cherry_pick:   cf541f40eca5f4ae9a7ff6d6176735d5557ab0a7 (Lane C commit 24bf99a5 fast-forwarded onto B11)
+lane_c_sha:    24bf99a5c08da74e253b70d0304359b63efebfb2
+lane_c_subj:   fix(lfc2-b11): compile WithEnv and Timestamps body in blockStepNode
+base:          a66d7f6c28ea5aa5e9c0c81b3a55f5d4ac06fb12 (B10 W1d evidence, unchanged)
+
+## 1. Defect summary
+
+In `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt`,
+the inner `when (step)` in `blockStepNode(...)` extracted body children for `CatchError`,
+`WarnError`, `TimeoutBlock`, `RetryBlock`, `Dir`, `WithCredentialsBlock`, but fell through to
+`else -> emptyList()` for `StepSpec.Timestamps(steps)` and `StepSpec.WithEnv(overrides, steps)`.
+
+The outer dispatch already routed both forms to `blockStepNode(...)` correctly, and
+`blockPayload()` already serialised both kinds; the defect was local to the body-extraction
+inner-when. Result on the real DSL compile path:
+
+  timestamps { sh("...") }   -> BlockStepNode(pluginStepId=core.timestamps, body=[])   // child DROPPED
+  withEnv    { sh("...") }   -> BlockStepNode(pluginStepId=core.withEnv,    body=[])   // child DROPPED
+
+The block entered and exited (events fired, overlay pushed) while zero user steps were compiled
+or executed. Silent fail-open child loss on 2 of the 3 B11 acceptance-surface blocks.
+
+## 2. Pre-existing proof at base `a66d7f6c`
+
+| Item | Value |
+| --- | --- |
+| File | `DslCompiledPipelineCompiler.kt` |
+| Defective lines | 252–259 (inner body-extraction `when`, missing Timestamps + WithEnv cases) |
+| File SHA-256 at base | `f4d19b681c377687b48719e57873550928fcac6bd16fd3d8216d21cb5ee1544b` |
+| B11 commits touching this file | none (`git diff a66d7f6c..e48096a7 --name-only` returns nothing matching the compiler) |
+| W3b delta touching the compiler | +2 lines (Timestamps + WithEnv cases) and the new architecture test |
+
+B11's HF1 runtime tests (`B11ContextBlocksRuntimeTest`, `CanonicalBodyInvokerAdapterTest`) fed
+`BlockStepNode` programmatically with explicit bodies, so they could not see a compile-time
+drop one seam earlier. The new architecture test
+(`Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest`) uses Kotlin reflection to enumerate
+every body-bearing `StepSpec` variant, compile a minimal pipeline for each, and assert
+`.body.isNotEmpty()` and that the body contains the expected child id. Adding a new
+body-bearing `StepSpec` without wiring it into the inner-when now fails the test loudly.
+
+## 3. Fix (W3b)
+
+```diff
+--- a/v2/pipeline-application/src/main/kotlin/.../DslCompiledPipelineCompiler.kt
++++ b/v2/pipeline-application/src/main/kotlin/.../DslCompiledPipelineCompiler.kt
+@@ -256,6 +256,8 @@ object DslCompiledPipelineCompiler {
+             is StepSpec.RetryBlock -> step.steps
+             is StepSpec.Dir -> step.steps
+             is StepSpec.WithCredentialsBlock -> step.steps
++            is StepSpec.WithEnv -> step.steps
++            is StepSpec.Timestamps -> step.steps
+             else -> emptyList()
+         }, "$parentToken/${tokenPrefix}-body-$occurrence")
+```
+
+W3b also adds `v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest.kt`
+(316 lines, 7 tests) — the closed-family invariant test.
+
+W3b does NOT touch `BodyInvoker`, `BodyExecutionContextDerivation`, `BodyExecutionPolicy`,
+`CanonicalDurableRunCoordinator`, `CanonicalBodyInvokerAdapter`, or
+`CanonicalRuntimeCapabilityAccess`. The B11 critical path is preserved.
+
+## 4. Smoke evidence (installDist binary, fresh --db / --control-root, three real .pipeline.kts scripts)
+
+| Smoke | Block(s) | Inner child | Observable file | Content | JSONL events |
+| --- | --- | --- | --- | --- | --- |
+| a | `withEnv { sh(...) }` | `printenv B11C_WITHENV_KEY > /tmp/b11c-withenv.txt` | `/tmp/b11c-withenv.txt` (21 bytes) | `overridden-by-withenv` | StepStarted + StepFinished for `withenvsmoke/withenv-body-0/sh-0` |
+| b | `timestamps { sh(...) }` | `date > /tmp/b11c-timestamps.txt` | `/tmp/b11c-timestamps.txt` (29 bytes) | `lun 14 sep 2026 14:28:34 CEST` | StepStarted + StepFinished for `timestampssmoke/timestamps-body-0/sh-0` |
+| c | `dir("/tmp") { withEnv { timestamps { sh(...) } } }` | `pwd > /tmp/b11c-nested-pwd.txt; printenv B11C_NESTED_KEY > /tmp/b11c-nested-env.txt; date > /tmp/b11c-nested-ts.txt` | three files (4, 14, 29 bytes) | `/tmp`, `nested-withenv`, full timestamp | StepStarted + StepFinished for `nestedcontextsmoke/dir-body-0/withenv-body-0/timestamps-body-0/sh-0` plus DirEntered / DirExited |
+
+Each smoke ran green (`Pipeline finished with SUCCESS` and `outcome:"success"` in the JSONL
+event stream). Before W3b the bodies were empty, so the inner `sh` step never started and
+the observable files were not written; the pipeline still reported success because the
+block entered and exited normally while zero user work executed.
+
+## 5. Verify matrix (fresh XML, canary-verified on cf541f40)
+
+| Suite | Tests | Fail | Err |
+| --- | ---: | ---: | ---: |
+| `B11ContextBlocksRuntimeTest` (HF1 in-process) | 7 | 0 | 0 |
+| `CanonicalBodyInvokerAdapterTest` (HF1) | 16 | 0 | 0 |
+| `Lfc2B11ExternalScopedRoutingDefenseFitnessTest` | 8 | 0 | 0 |
+| `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` (NEW, W3b) | 7 | 0 | 0 |
+| `Lfc2ConcreteBodyRoutingDebtFitnessTest` | 16 | 0 | 0 |
+| `Lfc2BodyExecutionPolicyFitnessTest` | 10 | 0 | 0 |
+| `Lfc2RegistryFamilyFitnessTest` | 3 | 0 | 0 |
+| `Lfc2DurableAggregateIdentityFitnessTest` | 5 | 0 | 0 |
+| `Lfc2DurableCoordinatorScopeFitnessTest` | 4 | 0 | 0 |
+| `BodyExecutionContextDerivationTest` (HF0 pure) | 25 | 0 | 0 |
+| `BodyExecutionPolicyTest` (HF0) | 28 | 0 | 0 |
+| `BodyInvokerSeamTest` (HF0) | 8 | 0 | 0 |
+| **TOTAL** | **137** | **0** | **0** |
+
+### 5.1 W3b contract-test cases (Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest)
+
+```text
+  closed family: outer dispatch routes exactly the body-bearing variants the factory covers
+  TimeoutBlock        compiles to BlockStepNode with non-empty body
+  RetryBlock          compiles to BlockStepNode with non-empty body
+  Dir                 compiles to BlockStepNode with non-empty body
+  WithCredentialsBlock compiles to BlockStepNode with non-empty body
+  WithEnv             compiles to BlockStepNode with non-empty body
+  Timestamps          compiles to BlockStepNode with non-empty body
+```
+
+### 5.2 XML SHA-256 (canary evidence; canary regenerated by wiping + re-running the verify matrix on cf541f40)
+
+```text
+sha256:4f8e35eb985c51882ede3345bfba991575a3a4f43f24df8efb3ea37bd67ed5bf  Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest.xml
+sha256:e9898df04e55ed837a7d84eebe0a149fff7012c9a9e061e0a92aecdab9ccf54a  B11ContextBlocksRuntimeTest.xml
+sha256:3f2b0ef0f3438638d85af7cc6af1eba3e6bbad8baa8c75b65ea8b48dabb23848  CanonicalBodyInvokerAdapterTest$InvokeContract.xml
+sha256:a6cfff678bfc51eef52c329e6160df18dfeb65fed37b2deb3f65bd08cd499faf  CanonicalBodyInvokerAdapterTest$OpenCloseContract.xml
+sha256:5e989bbc1556bbf24d70426c633685c81c3f493cfc41259da5433525fb5aadd2  CanonicalBodyInvokerAdapterTest$BodyRefEncoding.xml
+sha256:880153c11837090c453e37661a9fc97ee5d3d44a4946ce425cd2ad17575969df  CanonicalBodyInvokerAdapterTest$RunnerClosureSemantics.xml
+sha256:8f603420daba8a66774bd860f0b6d0ddec9395a5f503ae1d8c4a7b45533ed028  CanonicalBodyInvokerAdapterTest$SingleSharedLoopLaw.xml
+sha256:5b2c53b9b157872460426f5916cb91105e45f97405e83b86a193de7b71968210  Lfc2ConcreteBodyRoutingDebtFitnessTest.xml
+sha256:b14eaf7fe32165e5c53f365657f972fdb74c5ec6936bc90b4ae0ed8dd40bba37  Lfc2B11ExternalScopedRoutingDefenseFitnessTest.xml
+sha256:7ebf48982423d053e67382f00fb9a1a69c2c8fac9a422c7f3ad4a74eb64ae908  Lfc2BodyExecutionPolicyFitnessTest.xml
+sha256:222ead83aa293a62e876e04f1182b51fabdefd77e04d388a8873437b96aa1c9a  Lfc2RegistryFamilyFitnessTest.xml
+sha256:19128fde2a6f70360f465f6b8991b45470ba609dbae61afaf79c9affe46ff1a6  Lfc2DurableAggregateIdentityFitnessTest.xml
+sha256:7ca89c920d2e6195a19a5367c64e608510c66edf4b9f075f446e8da2ecb0a566  Lfc2DurableCoordinatorScopeFitnessTest.xml
+sha256:40a006e5328a4d6ce57f6a0b3b441a2da3237db946aef2b2fce974e30c4f97f8  BodyInvokerSeamTest.xml
+sha256:f0d70a7f42f54b7bc0f2589c9338a504e6f491ec8b29d1e340b081637e860b53  BodyExecutionContextDerivationTest$EnvironmentDeterminism.xml
+sha256:7b0487386cb1c6c3e9bb8824bdeb775ab5a5d09f2c2a61870efeae2870928778  BodyExecutionPolicyTest$RegistryAuthority.xml
+```
+
+Note: digests embed the JUnit XML run timestamp; re-running the same tests on the same head
+yields a different timestamp → different SHA-256. The test counts and outcomes (137 tests,
+failures=0, errors=0 across all 12 verify-matrix suites) are stable across runs.
+
+## 6. Invariants (re-asserted post-W3b, no regression)
+
+```text
+ConcreteBodyRoutingDebt.value.total    = 0      (unchanged, enforced by green Lfc2ConcreteBodyRoutingDebtFitnessTest)
+HISTORICAL_CEILING                     = 18     (unchanged, IMMUTABLE, source-check + fitness green)
+BodyChildLoopInventory.discovered      = (1, 1) (unchanged, comment-grep scanner + Lfc2ConcreteBodyRoutingDebtFitnessTest)
+```
+
+## 7. Round gate and pre-existing red set
+
+`./gradlew -p v2 check --continue` is the round gate. On `cf541f40` it reproduces the exact
+pre-existing red set observed at base `a66d7f6c` (worktree method, fresh runs on each side):
+
+| Pre-existing failure | Base a66d7f6c | cf541f40 (W3b) | B11/W3b introduced? |
+| --- | --- | --- | --- |
+| `PipelineDslSealedHierarchyTest.sealed_hierarchy_is_exhaustive_with_28_kinds` | FAIL | FAIL | no |
+| `Lfc0GlobalStateFitnessTest.production code does not access the controller user directory property` (line 44) | FAIL | FAIL | no |
+| `A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test.family classifier routes core sh through Registry` (line 115) | FAIL | FAIL | no |
+| `ScriptTextEscaperTest` (3 tests, lines 178, 204, ...) | FAIL | FAIL | no |
+| `WithCredentialsCompileIntegrationTest` (4 tests, lines 60, 84, 111, 184) | FAIL | FAIL | no |
+| `CompatibilityCorpusTest` (2 tests: `allCorpusFixturesAreDiscoverable`, ...) | FAIL | FAIL | no |
+
+Total pre-existing failures: 12 (1 + 1 + 1 + 3 + 4 + 2). W3b does not introduce any new
+failure and does not widen the pre-existing red set. B11's HF1 + W3b's contract test + LFC-2
+family all sit OUTSIDE this pre-existing red set, with 137/137 green.
+
+## 8. Scope firewall (commit diff e48096a7..cf541f40)
+
+```text
+ v2/pipeline-application/src/main/kotlin/.../DslCompiledPipelineCompiler.kt                          |   2 +
+ v2/pipeline-architecture-tests/src/test/kotlin/.../Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest.kt | 316 +++++++++++++
+ 2 files changed, 318 insertions(+)
+```
+
+No other path touched. B11's `BodyInvoker`, `BodyExecutionContextDerivation`,
+`BodyExecutionPolicy`, `CanonicalDurableRunCoordinator`, `CanonicalBodyInvokerAdapter`,
+`CanonicalRuntimeCapabilityAccess` are byte-identical between `e48096a7` and `cf541f40`.

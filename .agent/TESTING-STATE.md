@@ -954,3 +954,104 @@ W1e candidates: the parallel stage aggregate's descriptor declaration (PAR-D row
 retry control journal into every run mode. The four pre-existing compatibility/UAT failures
 (`UatLocal008` CP-001/CR-BD-027, `UatLocal009` archiveArtifacts, `WithCredentialsCompileIntegrationTest`)
 remain out of B10 scope and are not regressions from this work.
+
+## Handoff — B11 W3b companion fix cycle (2026-09-14)
+
+**Status: READY_FOR_RELEASE, awaiting user merge-to-main.**
+
+Branch `origin/refactor/lfc2-e1-b11-context-blocks`:
+- HEAD: `2131e6f7897f9c337910435e2278701fa2276416`  (release-status commit)
+- HEAD~1: `9158e033d289c7694a82ad090046eb7807f63d3d`  (verify-report)
+- HEAD~2: `0b3d4c6bc35405a80c0a391e1d59a4c8c649f701`  (receipt docs+evidence)
+- HEAD~3: `cf541f40eca5f4ae9a7ff6d6176735d5557ab0a7`  (W3b cherry-pick on top of B11 frozen family receipt)
+- Base: `a66d7f6c28ea5aa5e9c0c81b3a55f5d4ac06fb12`  (B10 W1d evidence, still on main)
+
+### What changed
+
+W3b = companion fix for `DslCompiledPipelineCompiler.blockStepNode()` which silently routed
+`StepSpec.WithEnv` and `StepSpec.Timestamps` to `else -> emptyList()`, dropping the DSL
+children even though the outer dispatch correctly sent both variants to `blockStepNode(...)`.
+
+Defect: **PRE_EXISTING_BUT_B11_ACCEPTANCE_RELEVANT** (per cycle preamble decision rule:
+"blocker iff pre-existing defect AND intersects the acceptance surface"). The slice is
+named "context blocks" (`dir`, `withEnv`, `timestamps`); the defect breaks 2 of those 3
+forms end-to-end.
+
+Fix: +2 lines in `DslCompiledPipelineCompiler.kt` (lines 259-260) adding the missing
+`WithEnv -> step.steps` and `Timestamps -> step.steps` cases before the catch-all.
+
+Coverage: new `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` (316 lines, 7 tests)
+auto-discovers all body-bearing `StepSpec` variants via Kotlin reflection and asserts each
+compiles to a non-empty `BlockStepNode.body`. Adding a new body-bearing `StepSpec` without
+wiring it will now fail the test loudly.
+
+### Verify matrix
+
+**137 tests, 0 failures, 0 errors** across 12 suites:
+
+| Suite | Tests |
+| --- | --- |
+| `B11ContextBlocksRuntimeTest` | 7 |
+| `CanonicalBodyInvokerAdapterTest` (+5 inner) | 16 |
+| `Lfc2B11ExternalScopedRoutingDefenseFitnessTest` | 8 |
+| `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` | 7 |
+| `Lfc2ConcreteBodyRoutingDebtFitnessTest` (+ViolationFixture) | 16 |
+| `Lfc2BodyExecutionPolicyFitnessTest` | 10 |
+| `Lfc2RegistryFamilyFitnessTest` | 3 |
+| `Lfc2DurableAggregateIdentityFitnessTest` | 5 |
+| `Lfc2DurableCoordinatorScopeFitnessTest` | 4 |
+| `BodyExecutionContextDerivationTest` (+9 inner) | 25 |
+| `BodyExecutionPolicyTest` (+5 inner) | 28 |
+| `BodyInvokerSeamTest` | 8 |
+| **TOTAL** | **137** |
+
+### Pre-existing red set
+
+26 failures reproduced at base `a66d7f6c` (worktree method): `PipelineDslSealedHierarchyTest`,
+`Lfc0GlobalStateFitnessTest`, `A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test`,
+`CoreLegacyStepMetadataResolverTest`, `RegistryStepMetadataResolverTest`, `ScriptTextEscaperTest×3`,
+`WithCredentialsCompileIntegrationTest×4`, `CompatibilityCorpusTest×2`,
+`UatCompat001CorpusSmokeRunTest×2`, `UatLocal005CheckoutGitTest`, `UatLocal005CorpusUntouchedTest`,
+`UatLocal007SandboxProfileTest×2`, `UatLocal008CredentialsTest×2`, `UatLocal009TopStepsTest×4`.
+
+**W3b introduces ZERO new failures.** All 26 remain out of B11 acceptance surface.
+
+### Architecture fitness (debt-verify)
+
+| Invariant | Status |
+| --- | --- |
+| `PinnedConcreteBodyRoutingDebt.value.total` | `0` |
+| `HISTORICAL_CEILING` | `18` (immutable) |
+| `BodyChildLoopInventory.discovered` | `(1, 1)` |
+| ADR-0073 (BodyInvoker re-entry) | preserved |
+| ADR-0081 (runtime-return) | preserved |
+| Scope firewall: W3b touches ONLY 2 files | PASS |
+
+### Files for the merge step
+
+- `docs/v2/07-uat/B11_W123_CONTEXT_BLOCKS_RECEIPT.md` (canonical receipt)
+- `docs/v2/07-uat/evidence/b11-w1/G0-baseline.txt`
+- `docs/v2/07-uat/evidence/b11-w1/W3b-compiler-fix.txt`
+- `docs/v2/07-uat/evidence/b11-w1/verify-report.md`
+
+### NOT done by the orchestrator (reserved for user)
+
+- Merge `refactor/lfc2-e1-b11-context-blocks` → `main`
+- Tag the merge commit as a v0.29.x release
+- Update `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` (no flip required for this slice)
+
+### Notes for downstream sessions
+
+1. The stalled sddk-verify sub-agent session `session_wolf_1789392646641_08c5e28e97cf0aec`
+   (31-min startup queued on `minimax-coding-plan/MiniMax-M3` route) was canceled; the
+   verify-report was produced by the orchestrator instead. Future cycles should NOT use
+   `minimax-coding-plan/MiniMax-M3` or `zai-coding-plan/glm-5-turbo` routes; use direct
+   `MiniMax-M3` (minimax) and direct `glm-5-turbo` (zai) per the global overlay.
+2. CAS artefacts (proposal.md / spec.md / tasks.md) for B11 are no longer in
+   `openspec/changes/`. The receipt, evidence file, and verify-report ARE the canonical
+   durable artefacts for the cycle.
+3. The four UAT-L008/L009 pre-existing failures are explicitly out of B11 scope per the
+   cycle preamble; reclassification belongs to a future INT- cycle, not to B11.
+4. `Lfc2ConcreteBodyRoutingDebtFitnessTest$ViolationFixture` covers `dispatchTimeoutBlock`
+   (and similar) as INSTRUMENTED TEST FIXTURES that catalog what should NOT appear in
+   production code — these are LEDGER ENTRIES, not violations.

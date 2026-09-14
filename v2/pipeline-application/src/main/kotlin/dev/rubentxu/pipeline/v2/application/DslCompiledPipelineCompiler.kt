@@ -256,6 +256,8 @@ object DslCompiledPipelineCompiler {
             is StepSpec.RetryBlock -> step.steps
             is StepSpec.Dir -> step.steps
             is StepSpec.WithCredentialsBlock -> step.steps
+            is StepSpec.WithEnv -> step.steps
+            is StepSpec.Timestamps -> step.steps
             else -> emptyList()
         }, "$parentToken/${tokenPrefix}-body-$occurrence")
 

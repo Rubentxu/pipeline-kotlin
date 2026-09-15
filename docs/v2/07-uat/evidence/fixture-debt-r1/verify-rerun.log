@@ -1,0 +1,267 @@
+> Task :pipeline-step-sdk:files:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-multipart:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-event-harness:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-kotlin24:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:processor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-application:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-executor:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-events:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:runtime:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-step-sdk:scm-git:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-scripting-api:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-artefacts-local:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :pipeline-credentials-local:processResources NO-SOURCE
+> Task :pipeline-application:processResources NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:processResources NO-SOURCE
+> Task :pipeline-event-harness:processResources NO-SOURCE
+> Task :pipeline-credentials-multipart:processResources NO-SOURCE
+> Task :pipeline-step-sdk:api:processResources NO-SOURCE
+> Task :pipeline-credentials-api:processResources NO-SOURCE
+> Task :pipeline-step-sdk:files:processResources NO-SOURCE
+> Task :pipeline-scripting-kotlin24:processResources NO-SOURCE
+> Task :pipeline-artefacts-local:processResources NO-SOURCE
+> Task :pipeline-scripting-api:processResources NO-SOURCE
+> Task :pipeline-events:processResources NO-SOURCE
+> Task :pipeline-credentials-executor:processResources
+> Task :pipeline-step-sdk:processor:processResources
+> Task :pipeline-scripting-api:generatePomFileForSdkPublication
+> Task :pipeline-application:runtimeClasspathCapture
+> Task :pipeline-application:processTestResources
+> Task :pipeline-domain:processResources NO-SOURCE
+> Task :pipeline-domain:generatePomFileForSdkPublication
+
+> Task :pipeline-domain:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/durable/RetryReconciler.kt:272:29 This extension is shadowed by a member: 'val isTerminal: Boolean' defined in 'dev.rubentxu.pipeline.v2.domain.durable.OperationStatus'.
+
+> Task :pipeline-domain:compileJava NO-SOURCE
+> Task :pipeline-domain:classes UP-TO-DATE
+> Task :pipeline-domain:jar
+> Task :pipeline-domain:generateMetadataFileForSdkPublication
+> Task :pipeline-domain:publishSdkPublicationToSdkRepository
+
+> Task :pipeline-scripting-api:compileKotlin
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1240:25 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1241:25 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1242:25 'data class Unstable : StepSpec' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1536:28 'constructor(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., steps: List<StepSpec> = ...): StepSpec.CatchError' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1565:28 'constructor(message: String, catchInterruptions: Boolean = ..., steps: List<StepSpec> = ...): StepSpec.WarnError' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt:1585:28 'constructor(message: String): StepSpec.Unstable' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+
+> Task :pipeline-scripting-api:compileJava NO-SOURCE
+> Task :pipeline-scripting-api:classes UP-TO-DATE
+> Task :pipeline-scripting-api:jar
+> Task :pipeline-scripting-api:generateMetadataFileForSdkPublication
+> Task :pipeline-scripting-api:publishSdkPublicationToSdkRepository
+> Task :publishSdkForExternalPlugin
+
+> Task :pipeline-step-sdk:api:compileKotlin
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/api/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/api/BlockStepFlattener.kt:130:25 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/api/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/api/BlockStepFlattener.kt:136:25 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/api/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/api/BlockStepFlattener.kt:190:25 'data class Unstable : StepSpec' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+
+> Task :pipeline-step-sdk:api:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:api:classes UP-TO-DATE
+> Task :pipeline-step-sdk:api:jar
+> Task :pipeline-step-sdk:processor:compileKotlin
+> Task :pipeline-step-sdk:processor:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:processor:classes
+> Task :pipeline-step-sdk:processor:jar
+
+> Task :pipeline-events:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+
+> Task :buildExamplePlugin
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :compileKotlin UP-TO-DATE
+> Task :compileJava NO-SOURCE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :jar UP-TO-DATE
+
+BUILD SUCCESSFUL in 2s
+3 actionable tasks: 3 up-to-date
+
+> Task :pipeline-events:compileJava NO-SOURCE
+> Task :pipeline-events:classes UP-TO-DATE
+> Task :pipeline-events:jar
+> Task :pipeline-scripting-kotlin24:compileKotlin
+> Task :pipeline-scripting-kotlin24:compileJava NO-SOURCE
+> Task :pipeline-scripting-kotlin24:classes UP-TO-DATE
+
+> Task :pipeline-credentials-api:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-api/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/api/CredentialScope.kt:303:9 'when' is exhaustive so 'else' is redundant here.
+
+> Task :pipeline-credentials-api:compileJava NO-SOURCE
+> Task :pipeline-credentials-api:classes UP-TO-DATE
+> Task :pipeline-scripting-kotlin24:jar
+> Task :pipeline-credentials-api:jar
+
+> Task :pipeline-event-harness:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+
+> Task :pipeline-event-harness:compileJava NO-SOURCE
+> Task :pipeline-event-harness:classes UP-TO-DATE
+> Task :pipeline-event-harness:jar
+> Task :pipeline-step-sdk:runtime:kspKotlin
+> Task :pipeline-step-sdk:runtime:processResources
+
+> Task :pipeline-credentials-executor:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+
+> Task :pipeline-credentials-executor:compileJava NO-SOURCE
+> Task :pipeline-credentials-executor:classes
+> Task :pipeline-credentials-executor:jar
+> Task :pipeline-credentials-multipart:compileKotlin
+> Task :pipeline-credentials-multipart:compileJava NO-SOURCE
+> Task :pipeline-credentials-multipart:classes UP-TO-DATE
+> Task :pipeline-credentials-multipart:jar
+
+> Task :pipeline-credentials-local:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:162:39 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:162:74 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:344:102 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:386:34 Projection is redundant: the corresponding type parameter of 'Map<String, out Any>' has the same variance.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:386:75 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:395:39 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:431:34 Projection is redundant: the corresponding type parameter of 'Map<String, out Any>' has the same variance.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:431:75 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:444:43 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:486:34 Projection is redundant: the corresponding type parameter of 'Map<String, out Any>' has the same variance.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:486:75 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:751:34 Projection is redundant: the corresponding type parameter of 'Map<String, out Any>' has the same variance.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:751:75 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:905:53 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:925:86 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-credentials-local/src/main/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStore.kt:973:90 Redundant call of conversion method.
+
+> Task :pipeline-credentials-local:compileJava NO-SOURCE
+> Task :pipeline-credentials-local:classes UP-TO-DATE
+> Task :pipeline-credentials-local:jar
+
+> Task :pipeline-step-sdk:runtime:compileKotlin
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:81:16 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:854:8 'data class DurableShellResult : Any' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:859:7 'fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResult' is deprecated. Legacy durable-shell projection. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:905:8 'data class DurableShellResult : Any' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:919:7 'fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResult' is deprecated. Legacy durable-shell projection. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:962:68 Unnecessary non-null assertion (!!) on a non-null receiver of type 'ProcessHandle'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:973:38 Unnecessary safe call on a non-null receiver of type 'ProcessHandle'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableShellExecutor.kt:1129:4 'data class DurableShellResult : Any' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:46:64 'data class DurableShellResult : Any' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:47:38 'constructor(state: DurableShellState, exitCode: Int, controlDir: Path, capturedStdout: String? = ...): DurableShellResult' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:48:17 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:54:44 'constructor(state: DurableShellState, exitCode: Int, controlDir: Path, capturedStdout: String? = ...): DurableShellResult' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:55:17 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:60:36 'constructor(state: DurableShellState, exitCode: Int, controlDir: Path, capturedStdout: String? = ...): DurableShellResult' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:61:17 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:66:41 'constructor(state: DurableShellState, exitCode: Int, controlDir: Path, capturedStdout: String? = ...): DurableShellResult' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:67:17 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:81:5 'data class DurableShellResult : Any' is deprecated. Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:82:5 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:87:5 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:101:5 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:105:5 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:114:5 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-step-sdk/runtime/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/runtime/durable/DurableTaskTerminalAdapter.kt:115:5 'enum class DurableShellState : Enum<DurableShellState>' is deprecated. Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.
+
+> Task :pipeline-step-sdk:runtime:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:runtime:classes
+> Task :pipeline-step-sdk:runtime:jar
+
+> Task :pipeline-artefacts-local:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+
+> Task :pipeline-artefacts-local:compileJava NO-SOURCE
+> Task :pipeline-artefacts-local:classes UP-TO-DATE
+> Task :pipeline-step-sdk:files:compileKotlin
+> Task :pipeline-step-sdk:files:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:files:classes UP-TO-DATE
+> Task :pipeline-artefacts-local:jar
+> Task :pipeline-step-sdk:files:jar
+
+> Task :pipeline-step-sdk:scm-git:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+
+> Task :pipeline-step-sdk:scm-git:compileJava NO-SOURCE
+> Task :pipeline-step-sdk:scm-git:classes UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:jar
+
+> Task :pipeline-application:compileKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:167:25 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:176:25 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:215:25 'data class Unstable : StepSpec' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:253:25 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:254:25 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:349:90 'data class Unstable : StepSpec' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:352:66 'data class Unstable : StepSpec' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:421:28 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:421:57 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:457:29 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:470:29 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:642:29 'data class CatchError : StepSpec' is deprecated. LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:648:29 'data class WarnError : StepSpec' is deprecated. LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. The canonical IR models this as a linear sequence of marker events + shell script. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt:652:29 'data class Unstable : StepSpec' is deprecated. LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Main.kt:401:13 Condition is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/Main.kt:700:34 Condition is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt:449:25 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CommonExecutionBoundary.kt:49:23 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CommonExecutionBoundary.kt:100:25 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/ExecutionBoundaryFactory.kt:69:29 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/FamilyRouter.kt:55:29 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+
+> Task :pipeline-application:compileJava NO-SOURCE
+> Task :pipeline-application:classes UP-TO-DATE
+> Task :pipeline-application:jar
+> Task :pipeline-application:startScripts
+> Task :pipeline-application:installDist
+
+> Task :pipeline-application:compileTestKotlin
+w: Language version 2.0 is deprecated and its support will be removed in a future version of Kotlin. Update the version to 2.2.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A4_3TypedShellOutputIntegrationTest.kt:112:40 The corresponding parameter in the supertype 'StepCapabilityAccess' is named 'key'. This may cause problems when calling this function with named arguments.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A4_3TypedShellOutputIntegrationTest.kt:200:20 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A4_8LegacyRegistrySemanticParityTest.kt:522:13 Check for instance is always 'true'. This will become an error in language version 2.4. See https://youtrack.jetbrains.com/issue/KTLC-365.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/A5_CoreShLegacyUnreachableProofTest.kt:124:63 Call uses reflection API which is not found in compilation classpath. Make sure you have kotlin-reflect.jar in the classpath.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepCommandRegistryTest.kt:44:58 Call uses reflection API which is not found in compilation classpath. Make sure you have kotlin-reflect.jar in the classpath.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ClockContractTest.kt:104:13 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStepUnitTest.kt:73:20 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStepUnitTest.kt:205:20 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreLegacyStepMetadataResolverTest.kt:55:17 Condition is always 'false'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepUnitTest.kt:403:20 Condition is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepUnitTest.kt:404:20 Condition is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:143:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:171:21 'fun unstable(message: String): Unit' is deprecated. LFC1-007: unstable is pre-compiler-rewritten. Use emitEvent('StageMarkedUnstable', ...) instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:197:21 'fun warnError(message: String, catchInterruptions: Boolean = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: warnError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:228:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:265:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:266:25 'fun unstable(message: String): Unit' is deprecated. LFC1-007: unstable is pre-compiler-rewritten. Use emitEvent('StageMarkedUnstable', ...) instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:303:21 'fun warnError(message: String, catchInterruptions: Boolean = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: warnError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:304:25 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompilerTest.kt:359:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ShStepContractSuiteTest.kt:330:56 Call uses reflection API which is not found in compilation classpath. Make sure you have kotlin-reflect.jar in the classpath.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal007SandboxProfileTest.kt:738:42 Redundant call of conversion method.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/DualExecutionSeamCharacterizationTest.kt:59:45 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/LegacyExecutionAdapterTest.kt:30:45 'fun interface CanonicalInvocationExecutor : Any' is deprecated. Architectural authority moved to CommonExecutionBoundary; CanonicalInvocationExecutor is legacy compatibility behind LegacyExecutionAdapter.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionOutcomeTest.kt:86:82 Expression is unused.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/ReplayOutputDecouplingTest.kt:203:28 Check for instance is always 'true'.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/durable/retry/RetryAcceptanceMatrixTest.kt:362:17 Check for instance is always 'true'. This will become an error in language version 2.4. See https://youtrack.jetbrains.com/issue/KTLC-365.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/spike/Spike016DurableScriptedReplayTest.kt:55:90 This class is not recommended for use in Kotlin. Use 'kotlin.Long' instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/spike/Spike016DurableScriptedReplayTest.kt:55:131 This class is not recommended for use in Kotlin. Use 'kotlin.collections.List' instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/support/PipelineRuleParityTest.kt:44:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+w: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/support/PipelineRuleParityTest.kt:107:21 'fun catchError(buildResult: String? = ..., stageResult: String? = ..., message: String? = ..., block: StageScope.() -> Unit): Unit' is deprecated. LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.
+
+> Task :pipeline-application:compileTestJava NO-SOURCE
+> Task :pipeline-application:testClasses
+> Task :pipeline-application:test
+
+[Incubating] Problems report is available at: file:///var/home/rubentxu/Proyectos/kotlin/pipeline-fixture-debt/v2/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 36s
+49 actionable tasks: 49 executed

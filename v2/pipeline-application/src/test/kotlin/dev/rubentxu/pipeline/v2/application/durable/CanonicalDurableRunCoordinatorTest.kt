@@ -290,9 +290,12 @@ class CanonicalDurableRunCoordinatorTest {
 
         val outcome = CanonicalDurableRunCoordinator(
             CanonicalNodeDispatcher(), journal, InMemoryReplayCursorStore(clock), clock,
-            DefaultEffectReplayPolicy(), InMemoryEventStore(),
-        
+            DefaultEffectReplayPolicy(), InMemoryEventStore(), controlDirRoot = tempDir.resolve("control"),
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: core.dir is legacy dispatch (needs controlDirRoot above)
+            // and its nested core.echo requires the registry; bind both for the block body path.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 ).run(pipeline, runId)
 
         assertEquals(RunOutcome.Success, outcome)
@@ -499,8 +502,11 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: core.echo is registry-only post-LB-02/A4; bind the
+            // production registry so the bare construction routes echo through it.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         val outcome = coordinator.run(pipeline, runId)
         val resumedOutcome = coordinator.run(pipeline, runId)
@@ -560,8 +566,10 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: 2-step core.echo pipeline requires registry dispatch.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         val outcome = coordinator.run(pipeline, runId)
 
@@ -648,6 +656,9 @@ class CanonicalDurableRunCoordinatorTest {
             eventSink = eventStore,
 
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: typed-invalid echo goes through the registry's CoreEchoCodec
+            // (IllegalArgumentException → ExecutionPreparation.Rejected → SCHEMA failure).
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         val outcome = coordinator.run(pipeline, runId)
 
@@ -674,8 +685,10 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: echo dispatch needs the registry so StepStarted is emitted.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         coordinator.run(echoPipeline("test"), runId)
 
@@ -703,8 +716,10 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: echo dispatch needs the registry so StepFinished is emitted.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         coordinator.run(echoPipeline("test"), runId)
 
@@ -778,8 +793,11 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: SKIP replay requires the registry to resolve core.echo
+            // on the first run so the journal entry exists for the second run's SKIP.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
 
         // First run - executes and journals
@@ -821,8 +839,12 @@ class CanonicalDurableRunCoordinatorTest {
                 ) = ReplayDecision.ABORT
             },
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: ABORT path emits StepStarted/StepFailed/StepFinished
+            // regardless of echo resolution; bind registry so the bare construction is
+            // production-equivalent for the echo step family.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
 
         val outcome = coordinator.run(echoPipeline("must-not-dispatch"), runId)
@@ -873,8 +895,10 @@ class CanonicalDurableRunCoordinatorTest {
             clock = clock,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
             eventSink = eventStore,
-        
+
     credentialScopePort = noOpCredentialScopePort(),
+            // LFC-2 / fixture-debt: 3-step core.echo requires registry for all 3 dispatches.
+            stepRegistry = CoreStepRegistryFactory.registry(),
 )
         coordinator.run(pipeline, runId)
 
@@ -1009,6 +1033,8 @@ class CanonicalDurableRunCoordinatorTest {
             DefaultEffectReplayPolicy(),
             eventStore,
             credentialScopePort = port,
+            // LFC-2 / fixture-debt: withCredentials' inner core.echo step requires registry.
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
         val outcome = coordinator.run(pipeline, RunId("wc-acquired"))
 

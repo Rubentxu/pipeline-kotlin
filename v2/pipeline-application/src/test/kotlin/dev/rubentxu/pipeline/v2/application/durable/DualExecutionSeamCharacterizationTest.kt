@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
+import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.SystemClock
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
@@ -80,11 +81,42 @@ class DualExecutionSeamCharacterizationTest {
         }
     }
 
-    /** Dual-recording coordinator: asserts the equivalence law holds on this run. */
+    /** Registry seam recorder: counts effective calls on the registry branch of the router. */
+    private class RecordingRegistryBoundary(private val delegate: CommonExecutionBoundary) : CommonExecutionBoundary {
+        var calls: Int = 0
+            private set
+        override suspend fun execute(
+            prepared: PreparedExecution,
+            context: CanonicalRuntimeContext,
+        ): CommonExecutionResult {
+            calls++
+            return delegate.execute(prepared, context)
+        }
+    }
+
+    /** Dual-recording coordinator: asserts the equivalence law holds on this run.
+     *
+     *  LFC-2 / fixture-debt: post-LB-02/A4 the production routing is [SeamedExecutionRouter.route]
+     *  which dispatches by [PreparedExecution] strategy kind (legacy vs registry). The dual seam
+     *  must therefore observe BOTH branches; the equivalence law becomes:
+     *
+     *      legacyExecutor.calls + registryBoundary.calls == boundary.calls
+     *
+     *  i.e. each effective execution crosses exactly one leg and is counted by both the leg and the
+     *  outer router. This is a STRENGTHENING of the original (legacy-only) equivalence law: a fresh
+     *  core.echo run increments the registry leg + the outer router; a fresh legacy step increments
+     *  the legacy executor + the outer router. Replay / recovery paths increment neither leg.
+     */
     private class DualRecorderCoordinator {
         val legacyExecutor = RecordingLegacyExecutor()
-        val boundary: RecordingBoundary =
-            RecordingBoundary(LegacyExecutionAdapter.adapt(legacyExecutor))
+        val registryBoundary: RecordingRegistryBoundary =
+            RecordingRegistryBoundary(RegistryExecutionBoundary.adapt())
+        val boundary: RecordingBoundary = RecordingBoundary(
+            SeamedExecutionRouter.route(
+                LegacyExecutionAdapter.adapt(legacyExecutor),
+                registryBoundary,
+            ),
+        )
 
         fun build(
             journal: InMemoryOperationJournal,
@@ -105,16 +137,20 @@ class DualExecutionSeamCharacterizationTest {
             },
             controlDirRoot = controlDirRoot,
             commonExecutionBoundary = boundary,
+            // LFC-2 / fixture-debt: core.echo/core.sh dispatch requires the registry; bind it
+            // so the seamed router picks the registry branch for those payloads.
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
-        /** The migration equivalence law: both seams count the SAME effective executions. */
+        /** The migration equivalence law: combined leg counts equal boundary counts. */
         fun assertEquivalent(expected: Int) {
-            assertEquals(expected, legacyExecutor.calls, "legacy executor seam must observe $expected effective executions")
+            val combined = legacyExecutor.calls + registryBoundary.calls
+            assertEquals(expected, combined, "combined leg seams must observe $expected effective executions")
             assertEquals(expected, boundary.calls, "common boundary seam must observe $expected effective executions")
             assertEquals(
-                legacyExecutor.calls,
+                combined,
                 boundary.calls,
-                "EQUIVALENCE LAW: commonExecutionCalls must equal legacyInvocationExecutorCalls; if this fails, the seams diverge",
+                "EQUIVALENCE LAW: combined leg calls must equal boundary calls; if this fails, the seams diverge",
             )
         }
     }

@@ -485,7 +485,14 @@ class DurableProtocolInvocationCharacterizationTest {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()
         val runId = RunId("a1-4-lifecycle-order")
-        val coordinator = CoordinatorFixture.negativeNoRegistry(
+        // LFC-2 / fixture-debt: a1-4 freezes the lifecycle spine ordering around the semantic
+        // EchoOutputCaptured event. EchoOutputCaptured is emitted ONLY when core.echo is
+        // dispatched through the registry; the previous negativeNoRegistry fixture caused the
+        // echo step to fail with INFRASTRUCTURE before any semantic event was emitted, which
+        // made this test indistinguishable from the registry-missing red. Bind the registry so
+        // the spine-ordering assertion (not the registry-vs-legacy resolution) is what is
+        // being verified.
+        val coordinator = CoordinatorFixture.default(
             clock = clock,
             journal = InMemoryOperationJournal(clock),
             eventSink = eventStore,

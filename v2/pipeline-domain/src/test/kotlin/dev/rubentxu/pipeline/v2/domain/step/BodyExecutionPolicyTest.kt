@@ -488,7 +488,7 @@ class BodyExecutionPolicyTest {
         private val registry = StepDescriptorRegistry.standard()
 
         @Test
-        fun `the canonical body set is the six families whose bodies this engine executes`() {
+        fun `the canonical body set is the seven families whose bodies this engine executes`() {
             assertEquals(
                 setOf(
                     PluginStepId("core.dir"),
@@ -497,6 +497,7 @@ class BodyExecutionPolicyTest {
                     PluginStepId("core.timeout"),
                     PluginStepId("core.withCredentials"),
                     PluginStepId("core.retry"),
+                    PluginStepId("core.waitUntil"), // WU-G5R.3: canonical polling loop
                 ),
                 registry.bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE),
                 "Canonical body eligibility is registry-derived: a change here is a routing change",

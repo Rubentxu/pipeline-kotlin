@@ -133,12 +133,12 @@ class StepDescriptorRegistryTest {
      * in the coordinator's behaviour.
      */
     @Test
-    fun `the registry declares eight body rows and five terminal rows`() {
+    fun `the registry declares nine body rows and five terminal rows`() {
         val entries = registry.keys().map { it to registry.get(it)!! }
         val bodyRows = entries.filter { it.second.body.declared != null }
         val terminalRows = entries.filter { it.second.body == StepBody.None }
 
-        assertEquals(13, entries.size, "The pinned core registry size")
+        assertEquals(14, entries.size, "The pinned core registry size")
         assertEquals(
             setOf(
                 "core.catchError",
@@ -149,14 +149,15 @@ class StepDescriptorRegistryTest {
                 "core.timeout",
                 "core.timestamps",
                 "core.retry",
+                "core.waitUntil", // WU-G5R.3: canonical polling loop via executeWaitUntilBody
             ),
             bodyRows.map { it.first.value }.toSet(),
         )
         assertEquals(5, terminalRows.size)
         assertEquals(
-            6,
+            7,
             bodyRows.count { (it.second.body as StepBody.Declared).execution.owner == BodyExecutionOwner.CANONICAL_ENGINE },
-            "Six core rows are executed by the canonical body engine",
+            "Seven core rows are executed by the canonical body engine (core.dir, core.timestamps, core.withEnv, core.timeout, core.withCredentials, core.retry, core.waitUntil)",
         )
         assertEquals(
             2,

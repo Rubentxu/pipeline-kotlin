@@ -37,13 +37,14 @@ class CoreLegacyStepMetadataResolverTest {
     fun `ordinary steps declare no recovery`() {
         // CDE.2-b4: the durable protocol decides recovery from metadata.recoveryPolicy, never a Step name.
         // core.sh is no longer a legacy authority member (S6); its recovery is read from CoreShellStep.descriptor.
-        assertEquals(
-            RecoveryPolicy.None,
-            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.sleep")).recoveryPolicy,
-        )
+        // core.sleep was removed from LEGACY_PLUGIN_IDS at S2-A2/G5; update test to cover remaining entries.
         assertEquals(
             RecoveryPolicy.None,
             CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.load")).recoveryPolicy,
+        )
+        assertEquals(
+            RecoveryPolicy.None,
+            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.waitUntil")).recoveryPolicy,
         )
     }
 

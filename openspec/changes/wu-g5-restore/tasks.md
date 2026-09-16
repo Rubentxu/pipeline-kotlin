@@ -876,108 +876,88 @@ The combined `FAILED | FAILED_TIMEOUT` branch was incorrect. Correct semantics:
 - PENDING: matched by RUNNING/PENDING branch → `ResumeAttempt` ✓
 - Backoff sequence: 1000→2000→4000→8000→ceiling → correct deadline ✓
 
+### WU-G5R.5 Completion Receipt
+
+**Committed:** `e81aabbf` ("test(wu-g5r.5): WaitUntilReconcilerTest + FileBasedWaitUntilControlJournalTest + reconciler fix")
+
+**Reconciler fix (separate from production WU-G5R.5 commit `39ab42a6`):**
+
+The combined `FAILED | FAILED_TIMEOUT` branch was incorrect. Correct semantics:
+
+- `FAILED_TIMEOUT`: the dispatch loop set this when the NEXT backoff would
+  exceed the ceiling. This attempt IS the one that hit the ceiling.
+  → `DeadlineExceeded(attempt)` (direct return, terminal).
+- `FAILED`: the predicate was unsatisfied; the next backoff is computed from
+  `currentBackoffMs`. If `nextBackoff > maxBackoffMs`, the NEXT attempt
+  would exceed the ceiling.
+  → `DeadlineExceeded(attempt + 1)` (the ceiling is hit at the next attempt).
+
+**Test evidence:**
+- `WaitUntilReconcilerTest` (domain): 20/20 PASS
+- `FileBasedWaitUntilControlJournalTest` (application): 14/14 PASS
+- `WaitUntilStepContractSuiteTest`: 18/18 PASS
+- `CoreWaitUntilDifferentialContractTest`: 8/8 PASS
+- `CoreWaitUntilStepUnitTest`: 9/9 PASS
+- `Lfc2WaitUntil*` fitness: 7/7 PASS
+- L4 full: 449 domain tests / 0 failures, 59 application tests / 0 failures
+
+**Files committed:**
+- `pipeline-domain`: `WaitUntilReconcilerTest.kt`, `WaitUntilReconciler.kt` (fix)
+- `pipeline-application`: `FileBasedWaitUntilControlJournalTest.kt`
+
+**Reconciler semantics validated:**
+- W0: `ScheduleAttempt(1)` on empty store ✓
+- W1: `ResumeAttempt(n)` on RUNNING ✓
+- W2: `AdvanceAfterPredicateSatisfied(n)` on SUCCEEDED (with supersede-skip for SUCCEEDED+successor) ✓
+- W3: `AdvanceAfterPredicateUnsatisfied(attempt+1, nextBackoffMs)` on FAILED (nextBackoff from currentBackoffMs) ✓
+- W4: `DeadlineExceeded(attempt)` on FAILED_TIMEOUT; `DeadlineExceeded(attempt+1)` on FAILED when nextBackoff exceeds ceiling ✓
+- Supersede-skip: stale terminal attempts with a successor are skipped ✓
+- Terminal: `Aborted`, `RejectDivergence` (DIVERGENT/LOST) ✓
+- PENDING: matched by RUNNING/PENDING branch → `ResumeAttempt` ✓
+- Backoff sequence: 1000→2000→4000→8000→ceiling → correct deadline ✓
+
 ---
 
-## 10. WU-G5R.6 — Real pipeline E2E
+### WU-G5R.6 Completion Receipt
 
-**Title:** Add `v2/compatibility/22-wait-until.pipeline.kts` and an
-installed-CLI version of `Lfc2WaitUntilCanonicalReentryFitnessTest`
-that proves `dispatchRepeatUntilBody` is the emitter (origin=canonical
-on `WaitUntilPolled` / `WaitUntilCompleted`).
+**Committed:** `84bef07e` ("WU-G5R.6: add real pipeline E2E fixture 22-wait-until + installed-CLI fitness")
 
-**Files touched:**
-- `v2/compatibility/22-wait-until.pipeline.kts` (NEW)
-  - Mirror the existing corpus patterns from
-    `v2/compatibility/21-milestone.pipeline.kts` for syntax.
-  - Body: `sh("touch /tmp/marker-wu-g5-restore")` (setup) +
-    `waitUntil(initialRecurrencePeriod = 100L) { sh("test -f /tmp/marker-wu-g5-restore && echo READY") }` +
-    `sh("rm /tmp/marker-wu-g5-restore")` (cleanup).
-  - MUST exit 0 in fresh, `--rerun`, and `--resume` modes.
-- `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lfc2WaitUntilCanonicalReentryFitnessTest.kt` (MODIFY)
-  - Add `installedCtlBinary` test method that runs the installed CLI
-    against `22-wait-until.pipeline.kts` and asserts the journal contains
-    `WaitUntilPolled` (≥1) + `WaitUntilCompleted(reason="completed")` with
-    `origin=canonical` (NOT legacy stub).
-- `v2/compatibility/baseline.json` (MODIFY, corpus accounting fix)
-  - Add fixture 22 entry (mirror existing 21 entries).
-  - This MAY widen `CompatibilityCorpusTest 20/2` by +1 in the test
-  count; the failure count MUST stay at 2 (no widen). Verify with a
-  fresh XML canary.
-- `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CompatibilityCorpusTest.kt` (MODIFY, only if the corpus accounting is driven by the test, not by the JSON; verify by reading).
-
-**Steps (concrete):**
-1. Read `v2/compatibility/21-milestone.pipeline.kts` to mirror syntax.
-2. Read `v2/compatibility/baseline.json` to mirror entry shape.
-3. Write `v2/compatibility/22-wait-until.pipeline.kts` with the body
-   described above.
-4. Update `baseline.json` with the new fixture.
-5. Install CLI: `./gradlew :pipeline-application:installDist`.
-6. Run fresh: `<install>/bin/pipeline run --db <tmp> --control-root <tmp>
-   --file v2/compatibility/22-wait-until.pipeline.kts` — expect exit 0.
-7. Run `--rerun`: same command + `--rerun` — expect exit 0.
-8. Run `--resume`: same command + `--resume` — expect exit 0.
-9. Verify journal contains `WaitUntilPolled` (≥1) +
-   `WaitUntilCompleted(reason="completed")` with `origin=canonical`.
-10. Add the installed-CLI test method to
-    `Lfc2WaitUntilCanonicalReentryFitnessTest`.
-
-**Validation:**
-```bash
-timeout 600 ./gradlew :pipeline-application:installDist
-<install>/bin/pipeline run --db <tmp> --control-root <tmp> \
-  --file v2/compatibility/22-wait-until.pipeline.kts
-<install>/bin/pipeline run --db <tmp> --control-root <tmp> --rerun \
-  --file v2/compatibility/22-wait-until.pipeline.kts
-timeout 600 ./gradlew -p v2 :pipeline-application:test \
-  --tests 'Lfc2WaitUntilCanonicalReentryFitnessTest'
-timeout 600 ./gradlew -p v2 :pipeline-application:test \
-  --tests 'CompatibilityCorpusTest'
+**Fixture 22:**
 ```
+v2/compatibility/22-wait-until.pipeline.kts
+SHA256: 7befc004582257fa779b9403e65e01d65acb3f5ac7a8933603a2f8de1a9990b4
+```
+Logic: writeFile marker → waitUntil(exists) → deleteDir marker. Exit 0 fresh/rerun/resume.
 
-Expected outcomes:
-- All three CLI runs exit 0.
-- `Lfc2WaitUntilCanonicalReentryFitnessTest`: GREEN (in-process + installed).
-- `CompatibilityCorpusTest`: GREEN; accounting may shift from 20/2 to 21/2
-  (no widen — 2 failures unchanged).
+**Test evidence:**
+- `Lfc2WaitUntilCanonicalReentryFitnessTest`: 1/1 PASS (5.4s) — installed CLI test
+- `CompatibilityCorpusTest.fixture22WaitUntil`: PASS (5.3s)
+- baseline.json: 16 events captured from fresh run
 
-**Dependencies:** G5R.2, G5R.5.
-
-**Estimated LOC:** ~40 example + ~50 test + ~5 baseline.
-
-**Risk notes:**
-- The CLI invocation MUST precede `--file` (CTX-P4-EX lesson: flags
-  trailing `--file` are silently ignored — verify with a printenv
-  oracle on the first run).
-- The marker file path `/tmp/marker-wu-g5-restore` MUST be unique to
-  this corpus to avoid collision with `CompatibilityCorpusTest` runs.
-- The reinstall step is mandatory after each G5R.* commit that changes
-  production code; `installDist` does NOT auto-rerun in `test` tasks.
-
-**Scope firewall (what NOT to do):**
-- Do NOT add fixture 23+ (this WU is fixture 22 only; subsequent fixtures
-  are out of scope).
-- Do NOT modify existing corpus fixtures (1..21) — their exit codes and
-  events are part of the baseline.
-- Do NOT introduce new Step Definitions; the example uses `sh` and
-  `waitUntil` only.
-- Do NOT add a `PredicateBodyInvoker` port or a new dispatcher — the
-  example MUST drive `dispatchRepeatUntilBody` through the existing
-  body machinery (G5R.4 + G5R.5).
-- Do NOT remove the legacy stub or `core.waitUntil` from
-  `LEGACY_PLUGIN_IDS` (WU-G5B).
+**Files committed:**
+- `v2/compatibility/22-wait-until.pipeline.kts` (NEW)
+- `v2/compatibility/baseline.json` (UPDATED)
+- `v2/pipeline-application/src/test/kotlin/.../CompatibilityCorpusTest.kt` (ADDED fixture22WaitUntil)
+- `v2/pipeline-application/src/test/kotlin/.../Lfc2WaitUntilCanonicalReentryFitnessTest.kt` (ADDED installed CLI test)
 
 ---
 
-## 11. WU-G5R-GATE — RESTORE closure gate
+**Status: WU-G5R.6 COMPLETED** (see completion receipt above at line ~921).
+
+---
+
+## 10. WU-G5R-GATE — RESTORE closure gate
 
 **Title:** Bring every gate to its expected state, update the inventory,
 write the closure receipt, run L4 once, run L5 once.
 
 **Files touched (documentation, no production code):**
-- `docs/v2/07-uat/WU_G5_RESTORE_CLOSURE_RECEIPT.md` (NEW)
+- `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` (NEW)
   - Slice evidence, pre/post L4/L5 gate counts, inventory row diff,
     fitness state (GREEN / intentionally-RED), pre-existing red baseline
     unchanged, cross-references to invalidation receipt (`a31b2fa4`).
+  - **Actual filename used** (not `WU_G5_RESTORE_CLOSURE_RECEIPT.md`) to
+    match `STEP_INVENTORY_LFC2E0.md` citation convention.
 - `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` (MODIFY)
   - `core.waitUntil` row flips:
     `Path = structural`,

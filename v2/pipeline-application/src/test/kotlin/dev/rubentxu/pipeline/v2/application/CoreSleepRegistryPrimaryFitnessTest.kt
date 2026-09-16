@@ -171,13 +171,18 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // Note the two DIFFERENT states this row pins: the registry key set is REGISTRATION truth
     // and is independent of the LEGACY_PLUGIN_IDS residual. core.archiveArtifacts is present
     // here while being absent from the residual — exactly the S2-B10 post-G5 shape.
-    @Test fun `production registry contains exactly the registered core steps (post-S2-B10-G3)`() {
+    //
+    // WU-G5R-GATE: core.waitUntil removed from registry (structural path via
+    // BlockStepNode + BodyExecutionPolicy.RepeatUntil + dispatchRepeatUntilBody).
+    // Registry key count: 14 -> 13.
+    @Test fun `production registry contains exactly the registered core steps (post-S2-B10-G3 + WU-G5R-GATE)`() {
         assertEquals(
             setOf(
                 "core.echo", "core.sh", "core.error", "core.sleep",
                 "core.file.writeFile", "core.emit.event", "core.isUnix",
                 "core.pwd", "core.pwd.tmp",
-                "core.waitUntil", "core.deleteDir", "core.milestone",
+                // core.waitUntil removed at WU-G5R-GATE (structural, not registry Step)
+                "core.deleteDir", "core.milestone",
                 "core.cleanWs", "core.archiveArtifacts",
             ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),

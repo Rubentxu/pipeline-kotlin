@@ -160,7 +160,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(19, fixtures.size, "Corpus must have 19 valid fixtures (S2-A6/G3R added 20-pwd-tmp)")
+        assertEquals(21, fixtures.size, "Corpus must have 21 valid fixtures (WU-G5R6 added 22-wait-until; 07 and 99 moved to broken/)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))

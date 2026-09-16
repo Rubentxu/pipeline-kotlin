@@ -101,13 +101,11 @@ class UatLocal005CorpusUntouchedTest {
     }
 
     /**
-     * CP-002: corpus has exactly 13 valid files after FIX-ROUND-2:
-     * 6 original + 3 new ML-R7 fixtures + L7 smoke + 3 new ML-R9 fixtures + 2 new ML-R10 fixtures.
-     * Files 07-writeFile-readFile and 99-broken-compilation were moved to
-     * UAT-owned test resources (broken/) per INC-R10-ARC-001 ruling.
+     * CP-002: corpus has exactly 21 valid files after WU-G5R6 (fixture 22 added):
+     * 01-06 original + 08-21 existing + 22-wait-until (file 07 was writeFile-readFile, moved to broken/).
      */
     @Test
-    fun `CP-002 corpus has exactly 13 valid fixture files`(@TempDir tempDir: Path) {
+    fun `CP-002 corpus has exactly 21 valid fixture files after WU-G5R6`(@TempDir tempDir: Path) {
         val projectRoot = TestProjectRoot.dir.toPath()
         val compatibilityDir = projectRoot.resolve("v2/compatibility")
 
@@ -116,11 +114,11 @@ class UatLocal005CorpusUntouchedTest {
             .sorted()
             .toList()
 
-        assertEquals(19, pipelineFiles.size,
-            "Corpus must have exactly 19 valid pipeline fixtures (07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo; S2-A5/G8 added 19-isunix; S2-A6/G3R added 20-pwd-tmp). Found: " +
+        assertEquals(21, pipelineFiles.size,
+            "Corpus must have exactly 21 valid pipeline fixtures (WU-G5R6 added 22-wait-until; 07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo; S2-A5/G8 added 19-isunix; S2-A6/G3R added 20-pwd-tmp; WU-G5R6 added 22-wait-until). Found: " +
             pipelineFiles.joinToString { it.fileName.toString() })
 
-        // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix)
+        // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix; S2-A6/G3R: 1 pwd-tmp; WU-G5R6: 1 wait-until)
         // Note: 07-writeFile-readFile and 99-broken-compilation moved to broken/
         // Note: 09 renamed archive-artefacts -> sh-then-echo (F10) in v0.33.1
         val newFiles = setOf(
@@ -137,6 +135,8 @@ class UatLocal005CorpusUntouchedTest {
             "18-cleanWs.pipeline.kts",
             "19-isunix.pipeline.kts",
             "20-pwd-tmp.pipeline.kts",
+            "21-milestone.pipeline.kts",
+            "22-wait-until.pipeline.kts",
         )
         val actualNames = pipelineFiles.map { it.fileName.toString() }.toSet()
         assertTrue(actualNames.containsAll(newFiles),
@@ -176,13 +176,13 @@ class UatLocal005CorpusUntouchedTest {
 
     /**
      * Finds the base commit for the current cycle.
-     * Per AGENTS.md rule 16: comparison point is cycle base (4db480d), not ML-R5 base.
+     * Per AGENTS.md rule 16: comparison point is cycle base (5405b7b5), not ML-R5 base.
      */
     private fun findBaseCommit(): String {
         val projectRoot = TestProjectRoot.dir.toPath()
 
-        // Cycle base: fix(application): exit non-zero on script compilation failure (INC-R10-ARC-001)
-        val cycleBase = "4db480d"
+        // Cycle base: initial corpus commit in pipeline-wu-g5-restore
+        val cycleBase = "5405b7b5"
         val pb = ProcessBuilder("git", "rev-parse", cycleBase)
             .directory(projectRoot.toFile())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)

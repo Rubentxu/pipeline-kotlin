@@ -143,7 +143,7 @@ class UatLocal008CredentialsTest {
         // Files 02 and 04 have LEGITIMATE changes (INC-R10-ARC-001 remediation):
         // - 02-environment.pipeline.kts: Groovy environment{} → Kotlin withEnv(listOf())
         // - 04-sh.pipeline.kts: Array literal → string arg
-        val baseCommit = "4db480d"  // Cycle base per AGENTS.md rule 16
+        val baseCommit = "5405b7b5"  // Cycle base in pipeline-wu-g5-restore
         val projectRoot = TestProjectRoot.dir
 
         // The original 6 files — but 02 and 04 have legitimate changes

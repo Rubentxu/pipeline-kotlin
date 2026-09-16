@@ -146,16 +146,18 @@ class UatLocal008CredentialsTest {
         val baseCommit = "5405b7b5"  // Cycle base in pipeline-wu-g5-restore
         val projectRoot = TestProjectRoot.dir
 
-        // The original 6 files — but 02 and 04 have legitimate changes
+        // The original 6 files — but 02, 04, and 06 have legitimate changes:
+        //   - 02 and 04: Groovy→Kotlin fix (INC-R10-ARC-001)
+        //   - 06: Groovy script{for} → sh(isScriptBlock=true) with ${'$'}i escape (INC-027)
         val unchangedFiles = listOf(
             "01-basic.pipeline.kts",
             "03-stages.pipeline.kts",
-            "05-scripted-if.pipeline.kts",
-            "06-loop.pipeline.kts"
+            "05-scripted-if.pipeline.kts"
         )
         val changedFiles = setOf(
-            "02-environment.pipeline.kts",
-            "04-sh.pipeline.kts"
+            "02-environment.pipeline.kts",  // Groovy→Kotlin fix
+            "04-sh.pipeline.kts",          // Array literal→string fix
+            "06-loop.pipeline.kts"         // Escape ${'$'}i (INC-027 / INC-021c)
         )
 
         for (fileName in unchangedFiles) {

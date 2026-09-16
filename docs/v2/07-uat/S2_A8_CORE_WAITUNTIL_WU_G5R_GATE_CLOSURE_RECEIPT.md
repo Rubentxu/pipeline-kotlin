@@ -13,8 +13,9 @@
 Record evidence for WU-G5R-GATE closure:
 1. Real pipeline E2E fixture `22-wait-until.pipeline.kts` for `core.waitUntil` added.
 2. Installed-CLI fitness test (`Lfc2WaitUntilCanonicalReentryFitnessTest`) confirms canonical re-entry.
-3. `core.waitUntil` inventory row updated to reflect AUTHORITY_FLIPPED.
-4. LEGACY_PLUGIN_IDS counters updated: 2/2/2 → 1/1/1 (only `core.load` remains).
+3. `core.waitUntil` inventory row corrected: ORCHESTRATION kind; `def=N` (see D2).
+4. `CoreStepRegistryFactory` entry removed; `LEGACY_PLUGIN_IDS` membership and dispatcher
+   file unchanged (WU-G5R did NOT remove core.waitUntil from `LEGACY_PLUGIN_IDS`; counters 2/2/2 unchanged).
 
 ## WU-G5R.6 Evidence
 
@@ -72,29 +73,34 @@ TEST-dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest.xml
 
 Fixture 22 discovered, executed, and validated through the corpus harness. Exit 0 confirmed.
 
-## LEGACY_PLUGIN_IDS Update
+## LEGACY_PLUGIN_IDS State
 
-| Counter | Before WU-G5R-GATE | After WU-G5R-GATE |
-|---------|-------------------|-------------------|
-| LEGACY_PLUGIN_IDS entries | 2 (core.load, core.waitUntil) | 1 (core.load) |
-| Metadata rows | 2 | 1 |
-| Dispatcher files | 2 | 1 |
+**Note (D1 correction):** `core.waitUntil` was NOT removed from `LEGACY_PLUGIN_IDS` at
+WU-G5R-GATE. The `LEGACY_PLUGIN_IDS` membership (`CanonicalCoreStepDecoder` set entry)
+and `CanonicalCoreStepMetadata` row remain intact. WU-G5R only removed the
+`CoreStepRegistryFactory` factory entry, flipping the production routing authority to
+the registry path (`CoreWaitUntilStep`) while the legacy decoder entry is still present.
 
-`core.waitUntil` removed from `LEGACY_PLUGIN_IDS` at WU-G5R-GATE.
-`CanonicalWaitUntilNodeDispatcher` still exists on disk but is no longer reachable:
-- `StructuralFamilyResolver` routes `core.waitUntil` to `RegistryCore`
-- `CoreStepRegistryFactory` resolves `core.waitUntil` → `CoreWaitUntilStep`
-- `CanonicalDurableRunCoordinator` executes via `dispatchRepeatUntilBody` (ADR-0073)
+| Counter | Current state |
+|---------|---------------|
+| LEGACY_PLUGIN_IDS entries | 2 (`core.load`, `core.waitUntil`) |
+| Metadata rows | 2 |
+| Dispatcher files | 2 |
+
+`core.waitUntil` production routing is now via `CoreStepRegistryFactory` (registry path),
+NOT via the legacy `CanonicalWaitUntilNodeDispatcher`. The legacy decoder entry is
+reachable only through the legacy decode path (not reachable in production because
+`StructuralFamilyResolver` routes `core.waitUntil` to `RegistryCore` after the factory entry
+was removed).
 
 ## Inventory Row Update
 
-`docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` updated:
-- `core.waitUntil` row: Path `legacy` → `registry (WU-G5R)`; Def `N` → `Y`; Legacy `Y` → `N`
-- Added `StepDefinition`, `capability`, `replayPolicy`, real example, fitness, receipts citations
-- State: `IMPLEMENTED_UNCERTIFIED (WU-G5R: AUTHORITY_FLIPPED, G4/G5 done)`
-- Row citation added with full provenance chain
-- Sequencing section updated: `core.waitUntil` marked `(WU-G5R: AUTHORITY_FLIPPED)`
-- LEGACY_PLUGIN_IDS residual: `1 / 1 / 1` (core.load)
+`docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` corrected (per debt-verify D2):
+- `core.waitUntil` row: `def=Y` corrected to `def=N` (ORCHESTRATION kind; execution via
+  `dispatchRepeatUntilBody` in coordinator, not a standard registry handler)
+- Sequencing section: `(WU-G5R: AUTHORITY_FLIPPED)` notation retained (factory entry removed;
+  registry path is production authority; LEGACY_PLUGIN_IDS membership unchanged — counter 2/2/2)
+- LEGACY_PLUGIN_IDS residual: `2 / 2 / 2` (`core.load`, `core.waitUntil`)
 
 ## G4/G5 Evidence Summary
 
@@ -104,7 +110,7 @@ Fixture 22 discovered, executed, and validated through the corpus harness. Exit 
 | G2 Contract freeze | `S2_A8_CORE_WAITUNTIL_G2_DIFFERENTIAL_CONTRACT_FREEZE.md` | DONE |
 | G3 Contract suite | `WaitUntilStepContractSuiteTest` 18/18 + `CoreWaitUntilDifferentialContractTest` 8/8 | DONE |
 | G4 LEGACY_UNREACHABLE | Routing to `RegistryCore`; `CoreStepRegistryFactory` resolves `core.waitUntil` | DONE (WU-G5R) |
-| G5 LEGACY_REMOVED | Removed from `LEGACY_PLUGIN_IDS`; counters 2/2/2 → 1/1/1 | DONE (WU-G5R-GATE) |
+| G5 LEGACY_REMOVED | `LEGACY_PLUGIN_IDS` membership unchanged (2/2/2); `CoreStepRegistryFactory` entry removed; LEGACY_REMOVED pending future gate | PARTIAL (G4 done; G5 pending LEGACY_PLUGIN_IDS removal) |
 | G6 Architecture fitness | `Lfc2WaitUntilCanonicalReentryFitnessTest` — 1/1 PASS | DONE (WU-G5R.6) |
 | G7 StepContractSuite | `WaitUntilStepContractSuiteTest` 18/18 (already done at G3) | PARTIAL |
 | G8 CERTIFIED | REMAINING | PENDING |
@@ -113,7 +119,7 @@ Fixture 22 discovered, executed, and validated through the corpus harness. Exit 
 
 - **G7**: Full `WaitUntilStepContractSuite` re-run with installed distribution (prove CLI produces same events as HF1 harness)
 - **G8**: `core.waitUntil` CERTIFIED verdict (blocked until G7 is complete)
-- **`core.load`**: Only remaining `LEGACY_PLUGIN_IDS` entry
+- **`core.load` + `core.waitUntil`**: Both remain in `LEGACY_PLUGIN_IDS` (2/2/2). `core.waitUntil` factory entry removed at WU-G5R; full LEGACY_REMOVED pending future gate.
 
 ## Files Changed
 
@@ -124,7 +130,7 @@ Fixture 22 discovered, executed, and validated through the corpus harness. Exit 
 | `v2/pipeline-application/src/test/kotlin/.../CompatibilityCorpusTest.kt` | ADDED `fixture22WaitUntil()` |
 | `v2/pipeline-application/src/test/kotlin/.../Lfc2WaitUntilCanonicalReentryFitnessTest.kt` | ADDED installed CLI test |
 | `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` | UPDATED `core.waitUntil` row; LEGACY_PLUGIN_IDS counters |
-| `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` | NEW — this receipt |
+| `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` | AMENDED 2026-09-17 per debt-verify D1/D2 (counter claim corrected; ORCHESTRATION kind noted) |
 
 ## L5 Gate — Test Fixes (post-commit 367eae71)
 

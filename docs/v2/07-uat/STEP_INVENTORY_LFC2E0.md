@@ -67,7 +67,7 @@ Columns:
 | `core.load` | CORE | legacy | Y (L1614) | N | Y (CanonicalLoadNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.pwd` | CORE candidate | legacy | Y (L1570) | N | Y (CanonicalPwdNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.isUnix` | CORE candidate | legacy | Y (L1590) | N | Y (CanonicalIsUnixNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.waitUntil` | CORE candidate | registry (WU-G5R) | Y (L1629, registryStep) | Y (`CoreWaitUntilStep`) | Y | N (WU-G5R-GATE: LEGACY_UNREACHABLE via `dispatchRepeatUntilBody`) | Y/Y | Y (`EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 22-wait-until | — | **IMPLEMENTED_UNCERTIFIED** (WU-G5R-GATE: AUTHORITY_FLIPPED, G4/G5 done, G6/G7/G8 remaining) |
+| `core.waitUntil` | CORE | orchestration (WU-G5R) | Y (L1629, registryStep) | N (ORCHESTRATION; no standard registry handler — execution via `dispatchRepeatUntilBody` in coordinator) | Y | Y (ORCHESTRATION; LEGACY_PLUGIN_IDS membership present) | Y/Y | Y (`EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 22-wait-until | — | **IMPLEMENTED_UNCERTIFIED** (WU-G5R: factory entry removed; LEGACY_PLUGIN_IDS unchanged; G4/G6 done, G5/G7/G8 remaining) |
 | `core.archiveArtifacts` | CORE | registry | Y (L1408, registryStep generic) | Y (`CoreArchiveArtifactsStep`) | Y | N (S2-B10 burn-down) | Y/Y | Y (`ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-B10/G8, PROPOSED — `S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md`) |
 | `example.uppercase` | EXTERNAL_REFERENCE | external | Y (`UppercaseDsl.kt`) | Y (`UppercaseStepDefinition`) | Y (via ServiceLoader + registry) | N (no legacy path) | Y/Y | N | — (or implicit?) | none in 01..10 | — | **CERTIFIED** (EP burn-down) |
 
@@ -240,7 +240,7 @@ core.cleanWs:
   certification:  CERTIFIED (proposed by G8 receipt; counters 3/3/3 unchanged)
 ```
 
-State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A10 closure)` at LFC-2E1-S2-A10 / G8. LEGACY_PLUGIN_IDS residual remains **3 / 3 / 3** (core.load, core.waitUntil, core.archiveArtifacts — each with own burn-down lane).
+State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A10 closure)` at LFC-2E1-S2-A10 / G8. LEGACY_PLUGIN_IDS residual is **2 / 2 / 2** (`core.load`, `core.waitUntil` — `core.archiveArtifacts` removed at S2-B10/G5; `core.waitUntil` factory entry removed at WU-G5R but decoder membership unchanged).
 
 ### `core.load` — IMPLEMENTED_UNCERTIFIED (legacy)
 
@@ -258,32 +258,37 @@ State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LE
 - **DSL:** `PipelineDsl.kt:1590` `fun isUnix(): Boolean`
 - **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalIsUnixNodeDispatcher.kt:15`
 
-### `core.waitUntil` — IMPLEMENTED_UNCERTIFIED (WU-G5R: AUTHORITY_FLIPPED, G4/G5 done)
+### `core.waitUntil` — IMPLEMENTED_UNCERTIFIED (WU-G5R: factory entry removed; ORCHESTRATION kind; LEGACY_PLUGIN_IDS unchanged)
 
-- **StepDefinition:** `CoreWaitUntilStep.kt` — registered in `CoreStepRegistryFactory`
+> **D2 correction (debt-verify 2026-09-17):** The WU-G5R-GATE receipt incorrectly updated
+> this row to `def=Y / Path=registry`. `core.waitUntil` is ORCHESTRATION kind — its execution
+> goes through `dispatchRepeatUntilBody` in `CanonicalDurableRunCoordinator` (ADR-0073),
+> not a standard registry handler. `def=N` is the correct value for ORCHESTRATION steps.
+> The LEGACY_PLUGIN_IDS membership was NOT removed at WU-G5R-GATE; counters remain 2/2/2.
+
 - **DSL:** `PipelineDsl.kt:1629` `fun waitUntil(...)` (lowered to `StepSpec.RegistryStepSpec`)
-- **Descriptor:** `effects = { Effect.READS_WORKSPACE }`; `replayPolicy = ReplayPolicy.MEMOIZED`; `requiredCapabilities = { EVENT_SINK_CAPABILITY }`
-- **Authority path:** `dispatchRepeatUntilBody` in `CanonicalDurableRunCoordinator` (ADR-0073); `BodyInvoker` re-entry for condition evaluation
-- **Durable control:** `FileBasedWaitUntilControlJournal` — first-attempt-first-served; deadline-exceeded on ceiling
+- **Authority path:** `dispatchRepeatUntilBody` in `CanonicalDurableRunCoordinator` (ADR-0073);
+  `BodyInvoker` re-entry for condition evaluation
+- **Production routing:** `CoreStepRegistryFactory` (registry path, WU-G5R); legacy decoder entry
+  still present in `LEGACY_PLUGIN_IDS` but unreachable in production (structural routing goes to `RegistryCore`)
+- **LEGACY_PLUGIN_IDS:** unchanged (2/2/2); `core.waitUntil` still in decoder set; removal pending future gate
 - **Real example:** `v2/compatibility/22-wait-until.pipeline.kts` (SHA256: `7befc004582257fa779b9403e65e01d65acb3f5ac7a8933603a2f8de1a9990b4`)
 - **Fitness:** `Lfc2WaitUntilCanonicalReentryFitnessTest` — installed CLI test: WaitUntilPolled + WaitUntilCompleted emitted through canonical path
 - **Receipts:**
   - G1: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G1_REGISTRY_CANDIDATE_RECEIPT.md`
   - G2: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G2_DIFFERENTIAL_CONTRACT_FREEZE.md`
   - G3: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G3_CONTRACT_SUITE_RECEIPT.md`
-  - WU-G5R-GATE: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` (this receipt)
-- **LEGACY_PLUGIN_IDS:** removed at WU-G5R-GATE; counters 2/2/2 → 1/1/1 (only `core.load` remains)
-- **G6/G7/G8:** remaining (architecture fitness, StepContractSuite, CERTIFIED)
+  - WU-G5R-GATE: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` (updated 2026-09-17 per D2)
 
 ```text
 core.waitUntil:
   delivery:       CORE candidate
-  execution:      REGISTRY_PRIMARY (WU-G5R-GATE: AUTHORITY_FLIPPED)
-  legacy:         UNREACHABLE (CanonicalWaitUntilNodeDispatcher still present but no longer reachable)
-  certification:  IMPLEMENTED_UNCERTIFIED (G4/G5 done, G6/G7/G8 remaining)
+  execution:      ORCHESTRATION (WU-G5R: factory entry removed; execution via dispatchRepeatUntilBody)
+  legacy:         UNREACHABLE in production (LEGACY_PLUGIN_IDS membership present; routing to RegistryCore)
+  certification: IMPLEMENTED_UNCERTIFIED (G4/G6 done; G5/G7/G8 remaining)
 ```
 
-State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `IMPLEMENTED_UNCERTIFIED + AUTHORITY_FLIPPED (WU-G5R-GATE)` at LFC-2E1-S2-A8 / WU-G5R-GATE. LEGACY_PLUGIN_IDS residual: **1 / 1 / 1** (core.load — waitUntil is in its own burn-down lane, G6/G7/G8 to follow).
+State: `IMPLEMENTED_UNCERTIFIED (WU-G5R: factory entry removed, ORCHESTRATION kind; LEGACY_PLUGIN_IDS counters 2/2/2 unchanged).
 
 ### `core.archiveArtifacts` — CERTIFIED + LEGACY_REMOVED (production registry, S2-B10 closure)
 
@@ -309,7 +314,7 @@ core.archiveArtifacts:
   certification:  CERTIFIED (proposed by G8 receipt; counters 2/2/2 unchanged)
 ```
 
-State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-B10 closure)` at LFC-2E1-S2-B10 / G8. LEGACY_PLUGIN_IDS residual is **1 / 1 / 1** (core.load — waitUntil flipped at WU-G5R-GATE; see `S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md`).
+State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-B10 closure)` at LFC-2E1-S2-B10 / G8. LEGACY_PLUGIN_IDS residual is **2 / 2 / 2** (`core.load`, `core.waitUntil` — `core.waitUntil` LEGACY_PLUGIN_IDS membership unchanged at WU-G5R; see `S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md`).
 
 ### `example.uppercase` — CERTIFIED (external plugin)
 

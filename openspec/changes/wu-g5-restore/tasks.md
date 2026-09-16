@@ -836,6 +836,48 @@ Expected outcomes:
 
 ---
 
+### WU-G5R.5 Completion Receipt
+
+**Committed:** `e81aabbf` ("test(wu-g5r.5): WaitUntilReconcilerTest + FileBasedWaitUntilControlJournalTest + reconciler fix")
+
+**Reconciler fix (separate from production WU-G5R.5 commit `39ab42a6`):**
+
+The combined `FAILED | FAILED_TIMEOUT` branch was incorrect. Correct semantics:
+
+- `FAILED_TIMEOUT`: the dispatch loop set this when the NEXT backoff would
+  exceed the ceiling. This attempt IS the one that hit the ceiling.
+  → `DeadlineExceeded(attempt)` (direct return, terminal).
+- `FAILED`: the predicate was unsatisfied; the next backoff is computed from
+  `currentBackoffMs`. If `nextBackoff > maxBackoffMs`, the NEXT attempt
+  would exceed the ceiling.
+  → `DeadlineExceeded(attempt + 1)` (the ceiling is hit at the next attempt).
+
+**Test evidence:**
+- `WaitUntilReconcilerTest` (domain): 20/20 PASS
+- `FileBasedWaitUntilControlJournalTest` (application): 14/14 PASS
+- `WaitUntilStepContractSuiteTest`: 18/18 PASS
+- `CoreWaitUntilDifferentialContractTest`: 8/8 PASS
+- `CoreWaitUntilStepUnitTest`: 9/9 PASS
+- `Lfc2WaitUntil*` fitness: 7/7 PASS
+- L4 full: 449 domain tests / 0 failures, 59 application tests / 0 failures
+
+**Files committed:**
+- `pipeline-domain`: `WaitUntilReconcilerTest.kt`, `WaitUntilReconciler.kt` (fix)
+- `pipeline-application`: `FileBasedWaitUntilControlJournalTest.kt`
+
+**Reconciler semantics validated:**
+- W0: `ScheduleAttempt(1)` on empty store ✓
+- W1: `ResumeAttempt(n)` on RUNNING ✓
+- W2: `AdvanceAfterPredicateSatisfied(n)` on SUCCEEDED (with supersede-skip for SUCCEEDED+successor) ✓
+- W3: `AdvanceAfterPredicateUnsatisfied(attempt+1, nextBackoffMs)` on FAILED (nextBackoff from currentBackoffMs) ✓
+- W4: `DeadlineExceeded(attempt)` on FAILED_TIMEOUT; `DeadlineExceeded(attempt+1)` on FAILED when nextBackoff exceeds ceiling ✓
+- Supersede-skip: stale terminal attempts with a successor are skipped ✓
+- Terminal: `Aborted`, `RejectDivergence` (DIVERGENT/LOST) ✓
+- PENDING: matched by RUNNING/PENDING branch → `ResumeAttempt` ✓
+- Backoff sequence: 1000→2000→4000→8000→ceiling → correct deadline ✓
+
+---
+
 ## 10. WU-G5R.6 — Real pipeline E2E
 
 **Title:** Add `v2/compatibility/22-wait-until.pipeline.kts` and an

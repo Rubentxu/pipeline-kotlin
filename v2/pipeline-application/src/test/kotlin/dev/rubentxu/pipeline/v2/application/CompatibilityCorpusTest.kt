@@ -145,6 +145,15 @@ class CompatibilityCorpusTest {
     @Test fun fixture20PwdTmp() = runFixturePass("20-pwd-tmp.pipeline.kts")
 
     /**
+     * WU-G5R.6: Verifies that the structural waitUntil block (G5R.4 + G5R.5)
+     * produces a correct durable trace via the canonical dispatch path.
+     * The fixture creates a marker file, waits until it exists (succeeds immediately
+     * on first poll), then removes the marker.
+     */
+    @Test
+    fun fixture22WaitUntil() = runFixturePass("22-wait-until.pipeline.kts")
+
+    /**
      * Verifies that a script with compilation errors exits with non-zero code.
      * INC-R10-ARC-001: compilation failure is a FAILURE outcome, not success.
      */

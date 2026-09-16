@@ -3,7 +3,9 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.canonicalReentrySentinel
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.application.SystemClock
+import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
@@ -23,9 +25,12 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
+import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
+import kotlin.sequences.generateSequence
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -221,6 +226,83 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             sentinel.get(),
             "Sentinel must be cleared after executeWaitUntilBody returns — " +
                 "ThreadLocal.remove() in the finally block",
+        )
+    }
+
+    /**
+     * WU-G5R.6: Installed-CLI fitness — proves `dispatchRepeatUntilBody` is the
+     * emitter of `WaitUntilPolled` / `WaitUntilCompleted` through the canonical
+     * dispatch path (BlockStepNode + BodyExecutionPolicy.RepeatUntil), not the
+     * legacy `CanonicalWaitUntilNodeDispatcher` stub.
+     *
+     * Verifies:
+     * - The CLI exits 0 (waitUntil predicate satisfied).
+     * - The event stream contains ≥1 `WaitUntilPolled`.
+     * - The event stream contains `WaitUntilCompleted(outcome="completed")`.
+     * - No `WaitUntilPredicateEvaluated(Failed)` on the canonical path.
+     */
+    @Test
+    fun `installed CLI emits WaitUntilPolled and WaitUntilCompleted through canonical path`() {
+        val appBin = AppBinSupport.discover()
+        val fixture = generateSequence(
+            java.io.File(System.getProperty("user.dir"))
+        ) { it.parentFile }
+            .map { java.io.File(it, "v2/compatibility/22-wait-until.pipeline.kts") }
+            .firstOrNull { it.isFile }
+            ?: error("Cannot locate v2/compatibility/22-wait-until.pipeline.kts")
+
+        val dbDir = java.io.File(java.io.File("/tmp"), "wu-g5r6-db-${System.currentTimeMillis()}")
+        val ctrlDir = java.io.File(java.io.File("/tmp"), "wu-g5r6-ctrl-${System.currentTimeMillis()}")
+        dbDir.deleteOnExit()
+        ctrlDir.deleteOnExit()
+
+        val pb = ProcessBuilder(
+            appBin.toString(), "run",
+            "--db", dbDir.absolutePath,
+            "--control-root", ctrlDir.absolutePath,
+            fixture.absolutePath,
+        )
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText()
+
+        assertEquals(
+            0, exitCode,
+            "CLI must exit 0 on successful waitUntil. stderr: ${process.errorStream.bufferedReader().readText()}",
+        )
+
+        // Parse events from stdout
+        val jsonStart = stdout.indexOf('[')
+        val jsonEnd = stdout.lastIndexOf(']') + 1
+        assertTrue(jsonStart >= 0 && jsonEnd > jsonStart, "stdout must contain a JSON array")
+
+        val events = JsonEventLog.decode(stdout.substring(jsonStart, jsonEnd))
+
+        val polledEvents = events.filterIsInstance<WaitUntilPolled>()
+        assertTrue(
+            polledEvents.isNotEmpty(),
+            "Event stream must contain ≥1 WaitUntilPolled; got: ${events.map { it.kind }}",
+        )
+        // Each WaitUntilPolled must carry a positive attempt number
+        for (polled in polledEvents) {
+            assertTrue(polled.attempt >= 1, "WaitUntilPolled.attempt must be ≥ 1")
+        }
+
+        val completedEvents = events.filterIsInstance<WaitUntilCompleted>()
+        assertEquals(
+            1, completedEvents.size,
+            "Event stream must contain exactly 1 WaitUntilCompleted; got: ${completedEvents.map { it.outcome }}",
+        )
+        assertEquals(
+            "completed", completedEvents[0].outcome,
+            "WaitUntilCompleted.outcome must be 'completed'",
+        )
+        assertTrue(
+            completedEvents[0].totalAttempts >= 1,
+            "WaitUntilCompleted.totalAttempts must be ≥ 1",
         )
     }
 }

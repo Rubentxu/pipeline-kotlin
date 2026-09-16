@@ -1262,6 +1262,173 @@
       ],
       "diagnostics": [],
       "descriptorProjection": {}
+    },
+    "22-wait-until.pipeline.kts": {
+      "sha256": "7befc004582257fa779b9403e65e01d65acb3f5ac7a8933603a2f8de1a9990b4",
+      "events": [
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "CompilationStarted",
+          "occurredAt": "2026-09-16T22:05:41.914564972Z"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "CompilationFinished",
+          "occurredAt": "2026-09-16T22:05:46.187239457Z",
+          "cacheKey": {
+            "value": "fe8fee43532d69c9c06b18db24b520bb80561a745bd3cdaad2a6860667420d95",
+            "version": "v1"
+          },
+          "diagnostics": []
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "RunStarted",
+          "occurredAt": "2026-09-16T22:05:46.373798702Z",
+          "scriptPath": "v2/compatibility/22-wait-until.pipeline.kts"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StageStarted",
+          "occurredAt": "2026-09-16T22:05:46.380152011Z",
+          "stageIndex": 0,
+          "stageName": "wait-until"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StepStarted",
+          "occurredAt": "2026-09-16T22:05:46.433227016Z",
+          "stageIndex": 0,
+          "stepIndex": 0,
+          "stepName": "wait-until/sh-0",
+          "stepType": "sh"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StepFinished",
+          "occurredAt": "2026-09-16T22:05:46.561781460Z",
+          "stageIndex": 0,
+          "stepIndex": 0,
+          "stepName": "wait-until/sh-0",
+          "stepType": "sh"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "WaitUntilPolled",
+          "occurredAt": "2026-09-16T22:05:46.584763362Z",
+          "attempt": 1,
+          "durationMs": 0,
+          "conditionResult": false
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StepStarted",
+          "occurredAt": "2026-09-16T22:05:46.596271691Z",
+          "stageIndex": 0,
+          "stepIndex": 1,
+          "stepName": "wait-until/waituntil-body-0/sh-0",
+          "stepType": "sh"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "EchoOutputCaptured",
+          "occurredAt": "2026-09-16T22:05:46.704328019Z",
+          "stepIndex": 1,
+          "content": "READY\n"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StepFinished",
+          "occurredAt": "2026-09-16T22:05:46.707997775Z",
+          "stageIndex": 0,
+          "stepIndex": 1,
+          "stepName": "wait-until/waituntil-body-0/sh-0",
+          "stepType": "sh"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "WaitUntilPolled",
+          "occurredAt": "2026-09-16T22:05:46.711783610Z",
+          "attempt": 1,
+          "durationMs": 127,
+          "conditionResult": true
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "WaitUntilCompleted",
+          "occurredAt": "2026-09-16T22:05:46.715803437Z",
+          "totalAttempts": 1,
+          "totalDurationMs": 140,
+          "outcome": "completed"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StepStarted",
+          "occurredAt": "2026-09-16T22:05:46.720413409Z",
+          "stageIndex": 0,
+          "stepIndex": 2,
+          "stepName": "wait-until/sh-1",
+          "stepType": "sh"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StepFinished",
+          "occurredAt": "2026-09-16T22:05:46.828427421Z",
+          "stageIndex": 0,
+          "stepIndex": 2,
+          "stepName": "wait-until/sh-1",
+          "stepType": "sh"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "StageFinished",
+          "occurredAt": "2026-09-16T22:05:46.832981457Z",
+          "stageIndex": 0,
+          "stageName": "wait-until",
+          "outcome": "success"
+        },
+        {
+          "eventId": null,
+          "runId": null,
+          "sequence": null,
+          "kind": "RunFinished",
+          "occurredAt": "2026-09-16T22:05:46.834887019Z",
+          "outcome": "success",
+          "diagnostics": []
+        }
+      ],
+      "diagnostics": [],
+      "descriptorProjection": {}
     }
   },
   "version": "1.4"

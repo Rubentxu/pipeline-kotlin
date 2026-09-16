@@ -745,3 +745,159 @@ risks:
 - AGENTS.md §RETRY-D (durable control row law, mirrored for wait-until)
 - AGENTS.md §PAR-D (coroutine ≠ durable authority)
 - AGENTS.md §EXPLICIT IMMUTABLE EXECUTION CONTEXT (CTX-P)
+
+---
+
+## 14. Orchestrator Decision Record (2026-09-16, user-approved)
+
+Resolution of §10 open questions:
+
+```text
+OQ-1  P1 vs P2                         → P2 (surgical-add)
+OQ-2  CoreWaitUntilStep registry       → REMOVE from CoreStepRegistryFactory
+OQ-3  Predicate mechanism              → NEITHER exit-code fold NOR event-as-authority.
+                                         Typed predicate result ADT (third way).
+OQ-4  StepDescriptorRegistry treatment → kind: ORCHESTRATION in ledger/matrix
+                                         (same class as retry/timeout/parallel)
+OQ-5  waitUntilControlJournal wiring   → same composition-root wiring as
+                                         retryControlJournal (Main.kt)
+```
+
+### 14.1 P2 confirmed: `92971881` = implementation REFERENCE, not integration unit
+
+```text
+92971881 = implementation reference
+          ≠ certification evidence
+          ≠ commit to cherry-pick blindly
+```
+
+Port ONLY: RepeatUntil ADT/policy, WaitUntilReconciler,
+WaitUntilControlJournal, WaitUntilIdentity, BlockShellScope.RepeatUntil,
+projection, dispatchRepeatUntilBody — plus the real new connection
+DSL → compiler → structural IR. Every gate re-demonstrated on current HEAD.
+
+### 14.2 Registry removal confirmed: one ontology, not two
+
+```text
+waitUntil
+  kind: ORCHESTRATION
+  execution: BodyExecutionPolicy.RepeatUntil
+```
+
+NOT `kind: ORCHESTRATION + STEP`. Remove
+`CoreWaitUntilStep.registerInto(...)` and any `core.waitUntil`
+StepDefinition without a legitimate function. Update certification
+ledger/matrix so `kind = ORCHESTRATION`, same class as
+retry/timeout/parallel.
+
+### 14.3 Predicate: typed result ADT (third way) — exit-code fold FORBIDDEN
+
+Forbidden (connascence between exit-code and predicate semantics):
+
+```text
+sh exit 0     → predicate true     ❌
+sh exit != 0  → predicate false    ❌
+```
+
+`predicate == false` MUST NOT be conflated with `body failed`
+(curl-not-ready vs permission-denied vs missing-binary are NOT the same
+as "condition not yet satisfied").
+
+Also forbidden: event-as-control-authority
+(`EventBus → control decision` inverts the law
+`journal/control state = authority; events = observability`).
+
+Required shape:
+
+```kotlin
+sealed interface WaitUntilPredicateOutcome {
+    data object Satisfied   : WaitUntilPredicateOutcome
+    data object Unsatisfied : WaitUntilPredicateOutcome
+    data class Failed(val failure: StepFailure) : WaitUntilPredicateOutcome
+    data class Cancelled(val reason: CancellationReason) : WaitUntilPredicateOutcome
+}
+```
+
+Reconciler folds (pure):
+
+```text
+Satisfied   → Completed (loop terminates, outcome success)
+Unsatisfied → ScheduleAttempt(n+1)
+Failed      → fail waitUntil (typed failure, NOT "predicate false")
+Cancelled   → propagate cancellation (never a terminal durable outcome
+              by itself; coroutine mechanism ≠ durable truth, PAR-D)
+```
+
+Data flow (authority order preserved):
+
+```text
+body execution
+      ↓
+typed predicate result (WaitUntilPredicateOutcome)
+      ↓
+WaitUntilControlJournal   (durable authority)
+      ↓
+WaitUntilReconciler       (pure fold)
+      ↓
+decision
+      ↓
+event mirror (WaitUntilPredicateEvaluated — observability ONLY,
+              emitted AFTER the journal write, never read back)
+```
+
+First check whether the existing structural result surface can be
+extended before introducing a separate `PredicateBodyInvoker` port:
+do NOT create a second execution engine or a generic arbitrary-value
+BodyInvoker API unless the existing seam cannot carry the typed result.
+
+### 14.4 Revised slice order (supersedes §2 halves for task planning)
+
+```text
+WU-G5R.0  RED characterization (TWO mandatory REDs):
+          A. structural: DSL waitUntil { ... } lowers today to
+             OpaqueStepNode("core.waitUntil"); must lower to
+             BodyExecutionPolicy.RepeatUntil. (was WU-G5R.1)
+          B. semantic: predicate == false is NOT equivalent to
+             body failure. This test blocks the exit-code fold
+             from ever being introduced.
+
+WU-G5R.1  structural DSL: waitUntil owns body (StepSpec.WaitUntilBlock)
+
+WU-G5R.2  compiler projection: WaitUntilBlock → RepeatUntil
+          (no OpaqueStepNode for this key)
+
+WU-G5R.3  typed predicate result (WaitUntilPredicateOutcome ADT +
+          result-carrier seam on the existing body machinery)
+
+WU-G5R.4  canonical BodyInvoker re-entry (dispatchRepeatUntilBody,
+          mirrors dispatchRetryAwareBody, ADR-0073)
+
+WU-G5R.5  durable predicate/iteration journal
+          (WaitUntilControlJournal = authority; event mirror after)
+
+WU-G5R.6  real pipeline E2E (v2/compatibility/22-wait-until.pipeline.kts,
+          installed CLI, origin=canonical event harness proof)
+
+WU-G5R-GATE  RESTORE gate: all fitness green-or-intentionally-RED,
+          inventory row updated (canonical_path_user_reachable = true),
+          closure receipt.
+
+then WU-G5B (separate cycle): delete legacy dispatcher/metadata/ids →
+residual 1/1/1 {core.load} → installed acceptance → Event Harness →
+ledger/matrix → orchestrator flip to CERTIFIED.
+```
+
+### 14.5 Mandatory REDs (do not write implementation before both are red)
+
+```text
+RED-A (structural):
+  DSL waitUntil { ... }
+  expected: RepeatUntil canonical projection
+  actual:   OpaqueStepNode("core.waitUntil") / legacy path
+
+RED-B (semantic):
+  predicate false ≠ body failure
+  (asserts WaitUntilPredicateOutcome.Unsatisfied and
+   WaitUntilPredicateOutcome.Failed produce DIFFERENT decisions:
+   ScheduleAttempt(n+1) vs typed failure)
+```

@@ -96,17 +96,23 @@ import java.nio.file.Path
 import java.nio.file.Files
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Canonical Step keys eligible for canonical durable execution (EP-F2.6: renamed from
- * `canonicalCoreStepIds` — the authority is NOT core-only). The durable spine accepts a step as
- * canonical when its key is either (a) a legacy executable core id, or (b) present in the
- * production [StepRegistry] — which is open-world: it includes core Steps (`core.echo`,
- * `core.sh`) AND external plugin contributions discovered at composition time. A key is NOT
- * canonical-eligible before its plugin is registered and becomes eligible after registration
- * (proven by EP_F26_GenericProductionPathProofTest). The coordinator derives eligibility from
- * this authority, never from the decoded command world nor from a closed core catalogue.
+ * WU-G5R.4: non-production sentinel that fires when `executeWaitUntilBody` is re-entered.
+ *
+ * Read ONLY by `Lfc2WaitUntilCanonicalReentryFitnessTest`. Not production API.
+ * The closure receipt (WU-G5R-GATE) explains the trade-off.
+ *
+ * Set at the top of `executeWaitUntilBody` and cleared when the function returns
+ * (guaranteed by `AtomicBoolean.set(false)` on the execution path below).
+ *
+ * Class-level (not companion) so `@PublishedApi internal` exposes it at module scope.
  */
+@PublishedApi
+internal val canonicalReentrySentinel: AtomicBoolean =
+    AtomicBoolean(false)
+
 private val canonicalStepIds: Set<String> =
     CanonicalCoreStepMetadata.pluginIds +
         CoreStepRegistryFactory.registry().keys().map { it.value }
@@ -503,6 +509,10 @@ class CanonicalDurableRunCoordinator(
     // routes through RetryReconciliationDriver (ADR-0075 §11). When null, the pre-ADR-0075
     // inline retry loop is preserved bit-equivalent — existing callers and tests see no change.
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
+    // WU-G5R.4 / WU-G5R.5: optional waitUntil control journal. When bound, the waitUntil
+    // branch routes through the WaitUntilReconciler (durable polling aggregate). When null,
+    // the pre-WU-G5R.5 inline polling loop is preserved — existing callers and tests see no change.
+    private val waitUntilControlJournal: WaitUntilControlJournal? = null,
     // S2-A9: milestone state store scoped to this coordinator/run. Each coordinator instance
     // creates its own MilestoneStateStore by default, so all milestone invocations within a run
     // share the same store (shared by all pipeline stages in the run) while concurrent runs
@@ -1863,6 +1873,46 @@ class CanonicalDurableRunCoordinator(
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
     ): StepOutcome {
+        // WU-G5R.4: fire the non-production sentinel so the fitness test can prove
+        // the canonical path was reached (read ONLY by Lfc2WaitUntilCanonicalReentryFitnessTest).
+        canonicalReentrySentinel.set(true)
+        try {
+            val journal = waitUntilControlJournal
+            if (journal == null) {
+                // WU-G5R.4: journal not yet bound; run the pre-WU-G5R.5 inline polling loop.
+                // WU-G5R.5 replaces this branch with WaitUntilReconciler reconciliation.
+                return executeWaitUntilBodyInline(scope, block, runId, stageName, stageIndex, stepIndex, childShOptions, parentBodyPath, executionContext)
+            }
+            // WU-G5R.5: journal bound — route through WaitUntilReconciler.
+            // The typed failure returned here keeps dispatchBody type-safe.
+            return StepOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    "waitUntil control journal wiring not yet implemented (WU-G5R.5 pending)",
+                ),
+            )
+        } finally {
+            canonicalReentrySentinel.set(false)
+        }
+    }
+
+    /**
+     * WU-G5R.4: inline waitUntil polling loop, preserved until WU-G5R.5 wires the
+     * [WaitUntilControlJournal]. This function is the body of the existing polling loop
+     * refactored out of `executeWaitUntilBody` so the sentinel/finally control flow is
+     * clean. Identical to the pre-WU-G5R.4 behaviour.
+     */
+    private suspend fun executeWaitUntilBodyInline(
+        scope: BlockShellScope.WaitUntilScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
+    ): StepOutcome {
         val overallStartMs = System.currentTimeMillis()
         // WU-G5R.3: initial sleep before first poll
         if (scope.initialRecurrencePeriod > 0) {
@@ -2286,6 +2336,20 @@ class CanonicalDurableRunCoordinator(
 
     private companion object {
         const val REATTACH_TIMEOUT_MS = 60_000L
+
+        /**
+         * WU-G5R.4: non-production sentinel accessor for `Lfc2WaitUntilCanonicalReentryFitnessTest`.
+         *
+         * The sentinel is non-production (design §11 trade-off). It fires only during the canonical
+         * re-entry of `executeWaitUntilBody` and proves reachability for the fitness test.
+         * Never called from production code. The closure receipt (WU-G5R-GATE) explains the trade-off.
+         *
+         * @PublishedApi internal makes this callable from test code in the same module
+         * (different package, same Gradle artifact) without exposing it to external consumers.
+         */
+        @PublishedApi
+        internal val waitUntilReentrySentinel: AtomicBoolean
+            get() = canonicalReentrySentinel
     }
 
     /**

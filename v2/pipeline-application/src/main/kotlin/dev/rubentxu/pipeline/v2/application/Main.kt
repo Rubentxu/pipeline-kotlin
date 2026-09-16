@@ -906,5 +906,8 @@ private fun runCanonicalPipeline(
         // --control-root reuses the prior aggregate terminal state and does not re-launch
         // child bodies that already succeeded/failed terminally.
         retryControlJournal = FileBasedRetryControlJournal(controlDirRoot),
+        // WU-G5R.4: waitUntil control journal. Wired as null here; WU-G5R.5 promotes
+        // this to FileBasedWaitUntilControlJournal(controlDirRoot) when the class exists.
+        waitUntilControlJournal = null,
     ).run(pipeline, runId)
 }

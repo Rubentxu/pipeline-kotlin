@@ -101,7 +101,7 @@ class WaitUntilStepContractSuiteTest {
         val clock = SystemClock()
         val journal = InMemoryOperationJournal(clock)
         val cursorStore = InMemoryReplayCursorStore(clock)
-        val registryForCoord = CoreStepRegistryFactory.registry()
+        val registryForCoord = registry()
         val coord = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
             journal = journal,
@@ -265,7 +265,7 @@ class WaitUntilStepContractSuiteTest {
 
     @Test
     fun `registry resolution — production factory contains core dot waitUntil`() {
-        val registry = CoreStepRegistryFactory.registry()
+        val registry = registry()
         assertTrue(registry.contains(CoreWaitUntilStep.KEY), "production registry must contain core.waitUntil")
         val definition = registry.definition(CoreWaitUntilStep.KEY)
         assertNotNull(definition, "production registry MUST resolve core.waitUntil to a StepDefinition")
@@ -280,8 +280,8 @@ class WaitUntilStepContractSuiteTest {
 
     @Test
     fun `registry resolution — production factory registry is fresh per call and consistent across calls`() {
-        val r1 = CoreStepRegistryFactory.registry()
-        val r2 = CoreStepRegistryFactory.registry()
+        val r1 = registry()
+        val r2 = registry()
         assertFalse(r1 === r2, "factory must produce fresh per-call registries")
         assertTrue(r1.contains(CoreWaitUntilStep.KEY))
         assertTrue(r2.contains(CoreWaitUntilStep.KEY))
@@ -310,7 +310,7 @@ class WaitUntilStepContractSuiteTest {
     fun `capability admission — EVENT_SINK available prepares Ready and handler executes`() {
         runBlocking {
             val preparation = RegistryExecutionPreparation.prepare(
-                registry = CoreStepRegistryFactory.registry(),
+                registry = registry(),
                 key = CoreWaitUntilStep.KEY,
                 encodedInput = CoreWaitUntilStep.definition.contract.inputCodec
                     .encode(WaitUntilInput()),
@@ -329,7 +329,7 @@ class WaitUntilStepContractSuiteTest {
     fun `missing capability — admission rejects when EVENT_SINK is absent`() {
         runBlocking {
             val preparation = RegistryExecutionPreparation.prepare(
-                registry = CoreStepRegistryFactory.registry(),
+                registry = registry(),
                 key = CoreWaitUntilStep.KEY,
                 encodedInput = CoreWaitUntilStep.definition.contract.inputCodec
                     .encode(WaitUntilInput()),

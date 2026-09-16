@@ -93,14 +93,18 @@ class CoreWaitUntilStepUnitTest {
         assertEquals(original.totalDurationMs, decoded.totalDurationMs)
     }
 
-    // ===== 5. production registry =====
+    // ===== 5. isolated registry registration =====
 
     @Test
-    fun `registry — production factory contains core dot waitUntil`() {
-        val registry = CoreStepRegistryFactory.registry()
+    fun `registry — CoreWaitUntilStep registers into an isolated InMemoryStepRegistry`() {
+        // core.waitUntil is not in CoreStepRegistryFactory.registry() (removed at WU-G5R.4).
+        // The StepContractSuite uses an isolated registry for its tests. This test verifies
+        // that CoreWaitUntilStep.registerInto() works correctly in isolation.
+        val registry = InMemoryStepRegistry()
+        CoreWaitUntilStep.registerInto(registry)
         assertTrue(
             registry.contains(CoreWaitUntilStep.KEY),
-            "production registry must contain core.waitUntil",
+            "isolated registry must contain core.waitUntil after registerInto",
         )
     }
 

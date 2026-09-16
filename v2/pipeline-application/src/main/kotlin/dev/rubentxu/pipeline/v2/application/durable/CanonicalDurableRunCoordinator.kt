@@ -11,6 +11,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.domain.step.WaitUntilPredicateOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
@@ -28,6 +29,10 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeC
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
+// WU-G5R.5: durable waitUntil reconciliation driver and identity factory.
+import dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory
+import dev.rubentxu.pipeline.v2.application.durable.WaitUntilReconciliationDriver
+
 // RETRY-D: control journal + reconciliation driver (ADR-0075 §11).
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory
@@ -51,6 +56,7 @@ import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -247,7 +253,7 @@ private fun StageNode.timeoutProjection(): StageTimeoutProjection {
 private fun StepOutcome.toOperationStatus(): OperationStatus = when (this) {
     StepOutcome.Success -> OperationStatus.SUCCEEDED
     StepOutcome.Unstable -> OperationStatus.FAILED
-    is StepOutcome.Failure -> if (failure.kind == dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT) {
+    is StepOutcome.Failure -> if (failure.kind == FailureKind.TIMEOUT) {
         OperationStatus.FAILED_TIMEOUT
     } else {
         OperationStatus.FAILED
@@ -1152,7 +1158,7 @@ class CanonicalDurableRunCoordinator(
         } else {
             RunningCanonicalShellRecovery.Recovered(
                 StepOutcome.Failure(
-                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT, "Canonical shell exited with code $exitCode"),
+                    PipelineFailure(FailureKind.SCRIPT, "Canonical shell exited with code $exitCode"),
                 ),
                 OperationStatus.FAILED,
             )
@@ -1880,17 +1886,284 @@ class CanonicalDurableRunCoordinator(
             val journal = waitUntilControlJournal
             if (journal == null) {
                 // WU-G5R.4: journal not yet bound; run the pre-WU-G5R.5 inline polling loop.
-                // WU-G5R.5 replaces this branch with WaitUntilReconciler reconciliation.
+                // WU-G5R.5 replaces this branch with the WaitUntilReconciler loop.
                 return executeWaitUntilBodyInline(scope, block, runId, stageName, stageIndex, stepIndex, childShOptions, parentBodyPath, executionContext)
             }
-            // WU-G5R.5: journal bound — route through WaitUntilReconciler.
-            // The typed failure returned here keeps dispatchBody type-safe.
-            return StepOutcome.Failure(
-                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
-                    "waitUntil control journal wiring not yet implemented (WU-G5R.5 pending)",
-                ),
+
+            // WU-G5R.5: durable waitUntil loop via WaitUntilReconciler.
+            //
+            // Algorithm (mirrors dispatchRetryAwareBody):
+            //   1. Plan via WaitUntilReconciliationDriver — pure read of the journal.
+            //   2. Branch on WaitUntilReconciliationDecision:
+            //      - ScheduleAttempt(n) / ResumeAttempt(n): persist RUNNING, emit WaitUntilPolled,
+            //        invoke body, fold outcome.
+            //      - AdvanceAfterPredicateSatisfied(n): persist SUCCEEDED, emit WaitUntilCompleted,
+            //        return Success.
+            //      - AdvanceAfterPredicateUnsatisfied(n, nextBackoffMs): persist RUNNING for next
+            //        attempt, sleep nextBackoffMs, loop.
+            //      - DeadlineExceeded(n): persist terminal failure, emit WaitUntilCompleted,
+            //        return Failure.
+            //      - Aborted / RejectDivergence: return Failure.
+            //
+            // Event-as-control-authority prohibition (design §14.3): events are emitted AFTER
+            // the journal write. The reconciler NEVER reads events back.
+            val controlOpId = WaitUntilIdentityFactory.controlOperationId(
+                runId.value, stageIndex, stepIndex, parentBodyPath,
             )
+            val fingerprint = computeWaitUntilContractFingerprint(parentBodyPath, scope)
+            val driver = WaitUntilReconciliationDriver(
+                journal = journal,
+                controlOpId = controlOpId,
+                fingerprint = fingerprint,
+                initialRecurrencePeriodMs = scope.initialRecurrencePeriod,
+                maxBackoffMs = scope.maxBackoffMs,
+            )
+
+            val overallStartMs = System.currentTimeMillis()
+
+            waitUntilPollLoop@ while (true) {
+                val decision = driver.plan()
+
+                when (decision) {
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.ScheduleAttempt,
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.ResumeAttempt -> {
+                        val attempt = when (decision) {
+                            is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.ScheduleAttempt -> decision.attempt
+                            is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.ResumeAttempt -> decision.attempt
+                            else -> error("unreachable")
+                        }
+
+                        // Persist-before-effects: write control row BEFORE launching the body.
+                        journal.beginAttempt(
+                            controlOpId = controlOpId,
+                            attempt = attempt,
+                            currentBackoffMs = scope.initialRecurrencePeriod,
+                            fingerprint = fingerprint,
+                            status = OperationStatus.RUNNING,
+                        )
+
+                        val pollAttemptPath = parentBodyPath + dev.rubentxu.pipeline.v2.domain.BlockSegment(
+                            attempt,
+                            dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"),
+                        )
+                        val pollStartMs = System.currentTimeMillis()
+
+                        // Emit WaitUntilPolled BEFORE the predicate evaluation (observability mirror).
+                        eventSink.append(
+                            WaitUntilPolled(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                attempt = attempt,
+                                durationMs = 0L,
+                                conditionResult = false,
+                            ),
+                        )
+
+                        val pollOutcome = invokeBodyChildren(
+                            block,
+                            runId,
+                            stageName,
+                            stageIndex,
+                            stepIndex,
+                            childShOptions,
+                            pollAttemptPath,
+                            executionContext,
+                        )
+
+                        val pollDurationMs = System.currentTimeMillis() - pollStartMs
+                        val predicateSatisfied = pollOutcome is StepOutcome.Success
+
+                        // Emit updated WaitUntilPolled with actual result (AFTER journal write).
+                        eventSink.append(
+                            WaitUntilPolled(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                attempt = attempt,
+                                durationMs = pollDurationMs,
+                                conditionResult = predicateSatisfied,
+                            ),
+                        )
+
+                        // Fold the body outcome → WaitUntilPredicateOutcome.
+                        val predicateOutcome: WaitUntilPredicateOutcome = when (pollOutcome) {
+                            is StepOutcome.Success ->
+                                WaitUntilPredicateOutcome.Satisfied
+                            is StepOutcome.Failure ->
+                                WaitUntilPredicateOutcome.Failed(pollOutcome.failure)
+                            is StepOutcome.Unstable ->
+                                WaitUntilPredicateOutcome.Failed(
+                                    PipelineFailure(
+                                        FailureKind.SCRIPT,
+                                        "waitUntil body marked unstable",
+                                    ),
+                                )
+                        }
+
+                        when (predicateOutcome) {
+                            is WaitUntilPredicateOutcome.Satisfied -> {
+                                // Predicate satisfied: close aggregate successfully.
+                                journal.updateStatus(
+                                    controlOpId = controlOpId,
+                                    attempt = attempt,
+                                    status = OperationStatus.SUCCEEDED,
+                                    fingerprint = fingerprint,
+                                )
+                                val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                                eventSink.append(
+                                    WaitUntilCompleted(
+                                        eventId = UUID.randomUUID().toString(),
+                                        runId = runId.value,
+                                        sequence = 0L,
+                                        occurredAt = Instant.now(),
+                                        totalAttempts = attempt,
+                                        totalDurationMs = totalDurationMs,
+                                        outcome = "completed",
+                                    ),
+                                )
+                                return StepOutcome.Success
+                            }
+                            is WaitUntilPredicateOutcome.Failed -> {
+                                // Body failed: the predicate failed. Loop to advance.
+                                // Fall through to the next iteration of the outer while loop.
+                            }
+                            is WaitUntilPredicateOutcome.Unsatisfied -> {
+                                // Fall through to advance.
+                            }
+                            is WaitUntilPredicateOutcome.Cancelled -> {
+                                // Explicit cancellation: abort.
+                                journal.updateStatus(
+                                    controlOpId = controlOpId,
+                                    attempt = attempt,
+                                    status = OperationStatus.ABORTED,
+                                    fingerprint = fingerprint,
+                                )
+                                val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                                eventSink.append(
+                                    WaitUntilCompleted(
+                                        eventId = UUID.randomUUID().toString(),
+                                        runId = runId.value,
+                                        sequence = 0L,
+                                        occurredAt = Instant.now(),
+                                        totalAttempts = attempt,
+                                        totalDurationMs = totalDurationMs,
+                                        outcome = "aborted",
+                                    ),
+                                )
+                                return StepOutcome.Failure(
+                                    PipelineFailure(
+                                        FailureKind.ENGINE,
+                                        "waitUntil cancelled: ${predicateOutcome.reason}",
+                                    ),
+                                )
+                            }
+                        }
+                    }
+
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.AdvanceAfterPredicateSatisfied -> {
+                        // Aggregate already satisfied at this attempt.
+                        journal.updateStatus(
+                            controlOpId = controlOpId,
+                            attempt = decision.attempt,
+                            status = OperationStatus.SUCCEEDED,
+                            fingerprint = fingerprint,
+                        )
+                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                        eventSink.append(
+                            WaitUntilCompleted(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                totalAttempts = decision.attempt,
+                                totalDurationMs = totalDurationMs,
+                                outcome = "completed",
+                            ),
+                        )
+                        return StepOutcome.Success
+                    }
+
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.AdvanceAfterPredicateUnsatisfied -> {
+                        // Predicate unsatisfied; advance to next poll with nextBackoffMs.
+                        // Persist the NEXT attempt's control row BEFORE sleeping.
+                        journal.beginAttempt(
+                            controlOpId = controlOpId,
+                            attempt = decision.attempt,
+                            currentBackoffMs = decision.nextBackoffMs,
+                            fingerprint = fingerprint,
+                            status = OperationStatus.RUNNING,
+                        )
+                        kotlinx.coroutines.delay(decision.nextBackoffMs)
+                        // Loop again.
+                    }
+
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.DeadlineExceeded -> {
+                        journal.updateStatus(
+                            controlOpId = controlOpId,
+                            attempt = decision.attempt,
+                            status = OperationStatus.FAILED_TIMEOUT,
+                            fingerprint = fingerprint,
+                        )
+                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                        eventSink.append(
+                            WaitUntilCompleted(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                totalAttempts = decision.attempt,
+                                totalDurationMs = totalDurationMs,
+                                outcome = "deadline-exceeded",
+                            ),
+                        )
+                        return StepOutcome.Failure(
+                            PipelineFailure(
+                                FailureKind.TIMEOUT,
+                                "waitUntil deadline exceeded at poll ${decision.attempt} (${scope.maxBackoffMs}ms backoff ceiling)",
+                            ),
+                        )
+                    }
+
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.Aborted -> {
+                        journal.updateStatus(
+                            controlOpId = controlOpId,
+                            attempt = decision.operationId.hashCode(),
+                            status = OperationStatus.ABORTED,
+                            fingerprint = fingerprint,
+                        )
+                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                        eventSink.append(
+                            WaitUntilCompleted(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                totalAttempts = 0,
+                                totalDurationMs = totalDurationMs,
+                                outcome = "aborted",
+                            ),
+                        )
+                        return StepOutcome.Failure(
+                            PipelineFailure(
+                                FailureKind.ENGINE,
+                                "waitUntil aborted: ${decision.reason}",
+                            ),
+                        )
+                    }
+
+                    is dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.RejectDivergence -> {
+                        return StepOutcome.Failure(
+                            PipelineFailure(
+                                FailureKind.REPLAY_COMPATIBILITY,
+                                "waitUntil control fingerprint divergence: ${decision.reason}",
+                            ),
+                        )
+                    }
+                }
+            }
         } finally {
             canonicalReentrySentinel.set(false)
         }
@@ -2071,7 +2344,7 @@ class CanonicalDurableRunCoordinator(
                 is RetryReconciliationDecision.ReuseSuccess -> return StepOutcome.Success
                 is RetryReconciliationDecision.ReuseFailure -> return StepOutcome.Failure(
                     PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT,
+                        FailureKind.SCRIPT,
                         "retry aggregate terminal failure at attempt ${decision.attempt}",
                     ),
                 )
@@ -2238,6 +2511,30 @@ class CanonicalDurableRunCoordinator(
             input,
             BodyAggregateIdentity.RetryControlRow.key.value,
             ReplayPolicy.MEMOIZED,
+            1,
+        )
+    }
+
+    private fun computeWaitUntilContractFingerprint(
+        parentBodyPath: List<BlockSegment>,
+        scope: BlockShellScope.WaitUntilScope,
+    ): Fingerprint {
+        val input = dev.rubentxu.pipeline.v2.domain.durable.OperationInput(
+            stepId = BodyAggregateIdentity.WaitUntilControlRow.key.value,
+            params = mapOf(
+                "initialRecurrencePeriodMs" to kotlinx.serialization.json.JsonPrimitive(scope.initialRecurrencePeriod),
+                "maxBackoffMs" to kotlinx.serialization.json.JsonPrimitive(scope.maxBackoffMs),
+                "parentBodyPath" to kotlinx.serialization.json.JsonArray(
+                    parentBodyPath.map { kotlinx.serialization.json.JsonPrimitive(it.encoded) },
+                ),
+            ),
+            runId = "wait-until-contract", // Stable per-aggregate, NOT per-attempt.
+            attempt = 1,
+        )
+        return Fingerprint.compute(
+            input,
+            BodyAggregateIdentity.WaitUntilControlRow.key.value,
+            ReplayPolicy.NEVER,
             1,
         )
     }

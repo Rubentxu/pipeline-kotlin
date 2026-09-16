@@ -93,6 +93,28 @@ enum class OperationStatus {
     val isTerminal: Boolean
         get() = this in terminalStates
 
+    /**
+     * Returns true if this status indicates an operation that ran to completion
+     * (possibly with a failure) and should advance the iteration count.
+     *
+     * Does NOT return true for:
+     * - PENDING (not yet started)
+     * - RUNNING (in flight)
+     * - SUCCEEDED (predicate satisfied)
+     *
+     * Returns true for:
+     * - FAILED (body script failed)
+     * - FAILED_TIMEOUT (deadline exceeded — ran but was killed)
+     * - ABORTED (explicit cancellation)
+     * - DIVERGENT (fingerprint mismatch)
+     * - LOST (worker crashed mid-flight)
+     *
+     * Used by both [RetryReconciler] and [WaitUntilReconciler] to detect that an
+     * attempt completed and a subsequent attempt is needed.
+     */
+    val isPollFailure: Boolean
+        get() = this == FAILED || this == FAILED_TIMEOUT || this == ABORTED || this == DIVERGENT || this == LOST
+
     companion object {
         private val terminalStates = setOf(SUCCEEDED, FAILED, ABORTED, DIVERGENT, LOST, FAILED_TIMEOUT)
 

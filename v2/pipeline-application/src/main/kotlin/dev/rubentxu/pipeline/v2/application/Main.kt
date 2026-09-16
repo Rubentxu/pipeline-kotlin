@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
 import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
@@ -906,8 +907,9 @@ private fun runCanonicalPipeline(
         // --control-root reuses the prior aggregate terminal state and does not re-launch
         // child bodies that already succeeded/failed terminally.
         retryControlJournal = FileBasedRetryControlJournal(controlDirRoot),
-        // WU-G5R.4: waitUntil control journal. Wired as null here; WU-G5R.5 promotes
-        // this to FileBasedWaitUntilControlJournal(controlDirRoot) when the class exists.
-        waitUntilControlJournal = null,
+        // WU-G5R.5 (ADR-0075 analog): durable waitUntil control journal. Matches the
+        // retryControlJournal pattern — persisted before child effects, read on plan(),
+        // authoritative over the aggregate state on replay.
+        waitUntilControlJournal = FileBasedWaitUntilControlJournal(controlDirRoot),
     ).run(pipeline, runId)
 }

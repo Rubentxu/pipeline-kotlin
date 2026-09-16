@@ -81,7 +81,7 @@ object RetryReconciler {
             return ReuseSuccess(latest.attempt)
         }
         val maxTerminalOrdinal = input.controlRows
-            .filter { it.status.isFailureForRetry() || it.status.isTerminal }
+            .filter { it.status.isPollFailure || it.status.isTerminal }
             .maxOfOrNull { it.attempt }
         if (maxTerminalOrdinal != null && maxTerminalOrdinal >= input.maxAttempts) {
             return ReuseFailure(maxTerminalOrdinal)
@@ -104,7 +104,7 @@ object RetryReconciler {
             // already been "advanced past" by the dispatch loop. Skip it so
             // the planner reaches the active attempt (e.g. attempt 2 RUNNING)
             // and returns ResumeAttempt, not another AdvanceAfterFailure.
-            if ((control.status.isFailureForRetry() || control.status.isTerminal) &&
+            if ((control.status.isPollFailure || control.status.isTerminal) &&
                 byAttempt.containsKey(attempt + 1)
             ) {
                 continue
@@ -128,7 +128,7 @@ object RetryReconciler {
                 return CloseSuccessFromChild(attempt)
             }
 
-            if (control.status.isFailureForRetry() || control.status.isTerminal) {
+            if (control.status.isPollFailure || control.status.isTerminal) {
                 // Control row is terminal failure (W3 / R4 advance / R3 exhaustion).
                 if (realChildren.isEmpty()) {
                     // No real child evidence: advance to the next attempt if
@@ -253,30 +253,4 @@ object RetryReconciler {
     }
 }
 
-/**
- * Internal helper: a terminal status counts as a retry-side failure if it
- * is not success. Used by the W5 reuse branch.
- */
-private fun OperationStatus.isFailureForRetry(): Boolean = when (this) {
-    OperationStatus.SUCCEEDED -> false
-    OperationStatus.PENDING,
-    OperationStatus.RUNNING -> false
-    else -> true // FAILED, FAILED_TIMEOUT, ABORTED, DIVERGENT, LOST
-}
-
-/**
- * Internal helper: terminal status detection. The detail lives here so the
- * [OperationStatus] enum does not have to grow a domain-specific computed
- * property.
- */
-private val OperationStatus.isTerminal: Boolean
-    get() = when (this) {
-        OperationStatus.SUCCEEDED,
-        OperationStatus.FAILED,
-        OperationStatus.FAILED_TIMEOUT,
-        OperationStatus.ABORTED,
-        OperationStatus.DIVERGENT,
-        OperationStatus.LOST -> true
-        OperationStatus.PENDING,
-        OperationStatus.RUNNING -> false
-    }
+// Extensions removed — isPollFailure and isTerminal are now shared members of OperationStatus.

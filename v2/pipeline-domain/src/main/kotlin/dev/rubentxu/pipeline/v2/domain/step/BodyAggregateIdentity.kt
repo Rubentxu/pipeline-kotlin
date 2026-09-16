@@ -76,13 +76,26 @@ sealed interface BodyAggregateIdentity {
             "${key.value}[$stageIndex]" + branchNames.joinToString("|")
     }
 
+    /**
+     * WU-G5R.5 (ADR-0075 analog) — identity of the waitUntil CONTROL ROW.
+     *
+     * The control row is the durable anchor of a waitUntil aggregate: persisted before any
+     * predicate body effect, so a second invocation with the same run identity reconciles
+     * against it instead of re-running the polling loop. The key is a stable per-aggregate
+     * fingerprint input, NOT a per-poll key.
+     */
+    data object WaitUntilControlRow : BodyAggregateIdentity {
+        override val key: PluginStepId = PluginStepId("wait-until-control")
+        override val durableRole: AggregateDurableRole = AggregateDurableRole.WAIT_UNTIL_CONTROL_ROW
+    }
+
     companion object {
         /**
          * Every declared aggregate identity. Pinned so a THIRD durable aggregate identity
          * has to be added deliberately (here, with its owning ADR), instead of appearing as
          * a string literal inside the coordinator.
          */
-        val ALL: List<BodyAggregateIdentity> = listOf(RetryControlRow, ParallelStageAggregate)
+        val ALL: List<BodyAggregateIdentity> = listOf(RetryControlRow, ParallelStageAggregate, WaitUntilControlRow)
     }
 }
 
@@ -90,4 +103,6 @@ sealed interface BodyAggregateIdentity {
 enum class AggregateDurableRole(val authority: String) {
     RETRY_CONTROL_ROW("ADR-0075"),
     PARALLEL_STAGE_AGGREGATE("ADR-0076"),
+    /** WU-G5R.5 — durable waitUntil predicate polling loop control row. */
+    WAIT_UNTIL_CONTROL_ROW("WU-G5R.5 / ADR-0075 analog"),
 }

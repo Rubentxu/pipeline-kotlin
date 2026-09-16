@@ -1034,6 +1034,28 @@ Expected outcomes:
 
 ---
 
+## WU-G5R-GATE — Completion
+
+**Status:** ✅ COMPLETE
+**Commits:** `367eae71` (inventory + closure receipt), `14003d88` (L5 test fixes)
+**L5 gate:** `14003d88` — all WU-G5R-related tests green; pre-existing failures unchanged
+
+**Evidence:**
+- `Lfc2WaitUntilCanonicalReentryFitnessTest`: 1/1 PASS
+- `CompatibilityCorpusTest.fixture22WaitUntil`: PASS
+- `CompatibilityCorpusTest.allCorpusFixturesAreDiscoverable`: 21 fixtures (fixed 19→21)
+- `UatLocal005CorpusUntouchedTest`: CP-001 + CP-002 PASS (base commit 5405b7b5)
+- `UatLocal008CredentialsTest.UAT-L8-CP-001`: PASS (base commit 5405b7b5)
+- `CoreLegacyStepMetadataResolverTest`: PASS (core.load/core.waitUntil keys)
+- `RegistryStepMetadataResolverTest`: PASS (core.load key)
+- `CoreSleepRegistryPrimaryFitnessTest`: 13/13 registry keys (fixed 14→13)
+- `STEP_INVENTORY_LFC2E0.md`: `core.waitUntil` row AUTHORITY_FLIPPED
+- `S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md`: committed
+
+**LEGACY_PLUGIN_IDS residual:** `1/1/1 {core.load}`
+
+---
+
 ## 12. WU-G5B — NEXT CYCLE (NOT THIS PR)
 
 > This section is intentionally OUT OF SCOPE for the current PR. It

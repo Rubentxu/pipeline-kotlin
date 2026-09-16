@@ -126,6 +126,25 @@ Fixture 22 discovered, executed, and validated through the corpus harness. Exit 
 | `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` | UPDATED `core.waitUntil` row; LEGACY_PLUGIN_IDS counters |
 | `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` | NEW — this receipt |
 
+## L5 Gate — Test Fixes (post-commit 367eae71)
+
+During L5 gate on `367eae71` (WU-G5R-GATE commit), four test failures were
+discovered and fixed before green:
+
+| Test | Fix | Commit |
+|------|-----|--------|
+| `CompatibilityCorpusTest.allCorpusFixturesAreDiscoverable` | Count 19→21 (added 22-wait-until) | 14003d88 |
+| `UatLocal005CorpusUntouchedTest` | Base commit `4db480d`→`5405b7b5` (pipeline-wu-g5-restore history); fixture count 19→21; illegal `.` in backtick function name | 14003d88 |
+| `UatLocal008CredentialsTest` | Same base commit fix | 14003d88 |
+| `CoreLegacyStepMetadataResolverTest` | Check `core.load`/`core.waitUntil` instead of removed `core.sleep` | 14003d88 |
+| `RegistryStepMetadataResolverTest` | Same legacy key fix | 14003d88 |
+| `CoreSleepRegistryPrimaryFitnessTest` | Remove `core.waitUntil` from expected key set (14→13 keys) | 14003d88 |
+
+L5 gate on `14003d88`: all WU-G5R-related tests green.
+
+Pre-existing failures (UatLocal005/007/008/009, FArchL7, Lfc*, etc.) are
+outside WU-G5R scope — tracked separately.
+
 ---
 
 **WU-G5R-GATE: CLOSED**

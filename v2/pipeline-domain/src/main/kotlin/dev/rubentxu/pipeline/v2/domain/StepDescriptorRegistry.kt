@@ -199,6 +199,23 @@ class StepDescriptorRegistry private constructor(
                         introduces = null,
                     ),
                 ))
+                // WU-G5R.3: waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
+                // The coordinator's executeWaitUntilBody runs the body with exponential backoff.
+                put(PluginStepId("core.waitUntil"), StepDescriptor(
+                    stepId = "core.waitUntil",
+                    name = "waitUntil",
+                    configRef = "",
+                    body = StepBody.Declared(
+                        invocation = BodyInvocationPolicy.ZERO_OR_MORE,
+                        execution = BodyExecution(
+                            owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                            // Body policy is Retrying so dispatchBody routes to executeWaitUntilBody
+                            // which implements the condition polling loop with initialRecurrencePeriod/quiet.
+                            policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                        ),
+                        introduces = null,
+                    ),
+                ))
 
                 // Terminal steps (no body)
                 put(PluginStepId("core.emit.event"), StepDescriptor(

@@ -2,7 +2,14 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepBody
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.BodyExecution
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
+import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
+import dev.rubentxu.pipeline.v2.domain.BodyInvocationPolicy
+import dev.rubentxu.pipeline.v2.domain.step.RetryPolicy
+
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -139,7 +146,8 @@ object CoreWaitUntilStep {
         }
     }
 
-    // Inherit from legacy metadata: READ_ONLY + MEMOIZED
+    // WU-G5R.3: The coordinator's executeWaitUntilBody() implements the condition-polling
+    // loop. This descriptor matches the registry entry so body metadata is coherent.
     private val descriptor = StepDescriptor(
         stepId = "core.waitUntil",
         name = "waitUntil",
@@ -147,6 +155,16 @@ object CoreWaitUntilStep {
         executionLocation = ExecutionLocation.CONTROLLER,
         effects = listOf(Effect.READ_ONLY),
         replayPolicy = ReplayPolicy.MEMOIZED,
+        body = StepBody.Declared(
+            invocation = BodyInvocationPolicy.ZERO_OR_MORE,
+            execution = BodyExecution(
+                owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                // Coordinator executeWaitUntilBody reads initialRecurrencePeriod/quiet from
+                // the encoded input and runs the polling loop with exponential backoff.
+                policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+            ),
+            introduces = null,
+        ),
     )
 
     private val capabilityRoutedHandler: StepHandler<WaitUntilInput, WaitUntilOutput> =

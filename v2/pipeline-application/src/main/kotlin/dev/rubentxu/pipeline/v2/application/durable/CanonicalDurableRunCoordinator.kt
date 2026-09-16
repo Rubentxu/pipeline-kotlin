@@ -73,6 +73,8 @@ import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
+import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
@@ -305,6 +307,22 @@ private sealed interface BlockShellScope {
      * so restart/replay reconstructs attempt state from the journal, not memory.
      */
     data class Retry(val maxAttempts: Int) : BlockShellScope
+
+    /**
+     * WU-G5R.3: body-polling contract projected from the `core.waitUntil` payload.
+     * The body (a condition script) is re-dispatched until it succeeds (exit 0) or
+     * backoff exceeds MAX_BACKOFF_MS.  Each poll carries a deterministic journal identity
+     * so restart/replay reconstructs poll state from the journal, not memory.
+     *
+     * initialRecurrencePeriod: initial delay in ms before first poll
+     * quiet: suppress logging if true
+     * maxBackoffMs: ceiling for exponential backoff (default 60 s)
+     */
+    data class WaitUntilScope(
+        val initialRecurrencePeriod: Long,
+        val quiet: Boolean,
+        val maxBackoffMs: Long = 60_000L,
+    ) : BlockShellScope
 }
 
 /**
@@ -360,7 +378,15 @@ private fun BlockStepNode.projectBodyExecution(
 ): BodyExecutionProjection = when (policy) {
     is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
     is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
-    is BodyExecutionPolicy.Retrying -> decodeAttemptBudget()
+    is BodyExecutionPolicy.Retrying -> {
+        // WU-G5R.3: route waitUntil to its own scope (uses initialRecurrencePeriod/quiet,
+        // not maxAttempts). All other retry steps use the shared Retry scope.
+        if (pluginStepId.value == "core.waitUntil") {
+            decodeWaitUntilScope()
+        } else {
+            BodyExecutionProjection.Scope(BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()))
+        }
+    }
     is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)
 }
 
@@ -419,12 +445,29 @@ private fun BlockStepNode.decodeCredentialBindings(): BodyExecutionProjection =
         BodyExecutionProjection.InvalidInput("withCredentials bindings invalid: ${error.message}")
     }
 
-private fun BlockStepNode.decodeAttemptBudget(): BodyExecutionProjection {
+private fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
     val maxAttempts = payload["maxAttempts"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-        ?: return BodyExecutionProjection.InvalidInput("requires integer maxAttempts")
-    if (maxAttempts < 1) return BodyExecutionProjection.InvalidInput("maxAttempts must be >= 1, got $maxAttempts")
-    return BodyExecutionProjection.Scope(BlockShellScope.Retry(maxAttempts = maxAttempts))
+        ?: throw IllegalArgumentException("requires integer maxAttempts")
+    require(maxAttempts >= 1) { "maxAttempts must be >= 1, got $maxAttempts" }
+    return maxAttempts
+}
+
+/**
+ * WU-G5R.3: decodes the waitUntil block payload (initialRecurrencePeriod, quiet)
+ * into a [BlockShellScope.WaitUntilScope]. Fail-closed on malformed input.
+ */
+private fun BlockStepNode.decodeWaitUntilScope(): BodyExecutionProjection {
+    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
+    val initialRecurrencePeriod = payload["initialRecurrencePeriod"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        ?: 1000L
+    val quiet = payload["quiet"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+    return BodyExecutionProjection.Scope(
+        BlockShellScope.WaitUntilScope(
+            initialRecurrencePeriod = initialRecurrencePeriod,
+            quiet = quiet,
+        ),
+    )
 }
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
@@ -1576,6 +1619,9 @@ class CanonicalDurableRunCoordinator(
                 contextInBody = contextInBody.pushed(ContextOverlay.Environment(dev.rubentxu.pipeline.v2.domain.EnvironmentSpec(envSpecValues)))
                 stageShOptions.copy(env = mergedEnv)
             }
+            // WU-G5R.3: waitUntil scope passes through ShOptions without special flags.
+            // The polling backoff is handled in the executeWaitUntilBody loop below.
+            is BlockShellScope.WaitUntilScope -> stageShOptions
         }
 
         // B11 / W2: bind the body-reentry seam by registering the body with the adapter.
@@ -1623,6 +1669,21 @@ class CanonicalDurableRunCoordinator(
                     stageShOptions = stageShOptions,
                     parentBodyPath = parentBodyPath,
                     childShOptions = childShOptions,
+                    executionContext = contextInBody,
+                )
+            } else if (scope is BlockShellScope.WaitUntilScope) {
+                // WU-G5R.3: waitUntil polls the condition body until it succeeds (exit 0)
+                // or the backoff ceiling is exceeded.  Each poll is one body invocation with
+                // a deterministic journal identity so restart/replay is journal-driven.
+                outcome = executeWaitUntilBody(
+                    scope = scope,
+                    block = block,
+                    runId = runId,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    childShOptions = childShOptions,
+                    parentBodyPath = parentBodyPath,
                     executionContext = contextInBody,
                 )
             } else {
@@ -1767,6 +1828,141 @@ class CanonicalDurableRunCoordinator(
             }
         }
         return StepOutcome.Success
+    }
+
+    /**
+     * WU-G5R.3: executes the waitUntil polling loop — a condition body is re-dispatched
+     * until it succeeds (StepOutcome.Success = condition met) or backoff exceeds the ceiling.
+     *
+     * ## Algorithm
+     *
+     *  1. Sleep [scope.initialRecurrencePeriod] ms before first poll.
+     *  2. Execute body children (the condition script).
+     *  3. If condition succeeded → emit [WaitUntilCompleted]("completed"), return [StepOutcome.Success].
+     *  4. If condition failed → double current backoff (cap at [scope.maxBackoffMs]),
+     *     emit [WaitUntilPolled], sleep backoff, go to step 2.
+     *  5. If backoff >= [scope.maxBackoffMs] → emit [WaitUntilCompleted]("deadline-exceeded"),
+     *     return [StepOutcome.Failure].
+     *
+     * Each poll carries a deterministic journal identity (`poll:N:wait-until-poll`) so
+     * restart/replay is journal-driven, not memory-driven.
+     *
+     * ## Quiet mode
+     *
+     * When [scope.quiet] is true, the [eventSink] is used normally (the events are the
+     * observable runtime output); the flag is advisory and does not change execution semantics.
+     */
+    private suspend fun executeWaitUntilBody(
+        scope: BlockShellScope.WaitUntilScope,
+        block: BlockStepNode,
+        runId: RunId,
+        stageName: String,
+        stageIndex: Int,
+        stepIndex: Int,
+        childShOptions: ShOptions,
+        parentBodyPath: List<BlockSegment>,
+        executionContext: ExecutionContext,
+    ): StepOutcome {
+        val overallStartMs = System.currentTimeMillis()
+        // WU-G5R.3: initial sleep before first poll
+        if (scope.initialRecurrencePeriod > 0) {
+            kotlinx.coroutines.delay(scope.initialRecurrencePeriod)
+        }
+
+        var currentBackoffMs = scope.initialRecurrencePeriod
+        val maxBackoffMs = scope.maxBackoffMs
+        var pollCount = 0
+
+        waitUntilPollLoop@ while (true) {
+            pollCount++
+            val pollAttemptPath = parentBodyPath + BlockSegment(pollCount, dev.rubentxu.pipeline.v2.domain.PluginStepId("wait-until-poll"))
+            val pollStartMs = System.currentTimeMillis()
+
+            // Emit WaitUntilPolled before the poll attempt
+            eventSink.append(
+                WaitUntilPolled(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    attempt = pollCount,
+                    durationMs = 0L,
+                    conditionResult = false, // unknown until body runs
+                ),
+            )
+
+            val pollOutcome = invokeBodyChildren(
+                block,
+                runId,
+                stageName,
+                stageIndex,
+                stepIndex,
+                childShOptions,
+                pollAttemptPath,
+                executionContext,
+            )
+
+            val pollDurationMs = System.currentTimeMillis() - pollStartMs
+
+            // Update the WaitUntilPolled event with actual duration
+            eventSink.append(
+                WaitUntilPolled(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId.value,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    attempt = pollCount,
+                    durationMs = pollDurationMs,
+                    conditionResult = pollOutcome is StepOutcome.Success,
+                ),
+            )
+
+            when (pollOutcome) {
+                is StepOutcome.Success -> {
+                    // Condition satisfied
+                    val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                    eventSink.append(
+                        WaitUntilCompleted(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            totalAttempts = pollCount,
+                            totalDurationMs = totalDurationMs,
+                            outcome = "completed",
+                        ),
+                    )
+                    return StepOutcome.Success
+                }
+                else -> {
+                    // Condition not satisfied (failure, unstable, etc.) — retry with backoff
+                    if (currentBackoffMs >= maxBackoffMs) {
+                        // Backoff exceeded — deadline exceeded
+                        val totalDurationMs = System.currentTimeMillis() - overallStartMs
+                        eventSink.append(
+                            WaitUntilCompleted(
+                                eventId = UUID.randomUUID().toString(),
+                                runId = runId.value,
+                                sequence = 0L,
+                                occurredAt = Instant.now(),
+                                totalAttempts = pollCount,
+                                totalDurationMs = totalDurationMs,
+                                outcome = "deadline-exceeded",
+                            ),
+                        )
+                        return StepOutcome.Failure(
+                            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                                dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT,
+                                "waitUntil condition not met after $pollCount polls (${maxBackoffMs}ms backoff ceiling exceeded)",
+                            ),
+                        )
+                    }
+                    // Exponential backoff: double currentBackoffMs, cap at maxBackoffMs
+                    currentBackoffMs = minOf(currentBackoffMs * 2, maxBackoffMs)
+                    kotlinx.coroutines.delay(currentBackoffMs)
+                }
+            }
+        }
     }
 
     /**

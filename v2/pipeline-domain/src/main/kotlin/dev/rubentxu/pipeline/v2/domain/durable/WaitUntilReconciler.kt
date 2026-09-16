@@ -82,17 +82,24 @@ object WaitUntilReconciler {
                     )
                 }
 
-                OperationStatus.FAILED,
                 OperationStatus.FAILED_TIMEOUT -> {
-                    // Predicate unsatisfied; compute next backoff.
+                    // The dispatch loop set FAILED_TIMEOUT when the NEXT backoff would
+                    // have exceeded the ceiling. This attempt IS the one that hit the
+                    // ceiling: DeadlineExceeded(attempt) (terminal).
+                    return DeadlineExceeded(attempt)
+                }
+
+                OperationStatus.FAILED -> {
+                    // Predicate unsatisfied. The attempt used control.currentBackoffMs.
+                    // Compute the next backoff from the current backoff.
                     val nextBackoff = computeNextBackoff(
                         currentBackoffMs = control.currentBackoffMs,
                         initialRecurrencePeriodMs = input.initialRecurrencePeriodMs,
                         maxBackoffMs = input.maxBackoffMs,
                     )
                     if (nextBackoff > input.maxBackoffMs) {
-                        // Backoff ceiling reached.
-                        return DeadlineExceeded(attempt)
+                        // The NEXT attempt would exceed the ceiling.
+                        return DeadlineExceeded(attempt + 1)
                     }
                     // Advance to next poll.
                     return AdvanceAfterPredicateUnsatisfied(

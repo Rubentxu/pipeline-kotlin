@@ -49,22 +49,29 @@ import org.junit.jupiter.api.Test
 class Lfc2WaitUntilDslCanonicalProjectionTest {
 
     /**
-     * Constructs a `PipelineSpec` directly (bypassing the `waitUntil { }` DSL
-     * fun which eagerly evaluates the condition lambda). Uses the terminal
-     * `StepSpec.WaitUntil` algebraic variant directly.
+     * Constructs a `PipelineSpec` directly using the body-bearing
+     * `StepSpec.WaitUntilBlock` algebraic variant (wu-g5-restore).
      *
-     * This is intentional: the test proves that even if the algebraic variant
-     * exists, the compiler's lowering to `OpaqueStepNode` is the defect — not
-     * a missing `WaitUntilBlock` variant.
+     * The body-capturing `waitUntil { }` DSL fun is NOT used here to avoid
+     * accidental eager evaluation. The test constructs `WaitUntilBlock`
+     * directly with an inner `sh` step.
+     *
+     * The test proves that even with the algebraic variant in place,
+     * the compiler's lowering to `OpaqueStepNode` is the defect — the
+     * compiler needs an explicit `is StepSpec.WaitUntilBlock -> blockStepNode(...)`
+     * arm (WU-G5R.2).
      */
     private fun waitUntilFixture(): PipelineSpec = PipelineSpec(
         stages = listOf(
             StageSpec(
                 name = "wait-until-test",
                 steps = listOf(
-                    StepSpec.WaitUntil(
+                    StepSpec.WaitUntilBlock(
                         initialRecurrencePeriod = 1L,
                         quiet = false,
+                        body = listOf(
+                            StepSpec.Shell(command = "test -f /tmp/marker"),
+                        ),
                     ),
                 ),
             ),

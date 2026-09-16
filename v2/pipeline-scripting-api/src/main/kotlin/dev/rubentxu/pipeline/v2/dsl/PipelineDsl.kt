@@ -639,12 +639,23 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * Jenkins verbatim:
      * `waitUntil(initialRecurrencePeriod: Long = 1, quiet: Boolean = false) { condition }`
      *
+     * Body-capturing variant (wu-g5-restore): the body lambda is captured as a
+     * `List<StepSpec>` via the `StageScope` mechanism. Eager evaluation of the
+     * condition is removed (AGENTS.md §10: DSL describes; interpreters execute —
+     * no runtime effects at construction time).
+     *
+     * The body is re-entered through the canonical `dispatchRepeatUntilBody`
+     * coordinator path (ADR-0073, BodyInvoker re-entry). The predicate outcome
+     * is emitted as typed events and folded by `WaitUntilReconciler`.
+     *
      * @param initialRecurrencePeriod Initial poll interval in milliseconds
      * @param quiet If true, suppress output during polling
+     * @param body Nested steps whose last step emits WaitUntilPredicateEvaluated
      */
-    data class WaitUntil(
+    data class WaitUntilBlock(
         val initialRecurrencePeriod: Long = 1L,
         val quiet: Boolean = false,
+        val body: List<StepSpec> = emptyList(),
     ) : StepSpec {
         override val name: String get() = "waitUntil"
         override val type: String get() = "waitUntil"
@@ -1244,7 +1255,7 @@ class StageScope(
             is StepSpec.Pwd -> currentStep
             is StepSpec.IsUnix -> currentStep
             is StepSpec.Load -> currentStep
-            is StepSpec.WaitUntil -> currentStep
+            is StepSpec.WaitUntilBlock -> currentStep
             // ML-R9 T-08 output-decorators: not retryable at step level
             is StepSpec.Timestamps -> currentStep
             is StepSpec.AnsiColor -> currentStep
@@ -1669,27 +1680,31 @@ class StageScope(
      * Jenkins verbatim:
      * `waitUntil(initialRecurrencePeriod: Long = 1, quiet: Boolean = false) { condition }`
      *
+     * Body-capturing variant (wu-g5-restore): the body lambda is captured as a
+     * `List<StepSpec>` via the `StageScope` mechanism. Eager evaluation of the
+     * condition is removed — DSL MUST NOT perform runtime effects at construction
+     * time (AGENTS.md §10).
+     *
      * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1ms)
      * @param quiet If true, suppress output during polling
-     * @param condition Lambda that returns true when the wait should stop
-     * @throws WaitUntilDeadlineExceededException if deadline elapses before condition returns true
+     * @param body Lambda producing the nested steps whose last step emits
+     *   WaitUntilPredicateEvaluated(true/false)
      */
     fun waitUntil(
         initialRecurrencePeriod: Long = 1L,
         quiet: Boolean = false,
-        condition: () -> Boolean,
+        body: StageScope.() -> Unit,
     ) {
-        // Evaluate condition synchronously for in-memory scripting host path.
-        // For durable (canonical coordinator) path, the condition is not serializable
-        // so dispatchStub emits events and returns success.
-        val result = condition()
-        steps.add(StepSpec.WaitUntil(
+        // Capture body via inner StageScope (same pattern as retry / timeout).
+        // The body is NOT evaluated eagerly — it is stored as data for the
+        // canonical coordinator to re-enter via BodyInvoker.invoke (ADR-0073).
+        val inner = StageScope(stageName, runtimeConfig)
+        inner.body()
+        steps.add(StepSpec.WaitUntilBlock(
             initialRecurrencePeriod = initialRecurrencePeriod,
             quiet = quiet,
+            body = inner.steps.toList(),
         ))
-        if (!result) {
-            throw RuntimeException("waitUntil condition evaluated to false")
-        }
     }
 
     // =============================================================================

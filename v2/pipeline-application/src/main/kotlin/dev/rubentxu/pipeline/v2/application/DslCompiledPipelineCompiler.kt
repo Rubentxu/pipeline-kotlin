@@ -212,6 +212,13 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
+            // WU-G5R.2: waitUntil projects to canonical BlockStepNode (body-owning).
+            // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
+            is StepSpec.WaitUntilBlock -> blockStepNode(
+                step = step,
+                parentToken = parentToken,
+                occurrence = occurrence,
+            )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -258,6 +265,7 @@ object DslCompiledPipelineCompiler {
             is StepSpec.WithCredentialsBlock -> step.steps
             is StepSpec.WithEnv -> step.steps
             is StepSpec.Timestamps -> step.steps
+            is StepSpec.WaitUntilBlock -> step.body
             else -> emptyList()
         }, "$parentToken/${tokenPrefix}-body-$occurrence")
 
@@ -309,6 +317,14 @@ object DslCompiledPipelineCompiler {
         is StepSpec.RetryBlock -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
             put("kind", "retry")
             put("maxAttempts", step.count)
+        })
+        // WU-G5R.2: waitUntil block payload — projects initialRecurrencePeriod
+        // and quiet into the IR so the coordinator can budget the retry loop
+        // without interpreting StepSpec at runtime.
+        is StepSpec.WaitUntilBlock -> Json.encodeToString(JsonObject.serializer(), buildJsonObject {
+            put("kind", "waitUntilBlock")
+            put("initialRecurrencePeriod", step.initialRecurrencePeriod)
+            put("quiet", step.quiet)
         })
         else -> "{}"
     }

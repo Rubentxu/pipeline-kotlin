@@ -1037,8 +1037,8 @@ Expected outcomes:
 ## WU-G5R-GATE — Completion
 
 **Status:** ✅ COMPLETE
-**Commits:** `367eae71` (inventory + closure receipt), `14003d88` (L5 test fixes)
-**L5 gate:** `14003d88` — all WU-G5R-related tests green; pre-existing failures unchanged
+**Commits:** `367eae71` (inventory + closure receipt), `14003d88` (L5 test fixes), `88f7c9cf` (docs update), `018bf772` (UAT-L8-CP-001 06-loop fix)
+**L5 gate:** `018bf772` — all WU-G5R-related tests green; pre-existing failures unchanged
 
 **Evidence:**
 - `Lfc2WaitUntilCanonicalReentryFitnessTest`: 1/1 PASS

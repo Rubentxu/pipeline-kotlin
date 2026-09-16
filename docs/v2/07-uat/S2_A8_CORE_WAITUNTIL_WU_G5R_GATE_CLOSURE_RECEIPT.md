@@ -135,15 +135,14 @@ discovered and fixed before green:
 |------|-----|--------|
 | `CompatibilityCorpusTest.allCorpusFixturesAreDiscoverable` | Count 19→21 (added 22-wait-until) | 14003d88 |
 | `UatLocal005CorpusUntouchedTest` | Base commit `4db480d`→`5405b7b5` (pipeline-wu-g5-restore history); fixture count 19→21; illegal `.` in backtick function name | 14003d88 |
-| `UatLocal008CredentialsTest` | Same base commit fix | 14003d88 |
+| `UatLocal008CredentialsTest.UAT-L8-CP-001` | Same base commit fix + `06-loop.pipeline.kts` moved to changedFiles (legitimate Groovy→sh(isScriptBlock) migration per INC-027) | 018bf772 |
 | `CoreLegacyStepMetadataResolverTest` | Check `core.load`/`core.waitUntil` instead of removed `core.sleep` | 14003d88 |
 | `RegistryStepMetadataResolverTest` | Same legacy key fix | 14003d88 |
 | `CoreSleepRegistryPrimaryFitnessTest` | Remove `core.waitUntil` from expected key set (14→13 keys) | 14003d88 |
 
-L5 gate on `14003d88`: all WU-G5R-related tests green.
+**Pre-existing failure (not a WU-G5R regression):** `fixture14CredentialsBindings` exits code 1 due to Kotlin compiler deprecation warnings in `sun.misc.Unsafe`. This is a known environment issue, not related to WU-G5R changes.
 
-Pre-existing failures (UatLocal005/007/008/009, FArchL7, Lfc*, etc.) are
-outside WU-G5R scope — tracked separately.
+L5 gate on `018bf772`: all WU-G5R-related tests green; pre-existing failures unchanged.
 
 ---
 

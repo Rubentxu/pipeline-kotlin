@@ -646,7 +646,8 @@ steps:
     legacy_receipts:
       - docs/v2/07-uat/LB02_EP0_EXTERNAL_PLUGIN_PROOF_OPENING.md
       - docs/v2/07-uat/LB02_EP_F2_5_STEPSPEC_EXECUTION_DECOUPLING.md
-    real_fixtures: []
+    real_fixtures:
+      - examples/example-uppercase-plugin/scripts/uppercase-demo.pipeline.kts
     registry_file: examples/example-uppercase-plugin/src/main/kotlin/example/uppercase/UppercaseStepDefinition.kt
     capability: null
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt
@@ -749,8 +750,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/yaml/UtilitiesYamlPlugin.kt
     capability: utilities.yaml.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
@@ -776,8 +776,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/yaml/UtilitiesYamlPlugin.kt
     capability: utilities.yaml.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
@@ -802,8 +801,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U3_PROPERTIES_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/properties/UtilitiesPropertiesPlugin.kt
     capability: utilities.properties.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesPropertiesStepContractSuiteTest.kt
@@ -830,8 +828,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U3_PROPERTIES_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/properties/UtilitiesPropertiesPlugin.kt
     capability: utilities.properties.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesPropertiesStepContractSuiteTest.kt
@@ -857,8 +854,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/filesystem/UtilitiesFilesystemPlugin.kt
     capability: utilities.filesystem.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesFilesystemStepContractSuiteTest.kt
@@ -885,8 +881,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/filesystem/UtilitiesFilesystemPlugin.kt
     capability: utilities.filesystem.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesFilesystemStepContractSuiteTest.kt
@@ -912,8 +907,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt
     capability: utilities.checksums.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
@@ -938,8 +932,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt
     capability: utilities.checksums.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
@@ -963,8 +956,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt
     capability: utilities.checksums.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
@@ -987,8 +979,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesArchivePlugin.kt
     capability: utilities.archive.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesArchiveStepContractSuiteTest.kt
@@ -1014,8 +1005,7 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesArchivePlugin.kt
     capability: utilities.archive.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesArchiveStepContractSuiteTest.kt
@@ -1043,8 +1033,7 @@ steps:
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
       - docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesTarPlugin.kt
     capability: utilities.archive.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesTarStepContractSuiteTest.kt
@@ -1075,8 +1064,7 @@ steps:
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
       - docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
-    real_fixtures:
-      - examples/utilities/01-json-roundtrip.pipeline.kts
+    real_fixtures: []
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesTarPlugin.kt
     capability: utilities.archive.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesTarStepContractSuiteTest.kt

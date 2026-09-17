@@ -18,7 +18,7 @@ Parser guards (each has a negative fixture below):
      DIFFERENT (duplicate-authority) listing and must not be merged into records
 """
 import re, sys, pathlib
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -202,15 +202,16 @@ def main():
         if k in STRUCTURAL_SYNTHETIC and not exer:
             verdict, cls = "STRUCTURAL_SYNTH", "D_REWRITE_CONTRACT"
         elif exer:
-            verdict, cls = "EXERCISED", "A_REMAP_EXISTING"
+            # A = already canonical under examples/; B = only compatibility/ today
+            verdict = "EXERCISED"
+            cls = ("A_IN_EXAMPLES" if any(f.startswith("examples/") for f in exer)
+                   else "B_PROMOTE_COMPATIBILITY")
         elif not claimed:
-            verdict, cls = "NOT_EXERCISED", "C_CREATE_NEW"
-        elif not resolved:
-            verdict, cls = "SYMBOL_UNKNOWN", "MANUAL_REVIEW"
+            verdict, cls = "NOT_EXERCISED", "C_CREATE_OR_EXPAND"
         else:
-            verdict, cls = "NOT_EXERCISED", "C_CREATE_NEW"
-            if all(f.startswith("v2/compatibility/") for f in claimed):
-                cls = "B_PROMOTE_COMPATIBILITY"
+            # claimed but the file does not invoke the symbol (XCA-1A removed the
+            # known cases; any remaining one is a defect to fix, not a class)
+            verdict, cls = "NOT_EXERCISED", "C_CREATE_OR_EXPAND"
         rows.append((k, st, claimed, exer, verdict, cls))
         shown = ",".join(f.split("/")[-1] for f in exer) or "-"
         print(f"{k:26} {st:11} {len(claimed):^7} {len(exer):^4}  {verdict}  {cls}  {shown}")
@@ -228,7 +229,6 @@ def main():
         print(f"  {v:37}: {byv.get(v, 0)}")
     assert sum(byv.values()) == n, "verdicts must partition the records"
     print()
-    from collections import Counter
     for cls, c in sorted(Counter(r[5] for r in rows).items()):
         print(f"  {cls:26} : {c}")
 

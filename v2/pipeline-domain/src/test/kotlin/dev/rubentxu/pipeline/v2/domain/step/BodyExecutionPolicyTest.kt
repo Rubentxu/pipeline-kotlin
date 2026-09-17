@@ -50,7 +50,16 @@ class BodyExecutionPolicyTest {
         "core.withEnv" to BodyExecutionPolicy.Scoped(BodyContextProjection.Environment),
         "core.timeout" to BodyExecutionPolicy.Scoped(BodyContextProjection.Deadline),
         "core.withCredentials" to BodyExecutionPolicy.Scoped(BodyContextProjection.CredentialLease),
-        "core.retry" to BodyExecutionPolicy.Retrying(RetryPolicy()),
+        "core.retry" to BodyExecutionPolicy.Retrying(
+            RetryPolicy(attemptShape = RetryAttemptShape.MaxAttempts),
+        ),
+        // W1e (LFC-2E1): `core.waitUntil` is admitted here so the descriptor and
+        // engine agree on the attempt-budget SHAPE (`WaitUntil`) without consulting
+        // `pluginStepId.value`. The coordinator's `BodyExecutionPolicy.Retrying`
+        // projection now reads `policy.policy.attemptShape`, never the key.
+        "core.waitUntil" to BodyExecutionPolicy.Retrying(
+            RetryPolicy(attemptShape = RetryAttemptShape.WaitUntil),
+        ),
         "core.parallel" to BodyExecutionPolicy.Parallel(ParallelPolicy()),
         "core.catchError" to BodyExecutionPolicy.Sequential,
         "core.warnError" to BodyExecutionPolicy.Sequential,
@@ -118,10 +127,40 @@ class BodyExecutionPolicyTest {
             val retrying = currentEngineBehaviour.mapNotNull { it.second as? BodyExecutionPolicy.Retrying }
             val parallel = currentEngineBehaviour.mapNotNull { it.second as? BodyExecutionPolicy.Parallel }
 
-            assertEquals(1, retrying.size)
+            // W1e (LFC-2E1): TWO families declare BodyExecutionPolicy.Retrying — `core.retry`
+            // (attemptShape = MaxAttempts) and `core.waitUntil` (attemptShape = WaitUntil).
+            // Each carries the same attemptKey; the attempt-budget SHAPE differs by ADT case.
+            assertEquals(2, retrying.size, "core.retry + core.waitUntil both declare Retrying")
             assertEquals(1, parallel.size)
-            assertEquals(PluginStepId("retry-attempt"), retrying.single().policy.attemptKey)
+            retrying.forEach { retry ->
+                assertEquals(
+                    PluginStepId("retry-attempt"),
+                    retry.policy.attemptKey,
+                    "All Retrying policies share the per-attempt identity key",
+                )
+            }
             assertEquals(PluginStepId("parallel-branch"), parallel.single().policy.branchKey)
+        }
+
+        /**
+         * W1e (LFC-2E1): the two families declaring [BodyExecutionPolicy.Retrying] carry
+         * DISTINCT attempt-budget shapes. The engine dispatches on `attemptShape`, never
+         * on `pluginStepId.value`. Adding a third Retrying family without an attempt-shape
+         * case in [RetryAttemptShape] would fail here, not silently route.
+         */
+        @Test
+        fun `core_retry and core_waitUntil carry distinct attempt-budget shapes`() {
+            val retrying = currentEngineBehaviour
+                .filter { (it.second as? BodyExecutionPolicy.Retrying) != null }
+            val attemptShapes = retrying.mapNotNull {
+                (it.second as? BodyExecutionPolicy.Retrying)?.policy?.attemptShape
+            }.toSet()
+
+            assertEquals(
+                setOf(RetryAttemptShape.MaxAttempts, RetryAttemptShape.WaitUntil),
+                attemptShapes,
+                "core.retry and core.waitUntil must carry distinct attempt-budget shapes",
+            )
         }
 
         /**

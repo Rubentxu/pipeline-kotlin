@@ -219,7 +219,55 @@ sealed interface BodyContextProjection {
 data class RetryPolicy(
     /** Segment key for per-attempt identity; mirrors [AttemptSegment]'s default. */
     val attemptKey: PluginStepId = PluginStepId("retry-attempt"),
+    /**
+     * Closed ADT describing the attempt-budget SHAPE this Step family uses.
+     * Two families share [BodyExecutionPolicy.Retrying] today
+     * (`core.retry` and `core.waitUntil`) but their attempt-budget shapes
+     * are distinct: `core.retry` uses [RetryAttemptShape.MaxAttempts]
+     * (`maxAttempts: Int`); `core.waitUntil` uses [RetryAttemptShape.WaitUntil]
+     * (`initialRecurrencePeriod: Long`, `quiet: Boolean`).
+     *
+     * The shape is a property of the Step KIND and is declared statically
+     * on the [StepDescriptor]. It is NOT a runtime value. The values that
+     * fill the shape (`maxAttempts`, `initialRecurrencePeriod`, `quiet`)
+     * remain decoded typed input; the engine projects the shape via
+     * [BodyExecutionPolicy.Retrying] without consulting `pluginStepId.value`.
+     *
+     * W1e (LFC-2E1): the freeze removes the `if (pluginStepId.value == "core.waitUntil")`
+     * per-Key branch in [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator].
+     */
+    val attemptShape: RetryAttemptShape = RetryAttemptShape.MaxAttempts,
 )
+
+/**
+ * Closed ADT of attempt-budget shapes a [BodyExecutionPolicy.Retrying] family
+ * can declare.
+ *
+ * Each case names a SHAPE — a property of the Step KIND — not a value.
+ * Values (`maxAttempts`, `initialRecurrencePeriod`, `quiet`) are decoded
+ * typed input; the shape tells the engine which typed decoder to use.
+ *
+ * Adding a case forces every `when` over this ADT to be revisited.
+ * Removing a case is a removal of legitimate routing shape.
+ */
+@Serializable
+sealed interface RetryAttemptShape {
+
+    /**
+     * Attempt budget expressed as a count of attempts (`core.retry`).
+     * The engine projects to [dev.rubentxu.pipeline.v2.application.durable.BlockShellScope.Retry]
+     * with `maxAttempts` decoded from typed input.
+     */
+    data object MaxAttempts : RetryAttemptShape
+
+    /**
+     * Polling budget expressed as initial delay + quiet flag (`core.waitUntil`).
+     * The engine projects to
+     * [dev.rubentxu.pipeline.v2.application.durable.BlockShellScope.WaitUntilScope]
+     * with `initialRecurrencePeriod` and `quiet` decoded from typed input.
+     */
+    data object WaitUntil : RetryAttemptShape
+}
 
 /**
  * Structural parallel parameters that are a property of the Step KIND: the key

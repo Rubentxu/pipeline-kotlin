@@ -391,12 +391,18 @@ private fun BlockStepNode.projectBodyExecution(
     is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
     is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
     is BodyExecutionPolicy.Retrying -> {
-        // WU-G5R.3: route waitUntil to its own scope (uses initialRecurrencePeriod/quiet,
-        // not maxAttempts). All other retry steps use the shared Retry scope.
-        if (pluginStepId.value == "core.waitUntil") {
-            decodeWaitUntilScope()
-        } else {
-            BodyExecutionProjection.Scope(BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()))
+        // W1e (LFC-2E1): the per-Key check on the waitUntil family is removed.
+        // The attempt-budget SHAPE is declared statically on the StepDescriptor
+        // via RetryAttemptShape, so the engine dispatches on shape, never on
+        // the plugin id value. The W1d burn-down retired per-key discriminator
+        // arms; this branch was a latent gap the universal-core freeze catches.
+        when (policy.policy.attemptShape) {
+            is dev.rubentxu.pipeline.v2.domain.step.RetryAttemptShape.MaxAttempts ->
+                BodyExecutionProjection.Scope(
+                    BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()),
+                )
+            is dev.rubentxu.pipeline.v2.domain.step.RetryAttemptShape.WaitUntil ->
+                decodeWaitUntilScope()
         }
     }
     is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)

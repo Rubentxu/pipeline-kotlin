@@ -462,25 +462,28 @@ class UatLocal011WorkflowControlTest {
     // ═══════════════════════════════════════════════════════════════════════════
     // SC-011-11: load executes nested script + re-entrant idempotent
     //
-    // DEFERRED (INC-024 carry-forward, v0.33.0): the canonical coordinator maps
-    // each step node to exactly one command and cannot yet handle step-yielding
-    // steps where one step produces multiple child steps. The current canonical
-    // `LoadNodeDispatcher` reads the file, computes SHA-256, and emits
-    // `WorkflowLoaded` (replayable record), but the loaded pipeline's steps are
-    // not injected into the execution flow. Full support requires coordinator-
-    // level changes to support runtime step compilation and injection.
+    // CORE-LOAD-REJECTED (2026-09-17, this slice): `core.load` is REJECTED. The
+    // directive forbids the only viable implementation shape ("handler → compiler
+    // arbitrario → execute child pipeline como segundo execution engine"), and
+    // SPIKE-018 §1.3 declares it the LAST legacy lift requiring new infrastructure
+    // (`SCRIPT_COMPILATION_CAPABILITY` + `BODY_INVOKER_CAPABILITY`) out of LFC-2
+    // scope. SC-011-11 was quarantined (INC-024, pre-existing on c88d5c88 v0.32.2)
+    // because the coordinator could not inject loaded pipeline into the execution
+    // flow. With `core.load` REJECTED, SC-011-11 is OBSOLETE — the test exercises
+    // a Step that no longer exists in the DSL (the `load(path)` function was
+    // physically deleted at this slice). The DSL function is removed, so the test
+    // cannot even compile if re-enabled.
     //
-    // Pre-existing failure: confirmed via fresh base-vs-head evidence — on
-    // base `c88d5c88` (v0.32.2) SC-011-11 also fails, but at the in-memory
-    // eligibility gate (exit 2, "non-canonical plugins") because `core.load`
-    // was not yet registered. After P1a it fails at the dispatcher level
-    // (exit 1, `outcome=failure`) for the reason above.
-    //
-    // Quarantine with `@Disabled` until coordinator supports step-yielding.
+    // Resolution: the test remains `@Disabled` for traceability, but the comment
+    // is updated to reflect REJECTION (not "deferred until coordinator supports
+    // step-yielding"). The "load child pipeline" capability, if ever required, is
+    // an LFC-3+ design item requiring new typed input/output carriers, new
+    // capabilities, new events (`ChildPipelineStarted`, `ChildPipelineFinished`),
+    // and a registry StepDefinition — see `S2_A5_CORE_LOAD_REJECTION_RECEIPT.md`.
     // ═══════════════════════════════════════════════════════════════════════════
 
     @Test
-    @org.junit.jupiter.api.Disabled("INC-024: load step produces child steps; coordinator does not yet inject loaded pipeline into execution flow. Pre-existing on c88d5c88 (v0.32.2). See comment block above.")
+    @org.junit.jupiter.api.Disabled("CORE-LOAD-REJECTED (2026-09-17): `core.load` REJECTED — see `S2_A5_CORE_LOAD_REJECTION_RECEIPT.md`. This test exercises a Step that no longer exists in the DSL; the `load(path)` function was physically deleted at this slice. The capability, if required, is an LFC-3+ design item. Original INC-024 quarantine pre-existed on c88d5c88 v0.32.2; this slice reclassifies the test from 'deferred until coordinator supports step-yielding' to 'OBSOLETE per REJECTION'.")
     fun `SC-011-11 load executes script content`() {
         val script = tempDir.resolve("sc-011-11.pipeline.kts")
         val loadedScriptPath = tempDir.resolve("loaded.pipeline.kts")

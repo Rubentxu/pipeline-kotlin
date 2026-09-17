@@ -2,25 +2,29 @@
 #
 # Authority: docs/v2/07-uat/STEP_CERTIFICATION_MATRIX.md (human-readable rollup),
 # docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md (full inventory + provenance),
-# docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md (REJECTED classification).
+# docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md (REJECTED classification),
+# docs/v2/00-governance/CORE_STEP_ADMISSION.md (admission record, LFC-2E1 freeze).
 #
-# Updated: 2026-09-17 (LFC-2E0 GLOBAL CLOSURE — FASE 3 of the SDDK cycle).
+# Updated: 2026-09-17 (LFC-2E1 UNIVERSAL CORE FREEZE — FASE 4 of the SDDK cycle).
+# Previous update: 2026-09-17 (LFC-2E0 GLOBAL CLOSURE — FASE 3 of the SDDK cycle).
 #
 # Schema:
-#   step_key:         unique identifier
-#   delivery:         CORE | OFFICIAL_PLUGIN | EXTERNAL_REFERENCE | REJECTED
-#   execution:        REGISTRY_PRIMARY | ORCHESTRATION | (removed for REJECTED)
-#   legacy_state:     CERTIFIED_AND_LEGACY_REMOVED | CERTIFIED | REJECTED | STOPPED_G7 | IMPLEMENTED_UNCERTIFIED | NOT_STARTED
-#   certification_state: CERTIFIED | REJECTED | DESIGNED | NOT_STARTED | STOPPED_G7 | DEFERRED
-#   g8_receipt:       path to G8_FINAL_CERTIFICATION_RECEIPT.md (null if not certified)
-#   g7_receipt:       path to G7_INSTALLED_ACCEPTANCE_RECEIPT.md (or G7_STOP_BLOCKED if STOPPED_G7)
-#   legacy_receipts:  list of G0..G6 receipts
-#   real_fixture:     path to .pipeline.kts exercising the Step (null if no maintained fixture)
-#   registry_file:    path to CoreXxxStep.kt defining the StepDefinition
-#   capability:       declared capability in StepContract.requiredCapabilities (or null)
-#   contract_suite:   path to StepContractSuiteTest (null if not certified)
-#   contract_suite_status: PASS | NA
-#   unit_test:        path to StepUnitTest
+#   step_key:               unique identifier
+#   delivery:               CORE | OFFICIAL_PLUGIN | EXTERNAL_REFERENCE | REJECTED
+#   execution:              REGISTRY_PRIMARY | ORCHESTRATION | (removed for REJECTED)
+#   namespace_classification: CORE_PRIMITIVE | ORCHESTRATION_BLOCK_STEP | CORE_PRIMITIVE_STOPPED_G7 | CORE_PRIMITIVE_REJECTED | EXTERNAL_PLUGIN_REFERENCE
+#   freeze_status:          ADMITTED | ADMITTED_ORCHESTRATION | ADMITTED_STOPPED_G7 | ADMITTED_REJECTED | ADMITTED_EXTERNAL
+#   legacy_state:           CERTIFIED_AND_LEGACY_REMOVED | CERTIFIED | REJECTED | STOPPED_G7 | IMPLEMENTED_UNCERTIFIED | NOT_STARTED
+#   certification_state:    CERTIFIED | REJECTED | DESIGNED | NOT_STARTED | STOPPED_G7 | DEFERRED
+#   g8_receipt:             path to G8_FINAL_CERTIFICATION_RECEIPT.md (null if not certified)
+#   g7_receipt:             path to G7_INSTALLED_ACCEPTANCE_RECEIPT.md (or G7_STOP_BLOCKED if STOPPED_G7)
+#   legacy_receipts:        list of G0..G6 receipts
+#   real_fixture:           path to .pipeline.kts exercising the Step (null if no maintained fixture)
+#   registry_file:          path to CoreXxxStep.kt defining the StepDefinition
+#   capability:             declared capability in StepContract.requiredCapabilities (or null)
+#   contract_suite:         path to StepContractSuiteTest (null if not certified)
+#   contract_suite_status:  PASS | NA
+#   unit_test:              path to StepUnitTest
 #
 # Counter roll-up (machine-derived from this file):
 #   Certified (core):         12  (echo, sh, error, sleep, file.writeFile, emit.event, isUnix, deleteDir, milestone, cleanWs, archiveArtifacts, waitUntil)
@@ -30,11 +34,45 @@
 #   Stopped at G7:             2  (pwd, pwd.tmp — non-deterministic runtime return)
 #   Total Production Step keys: 15  (14 core + 1 external; load excluded as REJECTED/non-existent in code)
 #   Legacy residual (N+M):    0+0+0 — FIRST ZERO LEGACY RESIDUAL
+#
+# Namespace classification (LFC-2E1 freeze):
+#   CORE_PRIMITIVE:           11  (universal primitives with zero domain knowledge)
+#   ORCHESTRATION_BLOCK_STEP:  1  (core.waitUntil — body re-enters engine via BlockExecutionPolicy)
+#   CORE_PRIMITIVE_STOPPED_G7: 2  (core.pwd, core.pwd.tmp — non-deterministic, G7 STOP_BLOCKED)
+#   CORE_PRIMITIVE_REJECTED:   1  (core.load — out-of-scope for LFC-2)
+#   EXTERNAL_PLUGIN_REFERENCE: 1  (example.uppercase — reference plugin, not in core)
+#
+# Freeze status (LFC-2E1):
+#   ADMITTED:                 12  (11 core_primitive + 1 orchestration_block_step)
+#   ADMITTED_STOPPED_G7:       2
+#   ADMITTED_REJECTED:         1
+#   ADMITTED_EXTERNAL:         1
+#   ADMITTED_TOTAL:           16  (every Step in this YAML has an admission status)
 
-version: 2
-generated_by: "LFC-2E0 GLOBAL CLOSURE (FASE 3)"
-generated_at: "2026-09-17T07:51Z"
+version: 3
+generated_by: "LFC-2E1 UNIVERSAL CORE FREEZE (FASE 4)"
+generated_at: "2026-09-17T09:36Z"
 cycle: "cycle/wu-g5b"
+freeze:
+  active: true
+  freeze_receipt: docs/v2/07-uat/LFC2E1_UNIVERSAL_CORE_FREEZE_RECEIPT.md
+  admission_record: docs/v2/00-governance/CORE_STEP_ADMISSION.md
+  freeze_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lfc2UniversalCoreFreezeFitnessTest.kt
+  rules:
+    - "no new CanonicalXxxNodeDispatcher files in main source"
+    - "LEGACY_PLUGIN_IDS remains empty (zero regression)"
+    - "no plugin-name routing in CanonicalDurableRunCoordinator"
+    - "every core.* Step in code has an admission record entry"
+    - "CoreStepRegistryFactory is the only Step registration site in main"
+    - "block-step routing uses BodyExecutionPolicy (RetryAttemptShape) not per-Key arms"
+  w1e_perkey_fix:
+    description: "core.waitUntil projection no longer branches on pluginStepId.value"
+    mechanism: "BodyExecutionPolicy.Retrying + RetryAttemptShape.WaitUntil vs MaxAttempts"
+    receipt_docs:
+      - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy.kt
+      - v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt
+      - v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt
+      - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry.kt
 
 counters:
   certified_core_steps: 12
@@ -49,6 +87,18 @@ counters:
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
   legacy_residual_dispatcher_files: 0
+  namespace_classification:
+    core_primitive: 11  # echo, sh, error, sleep, file.writeFile, emit.event, isUnix, deleteDir, milestone, cleanWs, archiveArtifacts
+    orchestration_block_step: 1  # waitUntil (body re-enters engine, declared as orchestration)
+    core_primitive_stopped_g7: 2  # pwd, pwd.tmp
+    core_primitive_rejected: 1  # load
+    external_plugin_reference: 1  # example.uppercase
+  freeze_status:
+    admitted: 12  # 11 core_primitive + 1 orchestration_block_step (waitUntil)
+    admitted_stopped_g7: 2
+    admitted_rejected: 1
+    admitted_external: 1
+    admitted_total: 16
 
 steps:
 
@@ -57,6 +107,8 @@ steps:
   # ────────────────────────────────────────────────────────────────────────
 
   - step_key: core.echo
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -82,6 +134,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/EchoStepContractSuiteTest.kt
 
   - step_key: core.sh
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -107,6 +161,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ShStepContractSuiteTest.kt
 
   - step_key: core.error
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -127,6 +183,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStepUnitTest.kt
 
   - step_key: core.sleep
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -149,6 +207,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStepUnitTest.kt
 
   - step_key: core.file.writeFile
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -167,6 +227,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStepUnitTest.kt
 
   - step_key: core.emit.event
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -189,6 +251,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStepUnitTest.kt
 
   - step_key: core.isUnix
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -211,6 +275,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreIsUnixStepUnitTest.kt
 
   - step_key: core.deleteDir
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -229,6 +295,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreDeleteDirStepUnitTest.kt
 
   - step_key: core.milestone
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -251,6 +319,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepUnitTest.kt
 
   - step_key: core.cleanWs
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: OFFICIAL_PLUGIN_CANDIDATE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -270,6 +340,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreCleanWsStepContractSuiteTest.kt
 
   - step_key: core.archiveArtifacts
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -292,6 +364,8 @@ steps:
     unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreArchiveArtifactsStepUnitTest.kt
 
   - step_key: core.waitUntil
+    namespace_classification: ORCHESTRATION_BLOCK_STEP
+    freeze_status: ADMITTED_ORCHESTRATION
     delivery: CORE
     execution: ORCHESTRATION
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -317,6 +391,8 @@ steps:
   # ────────────────────────────────────────────────────────────────────────
 
   - step_key: core.pwd
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED_STOPPED_G7
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -345,6 +421,8 @@ steps:
       is a terminal state for the slice; CERTIFIED requires real-CLI green.
 
   - step_key: core.pwd.tmp
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED_STOPPED_G7
     delivery: CORE
     execution: REGISTRY_PRIMARY
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
@@ -369,6 +447,8 @@ steps:
   # ────────────────────────────────────────────────────────────────────────
 
   - step_key: core.load
+    namespace_classification: CORE_PRIMITIVE
+    freeze_status: ADMITTED_REJECTED
     delivery: REJECTED
     execution: REMOVED
     legacy_state: REMOVED
@@ -409,6 +489,8 @@ steps:
   # ────────────────────────────────────────────────────────────────────────
 
   - step_key: example.uppercase
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
     delivery: EXTERNAL_REFERENCE
     execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
     legacy_state: NO_LEGACY_PATH

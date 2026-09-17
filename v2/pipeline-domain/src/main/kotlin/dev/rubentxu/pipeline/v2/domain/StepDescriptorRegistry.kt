@@ -194,13 +194,23 @@ class StepDescriptorRegistry private constructor(
                             owner = BodyExecutionOwner.CANONICAL_ENGINE,
                             // Each attempt is a distinct body invocation with its own durable
                             // identity; cardinality is decoded input, not declaration.
-                            policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                            // W1e (LFC-2E1): attemptShape is declared explicitly so the
+                            // coordinator's BodyExecutionPolicy.Retrying projection dispatches
+                            // on shape, not on `pluginStepId.value`.
+                            policy = BodyExecutionPolicy.Retrying(
+                                RetryPolicy(
+                                    attemptShape = dev.rubentxu.pipeline.v2.domain.step.RetryAttemptShape.MaxAttempts,
+                                ),
+                            ),
                         ),
                         introduces = null,
                     ),
                 ))
                 // WU-G5R.3: waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
                 // The coordinator's executeWaitUntilBody runs the body with exponential backoff.
+                // W1e (LFC-2E1): attemptShape = WaitUntil so the coordinator's
+                // BodyExecutionPolicy.Retrying projection dispatches on shape, not on
+                // `pluginStepId.value`. The per-Key branch is removed.
                 put(PluginStepId("core.waitUntil"), StepDescriptor(
                     stepId = "core.waitUntil",
                     name = "waitUntil",
@@ -211,7 +221,11 @@ class StepDescriptorRegistry private constructor(
                             owner = BodyExecutionOwner.CANONICAL_ENGINE,
                             // Body policy is Retrying so dispatchBody routes to executeWaitUntilBody
                             // which implements the condition polling loop with initialRecurrencePeriod/quiet.
-                            policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                            policy = BodyExecutionPolicy.Retrying(
+                                RetryPolicy(
+                                    attemptShape = dev.rubentxu.pipeline.v2.domain.step.RetryAttemptShape.WaitUntil,
+                                ),
+                            ),
                         ),
                         introduces = null,
                     ),

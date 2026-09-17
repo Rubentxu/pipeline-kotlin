@@ -148,6 +148,9 @@ object CoreWaitUntilStep {
 
     // WU-G5R.3: The coordinator's executeWaitUntilBody() implements the condition-polling
     // loop. This descriptor matches the registry entry so body metadata is coherent.
+    // W1e (LFC-2E1): declares RetryAttemptShape.WaitUntil so the coordinator's
+    // BodyExecutionPolicy.Retrying projection dispatches on shape (not on
+    // `pluginStepId.value == "core.waitUntil"`). The per-Key branch is removed.
     private val descriptor = StepDescriptor(
         stepId = "core.waitUntil",
         name = "waitUntil",
@@ -161,7 +164,11 @@ object CoreWaitUntilStep {
                 owner = BodyExecutionOwner.CANONICAL_ENGINE,
                 // Coordinator executeWaitUntilBody reads initialRecurrencePeriod/quiet from
                 // the encoded input and runs the polling loop with exponential backoff.
-                policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                policy = BodyExecutionPolicy.Retrying(
+                    RetryPolicy(
+                        attemptShape = dev.rubentxu.pipeline.v2.domain.step.RetryAttemptShape.WaitUntil,
+                    ),
+                ),
             ),
             introduces = null,
         ),

@@ -99,3 +99,79 @@ while two genuinely distinct invocation ids of the same StepKey both appear.
 
 Nothing here is implemented yet; this is the characterization the directive requires
 BEFORE codifying `observed`.
+
+---
+
+# A3 RESOLVED — the StepKey is already first-class
+
+`DurableOperation.input: OperationInput`, and:
+
+```kotlin
+data class OperationInput(
+    val stepId: String,          // <- the StepKey, required and validated
+    val params: Map<String, JsonElement>,
+    val runId: String,
+    val attempt: Int,
+) {
+    init {
+        require(stepId.isNotBlank()) { "stepId must not be blank" }
+        require(runId.isNotBlank())  { "runId must not be blank" }
+        require(attempt >= 1)        { "attempt must be >= 1, got $attempt" }
+    }
+}
+```
+
+**No port extension. No fingerprint decoding. No fragile payload parsing.** The reader is
+a thin adapter:
+
+```text
+listForRun(runId) -> DurableOperation
+  invocationId = operation.id
+  stepKey      = operation.input.stepId      (validated non-blank, first-class)
+  status       = operation.status
+```
+
+This closes the last place where "no additional durable port" could have been overturned.
+A3 needs no RED, no extension, and no new table/schema.
+
+# A2 PARTIALLY RESOLVED — PENDING is dual-use; the distinction must be explicit
+
+`PENDING` appears in TWO different roles, and conflating them would be a defect:
+
+```text
+1. PERSISTED status: the coordinator/dev runtime constructs operations as PENDING
+     CanonicalDurableRunCoordinator.kt:964   status = OperationStatus.PENDING
+     JournaledScriptedOperationRuntime.kt:94
+     ScriptedRegistryInvoker.kt:157
+
+2. SYNTHETIC "no row" projection: PENDING is used as a MISSING-RECORD sentinel
+     ProductionRetryChildRowReader.kt:67     durable == null -> PENDING to null
+     RetryReconciler.kt:122                  filterNot { fingerprint == null && status == PENDING }
+     RetryReconciler.kt:220-226              "These represent 'no OperationJournal row'"
+```
+
+Consequences for the criterion `observed <=> status != PENDING`:
+
+```text
+case 1 (persisted PENDING)  -> not yet entered execution -> NOT observed   (correct)
+case 2 (no row)             -> nothing was ever executed -> NOT observed   (correct)
+```
+
+So the criterion yields the right answer in both cases, which is reassuring. BUT the reader
+must not rely on the sentinel implicitly: it derives observations from `listForRun`, where
+case 2 simply does not appear at all (there is no row to return). The sentinel only exists
+in retry/waitUntil PROJECTION paths, which are orchestration state and explicitly not
+execution authority.
+
+Therefore:
+
+```text
+the reader's observed set is built from ROWS RETURNED BY listForRun
+  -> a persisted PENDING row is excluded by the criterion
+  -> a missing row is absent by construction
+the synthetic PENDING sentinel is never an input to the reader
+```
+
+Still required before freezing the law (A2 completion): confirm that no recovery path
+journals `PENDING` AFTER an operation has entered execution. If such a path exists, the
+criterion would under-report silently. This is a characterization test, not a blocker.

@@ -241,8 +241,9 @@ class XcaCliCanaryTest {
      *   1. The CLI ran and produced a RunId (proves the binary executed end-to-end).
      *   2. core.pwd or core.pwd.tmp DID appear in observed evidence (proves STOPPED_G7
      *      steps really ran — without this, "STOPPED_G7 not certifiable" is a vacuous claim).
-     *   3. The XCA-2 ledger entry for core.pwd is NOT verification_status: CERTIFIED
-     *      (proves STOPPED_G7 is tracked separately from CERTIFIED — real canary).
+     *   3. The canonical certification ledger does NOT mark core.pwd as
+     *      certification_state: CERTIFIED (proves STOPPED_G7 is tracked separately
+     *      from CERTIFIED — real canary).
      */
     @Test
     fun `B5 20-pwd-tmp produces evidence but STOPPED_G7 is not certifiable`() {
@@ -285,28 +286,49 @@ class XcaCliCanaryTest {
         // as CERTIFIED. This is the real certification canary: if a future ledger edit
         // promotes them to CERTIFIED, this test fails. We check BOTH keys (the file uses
         // each as its own entry; a typo in the step_key would silently bypass the check).
+        // H1 resolution (XCA2_FIX): renamed v2 copy to avoid path collision with the
+        // canonical ledger. B.5 now reads docs/v2/status/step-certification.yaml
+        // (canonical authority, Step Constitution burn-down) and maps
+        // verification_status → certification_state (canonical field name).
+        //
+        // The canonical ledger uses certification_state (CERTIFIED | STOPPED_G7 |
+        // IMPLEMENTED_UNCERTIFIED | etc.). core.pwd and core.pwd.tmp are
+        // certification_state: STOPPED_G7 — they must NOT be CERTIFIED.
+        //
+        // Regex anchor fix (H8): the old pattern `(?:[^\n]*\n)*?` crossed YAML entry
+        // boundaries. The new pattern restricts continuation lines to indentation ≥ 4
+        // spaces (the canonical file uses 4-space indent for fields, 2-space for the
+        // list marker). A new entry starts with `  - step_key:` (2+1 spaces from the
+        // `-` character), which has fewer than 4 leading spaces — the anchor prevents
+        // crossing into it.
         val ledgerPath = Path.of("../docs/v2/status/step-certification.yaml")
         if (Files.exists(ledgerPath)) {
             val ledgerContent = Files.readString(ledgerPath)
-            // Match a top-level step_key entry (2-space indent) followed by its verification_status line
+            // Match certification_state within a single YAML list entry.
+            // Each entry starts with "  - step_key: <key>" and contains fields indented
+            // ≥ 4 spaces. A continuation line cannot start a new entry (only 3 spaces
+            // from the dash), so the anchor correctly isolates each entry.
+            // Max 30 continuation lines covers the deepest canonical entries (34 fields).
             val corePwdCertified = Regex(
-                """^  core\.pwd(?:[^\n]*\n)*?    verification_status:\s*CERTIFIED""",
+                """^  - step_key: core\.pwd\n(?:(?:    [^:\n]+:[^\n]*\n){1,30}){0,1}    certification_state: CERTIFIED""",
                 RegexOption.MULTILINE,
             ).containsMatchIn(ledgerContent)
             val corePwdTmpCertified = Regex(
-                """^  core\.pwd\.tmp(?:[^\n]*\n)*?    verification_status:\s*CERTIFIED""",
+                """^  - step_key: core\.pwd\.tmp\n(?:(?:    [^:\n]+:[^\n]*\n){1,30}){0,1}    certification_state: CERTIFIED""",
                 RegexOption.MULTILINE,
             ).containsMatchIn(ledgerContent)
 
             assertFalse(
                 corePwdCertified,
                 "B.5 falsification: core.pwd is STOPPED_G7 and MUST NOT be " +
-                    "CERTIFIED in $ledgerPath. Observed in fixture run: $stoppedG7Observed",
+                    "CERTIFIED in $ledgerPath. Observed in fixture run: $stoppedG7Observed. " +
+                    "H1 fix: reads canonical docs/v2/status/step-certification.yaml now.",
             )
             assertFalse(
                 corePwdTmpCertified,
                 "B.5 falsification: core.pwd.tmp is STOPPED_G7 and MUST NOT be " +
-                    "CERTIFIED in $ledgerPath. Observed in fixture run: $stoppedG7Observed",
+                    "CERTIFIED in $ledgerPath. Observed in fixture run: $stoppedG7Observed. " +
+                    "H1 fix: reads canonical docs/v2/status/step-certification.yaml now.",
             )
         }
     }

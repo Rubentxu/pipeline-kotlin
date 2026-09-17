@@ -298,3 +298,68 @@ passing baseline AND a real way to fail (add the import and it must go RED).
 Assert POSITIVELY that `RUNNING` and `LOST` both yield observed evidence. They are the
 asymmetric pair: `LOST` is terminal, `RUNNING` is not, so a `status.isTerminal` shortcut
 would keep one and drop the other - a partial failure that would look almost correct.
+
+---
+
+# RunNotFound — investigation result
+
+Searched for an existing run-lifecycle authority before inventing any seam. Findings:
+
+## An existence ADT already exists, but not keyed by RunId
+
+`pipeline-application` `RunIdDirectory`:
+
+```kotlin
+sealed interface StoredRunId {
+    data class Found(val runId: RunId) : StoredRunId
+    data object Missing : StoredRunId
+}
+
+class RunIdDirectory(private val root: Path) {
+    fun record(definitionId: DefinitionId, runId: RunId)
+    fun lastRunId(definitionId: DefinitionId): RunId
+    fun findLastRunId(definitionId: DefinitionId): StoredRunId
+}
+```
+
+Two useful facts:
+
+1. **The codebase already models run existence as a sealed `Found | Missing` ADT** — the same
+   shape as `RunEvidenceReadResult`. So the modelling choice is idiomatic here, not invented
+   for XCA.
+2. But it is a **last-run-per-definition registry**, keyed by `DefinitionId`. It answers "is
+   there a recorded run for this pipeline definition", NOT "does runId X exist". It cannot
+   resolve `RunNotFound` for an arbitrary `RunId`.
+
+No general run-existence authority was found (`runExists`, `hasRun`, `findRun`, `getRun`,
+`listRuns`, `RunRepository`, `RunRegistry`: none exist in `src/main`).
+
+## Consequence — the gap is real, and NOT resolved here
+
+`OperationJournal.listForRun(runId)` returns an empty list for BOTH an unknown run and a
+known run with zero persisted operations, and there is no independent existence check keyed
+by `RunId`.
+
+Per the campaign rule, the response is NOT to add `existsForCertification(runId)`. The
+remaining question is empirical and belongs to the harness (workstream B), not to a new
+domain seam:
+
+```text
+Does the runtime guarantee that every real run produces >= 1 persisted DurableOperation
+(or some other durable run-lifecycle record)?
+```
+
+```text
+if YES (proven)   -> empty can honestly mean RunNotFound
+if NO             -> the port needs an independent, GENERIC existence capability
+                     (e.g. runExists(runId) as a runtime/domain concern), never a
+                     certification-specific one
+```
+
+Until that is proven, the adapter correctly returns `Found`, because it cannot distinguish
+the cases. `RunNotFound` remains a defined outcome that is currently unconstructible from
+this port alone — an honest, recorded limitation rather than a fabricated distinction.
+
+Note the useful precedent: if a new capability is ultimately required, `StoredRunId` shows
+the established shape (`Found | Missing`), so it would be expressed as a general
+run-lifecycle concern consistent with the existing domain, not as an XCA-specific API.

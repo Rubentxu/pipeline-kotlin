@@ -61,11 +61,35 @@ object RegistryExecutionBoundary {
      *   Always non-null in production; nullable for test/adapter flexibility.
      */
     fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
+        adapt(milestoneStateStore = milestoneStateStore, capabilityAccessFactory = null)
+
+    /**
+     * Creates a [CommonExecutionBoundary] that executes registry Steps, with optional
+     * [MilestoneStateStore] support for milestone Steps AND an optional capability-access factory.
+     *
+     * The capability-access factory is a generic extension point that lets a host runtime
+     * expose ADDITIONAL capabilities (declared by Step families — including external plugins)
+     * beyond the canonical [CanonicalRuntimeCapabilityAccess]. It is purely additive: when null,
+     * the canonical bridge is used unchanged; when supplied, the factory constructs the bridge
+     * (which itself MAY delegate to the canonical bridge and then layer its own capabilities).
+     *
+     * This is NOT a Step-specific seam: the factory knows nothing about concrete StepKeys; it
+     * only constructs the typed capability bridge that downstream Step handlers consume through
+     * the same [StepCapabilityAccess] interface as the canonical bridge.
+     *
+     * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
+     *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
+     * @param capabilityAccessFactory Optional factory overriding the default
+     *   `CanonicalRuntimeCapabilityAccess` constructor. Nullable for backwards compatibility
+     *   with existing call-sites.
+     */
+    fun adapt(
+        milestoneStateStore: MilestoneStateStore?,
+        capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)?,
+    ): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->
             when (prepared) {
-                is PreparedRegistryExecution -> coexecute(prepared, context) { ctx ->
-                    CanonicalRuntimeCapabilityAccess(ctx, milestoneStateStore = milestoneStateStore)
-                }
+                is PreparedRegistryExecution -> coexecuteNullable(prepared, context, capabilityAccessFactory)
                 is PreparedLegacyExecution -> throw EngineInvariantViolation(
                     "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",
                 )
@@ -160,5 +184,22 @@ object RegistryExecutionBoundary {
                 encodedOutput = null,
             )
         }
+    }
+
+    /**
+     * Overload accepting a NULLABLE capability-bridge factory, inlined into [adapt]. Kept
+     * as a private dispatcher to avoid a JVM signature clash (the platform erases
+     * `(CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess` and
+     * `((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)?` to the same JVM
+     * descriptor). Public call-sites use [adapt] directly.
+     */
+    private suspend fun coexecuteNullable(
+        prepared: PreparedRegistryExecution,
+        context: CanonicalRuntimeContext,
+        capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)?,
+    ): CommonExecutionResult = if (capabilityAccessFactory == null) {
+        coexecute(prepared, context)
+    } else {
+        coexecute(prepared, context, capabilityAccessFactory)
     }
 }

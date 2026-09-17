@@ -74,6 +74,12 @@ object ExecutionBoundaryFactory {
         // creates a MilestoneStateStore instance (no longer nullable), so this parameter is
         // always non-null when called from production code. Nullable kept for test/adapter flexibility.
         milestoneStateStore: MilestoneStateStore? = null,
+        // LFC-2E2: optional capability-access factory for the registry execution boundary.
+        // Generic extension point that lets the host runtime expose ADDITIONAL Step-declared
+        // capabilities (e.g. those declared by external plugins) without modifying the canonical
+        // bridge. Purely additive: when null, the canonical [CanonicalRuntimeCapabilityAccess]
+        // is used bit-equivalently. Nullable for backwards compatibility with existing call-sites.
+        capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)? = null,
     ): CommonExecutionBoundary {
         // Binary policy preserved bit-a-bit from the original `if (stepRegistry != null)` inline
         // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
@@ -86,7 +92,12 @@ object ExecutionBoundaryFactory {
             )
             // S2-A9 spike: pass milestoneStateStore to RegistryExecutionBoundary so it can
             // populate MILESTONE_OPERATIONS_CAPABILITY when building CanonicalRuntimeCapabilityAccess.
-            val registry = RegistryExecutionBoundary.adapt(milestoneStateStore = milestoneStateStore)
+            // LFC-2E2: also pass the optional capability-access factory so the registry boundary
+            // can construct a bridge with ADDITIONAL capabilities declared by external plugin Steps.
+            val registry = RegistryExecutionBoundary.adapt(
+                milestoneStateStore = milestoneStateStore,
+                capabilityAccessFactory = capabilityAccessFactory,
+            )
             // stepKey is intentionally not consumed here; the canonical coordinator does not know
             // the key at boundary-build time and the registry boundary decides reachability per
             // prepared execution.

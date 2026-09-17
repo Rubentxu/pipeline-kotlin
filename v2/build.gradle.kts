@@ -71,3 +71,33 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
         "jar",
     )
 }
+
+// ── Lane R: utilities.json OFFICIAL_PLUGIN reproducibility (FASE 6 / LFC-2E2) ──
+// utilities-plugin is the FIRST plugin shipped against the frozen universal-core
+// authoring surface. It depends only on the public SDK contracts (pipeline-domain +
+// pipeline-scripting-api) and registers through the StepDefinitionContributor SPI.
+// It is an INDEPENDENT Gradle build (its own settings file) so the property it
+// certifies — "a plugin ships zero changes in production core" — is preserved.
+//
+// Same Lane R pattern as example-uppercase-plugin: SDK artifacts must come from
+// THIS revision, never from committed snapshot jars.
+val buildUtilitiesPlugin by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds the independent OFFICIAL utilities.json plugin against this revision's SDK."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val pluginDir = file("../examples/utilities-plugin")
+    inputs.dir(pluginDir.resolve("src"))
+    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar")
+    outputs.file(pluginDir.resolve("build/libs/utilities-plugin-1.0.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", pluginDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "jar",
+    )
+}

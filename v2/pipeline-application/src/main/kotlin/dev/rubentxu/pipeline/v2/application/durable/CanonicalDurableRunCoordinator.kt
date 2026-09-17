@@ -547,6 +547,13 @@ class CanonicalDurableRunCoordinator(
     // shared body-child loop. When the caller wires a custom adapter (e.g. tests) the
     // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
+
+    // LFC-2E2: optional capability-access factory for the registry execution boundary.
+    // Generic extension point that lets the host runtime expose ADDITIONAL Step-declared
+    // capabilities (e.g. those declared by external plugins) without modifying the canonical
+    // [CanonicalRuntimeCapabilityAccess]. Purely additive: when null, the canonical bridge
+    // is used bit-equivalently. Nullable for backwards compatibility with existing call-sites.
+    private val capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)? = null,
 ) {
     /** Active context stack for body scope tracking (EM-4). */
 
@@ -577,11 +584,14 @@ class CanonicalDurableRunCoordinator(
         // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
         // S2-A9 spike: pass milestoneStateStore so RegistryExecutionBoundary can provide
         // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
+        // LFC-2E2: also pass capabilityAccessFactory so RegistryExecutionBoundary can layer
+        // additional Step-declared capabilities (e.g. plugin-declared) onto the canonical bridge.
         ?: ExecutionBoundaryFactory.build(
             dispatcher = dispatcher,
             invocationExecutor = invocationExecutor,
             stepRegistry = stepRegistry,
             milestoneStateStore = milestoneStateStore,
+            capabilityAccessFactory = capabilityAccessFactory,
         )
 
     // C3: RunStarted/RunFinished state
@@ -966,14 +976,17 @@ class CanonicalDurableRunCoordinator(
                         val registry = stepRegistry ?: throw EngineInvariantViolation(
                             "registry family step '${step.pluginStepId.value}' reached Execute without a StepRegistry",
                         )
+                        // LFC-2E2: honour the optional capabilityAccessFactory so plugin-declared
+                        // capabilities (e.g. utilities.json.operations) are visible at prepare-time
+                        // admission. When null, fall back to the canonical bridge bit-equivalently.
+                        val availableCapabilities = (capabilityAccessFactory?.invoke(runtime)
+                            ?: CanonicalRuntimeCapabilityAccess(runtime, milestoneStateStore = milestoneStateStore))
+                            .available()
                         val admission = RegistryExecutionPreparation.prepare(
                             registry = registry,
                             key = step.pluginStepId,
                             encodedInput = EncodedStepValue(step.payload.encoded),
-                            availableCapabilities = CanonicalRuntimeCapabilityAccess(
-                                runtime,
-                                milestoneStateStore = milestoneStateStore,
-                            ).available(),
+                            availableCapabilities = availableCapabilities,
                         )
                         when (admission) {
                             is ExecutionPreparation.Rejected -> return Dispatched(rejectSchema(

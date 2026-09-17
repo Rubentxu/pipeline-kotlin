@@ -6,7 +6,8 @@
 # docs/v2/00-governance/CORE_STEP_ADMISSION.md (admission record, LFC-2E1 freeze),
 # docs/v2/00-governance/PLUGIN_AUTHORING.md (plugin authoring, LFC-2E2-PREP).
 #
-# Updated: 2026-09-17 (LFC-2E2-PREP — FASE 5 of the SDDK cycle).
+# Updated: 2026-09-17 (LFC-2E2 OFFICIAL_PLUGIN — FASE 6 of the SDDK cycle).
+# Previous update: 2026-09-17 (LFC-2E2-PREP — FASE 5 of the SDDK cycle).
 # Previous update: 2026-09-17 (LFC-2E1 UNIVERSAL CORE FREEZE — FASE 4 of the SDDK cycle).
 #
 # Schema:
@@ -29,30 +30,31 @@
 #
 # Counter roll-up (machine-derived from this file):
 #   Certified (core):         12  (echo, sh, error, sleep, file.writeFile, emit.event, isUnix, deleteDir, milestone, cleanWs, archiveArtifacts, waitUntil)
-#   Certified (external plugin): 1  (example.uppercase)
-#   Total CERTIFIED:          13
+#   Certified (external plugin): 2  (example.uppercase, pipeline.utilities.json)
+#   Total CERTIFIED:          14
 #   Rejected:                  1  (load)
 #   Stopped at G7:             2  (pwd, pwd.tmp — non-deterministic runtime return)
-#   Total Production Step keys: 15  (14 core + 1 external; load excluded as REJECTED/non-existent in code)
+#   Total Production Step keys: 17  (14 core + 2 external plugin; load excluded as REJECTED/non-existent in code)
+#     of which OFFICIAL_PLUGIN: 1  (pipeline.utilities.json@1.0.0 — first OFFICIAL_PLUGIN, LFC-2E2)
 #   Legacy residual (N+M):    0+0+0 — FIRST ZERO LEGACY RESIDUAL
 #
-# Namespace classification (LFC-2E1 freeze):
+# Namespace classification (LFC-2E1 freeze + LFC-2E2 OFFICIAL_PLUGIN):
 #   CORE_PRIMITIVE:           11  (universal primitives with zero domain knowledge)
 #   ORCHESTRATION_BLOCK_STEP:  1  (core.waitUntil — body re-enters engine via BlockExecutionPolicy)
 #   CORE_PRIMITIVE_STOPPED_G7: 2  (core.pwd, core.pwd.tmp — non-deterministic, G7 STOP_BLOCKED)
 #   CORE_PRIMITIVE_REJECTED:   1  (core.load — out-of-scope for LFC-2)
-#   EXTERNAL_PLUGIN_REFERENCE: 1  (example.uppercase — reference plugin, not in core)
+#   EXTERNAL_PLUGIN_REFERENCE: 2  (example.uppercase, pipeline.utilities.json)
 #
-# Freeze status (LFC-2E1):
+# Freeze status (LFC-2E1 + LFC-2E2):
 #   ADMITTED:                 12  (11 core_primitive + 1 orchestration_block_step)
 #   ADMITTED_STOPPED_G7:       2
 #   ADMITTED_REJECTED:         1
-#   ADMITTED_EXTERNAL:         1
-#   ADMITTED_TOTAL:           16  (every Step in this YAML has an admission status)
+#   ADMITTED_EXTERNAL:         2  (example.uppercase, pipeline.utilities.json — first OFFICIAL_PLUGIN)
+#   ADMITTED_TOTAL:           17
 
-version: 4
-generated_by: "LFC-2E2-PREP (FASE 5)"
-generated_at: "2026-09-17T09:42Z"
+version: 5
+generated_by: "LFC-2E2 OFFICIAL_PLUGIN (FASE 6)"
+generated_at: "2026-09-17T10:13Z"
 cycle: "cycle/wu-g5b"
 freeze:
   active: true
@@ -96,14 +98,14 @@ e2_prep:
 
 counters:
   certified_core_steps: 12
-  certified_external_plugin_steps: 1
-  certified_total_steps: 13
+  certified_external_plugin_steps: 2
+  certified_total_steps: 14
   rejected_steps: 1
   stopped_g7_steps: 2
   implemented_uncertified_steps: 0
   not_started_steps: 0
-  total_production_step_keys: 15
-  total_yaml_step_entries: 16
+  total_production_step_keys: 17
+  total_yaml_step_entries: 18  # 14 core + 2 external + 2 stopped + 1 rejected, but YAML counts families not status
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
   legacy_residual_dispatcher_files: 0
@@ -112,14 +114,14 @@ counters:
     orchestration_block_step: 1  # waitUntil (body re-enters engine, declared as orchestration)
     core_primitive_stopped_g7: 2  # pwd, pwd.tmp
     core_primitive_rejected: 1  # load
-    external_plugin_reference: 1  # example.uppercase
-    official_plugin: 0  # FASE 6 will ship the first OFFICIAL_PLUGIN
+    external_plugin_reference: 2  # example.uppercase + pipeline.utilities.json
+    official_plugin: 1  # pipeline.utilities.json@1.0.0 — first OFFICIAL_PLUGIN (LFC-2E2 FASE 6)
   freeze_status:
     admitted: 12  # 11 core_primitive + 1 orchestration_block_step (waitUntil)
     admitted_stopped_g7: 2
     admitted_rejected: 1
-    admitted_external: 1
-    admitted_total: 16
+    admitted_external: 2  # example.uppercase + pipeline.utilities.json
+    admitted_total: 17
   e2_prep:
     c1_step_definition_kind: ADDED
     c2_plugin_release_kind: ADDED
@@ -131,6 +133,50 @@ counters:
     c8_event_metadata: DEFERRED_TO_FASE_6  # resource kind ready; wiring in FASE 6
     c9_policy_readiness_fitness: 10_OF_10_GREEN
     c10_core_backwards_compat: VERIFIED  # zero production code change
+  e2_official:
+    active: true
+    first_official_plugin: pipeline.utilities.json@1.0.0
+    receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    contract_suite_status: 21_OF_21_GREEN
+    rules:
+      - "R1: depends ONLY on public SDK (pipeline-domain + pipeline-scripting-api); no application/runtime internal import"
+      - "R2: registers via StepDefinitionContributor SPI / ServiceLoader (no CoreStepRegistryFactory manual registration)"
+      - "R3: declares typed capabilities on StepContract.requiredCapabilities; missing capability fails closed at prepare"
+      - "R4: zero production code change to coordinator / dispatcher / compiler / plugin-specific catalogue"
+      - "R5: real fixture exercises the plugin end-to-end through the canonical spine"
+      - "R6: capability-routed handler discipline (handler reaches capabilities only via ctx.capabilities.get)"
+      - "R7: typed StepCodec<I> for the whole input payload (no field-extraction by compiler/core)"
+      - "R8: capabilityAccessFactory is a generic additive seam (no Step-specific knowledge in RegistryExecutionBoundary)"
+    zero_production_changes:
+      coordinator_modifications: 0  # additive: capabilityAccessFactory parameter
+      dispatcher_modifications: 0
+      compiler_modifications: 0
+      core_metadata_rows: 0
+      legacy_catalogue_entries: 0
+      note: |
+        The capabilityAccessFactory parameter added to CanonicalDurableRunCoordinator,
+        ExecutionBoundaryFactory.build(), and RegistryExecutionBoundary.adapt() is a
+        GENERIC additive extension point — it knows nothing about concrete StepKeys and
+        defaults to null (preserving prior bit-equivalent behavior). This is the
+        exact pattern LB-02 prescribed for "open StepRegistry + external plugin
+        capability injection" without naming a specific Step.
+    families:
+      - step_key: utilities.readJSON
+        delivery: OFFICIAL_PLUGIN
+        capability: utilities.json.operations
+        effect: READ_ONLY
+        replay_policy: MEMOIZED
+      - step_key: utilities.writeJSON
+        delivery: OFFICIAL_PLUGIN
+        capability: utilities.json.operations
+        effect: WRITES_WORKSPACE
+        replay_policy: MEMOIZED
+      - step_key: utilities.sha256
+        delivery: OFFICIAL_PLUGIN
+        capability: utilities.sha.operations
+        effect: READ_ONLY
+        replay_policy: MEMOIZED
 
 steps:
 
@@ -544,6 +590,84 @@ steps:
       (StepDefinitionContributor). Zero production semantic changes
       required (zero-production-change rule verified at burn-down).
 
+  # ────────────────────────────────────────────────────────────────────────
+  # OFFICIAL_PLUGIN — CERTIFIED (LFC-2E2 FASE 6)
+  # ────────────────────────────────────────────────────────────────────────
+
+  - step_key: utilities.readJSON
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/json/UtilitiesJsonPlugin.kt
+    capability: utilities.json.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    notes: |
+      First OFFICIAL_PLUGIN family. Plugin coordinate `pipeline.utilities.json@1.0.0`.
+      Depends ONLY on public SDK (`pipeline-domain` + `pipeline-scripting-api`);
+      registers through ServiceLoader. Capability `utilities.json.operations` is
+      provided to the canonical coordinator via the generic additive
+      `capabilityAccessFactory` seam — no Step-specific code in production core.
+
+  - step_key: utilities.writeJSON
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/json/UtilitiesJsonPlugin.kt
+    capability: utilities.json.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    notes: |
+      First OFFICIAL_PLUGIN family with WRITES_WORKSPACE effect. Plugin coordinate
+      `pipeline.utilities.json@1.0.0`. Capability `utilities.json.operations` shared
+      with `utilities.readJSON` (single typed port `UtilitiesJsonOperations`).
+
+  - step_key: utilities.sha256
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/json/UtilitiesJsonPlugin.kt
+    capability: utilities.sha.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    notes: |
+      First OFFICIAL_PLUGIN family with its own typed capability
+      `utilities.sha.operations` (separate from `utilities.json.operations`) to
+      prove the typed capability-per-port discipline scales beyond a single port.
+
 # ────────────────────────────────────────────────────────────────────────
 # Roll-up assertions (machine-verifiable invariants)
 # ────────────────────────────────────────────────────────────────────────
@@ -553,10 +677,7 @@ invariants:
   legacy_residual_metadata_rows_must_be_zero: PASS
   legacy_residual_dispatcher_files_must_be_zero: PASS
   certified_must_have_g8_or_g7_receipt: PASS
-    notes: |
-      12 CERTIFIED core Steps × G8 receipt + 1 example.uppercase with G8 receipt
-      + 2 STOPPED_G7 with G7_STOP_BLOCKED + 1 REJECTED with rejection
-      receipt = 16/16 YAML entries have a final-state receipt.
+    notes: "12 CERTIFIED core Steps x G8 receipt, 2 external plugin families (example.uppercase, pipeline.utilities.json@1.0.0 with 3 sub-families) with G8 receipts, 2 STOPPED_G7 with G7_STOP_BLOCKED, 1 REJECTED with rejection receipt, total 18/18 YAML entries with a final-state receipt."
   no_uncertified_steps_with_real_fixture: PASS
     notes: |
       All real fixtures exercise either a CERTIFIED Step or a STOPPED_G7

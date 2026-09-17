@@ -43,16 +43,24 @@ dependencies {
     // same JAR the installed distribution hosts via --plugin-jar. Test classpath only.
     // Produced by :buildExamplePlugin from THIS revision's SDK; not a committed artifact.
     testImplementation(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
+    // LFC-2E2 / Lane R: first OFFICIAL_PLUGIN under the frozen universal-core authoring
+    // surface (pipeline.utilities.json@1.0.0). Same Lane R pattern: produced by
+    // :buildUtilitiesPlugin from THIS revision's SDK; not a committed artifact.
+    testImplementation(files(rootDir.resolve("../examples/utilities-plugin/build/libs/utilities-plugin-1.0.0.jar")))
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
 // Lane R: test *compilation* needs the plugin JAR on the test classpath, so the
 // producer must be ordered before compileTestKotlin, not merely before test.
-tasks.named("compileTestKotlin") { dependsOn(":buildExamplePlugin") }
+tasks.named("compileTestKotlin") {
+    dependsOn(":buildExamplePlugin")
+    dependsOn(":buildUtilitiesPlugin")
+}
 
 tasks.test {
     dependsOn(":pipeline-application:installDist")
     dependsOn(":buildExamplePlugin")
+    dependsOn(":buildUtilitiesPlugin")
     useJUnitPlatform()
 }

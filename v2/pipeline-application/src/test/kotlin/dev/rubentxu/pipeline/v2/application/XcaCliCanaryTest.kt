@@ -301,7 +301,12 @@ class XcaCliCanaryTest {
         // list marker). A new entry starts with `  - step_key:` (2+1 spaces from the
         // `-` character), which has fewer than 4 leading spaces — the anchor prevents
         // crossing into it.
-        val ledgerPath = Path.of("../docs/v2/status/step-certification.yaml")
+        // H1-PATH-BUG fix: from v2/pipeline-application/, "../../" resolves to repo root.
+        // The old path "../docs/v2/status/..." resolved to v2/docs/v2/status/... (the
+        // renamed XCA2-EVIDENCE copy), NOT the canonical ledger. Now using
+        // repoRoot = "../../" so we reach docs/v2/status/step-certification.yaml (canonical).
+        val repoRoot = Path.of("../../")
+        val ledgerPath = repoRoot.resolve("docs/v2/status/step-certification.yaml")
         if (Files.exists(ledgerPath)) {
             val ledgerContent = Files.readString(ledgerPath)
             // Match certification_state within a single YAML list entry.

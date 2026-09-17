@@ -149,6 +149,10 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. Historical S2-A10/G4 and S2-A10/G5
     // snapshots above preserved verbatim for traceability.
+    //
+    // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+    // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+    // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
     @Test
     fun `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot isUnix stays absent`() {
         assertTrue(
@@ -156,14 +160,14 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
             "core.isUnix MUST remain absent from LEGACY_PLUGIN_IDS post-S2-B10/G5 LEGACY_REMOVED of core.archiveArtifacts",
         )
         assertEquals(
-            2,
+            0,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G5) -> 2 (post-S2-B10/G5, LEGACY_REMOVED closed)",
+            "G5 counter: LEGACY_PLUGIN_IDS converges 2 (post-S2-B10/G5) -> 0 (post-LFC-2E0, FIRST ZERO LEGACY RESIDUAL)",
         )
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "post-S2-B10/G5: the residual is exactly the two keys still awaiting their own G4/G5 lanes",
+            "post-LFC-2E0: LEGACY_PLUGIN_IDS is empty (both core.load and core.waitUntil closed)",
         )
     }
 

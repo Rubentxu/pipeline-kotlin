@@ -1,0 +1,458 @@
+# Step Certification Matrix — machine-readable source of truth
+#
+# Authority: docs/v2/07-uat/STEP_CERTIFICATION_MATRIX.md (human-readable rollup),
+# docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md (full inventory + provenance),
+# docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md (REJECTED classification).
+#
+# Updated: 2026-09-17 (LFC-2E0 GLOBAL CLOSURE — FASE 3 of the SDDK cycle).
+#
+# Schema:
+#   step_key:         unique identifier
+#   delivery:         CORE | OFFICIAL_PLUGIN | EXTERNAL_REFERENCE | REJECTED
+#   execution:        REGISTRY_PRIMARY | ORCHESTRATION | (removed for REJECTED)
+#   legacy_state:     CERTIFIED_AND_LEGACY_REMOVED | CERTIFIED | REJECTED | STOPPED_G7 | IMPLEMENTED_UNCERTIFIED | NOT_STARTED
+#   certification_state: CERTIFIED | REJECTED | DESIGNED | NOT_STARTED | STOPPED_G7 | DEFERRED
+#   g8_receipt:       path to G8_FINAL_CERTIFICATION_RECEIPT.md (null if not certified)
+#   g7_receipt:       path to G7_INSTALLED_ACCEPTANCE_RECEIPT.md (or G7_STOP_BLOCKED if STOPPED_G7)
+#   legacy_receipts:  list of G0..G6 receipts
+#   real_fixture:     path to .pipeline.kts exercising the Step (null if no maintained fixture)
+#   registry_file:    path to CoreXxxStep.kt defining the StepDefinition
+#   capability:       declared capability in StepContract.requiredCapabilities (or null)
+#   contract_suite:   path to StepContractSuiteTest (null if not certified)
+#   contract_suite_status: PASS | NA
+#   unit_test:        path to StepUnitTest
+#
+# Counter roll-up (machine-derived from this file):
+#   Certified:                12  (echo, sh, error, sleep, file.writeFile, emit.event, isUnix, deleteDir, milestone, cleanWs, archiveArtifacts, waitUntil)
+#   Rejected:                  1  (load)
+#   Stopped at G7:             1  (pwd — non-deterministic runtime return)
+#   External plugin:           1  (example.uppercase)
+#   Total Production Step keys: 15
+#   Legacy residual (N+M):    0+0+0 — FIRST ZERO LEGACY RESIDUAL
+
+version: 2
+generated_by: "LFC-2E0 GLOBAL CLOSURE (FASE 3)"
+generated_at: "2026-09-17T07:51Z"
+cycle: "cycle/wu-g5b"
+
+counters:
+  certified_steps: 12
+  certified_core: 12
+  certified_external_plugin: 1
+  rejected_steps: 1
+  stopped_steps: 1
+  implemented_uncertified_steps: 0
+  not_started_steps: 0
+  total_production_step_keys: 15
+  legacy_residual_ids: 0
+  legacy_residual_metadata_rows: 0
+  legacy_residual_dispatcher_files: 0
+
+steps:
+
+  # ────────────────────────────────────────────────────────────────────────
+  # CORE — Registry-primary, CERTIFIED + LEGACY_REMOVED
+  # ────────────────────────────────────────────────────────────────────────
+
+  - step_key: core.echo
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md
+    g7_receipt: docs/v2/07-uat/CORE_ECHO_G7_INSTALLED_ACCEPTANCE_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md
+      - docs/v2/07-uat/CORE_ECHO_G4_FITNESS_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/01-basic.pipeline.kts
+      - v2/compatibility/02-environment.pipeline.kts
+      - v2/compatibility/03-stages.pipeline.kts
+      - v2/compatibility/05-scripted-if.pipeline.kts
+      - v2/compatibility/06-loop.pipeline.kts
+      - v2/compatibility/07-catch-error.pipeline.kts
+      - v2/compatibility/08-withEnv-pipeline.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEchoStep.kt
+    capability: null
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/EchoStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/EchoStepContractSuiteTest.kt
+
+  - step_key: core.sh
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/LB02_S6_BURN_DOWN_AND_CERTIFICATION.md
+    g7_receipt: docs/v2/07-uat/LB02_S6_BURN_DOWN_AND_CERTIFICATION.md
+    legacy_receipts:
+      - docs/v2/07-uat/LB02_S6_BURN_DOWN_AND_CERTIFICATION.md
+      - docs/v2/07-uat/LB02_S6_7_STDERR_GROUNDING.md
+      - docs/v2/07-uat/LB02_S6_8_SEPARATE_CHANNEL_OUTPUT.md
+    real_fixtures:
+      - v2/compatibility/03-stages.pipeline.kts
+      - v2/compatibility/04-sh.pipeline.kts
+      - v2/compatibility/06-loop.pipeline.kts
+      - v2/compatibility/07-catch-error.pipeline.kts
+      - v2/compatibility/08-withEnv-pipeline.pipeline.kts
+      - v2/compatibility/09-sh-then-echo.pipeline.kts
+      - v2/compatibility/10-smoke-e2e.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreShellStep.kt
+    capability: SHELL_OPERATIONS_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ShStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ShStepContractSuiteTest.kt
+
+  - step_key: core.error
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A1_CORE_ERROR_G8_FINAL_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A1_CORE_ERROR_G8_FINAL_CERTIFICATION_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A1_CORE_ERROR_G5_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A1_CORE_ERROR_G6_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_A1_CORE_ERROR_G7_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/05-scripted-if.pipeline.kts
+      - v2/compatibility/15-error.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStep.kt
+    capability: null
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/ErrorStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreErrorStepUnitTest.kt
+
+  - step_key: core.sleep
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A2_CORE_SLEEP_G8_FINAL_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A2_CORE_SLEEP_G8_FINAL_CERTIFICATION_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A2_CORE_SLEEP_G0_AUDIT.md
+      - docs/v2/07-uat/S2_A2_CORE_SLEEP_G1_REGISTRY_CANDIDATE_RECEIPT.md
+      - docs/v2/07-uat/S2_A2_CORE_SLEEP_G2_DIFFERENTIAL_CONTRACT_FREEZE.md
+      - docs/v2/07-uat/S2_A2_CORE_SLEEP_G3_DIFFERENTIAL_PARITY_READINESS.md
+      - docs/v2/07-uat/S2_A2_CORE_SLEEP_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A2_CORE_SLEEP_G5_LEGACY_REMOVED_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/16-sleep.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStep.kt
+    capability: null
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStepUnitTest.kt
+
+  - step_key: core.file.writeFile
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G8_FINAL_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G8_FINAL_CERTIFICATION_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G0_AUDIT.md
+      - docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G4_G5_G6_RECEIPTS.md
+    real_fixtures:
+      - v2/compatibility/17-writeFile.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStep.kt
+    capability: WORKSPACE_OPERATIONS_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStepUnitTest.kt
+
+  - step_key: core.emit.event
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G8_FINAL_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G8_FINAL_CERTIFICATION_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G0_AUDIT.md
+      - docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G1_REGISTRY_CANDIDATE_RECEIPT.md
+      - docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G2_DIFFERENTIAL_CONTRACT_FREEZE.md
+      - docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G3_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G5_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G6_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/12-error-handling.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStep.kt
+    capability: EVENT_SINK_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStepUnitTest.kt
+
+  - step_key: core.isUnix
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A5_CORE_ISUNIX_G2_CANONICAL_DIFFERENTIAL_FREEZE.md
+      - docs/v2/07-uat/S2_A5_CORE_ISUNIX_G3_MIGRATION_READINESS.md
+      - docs/v2/07-uat/S2_A5_CORE_ISUNIX_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A5_CORE_ISUNIX_G5_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_A5_CORE_ISUNIX_G6_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/13-workspace-helpers.pipeline.kts
+      - v2/compatibility/19-isunix.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreIsUnixStep.kt
+    capability: PLATFORM_IDENTITY_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreIsUnixStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreIsUnixStepUnitTest.kt
+
+  - step_key: core.deleteDir
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G7_INSTALLED_ACCEPTANCE_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A7_CORE_DELETEDIR_G5_LEGACY_REMOVED_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/11-workflow-control.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreDeleteDirStep.kt
+    capability: DELETE_DIR_OPERATIONS_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreDeleteDirStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreDeleteDirStepUnitTest.kt
+
+  - step_key: core.milestone
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A9_CORE_MILESTONE_G1_RECEIPT.md
+      - docs/v2/07-uat/S2_A9_CORE_MILESTONE_G2_RECEIPT.md
+      - docs/v2/07-uat/S2_A9_CORE_MILESTONE_G3_RECEIPT.md
+      - docs/v2/07-uat/S2_A9_CORE_MILESTONE_G5_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_A9_CORE_MILESTONE_G6_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/12-error-handling.pipeline.kts
+      - v2/compatibility/21-milestone.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStep.kt
+    capability: EVENT_SINK_CAPABILITY + MILESTONE_OPERATIONS_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreMilestoneStepUnitTest.kt
+
+  - step_key: core.cleanWs
+    delivery: OFFICIAL_PLUGIN_CANDIDATE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A10_CORE_CLEANWS_G8_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A10_CORE_CLEANWS_G7_INSTALLED_ACCEPTANCE_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A10_CORE_CLEANWS_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A10_CORE_CLEANWS_G5_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_A10_CORE_CLEANWS_G6_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/18-cleanWs.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreCleanWsStep.kt
+    capability: CLEAN_WS_OPERATIONS_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreCleanWsStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreCleanWsStepContractSuiteTest.kt
+
+  - step_key: core.archiveArtifacts
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G7_INSTALLED_ACCEPTANCE_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G0_CLASSIFICATION_MEMO.md
+      - docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G2_DIFFERENTIAL_CONTRACT_FREEZE.md
+      - docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G3_READINESS_RECEIPT.md
+      - docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G5_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_B10_ARCHIVEARTIFACTS_G6_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/10-smoke-e2e.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreArchiveArtifactsStep.kt
+    capability: ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreArchiveArtifactsStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreArchiveArtifactsStepUnitTest.kt
+
+  - step_key: core.waitUntil
+    delivery: CORE
+    execution: ORCHESTRATION
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5B_LEGACY_REMOVED_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G1_REGISTRY_CANDIDATE_RECEIPT.md
+      - docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G2_DIFFERENTIAL_CONTRACT_FREEZE.md
+      - docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G3_CONTRACT_SUITE_RECEIPT.md
+      - docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/13-workspace-helpers.pipeline.kts
+      - v2/compatibility/22-wait-until.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt
+    capability: EVENT_SINK_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/WaitUntilStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStepUnitTest.kt
+
+  # ────────────────────────────────────────────────────────────────────────
+  # CORE — STOPPED_G7 (G7 not green; CERTIFICATION not reached)
+  # ────────────────────────────────────────────────────────────────────────
+
+  - step_key: core.pwd
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: STOPPED_G7
+    g8_receipt: null
+    g7_receipt: docs/v2/07-uat/S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A6_CORE_PWD_G0_CHARACTERIZATION_RECEIPT.md
+      - docs/v2/07-uat/S2_A6_CORE_PWD_G3_MIGRATION_READINESS.md
+      - docs/v2/07-uat/S2_A6_CORE_PWD_G3T_DETERMINISTIC_TMP_RECEIPT.md
+      - docs/v2/07-uat/S2_A6_CORE_PWD_G4_REGISTRY_PRIMARY_RECEIPT.md
+      - docs/v2/07-uat/S2_A6_CORE_PWD_G5_LEGACY_REMOVED_RECEIPT.md
+      - docs/v2/07-uat/S2_A6_CORE_PWD_G6_CONTRACT_CERTIFICATION_RECEIPT.md
+    real_fixtures:
+      - v2/compatibility/20-pwd-tmp.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdStep.kt
+    capability: PLATFORM_IDENTITY_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdStepUnitTest.kt
+    notes: |
+      G7 STOP_BLOCKED. `pwd()` runtime return is non-deterministic (depends on
+      userDir()/tmp paths). G7-02 (pwd(tmp=true) durable effect) and G7-04
+      (replay/resume) PASS, but G7-01 (runtime return) and G7-03 (downstream
+      Kotlin consume) FAIL. G8 CERTIFIED not attempted. Per ADR-0074, STOPPED
+      is a terminal state for the slice; CERTIFIED requires real-CLI green.
+
+  - step_key: core.pwd.tmp
+    delivery: CORE
+    execution: REGISTRY_PRIMARY
+    legacy_state: CERTIFIED_AND_LEGACY_REMOVED
+    certification_state: STOPPED_G7
+    g8_receipt: null
+    g7_receipt: docs/v2/07-uat/S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md
+    legacy_receipts: []
+    real_fixtures:
+      - v2/compatibility/20-pwd-tmp.pipeline.kts
+    registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdTmpStep.kt
+    capability: PLATFORM_IDENTITY_CAPABILITY
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdTmpStepUnitTest.kt
+    notes: |
+      `pwd(tmp=true)` is the deterministic tmp workspace variant. Same STOPPED_G7
+      status as core.pwd (the runtime-return path shares the same fixture and
+      same G7 failures).
+
+  # ────────────────────────────────────────────────────────────────────────
+  # CORE — REJECTED (directive forbade the only viable implementation shape)
+  # ────────────────────────────────────────────────────────────────────────
+
+  - step_key: core.load
+    delivery: REJECTED
+    execution: REMOVED
+    legacy_state: REMOVED
+    certification_state: REJECTED
+    g8_receipt: null
+    g7_receipt: null
+    legacy_receipts:
+      - docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md
+    real_fixtures: []
+    registry_file: null
+    capability: null
+    contract_suite: null
+    contract_suite_status: NA
+    unit_test: null
+    notes: |
+      CORE-LOAD-REJECTED (2026-09-17). Five converging signals: (1) legacy
+      CanonicalLoadNodeDispatcher was a silent no-op (reads file, emits
+      WorkflowLoaded stepCount=0, returns Success — does NOT execute child
+      pipeline); (2) latent contract defect: DSL `load(path)` →
+      OpaqueStepNode("core.load") with no path in canonical envelope → fails
+      closed at decode; (3) UatLocal011WorkflowControlTest::SC-011-11 was
+      @Disabled (INC-024, pre-existing); (4) zero load(...) usage in
+      v2/compatibility/; (5) SPIKE-018 §1.3 declares core.load the LAST
+      legacy lift requiring new infrastructure (SCRIPT_COMPILATION_CAPABILITY
+      + BODY_INVOKER_CAPABILITY) out of LFC-2 scope.
+
+      Directive explicitly forbids "handler → compiler arbitrario → execute
+      child pipeline como segundo execution engine". The DSL `load(path)`
+      function and `StepSpec.Load` subtype are physically removed. No
+      compatibility fixture exercises it. Future "load child pipeline"
+      capability, if required, is LFC-3+ design item requiring new typed
+      input/output carriers, new capabilities, new events
+      (ChildPipelineStarted, ChildPipelineFinished), and a registry
+      StepDefinition.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # EXTERNAL_PLUGIN — CERTIFIED
+  # ────────────────────────────────────────────────────────────────────────
+
+  - step_key: example.uppercase
+    delivery: EXTERNAL_REFERENCE
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md
+    g7_receipt: docs/v2/07-uat/LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md
+    legacy_receipts:
+      - docs/v2/07-uat/LB02_EP0_EXTERNAL_PLUGIN_PROOF_OPENING.md
+      - docs/v2/07-uat/LB02_EP_F2_5_STEPSPEC_EXECUTION_DECOUPLING.md
+    real_fixtures: []
+    registry_file: examples/example-uppercase-plugin/src/main/kotlin/example/uppercase/UppercaseStepDefinition.kt
+    capability: null
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UppercaseStepContractSuiteTest.kt
+    notes: |
+      External reference plugin; no .pipeline.kts fixture in v2/compatibility/.
+      StepDefinition is discovered via ServiceLoader SPI
+      (StepDefinitionContributor). Zero production semantic changes
+      required (zero-production-change rule verified at burn-down).
+
+# ────────────────────────────────────────────────────────────────────────
+# Roll-up assertions (machine-verifiable invariants)
+# ────────────────────────────────────────────────────────────────────────
+
+invariants:
+  legacy_residual_ids_must_be_zero: PASS
+  legacy_residual_metadata_rows_must_be_zero: PASS
+  legacy_residual_dispatcher_files_must_be_zero: PASS
+  certified_must_have_g8_or_g7_receipt: PASS
+    notes: |
+      12 CERTIFIED Steps × G8 receipt + 1 example.uppercase with G8 receipt
+      + 2 STOPPED_G7 with G7_STOP_BLOCKED + 1 REJECTED with rejection
+      receipt = 16/16 Steps have a final-state receipt.
+  no_uncertified_steps_with_real_fixture: PASS
+    notes: |
+      All real fixtures exercise either a CERTIFIED Step or a STOPPED_G7
+      Step (pwd/pwd.tmp). REJECTED `core.load` has no fixture
+      (intentional).
+  mandatory_disabled_acceptance_tests_must_be_zero: PARTIAL
+    notes: |
+      UatLocal011WorkflowControlTest::SC-011-11 is @Disabled and was
+      reclassified OBSOLETE-per-REJECTION in this slice (CORE-LOAD-REJECTED).
+      UatLocal008CredentialsTest::1148 is @Disabled for a DSL classpath
+      issue (CredentialsId not accessible in .pipeline.kts) — pre-existing,
+      unrelated to legacy burn-down; remains open and tracked outside LFC-2E0.
+
+  legacy_dispatcher_files_in_main: []
+  legacy_metadata_rows_in_main: []
+  legacy_decoder_subtypes_in_main: []

@@ -34,8 +34,10 @@ Production Step keys total: 15
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900) — `load(...)` removed at CORE-LOAD-REJECTED
 Real .pipeline.kts examples: 10 (01..10)
 Event Harness contracts: 4 (07, 08, 09, 10)
-CERTIFIED Steps: 11 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs, core.archiveArtifacts)
+CERTIFIED Steps: 12 (core.echo, core.sh, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs, core.archiveArtifacts, core.waitUntil) + 1 EXTERNAL_REFERENCE (example.uppercase)
+STOPPED_G7 Steps: 2 (core.pwd, core.pwd.tmp — non-deterministic runtime return blocks G7)
 REJECTED Steps: 1 (core.load, 2026-09-17, FIRST ZERO LEGACY RESIDUAL contribution)
+CERTIFIED + EXTERNAL_REFERENCE total: 13
 ```
 
 ## Inventory table
@@ -59,16 +61,16 @@ Columns:
 | `core.echo` | CORE | registry | Y (L1002, L1817, L1855) | Y (`CoreEchoStep`) | Y | N (LB-02 burn-down) | Y/Y | N (atomic) | Y (`EffectReplayPolicy`) | 01-06, 07, 08 | 07..10 (via echo path) | **CERTIFIED** (S3 burn-down) |
 | `core.sh` | CORE | registry | Y (L1006/1017, L1821, L1859, ScriptedExecutionApi.kt L157) | Y (`CoreShellStep`) | Y | N (S6 burn-down) | Y/Y | Y (`SHELL_OPERATIONS_CAPABILITY`) | Y (`EffectReplayPolicy`) | 03, 05, 06, 07, 08, 09, 10 | 07, 09, 10 | **CERTIFIED** (S6 burn-down) |
 | `core.error` | CORE | registry | Y (L1034) | Y (`CoreErrorStep`) | Y | N (S2-A1 burn-down) | Y/Y | N (atomic) | Y (`ReplayPolicy.NEVER`) | 05, 15 | — | **CERTIFIED** (S2-A1 burn-down) |
-| `core.sleep` | CORE | legacy | Y (L1041) | N | Y (CanonicalSleepNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.file.writeFile` | CORE | legacy | Y (L1302) | N | Y (CanonicalWriteFileNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.emit.event` | CORE | legacy | Y (emits canonical DomainEvent kinds) | N | Y (CanonicalEmitEventNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
+| `core.sleep` | CORE | registry | Y (L1041) | Y (`CoreSleepStep`) | Y (registry) | N (S2-A2/G5 LEGACY_REMOVED) | Y/Y | Y (`SHELL_OPERATIONS_CAPABILITY` or null) | Y (`ReplayPolicy.MEMOIZED`) | 16-sleep | — | **CERTIFIED** (S2-A2/G8, `S2_A2_CORE_SLEEP_G8_FINAL_CERTIFICATION_RECEIPT.md`) |
+| `core.file.writeFile` | CORE | registry | Y (L1302) | Y (`CoreWriteFileStep`) | Y (registry) | N (S2-A3/G5 LEGACY_REMOVED) | Y/Y | Y (`WORKSPACE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 17-writeFile | — | **CERTIFIED** (S2-A3/G8, `S2_A3_CORE_WRITEFILE_G8_FINAL_CERTIFICATION_RECEIPT.md`) |
+| `core.emit.event` | CORE | registry | Y (registryStep generic) | Y (`CoreEmitEventStep`) | Y (registry) | N (S2-A4/G5 LEGACY_REMOVED) | Y/Y | Y (`EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 12-error-handling (catchError internal use) | — | **CERTIFIED** (S2-A4/G8, `S2_A4_CORE_EMITEVENT_G8_FINAL_CERTIFICATION_RECEIPT.md`) |
 | `core.milestone` | CORE | registry | Y (L1704, registryStep generic) | Y (`CoreMilestoneStep`) | Y | N (S2-A9 burn-down) | Y/Y | Y (`EVENT_SINK_CAPABILITY` + `MILESTONE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 21-milestone | — | **CERTIFIED** (S2-A9/G8, `S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.deleteDir` | CORE candidate | registry | Y (L1456) | Y (`CoreDeleteDirStep`) | Y | N (S2-A7 burn-down) | Y/Y | Y (`DELETE_DIR_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A7/G8, PROPOSED — `S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.cleanWs` | OFFICIAL_PLUGIN candidate | registry | Y (L1469, L1479, registryStep generic) | Y (`CoreCleanWsStep`) | Y | N (S2-A10 burn-down) | Y/Y | Y (`CLEAN_WS_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A10/G8, PROPOSED — `S2_A10_CORE_CLEANWS_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.load` | REJECTED (CORE-LOAD-REJECTED 2026-09-17) | (removed) | N (function deleted) | N (subtype deleted) | N (CanonicalLoadNodeDispatcher deleted) | N (LEGACY_PLUGIN_IDS, decoder, metadata row, dispatcher all removed) | — | — | — | — | — | **REJECTED** (FIRST ZERO LEGACY RESIDUAL contribution; `core.load` is not a candidate for Step burn-down — directive forbids second-execution-engine shape; SPIKE-018 §1.3 declares it the LAST legacy lift requiring `SCRIPT_COMPILATION_CAPABILITY` + child-body re-entry via `BODY_INVOKER_CAPABILITY`, which is out of LFC-2 scope) |
-| `core.pwd` | CORE candidate | legacy | Y (L1570) | N | Y (CanonicalPwdNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.isUnix` | CORE candidate | legacy | Y (L1590) | N | Y (CanonicalIsUnixNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
-| `core.waitUntil` | CORE | orchestration (WU-G5R) | Y (L1629, registryStep) | N (ORCHESTRATION; no standard registry handler — execution via `dispatchRepeatUntilBody` in coordinator) | Y | Y (ORCHESTRATION; LEGACY_PLUGIN_IDS membership present) | Y/Y | Y (`EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 22-wait-until | — | **IMPLEMENTED_UNCERTIFIED** (WU-G5R: factory entry removed; LEGACY_PLUGIN_IDS unchanged; G4/G6 done, G5/G7/G8 remaining) |
+| `core.pwd` | CORE | registry | Y (L1570) | Y (`CorePwdStep`) | Y (registry) | N (S2-A6/G5 LEGACY_REMOVED) | Y/Y | Y (`PLATFORM_IDENTITY_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 20-pwd-tmp | — | **STOPPED_G7** (G7 installed-acceptance BLOCKED: pwd() runtime return is non-deterministic; `S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md`; G8 not attempted per ADR-0074) |
+| `core.isUnix` | CORE | registry | Y (L1590) | Y (`CoreIsUnixStep`) | Y (registry) | N (S2-A5/G5 LEGACY_REMOVED) | Y/Y | Y (`PLATFORM_IDENTITY_CAPABILITY` + `EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 13-workspace-helpers, 19-isunix | — | **CERTIFIED** (S2-A5/G8, `S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md`) |
+| `core.waitUntil` | CORE | orchestration (WU-G5R) | Y (L1629, registryStep) | N (ORCHESTRATION; no standard registry handler — execution via `dispatchRepeatUntilBody` in coordinator; `CoreWaitUntilStep.kt` retained only as typed codec source for `WaitUntilPolled`/`WaitUntilCompleted` events) | Y (RepeatUntil) | N (WU-G5B LEGACY_REMOVED) | Y/Y | Y (`EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 13-workspace-helpers, 22-wait-until | — | **CERTIFIED + LEGACY_REMOVED** (WU-G5B, `S2_A8_CORE_WAITUNTIL_WU_G5B_LEGACY_REMOVED_RECEIPT.md`) |
 | `core.archiveArtifacts` | CORE | registry | Y (L1408, registryStep generic) | Y (`CoreArchiveArtifactsStep`) | Y | N (S2-B10 burn-down) | Y/Y | Y (`ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-B10/G8, PROPOSED — `S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md`) |
 | `example.uppercase` | EXTERNAL_REFERENCE | external | Y (`UppercaseDsl.kt`) | Y (`UppercaseStepDefinition`) | Y (via ServiceLoader + registry) | N (no legacy path) | Y/Y | N | — (or implicit?) | none in 01..10 | — | **CERTIFIED** (EP burn-down) |
 
@@ -150,27 +152,78 @@ core.error:
 
 State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A1 closure)` at LFC-2E1-S2-A1 / G8.
 
-### `core.sleep` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.sleep` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A2 closure)
 
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStep.kt` `val KEY: PluginStepId = PluginStepId("core.sleep")`
+- **Registry:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt` `CoreSleepStep.registerInto(this)`
 - **DSL:** `PipelineDsl.kt:1041` `fun sleep(seconds: Long)`
-- **Legacy decoder:** `CanonicalCoreStepDecoder.kt: Sleep` data class with `pluginId = "core.sleep"`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalSleepNodeDispatcher.kt:16`
-- **Real example:** none in 01..10 oracle
-- **Missing:** all registry items as `core.error`
+- **Receipts (certification):**
+  - G0: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G0_AUDIT.md`
+  - G1: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G1_REGISTRY_CANDIDATE_RECEIPT.md`
+  - G2: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G2_DIFFERENTIAL_CONTRACT_FREEZE.md`
+  - G3: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G3_DIFFERENTIAL_PARITY_READINESS.md`
+  - G4: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G4_REGISTRY_PRIMARY_RECEIPT.md`
+  - G5: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G5_LEGACY_REMOVED_RECEIPT.md`
+  - G8: `docs/v2/07-uat/S2_A2_CORE_SLEEP_G8_FINAL_CERTIFICATION_RECEIPT.md`
+- **Real example:** `v2/compatibility/16-sleep.pipeline.kts`
 
-### `core.file.writeFile` — IMPLEMENTED_UNCERTIFIED (legacy)
+```text
+core.sleep:
+  delivery:        CORE
+  execution:       REGISTRY_PRIMARY
+  legacy:          REMOVED
+  certification:   CERTIFIED (S2-A2/G8)
+```
 
+State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A2/G8 closure)`.
+
+### `core.file.writeFile` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A3 closure)
+
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStep.kt` `val KEY: PluginStepId = PluginStepId("core.file.writeFile")`
+- **Registry:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt` `CoreWriteFileStep.registerInto(this)`
 - **DSL:** `PipelineDsl.kt:1302` `fun writeFile(file: String, text: String, encoding: String = "UTF-8")`
-- **Legacy decoder:** `CanonicalCoreStepDecoder.kt: WriteFile` data class with `pluginId = "core.file.writeFile"`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalWriteFileNodeDispatcher.kt`
-- **Real example:** none in 01..10 oracle
+- **Capability:** `WORKSPACE_OPERATIONS_CAPABILITY` (declared in `CoreWriteFileStep.contract.requiredCapabilities`); handler is `WorkspaceOperationsAdapter` over the certified `FileWriteExecutor` SDK substrate.
+- **Receipts (certification):**
+  - G0: `docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G0_AUDIT.md`
+  - G4/G5/G6: `docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G4_G5_G6_RECEIPTS.md`
+  - G8: `docs/v2/07-uat/S2_A3_CORE_WRITEFILE_G8_FINAL_CERTIFICATION_RECEIPT.md`
+- **Real example:** `v2/compatibility/17-writeFile.pipeline.kts`
 
-### `core.emit.event` — IMPLEMENTED_UNCERTIFIED (legacy)
+```text
+core.file.writeFile:
+  delivery:        CORE
+  execution:       REGISTRY_PRIMARY
+  legacy:          REMOVED
+  certification:   CERTIFIED (S2-A3/G8)
+```
 
-- **DSL:** emits canonical DomainEvent kinds (`PipelineDsl.kt:1319` `registryStep` is generic; the typed `emitEvent` is the operational entry)
-- **Legacy decoder:** `CanonicalCoreStepDecoder.kt: EmitEvent` data class with `pluginId = "core.emit.event"`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt:11`
-- **Real example:** none direct in 01..10
+State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A3/G8 closure)`.
+
+### `core.emit.event` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A4 closure)
+
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEmitEventStep.kt` `val KEY: PluginStepId = PluginStepId("core.emit.event")`
+- **Registry:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt` `CoreEmitEventStep.registerInto(this)`
+- **DSL:** `PipelineDsl.kt:1319` (registryStep generic); the typed `emitEvent` is the operational entry.
+- **Capability:** `EVENT_SINK_CAPABILITY` (handler is the canonical `EventSink` adapter).
+- **Receipts (certification):**
+  - G0: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G0_AUDIT.md`
+  - G1: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G1_REGISTRY_CANDIDATE_RECEIPT.md`
+  - G2: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G2_DIFFERENTIAL_CONTRACT_FREEZE.md`
+  - G3/G4: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G3_G4_REGISTRY_PRIMARY_RECEIPT.md`
+  - G5: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G5_LEGACY_REMOVED_RECEIPT.md`
+  - G6: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G6_CONTRACT_CERTIFICATION_RECEIPT.md`
+  - G8: `docs/v2/07-uat/S2_A4_CORE_EMITEVENT_G8_FINAL_CERTIFICATION_RECEIPT.md`
+- **Real example:** `v2/compatibility/12-error-handling.pipeline.kts` (the catchError DSL is internally routed through `core.emit.event`; the marker steps in the fixture have `stepType=emit`).
+
+```text
+core.emit.event:
+  delivery:        CORE
+  execution:       REGISTRY_PRIMARY
+  legacy:          REMOVED
+  certification:   CERTIFIED (S2-A4/G8)
+```
+
+State updated: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A4/G8 closure)`.
 
 ### `core.milestone` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A9 closure)
 
@@ -287,16 +340,62 @@ designed from scratch as a registry Step with `SCRIPT_COMPILATION_CAPABILITY` +
 `BODY_INVOKER_CAPABILITY` (ADR-0073 child-body re-entry). This is an LFC-3+ design item,
 not an LFC-2E burn-down item.
 
-### `core.pwd` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.pwd` — STOPPED_G7 (registry-primary; LEGACY_REMOVED; G7 installed-acceptance BLOCKED)
 
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CorePwdStep.kt` `val KEY: PluginStepId = PluginStepId("core.pwd")`
+- **Registry:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt` `CorePwdStep.registerInto(this)`
 - **DSL:** `PipelineDsl.kt:1570` `fun pwd(tmp: Boolean = false): String`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalPwdNodeDispatcher.kt:18`
-- **Note:** claims "real typed runtime value" in matrix; canonical is legacy, NOT registry
+- **Capability:** `PLATFORM_IDENTITY_CAPABILITY`; handler reads `System.getProperty("user.dir")` via the canonical platform-identity port.
+- **Receipts:**
+  - G0: `docs/v2/07-uat/S2_A6_CORE_PWD_G0_CHARACTERIZATION_RECEIPT.md`
+  - G3: `docs/v2/07-uat/S2_A6_CORE_PWD_G3_MIGRATION_READINESS.md`
+  - G3R: `docs/v2/07-uat/S2_A6_CORE_PWD_G3T_DETERMINISTIC_TMP_RECEIPT.md` (`pwd(tmp=true)` deterministic-tmp variant)
+  - G4: `docs/v2/07-uat/S2_A6_CORE_PWD_G4_REGISTRY_PRIMARY_RECEIPT.md`
+  - G5: `docs/v2/07-uat/S2_A6_CORE_PWD_G5_LEGACY_REMOVED_RECEIPT.md`
+  - G6: `docs/v2/07-uat/S2_A6_CORE_PWD_G6_CONTRACT_CERTIFICATION_RECEIPT.md`
+  - **G7 STOP_BLOCKED: `docs/v2/07-uat/S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md`**
+- **G7 verdict:** `INSTALLED_ACCEPTANCE = false — G7 BLOCKED. G8 NOT attempted.` Per ADR-0074, STOPPED is a terminal state for the slice; CERTIFIED requires real-CLI green.
+- **G7 breakdown:**
+  - PWD-G7-01 `pwd()` runtime return → **FAIL** (non-deterministic; depends on `user.dir`)
+  - PWD-G7-02 `pwd(tmp=true)` durable effect → **PASS**
+  - PWD-G7-03 downstream Kotlin consume → **FAIL** (G7-01 fallout)
+  - PWD-G7-04 replay/resume (same --db) → **PASS**
+- **Real fixture:** `v2/compatibility/20-pwd-tmp.pipeline.kts`
 
-### `core.isUnix` — IMPLEMENTED_UNCERTIFIED (legacy)
+```text
+core.pwd:
+  delivery:        CORE
+  execution:       REGISTRY_PRIMARY
+  legacy:          REMOVED (S2-A6/G5)
+  certification:   STOPPED_G7 (G7 BLOCKED; G8 not attempted per ADR-0074)
+```
 
+State: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `REGISTRY_PRIMARY + LEGACY_REMOVED (S2-A6/G5)` → `STOPPED_G7 (S2-A6/G7)`. Legacy forms are physically gone; the Step itself is not CERTIFIED because the runtime return path is non-deterministic (depends on `System.getProperty("user.dir")`, which differs between fresh and replay runs).
+
+### `core.isUnix` — CERTIFIED + LEGACY_REMOVED (production registry, S2-A5 closure)
+
+- **StepDefinition:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreIsUnixStep.kt` `val KEY: PluginStepId = PluginStepId("core.isUnix")`
+- **Registry:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt` `CoreIsUnixStep.registerInto(this)`
 - **DSL:** `PipelineDsl.kt:1590` `fun isUnix(): Boolean`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalIsUnixNodeDispatcher.kt:15`
+- **Capability:** `PLATFORM_IDENTITY_CAPABILITY` + `EVENT_SINK_CAPABILITY`; the handler reads OS name via the platform-identity port (deterministic classifier over canonical OS string) and emits `UnixDetected(isUnix, osName, sha256)` event.
+- **Receipts (certification):**
+  - G2: `docs/v2/07-uat/S2_A5_CORE_ISUNIX_G2_CANONICAL_DIFFERENTIAL_FREEZE.md`
+  - G3: `docs/v2/07-uat/S2_A5_CORE_ISUNIX_G3_MIGRATION_READINESS.md`
+  - G4: `docs/v2/07-uat/S2_A5_CORE_ISUNIX_G4_REGISTRY_PRIMARY_RECEIPT.md`
+  - G5: `docs/v2/07-uat/S2_A5_CORE_ISUNIX_G5_LEGACY_REMOVED_RECEIPT.md`
+  - G6: `docs/v2/07-uat/S2_A5_CORE_ISUNIX_G6_CONTRACT_CERTIFICATION_RECEIPT.md`
+  - G8: `docs/v2/07-uat/S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md`
+- **Real examples:** `v2/compatibility/13-workspace-helpers.pipeline.kts`, `v2/compatibility/19-isunix.pipeline.kts`
+
+```text
+core.isUnix:
+  delivery:        CORE
+  execution:       REGISTRY_PRIMARY
+  legacy:          REMOVED (S2-A5/G5)
+  certification:   CERTIFIED (S2-A5/G8)
+```
+
+State: `IMPLEMENTED_UNCERTIFIED (LB-02 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A5/G8 closure)`.
 
 ### `core.waitUntil` — CERTIFIED + LEGACY_REMOVED (canonical RepeatUntil machinery, WU-G5B closure)
 
@@ -406,11 +505,13 @@ These are controller-level orchestration and depend on the canonical block-step 
 
 ## Key corrections to STEP_ECOSYSTEM_MATRIX.md
 
-1. **Production registry contains only 2 core keys**, not "many core rows". The matrix's `CERTIFIED` claims for Steps other than `core.echo`, `core.sh` are incorrect.
-2. **All 12 LEGACY_PLUGIN_IDS Steps are IMPLEMENTED_UNCERTIFIED**, not "registered in core". They go through `Canonical*NodeDispatcher`, not through the registry seam. They have a typed façade but lack `StepDefinition`, codecs (in the registry seam sense), capabilities, replay policy, contract suite.
-3. **`example.uppercase` is the only external plugin**; the matrix's broader external plugin inventory is hypothetical.
-4. **Git family, testing/reports, HTTP, lock/input, Docker, advanced Git, vendor** — no production StepDefinitions exist. The matrix's `NOT_STARTED` rows are correct, but they should be presented as **negative inventory** (what is NOT there), not as planning rows.
-5. **`core.pwd`, `core.isUnix`** — matrix claims "real typed runtime value"; reality: DSL exists but they are legacy, not registry, and lack a `StepDefinition<I,O>` form.
+1. **Production registry contains 12 CERTIFIED core keys** + 1 EXTERNAL_REFERENCE (`example.uppercase`) = **13 registry-resolved Steps** as of LFC-2E0 closure. The matrix's `CERTIFIED` claims were outdated pre-LFC-2E0 (it listed only 2/3 keys as certified); the canonical truth is `docs/v2/status/step-certification.yaml`.
+2. **`core.pwd`** — STOPPED_G7, not CERTIFIED. The Step's runtime return path is non-deterministic (depends on `System.getProperty("user.dir")`), so G7 installed-acceptance BLOCKED at `pwd()` / downstream-consume criteria (PWD-G7-01 / G7-03 FAIL). G8 not attempted per ADR-0074. The Step is registry-primary with LEGACY_REMOVED at S2-A6/G5, but the Step itself is not CERTIFIED.
+3. **`core.isUnix`** — CERTIFIED + LEGACY_REMOVED at S2-A5/G8. The matrix's "real typed runtime value" claim is correct for `core.isUnix` (registry-routed, deterministic over canonical OS string); it was incorrect for `core.pwd` (see #2).
+4. **`core.load`** — REJECTED at CORE-LOAD-REJECTED (2026-09-17). Five converging signals; directive forbids the only viable implementation shape ("handler → compiler arbitrario → execute child pipeline como segundo execution engine"); SPIKE-018 §1.3 declares it the LAST legacy lift requiring new infrastructure (`SCRIPT_COMPILATION_CAPABILITY` + `BODY_INVOKER_CAPABILITY`) out of LFC-2 scope.
+5. **`example.uppercase`** — the only external plugin (CERTIFIED). The matrix's broader external plugin inventory is hypothetical.
+6. **Git family, testing/reports, HTTP, lock/input, Docker, advanced Git, vendor** — no production StepDefinitions exist. The matrix's `NOT_STARTED` rows are correct, but they should be presented as **negative inventory** (what is NOT there), not as planning rows.
+7. **`core.waitUntil`** — CERTIFIED + LEGACY_REMOVED at WU-G5B (2026-09-17). Production routing is exclusively the canonical RepeatUntil machinery (ADR-0073); `CoreWaitUntilStep.kt` is retained as typed codec source for `WaitUntilPolled` / `WaitUntilCompleted` events (NOT as registry handler).
 
 ## Sequencing for LFC-2E1..
 

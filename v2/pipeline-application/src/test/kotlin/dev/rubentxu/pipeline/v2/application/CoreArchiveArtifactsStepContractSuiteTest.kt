@@ -943,22 +943,26 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         //   pre-G4:  3 / 3 / 3
         //   post-G4: 2 / 3 / 3   (REGISTRY_PRIMARY flip, ids only)
         //   post-G5: 2 / 2 / 2   (this slice — LEGACY_REMOVED closed)
+        //
+        // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+        // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+        // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.archiveArtifacts MUST be absent from LEGACY_PLUGIN_IDS post-G5 (LEGACY_REMOVED)",
         )
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
         )
         // The legacy metadata row is physically gone. Asserting the WHOLE surviving id set (not
         // just the absence of one key) is the anti-over-removal control: a G5 that deleted an
         // unrelated residual row would pass a bare absence check and fail here.
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf<String>(),
             CanonicalCoreStepMetadata.pluginIds,
-            "metadata rows MUST converge to exactly the two unrelated residual keys",
+            "metadata rows MUST converge to empty post-LFC-2E0 (FIRST ZERO LEGACY RESIDUAL)",
         )
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds,
@@ -970,14 +974,18 @@ class CoreArchiveArtifactsStepContractSuiteTest {
         assertThrows(IllegalArgumentException::class.java) {
             CanonicalCoreStepMetadata.metadata("core.archiveArtifacts")
         }
-        // The retained keys keep answering, so the removal did not disable the authority.
-        assertNotNull(
-            CanonicalCoreStepMetadata.metadata("core.waitUntil"),
-            "the two residual keys MUST still resolve through the legacy metadata table",
-        )
+        // LFC-2E0 closure (2026-09-17): the previously-retained residual keys (core.load,
+        // core.waitUntil) are also retired — the legacy metadata authority no longer answers
+        // for them either, which is what makes the registry the sole authority for both.
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.waitUntil")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.load")
+        }
         // Dispatcher-file presence is a static source property asserted by
         // LegacyResidualSnapshot in :pipeline-architecture-tests, which pins
-        // 2 / 2 / 2 post-G5 and is guarded by LegacyResidualConvergenceFitnessTest.
+        // 0 / 0 / 0 post-LFC-2E0 and is guarded by LegacyResidualConvergenceFitnessTest.
     }
 
     // ===== 17b. G4 routing (StructuralFamilyResolver, runtime seam) =====
@@ -995,13 +1003,16 @@ class CoreArchiveArtifactsStepContractSuiteTest {
             "after G4 the key MUST classify as Registry, never LegacyCore",
         )
         // Negative controls: the rule is membership-based, not key-name-based.
+        // LFC-2E0 closure (2026-09-17): core.waitUntil and core.load are removed from
+        // LEGACY_PLUGIN_IDS, so the membership-based rule now classifies them as Registry,
+        // not LegacyCore. This is the intended new behavior.
         assertEquals(
-            StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(
                 PluginStepId("core.waitUntil"),
                 CoreStepRegistryFactory.registry(),
             ),
-            "a key still in LEGACY_PLUGIN_IDS MUST stay LegacyCore (legacy-membership-wins)",
+            "post-LFC-2E0: core.waitUntil is no longer in LEGACY_PLUGIN_IDS, so it classifies as Registry",
         )
         assertEquals(
             StructuralStepFamily.LegacyCore,

@@ -250,27 +250,35 @@ class CoreDeleteDirStepUnitTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts physical forms destroyed
     // (LEGACY_REMOVED). The historical S2-A10/G5 snapshot above is preserved verbatim for
     // traceability. Counter converges 3/3/3 -> 2/2/2.
+    //
+    // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+    // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+    // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
     @Test
     fun `counters - post-S2-B10-G5 LEGACY_REMOVED 2-2-2 converged`() {
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "post-S2-B10/G5: only the two keys still awaiting their own G4/G5 lanes remain",
+            "post-LFC-2E0: LEGACY_PLUGIN_IDS is empty (both core.load and core.waitUntil closed)",
         )
         // Keys retired by EARLIER lanes stay retired (no resurrection).
         assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertTrue("core.archiveArtifacts" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.load" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.waitUntil" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         // Metadata authority follows the same convergence.
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf<String>(),
             CanonicalCoreStepMetadata.pluginIds,
-            "the legacy metadata table MUST converge to the same two residual keys",
+            "the legacy metadata table MUST be empty post-LFC-2E0 (FIRST ZERO LEGACY RESIDUAL)",
         )
         assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
         assertTrue("core.cleanWs" !in CanonicalCoreStepMetadata.pluginIds)
         assertTrue("core.archiveArtifacts" !in CanonicalCoreStepMetadata.pluginIds)
+        assertTrue("core.load" !in CanonicalCoreStepMetadata.pluginIds)
+        assertTrue("core.waitUntil" !in CanonicalCoreStepMetadata.pluginIds)
     }
 
     // ------------------------------------------------------------------

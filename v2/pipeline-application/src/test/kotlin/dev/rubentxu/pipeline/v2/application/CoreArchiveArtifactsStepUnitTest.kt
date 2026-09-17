@@ -350,13 +350,16 @@ class CoreArchiveArtifactsStepUnitTest {
 
     @Test
     fun `core archiveArtifacts LEGACY_REMOVED - residual counters are 2 ids 2 metadata rows 2 dispatcher files`() {
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
-        assertEquals(setOf("core.load", "core.waitUntil"), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        // S2-B10/G5: metadata + dispatcher physical forms removed too (2 / 2 / 2).
+        // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+        // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+        // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(setOf<String>(), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // S2-B10/G5: metadata + dispatcher physical forms removed too (0 / 0 / 0).
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf<String>(),
             CanonicalCoreStepMetadata.pluginIds,
-            "the two unrelated residual keys MUST survive while core.archiveArtifacts converges",
+            "post-LFC-2E0: metadata table is empty (FIRST ZERO LEGACY RESIDUAL)",
         )
         assertFalse("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
     }

@@ -3,20 +3,41 @@
 Status: PROPOSED baseline for LFC-2 ecosystem expansion.
 Source inputs: `JENKINS_FAMILIARITY_CATALOG.md`, current v2 implementation, ADR-0070..0074 and the certified Step inventory.
 
-**Certification snapshot (LFC-2E0, 2026-09-11):**
+**Certification snapshot (LFC-2E0 closure, 2026-09-17):**
 
 ```text
-CERTIFIED:                              3
-  core.echo                             (registry; CoreEchoStep)
-  core.sh                               (registry; CoreShellStep)
-  example.uppercase                     (external plugin; ServiceLoader)
+CERTIFIED:                              13
+  core.echo                             (registry; CoreEchoStep;                  S3 burn-down)
+  core.sh                               (registry; CoreShellStep;                 LB-02 S6 burn-down)
+  core.error                            (registry; CoreErrorStep;                 S2-A1 burn-down)
+  core.sleep                            (registry; CoreSleepStep;                 S2-A2 burn-down)
+  core.file.writeFile                   (registry; CoreWriteFileStep;             S2-A3 burn-down)
+  core.emit.event                       (registry; CoreEmitEventStep;             S2-A4 burn-down)
+  core.isUnix                           (registry; CoreIsUnixStep;                S2-A5 burn-down)
+  core.deleteDir                        (registry; CoreDeleteDirStep;             S2-A7 burn-down)
+  core.milestone                        (registry; CoreMilestoneStep;             S2-A9 burn-down)
+  core.cleanWs                          (registry; CoreCleanWsStep;               S2-A10 burn-down)
+  core.archiveArtifacts                 (registry; CoreArchiveArtifactsStep;      S2-B10 burn-down)
+  core.waitUntil                        (canonical RepeatUntil machinery;         WU-G5B LEGACY_REMOVED)
+  example.uppercase                     (external plugin; ServiceLoader;          CERTIFIED reference)
 
-LEGACY_IMPLEMENTED_UNCERTIFIED:        12
-  core.{error, sleep, file.writeFile, emit.event, milestone,
-        deleteDir, cleanWs, load, pwd, isUnix, waitUntil, archiveArtifacts}
-  routed through Canonical*NodeDispatcher; no StepDefinition; no contract suite
+STOPPED_G7:                              2
+  core.pwd                              (registry; CorePwdStep; LEGACY_REMOVED at S2-A6/G5;
+                                        G7 installed-acceptance BLOCKED at pwd() / downstream-consume
+                                        because runtime return is non-deterministic — depends on
+                                        System.getProperty("user.dir"). G8 not attempted per ADR-0074.
+                                        Receipt: S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md)
+  core.pwd.tmp                          (control row for pwd G7 STOP_BLOCKED exercise)
 
-NOT_STARTED (production):               n/a (no StepDefinition beyond the 3 above)
+REJECTED:                                1
+  core.load                             (CORE-LOAD-REJECTED 2026-09-17)
+                                        — directive forbids second-execution-engine shape;
+                                          SPIKE-018 §1.3 declares it the LAST legacy lift;
+                                          future design requires new SCRIPT_COMPILATION_CAPABILITY
+                                          + BODY_INVOKER_CAPABILITY (out of LFC-2 scope)
+
+LEGACY_IMPLEMENTED_UNCERTIFIED:          0
+NOT_STARTED (production):                n/a (registry-resolved Steps cover the inventory above)
 NOT_STARTED (planning rows):            ~25 (git family, testing, HTTP, lock, Docker, etc.)
 
 Block / orchestration DSL (NOT Steps):  14 (retry, timeout, catchError, warnError,
@@ -75,20 +96,20 @@ Priority:
 
 | Family / Step | Delivery | Current evidence/state | Priority | Target note |
 |---|---|---:|---:|---|
-| `echo` | CORE | CERTIFIED | P0 | reference Step (registry; `CoreEchoStep`) |
-| `sh` | CORE | CERTIFIED | P0 | reference effectful Step (registry; `CoreShellStep`) |
-| `error` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy**; needs G0..G8 burn-down |
-| `sleep` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy**; needs G0..G8 burn-down |
-| `writeFile` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy** (`core.file.writeFile`); needs burn-down |
-| `milestone` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P2 | **legacy** (`core.milestone`); needs burn-down |
-| `deleteDir` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P1 | **legacy** (`core.deleteDir`); needs burn-down |
-| `cleanWs` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P1 | **legacy** (`core.cleanWs`); needs burn-down |
+| `echo` | CORE | CERTIFIED | P0 | reference Step (registry; `CoreEchoStep`); S3 burn-down |
+| `sh` | CORE | CERTIFIED | P0 | reference effectful Step (registry; `CoreShellStep`); LB-02 S6 burn-down |
+| `error` | CORE | CERTIFIED | P0 | registry-routed (`CoreErrorStep`); S2-A1 burn-down |
+| `sleep` | CORE | CERTIFIED | P0 | registry-routed (`CoreSleepStep`); S2-A2 burn-down |
+| `writeFile` | CORE | CERTIFIED | P0 | registry-routed (`CoreWriteFileStep`); S2-A3 burn-down |
+| `milestone` | CORE | CERTIFIED | P2 | registry-routed (`CoreMilestoneStep`); S2-A9 burn-down |
+| `deleteDir` | CORE | CERTIFIED | P1 | registry-routed (`CoreDeleteDirStep`); S2-A7 burn-down |
+| `cleanWs` | OFFICIAL_PLUGIN_CANDIDATE | CERTIFIED | P1 | registry-routed (`CoreCleanWsStep`); S2-A10 burn-down |
 | `load` | REJECTED (CORE-LOAD-REJECTED 2026-09-17) | REJECTED | (n/a) | **REJECTED** — directive forbids second-execution-engine shape; SPIKE-018 §1.3 declares it the LAST legacy lift; future design item requires new `SCRIPT_COMPILATION_CAPABILITY` + `BODY_INVOKER_CAPABILITY` (out of LFC-2 scope) |
-| `pwd` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy** (`core.pwd`); needs burn-down |
-| `isUnix` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy** (`core.isUnix`); needs burn-down |
-| `waitUntil` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P1 | **legacy** (`core.waitUntil`); needs burn-down |
-| `archiveArtifacts` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P2 | **legacy** (`core.archiveArtifacts`); needs burn-down |
-| `emitEvent` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P2 | **legacy** (`core.emit.event`); needs burn-down |
+| `pwd` | CORE | STOPPED_G7 | P0 | registry-routed (`CorePwdStep`); LEGACY_REMOVED at S2-A6/G5; G7 installed-acceptance BLOCKED at `pwd()` runtime return (non-deterministic; depends on `user.dir`); G8 not attempted per ADR-0074 |
+| `isUnix` | CORE | CERTIFIED | P0 | registry-routed (`CoreIsUnixStep`); S2-A5 burn-down |
+| `waitUntil` | CORE | CERTIFIED | P1 | canonical RepeatUntil machinery (ADR-0073); `CoreWaitUntilStep.kt` retained as typed codec source for `WaitUntilPolled` / `WaitUntilCompleted` events; WU-G5B LEGACY_REMOVED |
+| `archiveArtifacts` | CORE | CERTIFIED | P2 | registry-routed (`CoreArchiveArtifactsStep`); S2-B10 burn-down |
+| `emitEvent` | CORE | CERTIFIED | P2 | registry-routed (`CoreEmitEventStep`); S2-A4 burn-down |
 | `retry` | (block step) | IMPLEMENTED_UNCERTIFIED | P0 | block Step via `BodyInvoker.invoke`; not a `StepDefinition` |
 | `timeout` | (block step) | IMPLEMENTED_UNCERTIFIED | P0 | block Step + cancellation; not a `StepDefinition` |
 | `catchError` | (block step) | IMPLEMENTED_UNCERTIFIED | P0 | example 07 is behavioral oracle; not a `StepDefinition` |

@@ -280,3 +280,54 @@ CLI run -> RunId -> OperationJournal -> correct observed StepKeys
 ```
 
 If it fails, fix the OBSERVER. Never adjust the classification to make fixtures pass.
+
+---
+
+# XCA-LAW-001 — closing the upper-layer bypass
+
+The constraint above governs `RunExecutionEvidenceReader`'s own dependencies. That is
+necessary but **not sufficient**: it can hold locally while the system still has a second
+path to the same evidence, because a layer ABOVE the reader may consult the concrete
+backend directly and never go through it. That is the same failure shape as the duplicate
+certification authority removed at `95188c44`, one layer over.
+
+## Additional requirement
+
+```text
+The RunExecutionEvidenceReader is the ONLY path to execution evidence.
+
+No layer above it may:
+  consult the operation journal backend directly
+  consult a concrete journal persistence adapter directly
+  derive "a Step executed" from control journals, events, logs, or CLI exit status
+```
+
+## Enforcement, not prose
+
+Stated negatively and mechanically, the gate must fail if:
+
+```text
+1. any module outside the evidence-reader package imports the concrete journal
+   persistence adapter
+2. any module outside the evidence-reader package builds its own SQLite/JDBC query
+   against operation-journal tables
+3. any code derives execution evidence from control journals, event streams, console
+   logs, or process exit codes
+```
+
+(3) is the one a dependency-only check would miss entirely, and it is precisely the
+`CLI success != certification evidence` law restated at the system level rather than the
+function level.
+
+## Consequence for the DoD
+
+Add to the XCA-2A DoD:
+
+```text
+execution-evidence funnel proven unique:
+  every observed StepKey used for certification traces to the reader
+  no second path exists in the same run's evidence assembly
+```
+
+Without this, LAW-001 is satisfiable in isolation while remaining violated globally —
+which is exactly the class of defect that the XCA detour has been eliminating.

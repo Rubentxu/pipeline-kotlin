@@ -72,6 +72,40 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     )
 }
 
+// ── Lane R: ABI FIXTURE plugin (LFC-2E3-P / P1) ────────────────────────────────
+// NOT a product plugin. Built ONCE against the SDK shape at freeze time and then
+// physically preserved as a committed resource under
+// `pipeline-application/src/test/resources/abi/`. The ABI fitness test loads that
+// committed JAR and NEVER recompiles it, because a recompiled plugin always matches
+// the current SDK and therefore cannot observe the regression class it guards
+// (existing SPI + new member -> AbstractMethodError for an already-built JAR).
+//
+// Regenerating the committed JAR is a deliberate, reviewed act:
+//   ./gradlew -p v2 :buildAbiFixturePlugin
+//   cp examples/abi-fixture-plugin/build/libs/abi-fixture-plugin-1.0.0.jar \
+//      v2/pipeline-application/src/test/resources/abi/
+// then update the pinned digest in PluginBinaryCompatibilityFitnessTest.
+val buildAbiFixturePlugin by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds the independent ABI fixture plugin (P1); regeneration is deliberate."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val pluginDir = file("../examples/abi-fixture-plugin")
+    inputs.dir(pluginDir.resolve("src"))
+    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar")
+    outputs.file(pluginDir.resolve("build/libs/abi-fixture-plugin-1.0.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", pluginDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "jar",
+    )
+}
+
 // ── Lane R: utilities.json OFFICIAL_PLUGIN reproducibility (FASE 6 / LFC-2E2) ──
 // utilities-plugin is the FIRST plugin shipped against the frozen universal-core
 // authoring surface. It depends only on the public SDK contracts (pipeline-domain +

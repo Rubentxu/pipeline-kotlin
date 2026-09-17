@@ -8,6 +8,41 @@
 3. No V1 repair on the V2 critical path; classify + quarantine instead.
 4. No V2 dependency on :pipeline-steps-system:compiler-plugin.
 
+## WORKTREE SAFETY — PRECONDITION BEFORE EVERY FIRST WRITE (MANDATORY)
+
+The agent operates in a workspace that may contain SEVERAL git repositories or
+worktrees of the same project (e.g. a `main` checkout and one or more
+per-cycle worktrees). A path that exists in two of them — `v2/…`, `examples/…` —
+will happily accept a write into the WRONG one, and the mistake is silent until
+someone reviews an unrelated branch.
+
+Before the FIRST write of every slice, run and compare:
+
+```bash
+pwd
+git rev-parse --show-toplevel
+git branch --show-current
+git status --short
+```
+
+All four MUST identify the repository/worktree and cycle branch this slice was
+opened against. If any does not match:
+
+```text
+STOP WRITE
+```
+
+Correct the working directory or the target path first; do NOT ask for
+authorization — this is a context correction, not a decision. Re-run the check
+after any command that can reset the shell's working directory, and treat
+absolute paths (or tool invocations with explicit working directories) as the
+default remedy for tools whose CWD is not guaranteed.
+
+Recovery, if a write already landed in the wrong repository: restore that
+repository to a clean tree immediately (`git checkout -- <paths>`), confirm it
+is clean, and re-apply the change in the correct one. Never commit the stray
+change, and never leave it staged.
+
 ## HEXAGONAL ARCHITECTURE (MANDATORY)
 
 Every implementation MUST preserve hexagonal dependency direction:
@@ -384,6 +419,25 @@ Registry-primary Steps:    N
 `N + M = total`; convergence means `M -> 0`. The updated values belong in the per-cycle
 release receipt (and in `docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md` style receipts).
 
+### Permanent invariants (must hold at every cycle closure)
+
+These MUST all read `0` in every closure receipt. A non-zero value is a defect,
+not a metric to improve later:
+
+```text
+legacy residual                 = 0
+Step-specific core routing      = 0
+provider drift                  = 0
+capability drift                = 0
+certification drift             = 0
+old plugin ABI regressions      = 0    (see PLUGIN ABI COMPATIBILITY)
+```
+
+`old plugin ABI regressions` counts public plugin SPIs whose member set changed,
+or already-built plugin JARs that stopped loading/registering/executing against a
+newer host. It is mechanically checked by the golden ABI manifest and the
+preserved old-plugin JAR described in the PLUGIN ABI COMPATIBILITY section.
+
 ### MUST NOT (Step Constitution enforcement)
 
 These are mechanically defensible; fitness tests in the S3/S4 sections are the canonical
@@ -733,6 +787,68 @@ list of known Steps.
 Plugin marketplace, hot reload, dependency resolution, plugin signing, remote repository,
 plugin lifecycle manager, default-import discovery, advanced KSP automation. Document and
 implement only what `example.uppercase = CERTIFIED` has demonstrated.
+
+
+## PLUGIN ABI COMPATIBILITY (MANDATORY)
+
+Validated by LFC-2E3-P/P1. Receipt:
+`docs/v2/07-uat/E3_P1_BINARY_SPI_COMPATIBILITY_RECEIPT.md`.
+
+### The failure this rule exists to prevent
+
+Adding a **defaulted method** to an existing plugin SPI compiles, passes every
+in-process and source-level test, and then breaks at RUNTIME for every plugin JAR
+that was already built:
+
+```text
+interface StepDefinitionContributor
+  + fun capabilities(): Map<StepCapability, Any> = emptyMap()   // looks additive
+
+old plugin JAR (compiled against the previous SDK)
+  + new host
+  = java.lang.AbstractMethodError: Receiver class <Plugin>
+    does not define or inherit an implementation of the resolved method
+    'abstract java.util.Map capabilities()'
+```
+
+Kotlin emits interface members with defaults as **abstract plus a `DefaultImpls`
+holder** in the default compilation mode, so "has a default" is NOT the same as
+"binary compatible". Source compatibility is not evidence of ABI compatibility.
+
+### Law
+
+```text
+existing plugin SPI changes
+  -> additive NEW SPI / interface
+
+old SPI remains binary-compatible
+```
+
+1. An EXISTING public plugin SPI MUST NOT gain, lose, rename, or re-type a
+   member - with or without a default value.
+2. New plugin capability MUST arrive as a NEW additive interface (its own SPI and
+   its own `META-INF/services` entry), discovered by the SAME single discovery
+   adapter. Do not add a second ServiceLoader site.
+3. An already-built plugin JAR MUST keep loading, registering and executing
+   against a newer host, unmodified and without recompilation.
+4. Removing or changing an existing SPI requires an explicit deprecation
+   milestone, not a refactor commit.
+
+### Enforcement (mechanically checkable)
+
+```text
+- a golden ABI manifest freezes the member set of every public plugin SPI;
+  any drift fails the gate and must be resolved by adding a new SPI;
+- a physically preserved plugin JAR, built against the SPI shape at freeze
+  time, is loaded in an isolated classloader and must register, be admitted
+  and EXECUTE against the current host - it is never recompiled by the test;
+- that JAR's digest is pinned, so it cannot be silently replaced;
+- source-level reflection freezes the existing SPI member set explicitly.
+```
+
+Recording a receipt for an SPI addition MUST state whether it is additive
+(new interface) or a change to an existing one, and evidence the old-JAR/new-host
+property when it is a change.
 
 
 ## RETRY-D — DURABLE CONTROL ROWS (MANDATORY)

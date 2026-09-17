@@ -1,0 +1,20 @@
+dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
+  definitions(): java.lang.Iterable
+  getId(): java.lang.String
+dev.rubentxu.pipeline.v2.domain.step.StepCapabilityContributor
+  capabilities(): java.util.Map
+  getId(): java.lang.String
+dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+  getContract(): dev.rubentxu.pipeline.v2.domain.step.StepContract
+  getHandler(): dev.rubentxu.pipeline.v2.domain.step.StepHandler
+dev.rubentxu.pipeline.v2.domain.step.StepCodec
+  decode-j8uo1iw(java.lang.String): java.lang.Object
+  encode-9TXO0do(java.lang.Object): java.lang.String
+  schema(): java.lang.String
+dev.rubentxu.pipeline.v2.domain.step.StepHandler
+  execute(java.lang.Object,dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext,kotlin.coroutines.Continuation): java.lang.Object
+dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+  contains-bQvmloc(java.lang.String): boolean
+  definition-bQvmloc(java.lang.String): dev.rubentxu.pipeline.v2.domain.step.StepDefinition
+  keys(): java.util.Set
+  register(dev.rubentxu.pipeline.v2.domain.step.StepDefinition): void

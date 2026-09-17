@@ -67,6 +67,13 @@ tasks.named("compileTestKotlin") {
 }
 
 tasks.test {
+    // LFC-2E3-P/P1: the golden ABI manifest may only be regenerated deliberately. A Gradle `-D`
+    // does NOT reach the forked test JVM, so forward it explicitly as a system property via a
+    // project property: -Ppipeline.abi.writeGolden=true
+    systemProperty(
+        "pipeline.abi.writeGolden",
+        providers.gradleProperty("pipeline.abi.writeGolden").getOrElse("false"),
+    )
     dependsOn(":pipeline-application:installDist")
     dependsOn(":buildExamplePlugin")
     dependsOn(":buildUtilitiesPlugin")

@@ -431,6 +431,8 @@ provider drift                  = 0
 capability drift                = 0
 certification drift             = 0
 old plugin ABI regressions      = 0    (see PLUGIN ABI COMPATIBILITY)
+untyped output bindings         = 0    (see STEP OUTPUT BINDING IDENTITY)
+event authority violations      = 0    (see LOCAL EVENT TRANSPORT)
 ```
 
 `old plugin ABI regressions` counts public plugin SPIs whose member set changed,
@@ -851,6 +853,81 @@ Recording a receipt for an SPI addition MUST state whether it is additive
 property when it is a change.
 
 
+## STEP OUTPUT BINDING IDENTITY (MANDATORY)
+
+Validated by LFC-2E3-P/P2. Receipt:
+`docs/v2/07-uat/E3_P2_STEP_OUTPUT_VALUE_PIPING_RECEIPT.md`.
+
+A reference from one Step to another Step's output MUST identify three
+independent things. A weak textual tag alone is not enough:
+
+```text
+StepOutputRef
+  = producer invocation identity   (which Step family, and which operation ran)
+  + logical output name            (the durable name the producer published)
+  + stable type/schema identity    (type tag AND the producer's codec identity)
+```
+
+1. `untyped output bindings = 0`: a consumer binds an output through a typed,
+   named reference. A raw journal key, an operation id, or an arbitrary
+   persisted-data lookup is NOT a binding and MUST NOT be accepted.
+
+2. `StepOutputRef` is NOT an arbitrary journal lookup key. A consumer may only
+   resolve outputs a canonical invocation EXPLICITLY PUBLISHED. Every other
+   persisted row in the journal is unreachable by reference, fail-closed with
+   `UnknownOutput`.
+
+3. Schema evolution fails closed. The producer's codec identity is recorded at
+   publication and RE-DERIVED at resolution. If they differ - for example
+   because the plugin was upgraded between a run and its replay - resolution
+   MUST fail with `SchemaDrift` rather than deserialising old data with a new
+   codec. Silently treating two different codecs as equivalent corrupts replay
+   history and is forbidden.
+
+4. A producer declares its identity through its registered `StepDefinition`
+   (codec + descriptor), never through a hand-written string that can drift from
+   the code it describes.
+
+## LOCAL EVENT TRANSPORT (MANDATORY)
+
+Validated by LFC-2E3-P/P3. Receipt:
+`docs/v2/07-uat/E3_P3_LOCAL_EVENT_TRANSPORT_RECEIPT.md`.
+
+Direction is one-way and MUST NOT be inverted:
+
+```text
+canonical execution
+  -> domain result committed
+  -> authoritative journal state
+  -> derive events
+  -> local publication
+  -> subscribers / history projection
+```
+
+```text
+NEVER:  publish event -> treat publication success as execution authority
+```
+
+1. `event authority violations = 0`. Execution success MUST NOT depend on
+   observer availability. A subscriber that throws, blocks or is absent MUST NOT
+   alter canonical execution state or the run outcome.
+2. Events are OBSERVABILITY; the journal/control state is AUTHORITY. An event is
+   derived from committed state, never the other way round.
+3. Event identity MUST be stable, so a consumer can deduplicate by `eventId`.
+   `exactly-once delivery` is NOT promised: the contract is stable identity plus
+   replayable publication plus idempotent consumers.
+4. Event `sequence` is explicit and deterministic per run. Do not reconstruct
+   ordering from timestamps.
+5. Replay MUST NOT create a second logical terminal event.
+6. No network semantics in the API: this boundary is LOCAL. Remote relay,
+   controllers and workers are a later, separate concern.
+7. No plugin-specific event routing in core: publication is generic and derived,
+   never a `when(eventType)` over concrete domain events owned by a plugin.
+8. Events represent MEANINGFUL DOMAIN OBSERVATIONS, not a lossless echo of every
+   parsed record. Emission volume MUST be a function of observations, not of
+   input size.
+
+
 ## RETRY-D — DURABLE CONTROL ROWS (MANDATORY)
 
 Authority: ADR-0075. The retry aggregate is a **durable control row**, not an
@@ -1142,6 +1219,15 @@ group).
     the canary: delete `TEST-<Class>.xml` first, run, verify it regenerated.
 26. XML `timestamp` is UTC while `ls` shows local time (10:27Z == 12:27
     local). Convert before concluding a result is stale.
+27a. A Kotlin test written as `fun x() = runBlocking { ... }` whose lambda's last
+    expression is NON-Unit (e.g. `assertInstanceOf`, which returns `T`) returns
+    that type, and JUnit 5 SILENTLY DOES NOT DISCOVER the test. It compiles, the
+    suite reports green, and the law it was supposed to enforce never runs.
+    Use a BLOCK body (`fun x() { runBlocking { ... } }`) for such tests, and
+    confirm discovery by name in the JUnit XML - a green suite is not evidence
+    that a specific test executed. (Learned the hard way: a P2 hardening law was
+    compiled but undiscovered until the XML canary exposed it.)
+
 27. After a build killed by timeout, distrust `BUILD SUCCESSFUL` /
     `UP-TO-DATE`; confirm with the canary (rule 25) before interpreting.
 

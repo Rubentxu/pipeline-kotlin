@@ -839,7 +839,7 @@ class CanonicalDurableRunCoordinator(
      * Cleared at the start of every [run] so a reused coordinator cannot leak names across runs.
      */
     private val publishedStepOutputs =
-        java.util.concurrent.ConcurrentHashMap<String, PublishedStepOutput>()
+        java.util.concurrent.ConcurrentHashMap<StepOutputKey, dev.rubentxu.pipeline.v2.domain.step.StepOutputPublication>()
 
     private suspend fun dispatch(
         step: StepNode,
@@ -870,30 +870,55 @@ class CanonicalDurableRunCoordinator(
             attempt = 1,
         )
 
-        // LFC-2E3-P / P2: if this Step declares a durable output identity, register it so a later
+        // LFC-2E3-P / P2: if this Step declares a durable output identity, publish it so a later
         // Step can bind it. Registered BEFORE execution on purpose: a consumer that runs early
         // still resolves against the JOURNAL and fails closed with NotYetProduced, so ordering is
-        // enforced by the authority rather than by this bookkeeping. A duplicate name is a contract
-        // violation and is rejected before any effect, never silently last-wins.
+        // enforced by the authority rather than by this bookkeeping.
+        //
+        // The published identity is (producer family, logical name) plus a codec identity DERIVED
+        // from the producer's registered output codec - never a hand-written string that can drift
+        // from the code it describes. A declaration whose producer has no registered definition
+        // cannot be published and is rejected before any effect.
         (step as? dev.rubentxu.pipeline.v2.domain.OpaqueStepNode)?.let { node ->
             val declaredName = node.outputName
             val declaredTag = node.outputTypeTag
             if (!declaredName.isNullOrBlank() && !declaredTag.isNullOrBlank()) {
-                val record = PublishedStepOutput(
-                    declaration = dev.rubentxu.pipeline.v2.domain.step.StepOutputDeclaration(
-                        name = declaredName,
-                        typeTag = declaredTag,
-                    ),
-                    operationId = operationId,
-                )
-                val previous = publishedStepOutputs.putIfAbsent(declaredName, record)
-                if (previous != null && previous.operationId != operationId) {
+                val producerDefinition = stepRegistry?.definition(step.pluginStepId)
+                val codecIdentity = producerDefinition
+                    ?.contract
+                    ?.outputCodec
+                    ?.let { dev.rubentxu.pipeline.v2.domain.step.stepCodecIdentity(it) }
+                if (codecIdentity == null) {
                     return Dispatched(
                         rejectSchema(
                             operationId,
                             input,
-                            "duplicate published output name '$declaredName': already produced by " +
-                                "'${previous.operationId}' and now declared by '$operationId'",
+                            "step '${step.pluginStepId.value}' declares published output " +
+                                "'$declaredName' but has no registered StepDefinition to derive its " +
+                                "codec identity from",
+                        ),
+                        executionContext,
+                    )
+                }
+                val key = StepOutputKey(step.pluginStepId, declaredName)
+                val publication = dev.rubentxu.pipeline.v2.domain.step.StepOutputPublication(
+                    declaration = dev.rubentxu.pipeline.v2.domain.step.StepOutputDeclaration(
+                        producerKey = step.pluginStepId,
+                        name = declaredName,
+                        typeTag = declaredTag,
+                    ),
+                    producerOperationId = operationId,
+                    codecIdentity = codecIdentity,
+                )
+                val previous = publishedStepOutputs.putIfAbsent(key, publication)
+                if (previous != null && previous.producerOperationId != operationId) {
+                    return Dispatched(
+                        rejectSchema(
+                            operationId,
+                            input,
+                            "duplicate published output name '$declaredName' for producer " +
+                                "'${step.pluginStepId.value}': already produced by " +
+                                "'${previous.producerOperationId}' and now declared by '$operationId'",
                         ),
                         executionContext,
                     )
@@ -1001,7 +1026,18 @@ class CanonicalDurableRunCoordinator(
                     // LFC-2E3-P / P2: run-scoped step-output resolution. Exposed only under the
                     // SDK-owned `step.output.resolver` capability, and only to a handler that
                     // DECLARES it; admission stays fail-closed.
-                    stepOutputResolver = JournalStepOutputResolver(publishedStepOutputs.toMap(), journal),
+                    stepOutputResolver = JournalStepOutputResolver(
+                        published = publishedStepOutputs.toMap(),
+                        journal = journal,
+                        // Re-derived live, so a codec change between publication and resolution is
+                        // detected rather than silently decoded across.
+                        currentCodecIdentity = { producerKey ->
+                            stepRegistry?.definition(producerKey)
+                                ?.contract
+                                ?.outputCodec
+                                ?.let { dev.rubentxu.pipeline.v2.domain.step.stepCodecIdentity(it) }
+                        },
+                    ),
                 )
 
                 // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER

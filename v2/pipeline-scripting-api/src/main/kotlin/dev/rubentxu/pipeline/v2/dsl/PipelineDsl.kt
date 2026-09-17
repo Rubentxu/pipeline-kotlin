@@ -1381,6 +1381,9 @@ class StageScope(
             ),
         )
         return dev.rubentxu.pipeline.v2.domain.step.StepOutputRef(
+            // Producer identity travels with the reference: a consumer binds a specific Step
+            // FAMILY's output, not a bare name, so the resolver can verify who produced it.
+            producerKey = stepKey,
             name = outputName,
             typeTag = outputTypeTag,
         )

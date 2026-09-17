@@ -81,17 +81,22 @@ private object ConsumerInputCodec : StepCodec<ConsumerInput> {
     override fun encode(value: ConsumerInput) =
         EncodedStepValue(
             buildJsonObject {
+                put("producerKey", JsonPrimitive(value.ref.producerKey.value))
                 put("name", JsonPrimitive(value.ref.name))
                 put("typeTag", JsonPrimitive(value.ref.typeTag))
             }.toString(),
         )
 
-    override fun decode(encoded: EncodedStepValue) = ConsumerInput(
-        StepOutputRef(
-            name = Json.parseToJsonElement(encoded.value).jsonObject["name"]!!.jsonPrimitive.content,
-            typeTag = Json.parseToJsonElement(encoded.value).jsonObject["typeTag"]!!.jsonPrimitive.content,
-        ),
-    )
+    override fun decode(encoded: EncodedStepValue): ConsumerInput {
+        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        return ConsumerInput(
+            StepOutputRef(
+                producerKey = PluginStepId(obj["producerKey"]!!.jsonPrimitive.content),
+                name = obj["name"]!!.jsonPrimitive.content,
+                typeTag = obj["typeTag"]!!.jsonPrimitive.content,
+            ),
+        )
+    }
 }
 
 private object ConsumerOutputCodec : StepCodec<ConsumerOutput> {
@@ -245,7 +250,7 @@ class StepOutputValuePipingTest {
             .first { it.contract.key == ConsumerStepDefinition.KEY }
         assertNotNull(consumerRow)
         assertTrue(
-            ConsumerInputCodec.encode(ConsumerInput(StepOutputRef("produced", "ProducerOutput")))
+            ConsumerInputCodec.encode(ConsumerInput(StepOutputRef(ProducerStepDefinition.KEY, "produced", "ProducerOutput")))
                 .value.contains("produced"),
             "the ref is declarative and serialisable",
         )
@@ -263,7 +268,7 @@ class StepOutputValuePipingTest {
                         outputTypeTag = "T",
                     )
                     assertEquals(
-                        StepOutputRef("p", "T"),
+                        StepOutputRef(ProducerStepDefinition.KEY, "p", "T"),
                         ref,
                         "a DSL reference is (name, typeTag) only: construction cannot fabricate a value",
                     )
@@ -285,7 +290,7 @@ class StepOutputValuePipingTest {
                     registryStep(
                         stepKey = ConsumerStepDefinition.KEY,
                         encodedInput = ConsumerInputCodec.encode(
-                            ConsumerInput(StepOutputRef("late", "ProducerOutput")),
+                            ConsumerInput(StepOutputRef(ProducerStepDefinition.KEY, "late", "ProducerOutput")),
                         ),
                     )
                     registryStepPublishing(
@@ -324,7 +329,7 @@ class StepOutputValuePipingTest {
                         stepKey = ConsumerStepDefinition.KEY,
                         // Consumer expects a DIFFERENT tag than the producer declared.
                         encodedInput = ConsumerInputCodec.encode(
-                            ConsumerInput(StepOutputRef("typed", "SomethingElse")),
+                            ConsumerInput(StepOutputRef(ProducerStepDefinition.KEY, "typed", "SomethingElse")),
                         ),
                     )
                 }
@@ -344,14 +349,14 @@ class StepOutputValuePipingTest {
             journal = InMemoryOperationJournal(SystemClock()),
         )
         val caught = runCatching {
-            resolver.resolveEncoded(StepOutputRef("never-declared", "T"))
+            resolver.resolveEncoded(StepOutputRef(ProducerStepDefinition.KEY, "never-declared", "T"))
         }.exceptionOrNull()
         assertTrue(caught is StepOutputResolutionException, "was: ${caught?.javaClass?.name}")
         assertInstanceOf(
             StepOutputResolutionError.UnknownOutput::class.java,
             (caught as StepOutputResolutionException).reason,
         )
-        assertEquals(false, resolver.isResolvable(StepOutputRef("never-declared", "T")))
+        assertEquals(false, resolver.isResolvable(StepOutputRef(ProducerStepDefinition.KEY, "never-declared", "T")))
     }
 
     @Test
@@ -390,7 +395,7 @@ class StepOutputValuePipingTest {
         val admission = RegistryExecutionPreparation.prepare(
             registry = registry(),
             key = ConsumerStepDefinition.KEY,
-            encodedInput = ConsumerInputCodec.encode(ConsumerInput(StepOutputRef("x", "T"))),
+            encodedInput = ConsumerInputCodec.encode(ConsumerInput(StepOutputRef(ConsumerStepDefinition.KEY, "x", "T"))),
             availableCapabilities = emptySet(),
         )
         assertInstanceOf(
@@ -402,7 +407,7 @@ class StepOutputValuePipingTest {
         val admitted = RegistryExecutionPreparation.prepare(
             registry = registry(),
             key = ConsumerStepDefinition.KEY,
-            encodedInput = ConsumerInputCodec.encode(ConsumerInput(StepOutputRef("x", "T"))),
+            encodedInput = ConsumerInputCodec.encode(ConsumerInput(StepOutputRef(ConsumerStepDefinition.KEY, "x", "T"))),
             availableCapabilities = setOf(STEP_OUTPUT_RESOLVER_CAPABILITY),
         )
         assertInstanceOf(ExecutionPreparation.Ready::class.java, admitted)
@@ -436,6 +441,174 @@ class StepOutputValuePipingTest {
                 !source.contains(concrete),
                 "the coordinator must not name the concrete StepKey '$concrete'",
             )
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // P2 hardening: identity, schema evolution, and explicit publication
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `schema drift between publication and resolution fails closed`() {
+        // Simulates a plugin upgrade between a run and its replay: the output was published under
+        // one codec identity and the current producer codec is a different one. Decoding across
+        // that boundary would silently treat two contracts as equivalent.
+        val publication = dev.rubentxu.pipeline.v2.domain.step.StepOutputPublication(
+            declaration = dev.rubentxu.pipeline.v2.domain.step.StepOutputDeclaration(
+                producerKey = ProducerStepDefinition.KEY,
+                name = "drifted",
+                typeTag = "ProducerOutput",
+            ),
+            producerOperationId = "run/step-0",
+            codecIdentity = "abi.PublishedCodecV1|{}",
+        )
+        val resolver = dev.rubentxu.pipeline.v2.application.durable.JournalStepOutputResolver(
+            published = mapOf(
+                dev.rubentxu.pipeline.v2.application.durable.StepOutputKey(
+                    ProducerStepDefinition.KEY,
+                    "drifted",
+                ) to publication,
+            ),
+            journal = InMemoryOperationJournal(SystemClock()),
+            currentCodecIdentity = { "abi.CurrentCodecV2|{}" },
+        )
+
+        val caught = runCatching {
+            resolver.resolveEncoded(StepOutputRef(ProducerStepDefinition.KEY, "drifted", "ProducerOutput"))
+        }.exceptionOrNull()
+        assertTrue(caught is StepOutputResolutionException, "was: ${caught?.javaClass?.name}")
+        assertInstanceOf(
+            StepOutputResolutionError.SchemaDrift::class.java,
+            (caught as StepOutputResolutionException).reason,
+        )
+    }
+
+    @Test
+    fun `a producer no longer registered is a schema drift, not a silent success`() {
+        val publication = dev.rubentxu.pipeline.v2.domain.step.StepOutputPublication(
+            declaration = dev.rubentxu.pipeline.v2.domain.step.StepOutputDeclaration(
+                producerKey = ProducerStepDefinition.KEY,
+                name = "orphan",
+                typeTag = "ProducerOutput",
+            ),
+            producerOperationId = "run/step-0",
+            codecIdentity = "abi.PublishedCodecV1|{}",
+        )
+        val resolver = dev.rubentxu.pipeline.v2.application.durable.JournalStepOutputResolver(
+            published = mapOf(
+                dev.rubentxu.pipeline.v2.application.durable.StepOutputKey(
+                    ProducerStepDefinition.KEY,
+                    "orphan",
+                ) to publication,
+            ),
+            journal = InMemoryOperationJournal(SystemClock()),
+            currentCodecIdentity = { null },
+        )
+        val caught = runCatching {
+            resolver.resolveEncoded(StepOutputRef(ProducerStepDefinition.KEY, "orphan", "ProducerOutput"))
+        }.exceptionOrNull()
+        assertInstanceOf(
+            StepOutputResolutionError.SchemaDrift::class.java,
+            (caught as StepOutputResolutionException).reason,
+        )
+    }
+
+    @Test
+    fun `referencing a different producer family fails closed`() {
+        val publication = dev.rubentxu.pipeline.v2.domain.step.StepOutputPublication(
+            declaration = dev.rubentxu.pipeline.v2.domain.step.StepOutputDeclaration(
+                producerKey = ProducerStepDefinition.KEY,
+                name = "shared-name",
+                typeTag = "ProducerOutput",
+            ),
+            producerOperationId = "run/step-0",
+            codecIdentity = "T|{}",
+        )
+        val resolver = dev.rubentxu.pipeline.v2.application.durable.JournalStepOutputResolver(
+            published = mapOf(
+                dev.rubentxu.pipeline.v2.application.durable.StepOutputKey(
+                    ProducerStepDefinition.KEY,
+                    "shared-name",
+                ) to publication,
+            ),
+            journal = InMemoryOperationJournal(SystemClock()),
+            currentCodecIdentity = { "T|{}" },
+        )
+        // A consumer naming a DIFFERENT family cannot reach this publication by name alone.
+        val caught = runCatching {
+            resolver.resolveEncoded(
+                StepOutputRef(PluginStepId("some.other.producer"), "shared-name", "ProducerOutput"),
+            )
+        }.exceptionOrNull()
+        assertTrue(caught is StepOutputResolutionException)
+        assertInstanceOf(
+            StepOutputResolutionError.UnknownOutput::class.java,
+            (caught as StepOutputResolutionException).reason,
+        )
+    }
+
+    @Test
+    fun `StepOutputRef is NOT an arbitrary journal lookup key - unpublished rows are unreachable`() {
+        // NOTE: a BLOCK body, never `= runBlocking { ... }`. If the lambda's last expression is
+        // non-Unit (e.g. assertInstanceOf returns T), the Kotlin function returns that type and
+        // JUnit 5 SILENTLY DOES NOT DISCOVER the test. This law was briefly uncovered for exactly
+        // that reason, which is what the JUnit-XML canary exists to catch.
+        runBlocking {
+        // The sharpest hardening law. A Step that runs and journals an output but does NOT publish
+        // it must be unreachable by reference, even though its row exists in the journal.
+        val work = Files.createTempDirectory("piping-unpublished-")
+        val registry = registry()
+        val clock = SystemClock()
+        val journal = InMemoryOperationJournal(clock)
+
+        val coordinator = CanonicalDurableRunCoordinator(
+            dispatcher = CanonicalNodeDispatcher(),
+            journal = journal,
+            cursorStore = InMemoryReplayCursorStore(clock),
+            clock = clock,
+            effectReplayPolicy = DefaultEffectReplayPolicy(),
+            eventSink = InMemoryEventStore(),
+            credentialScopePort = { _, _ ->
+                CredentialScopeOutcome.Unavailable(
+                    CredentialScopeFailure.StoreUnavailable("unpublished-row stub"),
+                )
+            },
+            controlDirRoot = work.resolve("control"),
+            shOptions = ShOptions.EMPTY,
+            stepRegistry = registry,
+        )
+
+        // Producer runs with NO declared output name: it journals a row but publishes nothing.
+        val spec = pipeline {
+            stages {
+                stage("Unpublished") {
+                    registryStep(
+                        stepKey = ProducerStepDefinition.KEY,
+                        encodedInput = ProducerInputCodec.encode(ProducerInput("secret")),
+                    )
+                }
+            }
+        }
+        assertEquals(RunOutcome.Success, coordinator.run(compile(spec), RunId("piping-unpublished")))
+
+        // The journal DOES hold the producer's committed output...
+        val journalRows = registry.keys().size
+        assertTrue(journalRows > 0)
+
+        // ...but a reference to it must be refused: only explicitly PUBLISHED outputs are reachable.
+        val resolver = dev.rubentxu.pipeline.v2.application.durable.JournalStepOutputResolver(
+            published = emptyMap(),
+            journal = journal,
+            currentCodecIdentity = { "T|{}" },
+        )
+        val caught = runCatching {
+            resolver.resolveEncoded(StepOutputRef(ProducerStepDefinition.KEY, "produced", "ProducerOutput"))
+        }.exceptionOrNull()
+        assertTrue(caught is StepOutputResolutionException, "was: ${caught?.javaClass?.name}")
+        assertInstanceOf(
+            StepOutputResolutionError.UnknownOutput::class.java,
+            (caught as StepOutputResolutionException).reason,
+            "a StepOutputRef must not be usable as an arbitrary journal lookup key",
+        )
         }
     }
 }

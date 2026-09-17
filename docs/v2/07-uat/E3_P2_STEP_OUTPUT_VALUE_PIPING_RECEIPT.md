@@ -4,7 +4,7 @@
 | --- | --- |
 | Cycle | LFC-2E3-P — PLATFORM HARDENING |
 | Slice | P2 — generic typed Step-output value piping |
-| Status | GREEN — RED (4 rows) flipped to pass unchanged; 9 new contract rows; 235 tests, 0 failures |
+| Status | GREEN **and hardened/frozen** — RED (4 rows) pass unchanged; 13 contract rows incl. identity + schema-drift + non-lookup laws; 239 tests, 0 failures |
 | Predecessors | P1 (`AGENTS.md` ABI law + guards) |
 | Production core changes | compiler lowering + coordinator publication (generic; NO concrete StepKey named) |
 | SDK changes | ADDITIVE: new `StepOutputPiping.kt`; `RegistryStepSpec`/`OpaqueStepNode` gained OPTIONAL fields; `registryStep` untouched; new `registryStepPublishing` |
@@ -206,3 +206,97 @@ producer-declared contract. This is a plugin-owned facade, so the addition is ad
 **P3 — Local Event Transport.** Publish the E3 domain events through a canonical LOCAL boundary
 (NO network, NO controller, NO EVT-4), keeping `journal/control state = authority` and
 `events = observability`, with the E3 testing events as the first real consumer.
+
+---
+
+# 12. HARDENING BEFORE FREEZE (P2.1)
+
+Review found `StepOutputRef` too weak: a bare textual `typeTag` is not an identity, and a reference
+could in principle be used as an arbitrary journal lookup key. Three additions closed that before
+P2 was frozen.
+
+## 12.1 Identity is now three parts, and two of them are derived
+
+```text
+StepOutputRef
+  = producerKey   (which Step FAMILY produced it)      consumer-declared, checked
+  + name          (logical durable output name)        consumer-declared, checked
+  + typeTag       (stable type identity)               consumer-declared, checked
+
+StepOutputPublication (recorded at publication)
+  = declaration            (producerKey + name + typeTag)
+  + producerOperationId    (the producer INVOCATION that committed the value)
+  + codecIdentity          DERIVED, never hand-written
+```
+
+`codecIdentity = <output codec class name> "|" <codec-declared schema>`, via `stepCodecIdentity()`.
+It is derived from the producer's **registered `StepDefinition`**, so it cannot drift from the code
+it describes — the failure mode a hand-written tag invites. A declaration whose producer has no
+registered definition can no longer be published at all (rejected before any effect).
+
+The publication map is now keyed by `(producerKey, name)`, so two families cannot address each
+other's outputs by sharing a name.
+
+## 12.2 Schema evolution fails closed
+
+The codec identity is recorded at publication and **re-derived at resolution**. A mismatch —
+typically a plugin upgrade between a run and its replay — throws
+`StepOutputResolutionError.SchemaDrift` instead of decoding old data with a new codec. A producer
+that is no longer registered is also a drift, not a silent success.
+
+```text
+published under "abi.PublishedCodecV1|{}"  vs  current "abi.CurrentCodecV2|{}"
+  -> SchemaDrift, refuse
+```
+
+This is the guard against the expensive-to-reverse failure the review named: an old replay
+deserialising silently under a new codec as if the two contracts were equivalent.
+
+## 12.3 `StepOutputRef` is not an arbitrary journal lookup key
+
+Resolution consults **only** the published set. A Step that runs, journals a committed output and
+does *not* declare an output name is unreachable by reference, even though its row exists.
+
+The dedicated row proves it end to end: a producer runs successfully and commits a journal row, then
+a reference to it is refused with `UnknownOutput`. This is the sharpest of the three: it is what
+stops the piping seam from degenerating into a general-purpose read of durable state.
+
+## 12.4 Dashboard invariants added
+
+`AGENTS.md` now carries two more invariants alongside the original six, plus two new law sections
+(`STEP OUTPUT BINDING IDENTITY`, `LOCAL EVENT TRANSPORT` for P3):
+
+```text
+untyped output bindings         = 0
+event authority violations      = 0
+```
+
+## 12.5 A test that was compiled but NEVER RAN
+
+Building these rows exposed a real trap. One hardening law was written as:
+
+```kotlin
+fun `...`() = runBlocking { ... }   // lambda's last expression is assertInstanceOf, returning T
+```
+
+`assertInstanceOf` returns its cast value, so the Kotlin function returned a non-`Unit` type and
+**JUnit 5 silently did not discover the test**. The suite reported green with the law unexecuted.
+
+The XML canary caught it (`13 @Test` in the source, `12 <testcase>` in the XML), the body was
+converted to a block, and the law now runs. Recorded as `AGENTS.md` testing rule 27a:
+
+> A green suite is not evidence that a specific test executed.
+
+Without that check, this receipt would have claimed a law it never enforced.
+
+## 12.6 Evidence
+
+| Suite | Tests | Result |
+| --- | --- | --- |
+| `StepOutputValuePipingTest` | 13 | 0 failures (discovery verified by name in the XML) |
+| `StepOutputPipingRedTest` | 5 | 0 failures |
+| `PluginBinaryCompatibilityFitnessTest` | 6 | 0 failures |
+
+Plugin-suite regression: **239 tests, 0 failures, 0 errors.** All eight invariants at 0.
+
+P2 is now frozen.

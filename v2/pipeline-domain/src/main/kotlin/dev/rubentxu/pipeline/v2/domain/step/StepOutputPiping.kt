@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import kotlinx.serialization.Serializable
 
 /**
@@ -42,11 +43,19 @@ import kotlinx.serialization.Serializable
 /**
  * What a producer publishes about its output.
  *
- * [name] is the durable identity a consumer binds to; it must be unique within a run.
- * [typeTag] is the producer-declared contract a consumer must match.
+ * The identity has three parts, and all three are checked at resolution:
+ *
+ * - [producerKey]   which Step FAMILY produced it (a stronger selector than a bare name);
+ * - [name]          the durable logical output name a consumer binds;
+ * - [typeTag]       the plugin-owned type contract a consumer must expect.
+ *
+ * A fourth, [codecIdentity], is NOT supplied by the author: it is DERIVED from the producer's
+ * registered output codec at publication time and re-derived at resolution time. Author-written
+ * strings can drift from the code they describe; a derived identity cannot.
  */
 @Serializable
 data class StepOutputDeclaration(
+    val producerKey: PluginStepId,
     val name: String,
     val typeTag: String,
 ) {
@@ -57,15 +66,50 @@ data class StepOutputDeclaration(
 }
 
 /**
+ * Stable identity of a payload's serialisation contract, derived from a registered
+ * [StepCodec] rather than written by hand.
+ *
+ * ```text
+ * codecIdentity = <codec class name> "|" <codec-declared schema>
+ * ```
+ *
+ * It changes when the codec class changes (renamed, split, replaced) or when the codec's
+ * [StepCodec.schema] changes, which is exactly when a previously persisted payload can no longer
+ * be assumed to decode. A plugin SHOULD implement `schema()` meaningfully; the check is only as
+ * strong as the schema the codec declares.
+ */
+fun stepCodecIdentity(codec: StepCodec<*>): String =
+    (codec::class.qualifiedName ?: codec::class.java.name) + "|" + codec.schema()
+
+/**
+ * Identity of a published output, recorded at publication and re-derived at resolution.
+ */
+@Serializable
+data class StepOutputPublication(
+    val declaration: StepOutputDeclaration,
+    /** The producer invocation that committed the value (its durable operation id). */
+    val producerOperationId: String,
+    /** [stepCodecIdentity] of the producer's output codec, as of publication. */
+    val codecIdentity: String,
+)
+
+/**
  * A declarative reference to a producer Step's output.
  *
- * This is a VALUE the DSL can construct and pass around safely: it names an output and states the
- * type the consumer expects. It carries no runtime data, so constructing one can never fabricate
- * a value.
+ * A value the DSL can construct and pass around safely: it identifies the producer family, the
+ * logical output name and the expected type. It carries no runtime data, so constructing one can
+ * never fabricate a value.
+ *
+ * It is NOT an arbitrary journal lookup key. A consumer may only resolve outputs that a canonical
+ * invocation explicitly PUBLISHED; every other persisted row is unreachable by reference.
  */
 @Serializable
 data class StepOutputRef(
+    /** The Step family that must have produced this output. */
+    val producerKey: PluginStepId,
+    /** Logical output name the producer published under. */
     val name: String,
+    /** Stable type identity the consumer expects. */
     val typeTag: String,
 ) {
     init {
@@ -73,9 +117,11 @@ data class StepOutputRef(
         require(typeTag.isNotBlank()) { "StepOutputRef typeTag must not be blank" }
     }
 
-    /** True when [declaration] satisfies this reference's type contract. */
-    fun accepts(declaration: StepOutputDeclaration): Boolean =
-        declaration.name == name && declaration.typeTag == typeTag
+    /** True when [publication] satisfies this reference's producer + name + type contract. */
+    fun accepts(publication: StepOutputPublication): Boolean =
+        publication.declaration.producerKey == producerKey &&
+            publication.declaration.name == name &&
+            publication.declaration.typeTag == typeTag
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +147,24 @@ sealed interface StepOutputResolutionError {
 
     /** The producer's committed output could not be read. */
     data class Unreadable(val name: String, val reason: String) : StepOutputResolutionError
+
+    /**
+     * The producer's serialisation contract changed between publication and resolution - typically
+     * a plugin upgrade between a run and its replay. Fails closed instead of decoding old data with
+     * a new codec.
+     */
+    data class SchemaDrift(
+        val name: String,
+        val publishedIdentity: String,
+        val currentIdentity: String,
+    ) : StepOutputResolutionError
+
+    /** The referenced producer family does not match the one that published the name. */
+    data class ProducerMismatch(
+        val name: String,
+        val expected: String,
+        val actual: String,
+    ) : StepOutputResolutionError
 }
 
 class StepOutputResolutionException(val reason: StepOutputResolutionError) :
@@ -115,6 +179,11 @@ private fun StepOutputResolutionError.describe(): String = when (this) {
     is StepOutputResolutionError.TypeMismatch ->
         "output '$name' is declared as '$actual' but the consumer expects '$expected'"
     is StepOutputResolutionError.Unreadable -> "output '$name' is unreadable: $reason"
+    is StepOutputResolutionError.SchemaDrift ->
+        "output '$name' was published under '$publishedIdentity' but the current producer codec " +
+            "is '$currentIdentity': refusing to decode across a schema change"
+    is StepOutputResolutionError.ProducerMismatch ->
+        "output '$name' is produced by '$actual', not the referenced '$expected'"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

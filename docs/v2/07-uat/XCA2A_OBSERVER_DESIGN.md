@@ -175,3 +175,108 @@ XCA-2D  migrate real_fixtures -> structured evidence; every claim STATIC_CANDIDA
 
 XCA-2D must NOT let the migration produce green: `path migrated => EXECUTED` is forbidden.
 Only XCA-2 execution produces `EXECUTED`.
+
+---
+
+# XCA-LAW-001 — evidence-source constraint (mechanically checkable)
+
+Permanent, ratcheted by XCA-3. Stated once, enforced, never re-litigated:
+
+> **Execution evidence comes exclusively from the OperationJournal. Control journals may
+> explain control-flow, never demonstrate that a Step executed.**
+
+## Scope
+
+```text
+RunExecutionEvidenceReader
+the execution-evidence package / module
+```
+
+## Required dependency (type-level, not textual)
+
+```text
+RunExecutionEvidenceReader MUST depend on OperationJournal
+```
+
+## Forbidden imports / references
+
+```text
+FileBasedRetryControlJournal
+FileBasedWaitUntilControlJournal
+RetryControlJournal
+WaitUntilControlJournal
+```
+
+## Forbidden implementation knowledge
+
+```text
+sqlite3
+JDBC SELECT
+SELECT ... operation_journal
+bespoke DB schema decoding
+```
+
+## Why a grep is NOT enough
+
+A textual scan would miss the real defect, which is a *type dependency*: a reader that
+compiles against `OperationJournal` but is wired with a concrete persistence adapter, or
+that reaches durable state through the control journals, reintroduces a second truth while
+still containing no forbidden token. The gate must therefore assert the **dependency
+direction**:
+
+```text
+RunExecutionEvidenceReader
+  MUST depend on   OperationJournal
+  MUST NOT depend  concrete journal persistence adapters
+                   retry / waitUntil control journals
+                   SQLite / JDBC
+```
+
+## Fourth cheap falsification (added)
+
+```text
+unexpected StepKey in O - E
+  -> may yield SUPPORTING / extra evidence ONLY from real extra evidence
+
+missing must NEVER produce SUPPORTING
+```
+
+i.e. an absent observation cannot be dressed as a supportive one.
+
+## Pipeline separation inside the observer
+
+Four stages, NOT fused into `RunExecutionEvidenceReader`:
+
+```text
+raw journal evidence
+      -> normalized execution evidence   (RunExecutionEvidence: runId, invocations,
+                                          observedStepKeys, operationEvidence, provenance)
+      -> pure set comparison             (executed = E n O; missing = E - O; unexpected = O - E)
+      -> classification                  (FixtureEvidenceResult)
+```
+
+`RunExecutionEvidenceReader` returns **observed evidence**, and must NOT decide PASS/FAIL.
+
+## XCA-2A Definition of Done
+
+```text
+installed distribution real
+CLI real
+RunId real
+reader over the existing OperationJournal
+zero SQLite knowledge
+zero control-journal evidence
+Canary 1 / 2 / 3
+F1 / F2 (+ the fourth cheap falsification above)
+architectural forbidden-dependency gate (XCA-LAW-001)
+```
+
+## Stop rule
+
+XCA-2B does NOT start until this single chain is demonstrated:
+
+```text
+CLI run -> RunId -> OperationJournal -> correct observed StepKeys
+```
+
+If it fails, fix the OBSERVER. Never adjust the classification to make fixtures pass.

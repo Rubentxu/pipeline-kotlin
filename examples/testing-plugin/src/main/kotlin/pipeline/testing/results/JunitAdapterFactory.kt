@@ -1,40 +1,23 @@
 package pipeline.testing.results
 
+import pipeline.testing.junit.JunitXmlAdapter
+
 /**
- * E3-T0 — RED phase entry point.
+ * E3-T1 — GREEN phase entry point.
  *
- * RED discipline: every RED test must fail for the EXPECTED reason.
- * In E3-T0 the expected reason is "the JUnit XML adapter does not
- * exist yet". A factory method here is intentionally THROWING —
- * the tests will fail because the parser doesn't exist, not because
- * of a build error, NullPointerException, or a broken fixture.
+ * Returns the real JUnit-XML [TestReportAdapter]. The T0 RED marker
+ * [NotImplementedInT0] is no longer reachable from this factory.
  *
- * E3-T1 (GREEN) replaces [junitAdapter] with a real implementation.
- * The tests in `JunitXmlAdapterContractTest` and
- * `TestReportDomainContractTest` remain unchanged; they describe the
- * behaviour and the SPI simultaneously.
+ * The factory is intentionally a thin object so future families (TAP,
+ * xUnit, NUnit, …) can each expose their own entry point without
+ * adding new top-level types to this module.
  */
 object JunitAdapterFactory {
     /**
-     * Returns a JUnit-XML [TestReportAdapter].
-     *
-     * RED: throws [NotImplementedInT0]. GREEN (in E3-T1): returns the
-     * real parser.
+     * Returns a JUnit-XML [TestReportAdapter] backed by the pure-JDK
+     * `JunitXmlAdapter`. Safe to call multiple times; the adapter is
+     * stateless.
      */
     @JvmStatic
-    fun junitAdapter(): TestReportAdapter {
-        throw NotImplementedInT0(
-            "E3-T0 RED: JUnit XML adapter is intentionally not implemented. " +
-                "This factory will return a real parser in E3-T1 (GREEN).",
-        )
-    }
+    fun junitAdapter(): TestReportAdapter = JunitXmlAdapter()
 }
-
-/**
- * E3-T0 RED marker. Carried as a plain [Throwable] (not [NotImplementedError],
- * which is `final`) so callers can `catch` it deterministically. It is a
- * controlled runtime failure: tests assert behaviour; they do not expect a
- * [NotImplementedError] from the standard library (which would also be the
- * wrong type for a future E3-T1 routing decision).
- */
-class NotImplementedInT0(message: String) : Error(message)

@@ -150,14 +150,18 @@ class JunitXmlAdapterContractTest {
     }
 
     @Test
-    fun `non-XML input is rejected as SchemaMismatch`() {
+    fun `non-XML input is rejected as XmlMalformed`() {
         val bytes = load("non-xml.txt")
         val report = adapter().parse(bytes, source = "non-xml.txt")
 
         require(report is TestReport.Unparseable) {
             "non-XML input must be Unparseable"
         }
-        assertTrue(report.reason is ParseFailureReason.SchemaMismatch)
+        // Plain text is NOT well-formed XML; the closed ParseFailureReason
+        // distinguishes "malformed XML" (XmlMalformed) from "well-formed
+        // XML but wrong content" (SchemaMismatch). Plain text is the
+        // former.
+        assertTrue(report.reason is ParseFailureReason.XmlMalformed)
     }
 
     @Test
@@ -171,14 +175,14 @@ class JunitXmlAdapterContractTest {
                 i < 950 -> "<failure message=\"f$i\" type=\"AssertionFailedFailure\"/>"
                 else -> "<error message=\"e$i\" type=\"RuntimeException\"/>"
             }
-            """  <testcase name="test$i" classname="Stress" time="0.05">$status</testcase>"""
+            """<testcase name="test$i" classname="Stress" time="0.05">$status</testcase>"""
         }
-        val xml = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <testsuite name="com.example.Stress" tests="1000" skipped="100" failures="50" errors="50" time="120.5">
-            $cases
-            </testsuite>
-        """.trimIndent().toByteArray()
+        val xml = buildString {
+            append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+            append("<testsuite name=\"com.example.Stress\" tests=\"1000\" skipped=\"100\" failures=\"50\" errors=\"50\" time=\"120.5\">\n")
+            append(cases)
+            append("\n</testsuite>\n")
+        }.toByteArray()
 
         val start = System.nanoTime()
         val report = adapter().parse(xml, source = "synthetic-large.xml")

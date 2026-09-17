@@ -47,6 +47,13 @@ dependencies {
     // surface (pipeline.utilities.json@1.0.0). Same Lane R pattern: produced by
     // :buildUtilitiesPlugin from THIS revision's SDK; not a committed artifact.
     testImplementation(files(rootDir.resolve("../examples/utilities-plugin/build/libs/utilities-plugin-1.0.0.jar")))
+    // LFC-2E3 / Lane R: second OFFICIAL_PLUGIN under a SEPARATE coordinate
+    // (pipeline.testing@0.1.0-SNAPSHOT). Same Lane R pattern: produced by
+    // :buildTestingPlugin from THIS revision's SDK; not a committed artifact.
+    // The testing coordinate is independent of the utilities coordinate
+    // — a NEW dimension (structured test results + HTML reports), proving the
+    // SDK absorbs orthogonal dimensions without growing production core.
+    testImplementation(files(rootDir.resolve("../examples/testing-plugin/build/libs/testing-plugin-0.1.0-SNAPSHOT.jar")))
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
@@ -56,11 +63,13 @@ dependencies {
 tasks.named("compileTestKotlin") {
     dependsOn(":buildExamplePlugin")
     dependsOn(":buildUtilitiesPlugin")
+    dependsOn(":buildTestingPlugin")
 }
 
 tasks.test {
     dependsOn(":pipeline-application:installDist")
     dependsOn(":buildExamplePlugin")
     dependsOn(":buildUtilitiesPlugin")
+    dependsOn(":buildTestingPlugin")
     useJUnitPlatform()
 }

@@ -171,7 +171,7 @@ class UtilitiesYamlStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.writeJSON")))
         assertTrue(r.contains(PluginStepId("utilities.sha256")))
         // 3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive + 1 example.uppercase = 15 total.
-        assertEquals(17, r.keys().size)
+        assertEquals(18, r.keys().size)
     }
 
     @Test

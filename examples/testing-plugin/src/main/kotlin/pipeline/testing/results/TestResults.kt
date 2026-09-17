@@ -34,6 +34,7 @@ import kotlinx.serialization.Serializable
  * (e.g. passing for skipped, ignored for disabled). Holding them as
  * a single "non-run" case would erase the distinction.
  */
+@Serializable
 sealed interface TestStatus {
     @Serializable
     data object Passed : TestStatus
@@ -136,8 +137,17 @@ data class TestSuiteResult(
  * policy later decides that "N failing tests fail the build".
  * The parser must NEVER conflate these two outcomes.
  */
+@Serializable
 sealed interface TestReport {
+    /**
+     * Suites contained in this report. For [Unparseable] this is always
+     * empty (carries no typed data); for [Successful] it carries the
+     * parsed suites. Marked transient because [Unparseable] does not
+     * declare it as a constructor parameter (the failure reason carries
+     * the diagnostic payload instead).
+     */
     val suites: List<TestSuiteResult>
+        get() = emptyList()
 
     val totalCount: Int get() = suites.sumOf { it.totalCount }
     val passedCount: Int get() = suites.sumOf { it.passedCount }
@@ -164,9 +174,7 @@ sealed interface TestReport {
     data class Unparseable(
         val source: String,
         val reason: ParseFailureReason,
-    ) : TestReport {
-        override val suites: List<TestSuiteResult> get() = emptyList()
-    }
+    ) : TestReport
 }
 
 /**
@@ -178,6 +186,7 @@ sealed interface TestReport {
  *   - missing source file → orchestrator-level issue
  *   - non-XML input → caller provided the wrong file
  */
+@Serializable
 sealed interface ParseFailureReason {
     @Serializable
     data class XmlMalformed(val message: String, val line: Int? = null, val column: Int? = null) : ParseFailureReason

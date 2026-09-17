@@ -101,3 +101,36 @@ val buildUtilitiesPlugin by tasks.registering(Exec::class) {
         "jar",
     )
 }
+
+// ── Lane R: testing OFFICIAL_PLUGIN reproducibility (LFC-2E3) ──
+// testing-plugin is the SECOND OFFICIAL_PLUGIN under the frozen universal-core
+// authoring surface (the first vertical of LFC-2E3-TESTING-REPORTS). It proves
+// that a NEW dimension — structured test results + HTML report publication —
+// can be added under a SEPARATE plugin coordinate (`pipeline.testing@0.1.0-SNAPSHOT`)
+// without changing production core.
+//
+// Same Lane R pattern as utilities-plugin: SDK artifacts must come from
+// THIS revision, never from committed snapshot jars. The build artefact path
+// uses `-SNAPSHOT` because the testing coordinate is still under iteration
+// (R1 publishHTML will follow the same coordinate; a stable 1.0.0 release
+// waits on the full E3-A closure).
+val buildTestingPlugin by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds the independent OFFICIAL testing plugin against this revision's SDK."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val pluginDir = file("../examples/testing-plugin")
+    inputs.dir(pluginDir.resolve("src"))
+    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar")
+    outputs.file(pluginDir.resolve("build/libs/testing-plugin-0.1.0-SNAPSHOT.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", pluginDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "jar",
+    )
+}

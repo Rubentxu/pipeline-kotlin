@@ -170,7 +170,7 @@ class UtilitiesTarStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.findFiles")))
         assertTrue(r.contains(PluginStepId("utilities.sha512")))
         // 3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive + 2 tar + 1 uppercase = 17 total
-        assertEquals(17, r.keys().size)
+        assertEquals(18, r.keys().size)
     }
 
     // ───────── contract completeness ─────────

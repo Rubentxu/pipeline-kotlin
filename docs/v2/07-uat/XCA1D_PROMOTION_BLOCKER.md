@@ -99,3 +99,127 @@ runtime evidence                   NOT YET ASSERTED (XCA-2)
 ```
 
 No file moved. No ledger change. Nothing weakened.
+
+---
+
+# DECISION — option D accepted (XCA-1D closed as an architectural decision)
+
+```text
+RELOCATION        REJECTED
+RECLASSIFICATION  ACCEPTED
+
+Reason: moving fixtures would violate ADR-0050 (INV-CR-7, CP-002).
+Evidence location and product documentation are independent concepts.
+```
+
+XCA-1D is NOT a failed slice. It discovered that its own premise was wrong: the rule
+`CERTIFIED => fixture under examples/` was too strong, because it conflated two things
+that were introduced later and have different purposes:
+
+```text
+examples/          executable PRODUCT DOCUMENTATION
+v2/compatibility/  FROZEN REGRESSION CORPUS (ADR-0050)
+```
+
+## Certification law CORRECTED
+
+Rejected:
+
+```text
+CERTIFIED -> must live under examples/
+```
+
+Adopted:
+
+```text
+CERTIFIED executable surface
+  -> has execution evidence
+  -> evidence PROVENANCE is explicit
+```
+
+Evidence source kinds:
+
+```text
+PRODUCT_EXAMPLE       examples/**/*.pipeline.kts
+REGRESSION_CORPUS     v2/compatibility/**/*.pipeline.kts
+STRUCTURAL_CONTRACT   compiler/rewrite/UAT evidence
+PLUGIN_ACCEPTANCE     plugin-installed acceptance, if needed later
+```
+
+`core.emit.event` remains `STRUCTURAL_CONTRACT`, with no invented public pipeline.
+
+## Classification renamed to provenance-neutral
+
+`B_PROMOTE_COMPATIBILITY` encoded a decision now rejected, so it is renamed:
+
+```text
+A_PRODUCT_EXAMPLE      19
+B_REGRESSION_CORPUS    11
+C_CREATE_OR_EXPAND      0
+D_REWRITE_CONTRACT      1
+```
+
+## `real_fixtures` is now known to be insufficient — retired in XCA-2
+
+A bare path cannot express: documentation vs regression corpus; which StepKey was
+expected; whether the symbol merely appears; whether it actually executed; how it was
+verified; what was observed. XCA-2 replaces it with structured evidence keeping three
+dimensions separate:
+
+```yaml
+evidence:
+  - source:       { kind: REGRESSION_CORPUS, path: v2/compatibility/16-sleep.pipeline.kts }
+    expectation:  { step_key: core.sleep }
+    verification: { mode: CANONICAL_JOURNAL, status: PENDING }
+```
+
+Migration MUST preserve every existing claim as `STATIC_CANDIDATE`. **Nothing becomes
+`EXECUTED` merely by migrating the schema.**
+
+## The 11 regression-corpus surfaces are NOT yet runtime-proven
+
+Using the new criterion:
+
+```text
+installed CLI -> execute fixture -> canonical journal -> expected StepKey observed
+```
+
+the compatibility suite does execute those fixtures, which is considerably stronger than
+the source scan behind the new Utilities fixtures. But the criterion has not yet been
+applied to them, so they enter XCA-2 as strong *candidates*, not automatic `EXECUTED`.
+Whether XCA-2 confirms all 11 unchanged is to be demonstrated, not assumed.
+
+## `examples/` becomes a documentation metric, not a certification debt
+
+```text
+Certification coverage:      runtime evidence / certified executable surfaces
+Product documentation:       public surfaces demonstrated through examples/
+```
+
+These need not both reach 30/30. Product pipelines may demonstrate several surfaces
+coherently; `examples/` must not be filled with redundant demos to hit a percentage.
+If `sleep`/`isUnix`/`cleanWs` later need visible documentation, that is a
+PRODUCT-DOC-COVERAGE task, not a certification repair.
+
+## ADR-0050 protection to carry into XCA-3
+
+```text
+compatibility_corpus_expected_count = 21
+compatibility_original_pins_intact  = PASS
+```
+
+Not to duplicate `UatLocal005CorpusUntouchedTest`, but so certification knows it consumes
+a source whose nature is `FROZEN_REGRESSION_CORPUS` (governance: ADR-0050), and not an
+arbitrary directory.
+
+## State
+
+```text
+CERTIFIED                              31
+  30 executable static candidates
+     19 PRODUCT_EXAMPLE
+     11 REGRESSION_CORPUS
+   1 STRUCTURAL_SYNTH  (D_REWRITE_CONTRACT)
+NOT_EXERCISED                           0
+runtime evidence                        NOT YET ASSERTED (XCA-2)
+```

@@ -250,10 +250,12 @@ def main():
         if k in STRUCTURAL_SYNTHETIC and not exer:
             verdict, cls = "STRUCTURAL_SYNTH", "D_REWRITE_CONTRACT"
         elif exer:
-            # A = already canonical under examples/; B = only compatibility/ today
+            # Source provenance, not an obligation to relocate (XCA-1D decision D):
+            # A = product example under examples/  (documentation)
+            # B = frozen regression corpus under v2/compatibility/ (ADR-0050)
             verdict = "EXERCISED"
-            cls = ("A_IN_EXAMPLES" if any(f.startswith("examples/") for f in exer)
-                   else "B_PROMOTE_COMPATIBILITY")
+            cls = ("A_PRODUCT_EXAMPLE" if any(f.startswith("examples/") for f in exer)
+                   else "B_REGRESSION_CORPUS")
         elif not claimed:
             verdict, cls = "NOT_EXERCISED", "C_CREATE_OR_EXPAND"
         else:

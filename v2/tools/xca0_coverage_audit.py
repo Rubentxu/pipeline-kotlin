@@ -168,7 +168,10 @@ def main():
     print(f"  comment lines skipped (G1)      : {guards['comment_lines_skipped']}")
     print(f"  singular `real_fixture` in recs : {guards['singular_real_fixture_in_records']}  (must be 0)")
     print(f"  nested 6-space entries (G3)     : {len(nested)}  <- duplicate-authority listing, NOT merged")
-    assert len(records) == 32, f"expected 32 records, got {len(records)}"
+    # 32 canonical records + core.junit + core.publishHTML recorded by XCA-1B.
+    # This assertion exists so an accidental record insertion is never absorbed
+    # silently; bump it only when the change is intentional.
+    assert len(records) == 34, f"expected 34 records, got {len(records)}"
     assert guards["singular_real_fixture_in_records"] == 0
 
     # all symbols used anywhere, for SYMBOL_UNKNOWN detection

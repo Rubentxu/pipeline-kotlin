@@ -592,6 +592,48 @@ steps:
   # CORE — REJECTED (directive forbade the only viable implementation shape)
   # ────────────────────────────────────────────────────────────────────────
 
+  - step_key: core.junit
+    namespace_classification: OFFICIAL_PLUGIN
+    freeze_status: ADMITTED
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY
+    legacy_state: NONE
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E3_T2_JUNIT_STEP_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E3_T2_JUNIT_STEP_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/E3_T1_JUNIT_XML_ADAPTER_RECEIPT.md
+      - docs/v2/07-uat/E3_A_FIRST_VERTICAL_CLOSURE_RECEIPT.md
+    real_fixtures:
+      - examples/testing/junit-success.pipeline.kts
+      - examples/testing/junit-failures.pipeline.kts
+      - examples/testing/junit-then-publish.pipeline.kts
+    registry_file: examples/testing-plugin/src/main/kotlin/pipeline/testing/junit/JunitStepDefinition.kt
+    capability: testing.filesystem.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/TestingJunitStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/TestingJunitStepContractSuiteTest.kt
+
+  - step_key: core.publishHTML
+    namespace_classification: OFFICIAL_PLUGIN
+    freeze_status: ADMITTED
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY
+    legacy_state: NONE
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E3_R1_PUBLISH_HTML_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E3_R1_PUBLISH_HTML_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/E3_R2_LINKAGE_RECEIPT.md
+      - docs/v2/07-uat/E3_A_FIRST_VERTICAL_CLOSURE_RECEIPT.md
+    real_fixtures:
+      - examples/testing/junit-then-publish.pipeline.kts
+    registry_file: examples/testing-plugin/src/main/kotlin/pipeline/testing/publish/PublishHtmlPlugin.kt
+    capability: testing.publish.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/TestingPublishHtmlStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/TestingPublishHtmlStepContractSuiteTest.kt
+
   - step_key: core.load
     namespace_classification: CORE_PRIMITIVE
     freeze_status: ADMITTED_REJECTED

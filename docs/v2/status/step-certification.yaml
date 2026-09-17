@@ -1112,17 +1112,28 @@ steps:
 # ────────────────────────────────────────────────────────────────────────
 
 invariants:
-  legacy_residual_ids_must_be_zero: PASS
-  legacy_residual_metadata_rows_must_be_zero: PASS
-  legacy_residual_dispatcher_files_must_be_zero: PASS
-  certified_must_have_g8_or_g7_receipt: PASS
+  legacy_residual_ids_must_be_zero:
+    status: PASS
+
+  legacy_residual_metadata_rows_must_be_zero:
+    status: PASS
+
+  legacy_residual_dispatcher_files_must_be_zero:
+    status: PASS
+
+  certified_must_have_g8_or_g7_receipt:
+    status: PASS
     notes: "12 CERTIFIED core Steps x G8 receipt, 2 external plugin families (example.uppercase, pipeline.utilities.json@1.0.0 with 3 sub-families) with G8 receipts, 2 STOPPED_G7 with G7_STOP_BLOCKED, 1 REJECTED with rejection receipt, total 18/18 YAML entries with a final-state receipt."
-  no_uncertified_steps_with_real_fixture: PASS
+
+  no_uncertified_steps_with_real_fixture:
+    status: PASS
     notes: |
       All real fixtures exercise either a CERTIFIED Step or a STOPPED_G7
       Step (pwd/pwd.tmp). REJECTED `core.load` has no fixture
       (intentional).
-  mandatory_disabled_acceptance_tests_must_be_zero: PARTIAL
+
+  mandatory_disabled_acceptance_tests_must_be_zero:
+    status: PARTIAL
     notes: |
       UatLocal011WorkflowControlTest::SC-011-11 is @Disabled and was
       reclassified OBSOLETE-per-REJECTION in this slice (CORE-LOAD-REJECTED).
@@ -1130,6 +1141,14 @@ invariants:
       issue (CredentialsId not accessible in .pipeline.kts) — pre-existing,
       unrelated to legacy burn-down; remains open and tracked outside LFC-2E0.
 
-  legacy_dispatcher_files_in_main: []
-  legacy_metadata_rows_in_main: []
-  legacy_decoder_subtypes_in_main: []
+  legacy_dispatcher_files_in_main:
+    status: PASS
+    entries: []
+
+  legacy_metadata_rows_in_main:
+    status: PASS
+    entries: []
+
+  legacy_decoder_subtypes_in_main:
+    status: PASS
+    entries: []

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LFC-2E3-T4 fixture: a fully green JUnit XML report.
+
+  Two suites, four cases, zero failures/errors/skips. Used by
+  `examples/testing/junit-success.pipeline.kts` to prove that `core.junit`
+  parses a real report through the installed CLI and the plugin JAR.
+-->
+<testsuites>
+  <testsuite name="com.example.calculator.AdditionTests" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-17T10:15:30" hostname="ci-runner-1" time="0.123">
+    <testcase name="testAddPositive" classname="com.example.calculator.AdditionTests" time="0.012"/>
+    <testcase name="testAddNegative" classname="com.example.calculator.AdditionTests" time="0.005"/>
+    <testcase name="testAddZero" classname="com.example.calculator.AdditionTests" time="0.003"/>
+  </testsuite>
+  <testsuite name="com.example.calculator.MultiplicationTests" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-17T10:15:31" hostname="ci-runner-1" time="0.045">
+    <testcase name="testMultiply" classname="com.example.calculator.MultiplicationTests" time="0.045"/>
+  </testsuite>
+</testsuites>

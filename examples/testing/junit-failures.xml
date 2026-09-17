@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LFC-2E3-T4 fixture: a JUnit XML report CONTAINING FAILURES.
+
+  Three suites; 2 passing, 1 failed (assertion), 1 errored (uncaught
+  exception), 1 skipped. Used by `examples/testing/junit-failures.pipeline.kts`
+  to prove the central LFC-2E3 invariant through the real CLI:
+
+      "tests failed"  !=  "Step execution failed"
+
+  Parsing this report MUST NOT fail the Step or the pipeline. The Step's
+  durable typed output carries the failures faithfully; a separate policy
+  layer would be required to turn them into a build failure.
+-->
+<testsuites>
+  <testsuite name="com.example.calculator.AdditionTests" tests="3" skipped="1" failures="1" errors="0" timestamp="2026-09-17T10:15:30" hostname="ci-runner-1" time="0.123">
+    <testcase name="testAddPositive" classname="com.example.calculator.AdditionTests" time="0.012"/>
+    <testcase name="testAddNegative" classname="com.example.calculator.AdditionTests" time="0.005">
+      <failure message="expected 1 to equal 2" type="org.opentest4j.AssertionFailedError">
+        <![CDATA[org.opentest4j.AssertionFailedError: expected 1 to equal 2
+	at org.opentest4j.Assertions.fail(Assertions.java:56)
+	at com.example.calculator.AdditionTests.testAddNegative(AdditionTests.java:42)]]>
+      </failure>
+    </testcase>
+    <testcase name="testAddSkipped" classname="com.example.calculator.AdditionTests" time="0.000">
+      <skipped message="flaky test"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="com.example.network.HttpTests" tests="1" skipped="0" failures="0" errors="1" timestamp="2026-09-17T10:20:00" hostname="ci-runner-1" time="0.500">
+    <testcase name="testConnectsToApi" classname="com.example.network.HttpTests" time="0.500">
+      <error message="java.net.SocketTimeoutException: connect timed out" type="java.net.SocketTimeoutException">
+        <![CDATA[java.net.SocketTimeoutException: connect timed out
+	at java.base/sun.nio.ch.Net.connect(Net.java:579)
+	at com.example.network.HttpTests.testConnectsToApi(HttpTests.java:28)]]>
+      </error>
+    </testcase>
+  </testsuite>
+  <testsuite name="com.example.calculator.MultiplicationTests" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-17T10:15:31" hostname="ci-runner-1" time="0.045">
+    <testcase name="testMultiply" classname="com.example.calculator.MultiplicationTests" time="0.045"/>
+  </testsuite>
+</testsuites>

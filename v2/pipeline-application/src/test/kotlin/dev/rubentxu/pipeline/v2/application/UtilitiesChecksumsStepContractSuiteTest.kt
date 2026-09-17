@@ -156,8 +156,8 @@ class UtilitiesChecksumsStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.readJSON")))
         assertTrue(r.contains(PluginStepId("utilities.findFiles")))
         assertTrue(r.contains(PluginStepId("utilities.readProperties")))
-        // 3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 1 example.uppercase = 13 total.
-        assertEquals(13, r.keys().size)
+        // 3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive + 1 example.uppercase = 15 total.
+        assertEquals(17, r.keys().size)
     }
 
     // ───────── contract completeness ─────────

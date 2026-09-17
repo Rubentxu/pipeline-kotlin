@@ -312,3 +312,32 @@ fun StageScope.writeYaml(path: String, value: JsonElement) =
         stepKey = WriteYamlStepDefinition.KEY,
         encodedInput = WriteYamlCodec.encode(WriteYamlInput(path, value)),
     )
+
+/**
+ * Script-safe overload. Semantics are frozen as: **`content` is a serialized YAML
+ * document** (`org.yaml.snakeyaml`), NOT JSON text reinterpreted as YAML.
+ *
+ * This is uniform with [pipeline.utilities.json.writeJSON], whose `value: String` is
+ * likewise that format's own text, parsed at the DSL facade into the SAME canonical
+ * typed input. Same StepKey, same StepDefinition, same handler, same capability:
+ * no new key, no alternate execution path, no duplicated logic.
+ *
+ * Parse failure is a typed [UtilitiesYamlException], not an escaping snakeyaml error.
+ */
+fun StageScope.writeYaml(file: String, content: String) =
+    registryStep(
+        stepKey = WriteYamlStepDefinition.KEY,
+        encodedInput = WriteYamlCodec.encode(
+            WriteYamlInput(file, yamlTextToJsonElement(file, content)),
+        ),
+    )
+
+/** Parses serialized YAML text into the same JsonElement the read step produces. */
+private fun yamlTextToJsonElement(file: String, content: String): JsonElement =
+    try {
+        jsonElementFrom(Yaml().load<Any?>(content))
+    } catch (e: org.yaml.snakeyaml.error.YAMLException) {
+        throw UtilitiesYamlException(
+            UtilitiesYamlError.YamlParseFailure(file, e.message ?: e::class.simpleName.orEmpty()),
+        )
+    }

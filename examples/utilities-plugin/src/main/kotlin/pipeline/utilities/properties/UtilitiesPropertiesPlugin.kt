@@ -308,3 +308,47 @@ fun StageScope.writeProperties(path: String, value: JsonObject) =
         stepKey = WritePropertiesStepDefinition.KEY,
         encodedInput = WritePropertiesCodec.encode(WritePropertiesInput(path, value)),
     )
+
+/**
+ * Script-safe overload. Semantics are frozen as: **`content` is a serialized
+ * `.properties` document**, NOT JSON text reinterpreted as properties.
+ *
+ * Uniform with [pipeline.utilities.json.writeJSON] and
+ * [pipeline.utilities.yaml.writeYaml]: the String is that format's own text, parsed at
+ * the DSL facade into the SAME canonical typed input. Same StepKey, same
+ * StepDefinition, same handler, same capability: no new key, no alternate execution
+ * path, no duplicated logic.
+ */
+fun StageScope.writeProperties(file: String, content: String) =
+    registryStep(
+        stepKey = WritePropertiesStepDefinition.KEY,
+        encodedInput = WritePropertiesCodec.encode(
+            WritePropertiesInput(file, propertiesTextToJsonObject(file, content)),
+        ),
+    )
+
+/**
+ * Parses serialized `.properties` text into the SAME JsonObject projection the read
+ * step produces (string -> string). Fail-closed with a typed error on malformed
+ * input; Java's Properties API does not separate parse from IO failures, so both
+ * surface as [UtilitiesPropertiesError.PropertiesIoFailure].
+ */
+private fun propertiesTextToJsonObject(file: String, content: String): JsonObject {
+    val props = java.util.Properties()
+    try {
+        props.load(java.io.StringReader(content))
+    } catch (e: java.io.IOException) {
+        throw UtilitiesPropertiesException(
+            UtilitiesPropertiesError.PropertiesIoFailure(file, e.message ?: e::class.simpleName.orEmpty()),
+        )
+    } catch (e: java.lang.IllegalArgumentException) {
+        throw UtilitiesPropertiesException(
+            UtilitiesPropertiesError.PropertiesIoFailure(file, e.message ?: e::class.simpleName.orEmpty()),
+        )
+    }
+    return JsonObject(
+        props.stringPropertyNames().associateWith { name ->
+            JsonPrimitive(props.getProperty(name) ?: "")
+        },
+    )
+}

@@ -793,7 +793,8 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
-    real_fixtures: []
+    real_fixtures:
+      - examples/utilities/02-yaml-properties.pipeline.kts
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/yaml/UtilitiesYamlPlugin.kt
     capability: utilities.yaml.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
@@ -846,7 +847,8 @@ steps:
       - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
       - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
       - docs/v2/07-uat/E2_U3_PROPERTIES_FAMILIES_RECEIPT.md
-    real_fixtures: []
+    real_fixtures:
+      - examples/utilities/02-yaml-properties.pipeline.kts
     registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/properties/UtilitiesPropertiesPlugin.kt
     capability: utilities.properties.operations
     contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesPropertiesStepContractSuiteTest.kt

@@ -175,3 +175,62 @@ the synthetic PENDING sentinel is never an input to the reader
 Still required before freezing the law (A2 completion): confirm that no recovery path
 journals `PENDING` AFTER an operation has entered execution. If such a path exists, the
 criterion would under-report silently. This is a characterization test, not a blocker.
+
+---
+
+# A2.1 RESOLVED — the PENDING law is proven by the transition function
+
+`OperationStatus.transition(from, to)` is explicit and total:
+
+```kotlin
+fun transition(from: OperationStatus, to: OperationStatus): kotlin.Result<Unit> = when {
+    from == to                              -> success            // idempotent
+    from in terminalStates                  -> failure("Cannot transition from terminal state $from")
+    from == PENDING && to == RUNNING        -> success
+    from == RUNNING && to in terminalStates -> success
+    else                                    -> failure("Invalid transition from $from to $to")
+}
+```
+
+Legal transitions are therefore **exactly**:
+
+```text
+PENDING -> RUNNING
+RUNNING -> terminal
+X       -> X                (idempotent re-observation)
+```
+
+Everything else fails, including:
+
+```text
+terminal -> anything        (explicit guard)
+RUNNING  -> PENDING         (falls through to "Invalid transition")
+terminal -> PENDING         (blocked by the terminal guard)
+```
+
+## The strong property HOLDS
+
+> For every persisted operation identity, no transition can return it to `PENDING` after it
+> has left `PENDING`.
+
+`PENDING` is a **write-once, pre-execution state**. Therefore `observed <=> status != PENDING`
+is sound, and the reader cannot lose an executed invocation that later reverts to an
+"appears unexecuted" state.
+
+## Consequence for the observed set
+
+```text
+NOT observed:  PENDING
+observed:      RUNNING, and every terminal state
+               (SUCCEEDED / FAILED / ABORTED / DIVERGENT / LOST)
+```
+
+`RUNNING` and `LOST` prove execution STARTED without terminal success, so both MUST count.
+This is exactly the case a `status.isTerminal` shortcut would silently drop.
+
+## Anti-regression guard to land with A5
+
+A direct test asserting positively that `RUNNING` and `LOST` yield observed evidence when
+the current domain says so — because a later "simplification" of the reader to
+`status.isTerminal` would drop them and every downstream coverage number would become
+quietly optimistic. The law must be asserted positively, not derived from absence.

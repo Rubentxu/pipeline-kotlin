@@ -10,13 +10,14 @@ a FASE 3 / drift fix and resolved before LFC-2E0 closure.
 ## Counter roll-up
 
 ```text
-Production Step keys total:        16
+Production Step keys total:        21
   CERTIFIED (core):                12   (echo, sh, error, sleep, file.writeFile,
                                        emit.event, isUnix, deleteDir, milestone,
                                        cleanWs, archiveArtifacts, waitUntil)
-  CERTIFIED (external plugin):      2   (example.uppercase, utilities.readJSON,
-                                       utilities.writeJSON, utilities.sha256)
-                                       NOTE: utilities family contributes 3 StepKeys
+  CERTIFIED (external plugin):      6   (example.uppercase, utilities.readJSON,
+                                       utilities.writeJSON, utilities.sha256,
+                                       utilities.readYaml, utilities.writeYaml)
+                                       NOTE: utilities family contributes 5 StepKeys
                                        under 1 OFFICIAL_PLUGIN (`pipeline.utilities.json@1.0.0`)
   STOPPED at G7 (CERTIFICATION not reached): 2  (pwd, pwd.tmp — non-deterministic runtime return)
   REJECTED:                         1   (load — CORE-LOAD-REJECTED 2026-09-17)
@@ -28,7 +29,7 @@ Real .pipeline.kts fixtures: 23 (01..22, gaps 07/99 removed; v0.33.1 added 16-22
                                        v0.34 added examples/utilities/01-json-roundtrip.pipeline.kts)
 Event Harness contracts: 4 (07, 08, 09, 10)
 CERTIFIED Steps with real maintained fixture: 12/12 (100%)
-CERTIFIED external plugin Steps with real maintained fixture: 2/2 (100%)
+CERTIFIED external plugin Steps with real maintained fixture: 6/6 (100%)
 STOPPED Steps with real fixture: 2/2 (100%)
 REJECTED Steps with no fixture: 1/1 (intentional — load was never functional)
 
@@ -39,6 +40,12 @@ U0  GATE FITNESS         14 → 15 tests (capabilityAccessFactory + plugin lifec
 U1  JSON HARDENING       +5 typed-failure rows in ContractSuite
     UtilitiesJsonError sealed ADT (3 cases): JsonNotFound / JsonParseFailure / JsonIoFailure
     UtilitiesJsonException typed carrier; production core refs: 0
+U2  YAML FAMILIES        +17 rows in dedicated UtilitiesYamlStepContractSuite
+    utilities.readYaml / utilities.writeYaml under SAME OFFICIAL_PLUGIN coordinate
+    utilities.yaml.operations capability token (typed port)
+    UtilitiesYamlError sealed ADT (3 cases): YamlNotFound / YamlParseFailure / YamlIoFailure
+    New dep: org.yaml:snakeyaml:2.3 (compileOnly, no transitive)
+    Production core refs to UtilitiesYamlError/Exception: 0
 ```
 
 ## Legacy residual

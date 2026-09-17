@@ -46,6 +46,10 @@ class UtilitiesJsonContributor : StepDefinitionContributor {
         ReadJsonStepDefinition,
         WriteJsonStepDefinition,
         Sha256StepDefinition,
+        // LFC-2E2-EXPANSION U2: YAML families registered alongside the JSON ones
+        // through the same contributor (same plugin coordinate, same JAR).
+        pipeline.utilities.yaml.ReadYamlStepDefinition,
+        pipeline.utilities.yaml.WriteYamlStepDefinition,
     )
 
     companion object {

@@ -43,10 +43,14 @@ dependencies {
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    // LFC-2E2-EXPANSION U2: SnakeYAML for utilities.readYaml / utilities.writeYaml.
+    // Wide industry adoption, small surface (1 dependency), transitive-free.
+    compileOnly("org.yaml:snakeyaml:2.3")
 
     testImplementation("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
     testImplementation("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    testImplementation("org.yaml:snakeyaml:2.3")
     testImplementation(kotlin("test"))
 }
 

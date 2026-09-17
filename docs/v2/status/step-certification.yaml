@@ -98,13 +98,13 @@ e2_prep:
 
 counters:
   certified_core_steps: 12
-  certified_external_plugin_steps: 2
-  certified_total_steps: 14
+  certified_external_plugin_steps: 6
+  certified_total_steps: 18
   rejected_steps: 1
   stopped_g7_steps: 2
   implemented_uncertified_steps: 0
   not_started_steps: 0
-  total_production_step_keys: 17
+  total_production_step_keys: 21
   total_yaml_step_entries: 18  # 14 core + 2 external + 2 stopped + 1 rejected, but YAML counts families not status
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
@@ -177,6 +177,16 @@ counters:
         capability: utilities.sha.operations
         effect: READ_ONLY
         replay_policy: MEMOIZED
+      - step_key: utilities.readYaml
+        delivery: OFFICIAL_PLUGIN
+        capability: utilities.yaml.operations
+        effect: READ_ONLY
+        replay_policy: MEMOIZED
+      - step_key: utilities.writeYaml
+        delivery: OFFICIAL_PLUGIN
+        capability: utilities.yaml.operations
+        effect: WRITES_WORKSPACE
+        replay_policy: MEMOIZED
 
   # ────────────────────────────────────────────────────────────────────────
   # LFC-2E2-EXPANSION U1 — typed failure surface hardening
@@ -200,6 +210,41 @@ counters:
       The plugin package declares the typed ADT; production core stays unaware of it
       (no when (... UtilitiesJsonError) branch anywhere in pipeline-application).
       Verified mechanically by Lfc2E2ExpansionGateFitnessTest G4-4.
+
+  # ────────────────────────────────────────────────────────────────────────
+  # LFC-2E2-EXPANSION U2 — YAML support (new families, same contributor).
+  #
+  # Adds utilities.readYaml / utilities.writeYaml alongside the JSON families
+  # in the SAME contributor (UtilitiesJsonContributor) — same plugin
+  # coordinate, same JAR, same registry family. New capability token
+  # `utilities.yaml.operations`, new typed failure ADT UtilitiesYamlError
+  # (3 cases: YamlNotFound, YamlParseFailure, YamlIoFailure), new typed
+  # exception UtilitiesYamlException. The new SnakeYAML dependency is
+  # `compileOnly` (host-agnostic). Zero production core changes.
+  # ────────────────────────────────────────────────────────────────────────
+  e2_u2_yaml_families:
+    receipt: docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
+    contract_suite_rows: 17
+    new_families:
+      - utilities.readYaml
+      - utilities.writeYaml
+    new_capability_token: utilities.yaml.operations
+    new_dependency: org.yaml:snakeyaml:2.3 (compileOnly)
+    new_typed_cases:
+      - UtilitiesYamlError.YamlNotFound
+      - UtilitiesYamlError.YamlParseFailure
+      - UtilitiesYamlError.YamlIoFailure
+    production_core_changes: 0
+    same_contributor: true
+    notes: |
+      U2 proves the plugin model scales by adding a new family without any core change
+      and without spinning up a new contributor. The CapabilityAccessFactory seam
+      (U0) handles YAML the same way it handles JSON: host supplies
+      utilities.yaml.operations through the layered bridge; plugin handler reaches
+      it via ctx.capabilities.get(...). Verified mechanically by
+      Lfc2E2ExpansionGateFitnessTest G4-5 (typed ADT in plugin) and G5b (same
+      contributor exposes all 5 families).
 
 steps:
 
@@ -690,6 +735,59 @@ steps:
       First OFFICIAL_PLUGIN family with its own typed capability
       `utilities.sha.operations` (separate from `utilities.json.operations`) to
       prove the typed capability-per-port discipline scales beyond a single port.
+
+  - step_key: utilities.readYaml
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/yaml/UtilitiesYamlPlugin.kt
+    capability: utilities.yaml.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U2 family. Same OFFICIAL_PLUGIN coordinate
+      (`pipeline.utilities.json@1.0.0`) — adding the YAML families did NOT
+      require a new contributor; the existing one grew its `definitions()`
+      list. New capability `utilities.yaml.operations` registered through the
+      generic `CapabilityAccessFactory` seam (U0).
+
+  - step_key: utilities.writeYaml
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U2_YAML_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/yaml/UtilitiesYamlPlugin.kt
+    capability: utilities.yaml.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesYamlStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U2 family. Writes a JsonElement as YAML through the
+      SnakeYAML codec. The plugin layer projects JsonElement ↔ YAML tree at the
+      capability boundary so the public contract stays one shape (JSON),
+      independent of the source codec.
 
 # ────────────────────────────────────────────────────────────────────────
 # Roll-up assertions (machine-verifiable invariants)

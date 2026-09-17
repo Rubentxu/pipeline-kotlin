@@ -271,6 +271,56 @@ class Lfc2E2ExpansionGateFitnessTest {
         }
     }
 
+    @Test
+    fun `G4-5 YAML plugin (U2) declares its OWN typed UtilitiesYamlError sealed ADT + capability port (3 cases)`() {
+        val src = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/yaml/UtilitiesYamlPlugin.kt",
+        )
+        // The YAML plugin (a NEW package within the same OFFICIAL_PLUGIN coordinate) MUST
+        // declare its own typed failure ADT following the same pattern as U1's JSON: a sealed
+        // interface with at least YamlNotFound/YamlParseFailure/YamlIoFailure + a typed
+        // exception carrier + a capability port annotated @Throws(...).
+        assertTrue(
+            src.contains("sealed interface UtilitiesYamlError"),
+            "G4-5: YAML plugin must declare a sealed UtilitiesYamlError ADT",
+        )
+        assertTrue(
+            src.contains("class UtilitiesYamlException"),
+            "G4-5: YAML plugin must declare a typed UtilitiesYamlException",
+        )
+        listOf("YamlNotFound", "YamlParseFailure", "YamlIoFailure").forEach { variant ->
+            assertTrue(
+                src.contains("data class $variant") || src.contains("class $variant"),
+                "G4-5: UtilitiesYamlError must include the variant $variant",
+            )
+        }
+        // Capability port annotation: each read/write fun MUST declare @Throws(UtilitiesYamlException::class)
+        // so callers know they need to catch the typed exception.
+        assertTrue(
+            src.contains("@Throws(UtilitiesYamlException::class)"),
+            "G4-5: YAML capability port MUST annotate its functions with @Throws(UtilitiesYamlException::class)",
+        )
+        // The new capability token `utilities.yaml.operations` MUST be declared in the YAML
+        // package and MUST NOT collide with the existing JSON tokens.
+        assertTrue(
+            src.contains("StepCapability(\"utilities.yaml.operations\")"),
+            "G4-5: YAML plugin must declare utilities.yaml.operations capability token",
+        )
+        // Production core stays unaware of the YAML package.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesYamlError") || prodSrc.contains("UtilitiesYamlException"),
+                "G4-5: production core must NOT reference UtilitiesYamlError/Exception (path: $path)",
+            )
+        }
+    }
+
     // ───────────────────────────────────────────────────────────────────────
     // G5/G6 — Plugin absent / installed / removed lifecycle for core Steps
     //
@@ -291,6 +341,32 @@ class Lfc2E2ExpansionGateFitnessTest {
         assertTrue(
             "example.uppercase" in ids,
             "G5: example.uppercase must be discovered on the test classpath (got $ids)",
+        )
+    }
+
+    @Test
+    fun `G5b YAML families are registered alongside JSON families in the same contributor`() {
+        // U2: the YAML families ship under the SAME contributor id as the JSON families
+        // (pipeline.utilities.json). Adding a new family to an existing plugin MUST NOT
+        // require a new contributor; the canonical idempotent registry-driven discovery
+        // surface grows the existing contributor's definitions().
+        val registry = InMemoryStepRegistry().apply {
+            ServiceLoader.load(StepDefinitionContributor::class.java).toList().forEach { contributor ->
+                contributor.definitions().forEach { def -> register(def) }
+            }
+        }
+        assertTrue(registry.contains(PluginStepId("utilities.readYaml")))
+        assertTrue(registry.contains(PluginStepId("utilities.writeYaml")))
+        // The plugin coordinate is the contributor id; both YAML and JSON families share it.
+        val yamlContributor = ServiceLoader.load(StepDefinitionContributor::class.java).toList()
+            .first { it.id == "pipeline.utilities.json" }
+        val ids = yamlContributor.definitions().map { it.contract.key.value }.toSet()
+        assertTrue(
+            "utilities.readYaml" in ids && "utilities.writeYaml" in ids &&
+                "utilities.readJSON" in ids && "utilities.writeJSON" in ids &&
+                "utilities.sha256" in ids,
+            "G5b: single utilities contributor must expose all 5 families " +
+                "(readYaml + writeYaml + readJSON + writeJSON + sha256), got: $ids",
         )
     }
 

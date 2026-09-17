@@ -6,7 +6,7 @@ Source inputs: `JENKINS_FAMILIARITY_CATALOG.md`, current v2 implementation, ADR-
 **Certification snapshot (LFC-2E0 closure, 2026-09-17):**
 
 ```text
-CERTIFIED:                              14
+CERTIFIED:                              20
   core.echo                             (registry; CoreEchoStep;                  S3 burn-down)
   core.sh                               (registry; CoreShellStep;                 LB-02 S6 burn-down)
   core.error                            (registry; CoreErrorStep;                 S2-A1 burn-down)
@@ -26,6 +26,18 @@ CERTIFIED:                              14
                                         ServiceLoader; typed capability port `utilities.json.operations`)
   utilities.sha256                      (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
                                         ServiceLoader; typed capability port `utilities.sha.operations`)
+  utilities.readYaml                    (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.yaml.operations`;
+                                        LFC-2E2 U2 YAML families)
+  utilities.writeYaml                   (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.yaml.operations`;
+                                        LFC-2E2 U2 YAML families)
+  utilities.readProperties              (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.properties.operations`;
+                                        LFC-2E2 U3 properties families)
+  utilities.writeProperties             (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.properties.operations`;
+                                        LFC-2E2 U3 properties families)
 
 STOPPED_G7:                              2
   core.pwd                              (registry; CorePwdStep; LEGACY_REMOVED at S2-A6/G5;

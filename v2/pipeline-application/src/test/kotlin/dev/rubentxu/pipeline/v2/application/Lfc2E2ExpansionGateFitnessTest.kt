@@ -321,6 +321,50 @@ class Lfc2E2ExpansionGateFitnessTest {
         }
     }
 
+    @Test
+    fun `G4-6 properties plugin (U3) declares its OWN typed UtilitiesPropertiesError sealed ADT + capability port (2 cases)`() {
+        val src = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/properties/UtilitiesPropertiesPlugin.kt",
+        )
+        // U3 follows the U1/U2 typed-failure pattern: a sealed ADT with PropertiesNotFound /
+        // PropertiesIoFailure + a typed exception carrier + a capability port annotated @Throws(...).
+        assertTrue(
+            src.contains("sealed interface UtilitiesPropertiesError"),
+            "G4-6: properties plugin must declare a sealed UtilitiesPropertiesError ADT",
+        )
+        assertTrue(
+            src.contains("class UtilitiesPropertiesException"),
+            "G4-6: properties plugin must declare a typed UtilitiesPropertiesException",
+        )
+        listOf("PropertiesNotFound", "PropertiesIoFailure").forEach { variant ->
+            assertTrue(
+                src.contains("data class $variant") || src.contains("class $variant"),
+                "G4-6: UtilitiesPropertiesError must include the variant $variant",
+            )
+        }
+        assertTrue(
+            src.contains("@Throws(UtilitiesPropertiesException::class)"),
+            "G4-6: properties capability port MUST annotate its functions with @Throws(UtilitiesPropertiesException::class)",
+        )
+        assertTrue(
+            src.contains("StepCapability(\"utilities.properties.operations\")"),
+            "G4-6: properties plugin must declare utilities.properties.operations capability token",
+        )
+        // Production core stays unaware of the properties package.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesPropertiesError") || prodSrc.contains("UtilitiesPropertiesException"),
+                "G4-6: production core must NOT reference UtilitiesPropertiesError/Exception (path: $path)",
+            )
+        }
+    }
+
     // ───────────────────────────────────────────────────────────────────────
     // G5/G6 — Plugin absent / installed / removed lifecycle for core Steps
     //

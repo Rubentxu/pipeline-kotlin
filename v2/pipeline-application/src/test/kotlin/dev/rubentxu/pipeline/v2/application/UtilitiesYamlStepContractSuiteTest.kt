@@ -170,8 +170,8 @@ class UtilitiesYamlStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.readJSON")))
         assertTrue(r.contains(PluginStepId("utilities.writeJSON")))
         assertTrue(r.contains(PluginStepId("utilities.sha256")))
-        // 5 utilities + 1 example.uppercase from the sibling plugin on the test classpath.
-        assertEquals(6, r.keys().size)
+        // 3 JSON + 2 YAML + 2 properties + 1 example.uppercase from the sibling plugin.
+        assertEquals(8, r.keys().size)
     }
 
     @Test

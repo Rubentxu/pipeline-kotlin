@@ -50,6 +50,10 @@ class UtilitiesJsonContributor : StepDefinitionContributor {
         // through the same contributor (same plugin coordinate, same JAR).
         pipeline.utilities.yaml.ReadYamlStepDefinition,
         pipeline.utilities.yaml.WriteYamlStepDefinition,
+        // LFC-2E2-EXPANSION U3: properties families registered through the same
+        // contributor (same plugin coordinate, same JAR).
+        pipeline.utilities.properties.ReadPropertiesStepDefinition,
+        pipeline.utilities.properties.WritePropertiesStepDefinition,
     )
 
     companion object {

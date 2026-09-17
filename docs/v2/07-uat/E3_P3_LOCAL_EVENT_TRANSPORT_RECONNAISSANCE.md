@@ -4,7 +4,7 @@
 | --- | --- |
 | Cycle | LFC-2E3-P — PLATFORM HARDENING |
 | Slice | P3 — local event transport |
-| Status | **NOT STARTED.** Reconnaissance complete; design frozen below. |
+| Status | **P3.0 DONE** (protective fitness + RED). P3.1..P3.6 not started. Design frozen below. |
 | Predecessors | P1 (`48e6b3b5`), P2 (`511ff329`), P2.1 (`c4b0d5a5`) |
 | Law already in `AGENTS.md` | § LOCAL EVENT TRANSPORT (written ahead of implementation) |
 
@@ -34,6 +34,51 @@ Verified integration points (all in `v2/pipeline-events/src/main/kotlin/dev/rube
 Each arm is mechanical (mostly `event.copy(sequence = assignedSequence)` or a JSON field block), so
 the slice is bounded — but it must be done in one pass and verified with a serialization
 round-trip plus a persistence round-trip, not just a compile.
+
+## 1b. ARCHITECTURAL CORRECTION — one generic carrier, not plugin-specific cases
+
+The first design added `DomainEvent.TestReportPublished` / `TestSuiteCompleted` /
+`TestFailuresDetected` directly to the core hierarchy. **That was wrong**, and the six-switch
+finding was the clue: it would mean every future plugin (coverage, SCM, HTTP, artifacts,
+containers) re-editing core. The platform would claim "zero core edits per plugin" for Steps while
+requiring six per plugin EVENT — false extensibility.
+
+Corrected split:
+
+```text
+PipelineEventEnvelope            (canonical, core)
+  +- eventId
+  +- runId
+  +- invocationId                (to add)
+  +- sequence                    (from the canonical run mechanism, never the plugin)
+  +- DomainEvent.PluginEvent     (the ONE generic carrier core learns ONCE)
+        +- provider
+        +- eventType             (plugin-owned, namespaced)
+        +- schemaVersion
+        +- payload               (encoded)
+        +- resourceRefs
+```
+
+Core learns `PluginEvent` once; `utilities.*`, `testing.*`, `coverage.*`, `scm.*`, `http.*` and
+`artifacts.*` never touch the hierarchy again.
+
+Typing is preserved: events stay typed INSIDE the plugin (a sealed `TestingEvent` plus an explicit
+codec to/from the carrier payload), and open ACROSS the platform boundary — the same
+"closed core mechanics + open plugin catalog" shape as Steps.
+
+## 1c. Implementation split (corrected)
+
+```text
+P3.0 RED + protection   done   prove a new plugin event currently needs core edits; freeze the
+                               core catalog; forbid plugin-domain names in core
+P3.1 generic carrier    next   DomainEvent.PluginEvent + wire the six integration points ONCE
+P3.2 plugin event codec        typed plugin event -> encoded carrier
+P3.3 capability                LOCAL_EVENT_PUBLISHER_CAPABILITY; host owns envelope/identity/sequence
+P3.4 E3 testing events         publish the three typed testing events over the carrier
+P3.5 replay/idempotency        stable eventIds + Harness dedupe by eventId
+P3.6 observer isolation        a throwing subscriber cannot alter the committed canonical result
+P3-GATE                        Lfc2PluginEventExtensibilityFitnessTest stays green
+```
 
 ## 2. Design (frozen)
 
@@ -193,3 +238,56 @@ HEAD      c4b0d5a5
 tree      clean
 tests     239 plugin-suite tests, 0 failures, 0 errors
 ```
+
+---
+
+# P3.0 — DELIVERED
+
+`Lfc2PluginEventExtensibilityFitnessTest` (4 rows). Exactly one row is RED; the other three already
+pass and are the architectural protection:
+
+| Row | State | Meaning |
+| --- | --- | --- |
+| `RED - core exposes exactly ONE generic carrier for plugin-authored events` | **RED** | P3.1 acceptance criterion; fails until `DomainEvent.PluginEvent` exists |
+| `the core event catalog is frozen` | pass | the 45 core cases are pinned; any change is a deliberate edit to the frozen set |
+| `no core event case is named after a plugin domain` | pass | `CoverageCalculated` / `JUnitPublished` / `ArtifactUploaded` in core is rejected BY NAME |
+| `core serialization and persistence do not know plugin-owned event types` | pass | scans the six machinery files for plugin-domain event names |
+
+This is the artifact that stops the architecture being re-closed in six months: the guards do not
+depend on anyone remembering the rule, and the RED row states the P3.1 contract precisely.
+
+## Volume contract (frozen, not yet implemented)
+
+```text
+1 TestReportPublished per report
+0..N TestSuiteCompleted, one per LOGICAL suite, NEVER one per testcase
+0..1 TestFailuresDetected per report (a SUMMARY: failedCount, errorCount,
+     suiteCountWithFailures, reportRef -- not a copy of every failure)
+```
+
+```text
+event volume = O(suites), not O(test cases)
+```
+
+No artificial hard cap: a cap would discard domain information arbitrarily. The contract is the
+per-suite/per-report shape above, and details stay in `TestReport`.
+
+## Identity contract (frozen, not yet implemented)
+
+```text
+eventId = hash(runId, invocationId, eventType, logicalEventKey)
+
+logicalEventKey(TestReportPublished)   = report identity
+logicalEventKey(TestSuiteCompleted)    = report identity + suite identity
+logicalEventKey(TestFailuresDetected)  = report identity
+```
+
+A replay therefore reproduces the SAME logical `eventId`. `sequence` is NOT computed by the plugin:
+it comes from the canonical run mechanism.
+
+## A note on probe reliability (learned here)
+
+The first version of the catalog probe used `DomainEvent::class.java.declaredClasses`. On a Kotlin
+sealed interface that returns a synthetic **empty-named** entry, so the probe silently compared
+against the wrong set. Switched to a source scan, which is also the idiom this repository already
+uses for catalog fitness. Reflection over Kotlin sealed hierarchies is not a reliable catalog read.

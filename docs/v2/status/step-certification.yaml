@@ -3,10 +3,11 @@
 # Authority: docs/v2/07-uat/STEP_CERTIFICATION_MATRIX.md (human-readable rollup),
 # docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md (full inventory + provenance),
 # docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md (REJECTED classification),
-# docs/v2/00-governance/CORE_STEP_ADMISSION.md (admission record, LFC-2E1 freeze).
+# docs/v2/00-governance/CORE_STEP_ADMISSION.md (admission record, LFC-2E1 freeze),
+# docs/v2/00-governance/PLUGIN_AUTHORING.md (plugin authoring, LFC-2E2-PREP).
 #
-# Updated: 2026-09-17 (LFC-2E1 UNIVERSAL CORE FREEZE — FASE 4 of the SDDK cycle).
-# Previous update: 2026-09-17 (LFC-2E0 GLOBAL CLOSURE — FASE 3 of the SDDK cycle).
+# Updated: 2026-09-17 (LFC-2E2-PREP — FASE 5 of the SDDK cycle).
+# Previous update: 2026-09-17 (LFC-2E1 UNIVERSAL CORE FREEZE — FASE 4 of the SDDK cycle).
 #
 # Schema:
 #   step_key:               unique identifier
@@ -49,9 +50,9 @@
 #   ADMITTED_EXTERNAL:         1
 #   ADMITTED_TOTAL:           16  (every Step in this YAML has an admission status)
 
-version: 3
-generated_by: "LFC-2E1 UNIVERSAL CORE FREEZE (FASE 4)"
-generated_at: "2026-09-17T09:36Z"
+version: 4
+generated_by: "LFC-2E2-PREP (FASE 5)"
+generated_at: "2026-09-17T09:42Z"
 cycle: "cycle/wu-g5b"
 freeze:
   active: true
@@ -73,6 +74,25 @@ freeze:
       - v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt
       - v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWaitUntilStep.kt
       - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/StepDescriptorRegistry.kt
+e2_prep:
+  active: true
+  prep_receipt: docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+  authoring_guide: docs/v2/00-governance/PLUGIN_AUTHORING.md
+  prep_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lfc2E2PrepFitnessTest.kt
+  rules:
+    - "C1: ResourceKind.STEP_DEFINITION + ResourceRefs.stepDefinition"
+    - "C2: ResourceKind.PLUGIN_RELEASE + PluginReleaseRef"
+    - "C3/C5/C6: PluginManifest typed ADT with declaredCapabilities + invariants"
+    - "C4: PluginFamilyCapabilityFamily sealed ADT"
+    - "C5: PluginAdmissionPolicy sealed ADT (Ready/MissingCapabilities/Malformed)"
+    - "C7: no duplicate StepKeys within a manifest (fail-closed at construction)"
+    - "C8/C10: zero production code change to coordinator/dispatcher/compiler"
+    - "C9: PolicyReadinessFitness (10/10 GREEN) — one assertion per C1..C10"
+  data_shapes:
+    - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/plugin/PluginManifest.kt
+    - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/plugin/PluginAdmissionPolicy.kt
+    - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/identity/ResourceKind.kt
+    - v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/identity/ResourceRefs.kt
 
 counters:
   certified_core_steps: 12
@@ -93,12 +113,24 @@ counters:
     core_primitive_stopped_g7: 2  # pwd, pwd.tmp
     core_primitive_rejected: 1  # load
     external_plugin_reference: 1  # example.uppercase
+    official_plugin: 0  # FASE 6 will ship the first OFFICIAL_PLUGIN
   freeze_status:
     admitted: 12  # 11 core_primitive + 1 orchestration_block_step (waitUntil)
     admitted_stopped_g7: 2
     admitted_rejected: 1
     admitted_external: 1
     admitted_total: 16
+  e2_prep:
+    c1_step_definition_kind: ADDED
+    c2_plugin_release_kind: ADDED
+    c3_plugin_manifest: ADDED
+    c4_capability_family: ADDED
+    c5_admission_policy: ADDED
+    c6_constructor_invariants: ADDED
+    c7_unique_step_keys: ENFORCED_AT_CONSTRUCTION
+    c8_event_metadata: DEFERRED_TO_FASE_6  # resource kind ready; wiring in FASE 6
+    c9_policy_readiness_fitness: 10_OF_10_GREEN
+    c10_core_backwards_compat: VERIFIED  # zero production code change
 
 steps:
 

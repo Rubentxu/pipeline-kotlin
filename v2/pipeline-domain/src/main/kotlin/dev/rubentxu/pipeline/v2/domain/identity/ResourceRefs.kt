@@ -49,4 +49,21 @@ object ResourceRefs {
                 "op", opKey,
             ),
         )
+
+    /**
+     * LFC-2E2-PREP (C1, 2026-09-17): the registered Step family resource.
+     *
+     * Identifies a typed Step family — a [dev.rubentxu.pipeline.v2.domain.step.StepDefinition]
+     * registered in a [dev.rubentxu.pipeline.v2.domain.step.StepRegistry]. The shape
+     * is `<ns=pipeline, step-definition/<pluginStepId.value>>`.
+     *
+     * One resource per `PluginStepId`, regardless of how many invocations run.
+     * The [step] and [operation] builders continue to identify per-invocation
+     * identities; [stepDefinition] identifies the family.
+     */
+    fun stepDefinition(pluginStepId: String): ResourceRef =
+        ResourceRef(
+            ResourceKind.STEP_DEFINITION,
+            listOf(NAMESPACE, "step-definition", pluginStepId),
+        )
 }

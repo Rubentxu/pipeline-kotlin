@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.network.HttpTests" tests="1" skipped="0" failures="0" errors="1" timestamp="2026-09-17T10:20:00" hostname="ci-runner-1" time="0.500">
+  <testcase name="testConnectsToApi" classname="com.example.network.HttpTests" time="0.500">
+    <error message="java.net.SocketTimeoutException: connect timed out" type="java.net.SocketTimeoutException">
+      <![CDATA[java.net.SocketTimeoutException: connect timed out
+	at java.base/sun.nio.ch.Net.connect(Net.java:579)
+	at com.example.network.HttpTests.testConnectsToApi(HttpTests.java:28)]]>
+    </error>
+  </testcase>
+</testsuite>

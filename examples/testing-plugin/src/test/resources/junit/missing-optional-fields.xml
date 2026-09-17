@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.MinimalTests" time="0.001">
+  <testcase name="noAttributes" time="0.001"/>
+</testsuite>

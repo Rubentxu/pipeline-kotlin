@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="com.example.calculator.AdditionTests" tests="2" skipped="1" failures="0" errors="0" timestamp="2026-09-17T10:15:30" hostname="ci-runner-1" time="0.123">
+    <testcase name="testAddPositive" classname="com.example.calculator.AdditionTests" time="0.012"/>
+    <testcase name="testAddSkipped" classname="com.example.calculator.AdditionTests" time="0.000">
+      <skipped message="flaky test"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="com.example.calculator.MultiplicationTests" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-17T10:15:31" hostname="ci-runner-1" time="0.045">
+    <testcase name="testMultiply" classname="com.example.calculator.MultiplicationTests" time="0.045"/>
+  </testsuite>
+</testsuites>

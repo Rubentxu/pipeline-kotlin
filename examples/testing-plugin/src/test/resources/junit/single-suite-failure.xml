@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.calculator.AdditionTests" tests="3" skipped="0" failures="1" errors="0" timestamp="2026-09-17T10:15:30" hostname="ci-runner-1" time="0.123">
+  <testcase name="testAddPositive" classname="com.example.calculator.AdditionTests" time="0.012"/>
+  <testcase name="testAddNegative" classname="com.example.calculator.AdditionTests" time="0.005">
+    <failure message="expected 1 to equal 2" type="org.opentest4j.AssertionFailedFailure">
+      <![CDATA[org.opentest4j.AssertionFailedFailure: expected 1 to equal 2
+	at org.opentest4j.Assertions.fail(Assertions.java:56)
+	at com.example.calculator.AdditionTests.testAddNegative(AdditionTests.java:42)]]>
+    </failure>
+  </testcase>
+  <testcase name="testAddZero" classname="com.example.calculator.AdditionTests" time="0.003"/>
+</testsuite>

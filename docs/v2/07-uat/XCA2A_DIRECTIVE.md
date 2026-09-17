@@ -86,9 +86,16 @@ Events remain observability. The durable journal remains the execution authority
 2A.6  installed-distribution acceptance: real distribution, real CLI, real RunId, real
       pipeline (small, deterministic, >= 2 distinct StepKeys, e.g. echo + sh).
       The test MUST NOT inspect the certification YAML.
-2A.7  negatives: unknown RunId fails closed with a typed result (do not equate empty list
-      with unknown run); declared-but-unexecuted is NOT observed; failed Step IS observed;
-      replay does not duplicate a logical invocation.
+2A.7  negatives:
+      - unknown RunId: fail closed with an EXPLICIT distinction, never `empty list`:
+            RunEvidenceReadResult.Found(invocations)
+            RunEvidenceReadResult.RunNotFound(runId)
+        (or an equivalent ADT if the existing domain already has a compatible one).
+        Rationale: a real run containing zero Steps could legitimately produce an empty
+        list, so empty must not be overloaded to mean "unknown run".
+      - declared-but-unexecuted: structurally present but never executed -> NOT observed
+      - failed Step: executed and failed -> IS observed (execution, not success)
+      - replay: does not duplicate the same logical invocation
 2A.8  architecture fitness: upper layers cannot reach the journal backend; reader cannot
       depend on SQLite impl, YAML ledger, event persistence, or retry/waitUntil journals;
       evidence ADTs contain no certification concepts. Check real structure, not comment text.

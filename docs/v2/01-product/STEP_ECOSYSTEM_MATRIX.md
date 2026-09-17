@@ -83,7 +83,7 @@ Priority:
 | `milestone` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P2 | **legacy** (`core.milestone`); needs burn-down |
 | `deleteDir` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P1 | **legacy** (`core.deleteDir`); needs burn-down |
 | `cleanWs` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P1 | **legacy** (`core.cleanWs`); needs burn-down |
-| `load` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P2 | **legacy** (`core.load`); needs burn-down |
+| `load` | REJECTED (CORE-LOAD-REJECTED 2026-09-17) | REJECTED | (n/a) | **REJECTED** — directive forbids second-execution-engine shape; SPIKE-018 §1.3 declares it the LAST legacy lift; future design item requires new `SCRIPT_COMPILATION_CAPABILITY` + `BODY_INVOKER_CAPABILITY` (out of LFC-2 scope) |
 | `pwd` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy** (`core.pwd`); needs burn-down |
 | `isUnix` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P0 | **legacy** (`core.isUnix`); needs burn-down |
 | `waitUntil` | CORE | LEGACY_IMPLEMENTED_UNCERTIFIED | P1 | **legacy** (`core.waitUntil`); needs burn-down |

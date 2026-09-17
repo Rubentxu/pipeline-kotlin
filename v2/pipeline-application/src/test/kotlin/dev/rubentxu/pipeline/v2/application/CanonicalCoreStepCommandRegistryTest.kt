@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
@@ -36,50 +34,55 @@ import org.junit.jupiter.api.Test
  *   the canonical RepeatUntil machinery (BlockStepNode(BodyExecutionPolicy.RepeatUntil)
  *   → dispatchRepeatUntilBody in CanonicalDurableRunCoordinator). Counter converges
  *   2/2/2 -> 1/1/1.
- * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
+ *   CORE-LOAD-REJECTED (2026-09-17, this slice): "core.load" REJECTED. All six legacy
+ *   forms physically deleted (subtype, decoder branch + constant, metadata row,
+ *   dispatcher file, DSL façade `load(path)`, `StepSpec.Load` data class). Counter
+ *   converges 1/1/1 -> 0/0/0 — FIRST ZERO LEGACY RESIDUAL. The sealed
+ *   `CanonicalCoreStepCommand` hierarchy has zero legacy constructors.
+ * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set
+ *   (empty set post-CORE-LOAD-REJECTED).
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
  * This test enforces EC-9: adding a new step variant requires exactly
  * 3 edits across 2 files (variant + decoder when + dispatcher when).
+ *
+ * **Note on EC-9 (2026-09-17):** with LEGACY_PLUGIN_IDS = {}, adding a new legacy
+ * variant now requires ALSO a registry StepDefinition (or a REJECTED justification).
+ * The "3 edits, 2 files" cost was correct for the historical legacy surface but is
+ * not the future-shape cost; the future-shape cost is registry-burn-down G0..G8.
+ * See `STEP_CONSTITUTION` / ADR-0070..0074 / `S2_A5_CORE_LOAD_REJECTION_RECEIPT.md`.
  */
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 1 entry`() {
+    fun `sealedSubclasses has zero entries — ZERO LEGACY RESIDUAL`() {
+        // CORE-LOAD-REJECTED (2026-09-17): the sealed CanonicalCoreStepCommand hierarchy
+        // has no remaining legacy constructors. `Load` was the last subtype and it is
+        // now physically deleted. Adding a new subtype requires both a legacy
+        // justification AND a parallel registry StepDefinition (or a REJECTED decision);
+        // see the test docstring's "Note on EC-9" and
+        // `S2_A5_CORE_LOAD_REJECTION_RECEIPT.md` for the full reasoning.
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(1, subclasses.size, "Expected exactly 1 sealed subtype (Load). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(
+            0,
+            subclasses.size,
+            "Expected zero sealed subtypes post-CORE-LOAD-REJECTED (FIRST ZERO LEGACY RESIDUAL). " +
+                "Found: ${subclasses.map { it.simpleName }}",
+        )
     }
 
     @Test
-    fun `LEGACY_PLUGIN_IDS matches expected set`() {
-        val expected = setOf(
-            // core.sleep removed at LFC-2E1-S2-A2 / G5 (registry-routed, CERTIFIED).
-            // core.file.writeFile removed at LFC-2E1-S2-A3 / G4 (registry-routed).
-            // core.emit.event removed at LFC-2E1-S2-A4 / G4 (registry-routed).
-            // S2-A5 / G4 (2026-09-12): "core.isUnix" removed — REGISTRY_PRIMARY flip.
-            // S2-A5 / G5 (2026-09-12): "core.isUnix" legacy subtype/decoder/dispatcher/metadata
-            // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
-            // open registry (CoreIsUnixStep.descriptor via RegistryStepMetadataResolver).
-            // S2-A6 / G4 (2026-09-12): "core.pwd" removed — REGISTRY_PRIMARY flip.
-            // S2-A6 / G5 (2026-09-12): "core.pwd" legacy subtype/decoder/dispatcher/metadata
-            // physically deleted (LEGACY_REMOVED). Production authority is exclusively
-            // the open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
-            // core.milestone removed at LFC-2E1-S2-A9 / G5 (registry-routed, CERTIFIED).
-            // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
-            // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
-            // row/dispatcher physically deleted (LEGACY_REMOVED).
-            // S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
-            // S2-A10 / G5 (2026-09-13): "core.cleanWs" legacy subtype/decoder branch/
-            // dispatcher file/metadata row physically deleted (LEGACY_REMOVED). Counter
-            // converges 3/4/4 -> 3/3/3.
-            // P1a — workflow-control (v0.33.0)
-            "core.load",
-            // P2 — archiveArtifacts (v0.33.1): removed at S2-B10 / G5 (LEGACY_REMOVED).
-            // WU-G5B (2026-09-17): "core.waitUntil" legacy subtype/decoder/dispatcher/metadata
-            // physically deleted (LEGACY_REMOVED). Counter converges 2/2/2 -> 1/1/1.
+    fun `LEGACY_PLUGIN_IDS is the empty set — ZERO LEGACY RESIDUAL`() {
+        val expected = emptySet<String>()
+        // Assert against the registry — single source of truth, no duplication.
+        // Historical entries (echo, sh, error, sleep, writeFile, emitEvent, isUnix,
+        // pwd, milestone, deleteDir, cleanWs, waitUntil, load, archiveArtifacts) all
+        // retired via burn-down (LEGACY_REMOVED → CERTIFIED) or rejection (load).
+        assertEquals(
+            expected,
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS must be empty post-CORE-LOAD-REJECTED — FIRST ZERO LEGACY RESIDUAL",
         )
-        // Assert against the registry — single source of truth, no duplication
-        assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
     }
 
     // S2-A4 / G5: EmitEvent legacy command removed (LEGACY_REMOVED); its historical
@@ -100,13 +103,11 @@ class CanonicalCoreStepCommandRegistryTest {
     // CoreCleanWsStepContractSuiteTest against CoreCleanWsStep.descriptor — the
     // registry authority.
 
-    @Test
-    fun `Load has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.Load(path = "loaded.pipeline.kts")
-        assertEquals("core.load", instance.pluginId)
-        assertEquals(setOf(Effect.EXECUTES_SUBPROCESS), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // CORE-LOAD-REJECTED (2026-09-17): "Load has correct pluginId and defaultMetadata"
+    // removed (REJECTED). `core.load` is REJECTED; no legacy subtype, no descriptor,
+    // no test row. The historical Effect.EXECUTES_SUBPROCESS + ReplayPolicy.MEMOIZED
+    // assertion was incorrect (load is in-process script evaluation, not subprocess —
+    // see SPIKE-018 §1.3). The burn-down ledger has its FIRST ZERO LEGACY RESIDUAL.
 
     // P1b — utility canonical step families
 

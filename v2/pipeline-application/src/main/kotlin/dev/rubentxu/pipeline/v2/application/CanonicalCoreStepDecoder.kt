@@ -159,7 +159,18 @@ sealed interface CanonicalCoreStepCommand {
             // in CanonicalDurableRunCoordinator). The DSL `waitUntil { body }` lowers to
             // StepSpec.WaitUntilBlock → BlockStepNode(BodyExecutionPolicy.RepeatUntil) and
             // never reaches this decoder. Counter converges 2/2/2 -> 1/1/1 (only `core.load`).
-            "core.load",
+            // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): physical removal of legacy forms for
+            // core.load (REJECTED). CanonicalCoreStepCommand.Load subtype, LOAD_PLUGIN_ID
+            // constant + decoder branch, CanonicalCoreStepMetadata["core.load"] row,
+            // CanonicalLoadNodeDispatcher.kt, and the CanonicalNodeDispatcher load seams
+            // (field, when branch, loadContext) are all removed in this slice. `core.load`
+            // is classified REJECTED (Delivery = REJECTED, State = REJECTED) — the legacy
+            // path was a silent no-op (SPIKE-018 §1.4) plus a latent contract defect
+            // (SPIKE-018 §1.2); the directive forbids the only realistic implementation shape
+            // ("handler → compiler arbitrario → execute child pipeline como segundo execution
+            // engine"). The DSL `load(path)` function and StepSpec.Load subtype are also
+            // removed; no compatibility fixture uses them. Counter converges 1/1/1 -> 0/0/0
+            // (FIRST ZERO LEGACY RESIDUAL in the LFC-2E0 burn-down).
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
@@ -202,14 +213,17 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-05: load step — reads and evaluates a pipeline script file in the workspace.
-     * Re-entrant: subsequent calls with same (path, sha256) are skipped.
+     * T-05: load step — REJECTED at S2-A5 / CORE-LOAD-REJECTED (2026-09-17).
+     * The legacy `core.load` execution path was a silent no-op (SPIKE-018 §1.4)
+     * plus a latent contract defect (SPIKE-018 §1.2); the directive forbids the
+     * only realistic implementation shape. `core.load` is classified REJECTED
+     * (Delivery = REJECTED, State = REJECTED). Production code never sees this key.
+     * Legacy forms removed in this slice: Load subtype, LOAD_PLUGIN_ID + decoder
+     * branch, CanonicalCoreStepMetadata["core.load"] row, CanonicalLoadNodeDispatcher.kt,
+     * and the CanonicalNodeDispatcher load seams (field, when branch, loadContext).
+     * The DSL `load(path)` function and StepSpec.Load subtype are also removed.
+     * See docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md and SPIKE-018.
      */
-    data class Load(
-        val path: String,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.load"
-    }
 
     /**
      * T-07: pwd step — DELETED at S2-A6 / G5 (LEGACY_REMOVED). The `core.pwd` execution
@@ -251,7 +265,9 @@ object CanonicalCoreStepDecoder {
     // The raw core.cleanWs envelope is consumed structurally (WsCleaned event, pre-decode)
     // and executively by CoreCleanWsStep via the registry — never here. The DSL `cleanWs(...)`
     // lowers directly to StepSpec.RegistryStepSpec (S2-A10 / G5).
-    private const val LOAD_PLUGIN_ID = "core.load"
+    // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): LOAD_PLUGIN_ID removed with the rejected
+    // branch. core.load is REJECTED; production code never sees this key. The DSL `load(path)`
+    // function and StepSpec.Load subtype are removed.
     // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     // WU-G5B (2026-09-17): WAIT_UNTIL_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
@@ -282,14 +298,8 @@ object CanonicalCoreStepDecoder {
             // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
             // The raw core.cleanWs envelope is consumed structurally (WsCleaned event,
             // pre-decode) and executively by CoreCleanWsStep via the registry — never here.
-            LOAD_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "load") {
-                    "Payload kind must be 'load' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.Load(
-                    path = payload.requiredString("path"),
-                )
-            }
+            // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): LOAD_PLUGIN_ID decoder branch removed
+            // (REJECTED). A core.load node now falls through to the `else` rejection below.
             // S2-A6 / G5: PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd
             // envelope is consumed structurally (PwdResolved event, pre-decode) and
             // executively by CorePwdStep via the registry — never here. The DSL
@@ -307,6 +317,10 @@ object CanonicalCoreStepDecoder {
             // `else` rejection below — as it must, since the registry and not this decoder
             // is its execution authority. That rejection is asserted behaviourally by the
             // contract suite (no silent fall-through to a no-op).
+            // CORE-LOAD-REJECTED (2026-09-17): with core.load REJECTED, every legacy
+            // canonical core plugin id has been retired. The decoder now contains zero
+            // arms and a typed rejection; an unknown key always fails closed with the
+            // canonical `Unsupported core plugin step` rejection.
             else -> throw IllegalArgumentException(
                 "Unsupported core plugin step '${node.pluginStepId.value}' for '${node.id.value}'"
             )

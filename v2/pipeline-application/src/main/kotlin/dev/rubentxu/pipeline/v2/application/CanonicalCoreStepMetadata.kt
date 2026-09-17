@@ -30,12 +30,16 @@ object CanonicalCoreStepMetadata {
         // RegistryStepMetadataResolver. This is what makes the registry the pre-decode
         // metadata authority for the key: no legacy row exists to fall back to.
         // S2-B10 / G5 metadata counter converges 3/3/3 -> 2/2/2.
-        "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
         // WU-G5B (2026-09-17): "core.waitUntil" row removed (LEGACY_REMOVED).
         // Production metadata for core.waitUntil is the canonical RepeatUntil machinery
         // (BodyExecutionPolicy.RepeatUntil carries its own descriptor-level metadata; the
         // StepDescriptor is the registry authority, and the canonical decoder never sees
         // this key). Counter converges 2/2/2 -> 1/1/1 (only `core.load`).
+        // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): "core.load" row removed (REJECTED).
+        // Production metadata for core.load is undefined; the Step is REJECTED. The legacy
+        // `Effect.EXECUTES_SUBPROCESS` row was incorrect (load is in-process script evaluation,
+        // not subprocess spawning — see SPIKE-018 §1.3). Counter converges 1/1/1 -> 0/0/0
+        // (FIRST ZERO LEGACY RESIDUAL).
     )
 
     /** Durable metadata for a canonical core plugin; fails fast when a plugin id is not registered. */

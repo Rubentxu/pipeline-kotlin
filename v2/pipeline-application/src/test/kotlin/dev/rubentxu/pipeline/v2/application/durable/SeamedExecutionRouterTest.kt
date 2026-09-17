@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CoreEchoStep
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
@@ -48,17 +47,14 @@ class SeamedExecutionRouterTest {
         decodedInput = "decoded-input",
     )
 
-    @Test
-    fun `a legacy family prepared execution reaches only the legacy executor once`() = runBlocking {
-        val legacy = RecordingBoundary()
-        val registry = RecordingBoundary()
-        val routed = SeamedExecutionRouter.route(legacy, registry)
-
-        routed.execute(PreparedLegacyExecution(CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")), runtime())
-
-        assertEquals(1, legacy.calls, "legacy family must reach the legacy executor exactly once")
-        assertEquals(0, registry.calls, "legacy family must never reach the registry executor")
-    }
+    // CORE-LOAD-REJECTED (2026-09-17): The "a legacy family prepared execution reaches
+    // only the legacy executor once" test depended on CanonicalCoreStepCommand.Load to
+    // construct a `PreparedLegacyExecution(...)`. With `Load` removed (REJECTED) and
+    // `LEGACY_PLUGIN_IDS = emptySet()`, there is no legacy subtype to instantiate the
+    // prepared execution with. The architectural invariant "SeamedExecutionRouter routes
+    // legacy-family payloads ONLY to the legacy boundary" is now structurally true at the
+    // type level (no legacy subtype exists, so no legacy-family payload can be constructed
+    // in tests or production). The companion registry-family test below remains.
 
     @Test
     fun `a registry family prepared execution reaches only the registry executor once`() = runBlocking {

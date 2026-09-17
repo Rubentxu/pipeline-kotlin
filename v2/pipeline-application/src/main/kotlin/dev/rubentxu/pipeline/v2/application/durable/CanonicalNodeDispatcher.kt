@@ -32,19 +32,12 @@ data class CanonicalRuntimeContext(
 
 /** Dispatches the supported canonical core nodes through their durable runtime paths. */
 class CanonicalNodeDispatcher {
-    // S2-A4 / G5: emitEventDispatcher removed (LEGACY_REMOVED) — core.emit.event executes
-    // exclusively through CoreEmitEventStep via the registry.
-    // S2-A9 / G5: milestoneDispatcher removed (LEGACY_REMOVED) — core.milestone executes
-    // exclusively through CoreMilestoneStep via the registry.
-    // S2-A7 / G5: deleteDirDispatcher removed (LEGACY_REMOVED) — core.deleteDir executes
-    // exclusively through CoreDeleteDirStep via the registry.
-    // S2-A10 / G5 (2026-09-13): cleanWsDispatcher removed (LEGACY_REMOVED) — core.cleanWs executes
+    // WU-G5B (2026-09-17): cleanWsDispatcher removed (LEGACY_REMOVED) — core.cleanWs executes
     // exclusively through CoreCleanWsStep via the registry.
-    private val loadDispatcher = CanonicalLoadNodeDispatcher()
-    // S2-A6 / G5: pwdDispatcher removed (LEGACY_REMOVED) — core.pwd executes
-    // exclusively through CorePwdStep via the registry.
-    // S2-A5 / G5: isUnixDispatcher removed (LEGACY_REMOVED) — core.isUnix executes
-    // exclusively through CoreIsUnixStep via the registry.
+    // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): loadDispatcher removed (REJECTED) — core.load
+    // is REJECTED: the legacy path was a silent no-op (SPIKE-018 §1.4) plus a latent
+    // contract defect (SPIKE-018 §1.2). The Step has zero real-world fixtures in the
+    // compatibility corpus. See docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md.
     // WU-G5B (2026-09-17): waitUntilDispatcher removed (LEGACY_REMOVED) — core.waitUntil
     // executes exclusively through the canonical RepeatUntil machinery
     // (BlockStepNode(BodyExecutionPolicy.RepeatUntil) → dispatchRepeatUntilBody).
@@ -59,7 +52,9 @@ class CanonicalNodeDispatcher {
             // S2-A7 / G5: DeleteDir when-branch removed (LEGACY_REMOVED).
             // S2-A10 / G5 (2026-09-13): CleanWs when-branch removed (LEGACY_REMOVED) —
             // core.cleanWs executes exclusively through CoreCleanWsStep via the registry.
-            is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
+            // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): Load when-branch removed (REJECTED).
+            // core.load is REJECTED; the legacy dispatcher is unreachable in production and
+            // the canonical decoder no longer recognises the key.
             // S2-A6 / G5: Pwd when-branch removed (LEGACY_REMOVED).
             // S2-A5 / G5: IsUnix when-branch removed (LEGACY_REMOVED).
             // WU-G5B (2026-09-17): WaitUntil when-branch removed (LEGACY_REMOVED).
@@ -72,8 +67,9 @@ class CanonicalNodeDispatcher {
             // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the
             // registry. The `when` stays EXHAUSTIVE over the surviving sealed subtypes: a
             // reintroduced legacy subtype is now a compile error, not a silent fall-through.
-            // WU-G5B: WaitUntil is the only legacy subtype physically removed in this slice;
-            // the dispatcher now contains a single arm (Load) and a typed rejection.
+            // CORE-LOAD-REJECTED (2026-09-17): with core.load REJECTED, all sealed subtypes
+            // are LEGACY_REMOVED. The dispatcher now contains zero arms and a typed rejection;
+            // any future legacy subtype reintroduced is a compile error.
             else -> throw IllegalArgumentException(
                 "Unsupported core plugin step for dispatch: ${command::class.simpleName}",
             )
@@ -87,19 +83,7 @@ class CanonicalNodeDispatcher {
     // (LEGACY_REMOVED). Its `workspaceRoot = shOptions.workspaceRoot` absolute-path anchor was
     // the frozen-glob defect root cause (frozen delta D1).
     // WU-G5B (2026-09-17): waitUntilContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-
-    private fun CanonicalRuntimeContext.loadContext() = CanonicalLoadDispatchContext(
-        runId = runId,
-        stageName = stageName,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-        loadedFingerprints = mutableSetOf(), // Per-run fingerprint cache
-    )
-
-    // S2-A6 / G5: pwdContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // S2-A5 / G5: isUnixContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // WU-G5B (2026-09-17): waitUntilContext() removed with the legacy dispatcher (LEGACY_REMOVED).
+    // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): loadContext() removed with the rejected dispatcher.
+    // The sealed hierarchy is now empty; no per-RuntimeContext derivation helpers remain.
 
 }

@@ -29,12 +29,13 @@ Certification receipts                         docs/v2/07-uat/S3_ECHO_BURNDOWN_C
 ```text
 Production Step keys total: 15
   Registry (open-world Step seam): 3   (core.echo, core.sh, core.error)
-  Legacy (Canonical*NodeDispatcher): 11
+  Legacy (Canonical*NodeDispatcher): 11 → **0** (post-WU-G5B + CORE-LOAD-REJECTED: ZERO LEGACY RESIDUAL; the 11 keys are historical — pwd, isUnix, sleep, writeFile, emitEvent, milestone, deleteDir, cleanWs, load, waitUntil, archiveArtifacts — and ALL have been retired via burn-down (CERTIFIED) or rejection (load); the canonical production authority for every Step key is now the registry seam or the canonical RepeatUntil machinery)
   External plugin (ServiceLoader):  1   (example.uppercase)
-DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900)
+DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900) — `load(...)` removed at CORE-LOAD-REJECTED
 Real .pipeline.kts examples: 10 (01..10)
 Event Harness contracts: 4 (07, 08, 09, 10)
 CERTIFIED Steps: 11 (core.echo, core.sh, example.uppercase, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs, core.archiveArtifacts)
+REJECTED Steps: 1 (core.load, 2026-09-17, FIRST ZERO LEGACY RESIDUAL contribution)
 ```
 
 ## Inventory table
@@ -64,7 +65,7 @@ Columns:
 | `core.milestone` | CORE | registry | Y (L1704, registryStep generic) | Y (`CoreMilestoneStep`) | Y | N (S2-A9 burn-down) | Y/Y | Y (`EVENT_SINK_CAPABILITY` + `MILESTONE_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 21-milestone | — | **CERTIFIED** (S2-A9/G8, `S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.deleteDir` | CORE candidate | registry | Y (L1456) | Y (`CoreDeleteDirStep`) | Y | N (S2-A7 burn-down) | Y/Y | Y (`DELETE_DIR_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A7/G8, PROPOSED — `S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md`) |
 | `core.cleanWs` | OFFICIAL_PLUGIN candidate | registry | Y (L1469, L1479, registryStep generic) | Y (`CoreCleanWsStep`) | Y | N (S2-A10 burn-down) | Y/Y | Y (`CLEAN_WS_OPERATIONS_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | G7 scenarios | — | **CERTIFIED** (S2-A10/G8, PROPOSED — `S2_A10_CORE_CLEANWS_G8_CERTIFICATION_RECEIPT.md`) |
-| `core.load` | CORE | legacy | Y (L1614) | N | Y (CanonicalLoadNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
+| `core.load` | REJECTED (CORE-LOAD-REJECTED 2026-09-17) | (removed) | N (function deleted) | N (subtype deleted) | N (CanonicalLoadNodeDispatcher deleted) | N (LEGACY_PLUGIN_IDS, decoder, metadata row, dispatcher all removed) | — | — | — | — | — | **REJECTED** (FIRST ZERO LEGACY RESIDUAL contribution; `core.load` is not a candidate for Step burn-down — directive forbids second-execution-engine shape; SPIKE-018 §1.3 declares it the LAST legacy lift requiring `SCRIPT_COMPILATION_CAPABILITY` + child-body re-entry via `BODY_INVOKER_CAPABILITY`, which is out of LFC-2 scope) |
 | `core.pwd` | CORE candidate | legacy | Y (L1570) | N | Y (CanonicalPwdNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.isUnix` | CORE candidate | legacy | Y (L1590) | N | Y (CanonicalIsUnixNodeDispatcher) | Y | Y/N | N | — | — | — | IMPLEMENTED_UNCERTIFIED |
 | `core.waitUntil` | CORE | orchestration (WU-G5R) | Y (L1629, registryStep) | N (ORCHESTRATION; no standard registry handler — execution via `dispatchRepeatUntilBody` in coordinator) | Y | Y (ORCHESTRATION; LEGACY_PLUGIN_IDS membership present) | Y/Y | Y (`EVENT_SINK_CAPABILITY`) | Y (`ReplayPolicy.MEMOIZED`) | 22-wait-until | — | **IMPLEMENTED_UNCERTIFIED** (WU-G5R: factory entry removed; LEGACY_PLUGIN_IDS unchanged; G4/G6 done, G5/G7/G8 remaining) |
@@ -240,12 +241,51 @@ core.cleanWs:
   certification:  CERTIFIED (proposed by G8 receipt; counters 3/3/3 unchanged)
 ```
 
-State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A10 closure)` at LFC-2E1-S2-A10 / G8. LEGACY_PLUGIN_IDS residual is **2 / 2 / 2** (`core.load`, `core.waitUntil` — `core.archiveArtifacts` removed at S2-B10/G5; `core.waitUntil` factory entry removed at WU-G5R but decoder membership unchanged).
+State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LEGACY_REMOVED (S2-A10 closure)` at LFC-2E1-S2-A10 / G8. LEGACY_PLUGIN_IDS residual was 2 / 2 / 2 at the time of this closure (`core.load`, `core.waitUntil`); the slice `core.archiveArtifacts` removed at S2-B10/G5; `core.waitUntil` factory entry removed at WU-G5R but decoder membership unchanged at the time).
 
-### `core.load` — IMPLEMENTED_UNCERTIFIED (legacy)
+### `core.load` — REJECTED (FIRST ZERO LEGACY RESIDUAL contribution, CORE-LOAD-REJECTED 2026-09-17)
 
-- **DSL:** `PipelineDsl.kt:1614` `fun load(path: String)`
-- **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalLoadNodeDispatcher.kt`
+> **CORE-LOAD-REJECTED (2026-09-17, this slice):** `core.load` is REJECTED. The directive
+> explicitly forbids "handler → compiler arbitrario → execute child pipeline como segundo
+> execution engine" — the `core.load` Step is, by Jenkins semantics, a *second* execution
+> engine (it loads and evaluates a `.pipeline.kts` script from the stage workspace). SPIKE-018
+> §1.3 declares `core.load` the "LARGEST remaining legacy lift", requiring
+> `SCRIPT_COMPILATION_CAPABILITY` + child-body re-entry via `BODY_INVOKER_CAPABILITY` — both
+> of which are out of LFC-2 scope. Converging signals:
+>
+> 1. Legacy `CanonicalLoadNodeDispatcher` is a silent no-op (reads file, emits
+>    `WorkflowLoaded stepCount=0`, returns `Success` — does not execute child pipeline).
+> 2. Latent contract defect: DSL `load(path)` → `OpaqueStepNode("core.load")` with no
+>    `path` in the canonical envelope → fails closed at decode.
+> 3. `UatLocal011WorkflowControlTest::SC-011-11` is `@Disabled` (INC-024).
+> 4. Zero `load(...)` usage in `v2/compatibility/`.
+>
+> All six legacy forms physically deleted in this slice: `CanonicalCoreStepCommand.Load`
+> subtype, `LOAD_PLUGIN_ID` decoder branch + constant, `CanonicalCoreStepMetadata["core.load"]`
+> row, `CanonicalLoadNodeDispatcher.kt` file, `fun load(path)` DSL façade, `StepSpec.Load`
+> data class. `LEGACY_PLUGIN_IDS` shrinks 1/1/1 → **0/0/0** (FIRST ZERO LEGACY RESIDUAL).
+> The legacy executor's input surface is empty at the type level — no production StepKey can
+> ever route through the legacy dispatcher.
+
+```text
+core.load:
+  delivery:        REJECTED (was CORE candidate, removed 2026-09-17)
+  execution:       (removed; no production path)
+  legacy:          REMOVED (canonical decoder, dispatcher, metadata row, sealed subtype all deleted)
+  certification:   (n/a — REJECTED, not CERTIFIED)
+```
+
+State: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → **`REJECTED` (CORE-LOAD-REJECTED, 2026-09-17)**.
+LEGACY_PLUGIN_IDS residual: **0 / 0 / 0** — the FIRST ZERO LEGACY RESIDUAL achievement.
+
+Fitness (gate G6): `Lfc2ZeroLegacyResidualFitnessTest` 7/7 PASS.
+
+Receipt: `docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md` (this slice).
+
+Future work for `core.load`-equivalent semantics: any "load child pipeline" Step must be
+designed from scratch as a registry Step with `SCRIPT_COMPILATION_CAPABILITY` +
+`BODY_INVOKER_CAPABILITY` (ADR-0073 child-body re-entry). This is an LFC-3+ design item,
+not an LFC-2E burn-down item.
 
 ### `core.pwd` — IMPLEMENTED_UNCERTIFIED (legacy)
 

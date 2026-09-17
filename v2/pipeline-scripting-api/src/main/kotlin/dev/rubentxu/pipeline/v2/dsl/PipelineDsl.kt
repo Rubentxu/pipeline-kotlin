@@ -612,26 +612,30 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * Loads and executes steps from an external pipeline script file.
+     * `load(path: String)` — REMOVED at S2-A5 / CORE-LOAD-REJECTED (2026-09-17).
      *
-     * Jenkins verbatim:
-     * `load(path: String)`
+     * `core.load` is REJECTED (Delivery = REJECTED, State = REJECTED). The legacy
+     * canonical executor was a silent no-op (SPIKE-018 §1.4 — it read the file,
+     * emitted a `WorkflowLoaded` event with `stepCount = 0`, and returned
+     * `Success` without executing anything) plus a latent compiler/decoder
+     * contract defect (SPIKE-018 §1.2 — the DSL `load(path)` lowered to
+     * `OpaqueStepNode("core.load")` whose encoded payload never carried the
+     * `path` field, so any canonical invocation failed closed at decode with
+     * `IllegalArgumentException: dsl-v1 payload requires string 'path'`).
      *
-     * The path is resolved relative to the workspace root. On successful
-     * load, the file is compiled via Kotlin24ScriptingHost and its steps
-     * are appended to the current execution scope.
+     * The directive forbids the only realistic implementation shape
+     * ("handler → compiler arbitrario → execute child pipeline como segundo
+     * execution engine"); SPIKE-018 ruled that load must be the LAST legacy
+     * entry to burn down, after `SCRIPT_COMPILATION_CAPABILITY` and
+     * `BODY_INVOKER_CAPABILITY` are productionized. Since those boundaries
+     * remain pre-production, load has no honest implementation path in this
+     * cycle, and the canonical bridge refuses it.
      *
-     * Re-entrancy: if the same (path, sha256) is loaded twice in one run,
-     * the second load is a no-op with stepCount=0.
-     *
-     * @param path Workspace-relative path to the .pipeline.kts file
+     * If you have a `.pipeline.kts` that used `load(...)`, the script will
+     * now fail to compile. This is the intended fail-closed outcome: the
+     * legacy path never worked anyway. See
+     * `docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md` and SPIKE-018.
      */
-    data class Load(
-        val path: String,
-    ) : StepSpec {
-        override val name: String get() = "load"
-        override val type: String get() = "load"
-    }
 
     /**
      * Polls a condition closure until it returns true or a deadline elapses.
@@ -1254,7 +1258,8 @@ class StageScope(
             // ML-R9 workflow-utility: not retryable at step level
             is StepSpec.Pwd -> currentStep
             is StepSpec.IsUnix -> currentStep
-            is StepSpec.Load -> currentStep
+            // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): StepSpec.Load branch removed.
+            // `core.load` is REJECTED; load is no longer a StepSpec variant.
             is StepSpec.WaitUntilBlock -> currentStep
             // ML-R9 T-08 output-decorators: not retryable at step level
             is StepSpec.Timestamps -> currentStep
@@ -1660,19 +1665,16 @@ class StageScope(
     }
 
     /**
-     * Loads and executes steps from an external pipeline script file.
+     * `load(path: String)` — REMOVED at S2-A5 / CORE-LOAD-REJECTED (2026-09-17).
      *
-     * Jenkins verbatim:
-     * `load(path: String)`
+     * `core.load` is REJECTED. The DSL function `load(path)` no longer exists;
+     * any `.pipeline.kts` that used `load(...)` will fail to compile. This is
+     * the intended fail-closed outcome: the legacy path was a silent no-op
+     * (SPIKE-018 §1.4) plus a latent contract defect (SPIKE-018 §1.2), and
+     * the directive forbids the only realistic implementation shape.
      *
-     * The path is resolved relative to the workspace root. On successful load,
-     * the file is compiled and its steps are appended to the current execution scope.
-     *
-     * @param path Workspace-relative path to the .pipeline.kts file
+     * See `docs/v2/07-uat/S2_A5_CORE_LOAD_REJECTION_RECEIPT.md` and SPIKE-018.
      */
-    fun load(path: String) {
-        steps.add(StepSpec.Load(path = path))
-    }
 
     /**
      * Polls a condition closure until it returns true or a deadline elapses.

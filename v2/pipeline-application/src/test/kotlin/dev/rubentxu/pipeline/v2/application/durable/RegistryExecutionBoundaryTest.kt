@@ -165,21 +165,16 @@ class RegistryExecutionBoundaryTest {
         assertEquals(0, counter.get(), "a capability the runtime does not supply must never start the handler")
     }
 
-    @Test
-    fun `a legacy family prepared execution fails closed in the registry boundary`() {
-        val store = InMemoryEventStore()
-        val boundary = RegistryExecutionBoundary.adapt()
-        runBlocking {
-            org.junit.jupiter.api.Assertions.assertThrows(EngineInvariantViolation::class.java) {
-                runBlocking {
-                    boundary.execute(
-                        PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")),
-                        runtime(store),
-                    )
-                }
-            }
-        }
-    }
+    // CORE-LOAD-REJECTED (2026-09-17): The "a legacy family prepared execution fails closed
+    // in the registry boundary" test used CanonicalCoreStepCommand.Load as the legacy-family
+    // payload. With `Load` removed (REJECTED) and `LEGACY_PLUGIN_IDS = emptySet()`, there is
+    // no legacy subtype to instantiate a `PreparedLegacyExecution(...)` with — the sealed
+    // hierarchy has no legacy constructors. The fail-closed invariant "registry boundary
+    // rejects legacy PreparedExecution" is now structurally true at the type level: there
+    // is no value of type CanonicalCoreStepCommand that the constructor accepts, so a
+    // `PreparedLegacyExecution(...)` cannot be built in this test (or any test) anymore.
+    // The structural proof lives in `LegacyResidualSnapshot` (LEGACY_PLUGIN_IDS = emptySet())
+    // and in `Lfc2ZeroLegacyResidualFitnessTest`.
 
     @Test
     fun `echo registry execution supplies the event sink capability and emits once`() = runBlocking {

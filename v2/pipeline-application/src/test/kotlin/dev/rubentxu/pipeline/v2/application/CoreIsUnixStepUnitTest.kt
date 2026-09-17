@@ -348,16 +348,16 @@ class CoreIsUnixStepUnitTest {
     // (BlockStepNode(BodyExecutionPolicy.RepeatUntil) → dispatchRepeatUntilBody in
     // CanonicalDurableRunCoordinator).
     @Test
-    fun `counters are 1-1-1 post-WU-G5B and legacy dispatcher sources are physically removed`() {
+    fun `counters are 0-0-0 post-WU-G5B-and-CORE-LOAD-REJECTED and legacy dispatcher sources are physically removed`() {
         assertEquals(
-            setOf("core.load"),
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "ids MUST converge to the single residual key",
+            "ids MUST converge to the empty set post-WU-G5B + CORE-LOAD-REJECTED",
         )
         assertEquals(
-            setOf("core.load"),
+            emptySet<String>(),
             dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.pluginIds,
-            "metadata rows MUST converge to the single residual key",
+            "metadata rows MUST converge to the empty set post-WU-G5B + CORE-LOAD-REJECTED",
         )
         val durable = java.nio.file.Paths.get(
             "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable",
@@ -371,12 +371,12 @@ class CoreIsUnixStepUnitTest {
                 .toList().toSet()
         }
         assertEquals(
-            setOf("CanonicalLoadNodeDispatcher.kt"),
+            emptySet<String>(),
             dispatcherFiles,
-            "dispatcher sources MUST converge to the single residual key",
+            "dispatcher sources MUST converge to empty set post-WU-G5B + CORE-LOAD-REJECTED",
         )
         // Retired keys stay retired — no resurrection by any earlier lane.
-        listOf("core.isUnix", "core.pwd", "core.deleteDir", "core.milestone", "core.cleanWs", "core.archiveArtifacts", "core.waitUntil")
+        listOf("core.isUnix", "core.pwd", "core.deleteDir", "core.milestone", "core.cleanWs", "core.archiveArtifacts", "core.waitUntil", "core.load")
             .forEach { key ->
                 assertTrue(key !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "$key MUST stay out of LEGACY_PLUGIN_IDS")
                 assertTrue(

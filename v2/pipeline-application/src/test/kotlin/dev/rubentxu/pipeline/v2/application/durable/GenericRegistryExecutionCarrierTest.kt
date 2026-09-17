@@ -28,7 +28,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
@@ -253,35 +252,17 @@ class GenericRegistryExecutionCarrierTest {
         assertEquals(EncodedStepValue("step-outcome-only\n"), executionResult.encodedOutput)
     }
 
-    // -------- Sanity: the registry mirror is unaffected --------
-
-    @Test
-    fun `seamed router — legacy family still routes through Pre-existing CommonExecutionBoundary`() = runBlocking {
-        // Belt-and-braces: the existing CommonExecutionBoundary shape remains; the
-        // carrier extension is registry-only.
-        val registry = InMemoryStepRegistry().apply { CoreEchoStep.registerInto(this) }
-        val ctx = buildContext()
-        val boundary = RegistryExecutionBoundary.adapt()
-        val echoPrepared: PreparedRegistryExecution = RegistryExecutionPreparation.prepare(
-            registry = registry,
-            key = CoreEchoStep.KEY,
-            encodedInput = CoreEchoStep.definition.contract.inputCodec.encode(EchoInput("router")),
-            availableCapabilities = setOf(EVENT_SINK_CAPABILITY),
-        ).let {
-            require(it is ExecutionPreparation.Ready) { "admission must succeed: $it" }
-            (it as ExecutionPreparation.Ready).prepared as PreparedRegistryExecution
-        }
-        val echoResult = boundary.execute(echoPrepared, ctx)
-        // The boundary throws on legacy-family prepared, as the docstring states.
-        val legacyOutcome = runCatching {
-            boundary.execute(
-                PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")),
-                ctx,
-            )
-        }
-        assertTrue(legacyOutcome.isFailure, "RegistryExecutionBoundary must still refuse legacy-family PreparedExecution")
-        assertEquals(StepOutcome.Success, echoResult.outcome)
-    }
+    // CORE-LOAD-REJECTED (2026-09-17): The "seamed router — legacy family still routes
+    // through Pre-existing CommonExecutionBoundary" test used CanonicalCoreStepCommand.Load
+    // as the legacy-family payload to assert that `RegistryExecutionBoundary` rejects
+    // legacy PreparedExecution. With `Load` removed (REJECTED) and `LEGACY_PLUGIN_IDS =
+    // emptySet()`, there is no legacy subtype to instantiate. The architectural invariant
+    // "RegistryExecutionBoundary only accepts registry-family prepared executions" is now
+    // structurally satisfied at the source level: `RegistryExecutionBoundary.execute`
+    // checks `if (prepared is PreparedLegacyExecution) throw ...` regardless of subtype,
+    // so the cross-family fail-closed behaviour holds for any (now-non-existent) legacy
+    // payload. The cross-family fail-closed assertion is preserved in `LegacyExecutionAdapterTest`
+    // (registry-prepared through legacy adapter → EngineInvariantViolation).
 
     // -------- Carrier is the typed-output / StepOutcome pair, not two Steps --------
 

@@ -29,8 +29,13 @@ class CoreLegacyStepMetadataResolverTest {
         // unrelated proxy; the assertion itself is structurally flawed (core.sleep is
         // registry-primary and should not be resolvable via the legacy resolver). Kept
         // disabled until a successor test is authored against CoreSleepStep.descriptor.
-        val decoded = CanonicalCoreStepCommand.Load(path = "x").defaultMetadata
-        assertEquals(decoded, resolved)
+        // CORE-LOAD-REJECTED (2026-09-17): CanonicalCoreStepCommand.Load subtype also
+        // physically deleted (REJECTED); this body now references an undefined symbol,
+        // but the test is @Disabled so the body never executes. Comment kept as a
+        // frozen historical artifact (per @Disabled KDoc) — no production behaviour.
+        // val decoded = CanonicalCoreStepCommand.Load(path = "x").defaultMetadata  // unresolved
+        // assertEquals(decoded, resolved)
+        throw UnsupportedOperationException("disabled historical test — body references undefined subtype")
     }
 
     @Test
@@ -38,13 +43,16 @@ class CoreLegacyStepMetadataResolverTest {
         // CDE.2-b4: the durable protocol decides recovery from metadata.recoveryPolicy, never a Step name.
         // core.sh is no longer a legacy authority member (S6); its recovery is read from CoreShellStep.descriptor.
         // core.sleep was removed from LEGACY_PLUGIN_IDS at S2-A2/G5; update test to cover remaining entries.
+        // CORE-LOAD-REJECTED (2026-09-17) + WU-G5B (2026-09-17): LEGACY_PLUGIN_IDS is now empty
+        // (FIRST ZERO LEGACY RESIDUAL). There are no remaining legacy keys whose recovery
+        // policy needs assertion via CoreLegacyStepMetadataResolver; the legacy resolver
+        // authority itself is now empty (see LegacyResidualSnapshot.physicalResidual = setOf()).
+        // This test is rewritten to assert the empty-LEGACY_PLUGIN_IDS invariant instead
+        // of the per-key recovery policy, which is no longer meaningful.
         assertEquals(
-            RecoveryPolicy.None,
-            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.load")).recoveryPolicy,
-        )
-        assertEquals(
-            RecoveryPolicy.None,
-            CoreLegacyStepMetadataResolver.resolve(PluginStepId("core.waitUntil")).recoveryPolicy,
+            emptySet<String>(),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "LEGACY_PLUGIN_IDS is empty post-CORE-LOAD-REJECTED — no legacy keys remain",
         )
     }
 

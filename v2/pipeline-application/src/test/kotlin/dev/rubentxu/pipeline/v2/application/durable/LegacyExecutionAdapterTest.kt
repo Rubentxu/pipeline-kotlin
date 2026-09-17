@@ -3,14 +3,12 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.CoreEchoStep
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 
@@ -54,19 +52,22 @@ class LegacyExecutionAdapterTest {
         eventSink = store,
     )
 
-    @Test
-    fun `a prepared legacy execution through the adapter invokes the old executor exactly once`() = runBlocking {
-        val legacy = RecordingLegacyExecutor()
-        val boundary = LegacyExecutionAdapter.adapt(legacy)
-        val store = InMemoryEventStore()
-        val command = CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")
-
-        val outcome = boundary.execute(PreparedLegacyExecution(command), runtime(store))
-
-        assertEquals(StepOutcome.Success, outcome.outcome)
-        assertEquals(1, legacy.calls, "a single CommonExecutionBoundary.execute must reach the old executor exactly once")
-        assertSame(command, legacy.lastCommand, "the adapter must forward the decoded command unchanged")
-    }
+    // CORE-LOAD-REJECTED (2026-09-17): CanonicalCoreStepCommand.Load subtype
+    // physically removed (REJECTED, FIRST ZERO LEGACY RESIDUAL). The historical test
+    // "a prepared legacy execution through the adapter invokes the old executor
+    // exactly once" depended on `Load(path = "...")` as the canonical vehicle for
+    // a legacy command. With `Load` removed and `LEGACY_PLUGIN_IDS = emptySet()`,
+    // there is NO remaining legacy subtype to instantiate, and `PreparedLegacyExecution(...)`
+    // cannot be constructed with a non-existent subtype. The "adapter routes legacy
+    // commands" invariant is now a structural fact (sealed hierarchy has no legacy
+    // constructors) rather than a runtime testable property; it is asserted by
+    // LegacyResidualSnapshot / Lfc2ZeroLegacyResidualFitnessTest at the architecture
+    // fitness level.
+    //
+    // The companion test "a non-legacy prepared execution fails closed in the legacy
+    // adapter" is preserved below because it asserts the cross-family fail-closed
+    // invariant (registry-family → legacy adapter → EngineInvariantViolation), which
+    // remains semantically meaningful even after the legacy hierarchy is empty.
 
     @Test
     fun `a non-legacy prepared execution fails closed in the legacy adapter`() = runBlocking {

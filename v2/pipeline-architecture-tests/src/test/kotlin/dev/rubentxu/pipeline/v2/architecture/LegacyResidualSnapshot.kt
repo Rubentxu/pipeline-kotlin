@@ -23,12 +23,18 @@ import java.nio.file.Path
  * ```
  * pwd closed                 -> 6 / 6 / 6
  * deleteDir G4 -> 5 / 6 / 6
- * deleteDir G5 -> 5 / 5 / 5   (current — converged)
+ * deleteDir G5 -> 5 / 5 / 5
  * waitUntil G4 -> 4 / 5 / 5
  * waitUntil G5 -> 4 / 4 / 4
  * milestone G4 -> 3 / 4 / 4
  * milestone G5 -> 3 / 3 / 3
- * cleanWs, load, archiveArtifacts -> ... -> 0 / 0 / 0 (burn-down closed)
+ * cleanWs G4 -> 2 / 3 / 3
+ * cleanWs G5 -> 2 / 2 / 2
+ * archiveArtifacts G4 -> 1 / 2 / 2
+ * archiveArtifacts G5 -> 1 / 1 / 1
+ * WU-G5B (2026-09-17): waitUntil legacy forms physically destroyed -> 0 / 1 / 1
+ * CORE-LOAD-REJECTED (2026-09-17): load REJECTED -> 0 / 0 / 0  (FIRST ZERO LEGACY RESIDUAL)
+ * ... -> ... -> 0 / 0 / 0 (burn-down closed)
  * ```
  *
  * Per-Step suites MUST call [assertCurrentState] (the DECLARED stage snapshot, which
@@ -72,13 +78,14 @@ object LegacyResidualSnapshot {
      * ONE line to change per G5.
      */
     private val physicalResidual: Set<String> = setOf(
-        "core.load",
+        // CORE-LOAD-REJECTED (2026-09-17): "core.load" removed from the physical residual
+        // (Load subtype, LOAD_PLUGIN_ID decoder branch + constant, metadata row,
+        // CanonicalLoadNodeDispatcher.kt file, CanonicalNodeDispatcher load seams all
+        // deleted; the DSL `load(path)` function and StepSpec.Load subtype are also
+        // removed). Counter converges 1/1/1 -> 0/0/0 — FIRST ZERO LEGACY RESIDUAL.
+        // The anti-vacuity guard in LegacyResidualConvergenceFitnessTest returns early
+        // on empty residual; the burn-down ledger is fully closed.
     )
-    // WU-G5B (2026-09-17): "core.waitUntil" removed from the physical residual
-    // (WaitUntil subtype, WAIT_UNTIL_PLUGIN_ID decoder branch + constant, metadata row,
-    // CanonicalWaitUntilNodeDispatcher.kt file, CanonicalNodeDispatcher waitUntil seams all
-    // deleted). Counter converges 2/2/2 -> 1/1/1 (only `core.load` remains for its own
-    // resolution cycle).
     // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
     // (subtype, decoder branch, metadata row, dispatcher file all deleted).
     // S2-A9 / G5 (2026-09-13): "core.milestone" removed from the physical residual

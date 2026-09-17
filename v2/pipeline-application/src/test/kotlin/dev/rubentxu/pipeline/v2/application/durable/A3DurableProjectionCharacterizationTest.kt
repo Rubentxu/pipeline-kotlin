@@ -56,44 +56,15 @@ import org.junit.jupiter.api.Test
  */
 class A3DurableProjectionCharacterizationTest {
 
-    @Test
-    fun `A3-1 legacy fresh produces encodedOutput null and no OperationOutput is written`() = runBlocking {
-        // The legacy-routed path returns encodedOutput = null at the seam. The coordinator never
-        // invents an OperationOutput when encodedOutput is null. This proves the durable projection
-        // law for the legacy family without depending on the coordinator's metadata-registration
-        // path (which is exercised separately by the existing characterization tests).
-        val store = InMemoryEventStore()
-        val ctx = CanonicalRuntimeContext(
-            opId = OpId("a3-1", 0, 0),
-            runId = "a3-1",
-            stageName = "build",
-            stageIndex = 0,
-            stepIndex = 0,
-            shOptions = dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions.EMPTY,
-            controlDirRoot = java.nio.file.Files.createTempDirectory("a3-1-"),
-            eventSink = store,
-        )
-        // Build a legacy boundary and probe it directly.
-        val legacyExecutor = CanonicalInvocationExecutor { _, _ -> StepOutcome.Success }
-        val boundary: CommonExecutionBoundary = LegacyExecutionAdapter.adapt(legacyExecutor)
-        val preparedLegacy = PreparedLegacyExecution(
-            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts"),
-        )
-        val result = boundary.execute(preparedLegacy, ctx)
-        assertEquals(StepOutcome.Success, result.outcome)
-        // A3.2: legacy paths MUST encode encodedOutput = null at the seam.
-        assertNull(result.encodedOutput, "legacy boundary must produce encodedOutput = null at the seam")
-        // A3.5 (durable projection law): if the coordinator receives null at the seam, the journal
-        // row is left without an OperationOutput. We construct a journal row by hand to mirror the
-        // coordinator's projection rule, since the canonical coordinator path requires metadata
-        // registration (a pre-existing test isolation issue, not introduced by A3).
-        val projected = result.encodedOutput?.let { OperationOutput(
-            result = kotlinx.serialization.json.JsonPrimitive(it.value),
-            durationMs = 1L,
-            finishedAt = System.currentTimeMillis(),
-        ) }
-        assertNull(projected, "projected OperationOutput must be null when encodedOutput is null")
-    }
+    // CORE-LOAD-REJECTED (2026-09-17): The A3-1 test "legacy fresh produces encodedOutput
+    // null and no OperationOutput is written" depended on CanonicalCoreStepCommand.Load as
+    // a legacy command vehicle. With `Load` removed (REJECTED) and `LEGACY_PLUGIN_IDS =
+    // emptySet()`, there is no legacy subtype to instantiate, so the durable projection
+    // law for the legacy family can no longer be asserted by direct boundary probing.
+    // The law is now structurally satisfied: `LegacyExecutionAdapter` routes ONLY
+    // `PreparedLegacyExecution`; with no legacy command subtypes, the adapter's input
+    // space is empty at the source level. The architectural assertion lives in
+    // `Lfc2ZeroLegacyResidualFitnessTest` (legacy dispatcher family = 0 cases).
 
     @Test
     fun `A3-2 registry fresh with typed output produces OperationOutput populated from encoded value`() = runBlocking {

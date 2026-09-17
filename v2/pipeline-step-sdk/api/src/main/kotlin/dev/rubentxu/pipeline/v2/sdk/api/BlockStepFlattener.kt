@@ -190,7 +190,8 @@ object BlockStepFlattener {
             is StepSpec.Unstable,
             is StepSpec.Pwd,
             is StepSpec.IsUnix,
-            is StepSpec.Load,
+            // S2-A5 / CORE-LOAD-REJECTED (2026-09-17): StepSpec.Load branch removed.
+            // `core.load` is REJECTED; the StepSpec.Load subtype no longer exists.
             is dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock -> {
                 // Body-bearing — recurse into the captured body steps.
                 val waitUntilStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock

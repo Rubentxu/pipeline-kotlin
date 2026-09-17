@@ -43,7 +43,7 @@ data class ExecutedInvocationEvidence(
      * would silently drop `RUNNING` and every downstream coverage number would become
      * quietly optimistic.
      */
-    val isObserved: Boolean get() = status != OperationStatus.PENDING
+    val isObserved: Boolean get() = status.isTerminal
 }
 
 /**

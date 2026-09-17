@@ -363,3 +363,44 @@ this port alone — an honest, recorded limitation rather than a fabricated dist
 Note the useful precedent: if a new capability is ultimately required, `StoredRunId` shows
 the established shape (`Found | Missing`), so it would be expressed as a general
 run-lifecycle concern consistent with the existing domain, not as an XCA-specific API.
+
+---
+
+# RunNotFound — CORRECTION: two different claims must not be conflated
+
+The section above said the remaining question "belongs to the harness (workstream B)". That
+was imprecise and could let an empirical observation masquerade as a domain law. Two
+statements must be kept strictly separate:
+
+```text
+A) HARNESS OBSERVATION
+   "every valid run we USE FOR CERTIFICATION ends up with >= 1 operation"
+   -> demonstrable empirically in workstream B, over the corpus.
+
+B) RUNTIME CONTRACT
+   "every existing RunId, under any circumstance, has >= 1 durable operation"
+   -> requires a runtime GUARANTEE, not corpus observation.
+```
+
+**B does not follow from A.** Counterexamples that would falsify `empty -> RunNotFound`:
+
+```text
+failure before the first Step
+failure during preparation / compilation
+early cancellation
+a future structural execution with no registry Step
+```
+
+If any of those can create a real `RunId` with zero operations, then `empty -> RunNotFound`
+is false, and a corpus-only observation would never reveal it.
+
+Therefore the reader KEEPS:
+
+```text
+JournalRunExecutionEvidenceReader
+    empty list  ->  Found(runId, emptyList())
+```
+
+until either (i) a sufficiently strong proof of B exists, or (ii) a generic run-existence
+capability is introduced as a runtime/domain concern. Workstream B may resolve A **without
+forcing B**; resolving A must never be written up as resolving B.

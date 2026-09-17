@@ -288,7 +288,27 @@ def main():
         print(f"  {cls:37}: {c}")
     assert sum(byc.values()) == n, (
         f"classes must partition the records: {sum(byc.values())} != {n}")
-    assert set(byc) <= set(byv) or True  # classes and verdicts are independent axes
+    # Closed sets + explicit cross-law. The previous `set(byc) <= set(byv) or True`
+    # was an IMPOSSIBLE assertion: `or True` made it unfalsifiable, so it protected
+    # nothing while looking like a guard. A subset relation between the two axes is
+    # also wrong: verdict and provenance are orthogonal dimensions.
+    ALLOWED_VERDICTS = {"EXERCISED", "NOT_EXERCISED", "STRUCTURAL_SYNTH"}
+    ALLOWED_PROVENANCE = {"A_PRODUCT_EXAMPLE", "B_REGRESSION_CORPUS",
+                          "C_CREATE_OR_EXPAND", "D_REWRITE_CONTRACT"}
+    # The only real cross-law: which provenance may accompany which verdict.
+    VERDICT_TO_PROVENANCE = {
+        "EXERCISED": {"A_PRODUCT_EXAMPLE", "B_REGRESSION_CORPUS"},
+        "NOT_EXERCISED": {"C_CREATE_OR_EXPAND"},
+        "STRUCTURAL_SYNTH": {"D_REWRITE_CONTRACT"},
+    }
+    unknown_v = set(byv) - ALLOWED_VERDICTS
+    unknown_p = set(byc) - ALLOWED_PROVENANCE
+    assert not unknown_v, f"unknown verdicts: {sorted(unknown_v)}"
+    assert not unknown_p, f"unknown provenance: {sorted(unknown_p)}"
+    for r in rows:
+        v, cls = r[4], r[5]
+        assert cls in VERDICT_TO_PROVENANCE[v], (
+            f"{r[0]}: verdict {v} cannot carry provenance {cls}")
     print("  " + "-" * 55)
     print(f"  {'(class total)':37}: {sum(byc.values())}")
     print()

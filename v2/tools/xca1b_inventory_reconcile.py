@@ -71,15 +71,28 @@ LEDGER_ONLY_OK = {"REJECTED", "STOPPED_G7", "STOPPED", "DEFERRED", "DESIGNED"}
 
 
 def ledger_records():
-    text = "\n".join(l for l in LEDGER.read_text().split("\n")
-                     if not l.lstrip().startswith("#"))
+    """Ledger side read via the STANDARD YAML PARSER.
+
+    XCA-YAML (a1e35345) established: structured certification facts are parsed
+    structurally. This reconciler previously kept its own regex reader for the
+    ledger, which made it an active TEXTUAL consumer of the certification
+    authority -- contradicting a law introduced two commits later.
+
+    The reconciler's value is that its TWO SIDES are independent:
+      runtime/catalog  -> Kotlin/plugin source discovery (unchanged)
+      certification    -> typed YAML reader (this function)
+    Two different sources, one shared interpretation of the ledger.
+    """
+    import yaml
+    doc = yaml.safe_load(LEDGER.read_text())
+    steps = doc["steps"]
+    if not isinstance(steps, list):
+        raise AssertionError("ledger 'steps' is not a list")
     out = {}
-    for m in re.finditer(r'^  - step_key:\s*"?([\w.\-${}]+)"?\s*$', text, re.M):
-        start = m.end()
-        nxt = re.search(r'^  - step_key:', text[start:], re.M)
-        body = text[start:start + nxt.start()] if nxt else text[start:]
-        st = re.search(r'^\s{4}certification_state:\s*"?([\w_]+)"?', body, re.M)
-        out[m.group(1)] = st.group(1) if st else "?"
+    for s in steps:
+        if "step_key" not in s or "certification_state" not in s:
+            raise AssertionError(f"ledger record missing required fields: {s!r}")
+        out[s["step_key"]] = s["certification_state"]
     return out
 
 

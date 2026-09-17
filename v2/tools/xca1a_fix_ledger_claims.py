@@ -7,6 +7,7 @@ Removes, for every CERTIFIED surface, a real_fixtures entry that XCA-0 proved th
 file does not actually invoke. Replaces the lie with [] — never with a provisional
 path and never with a "coverage pending" comment that keeps CERTIFIED falsely green.
 """
+import os
 import re, sys, pathlib
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -22,6 +23,16 @@ ITEM = re.compile(r'^      - (.+?)\s*$')
 
 
 def main():
+    # APPLIED ONE-SHOT MIGRATION (XCA-1A). It rewrites the ledger textually and
+    # therefore MUST NOT be an active consumer of the certification authority.
+    # Guarded so `textual_consumers_of_certification_authority = 0` is literally
+    # true: it cannot run accidentally, and it is scheduled for removal/archival
+    # before XCA-3.
+    if os.environ.get("XCA1A_RERUN") != "1":
+        print("xca1a_fix_ledger_claims.py is an APPLIED historical migration (XCA-1A).")
+        print("It parses the ledger textually and is NOT an active consumer.")
+        print("Refusing to run. Set XCA1A_RERUN=1 only to re-apply deliberately.")
+        return 2
     lines = LEDGER.read_text().split("\n")
     out, i = [], 0
     removed, added = [], []

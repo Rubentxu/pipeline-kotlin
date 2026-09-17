@@ -271,8 +271,12 @@ class XcaCorpusRunTest {
         // Extract the first exception class name from stderr for structured reporting.
         // This makes the real failure reason visible in the receipt (H7.2: 12-error-handling
         // and 21-milestone both fail with EngineInvariantViolation about milestone.operations).
+        // H7-ERRORCLASS-REGEX fix: the old pattern ended in (?:Exception|Error) and
+        // did not match EngineInvariantViolation (real class of 12-error-handling and
+        // 21-milestone failures). Adding Violation as a suffix captures all three
+        // domain exception types (Exception, Error, Violation).
         val errorClass = if (runId == null && stderr.isNotBlank()) {
-            Regex("""([A-Z][A-Za-z0-9_]*(?:Exception|Error))""").find(stderr)?.groupValues?.get(1)
+            Regex("""([A-Z][A-Za-z0-9_]*(?:Exception|Error|Violation))""").find(stderr)?.groupValues?.get(1)
         } else null
 
         return@runFixture Pair(runId, errorClass)

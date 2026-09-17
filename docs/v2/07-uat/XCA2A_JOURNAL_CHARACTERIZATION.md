@@ -234,3 +234,67 @@ A direct test asserting positively that `RUNNING` and `LOST` yield observed evid
 the current domain says so — because a later "simplification" of the reader to
 `status.isTerminal` would drop them and every downstream coverage number would become
 quietly optimistic. The law must be asserted positively, not derived from absence.
+
+---
+
+# A4/A5 — module placement (hexagon-compatible)
+
+Types and their modules:
+
+```text
+pipeline-domain   OperationStatus, DurableOperation, PluginStepId   (no project deps)
+pipeline-events   OperationJournal            (implementation project(":pipeline-domain"))
+pipeline-application   depends on domain + events
+```
+
+Direction: `pipeline-domain` <- `pipeline-events` <- `pipeline-application`.
+
+The reader needs BOTH the journal port (events) and the domain types (domain), so it cannot
+live in `pipeline-domain` as a whole. Split it per the mandated hexagonal direction:
+
+```text
+pipeline-domain            (INNER - contracts only)
+  RunExecutionEvidenceReader      interface (port)
+  RunEvidenceReadResult           ADT: Found(List<ExecutedInvocationEvidence>) | RunNotFound(RunId)
+  ExecutedInvocationEvidence      ADT: invocationId, stepKey, status
+    -> depends ONLY on domain types (PluginStepId, OperationStatus, a RunId type)
+    -> names NO journal, NO persistence, NO adapter
+
+pipeline-events  (or pipeline-application)   (ADAPTER)
+  JournalRunExecutionEvidenceReader(journal: OperationJournal) : RunExecutionEvidenceReader
+    -> the ONLY place that knows listForRun
+```
+
+This satisfies AGENTS.md HEXAGONAL ARCHITECTURE: domain defines the inner seam and must not
+depend on infrastructure; the adapter depends on the inner contract and implements it; the
+dependency never points back from inner to adapter.
+
+It also satisfies 2A.3's prohibition by construction: there is no `XcaJournal`, no second
+schema, and the port is expressed as a general execution-domain need
+(`read executed invocations for a run`), never as `readStepKeysForCertification()`.
+
+## Consequence for A1
+
+Because the port lives in `pipeline-domain`, the anti-bypass fitness scope is well defined
+BEFORE any XCA consumer exists:
+
+```text
+forbidden in pipeline-domain:
+  OperationJournal        (the port itself!)
+  concrete journal adapters (FileBased*Journal, Sqlite*)
+  SQL / JDBC / schema APIs
+  event persistence types
+
+allowed in pipeline-domain:
+  OperationStatus, DurableOperation-free domain types, StepKey/PluginStepId
+```
+
+This is falsifiable immediately: `pipeline-domain` must not import
+`dev.rubentxu.pipeline.v2.events.*`. Today that is already true, so the guard has a real
+passing baseline AND a real way to fail (add the import and it must go RED).
+
+## Anti-regression guard (A5)
+
+Assert POSITIVELY that `RUNNING` and `LOST` both yield observed evidence. They are the
+asymmetric pair: `LOST` is terminal, `RUNNING` is not, so a `status.isTerminal` shortcut
+would keep one and drop the other - a partial failure that would look almost correct.

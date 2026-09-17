@@ -232,6 +232,45 @@ class Lfc2E2ExpansionGateFitnessTest {
         )
     }
 
+    @Test
+    fun `G4-4 utilities plugin declares a typed UtilitiesJsonError sealed ADT (3 cases)`() {
+        val src = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/json/UtilitiesJsonPlugin.kt",
+        )
+        // The plugin must expose a sealed ADT with at least JsonNotFound/JsonParseFailure/JsonIoFailure,
+        // and the host runtime stays unaware of it (no leak to pipeline-application).
+        assertTrue(
+            src.contains("sealed interface UtilitiesJsonError"),
+            "G4-4: utilities plugin must declare a sealed UtilitiesJsonError ADT",
+        )
+        assertTrue(
+            src.contains("class UtilitiesJsonException"),
+            "G4-4: utilities plugin must declare a typed UtilitiesJsonException",
+        )
+        listOf("JsonNotFound", "JsonParseFailure", "JsonIoFailure").forEach { variant ->
+            assertTrue(
+                src.contains("data class $variant") || src.contains("class $variant"),
+                "G4-4: UtilitiesJsonError must include the variant $variant",
+            )
+        }
+        // The plugin source must NOT leak the typed failure into core/production: it lives
+        // in the plugin package and the production coordinator still uses its generic
+        // Exception catch. Verify there is no `when (...) UtilitiesJsonError` in production
+        // core sources.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesJsonError") || prodSrc.contains("UtilitiesJsonException"),
+                "G4-4: production core must NOT reference UtilitiesJsonError/Exception (path: $path)",
+            )
+        }
+    }
+
     // ───────────────────────────────────────────────────────────────────────
     // G5/G6 — Plugin absent / installed / removed lifecycle for core Steps
     //

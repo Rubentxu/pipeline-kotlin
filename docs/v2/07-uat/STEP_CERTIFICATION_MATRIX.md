@@ -31,6 +31,14 @@ CERTIFIED Steps with real maintained fixture: 12/12 (100%)
 CERTIFIED external plugin Steps with real maintained fixture: 2/2 (100%)
 STOPPED Steps with real fixture: 2/2 (100%)
 REJECTED Steps with no fixture: 1/1 (intentional — load was never functional)
+
+## Expansion slices (LFC-2E2-EXPANSION cycle)
+
+```text
+U0  GATE FITNESS         14 → 15 tests (capabilityAccessFactory + plugin lifecycle + isolation)
+U1  JSON HARDENING       +5 typed-failure rows in ContractSuite
+    UtilitiesJsonError sealed ADT (3 cases): JsonNotFound / JsonParseFailure / JsonIoFailure
+    UtilitiesJsonException typed carrier; production core refs: 0
 ```
 
 ## Legacy residual

@@ -178,6 +178,29 @@ counters:
         effect: READ_ONLY
         replay_policy: MEMOIZED
 
+  # ────────────────────────────────────────────────────────────────────────
+  # LFC-2E2-EXPANSION U1 — typed failure surface hardening
+  #
+  # Adds UtilitiesJsonError sealed ADT (3 cases: JsonNotFound, JsonParseFailure,
+  # JsonIoFailure) + UtilitiesJsonException typed failure carrier. The boundary
+  # catches the typed exception as a generic Exception, preserves it as the cause
+  # of the resulting engine failure, and surfaces it to consumers reading the
+  # RunOutcome.Failure.failure.cause chain. Zero production core changes.
+  # ────────────────────────────────────────────────────────────────────────
+  e2_u1_typed_failure:
+    receipt: docs/v2/07-uat/E2_U1_JSON_TYPED_FAILURE_RECEIPT.md
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesJsonStepContractSuiteTest.kt
+    contract_suite_rows_added: 5
+    new_typed_cases:
+      - UtilitiesJsonError.JsonNotFound
+      - UtilitiesJsonError.JsonParseFailure
+      - UtilitiesJsonError.JsonIoFailure
+    production_core_changes: 0
+    notes: |
+      The plugin package declares the typed ADT; production core stays unaware of it
+      (no when (... UtilitiesJsonError) branch anywhere in pipeline-application).
+      Verified mechanically by Lfc2E2ExpansionGateFitnessTest G4-4.
+
 steps:
 
   # ────────────────────────────────────────────────────────────────────────

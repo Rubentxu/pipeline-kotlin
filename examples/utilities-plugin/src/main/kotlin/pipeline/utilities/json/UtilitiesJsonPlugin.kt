@@ -254,6 +254,49 @@ object Sha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Typed failure ADT (LFC-2E2-EXPANSION U1 — JSON hardening).
+//
+// The plugin family exposes a sealed [UtilitiesJsonError] ADT plus a typed
+// [UtilitiesJsonException] that carries it. Every failure path inside the
+// default FS-backed capability implementation raises this typed exception,
+// so a handler / host can branch exhaustively on the failure class without
+// parsing stringly-typed exception messages. The boundary preserves the
+// original exception as the `cause` of the resulting `StepFailed`-equivalent
+// engine failure; tests and observability consumers can inspect it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+sealed interface UtilitiesJsonError {
+    /** The target file does not exist or is not readable. */
+    data class JsonNotFound(val path: String) : UtilitiesJsonError
+
+    /** The target file is reachable but its content is not valid JSON. */
+    data class JsonParseFailure(val path: String, val reason: String) : UtilitiesJsonError
+
+    /** A filesystem-level I/O failure other than NotFound/Parse (permission denied, EIO, etc.). */
+    data class JsonIoFailure(val path: String, val reason: String) : UtilitiesJsonError
+}
+
+/**
+ * Typed exception thrown by the JSON capability operations. Carries a sealed
+ * [UtilitiesJsonError] variant so a consumer can switch on the failure class
+ * exhaustively (`when (e.reason)` is the only `when` needed).
+ *
+ * NOTE: this exception lives in the plugin package so the host runtime and
+ * core coordinator remain unaware of it. The boundary catches it as a generic
+ * `Exception` (no Step-specific branch), preserves it as the cause of the
+ * resulting engine failure, and surfaces it to consumers that read the
+ * `RunOutcome.Failure.failure.cause` chain.
+ */
+class UtilitiesJsonException(val reason: UtilitiesJsonError) :
+    RuntimeException("utilities.json: ${reason::class.simpleName}: ${reason.describe()}")
+
+private fun UtilitiesJsonError.describe(): String = when (this) {
+    is UtilitiesJsonError.JsonNotFound -> "file not found: $path"
+    is UtilitiesJsonError.JsonParseFailure -> "parse failure at $path: $reason"
+    is UtilitiesJsonError.JsonIoFailure -> "I/O failure at $path: $reason"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Capability ports (typed narrow surfaces)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -261,9 +304,16 @@ object Sha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> {
  * Typed narrow capability surface for read/write JSON file operations.
  * The host runtime supplies a concrete implementation at composition time;
  * the plugin declares it via [UtilitiesJsonContributor.UTILITIES_JSON_CAPABILITY].
+ *
+ * Every failure path in a conforming implementation MUST raise a
+ * [UtilitiesJsonException] carrying a typed [UtilitiesJsonError] reason.
+ * Callers are expected to handle the exception exhaustively (`when (e.reason)`).
  */
 interface UtilitiesJsonOperations {
+    @Throws(UtilitiesJsonException::class)
     fun readJson(path: String): ReadJsonOutput
+
+    @Throws(UtilitiesJsonException::class)
     fun writeJson(path: String, value: JsonElement, prettyPrint: Boolean): WriteJsonOutput
 }
 
@@ -271,6 +321,7 @@ interface UtilitiesJsonOperations {
  * Typed narrow capability surface for SHA-256 file digest operations.
  */
 interface UtilitiesShaOperations {
+    @Throws(UtilitiesJsonException::class)
     fun sha256(path: String): Sha256Output
 }
 
@@ -286,9 +337,19 @@ interface UtilitiesShaOperations {
 class DefaultUtilitiesJsonOperations : UtilitiesJsonOperations {
     override fun readJson(path: String): ReadJsonOutput {
         val file = java.io.File(path)
-        require(file.exists()) { "readJSON: file does not exist: $path" }
-        val bytes = file.readBytes()
-        val element = Json.parseToJsonElement(String(bytes, Charsets.UTF_8))
+        if (!file.exists()) {
+            throw UtilitiesJsonException(UtilitiesJsonError.JsonNotFound(path))
+        }
+        val bytes = try {
+            file.readBytes()
+        } catch (e: java.io.IOException) {
+            throw UtilitiesJsonException(UtilitiesJsonError.JsonIoFailure(path, e.message ?: e::class.simpleName.orEmpty()))
+        }
+        val element = try {
+            Json.parseToJsonElement(String(bytes, Charsets.UTF_8))
+        } catch (e: kotlinx.serialization.SerializationException) {
+            throw UtilitiesJsonException(UtilitiesJsonError.JsonParseFailure(path, e.message ?: e::class.simpleName.orEmpty()))
+        }
         return ReadJsonOutput(
             path = path,
             bytes = bytes.size.toLong(),
@@ -307,7 +368,11 @@ class DefaultUtilitiesJsonOperations : UtilitiesJsonOperations {
         val bytes = serialized.toByteArray(Charsets.UTF_8)
         val file = java.io.File(path)
         file.parentFile?.mkdirs()
-        file.writeBytes(bytes)
+        try {
+            file.writeBytes(bytes)
+        } catch (e: java.io.IOException) {
+            throw UtilitiesJsonException(UtilitiesJsonError.JsonIoFailure(path, e.message ?: e::class.simpleName.orEmpty()))
+        }
         return WriteJsonOutput(
             path = path,
             bytes = bytes.size.toLong(),
@@ -319,8 +384,14 @@ class DefaultUtilitiesJsonOperations : UtilitiesJsonOperations {
 class DefaultUtilitiesShaOperations : UtilitiesShaOperations {
     override fun sha256(path: String): Sha256Output {
         val file = java.io.File(path)
-        require(file.exists()) { "sha256: file does not exist: $path" }
-        val bytes = file.readBytes()
+        if (!file.exists()) {
+            throw UtilitiesJsonException(UtilitiesJsonError.JsonNotFound(path))
+        }
+        val bytes = try {
+            file.readBytes()
+        } catch (e: java.io.IOException) {
+            throw UtilitiesJsonException(UtilitiesJsonError.JsonIoFailure(path, e.message ?: e::class.simpleName.orEmpty()))
+        }
         return Sha256Output(
             path = path,
             bytes = bytes.size.toLong(),

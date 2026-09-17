@@ -536,6 +536,55 @@ class UtilitiesJsonStepContractSuiteTest {
         assertTrue(events.any { it is StepFinished })
     }
 
+    @Test
+    fun `real DSL scenario - typed failure (missing-file readJSON) propagates typed UtilitiesJsonException carrying JsonNotFound reason`() = runBlocking {
+        // This is the canonical "installed-acceptance proof" for the typed-failure path:
+        // a real DSL pipeline runs through the canonical coordinator + canonical boundary,
+        // the typed handler throws UtilitiesJsonException(JsonNotFound), the boundary wraps
+        // it as a typed engine failure, and the canonical RunOutcome is a Failure whose
+        // cause preserves the typed exception.
+        val workDir = Files.createTempDirectory("utilities-dsl-missing-")
+        val missingPath = workDir.resolve("definitely-missing.json").toString()
+        val spec: PipelineSpec = pipeline {
+            stages {
+                stage("TypedFailure") {
+                    registryStep(
+                        stepKey = ReadJsonStepDefinition.KEY,
+                        encodedInput = ReadJsonCodec.encode(ReadJsonInput(missingPath)),
+                    )
+                }
+            }
+        }
+        val compiled = DslCompiledPipelineCompiler.compile(
+            spec = spec,
+            sourcePath = "02-json-typed-failure.pipeline.kts",
+            sourceContent = spec.toString(),
+            pluginLockDigest = Digest("lock"),
+        )
+        val eventStore = InMemoryEventStore()
+        val h = harness(eventStore, workDir)
+        val run = h.coord.run(compiled, RunId("dsl-typed-failure"))
+        assertTrue(
+            run is RunOutcome.Failure,
+            "missing-file readJSON must surface as RunOutcome.Failure, was: ${'$'}run",
+        )
+        val failure = (run as RunOutcome.Failure).failure
+        val cause = failure.cause
+        assertTrue(
+            cause is pipeline.utilities.json.UtilitiesJsonException,
+            "typed failure cause must be UtilitiesJsonException, was: ${'$'}{cause?.javaClass?.name}",
+        )
+        val typedCause = cause as pipeline.utilities.json.UtilitiesJsonException
+        assertTrue(
+            typedCause.reason is pipeline.utilities.json.UtilitiesJsonError.JsonNotFound,
+            "typed failure reason must be JsonNotFound, was: ${'$'}{typedCause.reason::class.simpleName}",
+        )
+        assertEquals(
+            missingPath,
+            (typedCause.reason as pipeline.utilities.json.UtilitiesJsonError.JsonNotFound).path,
+        )
+    }
+
     // ───────── helpers ─────────
 
     private fun pipelineOf(key: PluginStepId, encodedInput: EncodedStepValue): CompiledPipeline {
@@ -556,5 +605,99 @@ class UtilitiesJsonStepContractSuiteTest {
                 ),
             ),
         )
+    }
+
+    // ───────── typed failure semantics (LFC-2E2-EXPANSION U1 — JSON hardening) ─────────
+
+    @Test
+    fun `typed failure - readJSON of a missing file throws UtilitiesJsonException(JsonNotFound)`() = runBlocking {
+        val ctx = StepHandlerContext(
+            runId = RunId("utilities-missing"),
+            stepIndex = 0,
+            capabilities = utilityCapabilities(),
+        )
+        val missingPath = "/tmp/utilities-definitely-does-not-exist-${'$'}{System.nanoTime()}.json"
+        val caught = runCatching {
+            ReadJsonStepDefinition.handler.execute(ReadJsonInput(missingPath), ctx)
+        }.exceptionOrNull()
+        assertTrue(
+            caught is pipeline.utilities.json.UtilitiesJsonException,
+            "missing file must throw UtilitiesJsonException, was: ${caught?.javaClass?.name}",
+        )
+        val typed = caught as pipeline.utilities.json.UtilitiesJsonException
+        val reason = typed.reason
+        assertTrue(
+            reason is pipeline.utilities.json.UtilitiesJsonError.JsonNotFound,
+            "missing-file failure must be typed as JsonNotFound, was: ${reason::class.simpleName}",
+        )
+        assertEquals(missingPath, (reason as pipeline.utilities.json.UtilitiesJsonError.JsonNotFound).path)
+    }
+
+    @Test
+    fun `typed failure - readJSON of malformed JSON throws UtilitiesJsonException(JsonParseFailure)`() = runBlocking {
+        val workDir = Files.createTempDirectory("utilities-malformed-")
+        val badFile = workDir.resolve("not-json.json")
+        Files.writeString(badFile, "this is not valid JSON {{{ :::")
+        val ctx = StepHandlerContext(
+            runId = RunId("utilities-malformed"),
+            stepIndex = 0,
+            capabilities = utilityCapabilities(),
+        )
+        val caught = runCatching {
+            ReadJsonStepDefinition.handler.execute(ReadJsonInput(badFile.toString()), ctx)
+        }.exceptionOrNull()
+        assertTrue(
+            caught is pipeline.utilities.json.UtilitiesJsonException,
+            "malformed JSON must throw UtilitiesJsonException, was: ${caught?.javaClass?.name}",
+        )
+        val typed = caught as pipeline.utilities.json.UtilitiesJsonException
+        val reason = typed.reason
+        assertTrue(
+            reason is pipeline.utilities.json.UtilitiesJsonError.JsonParseFailure,
+            "malformed-JSON failure must be typed as JsonParseFailure, was: ${reason::class.simpleName}",
+        )
+        assertEquals(badFile.toString(), (reason as pipeline.utilities.json.UtilitiesJsonError.JsonParseFailure).path)
+    }
+
+    @Test
+    fun `typed failure - sha256 of a missing file throws UtilitiesJsonException(JsonNotFound)`() = runBlocking {
+        val ctx = StepHandlerContext(
+            runId = RunId("utilities-sha-missing"),
+            stepIndex = 0,
+            capabilities = utilityCapabilities(),
+        )
+        val missingPath = "/tmp/utilities-sha-missing-${'$'}{System.nanoTime()}.bin"
+        val caught = runCatching {
+            Sha256StepDefinition.handler.execute(Sha256Input(missingPath), ctx)
+        }.exceptionOrNull()
+        assertTrue(
+            caught is pipeline.utilities.json.UtilitiesJsonException,
+            "missing file must throw UtilitiesJsonException, was: ${caught?.javaClass?.name}",
+        )
+        assertTrue(
+            (caught as pipeline.utilities.json.UtilitiesJsonException).reason
+                is pipeline.utilities.json.UtilitiesJsonError.JsonNotFound,
+        )
+    }
+
+    @Test
+    fun `typed failure - UtilitiesJsonError sealed ADT is exhaustively matchable (3 cases)`() {
+        val cases = listOf(
+            pipeline.utilities.json.UtilitiesJsonError.JsonNotFound("/x"),
+            pipeline.utilities.json.UtilitiesJsonError.JsonParseFailure("/y", "boom"),
+            pipeline.utilities.json.UtilitiesJsonError.JsonIoFailure("/z", "EACCES"),
+        )
+        // Exhaustive `when` over the sealed ADT — compiles iff all three variants exist.
+        val mapped: List<String> = cases.map { reason ->
+            when (reason) {
+                is pipeline.utilities.json.UtilitiesJsonError.JsonNotFound -> "notfound:" + reason.path
+                is pipeline.utilities.json.UtilitiesJsonError.JsonParseFailure -> "parse:" + reason.path
+                is pipeline.utilities.json.UtilitiesJsonError.JsonIoFailure -> "io:" + reason.path
+            }
+        }
+        assertEquals(3, mapped.size)
+        assertEquals("notfound:/x", mapped[0])
+        assertEquals("parse:/y", mapped[1])
+        assertEquals("io:/z", mapped[2])
     }
 }

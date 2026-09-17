@@ -124,17 +124,64 @@ Only XCA-2 (installed CLI -> canonical execution -> journal -> expected StepKey
 observed) turns a promoted file into evidence. This preserves the principle won at
 `0f74f992`: the ledger never again runs ahead of reality.
 
+## Typed-exception reconciliation (no magic lists)
+
+`v2/tools/xca1b_inventory_reconcile.py` compares the two independent authorities and
+treats a runtime key absent from the ledger as acceptable **only** when it carries an
+explicit typed exception with a stated reason. There is no heuristic fallback: anything
+outside the map is printed as `[VIOLATION]` and the tool exits non-zero.
+
+```text
+runtime production StepKeys : 47
+ledger records              : 34
+```
+
+```text
+TEMPLATE              1   core.${step.name}        dynamic construction, not a real key
+BLOCK_ORCHESTRATION   9   catchError warnError dir withEnv withCredentials
+                          parallel retry timeout timestamps
+CONTROL_NODE          4   parallel-branch retry-attempt
+                          wait-until-control wait-until-poll
+```
+
+The 9 `BLOCK_ORCHESTRATION` keys are control-flow Steps entered through
+`BodyInvoker`/`BranchInvoker`. They have no user-facing atomic surface to certify as a
+`REGISTRY_STEP`; recording them requires the `ORCHESTRATION` evidence adapter. They were
+therefore **not** given invented ledger records.
+
+### The guard was falsified, not asserted
+
+Removing the `core.timestamps` exception produces:
+
+```text
+[VIOLATION]  core.timestamps  no typed exception declared
+exit=1
+```
+
+Restored: `exit=0`. A guard that cannot fail is worthless.
+
+## Counters now
+
+```text
+runtime StepKeys missing from ledger (unclassified) : 0
+ledger keys missing from runtime (unexpected)       : 0
+typed exceptions applied                            : 14
+```
+
 ## Remaining for XCA closure
 
 ```text
-runtime StepKeys missing from ledger            0   (needs ORCHESTRATION mode; 16 -> 0)
-ledger executable StepKeys missing runtime      0   (core.load classified)
+runtime StepKeys missing from ledger            0   DONE (typed exceptions)
+ledger executable StepKeys missing runtime      0   DONE
 false fixture claims                            0   DONE
+missing fixture paths                           0   DONE
 CERTIFIED without valid evidence                0   (13 remaining, XCA-1C)
 compatibility-only certified surfaces           0   (11 remaining, XCA-1D + XCA-2)
 static-but-never-executed claims                0   (XCA-2)
-missing fixture paths                           0   DONE
 runner-unregistered examples                    0   (not yet measured)
 duplicate manual certification authorities      0   (5 nested entries; isolated)
 STRUCTURAL_SYNTH without rewrite evidence       0   (core.emit.event has a suite)
 ```
+
+Three counters closed in this slice. The five open ones all depend on fixtures or on
+execution evidence, which is XCA-1C onward.

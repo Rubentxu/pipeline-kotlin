@@ -29,9 +29,26 @@ steps:
   # ───────────────────────────────────────────────────────────────────────────
   # core.echo — atomic, no effects
   # Evidence: XCA-2B real run (runId: 006df865-a1d4-4bcf-ac8c-895c0864ea60)
+  #
+  # VERIFY-2026-09-17 demotion: CERTIFIED → IMPLEMENTED_UNCERTIFIED.
+  #
+  # The XCA-2B run produced real evidence (3 echo invocations, all SUCCEEDED,
+  # matched against the 03-stages fixture's expected {core.echo}×3). The
+  # Step Constitution burn-down (ADR-0074) defines CERTIFIED as the FINAL
+  # state of the G0..G8 burn-down sequence — it is NOT a state an apply
+  # commit can self-declare. The official Step Constitution ledger at
+  # docs/v2/status/step-certification.yaml tracks CERTIFIED with full G0..G8
+  # receipts (S3_ECHO_BURNDOWN_CERTIFICATION.md). The XCA-2 evidence ledger
+  # is a DIFFERENT authority — its CERTIFIED semantic would mean "XCA-2
+  # evidence reconciliation passed", which it did, but that is not the
+  # canonical certification that the rest of the project reads.
+  #
+  # Until XCA-2 defines its own G0..G8 certifier distinct from Step
+  # Constitution, this entry stays at IMPLEMENTED_UNCERTIFIED. The evidence
+  # below is preserved verbatim so the reconciliation can be re-run.
   # ───────────────────────────────────────────────────────────────────────────
   core.echo:
-    verification_status: CERTIFIED
+    verification_status: IMPLEMENTED_UNCERTIFIED
     provenance:
       fixture_id: "compatibility/03-stages.pipeline.kts"
       run_id: "006df865-a1d4-4bcf-ac8c-895c0864ea60"
@@ -46,6 +63,19 @@ steps:
     step_expectations:
       core.echo: HasEvidence
     notes: |
+      DEMOTED (verify 2026-09-17): CERTIFIED requires the Step Constitution
+      burn-down certifier (G0..G8, ADR-0074). This XCA-2 entry only recorded
+      evidence reconciliation, which is a prerequisite of CERTIFICATION, not
+      certification itself. Promoting to CERTIFIED requires an explicit
+      XCA-2 certifier run that:
+        (a) re-runs the corpus against an isolated journal,
+        (b) verifies the reconciliation against a fixed oracle,
+        (c) signs the result with an XCA-2 certifier key (TBD),
+        (d) updates both this ledger and the official Step Constitution
+            ledger at docs/v2/status/step-certification.yaml.
+      Until then, the evidence is preserved under IMPLEMENTED_UNCERTIFIED
+      with full provenance so the reconciliation is reproducible.
+
       03-stages fixture: build (echo "building..."), test (echo "testing..."),
       deploy (echo "deploying...").  Three echo invocations in three stages.
       All three observed via JournalRunExecutionEvidenceReader against real
@@ -298,11 +328,14 @@ steps:
 # Certification summary
 # ─────────────────────────────────────────────────────────────────────────────
 summary:
-  certified: 1        # core.echo
+  certified: 0        # verify 2026-09-17: core.echo demoted (no XCA-2 certifier yet)
   evidence_ready: 1   # core.sh (pending corpus run)
+  implemented_uncertified: 1  # core.echo — evidence present, certifier not run
   static_candidate: 12
   quarantined: 0
   retired: 0
   total: 14
   gate_status: PARTIAL
-  next_action: "Workstream E — run full corpus and populate evidence"
+  next_action: "Run XCA-2 certifier (G0..G8 distinct from Step Constitution) OR"
+  next_action_2: "leave core.echo at IMPLEMENTED_UNCERTIFIED; the official"
+  next_action_3: "CERTIFIED state lives in docs/v2/status/step-certification.yaml"

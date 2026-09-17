@@ -59,6 +59,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
+        // LFC-2E3-P / P2: optional durable output identity. Appended with defaults so every
+        // existing construction site is unaffected, and the DSL function external plugins call
+        // (`registryStep`) keeps its exact signature — adding a parameter there would have broken
+        // already-built plugin JARs (see AGENTS.md PLUGIN ABI COMPATIBILITY).
+        val outputName: String? = null,
+        val outputTypeTag: String? = null,
     ) : StepSpec {
         override val name: String get() = "registryStep"
         override val type: String get() = "registry"
@@ -1338,6 +1344,46 @@ class StageScope(
         schemaVersion: String = "dsl-v1",
     ) {
         steps.add(StepSpec.RegistryStepSpec(stepKey = stepKey, schemaVersion = schemaVersion, encodedInput = encodedInput))
+    }
+
+    /**
+     * LFC-2E3-P / P2 — the SAME registry lowering, additionally PUBLISHING the Step's output under
+     * a durable name so a later Step can bind it.
+     *
+     * This is a NEW function rather than a new parameter on [registryStep] on purpose: adding a
+     * parameter to [registryStep] would change its JVM signature and break every already-built
+     * plugin JAR that calls it. See AGENTS.md § PLUGIN ABI COMPATIBILITY.
+     *
+     * The returned [dev.rubentxu.pipeline.v2.domain.step.StepOutputRef] is a DECLARATIVE
+     * reference: it carries a name and a type tag, never a runtime value. The producer's actual
+     * output is resolved later, from committed durable state, through the declared
+     * `step.output.resolver` capability.
+     *
+     * @param outputName durable identity the output is published under (unique per run)
+     * @param outputTypeTag plugin-owned contract a consumer must match, e.g. the output type name
+     */
+    fun registryStepPublishing(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        outputName: String,
+        outputTypeTag: String,
+        schemaVersion: String = "dsl-v1",
+    ): dev.rubentxu.pipeline.v2.domain.step.StepOutputRef {
+        require(outputName.isNotBlank()) { "registryStepPublishing requires a non-blank outputName" }
+        require(outputTypeTag.isNotBlank()) { "registryStepPublishing requires a non-blank outputTypeTag" }
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = stepKey,
+                schemaVersion = schemaVersion,
+                encodedInput = encodedInput,
+                outputName = outputName,
+                outputTypeTag = outputTypeTag,
+            ),
+        )
+        return dev.rubentxu.pipeline.v2.domain.step.StepOutputRef(
+            name = outputName,
+            typeTag = outputTypeTag,
+        )
     }
 
     /**

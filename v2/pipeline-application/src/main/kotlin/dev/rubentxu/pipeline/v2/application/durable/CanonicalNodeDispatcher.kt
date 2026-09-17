@@ -28,6 +28,11 @@ data class CanonicalRuntimeContext(
     val controlDirRoot: Path?,
     val eventSink: EventSink,
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
+    // LFC-2E3-P / P2: canonical step-output resolution, exposed to a consumer handler that DECLARES
+    // the `step.output.resolver` capability. Null means "this invocation has no run-scoped output
+    // registry", in which case the capability is simply absent and admission fails closed for any
+    // Step that requires it — never a silent no-op.
+    val stepOutputResolver: dev.rubentxu.pipeline.v2.domain.step.StepOutputResolver? = null,
 )
 
 /** Dispatches the supported canonical core nodes through their durable runtime paths. */

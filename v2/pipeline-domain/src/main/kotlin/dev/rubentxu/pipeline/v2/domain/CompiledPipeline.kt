@@ -131,6 +131,12 @@ data class OpaqueStepNode(
     override val id: StepId,
     override val pluginStepId: PluginStepId,
     override val payload: VersionedStepPayload,
+    // LFC-2E3-P / P2: optional durable output identity. When present, the runtime publishes this
+    // Step's committed output under [outputName] so a later Step can bind it through the declared
+    // `step.output.resolver` capability. Appended with a default so no existing construction site
+    // changes; the IR still carries no step-specific knowledge.
+    val outputName: String? = null,
+    val outputTypeTag: String? = null,
 ) : StepNode
 
 @Serializable

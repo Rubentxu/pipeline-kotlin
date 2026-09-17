@@ -152,6 +152,11 @@ object DslCompiledPipelineCompiler {
                         step.schemaVersion,
                         step.encodedInput.value,
                     ),
+                    // LFC-2E3-P / P2: pass the optional published-output identity through
+                    // verbatim. Still fully generic: the compiler never learns a concrete
+                    // StepKey, never resolves a StepDefinition, never inspects the output type.
+                    outputName = step.outputName,
+                    outputTypeTag = step.outputTypeTag,
                 ),
             )
             is StepSpec.WriteFile -> listOf(

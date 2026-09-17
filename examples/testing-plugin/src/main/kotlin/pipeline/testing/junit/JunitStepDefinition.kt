@@ -53,6 +53,13 @@ import pipeline.testing.results.JunitAdapterFactory
 object JunitStepDefinition : StepDefinition<JunitStepInput, JunitStepOutput> {
     val KEY: PluginStepId = PluginStepId("core.junit")
 
+    /**
+     * LFC-2E3-P / P2: the type tag this Step publishes. A consumer binding this output must
+     * declare the SAME tag; resolution fails closed on mismatch. Plugin-owned, so the piping
+     * mechanism carries no knowledge of this Step.
+     */
+    const val OUTPUT_TYPE_TAG: String = "pipeline.testing.junit.JunitStepOutput"
+
     override val contract = StepContract(
         key = KEY,
         descriptor = StepDescriptor(
@@ -170,3 +177,25 @@ fun StageScope.junit(reportPaths: List<String>) =
     )
 
 fun StageScope.junit(reportPath: String) = junit(listOf(reportPath))
+
+/**
+ * LFC-2E3-P / P2 — the SAME junit Step, additionally PUBLISHING its typed output under
+ * [outputName] so a later Step can bind it.
+ *
+ * The returned reference is declarative: it names the output and states the expected type tag. The
+ * parsed report is computed at run time and resolved from committed durable state through the
+ * `step.output.resolver` capability — it is never fabricated during DSL construction.
+ *
+ * This is a plugin-owned facade, so adding a parameter is additive for the SDK; `.pipeline.kts`
+ * scripts are recompiled on every run, and no frozen plugin JAR calls this function.
+ */
+fun StageScope.junitPublishing(reportPaths: List<String>, outputName: String) =
+    registryStepPublishing(
+        stepKey = JunitStepDefinition.KEY,
+        encodedInput = JunitStepInputCodec.encode(JunitStepInput(reportPaths)),
+        outputName = outputName,
+        outputTypeTag = JunitStepDefinition.OUTPUT_TYPE_TAG,
+    )
+
+fun StageScope.junitPublishing(reportPath: String, outputName: String) =
+    junitPublishing(listOf(reportPath), outputName)

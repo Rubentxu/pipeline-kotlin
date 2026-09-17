@@ -191,6 +191,51 @@ class PluginBinaryCompatibilityFitnessTest {
         )
     }
 
+    @Test
+    fun `the DSL function plugins actually CALL keeps its exact JVM signature`() {
+        // The frozen SPIs above are what plugins IMPLEMENT. This row guards what plugins CALL.
+        // A plugin writes `registryStep(stepKey = ..., encodedInput = ...)`; adding a parameter
+        // there - even a defaulted one - changes the JVM method a prebuilt plugin invokes and
+        // would break it with NoSuchMethodError. That is exactly why LFC-2E3-P/P2 introduced a
+        // NEW function (`registryStepPublishing`) instead of a new parameter.
+        // `registryStep` is a member of StageScope (not a file-level extension), and its JVM name
+        // carries a value-class mangling suffix because PluginStepId and EncodedStepValue are both
+        // value classes - so the whole parameter ABI is encoded in the name. Freezing it catches a
+        // relocated function, a changed parameter list, and a changed value-class representation.
+        val holder = Class.forName("dev.rubentxu.pipeline.v2.dsl.StageScope")
+        val signature = holder.declaredMethods
+            .filter { it.name.startsWith("registryStep") }
+            .map { method ->
+                val params = method.parameterTypes.joinToString(",") { it.name }
+                "${method.name}($params): ${method.returnType.name}"
+            }
+            .sorted()
+
+        assertEquals(
+            listOf(
+                // '$' sorts before '(' in the JVM name order, so the synthetic $default bridges
+                // come first.
+                "registryStep-TmLEHys\$default(" +
+                    "dev.rubentxu.pipeline.v2.dsl.StageScope," +
+                    "java.lang.String,java.lang.String,java.lang.String,int,java.lang.Object): void",
+                "registryStep-TmLEHys(java.lang.String,java.lang.String,java.lang.String): void",
+                "registryStepPublishing-0QqE4n0\$default(" +
+                    "dev.rubentxu.pipeline.v2.dsl.StageScope," +
+                    "java.lang.String,java.lang.String,java.lang.String,java.lang.String," +
+                    "java.lang.String,int,java.lang.Object): " +
+                    "dev.rubentxu.pipeline.v2.domain.step.StepOutputRef",
+                "registryStepPublishing-0QqE4n0(" +
+                    "java.lang.String,java.lang.String,java.lang.String,java.lang.String," +
+                    "java.lang.String): dev.rubentxu.pipeline.v2.domain.step.StepOutputRef",
+            ),
+            signature,
+            "registryStep is the DSL entry point external plugins call: it MUST NOT change. New " +
+                "capability gets a NEW function instead (see AGENTS.md PLUGIN ABI COMPATIBILITY). " +
+                "registryStepPublishing is that additive sibling and is frozen from its first " +
+                "shipped commit.",
+        )
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Guard 2 — preserved plugin JAR against the current host
     // ─────────────────────────────────────────────────────────────────────────

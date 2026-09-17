@@ -138,6 +138,12 @@ open class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
         )
         builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps
+        // LFC-2E3-P / P2: step-output resolution. Exposed ONLY when the invocation carries a
+        // resolver for this run, so a consumer Step that declares the capability is rejected
+        // fail-closed when the runtime cannot honour it.
+        context.stepOutputResolver?.let { resolver ->
+            builder[dev.rubentxu.pipeline.v2.domain.step.STEP_OUTPUT_RESOLVER_CAPABILITY] = resolver
+        }
         // S2-A7 / G3-fix: deleteDir operations for core.deleteDir.
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the

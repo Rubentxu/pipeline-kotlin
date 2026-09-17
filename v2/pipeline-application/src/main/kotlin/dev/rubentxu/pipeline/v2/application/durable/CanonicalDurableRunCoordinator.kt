@@ -600,6 +600,8 @@ class CanonicalDurableRunCoordinator(
     private var runStartedEmitted = false
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
+        // LFC-2E3-P / P2: published-output identity is per-run.
+        publishedStepOutputs.clear()
         // Reset state for this run
         currentOutcome = RunOutcome.Success
         runStartedEmitted = false
@@ -829,6 +831,16 @@ class CanonicalDurableRunCoordinator(
     /** CTX-P2: outcome + successor context returned together; callers keep their own parent value. */
     private data class Dispatched(val outcome: StepOutcome, val context: ExecutionContext)
 
+    /**
+     * LFC-2E3-P / P2: per-run published Step-output IDENTITY (name -> producing operation).
+     *
+     * Deliberately holds no output VALUES: the journal is the single authority for committed state.
+     * This map only lets a consumer discover which operation committed the output it references.
+     * Cleared at the start of every [run] so a reused coordinator cannot leak names across runs.
+     */
+    private val publishedStepOutputs =
+        java.util.concurrent.ConcurrentHashMap<String, PublishedStepOutput>()
+
     private suspend fun dispatch(
         step: StepNode,
         runId: RunId,
@@ -857,6 +869,37 @@ class CanonicalDurableRunCoordinator(
             runId = runId.value,
             attempt = 1,
         )
+
+        // LFC-2E3-P / P2: if this Step declares a durable output identity, register it so a later
+        // Step can bind it. Registered BEFORE execution on purpose: a consumer that runs early
+        // still resolves against the JOURNAL and fails closed with NotYetProduced, so ordering is
+        // enforced by the authority rather than by this bookkeeping. A duplicate name is a contract
+        // violation and is rejected before any effect, never silently last-wins.
+        (step as? dev.rubentxu.pipeline.v2.domain.OpaqueStepNode)?.let { node ->
+            val declaredName = node.outputName
+            val declaredTag = node.outputTypeTag
+            if (!declaredName.isNullOrBlank() && !declaredTag.isNullOrBlank()) {
+                val record = PublishedStepOutput(
+                    declaration = dev.rubentxu.pipeline.v2.domain.step.StepOutputDeclaration(
+                        name = declaredName,
+                        typeTag = declaredTag,
+                    ),
+                    operationId = operationId,
+                )
+                val previous = publishedStepOutputs.putIfAbsent(declaredName, record)
+                if (previous != null && previous.operationId != operationId) {
+                    return Dispatched(
+                        rejectSchema(
+                            operationId,
+                            input,
+                            "duplicate published output name '$declaredName': already produced by " +
+                                "'${previous.operationId}' and now declared by '$operationId'",
+                        ),
+                        executionContext,
+                    )
+                }
+            }
+        }
 
         // CDE.2-c0: structural phase (envelope gate + control overlay projection) precedes any typed
         // decode. A structurally-invalid node is a terminal SCHEMA rejection (C3/C5), executor never runs.
@@ -955,6 +998,10 @@ class CanonicalDurableRunCoordinator(
                     // Fail-closed admission (null bodyInvoker → no capability) is preserved
                     // for legacy callers because the field defaults to null on the context.
                     bodyInvoker = bodyInvokerAdapter,
+                    // LFC-2E3-P / P2: run-scoped step-output resolution. Exposed only under the
+                    // SDK-owned `step.output.resolver` capability, and only to a handler that
+                    // DECLARES it; admission stays fail-closed.
+                    stepOutputResolver = JournalStepOutputResolver(publishedStepOutputs.toMap(), journal),
                 )
 
                 // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER

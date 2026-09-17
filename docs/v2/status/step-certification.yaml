@@ -98,14 +98,14 @@ e2_prep:
 
 counters:
   certified_core_steps: 12
-  certified_external_plugin_steps: 8
-  certified_total_steps: 20
+  certified_external_plugin_steps: 10
+  certified_total_steps: 22
   rejected_steps: 1
   stopped_g7_steps: 2
   implemented_uncertified_steps: 0
   not_started_steps: 0
-  total_production_step_keys: 23
-  total_yaml_step_entries: 20  # 12 core + 6 external (3 JSON + 2 YAML + 2 properties) + 2 stopped + 1 rejected, but YAML counts families not status
+  total_production_step_keys: 25
+  total_yaml_step_entries: 22  # 12 core + 10 external (3 JSON + 2 YAML + 2 properties + 2 filesystem + 1 example.uppercase) + 2 stopped + 1 rejected, but YAML counts families not status
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
   legacy_residual_dispatcher_files: 0
@@ -843,6 +843,61 @@ steps:
       (same typed port) so callers can project round-trips. Plugin layer
       handles parent-dir creation and bytes-returned accounting; no Step-specific
       code in production core.
+
+  - step_key: utilities.findFiles
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/filesystem/UtilitiesFilesystemPlugin.kt
+    capability: utilities.filesystem.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesFilesystemStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesFilesystemStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U4 family — the FIRST non-codec-shaped family. findFiles
+      walks a directory tree (Files.walk) and returns paths matching a glob
+      pattern (Java NIO PathMatcher with `**` recursive semantics synthesised at
+      the capability boundary). Output is a LIST of path strings (`List<String>`).
+      Capability `utilities.filesystem.operations` is distinct from the codec
+      capabilities. Production core stays unaware of the LIST shape.
+
+  - step_key: utilities.touch
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U4_FILESYSTEM_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/filesystem/UtilitiesFilesystemPlugin.kt
+    capability: utilities.filesystem.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesFilesystemStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesFilesystemStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U4 family. Touch creates or updates a file's
+      lastModifiedMillis (Files.setLastModifiedTime) and optionally creates
+      parent directories. Atomic with `utilities.findFiles` (same typed port).
+      Timestamp-typed argument (`lastModifiedMillis: Long?`) projects to the
+      public contract — no `FileTime` leak into the SDK boundary.
 
 # ────────────────────────────────────────────────────────────────────────
 # Roll-up assertions (machine-verifiable invariants)

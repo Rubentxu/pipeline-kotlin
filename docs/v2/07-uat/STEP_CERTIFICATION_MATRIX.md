@@ -14,17 +14,19 @@ Production Step keys total:        21
   CERTIFIED (core):                12   (echo, sh, error, sleep, file.writeFile,
                                        emit.event, isUnix, deleteDir, milestone,
                                        cleanWs, archiveArtifacts, waitUntil)
-  CERTIFIED (external plugin):      8   (example.uppercase, utilities.readJSON,
+  CERTIFIED (external plugin):     10   (example.uppercase, utilities.readJSON,
                                        utilities.writeJSON, utilities.sha256,
                                        utilities.readYaml, utilities.writeYaml,
-                                       utilities.readProperties, utilities.writeProperties)
-                                       NOTE: utilities family contributes 7 StepKeys
+                                       utilities.readProperties, utilities.writeProperties,
+                                       utilities.findFiles, utilities.touch)
+                                       NOTE: utilities family contributes 9 StepKeys
                                        under 1 OFFICIAL_PLUGIN (`pipeline.utilities.json@1.0.0`)
-                                       with 3 capability tokens
+                                       with 4 capability tokens
                                        (`utilities.json.operations`,
                                        `utilities.sha.operations`,
                                        `utilities.yaml.operations`,
-                                       `utilities.properties.operations`)
+                                       `utilities.properties.operations`,
+                                       `utilities.filesystem.operations`)
   STOPPED at G7 (CERTIFICATION not reached): 2  (pwd, pwd.tmp — non-deterministic runtime return)
   REJECTED:                         1   (load — CORE-LOAD-REJECTED 2026-09-17)
 

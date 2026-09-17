@@ -54,6 +54,11 @@ class UtilitiesJsonContributor : StepDefinitionContributor {
         // contributor (same plugin coordinate, same JAR).
         pipeline.utilities.properties.ReadPropertiesStepDefinition,
         pipeline.utilities.properties.WritePropertiesStepDefinition,
+        // LFC-2E2-EXPANSION U4: filesystem traversal (findFiles + touch) registered
+        // through the same contributor. Different shape (LIST-shaped output, timestamp
+        // effect) — proves the architecture supports non-codec families.
+        pipeline.utilities.filesystem.FindFilesStepDefinition,
+        pipeline.utilities.filesystem.TouchStepDefinition,
     )
 
     companion object {

@@ -365,6 +365,61 @@ class Lfc2E2ExpansionGateFitnessTest {
         }
     }
 
+    @Test
+    fun `G4-7 filesystem plugin (U4) declares its OWN typed UtilitiesFilesystemError sealed ADT + capability port (3 cases) + non-codec shape`() {
+        val src = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/filesystem/UtilitiesFilesystemPlugin.kt",
+        )
+        // U4 is the FIRST non-codec-shaped family (findFiles returns a LIST,
+        // touch updates a timestamp). It still follows the typed-failure pattern.
+        assertTrue(
+            src.contains("sealed interface UtilitiesFilesystemError"),
+            "G4-7: filesystem plugin must declare a sealed UtilitiesFilesystemError ADT",
+        )
+        assertTrue(
+            src.contains("class UtilitiesFilesystemException"),
+            "G4-7: filesystem plugin must declare a typed UtilitiesFilesystemException",
+        )
+        listOf("FilesystemNotFound", "FilesystemInvalidGlob", "FilesystemIoFailure").forEach { variant ->
+            assertTrue(
+                src.contains("data class $variant") || src.contains("class $variant"),
+                "G4-7: UtilitiesFilesystemError must include the variant $variant",
+            )
+        }
+        assertTrue(
+            src.contains("@Throws(UtilitiesFilesystemException::class)"),
+            "G4-7: filesystem capability port MUST annotate its functions with @Throws(UtilitiesFilesystemException::class)",
+        )
+        assertTrue(
+            src.contains("StepCapability(\"utilities.filesystem.operations\")"),
+            "G4-7: filesystem plugin must declare utilities.filesystem.operations capability token",
+        )
+        // Non-codec shape: findFiles must declare a LIST-shaped Output (not a single
+        // scalar). Touch must use a timestamp-typed argument. This proves the
+        // architecture supports non-codec families.
+        assertTrue(
+            src.contains("matches: List<String>"),
+            "G4-7: findFiles must declare a LIST-shaped Output (matches: List<String>)",
+        )
+        assertTrue(
+            src.contains("lastModifiedMillis: Long?"),
+            "G4-7: touch must carry a timestamp-typed argument (lastModifiedMillis: Long?)",
+        )
+        // Production core stays unaware of the filesystem package.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesFilesystemError") || prodSrc.contains("UtilitiesFilesystemException"),
+                "G4-7: production core must NOT reference UtilitiesFilesystemError/Exception (path: $path)",
+            )
+        }
+    }
+
     // ───────────────────────────────────────────────────────────────────────
     // G5/G6 — Plugin absent / installed / removed lifecycle for core Steps
     //

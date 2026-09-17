@@ -19,6 +19,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * XCA-2 — Workstream E: Full corpus execution and evidence reconciliation.
@@ -80,6 +81,7 @@ class XcaCorpusRunTest {
         "19-isunix"              to setOf(PluginStepId("core.isUnix")),
         "20-pwd-tmp"             to setOf(PluginStepId("core.pwd")),
         "21-milestone"           to setOf(PluginStepId("core.milestone")),
+        "22-wait-until"          to setOf(PluginStepId("core.sh")),
     )
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -96,6 +98,7 @@ class XcaCorpusRunTest {
         val extraObserved: Int,
         val isFullyCovered: Boolean,
         val stepRelations: List<String>,
+        val errorClass: String?,
     )
 
     data class CorpusRunReceipt(
@@ -128,7 +131,7 @@ class XcaCorpusRunTest {
 
         for (fixturePath in fixtureFiles) {
             val name = fixturePath.fileName.toString().removeSuffix(".pipeline.kts")
-            val runId = runFixture(fixturePath)
+            val (runId, errorClass) = runFixture(fixturePath)
 
             val observedByStatus: Map<PluginStepId, OperationStatus> =
                 if (runId != null) readObservedByStatus(runId) else emptyMap()
@@ -148,6 +151,7 @@ class XcaCorpusRunTest {
                 FixtureRunResult(
                     fixture = name,
                     runId = runId,
+                    errorClass = errorClass,
                     observed = observed.map { it.value }.sorted(),
                     expected = expected.map { it.value }.sorted(),
                     matched = reconciliation.matched.size,
@@ -189,30 +193,34 @@ class XcaCorpusRunTest {
             }
             val missing = r.expectedButNotExecuted
             val extra = r.extraObserved
-            println("  $status  ${r.fixture.padEnd(30)}  matched=${r.matched}  missing=$missing  extra=$extra")
+            val errNote = r.errorClass?.let { " [$it]" } ?: ""
+            println("  $status  ${r.fixture.padEnd(30)}  matched=${r.matched}  missing=$missing  extra=$extra$errNote")
         }
         println("═══════════════════════════════════════════════════════════════\n")
 
         // ── Assertions ────────────────────────────────────────────────────
         // Fixtures that produce errors or throw exceptions are expected to have no runId.
-        // Specifically: 12-error-handling (exercises catchError with intentional failure)
-        // and 21-milestone (requires milestone.operations capability not available in CLI).
-        // These are EXECUTED (the CLI ran) but produce no durable runId.
+        // Both 12-error-handling and 21-milestone fail with:
+        //   EngineInvariantViolation: core.milestone reached execute without declared
+        //   capability 'milestone.operations' — the milestone capability is absent from
+        //   the CLI execution environment. The intentional failure inside catchError
+        //   (12-error-handling) is never reached because the pipeline aborts at
+        //   milestone first. These are EXECUTED (the CLI ran) but produce no durable
+        //   runId due to the capability violation, not the intentional failure.
         val expectedToFail = setOf("12-error-handling", "21-milestone")
         val unexpectedFails = results.count { it.runId == null && it.fixture !in expectedToFail }
-        assert(unexpectedFails == 0) {
-            "Unexpected failures (no runId): ${results.filter { it.runId == null && it.fixture !in expectedToFail }.map { it.fixture }}"
-        }
-        assert(receipt.uniqueObservedSteps >= 1) {
-            "At least one step must be observed. Observed: ${results.flatMap { it.observed }.toSet()}"
-        }
+        org.junit.jupiter.api.Assertions.assertEquals(0, unexpectedFails,
+            "Unexpected failures (no runId): ${results.filter { it.runId == null && it.fixture !in expectedToFail }.map { it.fixture }}")
+        org.junit.jupiter.api.Assertions.assertTrue(
+            results.flatMap { it.observed }.toSet().isNotEmpty(),
+            "At least one step must be observed. Observed: ${results.flatMap { it.observed }.toSet()}")
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private fun runFixture(fixturePath: Path): String? {
+    private fun runFixture(fixturePath: Path): Pair<String?, String?> {
         assumeTrue(System.getProperty("os.name", "").lowercase().contains("linux"))
         assumeTrue(Files.exists(cliBinary), "CLI not installed: $cliBinary")
 
@@ -236,14 +244,21 @@ class XcaCorpusRunTest {
         val process = pb.start()
         processes.add(process)
 
-        // Drain stderr to prevent pipe buffer blocking (stderr is not evidence).
-        val stderrDrain = Thread { process.errorStream.bufferedReader().readText() }
+        // Drain stderr to prevent pipe buffer blocking.
+        // NOTE (H8): exit code in WARN below is OBSERVABILITY, NOT evidence of
+        // execution. The LAW "exit code is NEVER evidence" is preserved: the test
+        // never branches on exit code and never uses it to prove a step ran. The
+        // WARN is diagnostic output for operators; execution authority is the
+        // journal reader only.
+        val stderrCapture = AtomicReference<String>()
+        val stderrDrain = Thread { stderrCapture.set(process.errorStream.bufferedReader().readText()) }
         stderrDrain.start()
 
         val stdout = process.inputStream.bufferedReader().readText()
         val exited = process.waitFor(180, TimeUnit.SECONDS)
         val exitCode = if (exited) process.exitValue() else -1
         stderrDrain.join(1000)
+        val stderr = stderrCapture.get()
 
         if (exitCode != 0) {
             println("[WARN] Fixture exited non-zero: ${fixturePath.fileName}, code=$exitCode")
@@ -251,7 +266,16 @@ class XcaCorpusRunTest {
         }
 
         // Parse runId from JSON events in stdout
-        return Regex(""""runId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"""").find(stdout)?.groupValues?.get(1)
+        val runId = Regex(""""runId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"""").find(stdout)?.groupValues?.get(1)
+
+        // Extract the first exception class name from stderr for structured reporting.
+        // This makes the real failure reason visible in the receipt (H7.2: 12-error-handling
+        // and 21-milestone both fail with EngineInvariantViolation about milestone.operations).
+        val errorClass = if (runId == null && stderr.isNotBlank()) {
+            Regex("""([A-Z][A-Za-z0-9_]*(?:Exception|Error))""").find(stderr)?.groupValues?.get(1)
+        } else null
+
+        return@runFixture Pair(runId, errorClass)
     }
 
     private fun readObservedByStatus(runId: String): Map<PluginStepId, OperationStatus> {

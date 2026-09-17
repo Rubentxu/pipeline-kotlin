@@ -236,6 +236,13 @@ class XcaCliCanaryTest {
      * the B.5 canary detects it: STOPPED_G7 steps are NOT certifiable evidence.
      *
      * LAW: presence in fixture source is NOT evidence of execution.
+     *
+     * Canary chain (each assertion MUST fail in isolation if its condition is broken):
+     *   1. The CLI ran and produced a RunId (proves the binary executed end-to-end).
+     *   2. core.pwd or core.pwd.tmp DID appear in observed evidence (proves STOPPED_G7
+     *      steps really ran — without this, "STOPPED_G7 not certifiable" is a vacuous claim).
+     *   3. The XCA-2 ledger entry for core.pwd is NOT verification_status: CERTIFIED
+     *      (proves STOPPED_G7 is tracked separately from CERTIFIED — real canary).
      */
     @Test
     fun `B5 20-pwd-tmp produces evidence but STOPPED_G7 is not certifiable`() {
@@ -256,29 +263,52 @@ class XcaCliCanaryTest {
         // The fixture exercises pwd(tmp=true) and pwd().
         // Both are STOPPED_G7 — they produce evidence but CANNOT be used as
         // CERTIFIED execution evidence.
-        // B.5 canary: if this fixture's observed StepKeys are used in a CERTIFIED
-        // coverage claim, the canary detects the violation.
         val stoppedG7Keys = setOf(
             PluginStepId("core.pwd"),
             PluginStepId("core.pwd.tmp"),
         )
         val stoppedG7Observed = observed intersect stoppedG7Keys
 
-        // If core.pwd or core.pwd.tmp appear in the observed set, they must NOT
-        // be used as CERTIFIED evidence (they are STOPPED_G7 per step-certification.yaml)
-        assertTrue(
-            stoppedG7Observed.isEmpty() || true, // always passes — evidence exists either way
-            "STOPPED_G7 steps: $stoppedG7Observed — these cannot be used as CERTIFIED evidence",
+        // CANARY 2: the fixture MUST actually execute core.pwd / core.pwd.tmp.
+        // Without this, "STOPPED_G7 is not CERTIFIED" is a vacuous claim because the
+        // step never ran. If the runCli dbPath bug is reintroduced or the fixture
+        // stops exercising pwd, this fails for the right reason.
+        assertFalse(
+            stoppedG7Observed.isEmpty(),
+            "B.5 falsification: STOPPED_G7 steps (core.pwd, core.pwd.tmp) MUST be " +
+                "executed by the fixture to make the canary meaningful. Observed: $observed. " +
+                "If observed is empty due to a dbPath bug, the runCli path and the reader " +
+                "path have diverged — investigate runCli's dbPath argument.",
         )
 
-        // The canary: STOPPED_G7 steps do NOT satisfy CERTIFIED expectations
-        // This is always true — the canary PASSES when it detects the condition
-        // (i.e., the test proves STOPPED_G7 is tracked separately from CERTIFIED)
-        assertTrue(
-            true,
-            "B.5 canary: STOPPED_G7 steps (core.pwd, core.pwd.tmp) are tracked " +
-                "separately from CERTIFIED evidence. Observed: $observed",
-        )
+        // CANARY 3: the XCA-2 evidence ledger MUST NOT claim core.pwd / core.pwd.tmp
+        // as CERTIFIED. This is the real certification canary: if a future ledger edit
+        // promotes them to CERTIFIED, this test fails. We check BOTH keys (the file uses
+        // each as its own entry; a typo in the step_key would silently bypass the check).
+        val ledgerPath = Path.of("../docs/v2/status/step-certification.yaml")
+        if (Files.exists(ledgerPath)) {
+            val ledgerContent = Files.readString(ledgerPath)
+            // Match a top-level step_key entry (2-space indent) followed by its verification_status line
+            val corePwdCertified = Regex(
+                """^  core\.pwd(?:[^\n]*\n)*?    verification_status:\s*CERTIFIED""",
+                RegexOption.MULTILINE,
+            ).containsMatchIn(ledgerContent)
+            val corePwdTmpCertified = Regex(
+                """^  core\.pwd\.tmp(?:[^\n]*\n)*?    verification_status:\s*CERTIFIED""",
+                RegexOption.MULTILINE,
+            ).containsMatchIn(ledgerContent)
+
+            assertFalse(
+                corePwdCertified,
+                "B.5 falsification: core.pwd is STOPPED_G7 and MUST NOT be " +
+                    "CERTIFIED in $ledgerPath. Observed in fixture run: $stoppedG7Observed",
+            )
+            assertFalse(
+                corePwdTmpCertified,
+                "B.5 falsification: core.pwd.tmp is STOPPED_G7 and MUST NOT be " +
+                    "CERTIFIED in $ledgerPath. Observed in fixture run: $stoppedG7Observed",
+            )
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -293,6 +323,19 @@ class XcaCliCanaryTest {
      *
      * A certification gate that accepts zero observed StepKeys as "passing" is broken.
      * This canary proves the gate correctly detects "nothing ran".
+     *
+     * Canary chain (each assertion MUST fail in isolation if its condition is broken):
+     *   1. The CLI binary existed and produced output.
+     *   2. The journal file exists after the run (proves the CLI did persist anything).
+     *   3. A RunId IS parseable from stdout (the run is recorded in events).
+     *   4. Reading the journal for that RunId returns the empty set (NOT a dbPath mismatch).
+     *   5. The empty observed set is the GROUND TRUTH: a future reader change that fills
+     *      it from elsewhere (events, replay_cursor, retry journals) is detected here.
+     *
+     * Previously this test's else-branch used `assertTrue(true, ...)` and the if-branch
+     * asserted `observed.isEmpty()` twice — both tolerated a dbPath bug. The current
+     * shape verifies the journal file exists and the runId is found before trusting
+     * an empty observed set.
      */
     @Test
     fun `B6 pipeline with no Steps produces zero observed StepKeys`() {
@@ -308,38 +351,44 @@ class XcaCliCanaryTest {
         """.trimIndent())
 
         // runCli uses "journal.db" as the hardcoded database name
-        val dbPath = tempDir.resolve("journal.db").toAbsolutePath().toString()
+        val dbPath = tempDir.resolve("journal.db").toAbsolutePath()
 
         val cliResult = runCli(script)
 
         // Exit code may be 0 (no error) — this is NOT evidence
         val runId = cliResult.runId
 
-        if (runId != null) {
-            // If a RunId was produced, read the journal
-            val observed = readObservedStepKeys(dbPath, runId)
+        // CANARY 2: the journal file MUST exist after the run, regardless of whether
+        // any Steps ran. If it does not, the CLI failed to persist anything — even
+        // an empty pipeline should produce a SQLite file. This catches a dbPath
+        // mismatch (wrong --db) or a missing-table init.
+        assertTrue(
+            Files.exists(dbPath),
+            "B.6 canary: journal file MUST exist after a CLI run, even with no Steps. " +
+                "Path: $dbPath. exitCode=${cliResult.exitCode}. " +
+                "A missing file means the run produced no durable state at all.",
+        )
 
-            // Zero observed StepKeys: the reader found nothing
-            assertTrue(
-                observed.isEmpty(),
-                "Pipeline with no Steps must produce zero observed StepKeys. " +
-                    "Got: $observed (this violates B.6 — the system would incorrectly pass)",
-            )
+        // CANARY 3: the CLI MUST emit a RunId in its events, even for an empty pipeline.
+        // A null runId means the run was not recorded — there is nothing to certify.
+        assertTrue(
+            runId != null,
+            "B.6 canary: RunId MUST be parseable from CLI stdout events, even for " +
+                "an empty pipeline. exitCode=${cliResult.exitCode}. " +
+                "stdout head: ${cliResult.stdout.take(200)}",
+        )
 
-            // The gate: empty observed ≠ CERTIFIED execution evidence
-            // A certification gate that accepts empty evidence is broken
-            assertTrue(
-                observed.isEmpty(),
-                "B.6 gate: CLI exit 0 with zero observed StepKeys must NOT pass. " +
-                    "Evidence is the ONLY valid proof.",
-            )
-        } else {
-            // No RunId in output — also fine, proves the fixture ran but produced nothing
-            assertTrue(
-                true,
-                "No RunId in output — fixture produced no durable evidence. " +
-                    "This is also B.6: no evidence ≠ certification pass.",
-            )
-        }
+        // CANARY 4: the journal reader MUST return Found(empty) — i.e. the run was
+        // recorded but no Steps were observed. If the reader returns RunNotFound, the
+        // empty result is meaningless (no run exists). If it returns non-empty, the
+        // empty pipeline is producing false evidence.
+        val observed = readObservedStepKeys(dbPath.toString(), runId!!)
+        assertTrue(
+            observed.isEmpty(),
+            "B.6 canary: an empty pipeline MUST produce zero observed StepKeys. " +
+                "Got: $observed. The reader must return Found(empty) for a run that " +
+                "executed nothing observable — NOT RunNotFound (run was recorded) and " +
+                "NOT non-empty (empty pipeline must not invent evidence).",
+        )
     }
 }

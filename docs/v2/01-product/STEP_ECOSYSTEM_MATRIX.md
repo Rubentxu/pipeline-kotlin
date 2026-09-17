@@ -6,7 +6,7 @@ Source inputs: `JENKINS_FAMILIARITY_CATALOG.md`, current v2 implementation, ADR-
 **Certification snapshot (LFC-2E0 closure, 2026-09-17):**
 
 ```text
-CERTIFIED:                              13
+CERTIFIED:                              14
   core.echo                             (registry; CoreEchoStep;                  S3 burn-down)
   core.sh                               (registry; CoreShellStep;                 LB-02 S6 burn-down)
   core.error                            (registry; CoreErrorStep;                 S2-A1 burn-down)
@@ -20,6 +20,12 @@ CERTIFIED:                              13
   core.archiveArtifacts                 (registry; CoreArchiveArtifactsStep;      S2-B10 burn-down)
   core.waitUntil                        (canonical RepeatUntil machinery;         WU-G5B LEGACY_REMOVED)
   example.uppercase                     (external plugin; ServiceLoader;          CERTIFIED reference)
+  utilities.readJSON                    (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.json.operations`)
+  utilities.writeJSON                   (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.json.operations`)
+  utilities.sha256                      (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.sha.operations`)
 
 STOPPED_G7:                              2
   core.pwd                              (registry; CorePwdStep; LEGACY_REMOVED at S2-A6/G5;

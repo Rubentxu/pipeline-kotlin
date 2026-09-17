@@ -37,7 +37,7 @@ Production Step keys total: 15
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900) — `load(...)` removed at CORE-LOAD-REJECTED
 Real .pipeline.kts examples: 17 (01..22 in v2/compatibility/ — see per-Step entries below for which fixtures exercise each)
 Event Harness contracts: 4 (07, 08, 09, 10)
-CERTIFIED Steps: 12 (core.echo, core.sh, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs, core.archiveArtifacts, core.waitUntil) + 1 EXTERNAL_REFERENCE (example.uppercase)
+CERTIFIED Steps: 12 (core.echo, core.sh, core.error, core.sleep, core.file.writeFile, core.emit.event, core.isUnix, core.deleteDir, core.milestone, core.cleanWs, core.archiveArtifacts, core.waitUntil) + 2 EXTERNAL_REFERENCE (example.uppercase, utilities.readJSON, utilities.writeJSON, utilities.sha256 — under OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`)
 STOPPED_G7 Steps: 2 (core.pwd, core.pwd.tmp — non-deterministic runtime return blocks G7)
 REJECTED Steps: 1 (core.load, 2026-09-17, FIRST ZERO LEGACY RESIDUAL contribution)
 CERTIFIED + EXTERNAL_REFERENCE total: 13

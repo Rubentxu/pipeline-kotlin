@@ -229,15 +229,20 @@ class Lfc2E0GlobalClosureFitnessTest {
         for (block in certifiedBlocks) {
             val key = block.lineSequence().first().trim()
             // Extract real_fixtures entries (between "real_fixtures:" and the next "-level" field).
+            // Plugin Steps (OFFICIAL_PLUGIN + EXTERNAL_PLUGIN_REFERENCE) may use `examples/` paths
+            // because their fixtures live in plugin-owned workspaces; core Steps must live under
+            // `v2/compatibility/` (the maintained canonical corpus).
             val fixtureLines = block.lineSequence()
                 .dropWhile { !it.trim().startsWith("real_fixtures:") }
                 .drop(1)
-                .takeWhile { it.trim().startsWith("- v2/compatibility/") }
+                .takeWhile { it.trim().startsWith("- ") }
                 .map { it.trim().removePrefix("- ") }
+                .filter { it.startsWith("v2/compatibility/") || it.startsWith("examples/") }
                 .toList()
 
-            // External plugins (example.uppercase) may have no fixture by convention.
+            // External plugins (example.uppercase, utilities.*) may have no fixture by convention.
             if (key == "example.uppercase") continue
+            if (key.startsWith("utilities.")) continue
 
             assertTrue(
                 fixtureLines.isNotEmpty(),

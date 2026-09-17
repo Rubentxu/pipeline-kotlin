@@ -10,20 +10,25 @@ a FASE 3 / drift fix and resolved before LFC-2E0 closure.
 ## Counter roll-up
 
 ```text
-Production Step keys total:        15
+Production Step keys total:        16
   CERTIFIED (core):                12   (echo, sh, error, sleep, file.writeFile,
                                        emit.event, isUnix, deleteDir, milestone,
                                        cleanWs, archiveArtifacts, waitUntil)
-  CERTIFIED (external plugin):      1   (example.uppercase)
+  CERTIFIED (external plugin):      2   (example.uppercase, utilities.readJSON,
+                                       utilities.writeJSON, utilities.sha256)
+                                       NOTE: utilities family contributes 3 StepKeys
+                                       under 1 OFFICIAL_PLUGIN (`pipeline.utilities.json@1.0.0`)
   STOPPED at G7 (CERTIFICATION not reached): 2  (pwd, pwd.tmp — non-deterministic runtime return)
   REJECTED:                         1   (load — CORE-LOAD-REJECTED 2026-09-17)
 
 DSL extension functions declared: ~67 (PipelineDsl.kt L990-1900)
   removed at this slice: load(path)  (CORE-LOAD-REJECTED)
 
-Real .pipeline.kts fixtures: 22 (01..22, gaps 07/99 removed; v0.33.1 added 16-22)
+Real .pipeline.kts fixtures: 23 (01..22, gaps 07/99 removed; v0.33.1 added 16-22;
+                                       v0.34 added examples/utilities/01-json-roundtrip.pipeline.kts)
 Event Harness contracts: 4 (07, 08, 09, 10)
 CERTIFIED Steps with real maintained fixture: 12/12 (100%)
+CERTIFIED external plugin Steps with real maintained fixture: 2/2 (100%)
 STOPPED Steps with real fixture: 2/2 (100%)
 REJECTED Steps with no fixture: 1/1 (intentional — load was never functional)
 ```

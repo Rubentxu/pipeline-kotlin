@@ -397,39 +397,76 @@ es autoridad.
 
 ---
 
+## Cierre de hallazgos (apply-fix 2, 2026-09-17)
+
+### H1-PATH-BUG — CERRADO ✓
+
+**Commit**: `d29b65f6` (`fix(H1-PATH-BUG): resolve ledger path from repo root, not relative from v2/`)
+
+**Fix**: `XcaCliCanaryTest.kt` ahora usa `Path.of("../../")` como `repoRoot` y resuelve
+`docs/v2/status/step-certification.yaml` (canonical, 65641 bytes) — no la copia
+`v2/docs/v2/status/` renombrada.
+
+**Falsificación OBSERVED**:
+- Mutación: `certification_state: STOPPED_G7 → CERTIFIED` para `core.pwd` y `core.pwd.tmp`
+- Resultado: B.5 falla en línea 326 (`assertFalse corePwdCertified`) — causa exacta
+- Revertido: B.5 pasa
+
+**Verificación**: `timeout 300 ./gradlew ... --tests 'XcaCliCanaryTest.B5*'`
+XML: `tests="1" failures="0" timestamp="2026-09-17T22:18:57.828Z"` ✓
+
+### H7-ERRORCLASS-REGEX — CERRADO ✓
+
+**Commit**: `cb011ebd` (`fix(H7-ERRORCLASS-REGEX): extend errorClass regex to capture EngineInvariantViolation`)
+
+**Fix**: regex ampliado de `([A-Z][A-Za-z0-9_]*(?:Exception|Error))`
+a `([A-Z][A-Za-z0-9_]*(?:Exception|Error|Violation))` — ahora captura `EngineInvariantViolation`.
+
+**Verificación**: receipt del corpus ahora muestra:
+```
+  SKIP  12-error-handling  matched=0  missing=2  extra=0 [EngineInvariantViolation]
+  SKIP  21-milestone       matched=0  missing=1  extra=0 [EngineInvariantViolation]
+```
+XML: `tests="1" failures="0" timestamp="2026-09-17T22:20:05.343Z"` ✓
+
+### H9-DOC — CERRADO ✓
+
+**Commit**: `3cf22d59` (`fix(H9-DOC): remove false claim that KDoc points to SHAs`)
+
+**Fix**: la frase *"el KDoc apunta a los SHAs"* se elimina. Reemplazada por:
+*"los SHAs reales no están en KDoc (OBSERVED: grep eb40d5cb\|7d725aca = 0 matches)"*
+— afirmación honesta respaldada por evidencia.
+
+### H5 / H6 / H9-deuda — DECLARADAS, no tocadas ✓
+
+Sunflower confirmó que H5, H6 y la deuda de H9 siguen intactas. El apply-fix-2
+**no las modifica**. La deuda declarada es parte del cierre.
+
+---
+
 ## Siguiente acción
 
-1. **BLOQUEANTE — arreglar H1 path bug** antes de cualquier cierre de XCA-2:
-   cambiar línea 304 de `XcaCliCanaryTest.kt`:
-   `../docs/v2/status/step-certification.yaml` →
-   `../../docs/v2/status/step-certification.yaml`.
-   O alternativamente: hacer que el test compute la ruta absoluta desde el
-   repo root (más robusto contra movimientos de módulo).
-2. **No-bloqueante — arreglar regex errorClass** en `XcaCorpusRunTest.kt`
-   línea 275 para capturar también `EngineInvariantViolation` (u otros
-   nombres que no terminan en `Exception`/`Error`).
-3. H5/H6/H9 siguen como deuda declarada — acción en ciclo siguiente si el
-   orquestador lo decide.
-4. Publicar cuando el orquestador lo autorice; el H1 path bug debe
-   arreglarse ANTES de que el canary B.5 tenga valor real.
+Los tres hallazgos de apply-fix-2 están cerrados. Listo para publicación
+cuando el orquestador lo autorice.
+
+### Estado anterior (apply-fix, ahora obsoleto para H1/H7/H9)
+
+- **H1**: rename del ledger ✓; B.5 path bug — **CERRADO por apply-fix-2**
+- **H7**: conteo 21/19 ✓; errorClass regex — **CERRADO por apply-fix-2**
+- **H9**: deuda declarada ✓; afirmación inexacta — **CERRADA por apply-fix-2**
 
 ---
 
 ## Estado del árbol al cierre
 
 ```text
-HEAD: 943e3769 (cycle/wu-g5b), árbol limpio
-Mutaciones aplicadas durante esta verificación: TODAS revertidas
-  - docs/v2/status/step-certification.yaml: STOPPED_G7 mutado a CERTIFIED
-    y revertido (verificado con git status vacío)
-  - ninguna otra mutación
-Ningún commit hecho por verify (misión: validar, no arreglar)
+HEAD: 3cf22d59 (cycle/wu-g5b), árbol limpio
+Commits de apply-fix-2: d29b65f6 + cb011ebd + 3cf22d59
+XCA2_FIX_RECEIPT.md actualizado con la corrección H9
+Ninguna mutación persistente
 Nada pusheado
 ```
 
-**XCA2_FIX_RECEIPT.md** (apply) sigue vigente en su contenido declarado
-excepto: el H1 está estructuralmente incompleto (path bug), y el H7
-`errorClass` no cumple su objetivo para los dos fixtures que documenta.
-El resto (rename del ledger, conteo 21/19, regex anclado, comentarios
-corregidos, sin assert() Kotlin, deuda H5/H6/H9 declarada) sí está
-correctamente aplicado.
+**XCA2_FIX_VERIFY_RECEIPT.md** (este documento) cierra los hallazgos
+H1-PATH-BUG, H7-ERRORCLASS-REGEX y H9-DOC de apply-fix-2.
+H5/H6/H9-deuda siguen como deuda declarada — no tocadas.

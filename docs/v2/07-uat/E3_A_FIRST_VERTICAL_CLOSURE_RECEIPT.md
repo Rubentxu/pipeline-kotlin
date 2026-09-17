@@ -5,7 +5,8 @@
 | Cycle | LFC-2E3-TESTING-REPORTS |
 | Slice | E3-A — closure of the TEST RESULTS + HTML REPORTING vertical |
 | Status | **CLOSED** for this vertical (T0..T4, R1, R2) |
-| Closing HEAD | `002a23ea` |
+| Closing code HEAD | `002a23ea` (last implementation commit) |
+| Closure receipt commit | `575ebd96` |
 | Scope firewall | junit + publishHTML only. Coverage / analyzers were explicitly deferred. |
 | Production core changes | host composition only (T4); no Step-specific routing |
 | External dependencies added | ZERO (pure JDK XML + NIO throughout) |

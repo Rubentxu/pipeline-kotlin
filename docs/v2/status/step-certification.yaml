@@ -98,14 +98,14 @@ e2_prep:
 
 counters:
   certified_core_steps: 12
-  certified_external_plugin_steps: 10
-  certified_total_steps: 22
+  certified_external_plugin_steps: 13
+  certified_total_steps: 25
   rejected_steps: 1
   stopped_g7_steps: 2
   implemented_uncertified_steps: 0
   not_started_steps: 0
-  total_production_step_keys: 25
-  total_yaml_step_entries: 22  # 12 core + 10 external (3 JSON + 2 YAML + 2 properties + 2 filesystem + 1 example.uppercase) + 2 stopped + 1 rejected, but YAML counts families not status
+  total_production_step_keys: 28
+  total_yaml_step_entries: 25  # 12 core + 13 external (3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 1 example.uppercase) + 2 stopped + 1 rejected, but YAML counts families not status
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
   legacy_residual_dispatcher_files: 0
@@ -898,6 +898,81 @@ steps:
       parent directories. Atomic with `utilities.findFiles` (same typed port).
       Timestamp-typed argument (`lastModifiedMillis: Long?`) projects to the
       public contract — no `FileTime` leak into the SDK boundary.
+
+  - step_key: utilities.md5
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt
+    capability: utilities.checksums.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U5 family. MD5 (128-bit) digest of a file's bytes via
+      JDK MessageDigest.getInstance("MD5"). Distinct StepKey (NOT a generic
+      `utilities.checksum(algo="md5")`). Typed closed `HashAlgorithm` enum
+      inside the plugin enforces algorithm identity at compile time.
+
+  - step_key: utilities.sha1
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt
+    capability: utilities.checksums.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U5 family. SHA-1 (160-bit) digest of a file's bytes via
+      JDK MessageDigest.getInstance("SHA-1"). Distinct StepKey — see md5 notes
+      for the architectural rationale.
+
+  - step_key: utilities.sha512
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U5_CHECKSUMS_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt
+    capability: utilities.checksums.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesChecksumsStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U5 family. SHA-512 (512-bit) digest of a file's bytes via
+      JDK MessageDigest.getInstance("SHA-512"). Distinct StepKey.
 
 # ────────────────────────────────────────────────────────────────────────
 # Roll-up assertions (machine-verifiable invariants)

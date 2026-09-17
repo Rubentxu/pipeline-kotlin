@@ -420,6 +420,77 @@ class Lfc2E2ExpansionGateFitnessTest {
         }
     }
 
+    @Test
+    fun `G4-8 checksums plugin (U5) declares typed closed HashAlgorithm enum (NOT a string-keyed Step) + capability port + JDK-only digest`() {
+        val src = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/checksums/UtilitiesChecksumsPlugin.kt",
+        )
+        // U5 follows the U1 sha256 pattern but uses a typed closed ADT
+        // (enum HashAlgorithm) instead of a generic Step-by-name. The architectural
+        // claim is that the algorithm name is a typed value, not a runtime string.
+        assertTrue(
+            src.contains("enum class HashAlgorithm"),
+            "G4-8: checksums plugin must declare a typed closed enum HashAlgorithm",
+        )
+        listOf("MD5", "SHA1", "SHA512").forEach { variant ->
+            assertTrue(
+                src.contains("$variant(\"$variant\",") || src.contains("$variant(\"${variant.replace("SHA1", "SHA-1").replace("SHA512", "SHA-512")}\","),
+                "G4-8: HashAlgorithm must include the variant $variant",
+            )
+        }
+        // Each algorithm must be its OWN StepKey — NOT one generic
+        // "utilities.checksum" Step that takes algorithm as a string.
+        assertTrue(
+            src.contains("PluginStepId(\"utilities.md5\")"),
+            "G4-8: md5 must be its own StepKey (utilities.md5), not a string-keyed parameter",
+        )
+        assertTrue(
+            src.contains("PluginStepId(\"utilities.sha1\")"),
+            "G4-8: sha1 must be its own StepKey (utilities.sha1)",
+        )
+        assertTrue(
+            src.contains("PluginStepId(\"utilities.sha512\")"),
+            "G4-8: sha512 must be its own StepKey (utilities.sha512)",
+        )
+        // Typed failure ADT.
+        assertTrue(
+            src.contains("sealed interface UtilitiesChecksumError"),
+            "G4-8: checksums plugin must declare a sealed UtilitiesChecksumError ADT",
+        )
+        assertTrue(
+            src.contains("class UtilitiesChecksumException"),
+            "G4-8: checksums plugin must declare a typed UtilitiesChecksumException",
+        )
+        assertTrue(
+            src.contains("@Throws(UtilitiesChecksumException::class)"),
+            "G4-8: checksums capability port MUST annotate its functions with @Throws(UtilitiesChecksumException::class)",
+        )
+        // Capability token is distinct from sha256's `utilities.sha.operations`.
+        assertTrue(
+            src.contains("StepCapability(\"utilities.checksums.operations\")"),
+            "G4-8: checksums plugin must declare utilities.checksums.operations capability token (distinct from sha256)",
+        )
+        // JDK-only: MessageDigest.getInstance is the digest backend (no external dep).
+        assertTrue(
+            src.contains("MessageDigest.getInstance"),
+            "G4-8: checksums plugin must use JDK MessageDigest.getInstance (no external dep)",
+        )
+        // Production core stays unaware of the checksums package.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesChecksumError") || prodSrc.contains("UtilitiesChecksumException") ||
+                    prodSrc.contains("HashAlgorithm"),
+                "G4-8: production core must NOT reference UtilitiesChecksumError/Exception/HashAlgorithm (path: $path)",
+            )
+        }
+    }
+
     // ───────────────────────────────────────────────────────────────────────
     // G5/G6 — Plugin absent / installed / removed lifecycle for core Steps
     //

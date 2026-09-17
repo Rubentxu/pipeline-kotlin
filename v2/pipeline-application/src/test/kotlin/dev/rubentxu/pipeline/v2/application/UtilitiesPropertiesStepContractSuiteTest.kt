@@ -146,8 +146,8 @@ class UtilitiesPropertiesStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.writeProperties")))
         assertTrue(r.contains(PluginStepId("utilities.readJSON")))
         assertTrue(r.contains(PluginStepId("utilities.writeYaml")))
-        // 9 utilities (3 JSON + 2 YAML + 2 properties + 2 filesystem) + 1 example.uppercase = 10 total
-        assertEquals(10, r.keys().size)
+        // 12 utilities (3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums) + 1 example.uppercase = 13 total
+        assertEquals(13, r.keys().size)
     }
 
     // ───────── contract completeness ─────────

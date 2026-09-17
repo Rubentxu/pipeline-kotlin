@@ -59,6 +59,12 @@ class UtilitiesJsonContributor : StepDefinitionContributor {
         // effect) — proves the architecture supports non-codec families.
         pipeline.utilities.filesystem.FindFilesStepDefinition,
         pipeline.utilities.filesystem.TouchStepDefinition,
+        // LFC-2E2-EXPANSION U5: checksums (md5, sha1, sha512) reusing the sha256
+        // pattern but with a typed closed HashAlgorithm enum inside the plugin (NOT a
+        // string-keyed generic Step). Each algorithm is its own StepKey.
+        pipeline.utilities.checksums.Md5StepDefinition,
+        pipeline.utilities.checksums.Sha1StepDefinition,
+        pipeline.utilities.checksums.Sha512StepDefinition,
     )
 
     companion object {

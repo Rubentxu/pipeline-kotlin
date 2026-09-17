@@ -6,7 +6,7 @@ Source inputs: `JENKINS_FAMILIARITY_CATALOG.md`, current v2 implementation, ADR-
 **Certification snapshot (LFC-2E0 closure, 2026-09-17):**
 
 ```text
-CERTIFIED:                              22
+CERTIFIED:                              25
   core.echo                             (registry; CoreEchoStep;                  S3 burn-down)
   core.sh                               (registry; CoreShellStep;                 LB-02 S6 burn-down)
   core.error                            (registry; CoreErrorStep;                 S2-A1 burn-down)
@@ -44,6 +44,15 @@ CERTIFIED:                              22
   utilities.touch                       (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
                                         ServiceLoader; typed capability port `utilities.filesystem.operations`;
                                         LFC-2E2 U4 filesystem traversal — first non-codec-shaped family)
+  utilities.md5                         (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.checksums.operations`;
+                                        LFC-2E2 U5 checksums — typed closed HashAlgorithm enum)
+  utilities.sha1                        (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.checksums.operations`;
+                                        LFC-2E2 U5 checksums — typed closed HashAlgorithm enum)
+  utilities.sha512                      (OFFICIAL_PLUGIN `pipeline.utilities.json@1.0.0`;
+                                        ServiceLoader; typed capability port `utilities.checksums.operations`;
+                                        LFC-2E2 U5 checksums — typed closed HashAlgorithm enum)
 
 STOPPED_G7:                              2
   core.pwd                              (registry; CorePwdStep; LEGACY_REMOVED at S2-A6/G5;

@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
+import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
@@ -399,18 +401,26 @@ fun main(args: Array<String>) {
         // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
         val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
         val composedStepRegistry = CoreStepRegistryFactory.registry()
+        // LFC-2E3-T4: capability collection happens INSIDE the plugin-classloader window
+        // (contributors live on the plugin classloader, not the application one).
+        val validateContributedCapabilities: Map<dev.rubentxu.pipeline.v2.domain.step.StepCapability, Any>
         if (pluginClassLoader != null) {
             val previousTccl = Thread.currentThread().contextClassLoader
             Thread.currentThread().contextClassLoader = pluginClassLoader
             try {
                 val contributed = ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+                validateContributedCapabilities = ExternalStepPluginDiscovery.collectContributedCapabilities()
                 if (contributed.isNotEmpty()) {
                     System.err.println("Discovered external Step plugins: " + contributed.joinToString(", "))
                 }
             } finally {
                 Thread.currentThread().contextClassLoader = previousTccl
             }
+        } else {
+            validateContributedCapabilities = emptyMap()
         }
+        val capabilityAccessFactory =
+            ExternalStepPluginDiscovery.capabilityAccessFactory(validateContributedCapabilities)
         val nonCanonicalSteps = compiledPipeline
             ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
         val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = when {
@@ -431,6 +441,7 @@ fun main(args: Array<String>) {
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
                 stepRegistry = composedStepRegistry,
+            capabilityAccessFactory = capabilityAccessFactory,
             )
             else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
@@ -698,18 +709,31 @@ fun main(args: Array<String>) {
     // non-canonical. Same composed registry is handed to the coordinator below.
     val pluginClassLoader = pluginClassLoaderFor(config.pluginJars)
     val composedStepRegistry = CoreStepRegistryFactory.registry()
-    val contributedPlugins = if (pluginClassLoader != null) {
+    // LFC-2E3-T4: BOTH the registry composition AND the capability collection must happen inside
+    // the plugin-classloader window. Contributors live on the plugin classloader, not the
+    // application one, so a ServiceLoader lookup performed outside this window silently finds
+    // nothing (no error) and every plugin Step would be rejected at admission.
+    val contributedPlugins: List<String>
+    val contributedCapabilities: Map<dev.rubentxu.pipeline.v2.domain.step.StepCapability, Any>
+    if (pluginClassLoader != null) {
         val previousTccl = Thread.currentThread().contextClassLoader
         Thread.currentThread().contextClassLoader = pluginClassLoader
         try {
-            ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+            contributedPlugins = ExternalStepPluginDiscovery.registerInto(composedStepRegistry)
+            contributedCapabilities = ExternalStepPluginDiscovery.collectContributedCapabilities()
         } finally {
             Thread.currentThread().contextClassLoader = previousTccl
         }
-    } else emptyList()
+    } else {
+        contributedPlugins = emptyList()
+        contributedCapabilities = emptyMap()
+    }
     if (contributedPlugins.isNotEmpty()) {
         System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
     }
+    // Pure composition, safe outside the window.
+    val capabilityAccessFactory =
+        ExternalStepPluginDiscovery.capabilityAccessFactory(contributedCapabilities)
     val runOutcome: RunOutcome? = when {
         // LFC-2R / R4B: the scripted FRONTEND form runs against the SAME durable
         // authority (journal, registry, event sink, control root) composed for the
@@ -738,6 +762,7 @@ fun main(args: Array<String>) {
             sandboxProfile = config.sandboxProfile,
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
+            capabilityAccessFactory = capabilityAccessFactory,
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
@@ -883,6 +908,12 @@ private fun runCanonicalPipeline(
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).
     stepRegistry: InMemoryStepRegistry = CoreStepRegistryFactory.registry(),
+    // LFC-2E3-T4: plugin-declared capabilities, already composed at the composition root.
+    // A registry Step is admitted only when every capability it declares is available at
+    // prepare-time; the canonical bridge owns core capabilities, and a plugin-owned capability
+    // has no other legitimate supplier (production core MUST NOT name a concrete plugin type).
+    // Null -> canonical bridge alone, bit-equivalent to the pre-LFC-2E3 behaviour.
+    capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)? = null,
 ): RunOutcome = kotlinx.coroutines.runBlocking {
     CanonicalDurableRunCoordinator(
         dispatcher = CanonicalNodeDispatcher(),
@@ -902,6 +933,11 @@ private fun runCanonicalPipeline(
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,
+        // LFC-2E3-T4: plugin-declared capabilities, resolved at the composition root INSIDE the
+        // plugin-classloader window (see the collectContributedCapabilities call site) and passed
+        // in as an already-composed factory. Null means "nothing contributed" -> the coordinator
+        // falls back to the canonical bridge bit-equivalently.
+        capabilityAccessFactory = capabilityAccessFactory,
         // RETRY-D (ADR-0075): production wire-up. The retry aggregate is reconciled against
         // the on-disk control journal so a `run` invocation with the same --db and
         // --control-root reuses the prior aggregate terminal state and does not re-launch

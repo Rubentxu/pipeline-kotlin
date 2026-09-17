@@ -1,17 +1,19 @@
-# LFC-2E3-T4 — REAL FIXTURES + INSTALLED-CLI ACCEPTANCE (COMPILE ✓ / EXECUTE ✗ BLOCKED)
+# LFC-2E3-T4 — REAL FIXTURES + INSTALLED-CLI ACCEPTANCE (COMPILE ✓ / EXECUTE ✓)
 
 | Field | Value |
 | --- | --- |
 | Cycle | LFC-2E3-TESTING-REPORTS |
-| Slice | T4 — real `.pipeline.kts` fixtures + installed-CLI acceptance |
-| Status | COMPILE acceptance PASS (both fixtures, real CLI, real plugin JAR); EXECUTE acceptance BLOCKED by an inherited platform gap |
+| Slice | T4 — real `.pipeline.kts` fixtures + installed-CLI acceptance + capability-contribution seam |
+| Status | **COMPILE PASS and EXECUTE PASS** through the real installed distribution and the real plugin JAR |
 | Predecessors | T0 `106703a6`, T1 `3848955d`, T2 `e660e404`, T3 `ca14d3b8` |
-| Production core changes | ZERO |
-| SDK changes | ZERO (a minimal SDK addition is PROPOSED and NOT applied — see §5) |
+| Plugin coordinate | `pipeline.testing@0.1.0-SNAPSHOT` |
+| Production core changes | Main.kt host composition only (2 discovery sites + 2 call sites); NO step-specific change |
+| SDK changes | +1 new SPI (`StepCapabilityContributor`); existing SPIs untouched (binary compatible) |
 | External dependencies added | ZERO |
-| Blocking decision | §5 — needs human approval before R1/R2 can claim end-to-end acceptance |
 
 ## 1. What landed
+
+**Fixtures**
 
 ```text
 examples/testing/junit-success.xml            2 suites / 4 cases / 0 failures
@@ -20,243 +22,236 @@ examples/testing/junit-success.pipeline.kts   parses the green report
 examples/testing/junit-failures.pipeline.kts  parses the failing report
 ```
 
-`junit-failures.pipeline.kts` is the load-bearing fixture: it feeds a report
-containing a **failed** and an **errored** testcase and asserts that the pipeline
-still finishes SUCCESS — the executable form of the central LFC-2E3 invariant
-(`"tests failed" != "Step execution failed"`).
+`junit-failures.pipeline.kts` is the load-bearing fixture: it feeds a report containing a
+**failed** and an **errored** testcase and asserts the pipeline still finishes SUCCESS — the
+executable form of the central LFC-2E3 invariant.
 
-Both fixtures use the real DSL facade:
+**Seam that made execution possible**
 
-```kotlin
-import pipeline.testing.junit.junit
-
-pipeline {
-    stages {
-        stage("junitFailures") {
-            junit(reportPaths = listOf("examples/testing/junit-failures.xml"))
-        }
-    }
-}
+```text
+v2/pipeline-domain/.../domain/step/StepCapabilityContributor.kt     NEW public SPI
+v2/pipeline-application/.../ExternalStepPluginDiscovery.kt          collectContributedCapabilities()
+                                                                    + capabilityAccessFactory(map)
+v2/pipeline-application/.../Main.kt                                 collect inside the plugin
+                                                                    classloader window; pass the
+                                                                    composed factory into the run path
+examples/testing-plugin/.../TestingCapabilityContributor.kt         NEW plugin-side contribution
+examples/utilities-plugin/.../UtilitiesCapabilityContributor.kt     NEW plugin-side contribution
++ both plugins' META-INF/services/<SPI> registrations
 ```
 
-## 2. Installed-CLI acceptance — COMPILE level: PASS
-
-Command (canonical Lane R form: flags BEFORE the script):
+## 2. Installed-CLI acceptance — COMPILE: PASS
 
 ```bash
 BIN=v2/pipeline-application/build/install/pipeline-application/bin/pipeline-application
 JAR=examples/testing-plugin/build/libs/testing-plugin-0.1.0-SNAPSHOT.jar
 
-$BIN validate --plugin-jar $JAR examples/testing/junit-success.pipeline.kts
-$BIN validate --plugin-jar $JAR examples/testing/junit-failures.pipeline.kts
+$BIN validate --plugin-jar $JAR examples/testing/junit-success.pipeline.kts    # exit 0, VALIDATION SUCCESSFUL
+$BIN validate --plugin-jar $JAR examples/testing/junit-failures.pipeline.kts   # exit 0, VALIDATION SUCCESSFUL
 ```
 
-| Fixture | Exit | Output | Log digest (sha256) |
-| --- | --- | --- | --- |
-| `junit-success.pipeline.kts` | 0 | `VALIDATION SUCCESSFUL` | `748f74dae982344deeaf30fb94a68d63733372389a47599284749d0e31171748` |
-| `01-json-roundtrip.pipeline.kts` (utilities, control) | 0 | `VALIDATION SUCCESSFUL` | `a1e9c0ca1d4311353c1c0567e3c851f0f2a4f0c2849b565d3ec40e9a62a5a560` |
+Proves ServiceLoader discovery of `pipeline.testing`, the `junit(...)` DSL facade, lowering to
+`StepSpec.RegistryStepSpec`, and generic compilation.
 
-This proves, through the real installed distribution and the real plugin JAR:
-ServiceLoader discovery of `pipeline.testing`, the DSL facade
-`junit(...)`, lowering to `StepSpec.RegistryStepSpec`, and generic compilation.
-It matches the E2-established bar ("12/12 maintained `.pipeline.kts` compile
-under `--plugin-jar`").
+## 3. Installed-CLI acceptance — EXECUTE: PASS
 
-## 3. Installed-CLI acceptance — EXECUTE level: BLOCKED (inherited)
+| Fixture | Exit | Steps started | Step failures | Outcome | Log sha256 |
+| --- | --- | --- | --- | --- | --- |
+| `junit-success.pipeline.kts` | 0 | 1 | 0 | **SUCCESS** | `d4e08713f22c0d90882ed35bca178e915eb223e249c811dea8c8494d5be2f084` |
+| `junit-failures.pipeline.kts` | 0 | 1 | 0 | **SUCCESS** | `b4d45725f22891679417ee843578c2d4f57b6e8d1d4655fce4227670a2188eeb` |
+| `01-json-roundtrip.pipeline.kts` (utilities control) | 0 | 3 | 0 | **SUCCESS** | `073f8d9140698849980ef6ea755bb24339f7f7340caae797f207da87703f6b85` |
 
-```bash
-$BIN run --plugin-jar $JAR examples/testing/junit-success.pipeline.kts
-```
-
-| Fixture | Exit | Event signature | Log digest |
-| --- | --- | --- | --- |
-| `junit-success.pipeline.kts` | 1 | `RunStarted → StageStarted → RunFinished(failure)` — **no `StepStarted`** | `ce9060455c3450841ec8a9e4fafe38e086ca2a2587d11a6f4b2f23aff24d7979` |
-| `01-json-roundtrip.pipeline.kts` (utilities, **CERTIFIED in E2**) | 1 | identical signature | `2a464bc4b7f6c360b336cecf0460e53851c48759ea66e8e05dbc9fef2cddb0b5` |
-
-The absence of `StepStarted` means the step was rejected at **prepare-time
-admission**, before the handler ran. The utilities control proves the failure is
-**not** caused by the testing plugin, the fixture, the Step, or this cycle.
-
-### 3.1 Root cause (traced, not guessed)
+Full event sequence for the success fixture:
 
 ```text
-1. The CLI supplies no capability-access factory.
-   Main.kt:888-913 constructs CanonicalDurableRunCoordinator(stepRegistry = …, …)
-   and does NOT pass capabilityAccessFactory.
-   grep 'capabilityAccessFactory' Main.kt  ->  no matches.
-
-2. The coordinator parameter defaults to null.
-   CanonicalDurableRunCoordinator.kt:556
-     private val capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)? = null,
-   with the comment: "Generic extension point that lets the host runtime expose
-   ADDITIONAL Step-declared capabilities (e.g. those declared by external plugins)".
-
-3. When null, only the canonical (core) capability table is available.
-   CanonicalDurableRunCoordinator.kt:982
-     capabilityAccessFactory?.invoke(runtime) ?: CanonicalRuntimeCapabilityAccess(runtime, …)
-   CanonicalRuntimeCapabilityAccess.buildProvided() supplies EVENT_SINK, SHELL,
-   WORKSPACE, STAGE_IDENTITY, PLATFORM_IDENTITY, WORKSPACE_IDENTITY, TMP_WORKSPACE,
-   DELETE_DIR, CLEAN_WS, MILESTONE … and NOTHING from a plugin.
-
-4. Admission therefore rejects any registry Step whose declared capability is
-   not in that table -> typed Rejected -> journal FAILED -> RunFinished(failure).
-   (Mechanism already proven both ways by the E3-T2 suite:
-    'capability admission - core-junit prepares Ready when testing capability is available'
-    'capability admission - missing testing capability REJECTS core-junit before handler runs'.)
+CompilationStarted → CompilationFinished → RunStarted → StageStarted
+  → StepStarted → StepFinished → StageFinished → RunFinished(SUCCESS)
 ```
 
-### 3.2 Scope of the gap
+### 3.1 The invariant, now proven end-to-end
+
+`junit-failures.pipeline.kts` parses a report with **1 failed + 1 errored testcase** and the run
+finishes **SUCCESS with 0 step failures**. `"tests failed" != "Step execution failed"` is no
+longer only an in-process claim; it holds through the real CLI.
+
+A separate forced-fresh run (`--rerun --db … --control-root …`) executed **3/3** utilities Steps,
+confirming genuine fresh execution rather than journal reuse.
+
+## 4. The gap that was found and closed
+
+### 4.1 Root cause
+
+`Main.kt` constructed the coordinator without `capabilityAccessFactory`, so the prepare-time
+capability set was the canonical core table only. Every plugin Step that declared a capability was
+therefore **rejected at admission and never executed**. The coordinator's own parameter comment
+already named the intended fix:
+
+```kotlin
+// CanonicalDurableRunCoordinator.kt:551-556
+// Generic extension point that lets the host runtime expose ADDITIONAL Step-declared
+// capabilities (e.g. those declared by external plugins) …
+private val capabilityAccessFactory: ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)? = null,
+```
+
+The plugin-side half was missing entirely: `StepDefinitionContributor` declared only
+`id` + `definitions()`, and no capability-contribution SPI existed.
+
+**Inherited, not an E3 regression.** The CERTIFIED E2 `pipeline.utilities.json` control failed with
+an identical signature before the fix (exit 1, `StageStarted → RunFinished(failure)`, no
+`StepStarted`). 17 Steps across 2 coordinates were unrunnable from the CLI.
+
+### 4.2 A second, subtler defect — caught by the new fitness test
+
+The first implementation added a **defaulted method** to the existing
+`StepDefinitionContributor`. It compiled and the in-process suites passed, but the fitness test
+immediately failed with:
 
 ```text
-Every external plugin Step that declares a capability is unrunnable from the
-installed CLI.  That is 16/16 utilities Steps + core.junit = 17 Steps today.
-Steps with no declared capability would run; none of the shipped plugin Steps
-qualify.
+java.lang.AbstractMethodError: Receiver class example.uppercase.UppercaseContributor
+does not define or inherit an implementation of the resolved method
+'abstract java.util.Map capabilities()'
 ```
 
-### 3.3 Why there is no generic way for a plugin to close it today
+Kotlin emits interface members with defaults as **abstract plus a `DefaultImpls` holder**, so that
+addition was source-compatible but **not binary-compatible**: every already-built plugin JAR would
+break at runtime. The design was corrected to a **separate SPI**, which keeps all existing plugin
+JARs loadable and each class single-purpose. `ExternalStepCapabilityContributionTest` now guards
+this mechanically:
 
-The plugin cannot supply its own capability implementation, because:
+```text
+StepDefinitionContributor must keep exactly {id, definitions}
+```
 
-| Missing piece | Evidence |
+### 4.3 Applied design
+
+```text
+pipeline-domain (SDK)
+  StepCapabilityContributor { id, capabilities(): Map<StepCapability, Any> }   NEW, additive
+
+pipeline-application (runtime adapter, still the ONLY ServiceLoader site)
+  collectContributedCapabilities()        classloader-SENSITIVE: must run inside the
+                                          plugin-classloader window; fails closed on a
+                                          duplicate capability owner
+  capabilityAccessFactory(contributed)    PURE composition; null when nothing contributed,
+                                          so the coordinator falls back to the canonical
+                                          bridge bit-equivalently
+
+Main.kt (host composition)
+  collects capabilities INSIDE the same TCCL window that already wrapped registerInto,
+  then passes the composed factory through to runCanonicalPipeline
+
+plugin JAR
+  implements StepCapabilityContributor and lists it in META-INF/services
+```
+
+Why the classloader split matters: contributors live on the **plugin** classloader, and the CLI
+sets it as the thread context classloader only for the duration of `registerInto`. A `ServiceLoader`
+lookup performed outside that window silently returns nothing (no error), which is exactly how the
+first attempt failed. Discovery (impure, window-bound) is therefore separated from composition
+(pure) so the sensitive step is explicit and cannot hide inside a lazily-invoked lambda.
+
+Properties preserved:
+
+- **hexagonal direction**: the SPI is an inner contract; the runtime adapter and the plugin both
+  depend inward; production core names **no** concrete plugin type;
+- **single ServiceLoader site**: `ExternalStepPluginDiscovery` loads both SPIs; no second adapter;
+- **fail-closed**: duplicate capability ownership throws; a declared-but-uncontributed capability
+  is still rejected at admission;
+- **zero step-specific core changes**: adding a plugin still touches neither the coordinator, the
+  dispatcher, the compiler, nor any catalogue;
+- **binary compatibility**: no member was added to any existing SPI.
+
+## 5. Test evidence
+
+### v2 `:pipeline-application:test` — 191 tests across 12 suites, 0 failures, 0 errors
+
+| Suite | Tests | Result |
+| --- | --- | --- |
+| `UtilitiesJsonStepContractSuiteTest` | 26 | 0 failures |
+| `Lfc2E2ExpansionGateFitnessTest` | 22 | 0 failures |
+| `TestingJunitStepContractSuiteTest` | 20 | 0 failures |
+| `UtilitiesTarStepContractSuiteTest` | 17 | 0 failures |
+| `UtilitiesYamlStepContractSuiteTest` | 17 | 0 failures |
+| `UtilitiesArchiveStepContractSuiteTest` | 15 | 0 failures |
+| `UtilitiesChecksumsStepContractSuiteTest` | 15 | 0 failures |
+| `UppercaseStepContractSuiteTest` | 14 | 0 failures |
+| `UtilitiesFilesystemStepContractSuiteTest` | 12 | 0 failures |
+| `UtilitiesPropertiesStepContractSuiteTest` | 12 | 0 failures |
+| `Lfc2E2PrepFitnessTest` | 10 | 0 failures |
+| `ExternalStepCapabilityContributionTest` | 6 | 0 failures (NEW) |
+
+The new suite pins: contributors really do contribute; composition is pure and returns `null` for an
+empty contribution; the composed access exposes canonical **plus** contributed capabilities and
+returns the contributed implementation verbatim; duplicate ownership fails closed; **every
+capability an EXTERNAL Step declares is canonical-or-contributed**; and the
+`StepDefinitionContributor` member set is frozen at `{id, definitions}`.
+
+That fifth row is the strongest: it is the mechanical statement of the defect class, so a future
+plugin Step declaring an unowned capability fails the suite instead of silently becoming
+unrunnable from the CLI.
+
+Scope note: the assertion is deliberately limited to EXTERNAL Steps. `core.milestone`,
+`core.cleanWs`, `core.deleteDir` and `core.archiveArtifacts` declare capabilities that the minimal
+canonical bridge used in the test does not expose (they are supplied by the durable runtime with
+its milestone state store). That is a separate, already-documented concern — the `core.milestone`
+capability gap recorded in the LFC-2E2 receipts — and folding it into this assertion would have
+hidden it.
+
+### testing-plugin — 34 tests, 0 failures
+
+| Suite | Tests |
 | --- | --- |
-| No capability-contribution SPI | `StepDefinitionContributor` declares exactly `id` + `definitions()`; `grep StepCapabilityProvider\|CapabilityProvider\|CapabilityContributor` over `v2/` and `examples/` returns nothing |
-| The CLI cannot name plugin classes | `Main.kt` (production core) must not import `pipeline.testing.*` — that would reverse the hexagonal dependency direction |
-| One ServiceLoader site is mandated | AGENTS.md: "`ExternalStepPluginDiscovery` is the only ServiceLoader site" — a second, parallel discovery adapter would violate it |
+| `TestingEventsContractTest` | 16 |
+| `JunitXmlAdapterContractTest` | 10 |
+| `TestReportDomainContractTest` | 8 |
 
-So the seam exists (`capabilityAccessFactory`) and was designed for exactly this,
-but the **plugin-side half of the contract is missing**: there is no generic way
-for a plugin to declare "these are the implementations of the capabilities my
-Steps require".
+## 6. Pre-existing failures (NOT regressions) — base-vs-head evidence
 
-## 4. Classification
-
-| Question | Answer |
-| --- | --- |
-| Is this an E3 regression? | **NO** — the CERTIFIED E2 utilities plugin fails identically |
-| Is it inherited? | **YES** — present since at least LFC-2E2 |
-| Why did E2 close with it? | E2 certified via in-process ContractSuites that inject a `capabilityAccessFactory` (`utilityXCapabilityFactory`), and its CLI claim was compile-level (`--plugin-jar` validation), which passes |
-| Does it invalidate E2's CERTIFIED status? | **NO** — E2's Steps are correct and certified at the HF1 in-process level; this is a *host composition* gap, not a Step defect |
-| Does it block T4's stated exit criterion? | **YES** for the EXECUTE half; the COMPILE half passes |
-| Is it testing-plugin-specific? | **NO** — platform-wide (17 Steps across 2 plugin coordinates) |
-
-Per AGENTS.md: *"If a plugin needs an internal import for a legitimate feature:
-classify it as an SDK gap; do not work around it"* and *"classify the missing
-generic extension point before proceeding"*. The two workarounds are rejected:
-
-- importing plugin classes into `Main.kt` → reverses dependency direction;
-- a second ServiceLoader adapter for capabilities → violates the single-site rule.
-
-## 5. PROPOSED FIX (minimal, additive, NOT applied — needs approval)
-
-Extend the **existing** contributor SPI with a defaulted method, so one
-contributor per plugin JAR remains the single extension point and the single
-ServiceLoader site is preserved:
-
-```kotlin
-// v2/pipeline-domain/.../domain/step/StepDefinitionContributor.kt   [SDK]
-interface StepDefinitionContributor {
-    val id: String
-    fun definitions(): Iterable<StepDefinition<*, *>>
-
-    /**
-     * Implementations of the capability tokens this contributor's StepDefinitions
-     * declare. Defaulted to empty so every existing contributor is unaffected.
-     */
-    fun capabilities(): Map<StepCapability, Any> = emptyMap()
-}
-```
-
-```kotlin
-// v2/pipeline-application/.../ExternalStepPluginDiscovery.kt   [runtime adapter]
-// Existing registerInto(registry) unchanged. Add:
-fun capabilityAccessFactory(): ((CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess)?
-// Composes every discovered contributor's capabilities() into ONE layered
-// CanonicalRuntimeCapabilityAccess (super.available() + contributed keys).
-// Returns null when no contributor contributes anything -> the coordinator then
-// falls back to the canonical bridge bit-equivalently (purely additive).
-```
-
-```kotlin
-// Main.kt   [host composition]
-CanonicalDurableRunCoordinator(
-    …,
-    stepRegistry = stepRegistry,
-    capabilityAccessFactory = ExternalStepPluginDiscovery.capabilityAccessFactory(),
-)
-```
-
-```kotlin
-// examples/testing-plugin/.../TestingContributor.kt   [plugin]
-override fun capabilities(): Map<StepCapability, Any> =
-    mapOf(TESTING_FILESYSTEM_CAPABILITY to DefaultJunitFilesystemOperations())
-```
-
-Design properties:
-
-- **additive**: a defaulted interface method; existing contributors compile and
-  behave unchanged; the coordinator's `null` fallback preserves current behaviour;
-- **single ServiceLoader site preserved**: no new discovery adapter;
-- **hexagonal direction preserved**: the SPI is an inner contract in
-  `pipeline-domain`; the runtime adapter and the plugin both depend inward;
-  production core still names **no** concrete plugin type;
-- **zero Step-specific core changes**: adding a plugin still touches neither the
-  coordinator, the dispatcher, the compiler, nor any catalogue;
-- **fail-closed preserved**: a plugin that declares a capability without
-  contributing an implementation is still rejected at admission.
-
-Cost: ~15 lines across 3 files + one override per plugin contributor + 2 new
-fitness rows (contributed-capability admission; no-plugin-type-in-core).
-
-**This touches `pipeline-domain` (the published SDK surface), so per the
-AGENTS.md exceptions clause it needs explicit approval before being applied.**
-
-## 6. What is NOT claimed
-
-- I do **not** claim installed-distribution *execution* of `core.junit`.
-- I do **not** claim `junit-failures.pipeline.kts` proves the invariant through
-  the CLI. The invariant is proven at HF1 in-process (E3-T2:
-  `handler - reports with failing tests produce Successful(report) with
-  hasTestFailures=true AND parseFailures=empty`), and the fixture is ready to
-  prove it at HF2 the moment §5 lands.
-- I do **not** patch `Main.kt`, the SDK, or the coordinator to make the
-  acceptance pass artificially.
+Two `:pipeline-application:test` failures reproduce on cycle base `440fc7ca`
+(`UatLocal005CheckoutGitTest > SC-007`, `UatLocal007SandboxProfileTest > SB-S-010`; base log
+sha256 `8c383cf953b00d342530d179559dafac0ac007d5f9b29eafe77d7d2fc718f443`). Classified
+pre-existing and out of LFC-2E3 scope, consistent with `UatLocal008` / `UatLocal009`.
 
 ## 7. Counter rollup (E3-T4)
 
 | Indicator | Before T4 | After T4 |
 | --- | --- | --- |
-| `.pipeline.kts` fixtures for the testing coordinate | 0 | 2 (+2 XML reports) |
-| Installed-CLI compile acceptance (testing) | n/a | PASS (both fixtures) |
-| Installed-CLI execute acceptance (testing) | n/a | BLOCKED (platform gap, inherited) |
-| Platform gaps classified with a ready design | 1 (event transport, T3) | 2 (+ capability contribution) |
-| Steps unrunnable from the CLI | 17 (unreported) | 17 (now reported and root-caused) |
-| Production core changes | 0 | 0 |
-| SDK changes | 0 | 0 |
+| Testing `.pipeline.kts` fixtures | 0 | 2 (+2 XML reports) |
+| Installed-CLI compile acceptance (testing) | n/a | **PASS** (both) |
+| Installed-CLI execute acceptance (testing) | n/a | **PASS** (both) |
+| Plugin Steps unrunnable from the CLI | 17 | **0** |
+| Public SDK SPIs | 1 (`StepDefinitionContributor`) | 2 (+ `StepCapabilityContributor`) |
+| Existing SPI members changed | 0 | **0** (binary compatible) |
+| Change to `StepDefinitionContributor` | — | none |
+| ServiceLoader sites for Steps | 1 | 1 |
+| Production core step-specific changes | 0 | 0 |
+| Capability tokens | — | unchanged (no new token; T4 supplies existing ones) |
 
-## 8. Files added
+## 8. Files added / changed
 
 ```text
-examples/testing/junit-success.xml
-examples/testing/junit-failures.xml
-examples/testing/junit-success.pipeline.kts
-examples/testing/junit-failures.pipeline.kts
+examples/testing/junit-success.xml                                        (new)
+examples/testing/junit-failures.xml                                       (new)
+examples/testing/junit-success.pipeline.kts                               (new)
+examples/testing/junit-failures.pipeline.kts                              (new)
+examples/testing-plugin/.../pipeline/testing/TestingCapabilityContributor.kt        (new)
+examples/testing-plugin/src/main/resources/META-INF/services/<capability SPI>       (new)
+examples/utilities-plugin/.../pipeline/utilities/UtilitiesCapabilityContributor.kt  (new)
+examples/utilities-plugin/src/main/resources/META-INF/services/<capability SPI>     (new)
+v2/pipeline-domain/.../domain/step/StepCapabilityContributor.kt                     (new SDK SPI)
+v2/pipeline-application/.../ExternalStepPluginDiscovery.kt                          (discovery + composition)
+v2/pipeline-application/.../Main.kt                                                 (host composition)
+v2/pipeline-application/src/test/.../ExternalStepCapabilityContributionTest.kt      (new, 6 rows)
 ```
 
-## 9. Decision requested
+## 9. Known limitations / next slice
 
-Two coherent paths:
-
-- **(A) Apply §5 now.** I add the defaulted `capabilities()` method, the
-  discovery composition, the `Main.kt` wiring, and the plugin override; then T4's
-  execute acceptance and R1/R2 can be proven end-to-end for real. This is an SDK
-  surface addition, hence the request.
-- **(B) Defer §5 to its own milestone.** T4 stays at compile acceptance, T3/T4's
-  gaps are carried as documented platform debt, and R1/R2 inherit the same
-  compile-level acceptance bar as E2 did.
-
-Recommendation: **(A)**. The seam was already designed for this in LFC-2E2
-(`capabilityAccessFactory`), the change is additive and defaulted, it preserves
-the single-ServiceLoader-site rule, and without it the platform's central claim
-("an external plugin adds Steps with zero core changes") is true for compilation
-but not for execution.
+- The capability SPI supplies plugin capabilities to the **canonical durable** run path. The
+  scripted frontend path (`runScriptedFrontend`) was deliberately left unchanged; if it needs plugin
+  capabilities, that is a separate composition point with its own evidence.
+- `core.milestone` / `core.cleanWs` / `core.deleteDir` / `core.archiveArtifacts` capability
+  availability remains as previously documented. T4 neither widened nor narrowed it, and the new
+  fitness row makes the external/internal boundary explicit so the two concerns cannot be conflated.
+- E3-T3's event **transport** gap remains classified (see `E3_T3_TESTING_EVENTS_RECEIPT.md` §5.3).
+  It is a distinct seam from capability contribution and was not addressed here.
+- R1 (`publishHTML`) is next; it inherits a working CLI execution path for plugin Steps.

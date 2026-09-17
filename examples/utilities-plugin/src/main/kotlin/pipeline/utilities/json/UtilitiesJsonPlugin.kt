@@ -65,6 +65,17 @@ class UtilitiesJsonContributor : StepDefinitionContributor {
         pipeline.utilities.checksums.Md5StepDefinition,
         pipeline.utilities.checksums.Sha1StepDefinition,
         pipeline.utilities.checksums.Sha512StepDefinition,
+        // LFC-2E2-EXPANSION U6: zip/unzip with explicit Zip Slip protection.
+        // JDK-bundled (java.util.zip). Fail-closed against path traversal and
+        // absolute-path entries.
+        pipeline.utilities.archive.ZipStepDefinition,
+        pipeline.utilities.archive.UnzipStepDefinition,
+        // LFC-2E2-EXPANSION U7: tarCreate/tarExtract (U7 spike decision: pure JDK
+        // implementation; see docs/v2/07-uat/E2_U7_TAR_RECEIPT.md). Reuses the
+        // same `utilities.archive.operations` capability port — no new token,
+        // no ArchiveStore abstraction, no Apache Commons Compress dependency.
+        pipeline.utilities.archive.TarCreateStepDefinition,
+        pipeline.utilities.archive.TarExtractStepDefinition,
     )
 
     companion object {

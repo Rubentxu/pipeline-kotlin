@@ -10,25 +10,28 @@ a FASE 3 / drift fix and resolved before LFC-2E0 closure.
 ## Counter roll-up
 
 ```text
-Production Step keys total:        21
+Production Step keys total:        29
   CERTIFIED (core):                12   (echo, sh, error, sleep, file.writeFile,
                                        emit.event, isUnix, deleteDir, milestone,
                                        cleanWs, archiveArtifacts, waitUntil)
-  CERTIFIED (external plugin):     13   (example.uppercase, utilities.readJSON,
+  CERTIFIED (external plugin):     17   (example.uppercase, utilities.readJSON,
                                        utilities.writeJSON, utilities.sha256,
                                        utilities.readYaml, utilities.writeYaml,
                                        utilities.readProperties, utilities.writeProperties,
                                        utilities.findFiles, utilities.touch,
-                                       utilities.md5, utilities.sha1, utilities.sha512)
-                                       NOTE: utilities family contributes 12 StepKeys
+                                       utilities.md5, utilities.sha1, utilities.sha512,
+                                       utilities.zip, utilities.unzip,
+                                       utilities.tarCreate, utilities.tarExtract)
+                                       NOTE: utilities family contributes 16 StepKeys
                                        under 1 OFFICIAL_PLUGIN (`pipeline.utilities.json@1.0.0`)
-                                       with 5 capability tokens
+                                       with 6 capability tokens
                                        (`utilities.json.operations`,
                                        `utilities.sha.operations`,
                                        `utilities.yaml.operations`,
                                        `utilities.properties.operations`,
                                        `utilities.filesystem.operations`,
-                                       `utilities.checksums.operations`)
+                                       `utilities.checksums.operations`,
+                                       `utilities.archive.operations`)
   STOPPED at G7 (CERTIFICATION not reached): 2  (pwd, pwd.tmp — non-deterministic runtime return)
   REJECTED:                         1   (load — CORE-LOAD-REJECTED 2026-09-17)
 

@@ -40,6 +40,7 @@ import pipeline.utilities.archive.UnzipStepDefinition
 import pipeline.utilities.archive.UtilitiesArchiveContributor
 import pipeline.utilities.archive.UtilitiesArchiveError
 import pipeline.utilities.archive.UtilitiesArchiveException
+import pipeline.utilities.archive.UtilitiesTarError
 import pipeline.utilities.archive.ZipCodec
 import pipeline.utilities.archive.ZipInput
 import pipeline.utilities.archive.ZipOutput
@@ -160,7 +161,7 @@ class UtilitiesArchiveStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.findFiles")))
         assertTrue(r.contains(PluginStepId("utilities.md5")))
         // 14 utilities (3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive) + 1 example.uppercase = 15 total.
-        assertEquals(15, r.keys().size)
+        assertEquals(17, r.keys().size) // 3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive + 1 example.uppercase = 15 total
     }
 
     // ───────── contract completeness ─────────
@@ -413,11 +414,17 @@ class UtilitiesArchiveStepContractSuiteTest {
 
     @Test
     fun `typed failure - UtilitiesArchiveError sealed ADT is exhaustively matchable (4 cases)`() {
-        val cases = listOf(
+        // U7 added UtilitiesTarError cases under the same sealed root; we still
+        // match 4 errors per family. The exhaustive-when test below applies to
+        // the full union (ArchiveError + TarError = 6 cases).
+        val cases = listOf<UtilitiesArchiveError>(
             UtilitiesArchiveError.ArchiveNotFound("/x"),
             UtilitiesArchiveError.ArchiveIoFailure("/y", "EACCES"),
             UtilitiesArchiveError.UnzipPathTraversal("../../etc", "/etc"),
             UtilitiesArchiveError.UnzipAbsolutePath("/etc/passwd"),
+            // U7 cases (exhaustive matches the full sealed ADT).
+            UtilitiesTarError.TarHeaderCorrupt("a.bin", "bad checksum"),
+            UtilitiesTarError.TarUnsupportedEntryType("link", '2'),
         )
         val mapped: List<String> = cases.map { reason ->
             when (reason) {
@@ -425,13 +432,17 @@ class UtilitiesArchiveStepContractSuiteTest {
                 is UtilitiesArchiveError.ArchiveIoFailure -> "io:" + reason.path
                 is UtilitiesArchiveError.UnzipPathTraversal -> "traversal:" + reason.entry
                 is UtilitiesArchiveError.UnzipAbsolutePath -> "abs:" + reason.entry
+                is UtilitiesTarError.TarHeaderCorrupt -> "tar-corrupt:" + reason.entry
+                is UtilitiesTarError.TarUnsupportedEntryType -> "tar-unsupported:" + reason.entry
             }
         }
-        assertEquals(4, mapped.size)
+        assertEquals(6, mapped.size)
         assertEquals("notfound:/x", mapped[0])
         assertEquals("io:/y", mapped[1])
         assertEquals("traversal:../../etc", mapped[2])
         assertEquals("abs:/etc/passwd", mapped[3])
+        assertEquals("tar-corrupt:a.bin", mapped[4])
+        assertEquals("tar-unsupported:link", mapped[5])
     }
 
     // ───────── real DSL scenario ─────────

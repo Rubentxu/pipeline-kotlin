@@ -491,6 +491,165 @@ class Lfc2E2ExpansionGateFitnessTest {
         }
     }
 
+    @Test
+    fun `G4-9 archive plugin (U6) declares typed UtilitiesArchiveError with Zip Slip variants + JDK-bundled + fail-closed security`() {
+        val src = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesArchivePlugin.kt",
+        )
+        // U6 introduces the FIRST security-sensitive family: zip/unzip MUST fail closed
+        // against Zip Slip (../) and absolute-path entries. The sealed ADT distinguishes
+        // each failure class explicitly so callers can route them differently.
+        assertTrue(
+            src.contains("sealed interface UtilitiesArchiveError"),
+            "G4-9: archive plugin must declare a sealed UtilitiesArchiveError ADT",
+        )
+        assertTrue(
+            src.contains("class UtilitiesArchiveException"),
+            "G4-9: archive plugin must declare a typed UtilitiesArchiveException",
+        )
+        // All four variants: ArchiveNotFound, ArchiveIoFailure, UnzipPathTraversal,
+        // UnzipAbsolutePath. The Zip Slip protection is enforced by the UnzipPathTraversal
+        // case + the corresponding guard.
+        listOf("ArchiveNotFound", "ArchiveIoFailure", "UnzipPathTraversal", "UnzipAbsolutePath").forEach { variant ->
+            assertTrue(
+                src.contains("data class $variant") || src.contains("class $variant"),
+                "G4-9: UtilitiesArchiveError must include the variant $variant",
+            )
+        }
+        assertTrue(
+            src.contains("@Throws(UtilitiesArchiveException::class)"),
+            "G4-9: archive capability port MUST annotate its functions with @Throws(UtilitiesArchiveException::class)",
+        )
+        assertTrue(
+            src.contains("StepCapability(\"utilities.archive.operations\")"),
+            "G4-9: archive plugin must declare utilities.archive.operations capability token",
+        )
+        // Zip Slip guard: the unzip handler must check that the resolved entry path
+        // starts with the normalised target root.
+        assertTrue(
+            src.contains("resolved.startsWith(targetPath)"),
+            "G4-9: unzip handler MUST reject entries whose resolved path escapes the destination root (Zip Slip)",
+        )
+        // Absolute-path guard: the unzip handler must reject entries whose name starts
+        // with '/' or is detected as an absolute path.
+        assertTrue(
+            src.contains("name.startsWith(\"/\")"),
+            "G4-9: unzip handler MUST reject absolute-path entries (name.startsWith('/'))",
+        )
+        // JDK-only: java.util.zip is on the JDK classpath.
+        assertTrue(
+            src.contains("java.util.zip.ZipOutputStream") || src.contains("import java.util.zip.ZipOutputStream"),
+            "G4-9: archive plugin must use JDK java.util.zip (no external dep)",
+        )
+        // Magic-number sanity check (fail-closed against malformed archives).
+        assertTrue(
+            src.contains("PK") || src.contains("0x50"),
+            "G4-9: unzip handler MUST verify the ZIP magic number to fail closed on malformed archives",
+        )
+        // Production core stays unaware of the archive package.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesArchiveError") || prodSrc.contains("UtilitiesArchiveException"),
+                "G4-9: production core must NOT reference UtilitiesArchiveError/Exception (path: $path)",
+            )
+        }
+    }
+
+    @Test
+    fun `G4-10 TAR plugin (U7) reuses U6 archive capability port + pure JDK USTAR encoder (NO Commons Compress + NO ArchiveStore)`() {
+        val tarSrc = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesTarPlugin.kt",
+        )
+        val archiveSrc = readRelative(
+            "examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesArchivePlugin.kt",
+        )
+        // U7 SPIKE DECISION: USTAR (POSIX.1-1988) TAR is encoded/decoded in
+        // pure JDK, NOT via Apache Commons Compress. The capability port is
+        // REUSED from U6 (NO new token). NO ArchiveStore abstraction.
+        // This row proves all three properties at the source level.
+        assertTrue(
+            tarSrc.contains("object TarCreateStepDefinition : StepDefinition"),
+            "G4-10: TAR plugin must declare a TarCreateStepDefinition StepDefinition",
+        )
+        assertTrue(
+            tarSrc.contains("object TarExtractStepDefinition : StepDefinition"),
+            "G4-10: TAR plugin must declare a TarExtractStepDefinition StepDefinition",
+        )
+        // Typed failure ADT for TAR lives under UtilitiesArchiveError (extension).
+        assertTrue(
+            tarSrc.contains("sealed interface UtilitiesTarError : UtilitiesArchiveError"),
+            "G4-10: TAR plugin must declare UtilitiesTarError as a sealed subtype of UtilitiesArchiveError",
+        )
+        listOf("TarHeaderCorrupt", "TarUnsupportedEntryType").forEach { variant ->
+            assertTrue(
+                tarSrc.contains("data class $variant"),
+                "G4-10: UtilitiesTarError must include the variant $variant",
+            )
+        }
+        // Apache Commons Compress MUST NOT be a dependency in the plugin build.
+        // Verify the source doesn't import org.apache.commons.*.
+        assertFalse(
+            tarSrc.contains("org.apache.commons") ||
+                archiveSrc.contains("org.apache.commons"),
+            "G4-10: TAR family MUST NOT depend on Apache Commons Compress (we use pure JDK)",
+        )
+        // NO ArchiveStore abstraction introduced. The ArchiveOperations interface
+        // in UtilitiesArchivePlugin is the SAME port U6 used — the TAR family
+        // adds two methods to that interface WITHOUT introducing a new type or
+        // an ArchiveStore marker.
+        assertFalse(
+            tarSrc.contains("class ArchiveStore") || archiveSrc.contains("class ArchiveStore") ||
+                tarSrc.contains("interface ArchiveStore") || archiveSrc.contains("interface ArchiveStore") ||
+                tarSrc.contains("object ArchiveStore") || archiveSrc.contains("object ArchiveStore"),
+            "G4-10: NO ArchiveStore / TarStore abstraction introduced — flat method list on ArchiveOperations",
+        )
+        // Capability token for TAR MUST equal U6's archive capability.
+        // We assert this via the StepContract rather than parsing — the
+        // TarCreateStepDefinition.requiredCapabilities.first() is the same
+        // UTILITIES_ARCHIVE_CAPABILITY constant as the zip / unzip StepDefinitions.
+        assertTrue(
+            tarSrc.contains("UTILITIES_ARCHIVE_CAPABILITY"),
+            "G4-10: TAR StepDefinitions must require UtilitiesArchiveContributor.UTILITIES_ARCHIVE_CAPABILITY (no new capability token)",
+        )
+        assertTrue(
+            tarSrc.contains("StepCapability(\"utilities.archive.operations\")") ||
+                archiveSrc.contains("StepCapability(\"utilities.archive.operations\")"),
+            "G4-10: archive capability token is 'utilities.archive.operations' (no new token for TAR)",
+        )
+        // Typeflag whitelist: U7 supports only '0' (regular file) and '5' (directory).
+        // Symlinks and devices are explicitly rejected (security boundary).
+        assertTrue(
+            tarSrc.contains("typeFlag != '0' && typeFlag != '5'") ||
+                tarSrc.contains("typeFlag != \"0\" && typeFlag != \"5\""),
+            "G4-10: TAR handler MUST reject typeflag other than '0' / '5' (symlinks, devices are unsupported)",
+        )
+        // Path-traversal guard mirrors unzip.
+        assertTrue(
+            tarSrc.contains("startsWith(\"/\")"),
+            "G4-10: TAR handler MUST reject absolute-path entries (mirroring unzip's UnzipAbsolutePath)",
+        )
+        // Production core stays unaware of the TAR family.
+        val prodSources = listOf(
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/RegistryExecutionBoundary.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt",
+            "v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt",
+        )
+        prodSources.forEach { path ->
+            val prodSrc = File(repoRoot, path).readText()
+            assertFalse(
+                prodSrc.contains("UtilitiesTarError") || prodSrc.contains("UtilitiesTarPlugin") ||
+                    prodSrc.contains("TarCreateStepDefinition") || prodSrc.contains("TarExtractStepDefinition"),
+                "G4-10: production core must NOT reference TAR family (path: $path)",
+            )
+        }
+    }
+
     // ───────────────────────────────────────────────────────────────────────
     // G5/G6 — Plugin absent / installed / removed lifecycle for core Steps
     //

@@ -71,6 +71,10 @@ private fun UtilitiesArchiveError.describe(): String = when (this) {
         "Zip Slip rejected: entry '$entry' resolves outside destination root ('$resolved')"
     is UtilitiesArchiveError.UnzipAbsolutePath ->
         "absolute path in archive entry rejected: '$entry'"
+    is UtilitiesTarError.TarHeaderCorrupt ->
+        "TAR header corrupt: entry '$entry' — $reason"
+    is UtilitiesTarError.TarUnsupportedEntryType ->
+        "TAR entry '$entry' has unsupported typeflag '$typeFlag' (U7 family only supports '0' / '5')"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,6 +87,15 @@ interface ArchiveOperations {
 
     @Throws(UtilitiesArchiveException::class)
     fun unzip(sourceZip: String, targetDir: String, overwrite: Boolean): UnzipOutput
+
+    // U7: TAR family (added 2026-09-17, after the U6 archive family proved
+    // the capability port shape is reusable). The interface deliberately keeps
+    // a flat method list — NO ArchiveStore abstraction, NO common base type.
+    @Throws(UtilitiesArchiveException::class)
+    fun tarCreate(sourceDir: String, targetTar: String, overwrite: Boolean): TarOutput
+
+    @Throws(UtilitiesArchiveException::class)
+    fun tarExtract(sourceTar: String, targetDir: String, overwrite: Boolean): UnzipOutput
 }
 
 @Serializable
@@ -440,6 +453,73 @@ class DefaultArchiveOperations : ArchiveOperations {
             entries = collected,
         )
     }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // U7: TAR encoder / decoder (pure JDK, no external dependency)
+    // ───────────────────────────────────────────────────────────────────────
+
+    override fun tarCreate(sourceDir: String, targetTar: String, overwrite: Boolean): TarOutput {
+        val sourcePath: Path = Paths.get(sourceDir)
+        val targetPath: Path = Paths.get(targetTar)
+        if (!Files.exists(sourcePath) || !Files.isDirectory(sourcePath)) {
+            throw UtilitiesArchiveException(UtilitiesArchiveError.ArchiveNotFound(sourceDir))
+        }
+        if (Files.exists(targetPath) && !overwrite) {
+            throw UtilitiesArchiveException(
+                UtilitiesArchiveError.ArchiveIoFailure(
+                    targetTar,
+                    "target exists and overwrite=false",
+                ),
+            )
+        }
+        val entries = mutableListOf<Pair<Path, Boolean>>()
+        Files.walk(sourcePath).use { stream ->
+            stream.filter { it != sourcePath }
+                .sorted(Comparator.comparing { it.toString() })
+                .forEach { p -> entries.add(p to Files.isDirectory(p)) }
+        }
+        targetPath.parent?.let { Files.createDirectories(it) }
+        try {
+            Files.newOutputStream(targetPath).use { fos ->
+                TarWriter(fos).writeDirectoryTree(sourcePath)
+            }
+        } catch (e: java.io.IOException) {
+            throw UtilitiesArchiveException(
+                UtilitiesArchiveError.ArchiveIoFailure(targetTar, e.message ?: e::class.simpleName.orEmpty()),
+            )
+        }
+        val fileCount = entries.count { !it.second }
+        return TarOutput(
+            source = sourceDir,
+            target = targetTar,
+            entryCount = fileCount,
+            entries = entries.map { sourcePath.relativize(it.first).toString().replace('\\', '/') },
+        )
+    }
+
+    override fun tarExtract(sourceTar: String, targetDir: String, overwrite: Boolean): UnzipOutput {
+        val sourcePath: Path = Paths.get(sourceTar)
+        val targetPath: Path = Paths.get(targetDir).toAbsolutePath().normalize()
+        if (!Files.exists(sourcePath)) {
+            throw UtilitiesArchiveException(UtilitiesArchiveError.ArchiveNotFound(sourceTar))
+        }
+        Files.createDirectories(targetPath)
+        val collected = try {
+            Files.newInputStream(sourcePath).use { fis -> TarReader(fis).extract(targetPath) }
+        } catch (e: UtilitiesArchiveException) {
+            throw e
+        } catch (e: java.io.IOException) {
+            throw UtilitiesArchiveException(
+                UtilitiesArchiveError.ArchiveIoFailure(sourceTar, e.message ?: e::class.simpleName.orEmpty()),
+            )
+        }
+        return UnzipOutput(
+            source = sourceTar,
+            target = targetDir,
+            entryCount = collected.size,
+            entries = collected,
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -456,4 +536,17 @@ fun StageScope.unzip(sourceZip: String, targetDir: String, overwrite: Boolean = 
     registryStep(
         stepKey = UnzipStepDefinition.KEY,
         encodedInput = UnzipCodec.encode(UnzipInput(sourceZip, targetDir, overwrite)),
+    )
+
+// U7: TAR extensions (typed Kotlin facades).
+fun StageScope.tarCreate(sourceDir: String, targetTar: String, overwrite: Boolean = false) =
+    registryStep(
+        stepKey = TarCreateStepDefinition.KEY,
+        encodedInput = TarCreateCodec.encode(TarCreateInput(sourceDir, targetTar, overwrite)),
+    )
+
+fun StageScope.tarExtract(sourceTar: String, targetDir: String, overwrite: Boolean = false) =
+    registryStep(
+        stepKey = TarExtractStepDefinition.KEY,
+        encodedInput = TarExtractCodec.encode(TarExtractInput(sourceTar, targetDir, overwrite)),
     )

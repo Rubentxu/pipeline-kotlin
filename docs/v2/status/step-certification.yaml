@@ -98,14 +98,14 @@ e2_prep:
 
 counters:
   certified_core_steps: 12
-  certified_external_plugin_steps: 13
-  certified_total_steps: 25
+  certified_external_plugin_steps: 17
+  certified_total_steps: 29
   rejected_steps: 1
   stopped_g7_steps: 2
   implemented_uncertified_steps: 0
   not_started_steps: 0
-  total_production_step_keys: 28
-  total_yaml_step_entries: 25  # 12 core + 13 external (3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 1 example.uppercase) + 2 stopped + 1 rejected, but YAML counts families not status
+  total_production_step_keys: 32
+  total_yaml_step_entries: 29  # 12 core + 17 external (3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive + 2 tar + 1 example.uppercase) + 2 stopped + 1 rejected, but YAML counts families not status
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
   legacy_residual_dispatcher_files: 0
@@ -973,6 +973,124 @@ steps:
     notes: |
       LFC-2E2-EXPANSION U5 family. SHA-512 (512-bit) digest of a file's bytes via
       JDK MessageDigest.getInstance("SHA-512"). Distinct StepKey.
+
+  - step_key: utilities.zip
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesArchivePlugin.kt
+    capability: utilities.archive.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesArchiveStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesArchiveStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U6 family. Bundles a directory tree into a ZIP archive
+      using JDK java.util.zip (no external dependency). Deterministic ordering
+      (sorted by relative path) so memoization is stable. Capability
+      `utilities.archive.operations` shared with `utilities.unzip` (single
+      typed port `ArchiveOperations`).
+
+  - step_key: utilities.unzip
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesArchivePlugin.kt
+    capability: utilities.archive.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesArchiveStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesArchiveStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U6 family — the FIRST security-sensitive family in the
+      OFFICIAL_PLUGIN coordinate. unzip MUST fail closed against Zip Slip
+      (`UnzipPathTraversal`) and absolute-path entries (`UnzipAbsolutePath`),
+      plus a magic-number sanity check to fail closed on malformed archives.
+      Production core is unaware of the security checks; the typed ADT surfaces
+      them to callers.
+
+  - step_key: utilities.tarCreate
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+      - docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesTarPlugin.kt
+    capability: utilities.archive.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesTarStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesTarStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U7 family — USTAR/POSIX.1-1988 TAR encoder in pure JDK.
+      Apache Commons Compress was the original candidate; U7 spike REJECTED it
+      for the OFFICIAL_PLUGIN coordinate (transitive surface disproportionate
+      to one family). TAR format (~80 fields in a 512-byte header, octal
+      metadata) is small and stable; implementing it in pure JDK keeps the
+      plugin at zero external dependencies AND removes the future temptation
+      to centralise "archive math" behind an ArchiveStore abstraction.
+      Reuses the U6 `utilities.archive.operations` capability token — no new
+      token, no ArchiveStore, no Commons Compress.
+
+  - step_key: utilities.tarExtract
+    namespace_classification: EXTERNAL_PLUGIN_REFERENCE
+    freeze_status: ADMITTED_EXTERNAL
+    delivery: OFFICIAL_PLUGIN
+    execution: REGISTRY_PRIMARY_VIA_SERVICELOADER
+    legacy_state: NO_LEGACY_PATH
+    certification_state: CERTIFIED
+    g8_receipt: docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
+    legacy_receipts:
+      - docs/v2/07-uat/LFC2E2_PREP_RECEIPT.md
+      - docs/v2/07-uat/FIRST_OFFICIAL_PLUGIN_RECEIPT.md
+      - docs/v2/07-uat/E2_U6_ARCHIVE_FAMILIES_RECEIPT.md
+      - docs/v2/07-uat/E2_U7_TAR_RECEIPT.md
+    real_fixtures:
+      - examples/utilities/01-json-roundtrip.pipeline.kts
+    registry_file: examples/utilities-plugin/src/main/kotlin/pipeline/utilities/archive/UtilitiesTarPlugin.kt
+    capability: utilities.archive.operations
+    contract_suite: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesTarStepContractSuiteTest.kt
+    contract_suite_status: PASS
+    unit_test: v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UtilitiesTarStepContractSuiteTest.kt
+    notes: |
+      LFC-2E2-EXPANSION U7 family — symmetric to `utilities.unzip` (Zip Slip
+      defence) but for the TAR format. Reuses the U6 archive capability port.
+      Rejects absolute-path entries (`UnzipAbsolutePath`), paths that resolve
+      outside the destination root (`UnzipPathTraversal`), and entries whose
+      typeflag is not '0' (regular file) or '5' (directory) — symbol links
+      and special devices are explicitly excluded because they require
+      different security analysis. A diagnostic `TarUnsupportedEntryType` case
+      tells callers exactly which entry violated the typeflag whitelist.
 
 # ────────────────────────────────────────────────────────────────────────
 # Roll-up assertions (machine-verifiable invariants)

@@ -1,5 +1,48 @@
 
 
+## XCA-2 Workstream E — Full corpus run (2026-09-17)
+
+**Status: COMPLETE.** All B.2/B.2b/B.3/B.4/B.5/B.6/C/D/E workstreams done.
+
+**Changed:**
+- `v2/pipeline-domain/src/main/kotlin/.../durable/FixtureEvidence.kt`: Structured ADTs for
+  reconciliation (FixtureExecutionState, StepExpectationRelation, StructuredFixtureEvidence,
+  FixtureReconciliation, reconcile() pure function)
+- `v2/pipeline-domain/src/test/kotlin/.../durable/FixtureReconciliationTest.kt`: 9 tests
+- `v2/pipeline-events/src/test/kotlin/.../evidence/JournalRunExecutionEvidenceReaderInMemoryTest.kt`: 7 tests
+- `v2/pipeline-events/src/test/kotlin/.../evidence/JournalRunExecutionEvidenceReaderRealDbTest.kt`: 3 tests
+- `v2/pipeline-application/src/test/kotlin/.../XcaCliCanaryTest.kt`: B.4/B.5/B.6 (3 tests)
+- `v2/pipeline-application/src/test/kotlin/.../XcaCorpusRunTest.kt`: full corpus (1 test)
+- `v2/docs/v2/status/step-certification.yaml`: structured evidence ledger
+
+**Bug fixed:** runCli hardcoded 'journal.db' but tests passed different paths
+(03-stages.db, pwd-tmp.db, no-steps.db). B.4 was the canary that failed
+because it asserted observed.isNotEmpty(). B.5/B.6 only passed because
+their assertions tolerated empty evidence.
+
+**Verification:**
+- JournalRunExecutionEvidenceReaderInMemoryTest: 7/7 GREEN
+- JournalRunExecutionEvidenceReaderRealDbTest: 3/3 GREEN (assumeTrue skip if no db)
+- FixtureReconciliationTest: 9/9 GREEN
+- XcaCliCanaryTest: 3/3 GREEN (B.4 03-stages, B.5 20-pwd-tmp, B.6 no-steps)
+- XcaCorpusRunTest: 1/1 GREEN (20 fixtures, 18 produce runId, 2 expected failures
+  12-error-handling + 21-milestone)
+
+**Evidence:**
+- core.echo: CERTIFIED (XCA-2B run: 006df865-a1d4-4bcf-ac8c-895c0864ea60)
+- core.sh: EVIDENCE_READY (pending full reconciliation)
+- 12 steps: STATIC_CANDIDATE (source analysis only)
+
+**Corpus fixtures executed:**
+- 01-basic, 02-environment, 03-stages, 04-sh, 05-scripted-if, 06-loop,
+  08-withEnv-pipeline, 09-sh-then-echo, 10-smoke-e2e, 11-workflow-control,
+  12-error-handling (no runId), 13-workspace-helpers, 14-credentials-bindings,
+  15-error, 16-sleep, 17-writeFile, 18-cleanWs, 19-isunix, 20-pwd-tmp,
+  21-milestone (no runId)
+
+**Next:** gate XCA-2 can be closed once user reviews the receipt and commits.
+
+
 ## Active Change — LFC-2R / R2 core.isUnix scripted runtime consumer (2026-09-11)
 
 **Status: IMPLEMENTED, VALIDATED, COMMITTED.** R2 done; STOP before R3 (compiler/source mapping) or S2-A5/G3 — user decision pending.

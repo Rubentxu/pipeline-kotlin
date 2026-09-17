@@ -2,23 +2,22 @@
 
 **Cycle**: `wu-g5-restore`
 **Branch**: `cycle/wu-g5-restore` → `main`
-**Release SHA**: `d52c252c` (`cycle/wu-g5-restore` HEAD after merge into `main`)
+**Release commit**: `d3e0e3df` (release-receipt commit on `main`)
+**Cycle/content SHA**: `d52c252c` (last content commit; tagged `v2-lfc2e1-wu-g5r-2026-09-17`)
 **Tag**: `v2-lfc2e1-wu-g5r-2026-09-17`
 **Date**: 2026-09-17
-**Origin/main SHA**: `ca28959f` (unchanged; d52c252c fast-forward from ca28959f)
+**Origin/main SHA**: `d3e0e3df` (updated from `ca28959f`)
 
 ## Completion Guard Status
 
 | Check | Result |
 |-------|--------|
 | Trunk at ca28959f or forward | YES — d52c252c is descendant of ca28959f (fast-forward merge) |
-| HEAD == origin/main after push | PENDING — push not attempted (credentials not available in session) |
+| HEAD == origin/main after push | YES — origin/main = d3e0e3df |
 | Tag exists at d52c252c | YES — `v2-lfc2e1-wu-g5r-2026-09-17` |
 | Archive receipt captured | YES — this receipt |
 
-**Blocked**: Push requires user credentials. Merge and tag are complete locally. User must
-run `git push origin main` and `git push origin v2-lfc2e1-wu-g5r-2026-09-17` in the
-main worktree or a temporary worktree.
+**RELEASE: SUCCEEDED.**
 
 ## Phase Completion
 
@@ -96,17 +95,12 @@ Corrected: `Path=orchestration (WU-G5R)`, `def=N` (ORCHESTRATION steps use
 `dispatchRepeatUntilBody` in coordinator; not a standard registry handler).
 Counter: LEGACY_PLUGIN_IDS residual 2/2/2 (`core.load`, `core.waitUntil`).
 
-## Next Step
+## Archive
 
-User must push from the main worktree:
+Archive phase (`sddk-archive`) is pending — see separate archive task.
 
-```bash
-# In main worktree:
-git fetch origin main
-git merge cycle/wu-g5-restore   # or: git merge d52c252c
-git push origin main
-git push origin v2-lfc2e1-wu-g5r-2026-09-17
-```
+Archive prerequisite: `openspec/changes/wu-g5-restore/` delta specs are present and should be
+synced to the framework vault after archive.
 
 ---
 

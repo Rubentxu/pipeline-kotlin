@@ -1,0 +1,308 @@
+# XCA-2 — Step Certification Evidence Ledger
+# Authority: XCA-2 gate (runtime evidence), workstream D
+# Verification status progression:
+#   CURRENT_STEP    — active implementation/test work
+#   STATIC_CANDIDATE — source-only analysis; no runtime evidence
+#   EVIDENCE_READY  — runtime evidence collected; reconciliation pending
+#   CERTIFIED        — evidence reconciled, all expectations matched
+#   QUARANTINED      — evidence collected but reconciliation failed
+#   RETIRED          — step removed from registry
+#
+# Evidence schema per entry:
+#   verification_status: <status>
+#   provenance:
+#     fixture_id:      <file>            # fixture that exercises this step
+#     run_id:          <uuid> | null     # null if not yet executed
+#     timestamp:       <ISO-8601> | null
+#     journal_db_path:  <path> | null
+#     is_replayed:     <bool>
+#   reconciliation:
+#     matched:                  <n> | null
+#     expected_but_not_executed: <n> | null
+#     extra_observed:           <n> | null
+#     is_fully_covered:         <bool> | null
+#   step_expectations:
+#     <step_key>: <HasEvidence | NoEvidence | ExecutionFailed>
+
+steps:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # core.echo — atomic, no effects
+  # Evidence: XCA-2B real run (runId: 006df865-a1d4-4bcf-ac8c-895c0864ea60)
+  # ───────────────────────────────────────────────────────────────────────────
+  core.echo:
+    verification_status: CERTIFIED
+    provenance:
+      fixture_id: "compatibility/03-stages.pipeline.kts"
+      run_id: "006df865-a1d4-4bcf-ac8c-895c0864ea60"
+      timestamp: "2026-09-16T15:30:00Z"       # from XCA-2B receipt
+      journal_db_path: "/tmp/xca2b/run.db"
+      is_replayed: false
+    reconciliation:
+      matched: 3
+      expected_but_not_executed: 0
+      extra_observed: 0
+      is_fully_covered: true
+    step_expectations:
+      core.echo: HasEvidence
+    notes: |
+      03-stages fixture: build (echo "building..."), test (echo "testing..."),
+      deploy (echo "deploying...").  Three echo invocations in three stages.
+      All three observed via JournalRunExecutionEvidenceReader against real
+      SqliteOperationJournalImpl. Reconciled: E∩O = {core.echo}×3, E−O = ∅.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # core.pwd — effectful (filesystem), STOPPED_G7 not certifiable
+  # Evidence: XCA-2B corpus run; STOPPED_G7 is pending (B.5)
+  # ───────────────────────────────────────────────────────────────────────────
+  core.pwd:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/20-pwd-tmp.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.pwd: NoEvidence
+    notes: |
+      STOPPED_G7 (core.pwd certification) requires all three pwd(tmp=true),
+      pwd(tmp=false), pwd() variants exercised. B.5 confirms evidence IS
+      produced (journal reader detects invocations) but STOPPED_G7 is not
+      yet certified. Move to CERTIFIED once all three pwd variants have
+      individual reconciliation evidence.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # core.sh — effectful / recoverable
+  # Evidence: pending (XCA-2 workstream E — corpus run)
+  # ───────────────────────────────────────────────────────────────────────────
+  core.sh:
+    verification_status: EVIDENCE_READY
+    provenance:
+      fixture_id: "compatibility/04-sh.pipeline.kts"    # first fixture exercising sh
+      run_id: null                                     # populated by E corpus run
+      timestamp: null
+      journal_db_path: null
+      is_replayed: false
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.sh: NoEvidence
+    notes: |
+      EVIDENCE_READY means corpus run will collect evidence. core.sh requires
+     : (a) sh(tmp=true) variant, (b) sh(tmp=false) variant, (c) shell env
+      propagation, (d) stdout capture, (e) stderr separate from stdout.
+      Tracking via corpus fixtures: 04-sh, 08-withEnv, 09-sh-then-echo.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Pending fixtures — source-only analysis (STATIC_CANDIDATE)
+  # These fixtures use steps; the step_expectations are inferred from source.
+  # ───────────────────────────────────────────────────────────────────────────
+
+  core.dir:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/01-basic.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.dir: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.withEnv:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/08-withEnv-pipeline.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.withEnv: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.timeout:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/11-workflow-control.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.timeout: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.retry:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/11-workflow-control.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.retry: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.catchError:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/12-error-handling.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.catchError: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.error:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/15-error.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.error: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.sleep:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/16-sleep.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.sleep: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.writeFile:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/17-writeFile.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.writeFile: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.cleanWs:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/18-cleanWs.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.cleanWs: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.isUnix:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/19-isunix.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.isUnix: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+  core.milestone:
+    verification_status: STATIC_CANDIDATE
+    provenance:
+      fixture_id: "compatibility/21-milestone.pipeline.kts"
+      run_id: null
+      timestamp: null
+      journal_db_path: null
+      is_replayed: null
+    reconciliation:
+      matched: null
+      expected_but_not_executed: null
+      extra_observed: null
+      is_fully_covered: null
+    step_expectations:
+      core.milestone: NoEvidence
+    notes: "Source analysis only. Runtime evidence pending corpus run."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Certification summary
+# ─────────────────────────────────────────────────────────────────────────────
+summary:
+  certified: 1        # core.echo
+  evidence_ready: 1   # core.sh (pending corpus run)
+  static_candidate: 12
+  quarantined: 0
+  retired: 0
+  total: 14
+  gate_status: PARTIAL
+  next_action: "Workstream E — run full corpus and populate evidence"

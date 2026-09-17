@@ -24,5 +24,9 @@ class TestingCapabilityContributor : StepCapabilityContributor {
     override fun capabilities(): Map<StepCapability, Any> = mapOf(
         TestingContributor.TESTING_FILESYSTEM_CAPABILITY
             to pipeline.testing.junit.DefaultJunitFilesystemOperations(),
+        // LFC-2E3-R1: the publisher port. Kept separate from the read-only parser port above so a
+        // grant of one never implies a grant of the other.
+        TestingContributor.TESTING_PUBLISH_CAPABILITY
+            to pipeline.testing.publish.DefaultReportPublishingOperations(),
     )
 }

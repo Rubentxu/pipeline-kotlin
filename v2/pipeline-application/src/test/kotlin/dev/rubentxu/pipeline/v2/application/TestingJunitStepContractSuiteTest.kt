@@ -155,9 +155,9 @@ class TestingJunitStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.sha256")))
         // example coordinate still works
         assertTrue(r.contains(PluginStepId("example.uppercase")))
-        // Total registered keys: 16 utilities + 1 example.uppercase + 1 core.junit = 18
+        // Total registered keys: 16 utilities + 1 example.uppercase + core.junit + core.publishHTML = 19
         // (utilities: 3 readJSON/writeJSON/sha256 + 2 yaml + 2 properties + 2 filesystem + 3 checksums + 4 archive = 16)
-        assertEquals(18, r.keys().size)
+        assertEquals(19, r.keys().size)
     }
 
     // ───────── contract completeness ─────────
@@ -182,7 +182,7 @@ class TestingJunitStepContractSuiteTest {
     }
 
     @Test
-    fun `contract completeness - testing plugin declares exactly one new capability token`() {
+    fun `contract completeness - testing plugin declares exactly its two capability tokens`() {
         val src = java.io.File(
             java.io.File(System.getProperty("user.dir"), "../..").canonicalFile,
             "examples/testing-plugin/src/main/kotlin/pipeline/testing/TestingContributor.kt",
@@ -192,9 +192,11 @@ class TestingJunitStepContractSuiteTest {
             .map { it.groupValues[1] }
             .toSet()
         assertEquals(
-            setOf("testing.filesystem.operations"),
+            // T2 added the read-only parser port; R1 added the publisher port. Any further drift
+            // must be a deliberate, reviewed change to this row.
+            setOf("testing.filesystem.operations", "testing.publish.operations"),
             declared,
-            "T2 testing plugin must declare exactly one capability token (testing.filesystem.operations)",
+            "the testing plugin must declare exactly these two capability tokens",
         )
     }
 

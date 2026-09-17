@@ -26,8 +26,11 @@ class TestingContributor : StepDefinitionContributor {
     override val id: String = COORDINATE
 
     override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(
-        // LFC-2E3-T2: junit StepDefinition (this slice).
+        // LFC-2E3-T2: junit StepDefinition.
         pipeline.testing.junit.JunitStepDefinition,
+        // LFC-2E3-R1: publishHTML StepDefinition. Registered through the SAME contributor and the
+        // SAME plugin coordinate — a new family joins the existing JAR, it does not need its own.
+        pipeline.testing.publish.PublishHtmlStepDefinition,
     )
 
     companion object {
@@ -44,5 +47,14 @@ class TestingContributor : StepDefinitionContributor {
          */
         val TESTING_FILESYSTEM_CAPABILITY: StepCapability =
             StepCapability("testing.filesystem.operations")
+
+        /**
+         * Capability required by `core.publishHTML` (read a report tree and write a published
+         * copy). Distinct from [TESTING_FILESYSTEM_CAPABILITY] so the read-only parser port and the
+         * writing publisher port cannot accidentally satisfy each other — admission stays
+         * fail-closed, and a caller can grant one without granting the other.
+         */
+        val TESTING_PUBLISH_CAPABILITY: StepCapability =
+            StepCapability("testing.publish.operations")
     }
 }

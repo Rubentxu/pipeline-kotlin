@@ -161,7 +161,7 @@ class UtilitiesArchiveStepContractSuiteTest {
         assertTrue(r.contains(PluginStepId("utilities.findFiles")))
         assertTrue(r.contains(PluginStepId("utilities.md5")))
         // 16 utilities (3 JSON + 2 YAML + 2 properties + 2 filesystem + 3 checksums + 2 archive + 2 tar) + 1 example.uppercase + 1 core.junit = 18 total.
-        assertEquals(18, r.keys().size)
+        assertEquals(19, r.keys().size)
     }
 
     // ───────── contract completeness ─────────

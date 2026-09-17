@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 2 entries (Load, WaitUntil).
+ * - sealedSubclasses has exactly 1 entry (Load).
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
@@ -31,6 +31,11 @@ import org.junit.jupiter.api.Test
  *   branch + constant/dispatcher file/metadata row physically deleted (LEGACY_REMOVED).
  *   Production routing is exclusively CoreArchiveArtifactsStep.definition via the open
  *   registry. Counter converges 2/3/3 -> 2/2/2.
+ *   WU-G5B (2026-09-17): "core.waitUntil" legacy subtype/decoder branch/dispatcher file/
+ *   metadata row physically deleted (LEGACY_REMOVED). Production routing is exclusively
+ *   the canonical RepeatUntil machinery (BlockStepNode(BodyExecutionPolicy.RepeatUntil)
+ *   → dispatchRepeatUntilBody in CanonicalDurableRunCoordinator). Counter converges
+ *   2/2/2 -> 1/1/1.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -40,9 +45,9 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 2 entries`() {
+    fun `sealedSubclasses has exactly 1 entry`() {
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(2, subclasses.size, "Expected exactly 2 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone/CleanWs/ArchiveArtifacts all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(1, subclasses.size, "Expected exactly 1 sealed subtype (Load). Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
@@ -57,8 +62,8 @@ class CanonicalCoreStepCommandRegistryTest {
             // open registry (CoreIsUnixStep.descriptor via RegistryStepMetadataResolver).
             // S2-A6 / G4 (2026-09-12): "core.pwd" removed — REGISTRY_PRIMARY flip.
             // S2-A6 / G5 (2026-09-12): "core.pwd" legacy subtype/decoder/dispatcher/metadata
-            // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
-            // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
+            // physically deleted (LEGACY_REMOVED). Production authority is exclusively
+            // the open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
             // core.milestone removed at LFC-2E1-S2-A9 / G5 (registry-routed, CERTIFIED).
             // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
             // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
@@ -69,9 +74,9 @@ class CanonicalCoreStepCommandRegistryTest {
             // converges 3/4/4 -> 3/3/3.
             // P1a — workflow-control (v0.33.0)
             "core.load",
-            // P1b — utility (v0.33.0)
-            "core.waitUntil",
             // P2 — archiveArtifacts (v0.33.1): removed at S2-B10 / G5 (LEGACY_REMOVED).
+            // WU-G5B (2026-09-17): "core.waitUntil" legacy subtype/decoder/dispatcher/metadata
+            // physically deleted (LEGACY_REMOVED). Counter converges 2/2/2 -> 1/1/1.
         )
         // Assert against the registry — single source of truth, no duplication
         assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
@@ -113,13 +118,11 @@ class CanonicalCoreStepCommandRegistryTest {
     // invariants of core.isUnix are now asserted in S3IsUnixLegacyRemovedFitnessTest against
     // CoreIsUnixStep.descriptor — the registry authority.
 
-    @Test
-    fun `WaitUntil has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.WaitUntil(initialRecurrencePeriod = 1000L, quiet = false)
-        assertEquals("core.waitUntil", instance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // WU-G5B (2026-09-17): WaitUntil test removed (LEGACY_REMOVED). The
+    // pluginId/Effects/ReplayPolicy invariants of core.waitUntil are now asserted
+    // against the canonical RepeatUntil machinery (BodyExecutionPolicy.RepeatUntil
+    // descriptor) — see Lfc2WaitUntilCanonicalReentryFitnessTest and
+    // WaitUntilReconcilerTest.
 
     // S2-B10 / G5 (2026-09-13): the archiveArtifacts test removed (LEGACY_REMOVED). The
     // pluginId / effects / replayPolicy invariants of core.archiveArtifacts are now asserted

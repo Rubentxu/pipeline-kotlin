@@ -149,8 +149,17 @@ sealed interface CanonicalCoreStepCommand {
             // build/libs/smoke.jar with a real sha256 where the legacy authority failed with
             // `No files matched glob pattern 'build/libs/*.jar'`. Counter converges
             // 2/3/3 -> 2/2/2.
+            // WU-G5B (2026-09-17): physical removal of legacy forms for core.waitUntil
+            // (LEGACY_REMOVED). CanonicalCoreStepCommand.WaitUntil subtype,
+            // WAIT_UNTIL_PLUGIN_ID constant + decoder branch, CanonicalCoreStepMetadata
+            // ["core.waitUntil"] row, CanonicalWaitUntilNodeDispatcher.kt, and the
+            // CanonicalNodeDispatcher waitUntil seams (field, when branch, waitUntilContext)
+            // are all removed in this slice. Production routing is exclusively the canonical
+            // RepeatUntil machinery (BodyExecutionPolicy.RepeatUntil → dispatchRepeatUntilBody
+            // in CanonicalDurableRunCoordinator). The DSL `waitUntil { body }` lowers to
+            // StepSpec.WaitUntilBlock → BlockStepNode(BodyExecutionPolicy.RepeatUntil) and
+            // never reaches this decoder. Counter converges 2/2/2 -> 1/1/1 (only `core.load`).
             "core.load",
-            "core.waitUntil",
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
@@ -212,19 +221,18 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-07: waitUntil step — polls a condition lambda until it returns true or deadline elapses.
-     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000)
-     * @param quiet If true, suppress output during polling
+     * T-07: waitUntil step — DELETED at WU-G5B (2026-09-17, LEGACY_REMOVED).
+     * The `core.waitUntil` execution authority is now exclusively the canonical
+     * RepeatUntil machinery (BlockStepNode(BodyExecutionPolicy.RepeatUntil) →
+     * dispatchRepeatUntilBody in CanonicalDurableRunCoordinator). The DSL
+     * `waitUntil(initialRecurrencePeriod, body) { body }` lowers to
+     * StepSpec.WaitUntilBlock and never reaches this decoder. The raw
+     * `core.waitUntil` envelope is consumed structurally (pre-decode) and
+     * executively by the canonical RepeatUntil seam.
      */
-    data class WaitUntil(
-        val initialRecurrencePeriod: Long = 1000L,
-        val quiet: Boolean = false,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.waitUntil"
-    }
 
     /**
-     * T-08: archiveArtifacts step — DELETED at S2-B10 / G5 (LEGACY_REMOVED). The
+     * T-08: archiveArtifacts step — DELETED at S2-B10 / G5 (2026-09-13, LEGACY_REMOVED). The
      * `core.archiveArtifacts` execution authority is now exclusively the registry
      * (CoreArchiveArtifactsStep.definition via CoreStepRegistryFactory). The DSL
      * `archiveArtifacts(...)` lowers to `StepSpec.RegistryStepSpec(core.archiveArtifacts, ...)`;
@@ -246,7 +254,11 @@ object CanonicalCoreStepDecoder {
     private const val LOAD_PLUGIN_ID = "core.load"
     // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
     // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
-    private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
+    // WU-G5B (2026-09-17): WAIT_UNTIL_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
+    // The raw core.waitUntil envelope is consumed structurally (pre-decode, RepeatUntilScope)
+    // and executively by the canonical RepeatUntil machinery in CanonicalDurableRunCoordinator
+    // — never here. The DSL `waitUntil { body }` lowers to StepSpec.WaitUntilBlock and never
+    // reaches this decoder.
     // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID removed with the legacy branch
     // (LEGACY_REMOVED). The raw core.archiveArtifacts dsl-v1 envelope is consumed executively by
     // CoreArchiveArtifactsStep via the registry — never here. The envelope SHAPE is preserved
@@ -285,17 +297,11 @@ object CanonicalCoreStepDecoder {
             // S2-A5 / G5: IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode)
             // and executively by CoreIsUnixStep via the registry — never here.
-            WAIT_UNTIL_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "waitUntil") {
-                    "Payload kind must be 'waitUntil' for '${node.id.value}'"
-                }
-                val initialRecurrencePeriod = payload["initialRecurrencePeriod"]?.jsonPrimitive?.content?.toLongOrNull() ?: 1000L
-                val quiet = payload["quiet"]?.jsonPrimitive?.booleanOrNull ?: false
-                CanonicalCoreStepCommand.WaitUntil(
-                    initialRecurrencePeriod = initialRecurrencePeriod,
-                    quiet = quiet,
-                )
-            }
+            // WU-G5B (2026-09-17): WAIT_UNTIL_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
+            // A core.waitUntil node now falls through to the `else` rejection below — as it
+            // must, since the canonical RepeatUntil machinery (not this decoder) is its
+            // execution authority. That rejection is asserted behaviourally by the contract
+            // suite (no silent fall-through to a no-op).
             // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID branch removed
             // (LEGACY_REMOVED). A core.archiveArtifacts node now falls through to the
             // `else` rejection below — as it must, since the registry and not this decoder

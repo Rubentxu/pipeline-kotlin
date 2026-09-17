@@ -72,8 +72,13 @@ object LegacyResidualSnapshot {
      * ONE line to change per G5.
      */
     private val physicalResidual: Set<String> = setOf(
-        "core.load", "core.waitUntil",
+        "core.load",
     )
+    // WU-G5B (2026-09-17): "core.waitUntil" removed from the physical residual
+    // (WaitUntil subtype, WAIT_UNTIL_PLUGIN_ID decoder branch + constant, metadata row,
+    // CanonicalWaitUntilNodeDispatcher.kt file, CanonicalNodeDispatcher waitUntil seams all
+    // deleted). Counter converges 2/2/2 -> 1/1/1 (only `core.load` remains for its own
+    // resolution cycle).
     // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
     // (subtype, decoder branch, metadata row, dispatcher file all deleted).
     // S2-A9 / G5 (2026-09-13): "core.milestone" removed from the physical residual

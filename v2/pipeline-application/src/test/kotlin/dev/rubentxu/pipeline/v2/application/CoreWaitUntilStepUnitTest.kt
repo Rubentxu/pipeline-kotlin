@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.InMemoryStepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -110,13 +111,25 @@ class CoreWaitUntilStepUnitTest {
 
     // ===== 6. structural family =====
 
+    // WU-G5B (2026-09-17): the prior G1 property ("waitUntil stays LegacyCore while in
+    // LEGACY_PLUGIN_IDS") is invalidated by this slice. core.waitUntil has been removed from
+    // LEGACY_PLUGIN_IDS (LEGACY_REMOVED, counter 2/2/2 -> 1/1/1) and the structural family
+    // for the key is now ORCHESTRATION, classified by the canonical RepeatUntil machinery
+    // (BlockStepNode + BodyExecutionPolicy.RepeatUntil) instead of StructuralFamilyResolver.
+    // The new invariant pins the post-LEGACY_REMOVED state: the key MUST be OUT of
+    // LEGACY_PLUGIN_IDS AND the canonical RepeatUntil machinery MUST be the only path.
     @Test
-    fun `structural family — core waitUntil stays LegacyCore while in LEGACY_PLUGIN_IDS (no authority flip at G1)`() {
-        // While "core.waitUntil" remains in LEGACY_PLUGIN_IDS, StructuralFamilyResolver returns
-        // LegacyCore for this key. This test pins that property.
-        assertTrue(
+    fun `structural family — core waitUntil is OUT of LEGACY_PLUGIN_IDS post-WU-G5B (LEGACY_REMOVED)`() {
+        assertFalse(
             "core.waitUntil" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "core.waitUntil must remain in LEGACY_PLUGIN_IDS at G1",
+            "core.waitUntil must be OUT of LEGACY_PLUGIN_IDS after WU-G5B LEGACY_REMOVED",
+        )
+        // The canonical RepeatUntil machinery (BlockStepNode + BodyExecutionPolicy.RepeatUntil)
+        // is the only execution path. The CoreWaitUntilStep registry entry was removed at
+        // WU-G5R.3; the canonical dispatch goes through dispatchRepeatUntilBody.
+        assertTrue(
+            "core.waitUntil" !in dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.pluginIds,
+            "core.waitUntil metadata row must be physically removed after WU-G5B",
         )
     }
 }

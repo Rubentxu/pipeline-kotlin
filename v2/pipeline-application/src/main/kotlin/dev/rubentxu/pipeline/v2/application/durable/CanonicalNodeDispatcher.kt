@@ -45,7 +45,9 @@ class CanonicalNodeDispatcher {
     // exclusively through CorePwdStep via the registry.
     // S2-A5 / G5: isUnixDispatcher removed (LEGACY_REMOVED) — core.isUnix executes
     // exclusively through CoreIsUnixStep via the registry.
-    private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
+    // WU-G5B (2026-09-17): waitUntilDispatcher removed (LEGACY_REMOVED) — core.waitUntil
+    // executes exclusively through the canonical RepeatUntil machinery
+    // (BlockStepNode(BodyExecutionPolicy.RepeatUntil) → dispatchRepeatUntilBody).
     // S2-B10 / G5 (2026-09-13): archiveArtifactsDispatcher removed (LEGACY_REMOVED) —
     // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the registry.
 
@@ -60,13 +62,21 @@ class CanonicalNodeDispatcher {
             is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
             // S2-A6 / G5: Pwd when-branch removed (LEGACY_REMOVED).
             // S2-A5 / G5: IsUnix when-branch removed (LEGACY_REMOVED).
-            // waitUntil: condition is not serializable; emit stub events and return success
-            // Full condition evaluation requires the in-memory path where lambdas are preserved
-            is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
+            // WU-G5B (2026-09-17): WaitUntil when-branch removed (LEGACY_REMOVED).
+            // core.waitUntil executes exclusively through the canonical RepeatUntil
+            // machinery (BodyExecutionPolicy.RepeatUntil → dispatchRepeatUntilBody in
+            // CanonicalDurableRunCoordinator). The DSL `waitUntil { body }` lowers to
+            // StepSpec.WaitUntilBlock → BlockStepNode(BodyExecutionPolicy.RepeatUntil) and
+            // never reaches this dispatcher.
             // S2-B10 / G5 (2026-09-13): ArchiveArtifacts when-branch removed (LEGACY_REMOVED) —
             // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the
             // registry. The `when` stays EXHAUSTIVE over the surviving sealed subtypes: a
             // reintroduced legacy subtype is now a compile error, not a silent fall-through.
+            // WU-G5B: WaitUntil is the only legacy subtype physically removed in this slice;
+            // the dispatcher now contains a single arm (Load) and a typed rejection.
+            else -> throw IllegalArgumentException(
+                "Unsupported core plugin step for dispatch: ${command::class.simpleName}",
+            )
         }
 
     // S2-A4 / G5: emitEventContext() removed with the legacy dispatcher (LEGACY_REMOVED).
@@ -76,6 +86,7 @@ class CanonicalNodeDispatcher {
     // S2-B10 / G5 (2026-09-13): archiveArtifactsContext() removed with the legacy dispatcher
     // (LEGACY_REMOVED). Its `workspaceRoot = shOptions.workspaceRoot` absolute-path anchor was
     // the frozen-glob defect root cause (frozen delta D1).
+    // WU-G5B (2026-09-17): waitUntilContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
     private fun CanonicalRuntimeContext.loadContext() = CanonicalLoadDispatchContext(
         runId = runId,
@@ -89,12 +100,6 @@ class CanonicalNodeDispatcher {
 
     // S2-A6 / G5: pwdContext() removed with the legacy dispatcher (LEGACY_REMOVED).
     // S2-A5 / G5: isUnixContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-
-    private fun CanonicalRuntimeContext.waitUntilContext() = CanonicalWaitUntilDispatchContext(
-        runId = runId,
-        stepIndex = stepIndex,
-        eventSink = eventSink,
-        condition = { true }, // Stub: condition not serializable in canonical path
-    )
+    // WU-G5B (2026-09-17): waitUntilContext() removed with the legacy dispatcher (LEGACY_REMOVED).
 
 }

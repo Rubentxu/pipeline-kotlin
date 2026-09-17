@@ -31,9 +31,11 @@ object CanonicalCoreStepMetadata {
         // metadata authority for the key: no legacy row exists to fall back to.
         // S2-B10 / G5 metadata counter converges 3/3/3 -> 2/2/2.
         "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
-        // S2-A6 / G5: "core.pwd" row removed (LEGACY_REMOVED). Production metadata is now
-        // read exclusively from CorePwdStep.descriptor via RegistryStepMetadataResolver.
-        "core.waitUntil" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
+        // WU-G5B (2026-09-17): "core.waitUntil" row removed (LEGACY_REMOVED).
+        // Production metadata for core.waitUntil is the canonical RepeatUntil machinery
+        // (BodyExecutionPolicy.RepeatUntil carries its own descriptor-level metadata; the
+        // StepDescriptor is the registry authority, and the canonical decoder never sees
+        // this key). Counter converges 2/2/2 -> 1/1/1 (only `core.load`).
     )
 
     /** Durable metadata for a canonical core plugin; fails fast when a plugin id is not registered. */

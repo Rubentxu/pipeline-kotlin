@@ -340,19 +340,24 @@ class CoreIsUnixStepUnitTest {
 
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts physical forms destroyed
     // (LEGACY_REMOVED). The historical S2-A6/G5 6-6-6 snapshot above is preserved verbatim
-    // for traceability. Counter converges to 2-2-2: ids, metadata rows and dispatcher
-    // sources all hold exactly the two keys still awaiting their own G4/G5 lanes.
+    // for traceability. Counter converged to 2-2-2 at S2-B10/G5: ids, metadata rows and
+    // dispatcher sources all held exactly the two keys still awaiting their own G4/G5 lanes.
+    // WU-G5B (2026-09-17): core.waitUntil physical forms destroyed (LEGACY_REMOVED).
+    // Counter converges to 1-1-1: only `core.load` remains. Production routing for
+    // core.waitUntil is exclusively the canonical RepeatUntil machinery
+    // (BlockStepNode(BodyExecutionPolicy.RepeatUntil) → dispatchRepeatUntilBody in
+    // CanonicalDurableRunCoordinator).
     @Test
-    fun `counters are 2-2-2 post-S2-B10-G5 and legacy dispatcher sources are physically removed`() {
+    fun `counters are 1-1-1 post-WU-G5B and legacy dispatcher sources are physically removed`() {
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf("core.load"),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "ids MUST converge to the two residual keys",
+            "ids MUST converge to the single residual key",
         )
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            setOf("core.load"),
             dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.pluginIds,
-            "metadata rows MUST converge to the two residual keys",
+            "metadata rows MUST converge to the single residual key",
         )
         val durable = java.nio.file.Paths.get(
             "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable",
@@ -366,12 +371,12 @@ class CoreIsUnixStepUnitTest {
                 .toList().toSet()
         }
         assertEquals(
-            setOf("CanonicalLoadNodeDispatcher.kt", "CanonicalWaitUntilNodeDispatcher.kt"),
+            setOf("CanonicalLoadNodeDispatcher.kt"),
             dispatcherFiles,
-            "dispatcher sources MUST converge to the two residual keys",
+            "dispatcher sources MUST converge to the single residual key",
         )
         // Retired keys stay retired — no resurrection by any earlier lane.
-        listOf("core.isUnix", "core.pwd", "core.deleteDir", "core.milestone", "core.cleanWs", "core.archiveArtifacts")
+        listOf("core.isUnix", "core.pwd", "core.deleteDir", "core.milestone", "core.cleanWs", "core.archiveArtifacts", "core.waitUntil")
             .forEach { key ->
                 assertTrue(key !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "$key MUST stay out of LEGACY_PLUGIN_IDS")
                 assertTrue(

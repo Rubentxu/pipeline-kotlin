@@ -258,37 +258,45 @@ State updated: `IMPLEMENTED_UNCERTIFIED (LFC-2E0 inventory)` → `CERTIFIED + LE
 - **DSL:** `PipelineDsl.kt:1590` `fun isUnix(): Boolean`
 - **Legacy dispatcher:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalIsUnixNodeDispatcher.kt:15`
 
-### `core.waitUntil` — IMPLEMENTED_UNCERTIFIED (WU-G5R: factory entry removed; ORCHESTRATION kind; LEGACY_PLUGIN_IDS unchanged)
+### `core.waitUntil` — CERTIFIED + LEGACY_REMOVED (canonical RepeatUntil machinery, WU-G5B closure)
 
-> **D2 correction (debt-verify 2026-09-17):** The WU-G5R-GATE receipt incorrectly updated
-> this row to `def=Y / Path=registry`. `core.waitUntil` is ORCHESTRATION kind — its execution
-> goes through `dispatchRepeatUntilBody` in `CanonicalDurableRunCoordinator` (ADR-0073),
-> not a standard registry handler. `def=N` is the correct value for ORCHESTRATION steps.
-> The LEGACY_PLUGIN_IDS membership was NOT removed at WU-G5R-GATE; counters remain 2/2/2.
+> **WU-G5B (2026-09-17, this slice):** core.waitUntil LEGACY_REMOVED. All six legacy forms
+> physically deleted: `CanonicalCoreStepCommand.WaitUntil` subtype, `WAIT_UNTIL_PLUGIN_ID`
+> decoder branch + constant, `CanonicalCoreStepMetadata["core.waitUntil"]` row,
+> `CanonicalWaitUntilNodeDispatcher.kt` file, and the `CanonicalNodeDispatcher` waitUntil
+> seams (field, when branch, waitUntilContext). `LEGACY_PLUGIN_IDS` shrinks 2/2/2 -> 1/1/1.
+> Production routing is exclusively the canonical RepeatUntil machinery
+> (`BlockStepNode(BodyExecutionPolicy.RepeatUntil)` → `dispatchRepeatUntilBody` in
+> `CanonicalDurableRunCoordinator`, ADR-0073). The state flips from `IMPLEMENTED_UNCERTIFIED`
+> to `CERTIFIED + LEGACY_REMOVED` at this closure proof.
 
-- **DSL:** `PipelineDsl.kt:1629` `fun waitUntil(...)` (lowered to `StepSpec.RegistryStepSpec`)
+- **DSL:** `PipelineDsl.kt:1629` `fun waitUntil(...)` (lowered to `StepSpec.WaitUntilBlock`
+  → `BlockStepNode(BodyExecutionPolicy.RepeatUntil)` at WU-G5R.2)
 - **Authority path:** `dispatchRepeatUntilBody` in `CanonicalDurableRunCoordinator` (ADR-0073);
   `BodyInvoker` re-entry for condition evaluation
-- **Production routing:** `CoreStepRegistryFactory` (registry path, WU-G5R); legacy decoder entry
-  still present in `LEGACY_PLUGIN_IDS` but unreachable in production (structural routing goes to `RegistryCore`)
-- **LEGACY_PLUGIN_IDS:** unchanged (2/2/2); `core.waitUntil` still in decoder set; removal pending future gate
+- **Production routing:** canonical RepeatUntil machinery (registry entry was removed at
+  WU-G5R.3; execution is purely the coordinator's block-step machinery, not a registry handler)
+- **LEGACY_PLUGIN_IDS:** REMOVED at WU-G5B (counters 2/2/2 → 1/1/1; only `core.load` remains)
 - **Real example:** `v2/compatibility/22-wait-until.pipeline.kts` (SHA256: `7befc004582257fa779b9403e65e01d65acb3f5ac7a8933603a2f8de1a9990b4`)
-- **Fitness:** `Lfc2WaitUntilCanonicalReentryFitnessTest` — installed CLI test: WaitUntilPolled + WaitUntilCompleted emitted through canonical path
+- **Fitness:**
+  - `Lfc2WaitUntilCanonicalReentryFitnessTest` — installed CLI test: WaitUntilPolled + WaitUntilCompleted emitted through canonical path (4/4 PASS)
+  - `LegacyResidualConvergenceFitnessTest` — `assertConverged` PASS (live residual == expected; counter 1/1/1)
 - **Receipts:**
   - G1: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G1_REGISTRY_CANDIDATE_RECEIPT.md`
   - G2: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G2_DIFFERENTIAL_CONTRACT_FREEZE.md`
   - G3: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_G3_CONTRACT_SUITE_RECEIPT.md`
-  - WU-G5R-GATE: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md` (updated 2026-09-17 per D2)
+  - WU-G5R-GATE: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5R_GATE_CLOSURE_RECEIPT.md`
+  - **WU-G5B LEGACY_REMOVED + CERTIFIED: `docs/v2/07-uat/S2_A8_CORE_WAITUNTIL_WU_G5B_LEGACY_REMOVED_RECEIPT.md` (this slice)**
 
 ```text
 core.waitUntil:
-  delivery:       CORE candidate
-  execution:      ORCHESTRATION (WU-G5R: factory entry removed; execution via dispatchRepeatUntilBody)
-  legacy:         UNREACHABLE in production (LEGACY_PLUGIN_IDS membership present; routing to RegistryCore)
-  certification: IMPLEMENTED_UNCERTIFIED (G4/G6 done; G5/G7/G8 remaining)
+  delivery:       CORE
+  execution:      ORCHESTRATION (canonical RepeatUntil machinery via dispatchRepeatUntilBody)
+  legacy:         REMOVED (LEGACY_PLUGIN_IDS, decoder subtype, metadata row, dispatcher file all deleted)
+  certification: CERTIFIED + LEGACY_REMOVED (WU-G5B, 2026-09-17)
 ```
 
-State: `IMPLEMENTED_UNCERTIFIED (WU-G5R: factory entry removed, ORCHESTRATION kind; LEGACY_PLUGIN_IDS counters 2/2/2 unchanged).
+State: `IMPLEMENTED_UNCERTIFIED (WU-G5R: factory entry removed, ORCHESTRATION kind; LEGACY_PLUGIN_IDS counters 2/2/2 unchanged)` → **`CERTIFIED + LEGACY_REMOVED` (WU-G5B, 2026-09-17)**.
 
 ### `core.archiveArtifacts` — CERTIFIED + LEGACY_REMOVED (production registry, S2-B10 closure)
 

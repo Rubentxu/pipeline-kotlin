@@ -200,7 +200,7 @@ Ninguna. Los tres fixes son correctivos dentro del alcance de XCA-2.
 |---|---|---|
 | H5 | Guard débil en `reconcile()` sin `else` | Es un guard documental; la ley pide falsificabilidad pero el test de arriba SÍ ejerce producción. Anotado. |
 | H6 | Vocabulario de progresión en ledger v2 (`IMPLEMENTED_UNCERTIFIED` fuera de la progresión declarada) | El ledger v2 fue renombrado y ya no es la autoridad; la canónica usa su propio vocabulario. Anotado. |
-| H9 | Mutante del brief no quedó como test separado | La falsificación existe como par de commits git; el KDoc apunta a los SHAs. Práctica, no bloqueo. Anotado. |
+| H9 | Mutante del brief no quedó como test separado | La falsificación existe como par de commits git; los SHAs reales no están en KDoc (OBSERVED: grep eb40d5cb\|7d725aca = 0 matches). Práctica, no bloqueo. Anotado. |
 
 ---
 

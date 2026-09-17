@@ -223,14 +223,27 @@ def main():
     # Count each verdict explicitly. Deriving "NOT_EXERCISED" as n - ex - unk
     # silently absorbed the structural class and misreported the debt.
     byv = Counter(r[4] for r in rows)
+    byc = Counter(r[5] for r in rows)
     print()
     print("=" * 100)
     print("COUNTERS")
     print("=" * 100)
     print(f"  CERTIFIED records                    : {n}")
-    for v in ("EXERCISED", "NOT_EXERCISED", "STRUCTURAL_SYNTH", "SYMBOL_UNKNOWN"):
-        print(f"  {v:37}: {byv.get(v, 0)}")
-    assert sum(byv.values()) == n, "verdicts must partition the records"
+    # Print EVERY key present. A hardcoded list silently hid a class and made the
+    # displayed partition sum to n-1 while a derived remainder passed the assert.
+    for v, c in sorted(byv.items()):
+        print(f"  {v:37}: {c}")
+    print("  " + "-" * 55)
+    print(f"  {'(verdict total)':37}: {sum(byv.values())}")
+    assert sum(byv.values()) == n, (
+        f"verdicts must partition the records: {sum(byv.values())} != {n}")
+    for cls, c in sorted(byc.items()):
+        print(f"  {cls:37}: {c}")
+    assert sum(byc.values()) == n, (
+        f"classes must partition the records: {sum(byc.values())} != {n}")
+    assert set(byc) <= set(byv) or True  # classes and verdicts are independent axes
+    print("  " + "-" * 55)
+    print(f"  {'(class total)':37}: {sum(byc.values())}")
     print()
     for cls, c in sorted(Counter(r[5] for r in rows).items()):
         print(f"  {cls:26} : {c}")

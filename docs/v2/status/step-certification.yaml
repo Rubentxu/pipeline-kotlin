@@ -161,32 +161,6 @@ counters:
         defaults to null (preserving prior bit-equivalent behavior). This is the
         exact pattern LB-02 prescribed for "open StepRegistry + external plugin
         capability injection" without naming a specific Step.
-    families:
-      - step_key: utilities.readJSON
-        delivery: OFFICIAL_PLUGIN
-        capability: utilities.json.operations
-        effect: READ_ONLY
-        replay_policy: MEMOIZED
-      - step_key: utilities.writeJSON
-        delivery: OFFICIAL_PLUGIN
-        capability: utilities.json.operations
-        effect: WRITES_WORKSPACE
-        replay_policy: MEMOIZED
-      - step_key: utilities.sha256
-        delivery: OFFICIAL_PLUGIN
-        capability: utilities.sha.operations
-        effect: READ_ONLY
-        replay_policy: MEMOIZED
-      - step_key: utilities.readYaml
-        delivery: OFFICIAL_PLUGIN
-        capability: utilities.yaml.operations
-        effect: READ_ONLY
-        replay_policy: MEMOIZED
-      - step_key: utilities.writeYaml
-        delivery: OFFICIAL_PLUGIN
-        capability: utilities.yaml.operations
-        effect: WRITES_WORKSPACE
-        replay_policy: MEMOIZED
 
   # ────────────────────────────────────────────────────────────────────────
   # LFC-2E2-EXPANSION U1 — typed failure surface hardening

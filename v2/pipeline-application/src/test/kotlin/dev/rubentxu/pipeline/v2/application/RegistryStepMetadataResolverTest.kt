@@ -75,10 +75,16 @@ class RegistryStepMetadataResolverTest {
         // LFC-2E1-S2-A1 / G6: `core.error` is no longer in this set (CoreErrorStep registered).
         // S2-A2 / G5: `core.sleep` removed from LEGACY_PLUGIN_IDS.
         // WU-G5R-GATE: `core.waitUntil` removed from registry; remains in LEGACY_PLUGIN_IDS.
+        //
+        // LFC-2E0 closure (2026-09-17): core.load and core.waitUntil are removed from
+        // LEGACY_PLUGIN_IDS by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B
+        // (commit a31cc8c6). The legacy metadata authority is now empty, so any
+        // attempt to resolve a "remaining legacy key" throws. We exercise the
+        // fail-closed path: the resolver rejects unknown keys with EngineInvariantViolation.
         val resolver = RegistryStepMetadataResolver.composite(registry())
-        val metadata = resolver.resolve(PluginStepId("core.load"))
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.load").replayPolicy, metadata!!.replayPolicy)
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.load").effects, metadata.effects)
+        assertThrows(EngineInvariantViolation::class.java) {
+            resolver.resolve(PluginStepId("core.load"))
+        }
     }
 
     @Test

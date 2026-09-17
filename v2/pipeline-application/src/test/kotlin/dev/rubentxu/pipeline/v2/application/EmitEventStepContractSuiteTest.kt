@@ -631,8 +631,12 @@ class EmitEventStepContractSuiteTest {
     // (LEGACY_REMOVED). The historical S2-A6/G4 snapshot above is preserved verbatim for
     // traceability. This row keeps the PERMANENT invariant (no resurrected legacy form) and
     // pins the current counter instead of the 6/6/6 stage value.
+    //
+    // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+    // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+    // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
     @Test
-    fun `no legacy resurrection — irreversible G5 state holds post-S2-B10-G5`() {
+    fun `no legacy resurrection — irreversible G5 state holds post-LFC-2E0 (FIRST ZERO LEGACY RESIDUAL)`() {
         val decoderRaw = Files.readString(
             java.nio.file.Paths.get(
                 "src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt",
@@ -644,12 +648,14 @@ class EmitEventStepContractSuiteTest {
             "",
         )
         // The permanent invariant: every retired key stays out of CODE.
-        listOf("EmitEvent", "IsUnix", "Pwd", "DeleteDir", "Milestone", "CleanWs", "ArchiveArtifacts")
+        listOf("EmitEvent", "IsUnix", "Pwd", "DeleteDir", "Milestone", "CleanWs", "ArchiveArtifacts", "WaitUntil", "Load")
             .forEach { name ->
                 assertFalse(decoderSource.contains("data class $name"), "data class $name MUST stay deleted")
             }
         assertFalse(decoderSource.contains("ARCHIVE_ARTIFACTS_PLUGIN_ID"))
         assertFalse(decoderSource.contains("CLEAN_WS_PLUGIN_ID"))
+        assertFalse(decoderSource.contains("WAIT_UNTIL_PLUGIN_ID"))
+        assertFalse(decoderSource.contains("LOAD_PLUGIN_ID"))
         assertFalse(
             Files.exists(
                 java.nio.file.Paths.get(
@@ -659,9 +665,9 @@ class EmitEventStepContractSuiteTest {
             "the legacy archiveArtifacts dispatcher source MUST stay deleted",
         )
         assertEquals(
-            2,
+            0,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "counters converge to 2/2/2 post-S2-B10/G5 (post-S2-A4/G5 + S2-A5/G5 + S2-A6/G5 + S2-A7/A9/A10/B10 G4+G5) — a contract-suite fix must never resurrect legacy",
+            "counters converge to 0/0/0 post-LFC-2E0 (FIRST ZERO LEGACY RESIDUAL) — a contract-suite fix must never resurrect legacy",
         )
     }
 }

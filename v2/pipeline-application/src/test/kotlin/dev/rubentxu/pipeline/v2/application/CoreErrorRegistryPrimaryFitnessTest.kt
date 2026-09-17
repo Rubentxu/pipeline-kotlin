@@ -221,18 +221,18 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. The historical S2-A10/G4 and
     // S2-A10/G5 snapshots above are preserved verbatim for traceability.
+    //
+    // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+    // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+    // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
     @Test
-    fun `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`() {
-        val expected = setOf(
-            "core.load",
-            "core.waitUntil",
-        )
+    fun `LEGACY_PLUGIN_IDS post-LFC-2E0 — 0 residual legacy keys remain (FIRST ZERO LEGACY RESIDUAL)`() {
         assertEquals(
-            expected,
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "LEGACY_PLUGIN_IDS MUST be exactly the 2 residual legacy keys post-S2-B10/G5 (LEGACY_REMOVED closed for core.archiveArtifacts)",
+            "LEGACY_PLUGIN_IDS MUST be empty post-LFC-2E0 (FIRST ZERO LEGACY RESIDUAL; both core.load and core.waitUntil closed)",
         )
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test

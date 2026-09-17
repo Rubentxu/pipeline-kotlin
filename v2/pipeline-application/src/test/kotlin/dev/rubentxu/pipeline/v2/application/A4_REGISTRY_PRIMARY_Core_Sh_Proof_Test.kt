@@ -106,16 +106,18 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
             family,
             "Post-A4: StructuralFamilyResolver MUST classify `core.sh` as Registry",
         )
-        // Negative pin: core.sleep is STILL a legacy core key (proves the flip is surgical,
-        // not a global legacy wipe). core.echo and core.error are also Registry.
-        val legacyFamily = StructuralFamilyResolver.classify(
+        // LFC-2E0 (2026-09-17): core.sleep is no longer a legacy key — it was flipped to
+        // Registry at S2-A2/G4 and the legacy forms were physically removed at S2-A2/G5.
+        // The "surgical flip" negative pin is now obsolete: every core.* key that survived
+        // the burn-down is Registry. We assert the new expected behaviour instead.
+        val sleepFamily = StructuralFamilyResolver.classify(
             PluginStepId("core.sleep"),
             registry,
         )
         assertEquals(
-            StructuralStepFamily.LegacyCore,
-            legacyFamily,
-            "core.sleep remains a legacy key (surgical flip on `core.sh` only)",
+            StructuralStepFamily.Registry,
+            sleepFamily,
+            "post-LFC-2E0: core.sleep is Registry, not LegacyCore (surgical flip superseded by full burn-down)",
         )
     }
 

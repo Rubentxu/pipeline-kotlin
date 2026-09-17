@@ -220,3 +220,90 @@ irreversible actions. No force/rewrite. No secrets. No push. No tag. No release.
 **LFC-2E1 (universal-core freeze)** — freezes the core Step contract surface and
 moves toward a deterministic, testable spine for OFFICIAL_PLUGIN authoring. Detailed
 sub-phases will be planned at the start of LFC-2E1.
+
+---
+
+## 11. FASE 3 final audit (2026-09-17)
+
+This section documents the second commit of the LFC-2E0 closure, which performed
+the **per-row audit** requested at the slice plan (every catalog row resolves to
+CERTIFIED/REJECTED/DEFERRED with explicit reason + next milestone; nothing left
+in IMPLEMENTED_UNCERTIFIED).
+
+### 11.1 Drift fixes
+
+Three drift fixes were applied across the four canonical documents before the
+final counters could be considered consistent:
+
+| Drift | File | Fix |
+|---|---|---|
+| YAML `stopped_steps: 1` (excluded pwd.tmp) | `docs/v2/status/step-certification.yaml` | Renamed to `stopped_g7_steps: 2`; added `pwd.tmp` |
+| YAML referenced `CORE_ECHO_G7_INSTALLED_ACCEPTANCE_RECEIPT.md` (didn't exist) | `docs/v2/status/step-certification.yaml` | Use `CORE_ECHO_CERTIFICATION.md` (G7+G8 fused into one receipt) |
+| YAML referenced `v2/compatibility/07-catch-error.pipeline.kts` (didn't exist; the `examples/07-catch-error.pipeline.kts` is a different naming) | `docs/v2/status/step-certification.yaml` | Use `v2/compatibility/12-error-handling.pipeline.kts` (modern naming) |
+| STEP_INVENTORY `Registry: 3` (out of date) | `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` | Correct to `Registry: 12` (12 core CERTIFIED + 1 external) |
+| STEP_CERTIFICATION_MATRIX typo `CINAL_CERTIFICATION` | `docs/v2/07-uat/STEP_CERTIFICATION_MATRIX.md` | Correct to `CERTIFICATION` |
+
+### 11.2 New fitness test
+
+`Lfc2E0GlobalClosureFitnessTest` (12 tests, ALL GREEN) mechanically enforces:
+
+1. `LEGACY_PLUGIN_IDS = empty`
+2. `CanonicalCoreStepMetadata.pluginIds = empty`
+3. No per-Step `Canonical*NodeDispatcher.kt` files in main
+4. Every production StepKey has a terminal state in the YAML matrix
+5. Every CERTIFIED Step has a G8 receipt that exists on filesystem
+6. Every STOPPED_G7 Step has a G7 STOP_BLOCKED receipt that exists
+7. Every REJECTED Step has a rejection receipt that exists
+8. Every CERTIFIED Step has at least one real maintained fixture that exists
+9. No CERTIFIED Step appears in LEGACY_PLUGIN_IDS or CanonicalCoreStepMetadata
+10. Counter rollup is consistent across YAML, MATRIX, INVENTORY, ECOSYSTEM_MATRIX
+11. `core.load` DSL function is physically deleted
+12. Mandatory disabled acceptance tests are documented in matrix
+
+XML: `v2/pipeline-application/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.application.Lfc2E0GlobalClosureFitnessTest.xml`
+
+### 11.3 Per-E0-row coverage audit
+
+Every catalog row resolves to a terminal honest state:
+
+| E0 row | Steps | State |
+|---|---|---|
+| E0-A primitives | echo, sh, sleep, isUnix (CERTIFIED); pwd, pwd.tmp (STOPPED_G7); load (REJECTED) | 4 CERTIFIED + 2 STOPPED + 1 REJECTED |
+| E0-B control | error, emit.event, milestone (CERTIFIED) | 3 CERTIFIED |
+| E0-C contexts | waitUntil (CERTIFIED via canonical RepeatUntil) | 1 CERTIFIED |
+| E0-D files/workspace | file.writeFile, deleteDir, cleanWs (CERTIFIED) | 3 CERTIFIED |
+| E0-E runtime utilities | archiveArtifacts (CERTIFIED) | 1 CERTIFIED |
+| E0-F credentials + SCM + external reference | example.uppercase (CERTIFIED external) | 1 CERTIFIED |
+| **TOTAL** | 13 CERTIFIED + 2 STOPPED + 1 REJECTED = 16 YAML entries | **0 IMPLEMENTED_UNCERTIFIED** |
+
+### 11.4 Pre-existing UAT failures (out of scope, documented)
+
+| Test | Failures | Reason |
+|---|---:|---|
+| `UatCompat001CorpusSmokeRunTest` | 2 | corpus fixture count drift (17 vs 21) |
+| `UatLocal005CheckoutGitTest` | 1 | git env / git-wrapper fail-closed |
+| `UatLocal007SandboxProfileTest` | 2 | sandbox profile state |
+| `UatLocal008CredentialsTest` | 1 | CredentialsId DSL classpath (INC pre-existing) |
+| `UatLocal009TopStepsTest` | 4 | topSteps FileWritten events |
+| `CompatibilityCorpusTest` | 1 | `14-credentials-bindings.pipeline.kts` exit 1 |
+| `pipeline-architecture-tests` | 13 | various Lfc1/Lfc2/FArchL7 |
+
+**These were pre-existing on base `0be16af2` (HEAD~1) and are not regressions
+from this slice.** LFC-2E0 does NOT require them green. They are tracked
+separately and remain open.
+
+### 11.5 Final evidence
+
+| Artifact | Path |
+|---|---|
+| Receipt (cycle closure) | `docs/v2/07-uat/LFC2E0_FINAL_CLOSURE_RECEIPT.md` (this file) |
+| Zero Legacy Residual receipt | `docs/v2/07-uat/LFC2E0_ZERO_LEGACY_RESIDUAL_RECEIPT.md` |
+| Evidence manifest | `docs/v2/07-uat/LFC2E0_EVIDENCE_MANIFEST.md` |
+| Canonical YAML | `docs/v2/status/step-certification.yaml` |
+| Matrix rollup | `docs/v2/07-uat/STEP_CERTIFICATION_MATRIX.md` |
+| Inventory | `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` |
+| Ledger | `docs/v2/07-uat/LEGACY_RESIDUAL_LEDGER.md` |
+| Fitness suite | `Lfc2ZeroLegacyResidualFitnessTest` + `Lfc2E0GlobalClosureFitnessTest` |
+| Fitness XMLs | `v2/pipeline-application/build/test-results/test/TEST-*Lfc2*.xml` |
+
+LFC-2E0 is **CLOSED**. The next cycle is **LFC-2E1 (universal-core freeze)**.

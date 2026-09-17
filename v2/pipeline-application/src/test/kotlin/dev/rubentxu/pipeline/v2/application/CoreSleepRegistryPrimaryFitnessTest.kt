@@ -101,11 +101,17 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. Historical S2-A10/G4 and S2-A10/G5
     // snapshots above preserved verbatim for traceability.
-    @Test fun `registry post-S2-B10-g5 — 2 residual legacy keys remain`() {
-        assertEquals(setOf(
-            "core.load", "core.waitUntil",
-        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    //
+    // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+    // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+    // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
+    @Test fun `registry post-LFC-2E0 — 0 residual legacy keys remain (FIRST ZERO LEGACY RESIDUAL)`() {
+        assertEquals(
+            emptySet<String>(),
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "post-LFC-2E0: LEGACY_PLUGIN_IDS is empty (FIRST ZERO LEGACY RESIDUAL)",
+        )
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")

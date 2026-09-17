@@ -23,11 +23,12 @@
 #   unit_test:        path to StepUnitTest
 #
 # Counter roll-up (machine-derived from this file):
-#   Certified:                12  (echo, sh, error, sleep, file.writeFile, emit.event, isUnix, deleteDir, milestone, cleanWs, archiveArtifacts, waitUntil)
+#   Certified (core):         12  (echo, sh, error, sleep, file.writeFile, emit.event, isUnix, deleteDir, milestone, cleanWs, archiveArtifacts, waitUntil)
+#   Certified (external plugin): 1  (example.uppercase)
+#   Total CERTIFIED:          13
 #   Rejected:                  1  (load)
-#   Stopped at G7:             1  (pwd — non-deterministic runtime return)
-#   External plugin:           1  (example.uppercase)
-#   Total Production Step keys: 15
+#   Stopped at G7:             2  (pwd, pwd.tmp — non-deterministic runtime return)
+#   Total Production Step keys: 15  (14 core + 1 external; load excluded as REJECTED/non-existent in code)
 #   Legacy residual (N+M):    0+0+0 — FIRST ZERO LEGACY RESIDUAL
 
 version: 2
@@ -36,14 +37,15 @@ generated_at: "2026-09-17T07:51Z"
 cycle: "cycle/wu-g5b"
 
 counters:
-  certified_steps: 12
-  certified_core: 12
-  certified_external_plugin: 1
+  certified_core_steps: 12
+  certified_external_plugin_steps: 1
+  certified_total_steps: 13
   rejected_steps: 1
-  stopped_steps: 1
+  stopped_g7_steps: 2
   implemented_uncertified_steps: 0
   not_started_steps: 0
   total_production_step_keys: 15
+  total_yaml_step_entries: 16
   legacy_residual_ids: 0
   legacy_residual_metadata_rows: 0
   legacy_residual_dispatcher_files: 0
@@ -60,17 +62,18 @@ steps:
     legacy_state: CERTIFIED_AND_LEGACY_REMOVED
     certification_state: CERTIFIED
     g8_receipt: docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md
-    g7_receipt: docs/v2/07-uat/CORE_ECHO_G7_INSTALLED_ACCEPTANCE_RECEIPT.md
+    g7_receipt: docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md
     legacy_receipts:
       - docs/v2/07-uat/S3_ECHO_BURNDOWN_CERTIFICATION.md
       - docs/v2/07-uat/CORE_ECHO_G4_FITNESS_RECEIPT.md
+      - docs/v2/07-uat/CORE_ECHO_CERTIFICATION.md
     real_fixtures:
       - v2/compatibility/01-basic.pipeline.kts
       - v2/compatibility/02-environment.pipeline.kts
       - v2/compatibility/03-stages.pipeline.kts
       - v2/compatibility/05-scripted-if.pipeline.kts
       - v2/compatibility/06-loop.pipeline.kts
-      - v2/compatibility/07-catch-error.pipeline.kts
+      - v2/compatibility/12-error-handling.pipeline.kts
       - v2/compatibility/08-withEnv-pipeline.pipeline.kts
     registry_file: v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreEchoStep.kt
     capability: null
@@ -93,7 +96,7 @@ steps:
       - v2/compatibility/03-stages.pipeline.kts
       - v2/compatibility/04-sh.pipeline.kts
       - v2/compatibility/06-loop.pipeline.kts
-      - v2/compatibility/07-catch-error.pipeline.kts
+      - v2/compatibility/12-error-handling.pipeline.kts
       - v2/compatibility/08-withEnv-pipeline.pipeline.kts
       - v2/compatibility/09-sh-then-echo.pipeline.kts
       - v2/compatibility/10-smoke-e2e.pipeline.kts
@@ -437,9 +440,9 @@ invariants:
   legacy_residual_dispatcher_files_must_be_zero: PASS
   certified_must_have_g8_or_g7_receipt: PASS
     notes: |
-      12 CERTIFIED Steps × G8 receipt + 1 example.uppercase with G8 receipt
+      12 CERTIFIED core Steps × G8 receipt + 1 example.uppercase with G8 receipt
       + 2 STOPPED_G7 with G7_STOP_BLOCKED + 1 REJECTED with rejection
-      receipt = 16/16 Steps have a final-state receipt.
+      receipt = 16/16 YAML entries have a final-state receipt.
   no_uncertified_steps_with_real_fixture: PASS
     notes: |
       All real fixtures exercise either a CERTIFIED Step or a STOPPED_G7

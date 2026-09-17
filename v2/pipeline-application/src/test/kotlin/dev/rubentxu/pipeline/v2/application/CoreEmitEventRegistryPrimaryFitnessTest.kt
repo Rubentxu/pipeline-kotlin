@@ -170,15 +170,17 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. The historical S2-A10/G4 and
     // S2-A10/G5 snapshots above are preserved verbatim for traceability.
+    //
+    // LFC-2E0 closure (2026-09-17): both residual keys (core.load, core.waitUntil) were closed
+    // by CORE-LOAD-REJECTED (commit 0be16af2) and WU-G5B (commit a31cc8c6). Counter converges
+    // 2/2/2 -> 0/0/0. FIRST ZERO LEGACY RESIDUAL achieved.
     @Test
-    fun `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain`() {
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    fun `G5 LEGACY_REMOVED post-LFC-2E0 — 0 residual legacy keys remain (FIRST ZERO LEGACY RESIDUAL)`() {
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertEquals(
-            setOf(
-                "core.load", "core.waitUntil",
-            ),
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "post-S2-B10/G5: 2 residual legacy keys (core.load, core.waitUntil); core.archiveArtifacts fully removed (LEGACY_REMOVED)",
+            "post-LFC-2E0: LEGACY_PLUGIN_IDS is empty (both core.load and core.waitUntil closed)",
         )
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
@@ -187,6 +189,14 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
         assertFalse(
             "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.cleanWs MUST NOT be in LEGACY_PLUGIN_IDS post-S2-A10/G5",
+        )
+        assertFalse(
+            "core.load" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.load MUST NOT be in LEGACY_PLUGIN_IDS post-CORE-LOAD-REJECTED",
+        )
+        assertFalse(
+            "core.waitUntil" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.waitUntil MUST NOT be in LEGACY_PLUGIN_IDS post-WU-G5B",
         )
     }
 

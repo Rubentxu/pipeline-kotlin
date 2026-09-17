@@ -1,0 +1,3 @@
+pipeline: kotlin
+stage: yaml
+version: 1

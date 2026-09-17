@@ -1,0 +1,177 @@
+# XCA-2A — Execution observer design (pre-implementation)
+
+**Base:** `89fe0dd2`
+**Status:** design recorded; implementation not started.
+
+## Grounding fact that shrinks the slice
+
+`JournalStepOutputResolver` (built in P2) already depends on a domain port, not SQLite:
+
+```kotlin
+class JournalStepOutputResolver(
+    private val published: Map<StepOutputKey, StepOutputPublication>,
+    private val journal: OperationJournal,          // dev.rubentxu.pipeline.v2.events.durable
+    ...
+)
+```
+
+**So no port extraction is required.** The durable abstraction already exists. XCA-2 needs a
+**second use case over the same authority**, not a second reader:
+
+```text
+              OperationJournal  (existing domain port)
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+JournalStepOutputResolver    RunExecutionEvidenceReader
+        P2                          XCA-2
+```
+
+One canonical interpretation of the journal. Not necessarily one class for all use cases.
+
+Explicitly forbidden: `sqlite3 SELECT`, a bespoke table/schema parser, or any second
+interpretation of durable records. That would recreate exactly the defect removed from the
+certification side by XCA-YAML.
+
+## LAW — evidence source
+
+```text
+certification_execution_evidence MUST come from the operation journal
+certification_execution_evidence MUST NOT be inferred from control journals
+```
+
+The two durable surfaces are not interchangeable:
+
+```text
+Operation journal (SQLite, via OperationJournal port)
+    execution facts / Step identity          <- the only authority for XCA-2
+
+Control journals (FileBasedRetryControlJournal, FileBasedWaitUntilControlJournal)
+    retry / waitUntil ORCHESTRATION STATE    <- never evidence of "which StepKey executed"
+```
+
+## LAW — CLI success is not evidence
+
+```text
+CLI success != certification evidence
+failing to observe an expected StepKey MUST yield EXPECTED_BUT_NOT_EXECUTED
+```
+
+Probably the single most important rule in XCA-2.
+
+## Result algebra — nested ADTs, never one flat enum
+
+The six concepts mix two different levels. A single enum would permit conceptually absurd
+states:
+
+```kotlin
+sealed interface FixtureEvidenceResult {
+    data class FixtureFailed(val exitCode: Int) : FixtureEvidenceResult
+    data object NoCanonicalEvidence : FixtureEvidenceResult
+    data class CanonicalEvidence(
+        val expected: Set<PluginStepId>,
+        val observed: List<ExecutedInvocationEvidence>,
+    ) : FixtureEvidenceResult
+}
+```
+
+Fixture-level outcomes are decided first; only a `CanonicalEvidence` can relate
+expected to observed.
+
+## Classification is PURE and SET-DERIVED
+
+```text
+E = expected StepKeys
+O = observed StepKeys (projected from evidence)
+
+satisfied = E ∩ O   -> EXPECTED_AND_EXECUTED
+missing   = E − O   -> EXPECTED_BUT_NOT_EXECUTED
+extra     = O − E   -> EXECUTED_SUPPORTING  if known supporting
+                        EXECUTED_UNKNOWN     otherwise
+```
+
+Only `extra` requires a supporting/unknown distinction. Verdicts are mathematically derived
+from two sets, with no procedural classification logic — which makes silently absorbing a
+class (the counter defect) structurally harder.
+
+## Raw evidence vs derived projection
+
+Do NOT collapse the observer output to `Set<StepKey>`. Retain at least:
+
+```text
+RunId, InvocationId, StepKey, terminal state/outcome
+```
+
+```text
+raw canonical evidence   List<ExecutedInvocationEvidence>   <- evidence
+derived certification view  Set<StepKey>                     <- projection
+```
+
+Rationale: later semantics (a StepKey present but never reaching terminal execution; retry
+producing multiple invocation identities) must remain answerable. If the reader discards
+this, XCA will have to return to the journal.
+
+## Canaries — registered BEFORE the observer, as acceptance invariants
+
+### Canary 1 — STOPPED_G7 cannot close a certification
+
+```text
+20-pwd-tmp.pipeline.kts targets core.pwd / core.pwd.tmp (STOPPED_G7)
+MUST NOT satisfy any CERTIFIED expectation.
+If it does: FAIL observer semantics. Not rationalised afterwards.
+```
+
+### Canary 2 — shared fixture, one execution, N expectations
+
+```text
+12-error-handling.pipeline.kts is claimed by 4 surfaces.
+execution_count MUST == 1, with 4 independent expectations evaluated against the
+observed set from that single run. Not "run the fixture once per surface".
+```
+
+This freezes XCA-2B before it is implemented.
+
+### Canary 3 — success with no observed StepKeys
+
+```text
+fixture exits SUCCESS but the journal contains none of its expected StepKeys
+MUST yield EXPECTED_BUT_NOT_EXECUTED, never PASS
+```
+
+## XCA-2A exit criteria (without running all 30 candidates)
+
+```text
+1  reads the operation journal through the canonical durable port
+2  never reads control journals for Step execution evidence
+3  can enumerate invocation/StepKey evidence for one run
+4  classifier is pure and set-derived
+5  fixture failure != missing evidence
+6  successful CLI with a missing expected StepKey FAILS
+7  STOPPED_G7 canary cannot satisfy a CERTIFIED expectation
+8  shared-fixture model supports N expectations from ONE execution
+```
+
+## Mandatory falsification tests
+
+```text
+F1  change a ledger expected_step_key to another VALID StepKey
+    -> EXPECTED_BUT_NOT_EXECUTED        (source scan would still look fine)
+
+F2  put a Step call under an unreachable branch (e.g. if (false) { writeYaml(...) })
+    -> static audit says EXERCISED
+    -> runtime observer says EXPECTED_BUT_NOT_EXECUTED
+```
+
+F2 is the proof that XCA-2 adds information rather than re-deriving XCA-0.
+
+## Sequence
+
+```text
+XCA-2A  observer                       <- design frozen here
+XCA-2B  execute once per fixture, compare N expectations
+XCA-2C  regression corpus treated identically (provenance, no privilege)
+XCA-2D  migrate real_fixtures -> structured evidence; every claim STATIC_CANDIDATE
+```
+
+XCA-2D must NOT let the migration produce green: `path migrated => EXECUTED` is forbidden.
+Only XCA-2 execution produces `EXECUTED`.

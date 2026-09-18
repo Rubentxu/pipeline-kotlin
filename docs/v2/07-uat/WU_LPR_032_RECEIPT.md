@@ -142,15 +142,36 @@ CanonicalCoreStepDecoder fallback:  EngineInvariantViolation on unknown legacy e
 
 ## 8. Findings for follow-up
 
-| ID | Finding | Suggested follow-up |
-|----|---------|---------------------|
-| F7 | `readFile` / `fileExists` are in DSL but have no `core.file.readFile` StepKey registered; reading would fail-closed at the admission gate | WU-LPR-202 / S2-A3b |
-| F8 | `timestamps` / `ansiColor` are EXPERIMENTAL because their marker-event re-emission is not implemented | WU-LPR-203 |
-| F9 | `timeout`'s `unit` parser only accepts SECONDS / MINUTES (D2 deferred) | WU-LPR-204 |
-| F10 | `whenCondition(expression)` body is admitted but the expression is never evaluated at runtime | WU-LPR-205 |
-| F11 | `pwd(tmp=true)` deterministically creates a directory; admitted but with a side-effect the README should highlight | WU-LPR-206 |
-| F12 | `archiveArtifacts` `excludes` and `onlyIfSuccessful` parameters are F2-deferred | WU-LPR-207 |
-| F13 | `withEnv` PATH prepend (`PATH+X=/dir`) syntax is documented but the prepend-vs-replace logic is not exhaustively tested | WU-LPR-208 |
+The 7 follow-up IDs below were reconciled against the canonical
+`docs/v2/05-roadmap/LPR_WORK_UNITS.md` after the checkpoint integration.
+My original numbering (`WU-LPR-202..208`) **collided** with the
+observation-plane reserved range (`201..203`) and was retired.
+
+| ID | Finding | Suggested follow-up | Severity |
+|----|---------|---------------------|----------|
+| **F1** | `pipeline version` / `doctor` exit 1 (unknown-subcommand handler) | **WU-LPR-011** (CLI admission follow-up) | `PRODUCT_BLOCKER` |
+| **F2** | `pipeline events` / `credentials` not registered as subcommands | **WU-LPR-011** | `PRODUCT_BLOCKER` |
+| **F3** | `pipeline validate` exits 1 on compile failure (canonical: 2) | **WU-LPR-011** | `PRODUCT_BLOCKER` |
+| **F4** | `--resume` on empty db throws uncaught exception (exit 1, canonical: 2) | **WU-LPR-011** | `GATE_1_BLOCKER` (uncaught exception) |
+| **F5** | `--resume` emits TWO `RunFinished` bursts (replay + re-execute); canonical says handler should not re-execute | **WU-LPR-011** (decide bug vs by-design) | `GATE_1_BLOCKER` (contract drift) |
+| **F6** | No `docs/cli.md` documenting the exit-code contract | **WU-LPR-090** (distribution docs) | `FOLLOW_UP` |
+| **F7** | `readFile` / `fileExists` DSL funs have no `core.file.readFile` StepKey registered | **S2-A3b-READ** (no WU ID yet — defer registration until S2-A3 next slice) | `POST_LPR` |
+| **F8** | `timestamps` / `ansiColor` marker-event re-emission not implemented | **S2-A8-LOG-DECOR** (defer — T-08 follow-up) | `POST_LPR` |
+| **F9** | `timeout.unit` parser only accepts SECONDS / MINUTES | **S2-A10b-TIMEOUT-UNIT** (defer — D2 follow-up) | `POST_LPR` |
+| **F10** | `whenCondition(expression)` body admitted but expression never evaluated | **WU-LPR-032-FOLLOWUP** (this WU's own scope; defer implementation) | `POST_LPR` |
+| **F11** | `pwd(tmp=true)` deterministically creates a directory; admitted but with side effect | **WU-LPR-206-DOC** (defer — README update only) | `FOLLOW_UP` |
+| **F12** | `archiveArtifacts.excludes` / `onlyIfSuccessful` F2-deferred | **S2-B10b-ARTIFACTS** (defer — L7.1 follow-up) | `POST_LPR` |
+| **F13** | `withEnv` PATH prepend (`PATH+X=/dir`) semantics not exhaustively tested | **WU-LPR-042-FOLLOWUP** (test-only, folds into the hot-path WU) | `FOLLOW_UP` |
+
+DEFERRED slices from earlier WUs (still open, still tracked):
+
+- **WU-LPR-402P** — Structured DSL runtime-return seam
+  (`pipeline { ... }` form). Lower priority; only triggered if
+  `local-core-v1` needs structured runtime-returning expressions.
+- **WU-LPR-403** — Declarative Builder Purity / Runtime Escape Audit.
+  Open as investigation only; do NOT implement compiler rewrite.
+  Conclude `NO PRODUCTION CHANGE REQUIRED` if WU-LPR-402's
+  types/scopes/fitness already close the escape possibility.
 
 ## 9. Auto-continue
 

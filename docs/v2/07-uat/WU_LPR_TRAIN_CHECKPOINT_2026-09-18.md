@@ -107,27 +107,36 @@ Findings F7..F13 filed for follow-up WUs (WU-LPR-202..208).
 
 ## 5. Aggregate findings (filed for follow-up, NOT FIXED)
 
-| ID | Finding | Suggested follow-up |
-|----|---------|---------------------|
-| F1 | `version` / `doctor` not real subcommands (exit 1) | WU-LPR-011 |
-| F2 | `events` / `credentials` not registered as subcommands | WU-LPR-011 |
-| F3 | `validate` exits 1 on compile failure (canonical: 2) | WU-LPR-011 |
-| F4 | `--resume` empty db throws uncaught exception (exit 1, canonical: 2) | WU-LPR-011 |
-| F5 | `--resume` emits TWO `RunFinished` bursts (replay + re-execute); canonical says handler should not re-execute | WU-LPR-011 (decide: bug vs by-design) |
-| F6 | No `docs/cli.md` documenting the exit code contract | WU-LPR-012 |
-| F7 | `readFile` / `fileExists` DSL funs have no registered StepKey | WU-LPR-202 / S2-A3b |
-| F8 | `timestamps` / `ansiColor` marker-event re-emission not implemented | WU-LPR-203 |
-| F9 | `timeout.unit` parser only accepts SECONDS / MINUTES | WU-LPR-204 |
-| F10 | `whenCondition` body admitted, expression never evaluated | WU-LPR-205 |
-| F11 | `pwd(tmp=true)` deterministically creates a directory (side effect) | WU-LPR-206 (doc only) |
-| F12 | `archiveArtifacts.excludes` / `onlyIfSuccessful` F2-deferred | WU-LPR-207 |
-| F13 | `withEnv` PATH prepend semantics not exhaustively tested | WU-LPR-208 |
+Reconciled against the canonical `docs/v2/05-roadmap/LPR_WORK_UNITS.md`
+after the checkpoint integration. Original numbering (`WU-LPR-202..208`)
+retired because it collided with the observation-plane reserved range
+(`201..203`); severities assigned per the user's 5-bucket rubric.
+
+| ID | Finding | Suggested follow-up | Severity |
+|----|---------|---------------------|----------|
+| F1 | `version` / `doctor` not real subcommands (exit 1) | **WU-LPR-011** | `PRODUCT_BLOCKER` |
+| F2 | `events` / `credentials` not registered as subcommands | **WU-LPR-011** | `PRODUCT_BLOCKER` |
+| F3 | `validate` exits 1 on compile failure (canonical: 2) | **WU-LPR-011** | `PRODUCT_BLOCKER` |
+| F4 | `--resume` empty db throws uncaught exception (exit 1, canonical: 2) | **WU-LPR-011** | `GATE_1_BLOCKER` (uncaught exception) |
+| F5 | `--resume` emits TWO `RunFinished` bursts (replay + re-execute); canonical says handler should not re-execute | **WU-LPR-011** (decide bug vs by-design) | `GATE_1_BLOCKER` (contract drift) |
+| F6 | No `docs/cli.md` documenting the exit code contract | **WU-LPR-090** | `FOLLOW_UP` |
+| F7 | `readFile` / `fileExists` DSL funs have no registered StepKey | **S2-A3b-READ** (no WU ID yet) | `POST_LPR` |
+| F8 | `timestamps` / `ansiColor` marker-event re-emission not implemented | **S2-A8-LOG-DECOR** | `POST_LPR` |
+| F9 | `timeout.unit` parser only accepts SECONDS / MINUTES | **S2-A10b-TIMEOUT-UNIT** | `POST_LPR` |
+| F10 | `whenCondition` body admitted, expression never evaluated | **WU-LPR-032-FOLLOWUP** | `POST_LPR` |
+| F11 | `pwd(tmp=true)` deterministically creates a directory (side effect) | **WU-LPR-206-DOC** (doc only) | `FOLLOW_UP` |
+| F12 | `archiveArtifacts.excludes` / `onlyIfSuccessful` F2-deferred | **S2-B10b-ARTIFACTS** | `POST_LPR` |
+| F13 | `withEnv` PATH prepend semantics not exhaustively tested | **WU-LPR-042-FOLLOWUP** (test-only) | `FOLLOW_UP` |
 
 DEFERRED slices from earlier WUs:
 
-- **WU-LPR-402P** — Structured DSL runtime-return seam (`pipeline { ... }` form).
-- **WU-LPR-403** — Declarative Builder Purity Audit (block-step eager-evaluation pattern).
-- **WU-LPR-206** — `pwd(tmp=true)` doc; `tmp` directories persist across resume and are NOT recreated on REUSE.
+- **WU-LPR-402P** — Structured DSL runtime-return seam
+  (`pipeline { ... }` form). Lower priority; only triggered if
+  `local-core-v1` needs structured runtime-returning expressions.
+- **WU-LPR-403** — Declarative Builder Purity / Runtime Escape Audit.
+  Open as investigation only; do NOT implement compiler rewrite.
+  Conclude `NO PRODUCTION CHANGE REQUIRED` if WU-LPR-402's
+  types/scopes/fitness already close the escape possibility.
 
 ---
 

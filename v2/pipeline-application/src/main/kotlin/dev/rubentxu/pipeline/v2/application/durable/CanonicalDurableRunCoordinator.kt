@@ -473,6 +473,55 @@ private fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
     return maxAttempts
 }
 
+/**
+ * Project a [dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch] from
+ * [BodyInvocationContext] onto the parent [ExecutionContext] (Phase 1b, WU-LPR-302).
+ *
+ * Each variant of the closed [BodyContextProjection] family maps to its existing
+ * pure derivation. The projection's rejection cases
+ * ([dev.rubentxu.pipeline.v2.domain.step.BodyContextRejection.HandledOutsideOverlay],
+ * e.g. `Deadline` / `CredentialLease`) are intentionally **silently dropped**:
+ * the seam is honest about what it does not do — deadlines are projected onto
+ * `ShOptions.timeoutMs` and credential leases are projected by the
+ * `executeCredentialLeasedBody` preamble, not by the reentry seam. A dropped
+ * patch falls through to the parent unchanged; rejection stays inside the typed
+ * algebra, never as an exception.
+ *
+ * The parent is preserved (CTX-P: derivation never mutates `parent.overlays`).
+ * `None` returns the parent verbatim.
+ */
+internal fun applyPatchToContext(
+    parent: dev.rubentxu.pipeline.v2.domain.ExecutionContext,
+    patch: dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch,
+): dev.rubentxu.pipeline.v2.domain.ExecutionContext = when (patch) {
+    dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.None -> parent
+    is dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.Directory ->
+        when (
+            val d = dev.rubentxu.pipeline.v2.domain.step.deriveChildExecutionContext(
+                parent = parent,
+                projection = dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection.WorkingDirectory,
+                runtime = dev.rubentxu.pipeline.v2.domain.step.BodyRuntimeValue.DirectoryValue(patch.path),
+            )
+        ) {
+            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Derived -> d.context
+            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Rejected -> parent
+        }
+    is dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.Environment ->
+        when (
+            val d = dev.rubentxu.pipeline.v2.domain.step.deriveChildExecutionContext(
+                parent = parent,
+                projection = dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection.Environment,
+                runtime = dev.rubentxu.pipeline.v2.domain.step.BodyRuntimeValue.EnvironmentValue(patch.values),
+            )
+        ) {
+            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Derived -> d.context
+            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Rejected -> parent
+        }
+    is dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.CredentialLease ->
+        // Handled by `executeCredentialLeasedBody` preamble; the seam is honest.
+        parent
+}
+
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
 class CanonicalDurableRunCoordinator(
     private val dispatcher: CanonicalNodeDispatcher,
@@ -1640,15 +1689,35 @@ class CanonicalDurableRunCoordinator(
         // shared body-child iteration site stays inside `invokeBodyChildren`; this
         // adapter NEVER iterates body children itself.
         //
-        // WU-LPR-302 (Phase 1): the runner now receives the [BodyInvocationContext] the
-        // caller hands to [BodyInvoker.invoke], so a single BodyRef can re-execute the
-        // body under different attempt/patch/decorator contexts. Today the canonical
-        // coordinator's loop ignores the context (the canonical loop has its own typed
-        // per-step identity through bodyPath/BlockSegment); future engines (RetryEngine,
-        // WaitUntilEngine, ParallelStageEngine) will pass attempt/patch through the
-        // context to drive per-attempt or per-branch identity.
+        // WU-LPR-302 (Phase 1b, 2026-09-18): the runner now also applies the
+        // [BodyInvocationContext] it receives to the canonical body execution.
+        // `context.attempt?.index` projects onto the per-attempt deterministic
+        // bodyPath segment (mirroring the inline retry loop's BlockSegment
+        // construction), `context.patch` is projected onto the canonical
+        // ExecutionContext through the pure derivation, and `context.decorator`
+        // is preserved forward as a runtime fact. Today the canonical
+        // coordinator's inline loop still drives production execution directly
+        // through `invokeBodyChildren` (no BodyInvoker caller); the seam becomes
+        // the application-internal carrier for any future engine that dispatches
+        // the body through `BodyInvoker.invoke`. The single shared body-child
+        // iteration site stays inside `invokeBodyChildren`; this adapter NEVER
+        // iterates body children itself.
         val bodyRef = dev.rubentxu.pipeline.v2.domain.step.BodyRefs.childBody(parentBodyPath)
-        bodyInvokerAdapter.open(bodyRef) { _ ->
+        bodyInvokerAdapter.open(bodyRef) { ctx ->
+            // Phase 1b: derive the per-call attemptSegment from the context the
+            // caller hands to [BodyInvoker.invoke]. An attempt N on the same bodyRef
+            // produces a distinct deterministic bodyPath (parentBodyPath +
+            // BlockSegment(N, retry-attempt)); this is the semantic application of
+            // `BodyInvocationContext.attempt` onto durable identity.
+            val attemptSegment = ctx.attempt?.let { seg ->
+                listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key))
+            } ?: emptyList()
+            val attemptBasePath = parentBodyPath + attemptSegment
+            // Phase 1b: project `context.patch` onto the parent ExecutionContext.
+            // Unsupported patches fall through to the parent unchanged (the seam
+            // is honest about what it does not do; rejection stays inside the
+            // typed algebra, never as an exception).
+            val ctxForCall = applyPatchToContext(contextInBody, ctx.patch)
             invokeBodyChildren(
                 block = block,
                 runId = runId,
@@ -1656,8 +1725,8 @@ class CanonicalDurableRunCoordinator(
                 stageIndex = stageIndex,
                 stepIndex = stepIndex,
                 childShOptions = childShOptions,
-                parentBodyPath = parentBodyPath,
-                executionContext = contextInBody,
+                parentBodyPath = attemptBasePath,
+                executionContext = ctxForCall,
             )
         }
 

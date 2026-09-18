@@ -73,8 +73,19 @@ sealed interface BodyExecutionPolicy {
      * Each attempt carries a deterministic per-attempt identity so restart and
      * replay reconstruct attempt state from durable control rows and the journal,
      * never from memory (ADR-0075, ADR-0081 D9).
+     *
+     * The optional [waitUntil] sub-shape carries `waitUntil`-specific timing
+     * parameters (initial recurrence, quiet) and is consumed by the canonical
+     * body engine without a per-StepKey branch. When `null`, the body is a
+     * plain retry of the declared [policy]; when set, the engine re-dispatches
+     * with the declared poll cadence and emits `WaitUntilPolled` / `WaitUntilCompleted`
+     * events. The shape remains `RETRYING` — a `waitUntil` body is a
+     * repeating body, never a brand-new shape.
      */
-    data class Retrying(val policy: RetryPolicy) : BodyExecutionPolicy
+    data class Retrying(
+        val policy: RetryPolicy,
+        val waitUntil: WaitUntilShape? = null,
+    ) : BodyExecutionPolicy
 
     /**
      * The body's branches are dispatched concurrently and their typed outcomes
@@ -219,6 +230,26 @@ sealed interface BodyContextProjection {
 data class RetryPolicy(
     /** Segment key for per-attempt identity; mirrors [AttemptSegment]'s default. */
     val attemptKey: PluginStepId = PluginStepId("retry-attempt"),
+)
+
+/**
+ * `waitUntil`-specific sub-shape carried by [BodyExecutionPolicy.Retrying.waitUntil].
+ *
+ * Declared on the Step descriptor (not derived from a StepKey) so the canonical
+ * body engine can dispatch the polling loop without a per-StepKey branch in the
+ * coordinator. The default `initialRecurrencePeriodMs` matches Jenkins verbatim
+ * (`1000ms`). `quiet` mirrors Jenkins verbatim and is forwarded to the body
+ * engine; its semantics are owned by the canonical waitUntil Step, not by the
+ * coordinator.
+ *
+ * The shape is a structural property of the Step KIND, not runtime data: the
+ * engine re-dispatches the body using this declaration; the attempt budget and
+ * the deadline still arrive as decoded typed input.
+ */
+@Serializable
+data class WaitUntilShape(
+    val initialRecurrencePeriodMs: Long = 1000L,
+    val quiet: Boolean = false,
 )
 
 /**

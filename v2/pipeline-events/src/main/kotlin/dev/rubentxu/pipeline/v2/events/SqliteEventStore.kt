@@ -73,6 +73,36 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         } finally {
             conn.close()
         }
+        // WU-LPR-041: durable sequence truth. The per-run counters MUST be
+        // seeded from SQLite (durable state), not start empty per instance.
+        // Without this, a fresh store instance restarts sequences at 1 and
+        // duplicates the history of any run already present in the DB.
+        seedSequenceCounters()
+    }
+
+    /**
+     * Seeds [sequenceCounters] with the durable per-run MAX(sequence) from
+     * the events table. Called once at construction; later appends advance
+     * the in-memory counters monotonically and persist through the normal
+     * write path.
+     */
+    private fun seedSequenceCounters() {
+        val conn = freshConnection()
+        try {
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(
+                    "SELECT run_id, MAX(sequence) FROM events GROUP BY run_id"
+                ).use { rs ->
+                    while (rs.next()) {
+                        val runId = rs.getString(1)
+                        val maxSeq = rs.getLong(2)
+                        sequenceCounters[runId] = AtomicLong(maxSeq)
+                    }
+                }
+            }
+        } finally {
+            conn.close()
+        }
     }
 
     /**

@@ -60,7 +60,7 @@ class WULpr010CliCharacterizationTest {
         // Locate the installDist output. The test only runs if the binary
         // exists; otherwise it self-skips to keep the architecture test
         // suite green when the binary has not been built.
-        val path = ScannerSupport.v2Root()
+        val path = WULpr010ScannerSupport.v2Root()
             .resolve("pipeline-application/build/install/pipeline-application/bin/pipeline-application")
         require(path.toFile().exists()) {
             "installDist output not found at $path; run :pipeline-application:installDist first"
@@ -189,17 +189,17 @@ class WULpr010CliCharacterizationTest {
     }
 
     @Test
-    fun `EXISTS — validate with malformed Kotlin exits 1 (NOT 2 — contract drift)`() {
-        // Contract drift filed: the run path exits 2 on compile failure
-        // (Main.kt line 499), but the validate path exits 1 (line 312).
-        // The next WU decides whether to align them.
+    fun `FIXED (WU-LPR-011 F3) — validate with malformed Kotlin exits 2 (invocation-compile error)`() {
+        // WU-LPR-011 F3: the exit-code contract is canonical —
+        // 0 = success, 1 = pipeline failure, 2 = invocation/compile/admission.
+        // Compile failure is an admission error, not a pipeline failure.
         val script = writePipeline("not kotlin syntax {{{")
         try {
             val r = run("validate", script.absolutePath)
             assertEquals(
-                1,
+                2,
                 r.exitCode,
-                "validate compile-failure currently exits 1 (drift from run-path 2); output:\n${r.output.takeLast(500)}",
+                "validate compile-failure must exit 2 per the canonical exit-code contract; output:\n${r.output.takeLast(500)}",
             )
             assertTrue(
                 r.output.contains("VALIDATION FAILED"),
@@ -231,41 +231,37 @@ class WULpr010CliCharacterizationTest {
     }
 
     @Test
-    fun `PARTIAL — version and doctor are not real commands - they print usage and exit 1`() {
-        // Locked in: `version` and `doctor` are NOT implemented as commands.
-        // They currently print usage and exit 1 (treating themselves as
-        // unknown subcommands), which is consistent with the unknown-
-        // subcommand handler but misleading for a user who expects those
-        // subcommands to exist. Filed for WU-LPR-011 as a gap to close.
+    fun `FIXED (WU-LPR-011 F1) — version and doctor are real subcommands exiting 0`() {
+        // WU-LPR-011 F1: `version` reports the CLI version; `doctor` reports
+        // local runtime health. Both are real subcommands with exit 0.
         val versionResult = run("version")
-        assertEquals(1, versionResult.exitCode, "version exits 1 (usage only); output:\n${versionResult.output.takeLast(200)}")
+        assertEquals(0, versionResult.exitCode, "version must exit 0; output:\n${versionResult.output.takeLast(200)}")
         assertTrue(
-            versionResult.output.contains("Usage:"),
-            "version currently prints usage; not implemented as a real command",
+            versionResult.output.contains("pipeline "),
+            "version must print 'pipeline <version>'; got:\n${versionResult.output}",
         )
 
         val doctorResult = run("doctor")
-        assertEquals(1, doctorResult.exitCode, "doctor exits 1 (usage only); output:\n${doctorResult.output.takeLast(200)}")
+        assertEquals(0, doctorResult.exitCode, "doctor must exit 0 on a healthy local runtime; output:\n${doctorResult.output.takeLast(300)}")
         assertTrue(
-            doctorResult.output.contains("Usage:"),
-            "doctor currently prints usage; not implemented as a real command",
+            doctorResult.output.contains("jdk:") && doctorResult.output.contains("workdir:"),
+            "doctor must report jdk and workdir checks; got:\n${doctorResult.output}",
         )
     }
 
     // ---- resume / rerun ---------------------------------------------------------
 
     @Test
-    fun `EXISTS — rerun (fresh) emits one RunFinished and --resume on a prior run emits TWO RunFinished (replay then re-execute)`() {
-        // Locked in characterization:
-        //  - first run with --rerun (default) emits exactly one RunFinished event.
-        //  - second run with --resume on a prior durable record emits TWO
-        //    RunFinished events with the SAME runId: the first burst is the
-        //    resume REPLAY of the journaled events (sequences 1..N), and the
-        //    second burst is the fresh re-execution (sequences 1..M).
-        //    This is the actual current behaviour, regardless of whether it
-        //    matches the original "resume MUST NOT re-execute the handler"
-        //    design intent. Filed for WU-LPR-011 to investigate whether the
-        //    double-event burst is a bug or by design.
+    fun `FIXED (WU-LPR-011 F5) — rerun (fresh) emits one RunFinished and --resume on a terminal run emits ZERO new run-lifecycle events`() {
+        // WU-LPR-011 F5 (the critical finding): resume of a TERMINAL run must
+        // return the same durable result WITHOUT re-executing handlers and
+        // WITHOUT emitting a second run lifecycle envelope. The durable event
+        // history is the run-lifecycle authority: one RunStarted..RunFinished
+        // cycle per runId, ever.
+        //
+        // Note: the resume stdout still prints the JOURNALED history (the
+        // CLI prints eventsFor(runId)) plus the host compile bookend events
+        // for the re-compiled script; none of those are NEW lifecycle events.
         val script = writePipeline(
             """
             pipeline {
@@ -291,24 +287,26 @@ class WULpr010CliCharacterizationTest {
                 "first run must emit exactly one RunFinished event",
             )
 
-            // Resume replay: the CLI emits the journaled burst AND the
-            // fresh re-execution burst. Both share the same runId; only
-            // the sequence numbers differ.
+            // Resume of a terminal run: exactly ONE RunFinished (the journaled
+            // one, reprinted via eventsFor), NO second lifecycle envelope.
             val second = run("run", "--db", db, "--control-root", ctl, "--resume", script.absolutePath)
-            assertEquals(0, second.exitCode, "second run (resume) must succeed; output:\n${second.output.takeLast(500)}")
+            assertEquals(0, second.exitCode, "resume of a terminal run must succeed; output:\n${second.output.takeLast(500)}")
             assertEquals(
-                2,
+                1,
                 second.output.split("\"kind\":\"RunFinished\"").size - 1,
-                "second run currently emits TWO RunFinished bursts (replay + re-execute); " +
-                    "this characterization locks in the actual behaviour",
+                "resume stdout must contain exactly ONE RunFinished (the journaled one); " +
+                    "two means the run lifecycle was re-emitted",
             )
-            // The replay burst contains StepStarted/StepFinished (1 each),
-            // the re-execution burst also contains them. We assert at least
-            // the replay component is present, which is the contract the
-            // resume is supposed to honour.
-            assertTrue(
-                second.output.split("\"kind\":\"StepStarted\"").size - 1 >= 1,
-                "second run must replay at least one StepStarted event (the journaled burst)",
+            assertEquals(
+                1,
+                second.output.split("\"kind\":\"StepStarted\"").size - 1,
+                "resume stdout must contain exactly ONE StepStarted (the journaled one); " +
+                    "two means the handler re-executed",
+            )
+            assertEquals(
+                1,
+                second.output.split("\"kind\":\"EchoOutputCaptured\"").size - 1,
+                "resume stdout must contain exactly ONE EchoOutputCaptured (the journaled one)",
             )
         } finally {
             dbDir.deleteRecursively()
@@ -318,11 +316,10 @@ class WULpr010CliCharacterizationTest {
     }
 
     @Test
-    fun `BROKEN — resume with no prior run throws an uncaught IllegalArgumentException (exits 1, not 2)`() {
-        // Contract drift: --resume with no prior run should arguably exit 2
-        // (admission failure, NOT a pipeline failure) but currently throws
-        // an uncaught exception that surfaces as exit 1.
-        // Filed for WU-LPR-011.
+    fun `FIXED (WU-LPR-011 F4) — resume with no prior run is a typed rejection with exit 2 and no stack trace`() {
+        // WU-LPR-011 F4: --resume without a prior durable run is an
+        // invocation/admission error. Typed message, no stack trace, exit 2
+        // per the canonical exit-code contract.
         val script = writePipeline(
             """
             pipeline {
@@ -344,20 +341,18 @@ class WULpr010CliCharacterizationTest {
                 "--resume",
                 script.absolutePath,
             )
-            assertTrue(
-                r.exitCode != 0,
-                "bare --resume must not succeed; output:\n${r.output.takeLast(500)}",
-            )
-            assertTrue(
-                r.output.contains("No prior run recorded") ||
-                    r.output.contains("IllegalArgumentException"),
-                "bare --resume must surface a clear error; got exit=${r.exitCode}",
-            )
-            // The exit code is currently 1 (uncaught exception); filed for WU-LPR-011.
             assertEquals(
-                1,
+                2,
                 r.exitCode,
-                "bare --resume currently exits 1 (uncaught IllegalArgumentException); output:\n${r.output.takeLast(500)}",
+                "bare --resume must exit 2 (invocation/admission error); output:\n${r.output.takeLast(500)}",
+            )
+            assertTrue(
+                r.output.contains("No prior run recorded"),
+                "bare --resume must surface the typed error message; got exit=${r.exitCode}",
+            )
+            assertTrue(
+                !r.output.contains("IllegalArgumentException") && !r.output.contains("\tat "),
+                "bare --resume must NOT print a stack trace (typed rejection); output:\n${r.output.takeLast(500)}",
             )
         } finally {
             dbDir.deleteRecursively()
@@ -404,7 +399,7 @@ class WULpr010CliCharacterizationTest {
  * CWD), we fall back to the `-Pv2.root` system property or the
  * `V2_ROOT` environment variable.
  */
-private object ScannerSupport {
+internal object WULpr010ScannerSupport {
     fun v2Root(): java.nio.file.Path {
         val cwd = java.nio.file.Paths.get(System.getProperty("user.dir"))
         // Heuristic: the gradle test JVM CWD for :pipeline-application:test is

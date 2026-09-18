@@ -237,6 +237,37 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
 }
 
 fun main(args: Array<String>) {
+    // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version
+    // from the jar manifest (falls back to the packaged default) and exits 0.
+    if (args.firstOrNull() == "version") {
+        val version = object {}.javaClass.getPackage().implementationVersion ?: "0.1.0-SNAPSHOT"
+        println("pipeline $version")
+        System.exit(0)
+        return
+    }
+
+    // WU-LPR-011 F1: `doctor` is a real subcommand. Local-only health
+    // diagnostics: JDK version, working directory writability probe. Exits
+    // 0 when the local runtime is healthy, 2 on an environment defect.
+    if (args.firstOrNull() == "doctor") {
+        val checks = buildList {
+            add("jdk: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
+            add("os: ${System.getProperty("os.name")} ${System.getProperty("os.version")}")
+            val cwd = Paths.get("").toAbsolutePath()
+            val writable = try {
+                val probe = Files.createTempFile(cwd, "pipelinek-doctor-", ".probe")
+                Files.deleteIfExists(probe)
+                true
+            } catch (_: java.io.IOException) {
+                false
+            }
+            add("workdir: $cwd (${if (writable) "writable" else "NOT WRITABLE"})")
+        }
+        checks.forEach(::println)
+        System.exit(if (checks.any { it.contains("NOT WRITABLE") }) 2 else 0)
+        return
+    }
+
     // Events subcommand (EVT-2): structured local history inspection
     if (args.firstOrNull() == "events") {
         if (args.getOrNull(1) == "verify") {
@@ -308,8 +339,11 @@ fun main(args: Array<String>) {
         val events = store.eventsFor(validateRunId).toList()
         println(JsonEventLog.encode(events))
         if (!compileResult.isSuccess) {
+            // WU-LPR-011 F3: compile failure is an invocation/admission error,
+            // not a pipeline execution failure. Exit 2 per the canonical
+            // contract (0 success / 1 pipeline fail / 2 invocation+compile).
             System.err.println("VALIDATION FAILED")
-            System.exit(1)
+            System.exit(2)
         } else {
             System.err.println("VALIDATION SUCCESSFUL")
         }
@@ -503,12 +537,21 @@ fun main(args: Array<String>) {
         dbPath.parent.resolve("durable-shell")
     }
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-    val runSelection = selectDurableRun(
-        policy = config.durableRunPolicy,
-        runIdDirectory = runIdDirectory,
-        definitionId = definitionId,
-        runIdGenerator = UuidRunIdGenerator(),
-    )
+    val runSelection = try {
+        selectDurableRun(
+            policy = config.durableRunPolicy,
+            runIdDirectory = runIdDirectory,
+            definitionId = definitionId,
+            runIdGenerator = UuidRunIdGenerator(),
+        )
+    } catch (e: IllegalArgumentException) {
+        // WU-LPR-011 F4: --resume without a prior durable run is an
+        // invocation/admission error, not a pipeline failure. Typed
+        // rejection, no stack trace, exit 2 per the CLI exit contract.
+        System.err.println("Error: ${e.message}")
+        System.exit(2)
+        throw e // unreachable
+    }
     val runId = runSelection.runId.value
     val host = Kotlin24ScriptingHost(eventStore, runId)
     val dslJar = ScriptDefinition.dslApiJar()
@@ -749,6 +792,12 @@ fun main(args: Array<String>) {
     }
 
     val events = eventStore.eventsFor(runId).toList()
+    // WU-LPR-011 regression fix: the WU-LPR-042 single-writer thread is
+    // non-daemon; without an explicit close() the successful durable run
+    // never terminates the JVM (DestroyJavaVM waits on queue.take()).
+    // Failure paths exit via System.exit() which forcibly terminates, so
+    // only the natural-success return needed this.
+    rawEventStore.close()
     // Jenkins verbatim: print events first, then propagate failure to OS exit code
     println(JsonEventLog.encode(events))
     // D5: 3-state outcome widening — unstable exits 0 like success, failure exits 1.

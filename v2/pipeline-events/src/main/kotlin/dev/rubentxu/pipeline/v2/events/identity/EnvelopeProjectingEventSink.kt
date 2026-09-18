@@ -20,20 +20,25 @@ class EnvelopeProjectingEventSink(
 ) : EventSink by inner {
 
     override fun append(event: DomainEvent) {
-        inner.append(event)
-        // Re-read the stored fact so the projected envelope carries the
-        // store-assigned sequence (projection, never invention). The stored
-        // events include the one just appended.
-        val assigned = inner.eventsFor(event.runId)
-            .lastOrNull { it.eventId == event.eventId }?.sequence ?: event.sequence
-        publisher.publish(EnvelopeProjector.project(copyWithSequence(event, assigned)))
+        appendAssigned(event)
     }
 
     /**
-     * Returns an event equal to [event] but with the store-assigned sequence.
-     * Uses the family's `copy(sequence=...)` per kind via the same exhaustive
-     * pattern the stores already use for assignment (see SqliteEventStore).
+     * WU-LPR-105: the projection consumes the store's explicit write-side
+     * acknowledgement (`appendAssigned` returns the ASSIGNED event) and never
+     * re-reads the read model to discover write metadata. The previous
+     * `eventsFor(...) ?: event.sequence` fallback published sequence=0
+     * whenever the async batched writer had not yet COMMITted the row
+     * (observed as [0,0,0,0,5,6,0]) — a read-side race, now structurally
+     * impossible. Store remains the sole sequence authority: no second
+     * counter, no invention, no flush-per-event, no polling.
+     *
+     * Acknowledgement semantics: ASSIGNED (sequence decided), not
+     * DURABLY_COMMITTED; durability observers keep using flush()/cursor.
      */
-    private fun copyWithSequence(event: DomainEvent, sequence: Long): DomainEvent =
-        if (event.sequence == sequence) event else SequenceAssigner.withSequence(event, sequence)
+    override fun appendAssigned(event: DomainEvent): DomainEvent {
+        val assigned = inner.appendAssigned(event)
+        publisher.publish(EnvelopeProjector.project(assigned))
+        return assigned
+    }
 }

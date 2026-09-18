@@ -192,7 +192,24 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         }
     }
 
+    /**
+     * WU-LPR-105 test seam: artificial per-batch writer delay (default 0 =
+     * production behaviour untouched). Widens the old append/COMMIT window
+     * deterministically so the sequence-publication race is reproducible in
+     * tests instead of flaky in CI.
+     */
+    @Volatile var writerDelayMillis: Long = 0
+
     override fun append(event: DomainEvent) {
+        appendAssigned(event)
+    }
+
+    /**
+     * WU-LPR-105: the store assigns the sequence and returns the assigned
+     * event explicitly. Single counter, single authority — the read model is
+     * never consulted for write metadata.
+     */
+    override fun appendAssigned(event: DomainEvent): DomainEvent {
         writerError?.let { throw IllegalStateException("event writer failed earlier", it) }
         // Assign per-runId sequence eagerly (monotonic per run; LPR-041
         // counters seeded from durable truth at construction).
@@ -263,6 +280,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 Thread.currentThread().interrupt()
                 throw IllegalStateException("interrupted while enqueueing event append", e)
             }
+            return eventWithSequence
     }
 
     /**
@@ -281,6 +299,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 }
                 batch.add(first)
                 appendQueue.drainTo(batch, 511)
+                if (writerDelayMillis > 0) Thread.sleep(writerDelayMillis)
                 writerConnection.autoCommit = false
                 try {
                     for (pending in batch) {

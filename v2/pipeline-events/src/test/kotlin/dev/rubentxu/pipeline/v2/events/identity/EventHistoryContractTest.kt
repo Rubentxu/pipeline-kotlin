@@ -75,8 +75,15 @@ class EventHistoryContractTest {
         val projecting = EnvelopeProjectingEventSink(sink, publisher)
         sampleEvents().forEach(projecting::append)
         assertEquals(7, publisher.envelopes.size)
-        // Sequences assigned by the store, monotonically 1..7 per run
+        // Sequences assigned by the store, monotonically 1..7 per run.
+        // WU-LPR-105: projection carries the ASSIGNED sequence via the explicit
+        // write-side acknowledgement — no read-model race can zero it.
         assertEquals((1L..7L).toList(), publisher.envelopes.map { it.sequence })
+        // WU-LPR-105: read-model assertions below observe the DURABLE state.
+        // Since WU-LPR-042 the SQLite writer is async/batched, so the read path
+        // is guaranteed only after the flush barrier (COMMIT is the durable
+        // unit). One flush per test batch — never per event on the hot path.
+        (sink as? SqliteEventStore)?.flush()
     }
 
     private fun sampledSinkInstances(): List<Pair<String, EventSink>> = listOf(

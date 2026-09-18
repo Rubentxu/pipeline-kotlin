@@ -12,6 +12,11 @@ class InMemoryEventStore : EventSink {
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
 
     override fun append(event: DomainEvent) {
+        appendAssigned(event)
+    }
+
+    /** WU-LPR-105: returns the store-assigned event (explicit write-side acknowledgement). */
+    override fun appendAssigned(event: DomainEvent): DomainEvent {
         val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
         val assignedSequence = if (event.sequence == 0L) {
             counter.incrementAndGet()
@@ -84,6 +89,7 @@ class InMemoryEventStore : EventSink {
                 list.add(eventWithSequence)
             }
         }
+        return eventWithSequence
     }
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> {

@@ -1094,3 +1094,11 @@ Stale: any run predating the Main.kt/coordinator edits.
 Unknown: none material.
 
 Receipt: docs/v2/07-uat/WU_LPR_103_COMPATIBILITY_CURVE_RECEIPT.md
+
+## Session handoff 2026-09-18/19 (LPR train)
+- WU-LPR-103/104/105 done, pushed (a8d9c61f, f37dde8b, 0fb78298, 12088c54, da287eb4).
+- local-core-v1 CERTIFIED/FROZEN at 12088c54. LPR-GATE-1 NOT closed (distribution phase).
+- WU-LPR-105: EventStore.appendAssigned explicit ack; race closed deterministically via SqliteEventStore.writerDelayMillis test seam (default 0). EventHistoryContractTest 6x5=0 failures (was flaky at every base SHA). Durable-read assertions require one flush() per batch (WU-LPR-042 async writer contract) — documented in EventHistoryContractTest.appendAll.
+- Fresh evidence: corpus 23/23, events module green, durable E2E probe sequences 1..20 no zeros.
+- Next: Release Train order = real Gradle (062) → Maven (063) → Node (064) → distZip (070) → GitHub Release (071) → SDKMAN (080) → dogfooding. BUILD ONCE/CERTIFY ONCE/PUBLISH SAME BYTES law applies.
+- EventHistoryContractTest PIN: if it flakes again, suspect writer batching changes first, NOT test flakiness.

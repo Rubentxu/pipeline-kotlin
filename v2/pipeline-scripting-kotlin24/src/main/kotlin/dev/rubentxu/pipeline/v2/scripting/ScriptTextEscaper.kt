@@ -117,11 +117,13 @@ internal object ScriptTextEscaper {
 
         while (i < text.length) {
             if (inLineComment) {
+                if (i == pos) return true
                 if (text[i] == '\n') inLineComment = false
                 i++
                 continue
             }
             if (inBlockComment) {
+                if (i == pos) return true
                 if (i + 1 < text.length && text[i] == '*' && text[i + 1] == '/') {
                     inBlockComment = false
                     i += 2
@@ -131,6 +133,10 @@ internal object ScriptTextEscaper {
                 continue
             }
             if (inDoubleString) {
+                // WU-LPR-071: double-quoted Kotlin strings are exactly WHERE env-var
+                // references must be escaped (template-expansion protection), so a
+                // position inside them is processable (return false via the tail).
+                if (i == pos) return false
                 if (text[i] == '"' && (i == 0 || text[i - 1] != '\\')) {
                     inDoubleString = false
                 }
@@ -138,6 +144,7 @@ internal object ScriptTextEscaper {
                 continue
             }
             if (inSingleString) {
+                if (i == pos) return true
                 if (text[i] == '\'' && (i == 0 || text[i - 1] != '\\')) {
                     inSingleString = false
                 }

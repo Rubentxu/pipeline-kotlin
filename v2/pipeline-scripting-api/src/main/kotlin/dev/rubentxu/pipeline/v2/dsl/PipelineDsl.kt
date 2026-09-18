@@ -278,6 +278,19 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
             }
 
             /**
+             * WU-LPR-071: zip binding with password variable (Jenkins
+             * `zip zipCredentialsId: '...', variable: '...', zipVariable: '...'` shape).
+             */
+            fun zip(credentialsId: String, variable: String, passwordVariable: String): CredentialsBinding {
+                return CredentialsBinding(
+                    Kind.ZIP,
+                    CredentialsId(credentialsId),
+                    variable = variable,
+                    passwordVariable = passwordVariable,
+                )
+            }
+
+            /**
              * Creates a USERNAME_COLON_PASSWORD binding: injects colon-joined user:pass env var.
              *
              * Jenkins verbatim signature: variable, credentialsId
@@ -1212,6 +1225,23 @@ class StageScope(
      * @param block The steps to execute with the credentials bound
      * @see CredentialsBinding
      */
+    /**
+     * WU-LPR-071: single-binding overload restored (Jenkins supports both shapes).
+     * Desugars to the List form. Required by the withCredentials compile
+     * integration tests (IT-001..IT-006) which pass a single binding directly.
+     */
+    fun withCredentials(binding: StepSpec.CredentialsBinding, block: StageScope.() -> Unit) {
+        withCredentials(listOf(binding), block)
+    }
+
+    /** WU-LPR-071: vararg form (Jenkins `withCredentials(a, b) { }`). */
+    fun withCredentials(
+        vararg bindings: StepSpec.CredentialsBinding,
+        block: StageScope.() -> Unit,
+    ) {
+        withCredentials(bindings.toList(), block)
+    }
+
     fun withCredentials(bindings: List<StepSpec.CredentialsBinding>, block: StageScope.() -> Unit) {
         val innerScope = StageScope(stageName, runtimeConfig)
         innerScope.block()

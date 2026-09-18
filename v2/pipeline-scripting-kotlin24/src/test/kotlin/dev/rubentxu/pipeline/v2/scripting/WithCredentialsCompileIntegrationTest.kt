@@ -26,6 +26,17 @@ class WithCredentialsCompileIntegrationTest {
         if (dslJar != null) add(dslJar)
     }
 
+
+    /**
+     * WU-LPR-071: wrap a stage-body lambda into the full DSL skeleton so
+     * `withCredentials` resolves against its StageScope receiver (the DSL is
+     * receiver-scoped; a bare lambda cannot resolve it).
+     */
+    private fun wrapInPipeline(stageBody: String): String {
+        val inner = stageBody.trim().removePrefix("{").removeSuffix("}")
+        return "pipeline { stages { stage(\"t\") { $inner } } }"
+    }
+
     // Build a script string with literal $ using StringBuilder
     private fun buildScript(inner: String): String {
         val sb = StringBuilder()
@@ -52,7 +63,7 @@ class WithCredentialsCompileIntegrationTest {
         sb.append("{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(\"test-creds\", \"USER_PASS\")) { sh(\"echo credentials_username_colon_password=")
         appendDollarVar(sb, "USER_PASS")
         sb.append("\") } }")
-        val scriptText = sb.toString()
+        val scriptText = wrapInPipeline(sb.toString())
 
         val definition = ScriptDefinition.inline(text = scriptText, classpath = fullClasspath())
         val result = scriptingHost.compile(definition)
@@ -76,7 +87,7 @@ class WithCredentialsCompileIntegrationTest {
         sb.append(" file=")
         appendDollarVar(sb, "SECRET_FILE")
         sb.append("\") } }")
-        val scriptText = sb.toString()
+        val scriptText = wrapInPipeline(sb.toString())
 
         val definition = ScriptDefinition.inline(text = scriptText, classpath = fullClasspath())
         val result = scriptingHost.compile(definition)
@@ -103,7 +114,7 @@ class WithCredentialsCompileIntegrationTest {
         sb.append(" file=")
         appendDollarVar(sb, "MY_FILE_PATH")
         sb.append("\") } }")
-        val scriptText = sb.toString()
+        val scriptText = wrapInPipeline(sb.toString())
 
         val definition = ScriptDefinition.inline(text = scriptText, classpath = fullClasspath())
         val result = scriptingHost.compile(definition)
@@ -122,7 +133,7 @@ class WithCredentialsCompileIntegrationTest {
         sb1.append("{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(\"tc\", \"UP\")) { sh(\"echo ")
         appendDollarVar(sb1, "UP")
         sb1.append("\") } }")
-        val script1 = sb1.toString()
+        val script1 = wrapInPipeline(sb1.toString())
 
         val def1 = ScriptDefinition.inline(text = script1, classpath = fullClasspath())
         val result1 = scriptingHost.compile(def1)
@@ -146,13 +157,13 @@ class WithCredentialsCompileIntegrationTest {
         sb1.append("{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(\"tc1\", \"UP1\")) { sh(\"echo ")
         appendDollarVar(sb1, "UP1")
         sb1.append("\") } }")
-        val script1 = sb1.toString()
+        val script1 = wrapInPipeline(sb1.toString())
 
         val sb2 = StringBuilder()
         sb2.append("{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(\"tc2\", \"UP2\")) { sh(\"echo ")
         appendDollarVar(sb2, "UP2")
         sb2.append("\") } }")
-        val script2 = sb2.toString()
+        val script2 = wrapInPipeline(sb2.toString())
 
         val def1 = ScriptDefinition.inline(text = script1, classpath = fullClasspath())
         val def2 = ScriptDefinition.inline(text = script2, classpath = fullClasspath())
@@ -176,7 +187,7 @@ class WithCredentialsCompileIntegrationTest {
         sb.append(" pass=")
         appendDollarVar(sb, "ARCHIVE_PASS")
         sb.append("\") } }")
-        val scriptText = sb.toString()
+        val scriptText = wrapInPipeline(sb.toString())
 
         val definition = ScriptDefinition.inline(text = scriptText, classpath = fullClasspath())
         val result = scriptingHost.compile(definition)

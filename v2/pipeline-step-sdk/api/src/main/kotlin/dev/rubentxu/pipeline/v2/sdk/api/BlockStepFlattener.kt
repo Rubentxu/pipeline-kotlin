@@ -190,11 +190,12 @@ object BlockStepFlattener {
             is StepSpec.Unstable,
             is StepSpec.Pwd,
             is StepSpec.IsUnix,
-            is StepSpec.Load,
+            is StepSpec.Load -> {
+                // Terminal step: nothing to flatten.
+            }
             is dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock -> {
                 // Body-bearing — recurse into the captured body steps.
-                val waitUntilStep = step as dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock
-                for ((idx, inner) in waitUntilStep.body.withIndex()) {
+                for ((idx, inner) in step.body.withIndex()) {
                     val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
                     flattenImpl(inner, depth + 1, childPath, result)
                 }

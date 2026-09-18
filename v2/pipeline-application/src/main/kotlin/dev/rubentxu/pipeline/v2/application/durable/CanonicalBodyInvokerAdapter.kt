@@ -52,21 +52,32 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
      * BodyRef -> body runner for bodies currently open in this coordinator run.
      *
      * Populated by [open] from [CanonicalDurableRunCoordinator.dispatchBody], drained by
-     * [close]. The runner closure already freezes every parameter the existing
-     * `invokeBodyChildren` requires, so [invoke] does not need to thread
-     * `runId / stage / stepIndex` back into the engine.
+     * [close]. The runner receives the [BodyInvocationContext] the caller hands to
+     * [invoke], so the same BodyRef can re-execute the body under different attempt /
+     * patch / decorator contexts (retry attempt, waitUntil poll, parallel branch) without
+     * the coordinator having to open a new BodyRef per context. Per-attempt identity
+     * reaches the runner through `context.attempt`, scope patches through `context.patch`,
+     * and non-context decorations (timestamps) through `context.decorator`.
+     *
+     * WU-LPR-302 (Phase 1, 2026-09-18): the runner signature evolves from
+     * `suspend () -> StepOutcome` to `suspend (BodyInvocationContext) -> StepOutcome`.
+     * The port [BodyInvoker] already received the context; the binding is now
+     * contextually faithful to its public contract.
      */
-    private val openBodies: MutableMap<BodyRef, suspend () -> StepOutcome> = mutableMapOf()
+    private val openBodies: MutableMap<BodyRef, suspend (BodyInvocationContext) -> StepOutcome> = mutableMapOf()
 
     /**
      * Registers [runner] under [bodyRef] for the lifetime of the body.
      *
      * Called from [CanonicalDurableRunCoordinator.dispatchBody] when entering a body
-     * scope. Duplicate registration of the same [bodyRef] is a programmer defect
-     * (the coordinator's finally clause must have run) and is silently replaced; the
-     * earlier entry's runner is leaked but is no longer reachable through [invoke].
+     * scope. The [runner] closure receives the [BodyInvocationContext] supplied by the
+     * engine / caller at invocation time, so a single BodyRef can re-execute the body
+     * under different attempt/patch/decorator contexts. Duplicate registration of the same
+     * [bodyRef] is a programmer defect (the coordinator's finally clause must have run)
+     * and is silently replaced; the earlier entry's runner is leaked but is no longer
+     * reachable through [invoke].
      */
-    fun open(bodyRef: BodyRef, runner: suspend () -> StepOutcome) {
+    fun open(bodyRef: BodyRef, runner: suspend (BodyInvocationContext) -> StepOutcome) {
         openBodies[bodyRef] = runner
     }
 
@@ -75,7 +86,7 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
      *
      * Called from [CanonicalDurableRunCoordinator.dispatchBody] in its `finally`. The
      * canonical coordinator uses [open]/[close] as a structured bracket around the
-     * shared `invokeBodyChildren` call, so the map never grows beyond the nesting depth.
+     * shared body-child loop call, so the map never grows beyond the nesting depth.
      */
     fun close(bodyRef: BodyRef) {
         openBodies.remove(bodyRef)
@@ -87,18 +98,20 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
     /**
      * Re-entry point for a registered handler.
      *
-     * - **Known bodyRef**: invokes the registered runner and returns
-     *   [BodyOutcome.Completed] with the runner's typed [StepOutcome]. The handler can
-     *   fold the body result into its own logic exactly as it would a child outcome.
+     * - **Known bodyRef**: invokes the registered runner, passing [context] verbatim,
+     *   and returns [BodyOutcome.Completed] with the runner's typed [StepOutcome]. The
+     *   handler can fold the body result into its own logic exactly as it would a child
+     *   outcome. Per-attempt identity, scope patches and decorators reach the runner
+     *   through [BodyInvocationContext]; the binding is no longer context-decorative.
      * - **Unknown bodyRef**: returns [BodyOutcome.Cancelled] with
-     *   [CancellationReason.ParentCancelled]. The handler never block the dispatch and
-     *   the typed algebra remains closed; an unknown bodyRef is never a structural
-     *   reason to throw, it is a runtime decision the handler can fold.
+     *   [CancellationReason.ParentCancelled]. The handler never blocks the dispatch and
+     *   the typed algebra remains closed; an unknown bodyRef is never a structural reason
+     *   to throw, it is a runtime decision the handler can fold.
      */
     override suspend fun invoke(body: BodyRef, context: BodyInvocationContext): BodyOutcome {
         val runner = openBodies[body]
             ?: return BodyOutcome.Cancelled(CancellationReason.ParentCancelled)
-        return BodyOutcome.Completed(runner())
+        return BodyOutcome.Completed(runner(context))
     }
 
     /**

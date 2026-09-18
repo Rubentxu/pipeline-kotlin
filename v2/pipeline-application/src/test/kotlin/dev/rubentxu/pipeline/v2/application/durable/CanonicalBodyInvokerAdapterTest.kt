@@ -9,6 +9,9 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyRefs
 import dev.rubentxu.pipeline.v2.domain.step.CancellationReason
+import dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch
+import dev.rubentxu.pipeline.v2.domain.step.AttemptSegment
+import dev.rubentxu.pipeline.v2.domain.step.BodyDecorator
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -221,7 +224,7 @@ class CanonicalBodyInvokerAdapterTest {
             val adapter = CanonicalBodyInvokerAdapter()
             val ref = refAt(path(0 to "core.dir"))
             var captured = 0
-            adapter.open(ref) {
+            adapter.open(ref) { _ ->
                 captured = 42
                 StepOutcome.Success
             }
@@ -250,6 +253,156 @@ class CanonicalBodyInvokerAdapterTest {
             assertFalse(iteratesBodies) {
                 "CanonicalBodyInvokerAdapter must NEVER accept a BlockStepNode / StepNode list — " +
                     "that would re-introduce a body-child loop outside the canonical coordinator."
+            }
+        }
+    }
+
+    /**
+     * WU-LPR-302 (Phase 1, 2026-09-18): the public port [BodyInvoker.invoke] already
+     * received a [BodyInvocationContext], but the runner signature was
+     * `suspend () -> StepOutcome` — the context was decorative. This nested class
+     * pins the **contextual binding**: the runner receives the context the caller
+     * hands to [invoke], and `attempt` / `patch` / `decorator` are first-class
+     * properties of the re-entry. A single BodyRef re-invoked under different
+     * contexts drives retry / waitUntil / parallel branch identity from the
+     * context, never from a per-engine loop.
+     */
+    @Nested
+    inner class ContextualBinding {
+        @Test
+        fun `runner receives the BodyInvocationContext that invoke was called with`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val ref = refAt(path(0 to "core.retry"))
+            var received: BodyInvocationContext? = null
+            adapter.open(ref) { ctx ->
+                received = ctx
+                StepOutcome.Success
+            }
+            val ctx = BodyInvocationContext(
+                attempt = AttemptSegment(index = 3, key = PluginStepId("retry-attempt")),
+                patch = ExecutionContextPatch.None,
+                decorator = BodyDecorator.None,
+            )
+            adapter.invoke(ref, ctx)
+            assertEquals(ctx, received) {
+                "BodyInvocationContext must reach the runner verbatim, not be silently dropped."
+            }
+        }
+
+        @Test
+        fun `single BodyRef can be re-invoked under different attempt contexts`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val ref = refAt(path(0 to "core.retry"))
+            val attemptsSeen = mutableListOf<Int>()
+            adapter.open(ref) { ctx ->
+                attemptsSeen += ctx.attempt?.index ?: 0
+                StepOutcome.Success
+            }
+            // Three attempts under the same BodyRef — the retry engine's signature
+            // is "schedule attempt N → invoke(body, BodyInvocationContext(attempt = N))".
+            adapter.invoke(ref, BodyInvocationContext(attempt = AttemptSegment(index = 1)))
+            adapter.invoke(ref, BodyInvocationContext(attempt = AttemptSegment(index = 2)))
+            adapter.invoke(ref, BodyInvocationContext(attempt = AttemptSegment(index = 3)))
+            assertEquals(listOf(1, 2, 3), attemptsSeen) {
+                "the same BodyRef must re-execute its body under each attempt context; " +
+                    "the runner is the per-attempt identity carrier, not the BodyRef."
+            }
+        }
+
+        @Test
+        fun `runner receives the scope patch verbatim (Directory, Environment, CredentialLease)`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val ref = refAt(path(0 to "core.dir"))
+            var received: ExecutionContextPatch? = null
+            adapter.open(ref) { ctx ->
+                received = ctx.patch
+                StepOutcome.Success
+            }
+            val patches = listOf(
+                ExecutionContextPatch.Directory(path = "/tmp/work"),
+                ExecutionContextPatch.Environment(values = mapOf("KEY" to "VALUE")),
+                ExecutionContextPatch.CredentialLease(bindingId = "creds-42"),
+            )
+            for (patch in patches) {
+                received = null
+                adapter.invoke(ref, BodyInvocationContext(patch = patch))
+                assertEquals(patch, received) {
+                    "scope patch must reach the runner verbatim; a future `dir` / `withEnv` / " +
+                        "`withCredentials` engine will read it from the context."
+                }
+            }
+        }
+
+        @Test
+        fun `runner receives the decorator verbatim (Timestamps)`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val ref = refAt(path(0 to "core.timestamps"))
+            var received: BodyDecorator? = null
+            adapter.open(ref) { ctx ->
+                received = ctx.decorator
+                StepOutcome.Success
+            }
+            adapter.invoke(ref, BodyInvocationContext(decorator = BodyDecorator.Timestamps))
+            assertEquals(BodyDecorator.Timestamps, received) {
+                "decorator must reach the runner verbatim; the timestamps scope has no " +
+                    "ContextKind but carries the runtime fact through the decorator."
+            }
+        }
+
+        @Test
+        fun `unknown BodyRef returns Cancelled(ParentCancelled) regardless of context`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val ref = refAt(path(0 to "core.unknown"))
+            val outcome = adapter.invoke(
+                ref,
+                BodyInvocationContext(attempt = AttemptSegment(index = 1)),
+            )
+            assertTrue(outcome is BodyOutcome.Cancelled) {
+                "unknown BodyRef must remain typed (Cancelled), never invoke a phantom runner."
+            }
+            assertEquals(CancellationReason.ParentCancelled, (outcome as BodyOutcome.Cancelled).reason)
+        }
+
+        @Test
+        fun `open is bounded by close — invoking after close yields Cancelled`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val ref = refAt(path(0 to "core.dir"))
+            adapter.open(ref) { StepOutcome.Success }
+            assertEquals(1, adapter.openBodyCount)
+            adapter.close(ref)
+            assertEquals(0, adapter.openBodyCount)
+            val outcome = adapter.invoke(ref, BodyInvocationContext())
+            assertTrue(outcome is BodyOutcome.Cancelled) {
+                "after close the BodyRef is unreachable; lifecycle bracket is enforced."
+            }
+        }
+
+        @Test
+        fun `nested BodyInvoker calls under different contexts remain bounded`() = runBlocking {
+            val adapter = CanonicalBodyInvokerAdapter()
+            val outer = refAt(path(0 to "core.dir"))
+            val inner = refAt(path(0 to "core.dir", 1 to "core.retry"))
+            val innerAttemptsSeen = mutableListOf<Int>()
+            adapter.open(inner) { ctx ->
+                innerAttemptsSeen += ctx.attempt?.index ?: 0
+                StepOutcome.Success
+            }
+            adapter.open(outer) { _ ->
+                // The outer runner invokes the inner through the same adapter —
+                // exactly the re-entry pattern RetryEngine / WaitUntilEngine /
+                // ParallelStageEngine will use.
+                adapter.invoke(inner, BodyInvocationContext(attempt = AttemptSegment(index = 1)))
+                adapter.invoke(inner, BodyInvocationContext(attempt = AttemptSegment(index = 2)))
+                StepOutcome.Success
+            }
+            adapter.invoke(outer, BodyInvocationContext())
+            // The canonical coordinator's finally closes both BodyRefs; we mirror
+            // that here to assert nested re-entry stays bounded.
+            adapter.close(outer)
+            adapter.close(inner)
+            assertEquals(listOf(1, 2), innerAttemptsSeen)
+            assertEquals(0, adapter.openBodyCount) {
+                "after both close, the adapter is empty; nested re-entry stays bounded."
             }
         }
     }

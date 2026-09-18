@@ -1637,10 +1637,18 @@ class CanonicalDurableRunCoordinator(
         // execute its body through the engine exactly as the canonical loop does today.
         // The canonical loop below still drives production execution — the seam is
         // dormant until a registry-driven handler invokes it. The single
-        // shared body-child iteration site (BodyChildLoopInventory) stays inside
-        // `invokeBodyChildren`; this adapter NEVER iterates body children itself.
+        // shared body-child iteration site stays inside `invokeBodyChildren`; this
+        // adapter NEVER iterates body children itself.
+        //
+        // WU-LPR-302 (Phase 1): the runner now receives the [BodyInvocationContext] the
+        // caller hands to [BodyInvoker.invoke], so a single BodyRef can re-execute the
+        // body under different attempt/patch/decorator contexts. Today the canonical
+        // coordinator's loop ignores the context (the canonical loop has its own typed
+        // per-step identity through bodyPath/BlockSegment); future engines (RetryEngine,
+        // WaitUntilEngine, ParallelStageEngine) will pass attempt/patch through the
+        // context to drive per-attempt or per-branch identity.
         val bodyRef = dev.rubentxu.pipeline.v2.domain.step.BodyRefs.childBody(parentBodyPath)
-        bodyInvokerAdapter.open(bodyRef) {
+        bodyInvokerAdapter.open(bodyRef) { _ ->
             invokeBodyChildren(
                 block = block,
                 runId = runId,

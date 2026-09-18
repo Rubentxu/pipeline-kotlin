@@ -1743,18 +1743,35 @@ class CanonicalDurableRunCoordinator(
             // When the journal is NOT bound, the pre-RETRY-D inline loop is preserved
             // bit-equivalent — existing callers and tests see no change.
             if (scope is BlockShellScope.Retry && retryControlJournal != null) {
-                outcome = dispatchRetryAwareBody(
-                    scope = scope,
-                    block = block,
+                // WU-LPR-302 Phase 2: retry aggregate is owned by RetryEngine
+                // (dev.rubentxu.pipeline.v2.application.durable.retry.RetryEngine).
+                // The coordinator hands the body to the engine through the
+                // public BodyInvoker port (the body-ref was opened by the
+                // adapter above); the engine plans, persists, invokes and
+                // folds outcomes, all `StepKey`-blind. The retry legacy loop
+                // (no retryControlJournal) remains bit-equivalent inline below.
+                val controlOpId = dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory.controlOperationId(
+                    runId.value, stageIndex, stepIndex, parentBodyPath,
+                )
+                val fingerprint = computeRetryContractFingerprint(parentBodyPath, scope)
+                val retryEngine = dev.rubentxu.pipeline.v2.application.durable.retry.RetryEngine(
+                    journal = retryControlJournal,
+                    eventSink = eventSink,
+                    bodyInvoker = bodyInvokerAdapter,
+                    identity = dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity(
+                        operationId = controlOpId,
+                    ),
+                    controlOpId = controlOpId,
+                    parentBodyPath = parentBodyPath,
+                    fingerprint = fingerprint,
+                    maxAttempts = scope.maxAttempts,
                     runId = runId,
                     stageIndex = stageIndex,
                     stepIndex = stepIndex,
-                    stageName = stageName,
-                    stageShOptions = stageShOptions,
-                    parentBodyPath = parentBodyPath,
-                    childShOptions = childShOptions,
-                    executionContext = contextInBody,
+                    blockId = block.id,
+                    blockPluginStepId = block.pluginStepId,
                 )
+                outcome = retryEngine.execute(bodyRef)
             } else if (scope is BlockShellScope.WaitUntilScope) {
                 // WU-G5R.3: waitUntil polls the condition body until it succeeds (exit 0)
                 // or the backoff ceiling is exceeded.  Each poll is one body invocation with
@@ -1960,7 +1977,7 @@ class CanonicalDurableRunCoordinator(
 
             // WU-G5R.5: durable waitUntil loop via WaitUntilReconciler.
             //
-            // Algorithm (mirrors dispatchRetryAwareBody):
+            // Algorithm (mirrors the durable retry loop now owned by RetryEngine):
             //   1. Plan via WaitUntilReconciliationDriver — pure read of the journal.
             //   2. Branch on WaitUntilReconciliationDecision:
             //      - ScheduleAttempt(n) / ResumeAttempt(n): persist RUNNING, emit WaitUntilPolled,
@@ -2356,202 +2373,6 @@ class CanonicalDurableRunCoordinator(
         }
     }
 
-    /**
-     * RETRY-D (ADR-0075): dispatch the body of a `core.retry` block under the durable
-     * control journal. The single-writer law applies: this function is the only path
-     * that mutates [FileBasedRetryControlJournal] for the retry aggregate; the driver
-     * is plan-only.
-     *
-     * Algorithm:
-     *   1. Plan via [RetryReconciliationDriver] — a pure read of the journal.
-     *   2. Branch on [RetryReconciliationDecision]:
-     *      - Terminal (ReuseSuccess / ReuseFailure / CloseSuccessFromChild /
-     *        RejectDivergence): return the corresponding StepOutcome.
-     *      - ScheduleAttempt(n) / ResumeAttempt(n): persist RUNNING, dispatch the body
-     *        children, persist SUCCEEDED / FAILED, and re-plan.
-     *      - AdvanceAfterFailure(from, to): persist the new attempt row, re-plan.
-     *
-     * The loop is bounded by [scope.maxAttempts] + 1 ticks to guarantee progress.
-     */
-    private suspend fun dispatchRetryAwareBody(
-        scope: BlockShellScope.Retry,
-        block: BlockStepNode,
-        runId: RunId,
-        stageIndex: Int,
-        stepIndex: Int,
-        stageName: String,
-        stageShOptions: ShOptions,
-        parentBodyPath: List<BlockSegment>,
-        childShOptions: ShOptions,
-        executionContext: ExecutionContext,
-    ): StepOutcome {
-        val journal = retryControlJournal ?: return StepOutcome.Failure(
-            PipelineFailure(
-                dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
-                "retry control journal not bound",
-            ),
-        )
-        val controlOpId = RetryIdentityFactory.controlOperationId(runId.value, stageIndex, stepIndex, parentBodyPath)
-        val fingerprint = computeRetryContractFingerprint(parentBodyPath, scope)
-        val driver = RetryReconciliationDriver(
-            journal = journal,
-            identity = dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity(operationId = controlOpId),
-            controlOpId = controlOpId,
-            parentBodyPath = parentBodyPath,
-            fingerprint = fingerprint,
-            maxAttempts = scope.maxAttempts,
-            runId = runId.value,
-            stageIndex = stageIndex,
-            stepIndex = stepIndex,
-        )
-
-        var budget = scope.maxAttempts + 1
-        while (budget-- > 0) {
-            val decision = driver.plan()
-            when (decision) {
-                is RetryReconciliationDecision.ReuseSuccess -> return StepOutcome.Success
-                is RetryReconciliationDecision.ReuseFailure -> return StepOutcome.Failure(
-                    PipelineFailure(
-                        FailureKind.SCRIPT,
-                        "retry aggregate terminal failure at attempt ${decision.attempt}",
-                    ),
-                )
-                is RetryReconciliationDecision.CloseSuccessFromChild -> {
-                    journal.updateStatus(controlOpId, decision.attempt, OperationStatus.SUCCEEDED, fingerprint)
-                    return StepOutcome.Success
-                }
-                is RetryReconciliationDecision.RejectDivergence -> return StepOutcome.Failure(
-                    PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
-                        "retry control fingerprint divergence: ${decision.reason}",
-                    ),
-                )
-                is RetryReconciliationDecision.ScheduleAttempt,
-                is RetryReconciliationDecision.ResumeAttempt -> {
-                    val attempt = when (decision) {
-                        is RetryReconciliationDecision.ScheduleAttempt -> decision.attempt
-                        is RetryReconciliationDecision.ResumeAttempt -> decision.attempt
-                        else -> error("unreachable: handled by outer when")
-                    }
-                    journal.beginAttempt(controlOpId, attempt, fingerprint, OperationStatus.RUNNING)
-                    eventSink.append(
-                        dev.rubentxu.pipeline.v2.events.RetryAttemptStarted(
-                            eventId = UUID.randomUUID().toString(),
-                            runId = runId.value,
-                            sequence = 0L,
-                            occurredAt = Instant.now(),
-                            attemptNumber = attempt,
-                            maxAttempts = scope.maxAttempts,
-                            stepName = block.id.value,
-                            stepType = block.pluginStepId.value,
-                            stageIndex = stageIndex,
-                            stepIndex = stepIndex,
-                        ),
-                    )
-                    val attemptSegment = listOf(BlockSegment(attempt, PluginStepId("retry-attempt")))
-                    val attemptBasePath = parentBodyPath + attemptSegment
-
-                    val attemptOutcome = invokeBodyChildren(
-                        block,
-                        runId,
-                        stageName,
-                        stageIndex,
-                        stepIndex,
-                        childShOptions,
-                        attemptBasePath,
-                        executionContext,
-                    )
-
-                    when (attemptOutcome) {
-                        is StepOutcome.Success -> {
-                            persistAttemptTerminalTransition(
-                                controlOpId, attempt, OperationStatus.SUCCEEDED, fingerprint,
-                                parentBodyPath, runId, stageIndex, stepIndex, block, scope,
-                            )
-                            return StepOutcome.Success
-                        }
-                        is StepOutcome.Unstable -> {
-                            persistAttemptTerminalTransition(
-                                controlOpId, attempt, OperationStatus.FAILED, fingerprint,
-                                parentBodyPath, runId, stageIndex, stepIndex, block, scope,
-                            )
-                            return attemptOutcome
-                        }
-                        is StepOutcome.Failure -> {
-                            persistAttemptTerminalTransition(
-                                controlOpId, attempt, OperationStatus.FAILED, fingerprint,
-                                parentBodyPath, runId, stageIndex, stepIndex, block, scope,
-                            )
-                            if (attempt >= scope.maxAttempts) return attemptOutcome
-                            // Loop again: the driver will emit AdvanceAfterFailure or ReuseFailure.
-                        }
-                    }
-                }
-                is RetryReconciliationDecision.AdvanceAfterFailure -> {
-                    journal.beginAttempt(controlOpId, decision.to, fingerprint, OperationStatus.RUNNING)
-                    // Loop again: the driver will emit ScheduleAttempt(decision.to).
-                }
-            }
-        }
-        return StepOutcome.Failure(
-            PipelineFailure(
-                dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
-                "retry reconciliation loop exceeded budget (${scope.maxAttempts})",
-            ),
-        )
-    }
-
-    /**
-     * E-EM-11 T2.1: project a retry attempt's terminal durable transition.
-     * Persists the terminal status via the control journal and emits
-     * [RetryAttemptFinished] only when the transition actually occurred
-     * (RUNNING -> FAILED / RUNNING -> SUCCEEDED). Re-terminaling an attempt
-     * that is already in the requested terminal state is a no-op: no event.
-     * Replay paths (ReuseSuccess / ReuseFailure / CloseSuccessFromChild) do
-     * not route through here, so replay never fabricates extra events.
-     */
-    private fun persistAttemptTerminalTransition(
-        controlOpId: String,
-        attempt: Int,
-        status: OperationStatus,
-        fingerprint: Fingerprint,
-        parentBodyPath: List<BlockSegment>,
-        runId: RunId,
-        stageIndex: Int,
-        stepIndex: Int,
-        block: BlockStepNode,
-        scope: BlockShellScope.Retry,
-    ) {
-        val priorStatus = retryControlJournal?.readState(
-            controlOpId, runId.value, stageIndex, stepIndex,
-            parentBodyPath = parentBodyPath,
-            maxAttempts = scope.maxAttempts,
-            currentFingerprint = fingerprint,
-        )?.controlRows?.firstOrNull { it.attempt == attempt }?.status
-        retryControlJournal?.updateStatus(controlOpId, attempt, status, fingerprint)
-        val transitioned = priorStatus == null || priorStatus != status
-        if (!transitioned) return
-        val outcomeText = when (status) {
-            OperationStatus.SUCCEEDED -> "succeeded"
-            OperationStatus.FAILED -> "failed"
-            else -> error("persistAttemptTerminalTransition requires a terminal status, got $status")
-        }
-        eventSink.append(
-            dev.rubentxu.pipeline.v2.events.RetryAttemptFinished(
-                eventId = UUID.randomUUID().toString(),
-                runId = runId.value,
-                sequence = 0L,
-                occurredAt = Instant.now(),
-                attemptNumber = attempt,
-                maxAttempts = scope.maxAttempts,
-                stepName = block.id.value,
-                stepType = block.pluginStepId.value,
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                outcome = outcomeText,
-            ),
-        )
-    }
 
     /**
      * RETRY-D: deterministic fingerprint of a retry aggregate's contract.

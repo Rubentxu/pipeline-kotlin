@@ -1,5 +1,25 @@
 
 
+## Active Change — STOP (operador pidió pausa) 2026-09-18
+
+**Status: ESPERANDO_INSTRUCCIONES.** Operador pidió parar y esperar nuevas instrucciones tras pivote de plan-b (cherry-pick a rama divergente NO cumple "integrado en trunk").
+
+**Estado del sistema al parar**:
+  - `main` (origin): `9f0b1e28` limpio, sin tocar
+  - `cycle/wu-g5b`: HEAD `f0eeaa6e`, ya pusheado, tag `xca2-audit-2026-09-17` publicado
+  - `cycle/lfc2-arch-convergence`: HEAD `f8a5a57f`, 98 ahead, NO mergeada. Cambios sucios descartados (WIP del operador anterior).
+  - Backup local: `backup/convergente-pre-merge-2026-09-18` (no pusheado)
+  - Stash preservado en worktree convergente (`stash@{0}` = WIP WU-G5B del operador)
+  - Working tree `main`: limpio
+  - gradle daemons residuales del usuario: dejados vivos (no son míos)
+
+**Lo que NO se hizo** (a propósito, por el stop):
+  - cherry-pick de pure-docs a una rama basada en main (esperaba GO)
+  - diseño del nuevo roadmap actualizado (esperaba tu criterio sobre Q1/Q2/Q3)
+  - archive doc de la convergente vieja (esperaba GO)
+
+**Próximo paso**: decisión del operador sobre nuevo roadmap actualizado. Sin acción irreversible en este intervalo.
+
 ## Active Change — LFC-2R / R2 core.isUnix scripted runtime consumer (2026-09-11)
 
 **Status: IMPLEMENTED, VALIDATED, COMMITTED.** R2 done; STOP before R3 (compiler/source mapping) or S2-A5/G3 — user decision pending.

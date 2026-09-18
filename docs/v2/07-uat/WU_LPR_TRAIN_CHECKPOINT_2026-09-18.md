@@ -138,6 +138,40 @@ DEFERRED slices from earlier WUs:
   Conclude `NO PRODUCTION CHANGE REQUIRED` if WU-LPR-402's
   types/scopes/fitness already close the escape possibility.
 
+## 5b. WU-LPR-080A — SDKMAN Vendor Onboarding (administrative, parallel)
+
+Split from `WU-LPR-080` so the external-dependency long pole (SDKMAN
+maintainer approval) starts NOW instead of blocking the release train
+in a few weeks. No code; admin only.
+
+```text
+[ ] candidate name confirmed: pipelinek (not in public catalog yet;
+    final acceptance is SDKMAN's)
+[ ] GPG keypair created; public armored key exported
+[ ] SDK archive shape validated against SDKMAN "well-formed" rules:
+      pipelinek-<version>.zip
+      ├── bin/pipelinek          (executable bit preserved in ZIP)
+      ├── lib/*.jar
+      └── LICENSE
+    UNIVERSAL distribution (JVM launcher + JARs, no native binaries)
+[ ] PR opened against sdkman/sdkman-db-migrations (candidate
+    registration only — no versions)
+[ ] candidate accepted -> shows "Coming Soon!"
+[ ] public key sent to info@sdkman.io; Vendor API credentials received
+[ ] GitHub secrets configured: SDKMAN_CONSUMER_KEY, SDKMAN_CONSUMER_TOKEN
+```
+
+`WU-LPR-080` remains the technical publication WU: canonical
+`pipelinek-<version>.zip` -> SHA-256 + SBOM -> GitHub Release ->
+SDKMAN Vendor API release (official GitHub Action with checksum) ->
+`sdk install pipelinek <version>`. Release rule preserved:
+
+```text
+ZIP tested = ZIP attached to GitHub Release = ZIP URL given to SDKMAN
+```
+
+No recompilation for SDKMAN. Same artifact end-to-end.
+
 ---
 
 ## 6. Build / test evidence (fresh, 2026-09-18)

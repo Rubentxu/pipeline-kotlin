@@ -58,6 +58,7 @@ class Lpr040ObservationHarnessTest {
     }
 
     private fun verifyRunIntegrity(store: SqliteEventStore, runId: String): Triple<Int, Long, Int> {
+        store.flush() // visibility barrier: enqueued appends become readable
         val all = store.eventsFor(runId).toList()
         val seqs = all.map { it.sequence }
         val unique = seqs.toSet()
@@ -136,7 +137,9 @@ class Lpr040ObservationHarnessTest {
         val s1 = SqliteEventStore(dbPath.toString())
         repeat(n) { i -> s1.append(newStageStarted(runId, name = "a$i")) }
         s1.close()
-        val (_, maxBefore, _) = verifyRunIntegrity(SqliteEventStore(dbPath.toString()).also { it.close() }, runId)
+        val probeStore = SqliteEventStore(dbPath.toString())
+        val (_, maxBefore, _) = verifyRunIntegrity(probeStore, runId)
+        probeStore.close()
         // Phase B: reopen fresh store, append n more to same runId.
         val s2 = SqliteEventStore(dbPath.toString())
         repeat(n) { i -> s2.append(newStageStarted(runId, name = "b$i")) }

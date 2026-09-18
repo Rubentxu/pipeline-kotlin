@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema
 import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
 import java.sql.Connection
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -31,6 +32,42 @@ import java.util.concurrent.atomic.AtomicLong
 class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
+
+    // ------------------------------------------------------------------
+    // WU-LPR-042: persistent connection + single-writer batched appends.
+    //
+    // Overload policy (explicit, honest): appends enqueue on a bounded
+    // queue drained by ONE writer thread that commits in batches inside a
+    // single transaction. If the queue fills (producer outpacing durable
+    // writer), append() BLOCKS — bounded + lossless; silent loss is not an
+    // option. The durable unit is the SQLite COMMIT (WAL, synchronous=
+    // NORMAL: durable under process crash). flush() is a barrier: blocks
+    // until every enqueued event is committed.
+    // ------------------------------------------------------------------
+
+    /**
+     * Closed ADT for the single-writer queue: each case carries only what
+     * it needs (no nullable-sentinel DomainEvent, no flag bag).
+     */
+    private sealed interface PendingWrite {
+        /** A real event to insert. */
+        data class Event(val event: DomainEvent) : PendingWrite
+
+        /** Barrier: released after every prior entry is committed. */
+        data class FlushBarrier(val done: java.util.concurrent.CountDownLatch) : PendingWrite
+
+        /** Terminal: stop the writer loop. */
+        data object Stop : PendingWrite
+    }
+
+    private val appendQueue = java.util.concurrent.ArrayBlockingQueue<PendingWrite>(10_000)
+    private lateinit var writerThread: Thread
+    @Volatile private var writerError: Throwable? = null
+
+    // Prepared once on the persistent writer connection; created in init
+    // AFTER schema creation (the table must exist first).
+    private val writerConnection: Connection = freshConnection()
+    private lateinit var insertStatement: java.sql.PreparedStatement
 
     private fun freshConnection(): Connection =
         SqliteConnectionFactory.open(file)
@@ -78,6 +115,14 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         // Without this, a fresh store instance restarts sequences at 1 and
         // duplicates the history of any run already present in the DB.
         seedSequenceCounters()
+        // WU-LPR-042: prepare the insert on the persistent connection and
+        // start the single writer.
+        insertStatement = writerConnection.prepareStatement(
+            "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        writerThread = Thread({ writerLoop() }, "sqlite-event-writer")
+        writerThread.isDaemon = false
+        writerThread.start()
     }
 
     /**
@@ -148,22 +193,20 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     override fun append(event: DomainEvent) {
-        val conn = freshConnection()
-        try {
-            // Assign per-runId sequence like InMemoryEventStore does
-            val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
-            val assignedSequence = if (event.sequence == 0L) {
-                counter.incrementAndGet()
-            } else {
-                val current = counter.get()
-                if (event.sequence > current) {
-                    counter.set(event.sequence)
-                }
-                event.sequence
+        writerError?.let { throw IllegalStateException("event writer failed earlier", it) }
+        // Assign per-runId sequence eagerly (monotonic per run; LPR-041
+        // counters seeded from durable truth at construction).
+        val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
+        val assignedSequence = if (event.sequence == 0L) {
+            counter.incrementAndGet()
+        } else {
+            val current = counter.get()
+            if (event.sequence > current) {
+                counter.set(event.sequence)
             }
-
-            // Create event with assigned sequence (same pattern as InMemoryEventStore)
-            val eventWithSequence = when (event) {
+            event.sequence
+        }
+        val eventWithSequence = when (event) {
                 is RunStarted -> event.copy(sequence = assignedSequence)
                 is CompilationStarted -> event.copy(sequence = assignedSequence)
                 is CompilationFinished -> event.copy(sequence = assignedSequence)
@@ -211,20 +254,90 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
             }
 
-            conn.prepareStatement(
-                "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
-            ).use { ps ->
-                ps.setString(1, event.eventId)
-                ps.setString(2, event.runId)
-                ps.setLong(3, assignedSequence)
-                ps.setString(4, event.kind)
-                ps.setString(5, event.occurredAt.toString())
-                ps.setString(6, JsonEventLog.encode(listOf(eventWithSequence)))
-                ps.executeUpdate()
+            // Enqueue for the single writer. Bounded queue: blocks when full
+            // (documented overload policy — lossless, backpressure to producer).
+            try {
+                appendQueue.put(PendingWrite.Event(eventWithSequence))
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw IllegalStateException("interrupted while enqueueing event append", e)
             }
-        } finally {
-            conn.close()
+    }
+
+    /**
+     * Single-writer loop: drains the bounded queue in batches, inserting
+     * every batch inside ONE transaction. The COMMIT is the durable unit.
+     * On failure, records [writerError] and releases all waiters; later
+     * appends fail fast.
+     */
+    private fun writerLoop() {
+        val batch = ArrayList<PendingWrite>(256)
+        while (true) {
+            try {
+                val first = appendQueue.take() // blocks; Stop ends loop
+                if (first is PendingWrite.Stop) {
+                    return
+                }
+                batch.add(first)
+                appendQueue.drainTo(batch, 511)
+                writerConnection.autoCommit = false
+                try {
+                    for (pending in batch) {
+                        when (pending) {
+                            is PendingWrite.Event -> {
+                                bindInsert(insertStatement, pending.event)
+                                insertStatement.executeUpdate()
+                            }
+                            is PendingWrite.FlushBarrier, PendingWrite.Stop -> {} // handled post-commit
+                        }
+                    }
+                    writerConnection.commit()
+                    for (pending in batch) {
+                        if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
+                    }
+                } catch (e: Throwable) {
+                    writerConnection.rollback()
+                    writerError = e
+                    for (pending in batch) {
+                        if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
+                    }
+                    throw e
+                } finally {
+                    writerConnection.autoCommit = true
+                    batch.clear()
+                }
+            } catch (e: InterruptedException) {
+                return
+            }
         }
+    }
+
+    private fun bindInsert(ps: java.sql.PreparedStatement, event: DomainEvent) {
+        ps.setString(1, event.eventId)
+        ps.setString(2, event.runId)
+        ps.setLong(3, event.sequence)
+        ps.setString(4, event.kind)
+        ps.setString(5, event.occurredAt.toString())
+        ps.setString(6, JsonEventLog.encode(listOf(event)))
+    }
+
+    /**
+     * Flush barrier: blocks until every event enqueued BEFORE this call is
+     * durably committed. Implemented with a one-shot latch carried through
+     * the queue behind the pending events (ordering guarantee of the
+     * single writer).
+     */
+    fun flush() {
+        writerError?.let { throw IllegalStateException("event writer failed", it) }
+        val barrier = java.util.concurrent.CountDownLatch(1)
+        try {
+            appendQueue.put(PendingWrite.FlushBarrier(barrier))
+            check(barrier.await(60, TimeUnit.SECONDS)) { "flush barrier timed out" }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("interrupted during flush", e)
+        }
+        writerError?.let { throw IllegalStateException("event writer failed during flush", it) }
     }
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> {
@@ -249,18 +362,29 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * Closes this store.
-     *
-     * This is a no-op because each operation uses a fresh connection that
-     * auto-commits and closes immediately. Keeping a long-lived connection
-     * open would not improve performance for this use pattern.
-     *
-     * This class implements [AutoCloseable] to support use-with-resources
-     * (`use { }`) patterns, but callers do not need to invoke this method
-     * for correct operation.
+     * Closes the store: flush barrier, then stops the writer and releases
+     * the persistent connection. Close is idempotent.
      */
+    @Volatile private var closed = false
+    private val closeLock = Any()
+
     override fun close() {
-        // No-op: we use fresh connections per operation.
+        synchronized(closeLock) {
+            if (closed) return
+            closed = true
+        }
+        try {
+            flush()
+        } finally {
+            try {
+                appendQueue.put(PendingWrite.Stop)
+                writerThread.join(10_000)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            runCatching { insertStatement.close() }
+            runCatching { writerConnection.close() }
+        }
     }
 
     /**

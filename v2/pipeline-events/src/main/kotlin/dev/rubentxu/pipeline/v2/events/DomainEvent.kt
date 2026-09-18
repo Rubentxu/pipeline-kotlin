@@ -504,6 +504,26 @@ data class FileRead(
 }
 
 /**
+ * Emitted when a fileExists step executes (WU-LPR-104).
+ *
+ * Payload restricted to path + exists flag — no content, no bytes.
+ * Single emitter: the workspace-operations application adapter.
+ *
+ * @param path Resolved absolute path checked
+ * @param exists Whether the file exists (path guard may force false)
+ */
+data class FileExistsChecked(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: java.nio.file.Path,
+    val exists: Boolean,
+) : DomainEvent {
+    override val kind: String get() = "FileExistsChecked"
+}
+
+/**
  * Emitted when archiveArtifacts completes successfully.
  *
  * ONE event per call (not per file) — INV-L6-ARC-006 journal hygiene.

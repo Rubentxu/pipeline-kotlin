@@ -264,6 +264,12 @@ object JsonEventLog {
                     sb.append(event.size)
                 }
             }
+            is FileExistsChecked -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path.toString()))
+                sb.append(",\"exists\":")
+                sb.append(event.exists)
+            }
             is ArtifactArchived -> {
                 sb.append(",\"files\":[")
                 event.files.forEachIndexed { idx, entry ->
@@ -822,6 +828,19 @@ object JsonEventLog {
                     path = path,
                     sha256 = sha256,
                     size = size,
+                )
+            }
+            "FileExistsChecked" -> {
+                val pathStr = stringField(s, "path") ?: ""
+                val path = java.nio.file.Paths.get(pathStr)
+                val exists = boolField(s, "exists") ?: false
+                FileExistsChecked(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    exists = exists,
                 )
             }
             "ArtifactArchived" -> {

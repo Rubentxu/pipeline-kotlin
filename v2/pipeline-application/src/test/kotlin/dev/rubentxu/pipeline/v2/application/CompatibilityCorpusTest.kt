@@ -11,7 +11,11 @@ import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.Zip
+import dev.rubentxu.pipeline.v2.events.FileExistsChecked
+import dev.rubentxu.pipeline.v2.events.FileRead
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -104,6 +108,48 @@ class CompatibilityCorpusTest {
      * Run a fixture classified HISTORICAL that fails at COMPILE time with a
      * typed diagnostic (not silently and not with an unrelated crash).
      */
+    /**
+     * WU-LPR-104: core.readFile / core.fileExists live fixture. Beyond pass/fail,
+     * asserts the typed observability contract:
+     *  - a FileRead event is emitted with sha256+size, NEVER file content;
+     *  - a FileExistsChecked event is emitted for both the present and missing file;
+     *  - exists=false for the missing file is a legitimate SUCCESS (Jenkins predicate
+     *    semantics), so the run still finishes green.
+     */
+    @Test
+    fun fixture23ReadFile() {
+        val name = "23-readfile.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+
+        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+
+        assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}" }
+        val events = JsonEventLog.decode(stdout)
+        assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
+
+        val fileRead = events.filterIsInstance<FileRead>().singleOrNull()
+            ?: fail("Fixture $name must emit exactly one FileRead event; got ${events.map { it.kind }}")
+        assertTrue(fileRead.path.toString().endsWith("lpr104-readme.txt")) { "FileRead path: ${fileRead.path}" }
+        assertNotNull(fileRead.sha256) { "FileRead must carry sha256" }
+        assertTrue((fileRead.size ?: 0L) > 0L) { "FileRead must carry positive size" }
+
+        val existsChecked = events.filterIsInstance<FileExistsChecked>()
+        assertEquals(2, existsChecked.size) { "Fixture $name must emit two FileExistsChecked events" }
+        assertTrue(existsChecked.any { it.exists && it.path.toString().endsWith("lpr104-readme.txt") })
+        assertTrue(existsChecked.any { !it.exists && it.path.toString().endsWith("lpr104-missing.txt") })
+
+        // INV-L6-EVT-001: file content never enters the event channel.
+        val serialized = events.joinToString("\n") { it.kind + " " + it.toString() }
+        assertTrue(!serialized.contains("hello-lpr-104")) { "File content leaked into the event channel" }
+    }
+
     private fun runFixtureCompileFail(name: String) {
         val path = fixture(name)
         val appBin = AppBinSupport.discover()
@@ -285,7 +331,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(21, fixtures.size, "Corpus must have 21 valid fixtures (WU-G5R6 added 22-wait-until; 07 and 99 moved to broken/)")
+        assertEquals(22, fixtures.size, "Corpus must have 22 valid fixtures (WU-G5R6 added 22-wait-until; WU-LPR-104 added 23-readfile; 07 and 99 moved to broken/)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))

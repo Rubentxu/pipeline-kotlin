@@ -50,6 +50,7 @@ class InMemoryEventStore : EventSink {
             // L7 Jenkins File + Artefact Events (ML-R7)
             is FileWritten -> event.copy(sequence = assignedSequence)
             is FileRead -> event.copy(sequence = assignedSequence)
+            is FileExistsChecked -> event.copy(sequence = assignedSequence)
             is ArtifactArchived -> event.copy(sequence = assignedSequence)
             is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
             // ML-R9 workflow-control events

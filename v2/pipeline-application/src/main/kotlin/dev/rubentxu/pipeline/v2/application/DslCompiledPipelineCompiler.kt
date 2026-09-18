@@ -655,6 +655,17 @@ object DslCompiledPipelineCompiler {
                     put("text", step.text)
                     put("encoding", step.encoding)
                 }
+                // WU-LPR-104: canonical envelopes byte-identical to the registry
+                // input codecs (CoreReadFileStep / CoreFileExistsStep).
+                is StepSpec.ReadFile -> {
+                    put("kind", "readFile")
+                    put("file", step.file)
+                    put("encoding", step.encoding)
+                }
+                is StepSpec.FileExists -> {
+                    put("kind", "fileExists")
+                    put("file", step.file)
+                }
                 is StepSpec.CatchError -> {
                     put("kind", "catchError")
                     put("buildResult", step.buildResult ?: "")

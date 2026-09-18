@@ -52,7 +52,7 @@ UNSUPPORTED    The DSL fun exists; no StepDefinition is registered for the
 
 ## 3. Core Step surface (registry-routed)
 
-All 14 core Steps registered in `CoreStepRegistryFactory` route through
+All 16 core Steps registered in `CoreStepRegistryFactory` route through
 the open `StepRegistry` family. `LEGACY_PLUGIN_IDS = ∅` (WU-LPR-301).
 
 | StepKey | StepDescriptor.effects / replay / recovery | Cert | Status |
@@ -62,6 +62,8 @@ the open `StepRegistry` family. `LEGACY_PLUGIN_IDS = ∅` (WU-LPR-301).
 | `core.error`             | ABORTS_PIPELINE / NEVER / —                | S2-A1 G8 CERTIFIED | **SUPPORTED** |
 | `core.sleep`             | READ_ONLY / MEMOIZED / —                   | S2-A2 G8 CERTIFIED | **SUPPORTED** |
 | `core.file.writeFile`    | WRITES_WORKSPACE / MEMOIZED / —            | S2-A3 G8 CERTIFIED | **SUPPORTED** |
+| `core.readFile`          | READ_ONLY / MEMOIZED / —                   | WU-LPR-104 CERTIFIED | **SUPPORTED** (workspace seam + FileRead event; content never in events, INV-L6-EVT-001) |
+| `core.fileExists`        | READ_ONLY / MEMOIZED / —                   | WU-LPR-104 CERTIFIED | **SUPPORTED** (predicate semantics: exists=false is success; FileExistsChecked event) |
 | `core.emit.event`        | READ_ONLY / MEMOIZED / —                   | S2-A4 G8 CERTIFIED | **SUPPORTED** |
 | `core.isUnix`            | READ_ONLY / MEMOIZED / —                   | S2-A5 G8 CERTIFIED | **SUPPORTED** |
 | `core.pwd`               | READ_ONLY / MEMOIZED / —                   | S2-A6 G8 CERTIFIED | **SUPPORTED** |

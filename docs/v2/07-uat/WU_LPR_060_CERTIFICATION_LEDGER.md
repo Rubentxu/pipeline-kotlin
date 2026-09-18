@@ -1,11 +1,11 @@
 # WU-LPR-060 — Certification Ledger (GENERATED)
 
-Generated: 2026-09-18T21:25:05+00:00 by `scripts/gen-certification-ledger.py`.
+Generated: 2026-09-18T22:03:05+00:00 by `scripts/gen-certification-ledger.py`.
 Single authority for counts. DO NOT edit counts by hand — regenerate.
 
 ## 1. Registered core Steps (from `CoreStepRegistryFactory`)
 
-Registered core StepDefinitions: **14**
+Registered core StepDefinitions: **16**
 
 | StepKey | Registered class | Admission (032) | Certification |
 |---|---|---|---|
@@ -16,15 +16,17 @@ Registered core StepDefinitions: **14**
 | `core.emit.event` | `CoreEmitEventStep` | **SUPPORTED** | S2-A4 G8 CERTIFIED |
 | `core.error` | `CoreErrorStep` | **SUPPORTED** | S2-A1 G8 CERTIFIED |
 | `core.file.writeFile` | `CoreWriteFileStep` | **SUPPORTED** | S2-A3 G8 CERTIFIED |
+| `core.fileExists` | `CoreFileExistsStep` | **SUPPORTED** | WU-LPR-104 CERTIFIED |
 | `core.isUnix` | `CoreIsUnixStep` | **SUPPORTED** | S2-A5 G8 CERTIFIED |
 | `core.milestone` | `CoreMilestoneStep` | **SUPPORTED** | S2-A9 G8 CERTIFIED |
 | `core.pwd` | `CorePwdStep` | **SUPPORTED** | S2-A6 G8 CERTIFIED |
 | `core.pwd.tmp` | `CorePwdTmpStep` | **EXPERIMENTAL** | S2-A6 G3T CERTIFIED |
+| `core.readFile` | `CoreReadFileStep` | **SUPPORTED** | WU-LPR-104 CERTIFIED |
 | `core.sh` | `CoreShellStep` | **SUPPORTED** | S6 G8 CERTIFIED |
 | `core.sleep` | `CoreSleepStep` | **SUPPORTED** | S2-A2 G8 CERTIFIED |
 | `core.waitUntil` | `CoreWaitUntilStep` | **SUPPORTED** | S2-A8 G3R CERTIFIED |
 
-- SUPPORTED_CERTIFIED: **13**
+- SUPPORTED_CERTIFIED: **15**
 - EXPERIMENTAL: **1** (`core.pwd.tmp`)
 - SUPPORTED_NOT_CERTIFIED: 0 (none: every SUPPORTED key carries a G-receipt CERTIFIED provenance in 032)
 - DEFERRED / UNSUPPORTED registered Steps: 0
@@ -54,6 +56,7 @@ Registered core StepDefinitions: **14**
 | `20-pwd-tmp.pipeline.kts` | `core.echo`, `core.pwd`, `core.pwd.tmp`, `core.sh` |
 | `21-milestone.pipeline.kts` | `core.echo`, `core.error`, `core.milestone` |
 | `22-wait-until.pipeline.kts` | `core.echo`, `core.sh`, `core.waitUntil` |
+| `23-readfile.pipeline.kts` | `core.echo`, `core.file.writeFile`, `core.fileExists`, `core.readFile` |
 
 Fixture verdicts (WU-LPR-103): 21 LIVE + 1 HISTORICAL (`05-scripted-if`, compile-reject pin); corpus gate 22/22 green including the typed-fail-close pin.
 

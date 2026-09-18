@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.events.DirDeleted
 import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.events.FileExistsChecked
 import dev.rubentxu.pipeline.v2.events.FileRead
 import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
@@ -68,6 +69,7 @@ internal object SequenceAssigner {
         is DirExited -> event.copy(sequence = sequence)
         is EchoOutputCaptured -> event.copy(sequence = sequence)
         is FileRead -> event.copy(sequence = sequence)
+        is FileExistsChecked -> event.copy(sequence = sequence)
         is FileWritten -> event.copy(sequence = sequence)
         is GitCheckoutCompleted -> event.copy(sequence = sequence)
         is GitCheckoutFailed -> event.copy(sequence = sequence)

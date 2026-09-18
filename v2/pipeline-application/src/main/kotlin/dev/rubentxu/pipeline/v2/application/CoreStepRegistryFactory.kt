@@ -55,6 +55,10 @@ object CoreStepRegistryFactory {
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreWriteFileStep.registerInto(this)
+        // WU-LPR-104: readFile / fileExists blocker closure for the LPR certification
+        // checkpoint. Candidate registration through the same open registry seam.
+        CoreReadFileStep.registerInto(this)
+        CoreFileExistsStep.registerInto(this)
         // LFC-2E1 S2-B10 / G1: candidate registration.
         // LFC-2E1 S2-B10 / G4 (2026-09-13): REGISTRY_PRIMARY flip. `core.archiveArtifacts`
         // was removed from LEGACY_PLUGIN_IDS, so StructuralFamilyResolver.classify now

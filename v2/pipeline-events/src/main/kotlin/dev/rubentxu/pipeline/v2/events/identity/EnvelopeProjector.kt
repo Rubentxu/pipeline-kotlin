@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.events.DirEntered
 import dev.rubentxu.pipeline.v2.events.DirExited
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.events.FileExistsChecked
 import dev.rubentxu.pipeline.v2.events.FileRead
 import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
@@ -121,6 +122,7 @@ object EnvelopeProjector {
         is GitPollChanged,
         is FileWritten,
         is FileRead,
+        is FileExistsChecked,
         is ArtifactArchived,
         is ArtifactArchiveFailed,
         is DirEntered,

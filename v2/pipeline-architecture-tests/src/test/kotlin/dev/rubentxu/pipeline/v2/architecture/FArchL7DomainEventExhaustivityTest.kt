@@ -77,13 +77,14 @@ class FArchL7DomainEventExhaustivityTest {
      * 42. TimestampsEntered (ML-R9 T-08)
      * 43. TimestampsExited (ML-R9 T-08)
      * 44. StepAdmissionObserved (S2.5.7 / B1.2c3 — LB-01 spine consolidation, WU-1)
+     * 45. FileExistsChecked (WU-LPR-104 — core.fileExists observability)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_44_variants`() {
+    fun `domain_event_sealed_hierarchy_has_45_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 44
+        val expectedCount = 45 // 44 + FileExistsChecked (WU-LPR-104)
 
         assertEquals(
             expectedCount,

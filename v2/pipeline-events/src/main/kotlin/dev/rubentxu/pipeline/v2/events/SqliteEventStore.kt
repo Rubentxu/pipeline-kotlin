@@ -232,6 +232,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is GitPollChanged -> event.copy(sequence = assignedSequence)
                 is FileWritten -> event.copy(sequence = assignedSequence)
                 is FileRead -> event.copy(sequence = assignedSequence)
+                is FileExistsChecked -> event.copy(sequence = assignedSequence)
                 is ArtifactArchived -> event.copy(sequence = assignedSequence)
                 is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
                 is DirEntered -> event.copy(sequence = assignedSequence)

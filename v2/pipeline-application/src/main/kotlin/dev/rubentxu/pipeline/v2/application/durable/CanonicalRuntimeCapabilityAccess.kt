@@ -96,6 +96,7 @@ open class CanonicalRuntimeCapabilityAccess(
             stageIndex = context.stageIndex,
             controlDirRoot = context.controlDirRoot,
             eventSink = context.eventSink,
+            runId = context.runId,
         )
         builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOps
         // S2-A4 / G1: narrow stage identity (name + index) for handlers needing the current

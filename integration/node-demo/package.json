@@ -1,0 +1,9 @@
+{
+  "name": "node-demo",
+  "version": "1.0.0",
+  "description": "WU-LPR-064: real Node.js project built through pipelinek",
+  "main": "src/app.js",
+  "scripts": {
+    "test": "node --test"
+  }
+}

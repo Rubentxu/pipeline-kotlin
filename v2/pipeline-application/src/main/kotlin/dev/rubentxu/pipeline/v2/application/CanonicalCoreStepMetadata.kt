@@ -30,10 +30,12 @@ object CanonicalCoreStepMetadata {
         // RegistryStepMetadataResolver. This is what makes the registry the pre-decode
         // metadata authority for the key: no legacy row exists to fall back to.
         // S2-B10 / G5 metadata counter converges 3/3/3 -> 2/2/2.
-        "core.load" to StepMetadata(setOf(Effect.EXECUTES_SUBPROCESS), ReplayPolicy.MEMOIZED),
-        // S2-A6 / G5: "core.pwd" row removed (LEGACY_REMOVED). Production metadata is now
-        // read exclusively from CorePwdStep.descriptor via RegistryStepMetadataResolver.
-        "core.waitUntil" to StepMetadata(setOf(Effect.READ_ONLY), ReplayPolicy.MEMOIZED),
+        // WU-LPR-301 / G5 (2026-09-18): "core.load" and "core.waitUntil" rows removed
+        // (LEGACY_REMOVED). Production metadata is read exclusively from the registry
+        // descriptors (CoreWaitUntilStep.descriptor for waitUntil; core.load has no descriptor
+        // because the key is DEFERRED + UNSUPPORTED in local-core-v1). This is what makes the
+        // registry the pre-decode metadata authority for every surviving key.
+        // WU-LPR-301 / G5 metadata counter converges 2/2/2 -> 0/0/0.
     )
 
     /** Durable metadata for a canonical core plugin; fails fast when a plugin id is not registered. */

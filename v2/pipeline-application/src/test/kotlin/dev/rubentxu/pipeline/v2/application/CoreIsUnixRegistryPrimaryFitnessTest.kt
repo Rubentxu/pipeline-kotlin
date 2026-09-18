@@ -149,21 +149,26 @@ class CoreIsUnixRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. Historical S2-A10/G4 and S2-A10/G5
     // snapshots above preserved verbatim for traceability.
+    //
+    // WU-LPR-301 / G5 (2026-09-18): core.load and core.waitUntil retired too. Counter
+    // converges 2/2/2 -> 0/0/0. The pre-WU-LPR-301 snapshot above is preserved verbatim
+    // for traceability; the active post-WU-LPR-301 / G5 property is the empty set.
     @Test
-    fun `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot isUnix stays absent`() {
+    fun `G5 LEGACY_REMOVED post-WU-LPR-301-G5 - core dot isUnix stays absent (closed set)`() {
         assertTrue(
             key.value !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "core.isUnix MUST remain absent from LEGACY_PLUGIN_IDS post-S2-B10/G5 LEGACY_REMOVED of core.archiveArtifacts",
+            "core.isUnix MUST remain absent from LEGACY_PLUGIN_IDS post-WU-LPR-301/G5 LEGACY_REMOVED",
         )
         assertEquals(
-            2,
+            0,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "G5 counter: LEGACY_PLUGIN_IDS converges 3 (post-S2-A10/G5) -> 2 (post-S2-B10/G5, LEGACY_REMOVED closed)",
+            "G5 counter: LEGACY_PLUGIN_IDS converges 2 (post-S2-B10/G5) -> 0 (post-WU-LPR-301/G5, " +
+                "LEGACY_REMOVED closed for the last two keys)",
         )
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "post-S2-B10/G5: the residual is exactly the two keys still awaiting their own G4/G5 lanes",
+            "post-WU-LPR-301/G5: the legacy set is empty — burn-down closed",
         )
     }
 

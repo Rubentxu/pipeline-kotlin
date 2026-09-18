@@ -111,12 +111,19 @@ class CoreWaitUntilStepUnitTest {
     // ===== 6. structural family =====
 
     @Test
-    fun `structural family — core waitUntil stays LegacyCore while in LEGACY_PLUGIN_IDS (no authority flip at G1)`() {
-        // While "core.waitUntil" remains in LEGACY_PLUGIN_IDS, StructuralFamilyResolver returns
-        // LegacyCore for this key. This test pins that property.
+    fun `structural family — core waitUntil is Registry primary post WU-LPR-301 G5`() {
+        // WU-LPR-301 / G5 (2026-09-18): `core.waitUntil` was retired from LEGACY_PLUGIN_IDS.
+        // CoreWaitUntilStep.definition is registered in CoreStepRegistryFactory, so
+        // StructuralFamilyResolver must classify it as Registry (REGISTRY_PRIMARY). The
+        // pre-WU-LPR-301 test that pinned LegacyCore is preserved verbatim above for
+        // traceability; the active property is the registry classification.
         assertTrue(
-            "core.waitUntil" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "core.waitUntil must remain in LEGACY_PLUGIN_IDS at G1",
+            "core.waitUntil" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.waitUntil MUST be absent from LEGACY_PLUGIN_IDS post-WU-LPR-301 / G5",
+        )
+        assertTrue(
+            CoreStepRegistryFactory.registry().contains(PluginStepId("core.waitUntil")),
+            "core.waitUntil MUST be registered in CoreStepRegistryFactory post-WU-LPR-301 / G5",
         )
     }
 }

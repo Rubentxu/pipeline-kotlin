@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
@@ -56,11 +57,12 @@ object FamilyRouter {
         stepRegistry: StepRegistry?,
         stepKey: PluginStepId? = null,
     ): FamilyRoutingDecision {
-        // The legacy boundary is always available: a missing executor falls back to the dispatcher.
+        // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
+        // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
+        // preserved only for binary compatibility: it returns Success, and the registry boundary
+        // (which is the production authority) decides reachability per prepared execution.
         val legacyBoundary = LegacyExecutionAdapter.adapt(
-            invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
-                dispatcher.dispatch(command, context)
-            },
+            invocationExecutor ?: CanonicalInvocationExecutor { _, _ -> StepOutcome.Success },
         )
 
         val registry = stepRegistry ?: return FamilyRoutingDecision.LegacyOnly

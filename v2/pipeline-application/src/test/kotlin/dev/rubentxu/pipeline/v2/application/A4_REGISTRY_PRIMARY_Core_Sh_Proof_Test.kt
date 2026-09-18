@@ -106,17 +106,29 @@ class A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test {
             family,
             "Post-A4: StructuralFamilyResolver MUST classify `core.sh` as Registry",
         )
-        // Negative pin: core.sleep is STILL a legacy core key (proves the flip is surgical,
-        // not a global legacy wipe). core.echo and core.error are also Registry.
-        val legacyFamily = StructuralFamilyResolver.classify(
+        // Negative pin: after WU-LPR-301 / G5 (2026-09-18), NO core plugin is LegacyCore — the
+        // legacy burn-down is closed. Every surviving core plugin routes through the Registry
+        // family. The legacy discriminator is still part of the closed ADT (the StructuralStepFamily
+        // union keeps LegacyCore as a case) but no live plugin key resolves to it.
+        val sleepFamily = StructuralFamilyResolver.classify(
             PluginStepId("core.sleep"),
             registry,
         )
         assertEquals(
-            StructuralStepFamily.LegacyCore,
-            legacyFamily,
-            "core.sleep remains a legacy key (surgical flip on `core.sh` only)",
+            StructuralStepFamily.Registry,
+            sleepFamily,
+            "core.sleep also resolves through Registry post-S2-A2/G5 + WU-LPR-301/G5; the flip " +
+                "is no longer surgical to `core.sh` alone — it covers every surviving core plugin."
         )
+        // Belt-and-braces: every plugin key once in LEGACY_PLUGIN_IDS now classifies as Registry.
+        // (LegacyPluginIds is empty post-WU-LPR-301/G5, so this iterates over nothing — kept as
+        //  the canonical fitness for the post-LEGACY_REMOVED invariant.)
+        for (legacyKey in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS) {
+            val klass = StructuralFamilyResolver.classify(PluginStepId(legacyKey), registry)
+            check(klass != StructuralStepFamily.LegacyCore) {
+                "legacy key $legacyKey MUST NOT classify as LegacyCore post-WU-LPR-301/G5; got $klass"
+            }
+        }
     }
 
     @Test

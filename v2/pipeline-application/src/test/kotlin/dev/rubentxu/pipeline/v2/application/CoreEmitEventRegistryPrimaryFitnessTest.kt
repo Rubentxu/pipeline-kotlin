@@ -170,15 +170,19 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. The historical S2-A10/G4 and
     // S2-A10/G5 snapshots above are preserved verbatim for traceability.
+    //
+    // WU-LPR-301 / G5 (2026-09-18): core.load and core.waitUntil retired too. Counter
+    // converges 2/2/2 -> 0/0/0. The pre-WU-LPR-301 snapshot above is preserved verbatim
+    // for traceability; the active post-WU-LPR-301 / G5 property is the empty set.
     @Test
-    fun `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain`() {
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    fun `G5 LEGACY_REMOVED post-WU-LPR-301-G5 — 0 residual legacy keys remain`() {
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
         assertEquals(
-            setOf(
-                "core.load", "core.waitUntil",
-            ),
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "post-S2-B10/G5: 2 residual legacy keys (core.load, core.waitUntil); core.archiveArtifacts fully removed (LEGACY_REMOVED)",
+            "post-WU-LPR-301/G5: 0 residual legacy keys; core.archiveArtifacts, core.load and " +
+                "core.waitUntil fully removed (LEGACY_REMOVED). The set is empty — the legacy " +
+                "burn-down is closed.",
         )
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
@@ -187,6 +191,14 @@ class CoreEmitEventRegistryPrimaryFitnessTest {
         assertFalse(
             "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.cleanWs MUST NOT be in LEGACY_PLUGIN_IDS post-S2-A10/G5",
+        )
+        assertFalse(
+            "core.load" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.load MUST NOT be in LEGACY_PLUGIN_IDS post-WU-LPR-301/G5",
+        )
+        assertFalse(
+            "core.waitUntil" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
+            "core.waitUntil MUST NOT be in LEGACY_PLUGIN_IDS post-WU-LPR-301/G5",
         )
     }
 

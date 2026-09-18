@@ -157,10 +157,12 @@ sealed interface CanonicalCoreStepCommand {
             //                   production routing authority; the polling cadence is
             //                   declared structurally via BodyExecutionPolicy.Retrying(waitUntil = ...).
             // Both keys fall through to the Registry family in StructuralFamilyResolver.classify
-            // (legacy-membership-wins rule no longer fires; core.waitUntil was already absent
-            // after the REGISTRY_PRIMARY flip; core.load was always absent because no
-            // CoreLoadStep exists). The CanonicalCoreStepMetadata["core.load"] /
-            // ["core.waitUntil"] rows are removed below in this slice.
+            // (legacy-membership-wins rule no longer fires; LEGACY_PLUGIN_IDS is the empty
+            // set). WU-LPR-301 / G5 (2026-09-18): the CanonicalCoreStepMetadata["core.load"]
+            // and ["core.waitUntil"] rows were removed; the table now converges to the empty
+            // set (mirroring LEGACY_PLUGIN_IDS). core.waitUntil is REGISTRY_PRIMARY via
+            // CoreWaitUntilStep.registerInto(CoreStepRegistryFactory); core.load is
+            // unregistered (DSL `load(path)` is fail-closed at compile-time, see ADR-0070).
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */

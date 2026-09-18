@@ -934,50 +934,36 @@ class CoreArchiveArtifactsStepContractSuiteTest {
     // ===== 17. G5 LEGACY_REMOVED invariant =====
 
     @Test
-    fun `G5 LEGACY_REMOVED invariant — core dot archiveArtifacts physical forms destroyed and counters are 2 2 2`() {
-        // S2-B10/G5 (2026-09-13): physical removal of all core.archiveArtifacts legacy forms
-        // (LEGACY_REMOVED — closed). Production routing is exclusively
-        // CoreArchiveArtifactsStep.definition via the open registry.
-        //
-        // Burn-down law: G5 = (N-1)/N/N -> (N-1)/(N-1)/(N-1) (metadata + dispatcher physical).
-        //   pre-G4:  3 / 3 / 3
-        //   post-G4: 2 / 3 / 3   (REGISTRY_PRIMARY flip, ids only)
-        //   post-G5: 2 / 2 / 2   (this slice — LEGACY_REMOVED closed)
+    fun `G5 LEGACY_REMOVED invariant post-WU-LPR-301 — counters converge to 0 0 0 (burn-down closed)`() {
+        // WU-LPR-301 / G5 (2026-09-18): the burn-down is closed. Counter converges 2/2/2 -> 0/0/0.
+        //   pre-WU-LPR-301:  2 / 2 / 2   (the two residuals waiting for the final lane)
+        //   post-WU-LPR-301: 0 / 0 / 0   (every legacy key retired; this slice — LEGACY_REMOVED closed)
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.archiveArtifacts MUST be absent from LEGACY_PLUGIN_IDS post-G5 (LEGACY_REMOVED)",
         )
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
-        assertEquals(
-            setOf("core.load", "core.waitUntil"),
-            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-        )
-        // The legacy metadata row is physically gone. Asserting the WHOLE surviving id set (not
-        // just the absence of one key) is the anti-over-removal control: a G5 that deleted an
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(emptySet<String>(), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // The legacy metadata table is empty: no CanonicalCoreStepMetadata row survives. The
+        // anti-over-removal control becomes the whole-set check — a G5 that deleted an
         // unrelated residual row would pass a bare absence check and fail here.
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            emptySet<String>(),
             CanonicalCoreStepMetadata.pluginIds,
-            "metadata rows MUST converge to exactly the two unrelated residual keys",
+            "metadata rows MUST be empty post-WU-LPR-301/G5 (the legacy authority is fully retired)",
         )
-        assertFalse(
-            "core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds,
-            "the legacy metadata row MUST be physically removed post-G5 (LEGACY_REMOVED)",
-        )
-        // Fail-fast preserved: the legacy metadata authority must NOT answer for this key at
-        // all. This is what makes the registry the pre-decode metadata authority rather than a
-        // second opinion — there is no row left to fall back to.
+        // Fail-fast preserved: the legacy metadata authority must NOT answer for any key at all.
+        // This is what makes the registry the pre-decode metadata authority rather than a second
+        // opinion — there is no row left to fall back to.
         assertThrows(IllegalArgumentException::class.java) {
             CanonicalCoreStepMetadata.metadata("core.archiveArtifacts")
         }
-        // The retained keys keep answering, so the removal did not disable the authority.
-        assertNotNull(
-            CanonicalCoreStepMetadata.metadata("core.waitUntil"),
-            "the two residual keys MUST still resolve through the legacy metadata table",
-        )
-        // Dispatcher-file presence is a static source property asserted by
-        // LegacyResidualSnapshot in :pipeline-architecture-tests, which pins
-        // 2 / 2 / 2 post-G5 and is guarded by LegacyResidualConvergenceFitnessTest.
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.load")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CanonicalCoreStepMetadata.metadata("core.waitUntil")
+        }
     }
 
     // ===== 17b. G4 routing (StructuralFamilyResolver, runtime seam) =====
@@ -994,19 +980,32 @@ class CoreArchiveArtifactsStepContractSuiteTest {
             ),
             "after G4 the key MUST classify as Registry, never LegacyCore",
         )
-        // Negative controls: the rule is membership-based, not key-name-based.
+        // Negative control: the rule is membership-based, not key-name-based. After WU-LPR-301
+        // / G5, no core plugin key is a LegacyCore: every surviving core plugin routes through
+        // the Registry family (LEGACY_PLUGIN_IDS is empty). The negative pin is therefore
+        // expressed as a closed-set equality: LegacyCore has no live members.
         assertEquals(
-            StructuralStepFamily.LegacyCore,
+            StructuralStepFamily.Registry,
             StructuralFamilyResolver.classify(
                 PluginStepId("core.waitUntil"),
                 CoreStepRegistryFactory.registry(),
             ),
-            "a key still in LEGACY_PLUGIN_IDS MUST stay LegacyCore (legacy-membership-wins)",
+            "after WU-LPR-301 / G5: every surviving core plugin (including the waitUntil " +
+                "registered back into the registry) routes as Registry. LegacyCore has no live " +
+                "members; the discriminator stays in the closed ADT for binary compatibility.",
         )
+        // WU-LPR-301 / G5 (2026-09-18): the key is out of LEGACY_PLUGIN_IDS, so with a
+        // registry-present call it now classifies as Registry. With a NULL registry the
+        // resolver still falls back to LegacyCore — the closed ADT remains, the membership
+        // table is empty, but the resolver's no-registry branch defaults to LegacyCore (the
+        // safe default for any environment that hasn't wired the registry yet).
         assertEquals(
             StructuralStepFamily.LegacyCore,
             StructuralFamilyResolver.classify(CoreArchiveArtifactsStep.KEY, null),
-            "with no registry injected the key MUST stay LegacyCore (legacy coordinator unchanged)",
+            "post-WU-LPR-301 / G5: with a NULL registry injected the resolver falls back to " +
+                "LegacyCore. Membership-driven routing has flipped for the registry-present " +
+                "branch (the key is out of LEGACY_PLUGIN_IDS), but the no-registry fallback " +
+                "remains LegacyCore until the legacy coordinator is physically removed.",
         )
     }
 

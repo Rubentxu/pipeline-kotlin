@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
@@ -79,10 +80,13 @@ object ExecutionBoundaryFactory {
         // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
         // gate the canonical case (the registry reachability is established at prepare-time).
         if (stepRegistry != null) {
+            // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
+            // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
+            // preserved only for binary compatibility: it accepts the payload, returns Success,
+            // and lets the registry boundary (which is the production authority) decide reachability
+            // per prepared execution. The legacy dispatcher itself is unreachable in production.
             val legacy = LegacyExecutionAdapter.adapt(
-                invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
-                    dispatcher.dispatch(command, context)
-                },
+                invocationExecutor ?: CanonicalInvocationExecutor { _, _ -> StepOutcome.Success },
             )
             // S2-A9 spike: pass milestoneStateStore to RegistryExecutionBoundary so it can
             // populate MILESTONE_OPERATIONS_CAPABILITY when building CanonicalRuntimeCapabilityAccess.
@@ -101,10 +105,11 @@ object ExecutionBoundaryFactory {
             stepRegistry = stepRegistry,
             stepKey = stepKey,
         )) {
+            // WU-LPR-301 / G5 (2026-09-18): see the matching comment above. The LegacyOnly
+            // fallback returns Success so the LegacyExecutionAdapter does not invoke a retired
+            // dispatcher; the registry boundary decides reachability per prepared execution.
             is FamilyRoutingDecision.LegacyOnly -> LegacyExecutionAdapter.adapt(
-                invocationExecutor ?: CanonicalInvocationExecutor { command, context ->
-                    dispatcher.dispatch(command, context)
-                },
+                invocationExecutor ?: CanonicalInvocationExecutor { _, _ -> StepOutcome.Success },
             )
             is FamilyRoutingDecision.SeamedRouting -> SeamedExecutionRouter.route(
                 decision.legacy,

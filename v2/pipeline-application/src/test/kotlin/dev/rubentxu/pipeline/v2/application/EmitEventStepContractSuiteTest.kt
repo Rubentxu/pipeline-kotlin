@@ -659,9 +659,10 @@ class EmitEventStepContractSuiteTest {
             "the legacy archiveArtifacts dispatcher source MUST stay deleted",
         )
         assertEquals(
-            2,
+            0,
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size,
-            "counters converge to 2/2/2 post-S2-B10/G5 (post-S2-A4/G5 + S2-A5/G5 + S2-A6/G5 + S2-A7/A9/A10/B10 G4+G5) — a contract-suite fix must never resurrect legacy",
+            "counters converge to 0/0/0 post-WU-LPR-301/G5 (post-S2-A4/G5 + S2-A5/G5 + S2-A6/G5 + " +
+                "S2-A7/A9/A10/B10 G4+G5 + WU-LPR-301/G5) — a contract-suite fix must never resurrect legacy",
         )
     }
 }

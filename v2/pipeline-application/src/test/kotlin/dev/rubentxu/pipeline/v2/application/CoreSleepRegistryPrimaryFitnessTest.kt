@@ -101,11 +101,13 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. Historical S2-A10/G4 and S2-A10/G5
     // snapshots above preserved verbatim for traceability.
-    @Test fun `registry post-S2-B10-g5 — 2 residual legacy keys remain`() {
-        assertEquals(setOf(
-            "core.load", "core.waitUntil",
-        ), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+    //
+    // WU-LPR-301 / G5 (2026-09-18): core.load and core.waitUntil retired too. Counter
+    // converges 2/2/2 -> 0/0/0. The pre-WU-LPR-301 snapshot above is preserved verbatim
+    // for traceability; the active post-WU-LPR-301 / G5 property is the empty set.
+    @Test fun `registry post-WU-LPR-301-G5 — 0 residual legacy keys remain (closed set)`() {
+        assertEquals(emptySet<String>(), CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Disabled("Historical G4 snapshot: G5 removes the core.sleep legacy metadata row, converging to 10/10/10.")
@@ -175,15 +177,22 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // WU-G5R-GATE: core.waitUntil removed from registry (structural path via
     // BlockStepNode + BodyExecutionPolicy.RepeatUntil + dispatchRepeatUntilBody).
     // Registry key count: 14 -> 13.
-    @Test fun `production registry contains exactly the registered core steps (post-S2-B10-G3 + WU-G5R-GATE)`() {
+    //
+    // WU-LPR-301 / G5 (2026-09-18): core.waitUntil is registered as a registry Step now
+    // (CoreWaitUntilStep.definition); the polling cadence is declared structurally via
+    // BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape()). The pre-WU-LPR-301 snapshot
+    // above is preserved verbatim for traceability; the active property is the 14-key shape
+    // (13 prior + core.waitUntil added back). core.load remains DEFERRED + UNSUPPORTED and is
+    // not registered — the canonical body engine rejects any `core.load` envelope typed.
+    @Test fun `production registry contains exactly the registered core steps (post-WU-LPR-301-G5)`() {
         assertEquals(
             setOf(
                 "core.echo", "core.sh", "core.error", "core.sleep",
                 "core.file.writeFile", "core.emit.event", "core.isUnix",
                 "core.pwd", "core.pwd.tmp",
-                // core.waitUntil removed at WU-G5R-GATE (structural, not registry Step)
                 "core.deleteDir", "core.milestone",
                 "core.cleanWs", "core.archiveArtifacts",
+                "core.waitUntil",
             ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )

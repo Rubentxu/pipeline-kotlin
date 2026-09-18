@@ -756,29 +756,41 @@ class CoreCleanWsStepContractSuiteTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts physical forms destroyed
     // (LEGACY_REMOVED). The historical S2-A10/G5 snapshot above is preserved verbatim for
     // traceability. Counter converges 3/3/3 -> 2/2/2. cleanWs itself stays retired.
+    //
+    // WU-LPR-301 / G5 (2026-09-18): core.load and core.waitUntil retired too. Counter
+    // converges 2/2/2 -> 0/0/0. The pre-WU-LPR-301 snapshot above is preserved verbatim
+    // for traceability; the active post-WU-LPR-301 / G5 property is the empty set.
     @Test
-    fun `G5 LEGACY_REMOVED invariant post-S2-B10-G5 — core dot cleanWs physical forms destroyed and counters are 2 2 2`() {
+    fun `G5 LEGACY_REMOVED invariant post-WU-LPR-301-G5 — counters converge to 0 0 0 (burn-down closed)`() {
         assertFalse(
             "core.cleanWs" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
             "core.cleanWs MUST NOT be in LEGACY_PLUGIN_IDS post-G5 (LEGACY_REMOVED)",
         )
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "the residual MUST converge to the two keys still awaiting their own G4/G5 lanes",
+            "the residual MUST converge to the empty set post-WU-LPR-301/G5 — every legacy key retired",
         )
         assertFalse(
             "core.cleanWs" in CanonicalCoreStepMetadata.pluginIds,
             "the legacy metadata row MUST remain physically removed (LEGACY_REMOVED)",
         )
         assertEquals(
-            setOf("core.load", "core.waitUntil"),
+            emptySet<String>(),
             CanonicalCoreStepMetadata.pluginIds,
-            "the metadata table MUST converge to the same two residual keys",
+            "the metadata table MUST also converge to the empty set post-WU-LPR-301/G5",
         )
         assertFalse(
             "core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds,
             "core.archiveArtifacts metadata row MUST be physically removed at S2-B10/G5",
+        )
+        assertFalse(
+            "core.load" in CanonicalCoreStepMetadata.pluginIds,
+            "core.load metadata row MUST be physically removed at WU-LPR-301/G5",
+        )
+        assertFalse(
+            "core.waitUntil" in CanonicalCoreStepMetadata.pluginIds,
+            "core.waitUntil metadata row MUST be physically removed at WU-LPR-301/G5",
         )
     }
 }

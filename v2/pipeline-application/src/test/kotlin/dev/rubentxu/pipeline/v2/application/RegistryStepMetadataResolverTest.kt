@@ -68,17 +68,23 @@ class RegistryStepMetadataResolverTest {
     }
 
     @Test
-    fun `a remaining legacy core key delegates to the legacy core authority even when absent from the registry`() {
-        // The composite delegates still-legacy core keys to the legacy core catalog, NOT to any registry
-        // definition, so core semantics (e.g. core.load) cannot be shadowed by a definition.
-        // LB-02 / A4: `core.sh` is no longer in this set.
-        // LFC-2E1-S2-A1 / G6: `core.error` is no longer in this set (CoreErrorStep registered).
-        // S2-A2 / G5: `core.sleep` removed from LEGACY_PLUGIN_IDS.
-        // WU-G5R-GATE: `core.waitUntil` removed from registry; remains in LEGACY_PLUGIN_IDS.
+    fun `a formerly legacy core key absent from the registry fails closed with EngineInvariantViolation`() {
+        // WU-LPR-301 / G5 (2026-09-18): `core.load` is DEFERRED + UNSUPPORTED in `local-core-v1`
+        // — removed from LEGACY_PLUGIN_IDS, no CoreLoadStep registered. The composite resolver
+        // MUST fail closed with a typed [EngineInvariantViolation] for a key that is neither in
+        // LEGACY_PLUGIN_IDS nor in the registry, instead of silently delegating to a retired
+        // authority. This replaces the historical test that asserted delegation through
+        // `CanonicalCoreStepMetadata`.
+        //   Historical pre-WU-LPR-301 property (preserved verbatim for traceability):
+        //     "a remaining legacy core key delegates to the legacy core authority even when
+        //      absent from the registry" — true for the old `core.load` (legacy row); false
+        //      after the burn-down because the legacy row itself is gone.
         val resolver = RegistryStepMetadataResolver.composite(registry())
-        val metadata = resolver.resolve(PluginStepId("core.load"))
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.load").replayPolicy, metadata!!.replayPolicy)
-        assertEquals(CanonicalCoreStepMetadata.metadata("core.load").effects, metadata.effects)
+        org.junit.jupiter.api.Assertions.assertThrows(
+            dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation::class.java,
+        ) {
+            resolver.resolve(PluginStepId("core.load"))
+        }
     }
 
     @Test

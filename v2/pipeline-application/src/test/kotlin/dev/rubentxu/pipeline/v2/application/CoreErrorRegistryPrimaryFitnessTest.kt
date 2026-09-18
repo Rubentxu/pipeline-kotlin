@@ -221,18 +221,18 @@ class CoreErrorRegistryPrimaryFitnessTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts legacy forms physically removed
     // (LEGACY_REMOVED). Counter converges 3/3/3 -> 2/2/2. The historical S2-A10/G4 and
     // S2-A10/G5 snapshots above are preserved verbatim for traceability.
+    //
+    // WU-LPR-301 / G5 (2026-09-18): core.load and core.waitUntil retired too. Counter
+    // converges 2/2/2 -> 0/0/0. The pre-WU-LPR-301 snapshot above is preserved verbatim
+    // for traceability; the active post-WU-LPR-301 / G5 property is the empty set.
     @Test
-    fun `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`() {
-        val expected = setOf(
-            "core.load",
-            "core.waitUntil",
-        )
+    fun `LEGACY_PLUGIN_IDS post-WU-LPR-301-G5 — 0 residual legacy keys remain`() {
         assertEquals(
-            expected,
+            emptySet<String>(),
             CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS,
-            "LEGACY_PLUGIN_IDS MUST be exactly the 2 residual legacy keys post-S2-B10/G5 (LEGACY_REMOVED closed for core.archiveArtifacts)",
+            "LEGACY_PLUGIN_IDS MUST be empty post-WU-LPR-301/G5 — the legacy burn-down is closed",
         )
-        assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
     }
 
     @Test

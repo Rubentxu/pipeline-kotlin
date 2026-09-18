@@ -1,0 +1,96 @@
+name: LPR-0 CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: lpr0-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/wrapper-validation-action@v3
+      - name: L0 — compile main + test sources
+        run: ./gradlew -p v2 compileKotlin compileTestKotlin --no-daemon
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lpr0-compile-logs
+          path: v2/**/build/reports/problems/
+
+  domain-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/wrapper-validation-action@v3
+      - name: L1 — domain unit tests
+        run: ./gradlew -p v2 :pipeline-domain:test --no-daemon
+      - name: L1 — events tests
+        run: ./gradlew -p v2 :pipeline-events:test --no-daemon
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lpr0-domain-test-reports
+          path: v2/**/build/test-results/test/
+
+  architecture-fitness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/wrapper-validation-action@v3
+      - name: L2 — architecture fitness tests
+        run: ./gradlew -p v2 :pipeline-architecture-tests:test --no-daemon
+      - if: failure()
+        uses: uploads/upload-artifact@v4
+        with:
+          name: lpr0-arch-test-reports
+          path: v2/**/build/test-results/test/
+
+  application-focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    needs: [domain-unit, architecture-fitness]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/wrapper-validation-action@v3
+      - name: L3 — application focused tests (excludes expensive compatibility)
+        run: ./gradlew -p v2 :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*' --no-daemon
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lpr0-app-test-reports
+          path: v2/**/build/test-results/test/
+
+  # NOTE: a nightly compatibility-corpus job is intentionally omitted from this
+  # LPR-0 baseline. Compatibility tests run only when explicitly invoked (manual
+  # `workflow_dispatch` extension or from a local just gate). Adding the nightly
+  # cron happens in a later work unit once WU-LPR-001..003 reduce the
+  # compatibility fixture failures below the noise floor.

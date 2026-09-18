@@ -391,13 +391,21 @@ private fun BlockStepNode.projectBodyExecution(
     is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
     is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
     is BodyExecutionPolicy.Retrying -> {
-        // WU-G5R.3: route waitUntil to its own scope (uses initialRecurrencePeriod/quiet,
-        // not maxAttempts). All other retry steps use the shared Retry scope.
-        if (pluginStepId.value == "core.waitUntil") {
-            decodeWaitUntilScope()
-        } else {
-            BodyExecutionProjection.Scope(BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()))
-        }
+        // WU-LPR-301: dispatch is policy-driven, not StepKey-driven. A Retrying body that
+        // declares a WaitUntilShape projects to WaitUntilScope using the declared cadence;
+        // any other Retrying body projects to the shared Retry scope with the decoded
+        // attempt budget. The body-routing dispatch is a closed ADT match on
+        // BodyExecutionPolicy; there is no concrete-PluginStepId comparison here.
+        policy.waitUntil?.let { shape ->
+            BodyExecutionProjection.Scope(
+                BlockShellScope.WaitUntilScope(
+                    initialRecurrencePeriod = shape.initialRecurrencePeriodMs,
+                    quiet = shape.quiet,
+                ),
+            )
+        } ?: BodyExecutionProjection.Scope(
+            BlockShellScope.Retry(maxAttempts = decodeAttemptBudgetMaxAttempts()),
+        )
     }
     is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)
 }
@@ -463,23 +471,6 @@ private fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
         ?: throw IllegalArgumentException("requires integer maxAttempts")
     require(maxAttempts >= 1) { "maxAttempts must be >= 1, got $maxAttempts" }
     return maxAttempts
-}
-
-/**
- * WU-G5R.3: decodes the waitUntil block payload (initialRecurrencePeriod, quiet)
- * into a [BlockShellScope.WaitUntilScope]. Fail-closed on malformed input.
- */
-private fun BlockStepNode.decodeWaitUntilScope(): BodyExecutionProjection {
-    val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
-    val initialRecurrencePeriod = payload["initialRecurrencePeriod"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-        ?: 1000L
-    val quiet = payload["quiet"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
-    return BodyExecutionProjection.Scope(
-        BlockShellScope.WaitUntilScope(
-            initialRecurrencePeriod = initialRecurrencePeriod,
-            quiet = quiet,
-        ),
-    )
 }
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */

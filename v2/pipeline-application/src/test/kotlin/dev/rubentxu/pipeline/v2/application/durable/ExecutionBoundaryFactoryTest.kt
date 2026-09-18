@@ -85,7 +85,10 @@ class ExecutionBoundaryFactoryTest {
                 "// sentinel for legacy-fixture.core.load\n",
             )
         }
-        return PreparedLegacyExecution(CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts"))
+        // WU-LPR-301 / G5 (2026-09-18): CanonicalCoreStepCommand.Load was removed
+        // (LEGACY_REMOVED); PreparedLegacyExecution.command is now Any?, so the fixture
+        // passes a synthetic opaque payload.
+        return PreparedLegacyExecution(command = "legacy-fixture.pipeline.kts")
     }
 
     private fun registryPrepared(): PreparedRegistryExecution = PreparedRegistryExecution(

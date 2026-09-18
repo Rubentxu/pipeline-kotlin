@@ -29,8 +29,10 @@ class CoreLegacyStepMetadataResolverTest {
         // unrelated proxy; the assertion itself is structurally flawed (core.sleep is
         // registry-primary and should not be resolvable via the legacy resolver). Kept
         // disabled until a successor test is authored against CoreSleepStep.descriptor.
-        val decoded = CanonicalCoreStepCommand.Load(path = "x").defaultMetadata
-        assertEquals(decoded, resolved)
+        // WU-LPR-301 / G5 (2026-09-18): the `decoded` value derived from
+        // CanonicalCoreStepCommand.Load was removed because Load itself is LEGACY_REMOVED.
+        // The disabled fixture is kept for historical traceability with the assertion removed.
+        assertEquals(null, resolved?.recoveryPolicy)
     }
 
     @Test

@@ -74,10 +74,14 @@ class A3DurableProjectionCharacterizationTest {
             eventSink = store,
         )
         // Build a legacy boundary and probe it directly.
+        // WU-LPR-301 / G5 (2026-09-18): CanonicalCoreStepCommand.Load was removed
+        // (LEGACY_REMOVED). The fixture preserves the A3 boundary-projection assertions
+        // (encodedOutput shape, no-op outcome) by passing a synthetic opaque payload
+        // through PreparedLegacyExecution (whose command field is now Any?).
         val legacyExecutor = CanonicalInvocationExecutor { _, _ -> StepOutcome.Success }
         val boundary: CommonExecutionBoundary = LegacyExecutionAdapter.adapt(legacyExecutor)
         val preparedLegacy = PreparedLegacyExecution(
-            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts"),
+            command = "legacy-fixture.pipeline.kts",
         )
         val result = boundary.execute(preparedLegacy, ctx)
         assertEquals(StepOutcome.Success, result.outcome)

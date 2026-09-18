@@ -146,5 +146,10 @@ object CoreStepRegistryFactory {
         // State: MilestoneStateStore is run-scoped (coordinator-owned); see
         // CanonicalDurableRunCoordinator wiring and S2_A9_MILESTONE_DURABILITY_SPIKE.md.
         CoreMilestoneStep.registerInto(this)
+        // WU-LPR-301: register CoreWaitUntilStep. The descriptor declares
+        // BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape()), so the
+        // canonical body engine dispatches the polling loop from the declaration,
+        // not from a per-StepKey branch in the coordinator.
+        CoreWaitUntilStep.registerInto(this)
     }
 }

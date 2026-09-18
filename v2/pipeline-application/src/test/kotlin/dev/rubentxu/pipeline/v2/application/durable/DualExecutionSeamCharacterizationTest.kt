@@ -56,15 +56,16 @@ import java.nio.file.Path
 class DualExecutionSeamCharacterizationTest {
 
     /** Old seam recorder: counts effective calls, then runs the real legacy dispatcher path. */
+    // WU-LPR-301 / G5 (2026-09-18): CanonicalInvocationExecutor.invoke now receives Any?.
     private class RecordingLegacyExecutor : CanonicalInvocationExecutor {
         var calls: Int = 0
             private set
         override suspend fun invoke(
-            command: CanonicalCoreStepCommand,
+            command: Any?,
             context: CanonicalRuntimeContext,
         ): StepOutcome {
             calls++
-            return CanonicalNodeDispatcher().dispatch(command, context)
+            return CanonicalNodeDispatcher().dispatch(command as CanonicalCoreStepCommand, context)
         }
     }
 

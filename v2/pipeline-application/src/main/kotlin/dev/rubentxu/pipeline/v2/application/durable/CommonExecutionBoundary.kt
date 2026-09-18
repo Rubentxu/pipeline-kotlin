@@ -32,8 +32,15 @@ fun interface CommonExecutionBoundary {
  * Legacy strategy payload: wraps the already-decoded command opaquely. Only [LegacyExecutionAdapter]
  * reads [command]; the durable coordinator never sees it. Prepared here, never executed during
  * preparation.
+ *
+ * WU-LPR-301 / G5 (2026-09-18): [command] is typed as `Any?` because every CanonicalCoreStepCommand
+ * subtype is LEGACY_REMOVED. The legacy boundary is kept only as a binary-compatibility seam for
+ * historical call sites that pass an arbitrary payload through [LegacyExecutionAdapter]. In
+ * production the boundary never receives a [PreparedLegacyExecution] (the registry boundary always
+ * wins when a StepRegistry is wired); the seam is exercised only by characterization tests that
+ * preserve the boundary-projection invariants (encodedOutput shape, no-op outcome).
  */
-data class PreparedLegacyExecution(val command: CanonicalCoreStepCommand) : PreparedExecution
+data class PreparedLegacyExecution(val command: Any?) : PreparedExecution
 
 /**
  * Adapts the old command-typed [CanonicalInvocationExecutor] (legacy compatibility seam) behind the

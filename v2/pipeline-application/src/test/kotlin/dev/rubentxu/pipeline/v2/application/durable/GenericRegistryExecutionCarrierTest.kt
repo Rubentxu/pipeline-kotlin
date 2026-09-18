@@ -273,9 +273,12 @@ class GenericRegistryExecutionCarrierTest {
         }
         val echoResult = boundary.execute(echoPrepared, ctx)
         // The boundary throws on legacy-family prepared, as the docstring states.
+        // WU-LPR-301 / G5 (2026-09-18): CanonicalCoreStepCommand.Load was removed
+        // (LEGACY_REMOVED); PreparedLegacyExecution.command is now Any?, so the fixture
+        // passes a synthetic opaque payload to assert the legacy-prepared rejection.
         val legacyOutcome = runCatching {
             boundary.execute(
-                PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")),
+                PreparedLegacyExecution(command = "legacy-fixture.pipeline.kts"),
                 ctx,
             )
         }

@@ -50,11 +50,14 @@ class Lpr101L4SweepCharacterizationTest {
     fun `F-LE-1a canonical coordinator does not branch on concrete step keys in dispatch`() {
         val text = readOrSkip(coordinatorPath) ?: return
         // The body-routing dispatch must be a closed ADT match on BodyExecutionPolicy,
-        // NOT a when on a Step key. The "core.waitUntil" branch was the only offender.
+        // NOT a when on a Step key. The "core.waitUntil" branch was the only offender
+        // (retired at WU-LPR-301 / G5, 2026-09-18). Comments that mention the pattern
+        // historically are excluded so the test stays semantic, not lexical.
         val lines = text.lines()
         val offenders = lines.mapIndexed { i, line -> i + 1 to line }.filter { (_, line) ->
             val trimmed = line.trim()
-            trimmed.contains("pluginStepId.value ==") || trimmed.contains("pluginStepId.value == \"")
+            !trimmed.startsWith("//") &&
+                (trimmed.contains("pluginStepId.value ==") || trimmed.contains("pluginStepId.value == \""))
         }
         assertEquals(
             emptyList<Pair<Int, String>>(),

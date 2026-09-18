@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
@@ -9,7 +7,8 @@ import org.junit.jupiter.api.Test
  * UAT-LFC1-008-REGISTRY: Sealed hierarchy derives canonicalCoreStepIds.
  *
  * Verifies:
- * - sealedSubclasses has exactly 2 entries (Load, WaitUntil).
+ * - sealedSubclasses has exactly 0 entries after WU-LPR-301 / G5 (2026-09-18). Every
+ *   legacy core canonical subtype has been retired to its registry authority.
  *   S3.1 removed Echo (core.echo migrated to the open StepRegistry via CoreEchoStep).
  *   S6 removed Shell (core.sh migrated to the open StepRegistry via CoreShellStep).
  *   LFC-2E1-S2-A1 / G6 removed Error (core.error migrated to the open StepRegistry
@@ -31,6 +30,12 @@ import org.junit.jupiter.api.Test
  *   branch + constant/dispatcher file/metadata row physically deleted (LEGACY_REMOVED).
  *   Production routing is exclusively CoreArchiveArtifactsStep.definition via the open
  *   registry. Counter converges 2/3/3 -> 2/2/2.
+ *   WU-LPR-301 / G5 (2026-09-18): "core.load" and "core.waitUntil" legacy canonical
+ *   subtypes, decoder branches + constants, dispatcher files, and metadata rows are
+ *   physically deleted (LEGACY_REMOVED). After this gate CanonicalCoreStepCommand has
+ *   zero subtypes (counter converges 2/2/2 -> 0/0/0). Production routing authority for
+ *   `core.waitUntil` is exclusively `CoreWaitUntilStep.definition` (registry), and
+ *   `core.load` is DEFERRED + UNSUPPORTED in `local-core-v1`.
  * - LEGACY_PLUGIN_IDS derived from the sealed hierarchy matches the expected set.
  * - Each subtype's pluginId and defaultMetadata match the expected values.
  *
@@ -40,41 +45,24 @@ import org.junit.jupiter.api.Test
 class CanonicalCoreStepCommandRegistryTest {
 
     @Test
-    fun `sealedSubclasses has exactly 2 entries`() {
+    fun `sealedSubclasses has exactly 0 entries`() {
+        // WU-LPR-301 / G5 (2026-09-18): counter converges 2/2/2 -> 0/0/0. Every legacy core
+        // canonical subtype has been physically removed; production routing authority is
+        // exclusively the open StepRegistry. Re-introducing a CanonicalCoreStepCommand subtype
+        // is a Step Constitution regression that this test fails closed (fitness).
         val subclasses = CanonicalCoreStepCommand::class.sealedSubclasses
-        assertEquals(2, subclasses.size, "Expected exactly 2 sealed subtypes (Echo/Sh/Error/Sleep/WriteFile/EmitEvent/IsUnix/Pwd/DeleteDir/Milestone/CleanWs/ArchiveArtifacts all removed at their respective G5 closures). Found: ${subclasses.map { it.simpleName }}")
+        assertEquals(0, subclasses.size, "Expected exactly 0 sealed subtypes after WU-LPR-301 / G5. Found: ${subclasses.map { it.simpleName }}")
     }
 
     @Test
     fun `LEGACY_PLUGIN_IDS matches expected set`() {
-        val expected = setOf(
-            // core.sleep removed at LFC-2E1-S2-A2 / G5 (registry-routed, CERTIFIED).
-            // core.file.writeFile removed at LFC-2E1-S2-A3 / G4 (registry-routed).
-            // core.emit.event removed at LFC-2E1-S2-A4 / G4 (registry-routed).
-            // S2-A5 / G4 (2026-09-12): "core.isUnix" removed — REGISTRY_PRIMARY flip.
-            // S2-A5 / G5 (2026-09-12): "core.isUnix" legacy subtype/decoder/dispatcher/metadata
-            // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
-            // open registry (CoreIsUnixStep.descriptor via RegistryStepMetadataResolver).
-            // S2-A6 / G4 (2026-09-12): "core.pwd" removed — REGISTRY_PRIMARY flip.
-            // S2-A6 / G5 (2026-09-12): "core.pwd" legacy subtype/decoder/dispatcher/metadata
-            // physically deleted (LEGACY_REMOVED). Production authority is exclusively the
-            // open registry (CorePwdStep.descriptor via RegistryStepMetadataResolver).
-            // core.milestone removed at LFC-2E1-S2-A9 / G5 (registry-routed, CERTIFIED).
-            // S2-A7 / G4 (2026-09-12): "core.deleteDir" removed — REGISTRY_PRIMARY flip.
-            // S2-A7 / G5 (2026-09-12): "core.deleteDir" legacy subtype/decoder branch/metadata
-            // row/dispatcher physically deleted (LEGACY_REMOVED).
-            // S2-A10 / G4 (2026-09-13): "core.cleanWs" removed — REGISTRY_PRIMARY flip.
-            // S2-A10 / G5 (2026-09-13): "core.cleanWs" legacy subtype/decoder branch/
-            // dispatcher file/metadata row physically deleted (LEGACY_REMOVED). Counter
-            // converges 3/4/4 -> 3/3/3.
-            // P1a — workflow-control (v0.33.0)
-            "core.load",
-            // P1b — utility (v0.33.0)
-            "core.waitUntil",
-            // P2 — archiveArtifacts (v0.33.1): removed at S2-B10 / G5 (LEGACY_REMOVED).
-        )
+        // WU-LPR-301 / G5 (2026-09-18): the empty set is the production-true shape of
+        // LEGACY_PLUGIN_IDS. Every prior entry has been retired through its respective
+        // burn-down. Adding a new entry without a deletion gate is a Step Constitution
+        // regression that this test fails closed.
+        val expected = emptySet<String>()
         // Assert against the registry — single source of truth, no duplication
-        assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set")
+        assertEquals(expected, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "LEGACY_PLUGIN_IDS must match expected set (empty after WU-LPR-301 / G5)")
     }
 
     // S2-A4 / G5: EmitEvent legacy command removed (LEGACY_REMOVED); its historical
@@ -95,13 +83,11 @@ class CanonicalCoreStepCommandRegistryTest {
     // CoreCleanWsStepContractSuiteTest against CoreCleanWsStep.descriptor — the
     // registry authority.
 
-    @Test
-    fun `Load has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.Load(path = "loaded.pipeline.kts")
-        assertEquals("core.load", instance.pluginId)
-        assertEquals(setOf(Effect.EXECUTES_SUBPROCESS), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // WU-LPR-301 / G5 (2026-09-18): Load test removed (LEGACY_REMOVED). The pluginId /
+    // effects / replayPolicy invariants of `core.load` are no longer asserted here, because
+    // `core.load` is DEFERRED + UNSUPPORTED in `local-core-v1` (no CoreLoadStep, no
+    // descriptor). The fail-closed admission is asserted by Lpr301CoreLoadUnsupportedFitnessTest
+    // against the canonical decoder's typed rejection of any `core.load` envelope.
 
     // P1b — utility canonical step families
 
@@ -113,13 +99,12 @@ class CanonicalCoreStepCommandRegistryTest {
     // invariants of core.isUnix are now asserted in S3IsUnixLegacyRemovedFitnessTest against
     // CoreIsUnixStep.descriptor — the registry authority.
 
-    @Test
-    fun `WaitUntil has correct pluginId and defaultMetadata`() {
-        val instance = CanonicalCoreStepCommand.WaitUntil(initialRecurrencePeriod = 1000L, quiet = false)
-        assertEquals("core.waitUntil", instance.pluginId)
-        assertEquals(setOf(Effect.READ_ONLY), instance.defaultMetadata.effects)
-        assertEquals(ReplayPolicy.MEMOIZED, instance.defaultMetadata.replayPolicy)
-    }
+    // WU-LPR-301 / G5 (2026-09-18): WaitUntil test removed (LEGACY_REMOVED). The pluginId /
+    // effects / replayPolicy invariants of `core.waitUntil` are now asserted against
+    // CoreWaitUntilStep.descriptor — the registry authority — in
+    // CoreWaitUntilStepContractSuiteTest (identity / contract completeness rows). The
+    // body-shape invariant (polling cadence via BodyExecutionPolicy.Retrying(waitUntil = ...))
+    // is asserted by Lpr301WaitUntilPolicyShapeFitnessTest.
 
     // S2-B10 / G5 (2026-09-13): the archiveArtifacts test removed (LEGACY_REMOVED). The
     // pluginId / effects / replayPolicy invariants of core.archiveArtifacts are now asserted

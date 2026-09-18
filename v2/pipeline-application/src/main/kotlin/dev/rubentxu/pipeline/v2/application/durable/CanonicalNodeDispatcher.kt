@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -30,71 +29,61 @@ data class CanonicalRuntimeContext(
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
 )
 
-/** Dispatches the supported canonical core nodes through their durable runtime paths. */
+/**
+ * Stub dispatcher preserved for binary compatibility with existing call sites (tests and
+ * production paths that pass `CanonicalNodeDispatcher()` to the coordinator). The class
+ * retained its name because it is part of the durable infrastructure surface; the body
+ * it used to dispatch is now exclusively in [CanonicalCoreStepCommand] subtypes that are
+ * themselves deleted (LEGACY_REMOVED, WU-LPR-301 / G5).
+ *
+ * WU-LPR-301 / G5 (2026-09-18): every legacy canonical core Step subtype is gone
+ * (CanonicalCoreStepCommand.Load / WaitUntil / Pwd / IsUnix / EmitEvent / Milestone /
+ * DeleteDir / CleanWs / ArchiveArtifacts / Error are all LEGACY_REMOVED). The remaining
+ * subtypes are produced only by structural / block commands and the registry, so this
+ * dispatcher has no remaining concrete dispatch work. Its presence in test fixtures is
+ * preserved so existing wiring does not break bit-equivalent; if a future subtype is
+ * reintroduced, that subtype MUST route through the registry, not through this class.
+ *
+ * Counter-preserved proof: [LEGACY_PLUGIN_IDS] is empty, every production StepKey routes
+ * through the registry family in [StructuralFamilyResolver], and the
+ * [CanonicalCoreStepDecoder] decoder falls through to a typed rejection for any unknown
+ * legacy envelope.
+ */
 class CanonicalNodeDispatcher {
-    // S2-A4 / G5: emitEventDispatcher removed (LEGACY_REMOVED) — core.emit.event executes
-    // exclusively through CoreEmitEventStep via the registry.
-    // S2-A9 / G5: milestoneDispatcher removed (LEGACY_REMOVED) — core.milestone executes
-    // exclusively through CoreMilestoneStep via the registry.
-    // S2-A7 / G5: deleteDirDispatcher removed (LEGACY_REMOVED) — core.deleteDir executes
-    // exclusively through CoreDeleteDirStep via the registry.
-    // S2-A10 / G5 (2026-09-13): cleanWsDispatcher removed (LEGACY_REMOVED) — core.cleanWs executes
-    // exclusively through CoreCleanWsStep via the registry.
-    private val loadDispatcher = CanonicalLoadNodeDispatcher()
-    // S2-A6 / G5: pwdDispatcher removed (LEGACY_REMOVED) — core.pwd executes
-    // exclusively through CorePwdStep via the registry.
-    // S2-A5 / G5: isUnixDispatcher removed (LEGACY_REMOVED) — core.isUnix executes
-    // exclusively through CoreIsUnixStep via the registry.
-    private val waitUntilDispatcher = CanonicalWaitUntilNodeDispatcher()
-    // S2-B10 / G5 (2026-09-13): archiveArtifactsDispatcher removed (LEGACY_REMOVED) —
-    // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the registry.
+    // No fields. The dispatch surface has been emptied by the WU-LPR-301 burn-down:
+    //   - emitEventDispatcher removed at S2-A4 / G5
+    //   - milestoneDispatcher  removed at S2-A9 / G5
+    //   - deleteDirDispatcher  removed at S2-A7 / G5
+    //   - cleanWsDispatcher    removed at S2-A10 / G5 (2026-09-13)
+    //   - pwdDispatcher        removed at S2-A6 / G5
+    //   - isUnixDispatcher     removed at S2-A5 / G5
+    //   - archiveArtifactsDispatcher removed at S2-B10 / G5 (2026-09-13)
+    //   - loadDispatcher       removed at WU-LPR-301 / G5 (2026-09-18)
+    //   - waitUntilDispatcher  removed at WU-LPR-301 / G5 (2026-09-18)
+    //
+    // The dispatch() function is removed because CanonicalCoreStepCommand has no surviving
+    // subtypes (its sealed subtypes were deleted with their dispatchers). The class is
+    // preserved only to keep existing constructor calls compiling bit-equivalent.
 
-    suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): StepOutcome =
-        when (command) {
-            // S2-A4 / G5: EmitEvent when-branch removed (LEGACY_REMOVED).
-            // S2-A9 / G5: Milestone when-branch removed (LEGACY_REMOVED) — core.milestone executes
-            // exclusively through CoreMilestoneStep via the registry.
-            // S2-A7 / G5: DeleteDir when-branch removed (LEGACY_REMOVED).
-            // S2-A10 / G5 (2026-09-13): CleanWs when-branch removed (LEGACY_REMOVED) —
-            // core.cleanWs executes exclusively through CoreCleanWsStep via the registry.
-            is CanonicalCoreStepCommand.Load -> loadDispatcher.dispatch(command, context.loadContext())
-            // S2-A6 / G5: Pwd when-branch removed (LEGACY_REMOVED).
-            // S2-A5 / G5: IsUnix when-branch removed (LEGACY_REMOVED).
-            // waitUntil: condition is not serializable; emit stub events and return success
-            // Full condition evaluation requires the in-memory path where lambdas are preserved
-            is CanonicalCoreStepCommand.WaitUntil -> waitUntilDispatcher.dispatchStub(command, context.waitUntilContext())
-            // S2-B10 / G5 (2026-09-13): ArchiveArtifacts when-branch removed (LEGACY_REMOVED) —
-            // core.archiveArtifacts executes exclusively through CoreArchiveArtifactsStep via the
-            // registry. The `when` stays EXHAUSTIVE over the surviving sealed subtypes: a
-            // reintroduced legacy subtype is now a compile error, not a silent fall-through.
-        }
-
-    // S2-A4 / G5: emitEventContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // S2-A9 / G5: milestoneContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // S2-A7 / G5: deleteDirContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // S2-A10 / G5 (2026-09-13): cleanWsContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // S2-B10 / G5 (2026-09-13): archiveArtifactsContext() removed with the legacy dispatcher
-    // (LEGACY_REMOVED). Its `workspaceRoot = shOptions.workspaceRoot` absolute-path anchor was
-    // the frozen-glob defect root cause (frozen delta D1).
-
-    private fun CanonicalRuntimeContext.loadContext() = CanonicalLoadDispatchContext(
-        runId = runId,
-        stageName = stageName,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-        loadedFingerprints = mutableSetOf(), // Per-run fingerprint cache
-    )
-
-    // S2-A6 / G5: pwdContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-    // S2-A5 / G5: isUnixContext() removed with the legacy dispatcher (LEGACY_REMOVED).
-
-    private fun CanonicalRuntimeContext.waitUntilContext() = CanonicalWaitUntilDispatchContext(
-        runId = runId,
-        stepIndex = stepIndex,
-        eventSink = eventSink,
-        condition = { true }, // Stub: condition not serializable in canonical path
-    )
-
+    /**
+     * Signature-preserving fallback for callers that historically invoked the legacy dispatcher.
+     *
+     * WU-LPR-301 / G5 (2026-09-18): the legacy core canonical command set is fully retired. Every
+     * production StepKey routes through the registry family in [StructuralFamilyResolver] (see
+     * `LEGACY_PLUGIN_IDS == emptySet()`), and the canonical decoder rejects unknown legacy
+     * envelopes typed. There is therefore no value of [command] for which this method could
+     * dispatch a real Step. The signature is kept so the three historical callsites in
+     * `ExecutionBoundaryFactory.kt` and `FamilyRouter.kt` continue to compile bit-equivalent;
+     * the method is unreachable in production (the registry boundary always wins when a
+     * StepRegistry is wired) and fails closed with a typed [UnsupportedOperationException] if a
+     * caller does reach it.
+     */
+    @Suppress("RedundantSuspendModifier")
+    suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): Nothing {
+        throw UnsupportedOperationException(
+            "CanonicalNodeDispatcher.dispatch is retired at WU-LPR-301 / G5 (2026-09-18): " +
+                "every legacy canonical core Step subtype is LEGACY_REMOVED and the registry is the " +
+                "sole execution authority. Got command pluginId='${command.pluginId}'."
+        )
+    }
 }

@@ -54,7 +54,10 @@ class SeamedExecutionRouterTest {
         val registry = RecordingBoundary()
         val routed = SeamedExecutionRouter.route(legacy, registry)
 
-        routed.execute(PreparedLegacyExecution(CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")), runtime())
+        // WU-LPR-301 / G5 (2026-09-18): CanonicalCoreStepCommand.Load was removed
+        // (LEGACY_REMOVED); PreparedLegacyExecution.command is now Any?, so the fixture
+        // passes a synthetic opaque payload that the legacy boundary receives opaquely.
+        routed.execute(PreparedLegacyExecution(command = "legacy-fixture.pipeline.kts"), runtime())
 
         assertEquals(1, legacy.calls, "legacy family must reach the legacy executor exactly once")
         assertEquals(0, registry.calls, "legacy family must never reach the registry executor")

@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.RetryPolicy
+import dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape
 import dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy
 
 /**
@@ -199,8 +200,11 @@ class StepDescriptorRegistry private constructor(
                         introduces = null,
                     ),
                 ))
-                // WU-G5R.3: waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
-                // The coordinator's executeWaitUntilBody runs the body with exponential backoff.
+                // WU-LPR-301: waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
+                // The polling cadence is declared structurally via the `waitUntil` sub-shape of
+                // BodyExecutionPolicy.Retrying; the canonical body engine reads the sub-shape and
+                // dispatches the loop without a per-StepKey branch. The WaitUntilShape defaults
+                // (initialRecurrencePeriodMs=1000L, quiet=false) match Jenkins verbatim.
                 put(PluginStepId("core.waitUntil"), StepDescriptor(
                     stepId = "core.waitUntil",
                     name = "waitUntil",
@@ -209,9 +213,10 @@ class StepDescriptorRegistry private constructor(
                         invocation = BodyInvocationPolicy.ZERO_OR_MORE,
                         execution = BodyExecution(
                             owner = BodyExecutionOwner.CANONICAL_ENGINE,
-                            // Body policy is Retrying so dispatchBody routes to executeWaitUntilBody
-                            // which implements the condition polling loop with initialRecurrencePeriod/quiet.
-                            policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                            policy = BodyExecutionPolicy.Retrying(
+                                policy = RetryPolicy(),
+                                waitUntil = WaitUntilShape(),
+                            ),
                         ),
                         introduces = null,
                     ),

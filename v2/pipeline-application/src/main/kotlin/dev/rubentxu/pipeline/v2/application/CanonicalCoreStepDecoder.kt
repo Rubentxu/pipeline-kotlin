@@ -149,8 +149,18 @@ sealed interface CanonicalCoreStepCommand {
             // build/libs/smoke.jar with a real sha256 where the legacy authority failed with
             // `No files matched glob pattern 'build/libs/*.jar'`. Counter converges
             // 2/3/3 -> 2/2/2.
-            "core.load",
-            "core.waitUntil",
+            // WU-LPR-301 / G5 (2026-09-18): "core.load" and "core.waitUntil" removed
+            // from LEGACY_PLUGIN_IDS (counter converges 2/2/2 -> 0/0/0).
+            //   - core.load:    DEFERRED + UNSUPPORTED in local-core-v1; no CoreLoadStep;
+            //                   DSL `load(path)` is fail-closed at compile-time.
+            //   - core.waitUntil: REGISTRY_PRIMARY. CoreWaitUntilStep.definition is the
+            //                   production routing authority; the polling cadence is
+            //                   declared structurally via BodyExecutionPolicy.Retrying(waitUntil = ...).
+            // Both keys fall through to the Registry family in StructuralFamilyResolver.classify
+            // (legacy-membership-wins rule no longer fires; core.waitUntil was already absent
+            // after the REGISTRY_PRIMARY flip; core.load was always absent because no
+            // CoreLoadStep exists). The CanonicalCoreStepMetadata["core.load"] /
+            // ["core.waitUntil"] rows are removed below in this slice.
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */
@@ -193,14 +203,12 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-05: load step — reads and evaluates a pipeline script file in the workspace.
-     * Re-entrant: subsequent calls with same (path, sha256) are skipped.
+     * T-05: load step — DELETED at WU-LPR-301 / G5 (LEGACY_REMOVED). The `core.load` execution
+     * authority in `local-core-v1` is DEFERRED + UNSUPPORTED: no `CoreLoadStep` is registered, the
+     * DSL `load(path)` is fail-closed at compile-time, and the canonical decoder does not
+     * recognise a Load data class. Any `core.load` envelope falls through to the `else` rejection
+     * below — as it must, since there is no execution authority.
      */
-    data class Load(
-        val path: String,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.load"
-    }
 
     /**
      * T-07: pwd step — DELETED at S2-A6 / G5 (LEGACY_REMOVED). The `core.pwd` execution
@@ -212,16 +220,14 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-07: waitUntil step — polls a condition lambda until it returns true or deadline elapses.
-     * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1000)
-     * @param quiet If true, suppress output during polling
+     * T-07: waitUntil step — DELETED at WU-LPR-301 / G5 (LEGACY_REMOVED). The execution
+     * authority is now exclusively the registry (CoreWaitUntilStep.definition). The polling
+     * cadence is declared structurally via `BodyExecutionPolicy.Retrying(waitUntil = ...)`,
+     * so the canonical decoder does not recognise a WaitUntil data class. The canonical body
+     * engine dispatches the polling loop by reading the sub-shape (projectBodyExecution),
+     * with no concrete-StepKey branch. Any `core.waitUntil` envelope falls through to the
+     * `else` rejection below — as it must, since the registry is the only execution authority.
      */
-    data class WaitUntil(
-        val initialRecurrencePeriod: Long = 1000L,
-        val quiet: Boolean = false,
-    ) : CanonicalCoreStepCommand {
-        override val pluginId = "core.waitUntil"
-    }
 
     /**
      * T-08: archiveArtifacts step — DELETED at S2-B10 / G5 (LEGACY_REMOVED). The
@@ -243,10 +249,16 @@ object CanonicalCoreStepDecoder {
     // The raw core.cleanWs envelope is consumed structurally (WsCleaned event, pre-decode)
     // and executively by CoreCleanWsStep via the registry — never here. The DSL `cleanWs(...)`
     // lowers directly to StepSpec.RegistryStepSpec (S2-A10 / G5).
-    private const val LOAD_PLUGIN_ID = "core.load"
-    // S2-A6 / G5: PWD_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
-    // S2-A5 / G5: IS_UNIX_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
-    private const val WAIT_UNTIL_PLUGIN_ID = "core.waitUntil"
+    // WU-LPR-301 / G5 (2026-09-18): LOAD_PLUGIN_ID removed (LEGACY_REMOVED). The `core.load`
+    // execution authority in `local-core-v1` is DEFERRED + UNSUPPORTED. The DSL `load(path)`
+    // is fail-closed at compile-time; any legacy `core.load` envelope falls through to the
+    // `else` rejection below — as it must, since there is no execution authority.
+    // WU-LPR-301 / G5 (2026-09-18): WAIT_UNTIL_PLUGIN_ID removed (LEGACY_REMOVED). The
+    // `core.waitUntil` execution authority is the registry (CoreWaitUntilStep.definition).
+    // The polling cadence is declared structurally via `BodyExecutionPolicy.Retrying(waitUntil = ...)`;
+    // the canonical decoder does not recognise a WaitUntil data class. Any legacy `core.waitUntil`
+    // envelope falls through to the `else` rejection below — as it must, since the registry is
+    // the only execution authority.
     // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID removed with the legacy branch
     // (LEGACY_REMOVED). The raw core.archiveArtifacts dsl-v1 envelope is consumed executively by
     // CoreArchiveArtifactsStep via the registry — never here. The envelope SHAPE is preserved
@@ -270,14 +282,9 @@ object CanonicalCoreStepDecoder {
             // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
             // The raw core.cleanWs envelope is consumed structurally (WsCleaned event,
             // pre-decode) and executively by CoreCleanWsStep via the registry — never here.
-            LOAD_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "load") {
-                    "Payload kind must be 'load' for '${node.id.value}'"
-                }
-                CanonicalCoreStepCommand.Load(
-                    path = payload.requiredString("path"),
-                )
-            }
+            // WU-LPR-301 / G5 (2026-09-18): LOAD_PLUGIN_ID branch removed (LEGACY_REMOVED).
+            // The `core.load` execution authority is DEFERRED + UNSUPPORTED in `local-core-v1`;
+            // any `core.load` envelope falls through to the `else` rejection below.
             // S2-A6 / G5: PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd
             // envelope is consumed structurally (PwdResolved event, pre-decode) and
             // executively by CorePwdStep via the registry — never here. The DSL
@@ -285,17 +292,12 @@ object CanonicalCoreStepDecoder {
             // S2-A5 / G5: IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode)
             // and executively by CoreIsUnixStep via the registry — never here.
-            WAIT_UNTIL_PLUGIN_ID -> {
-                require(payload.requiredString("kind") == "waitUntil") {
-                    "Payload kind must be 'waitUntil' for '${node.id.value}'"
-                }
-                val initialRecurrencePeriod = payload["initialRecurrencePeriod"]?.jsonPrimitive?.content?.toLongOrNull() ?: 1000L
-                val quiet = payload["quiet"]?.jsonPrimitive?.booleanOrNull ?: false
-                CanonicalCoreStepCommand.WaitUntil(
-                    initialRecurrencePeriod = initialRecurrencePeriod,
-                    quiet = quiet,
-                )
-            }
+            // WU-LPR-301 / G5 (2026-09-18): WAIT_UNTIL_PLUGIN_ID branch removed (LEGACY_REMOVED).
+            // The `core.waitUntil` execution authority is the registry (CoreWaitUntilStep.definition).
+            // The polling cadence is declared structurally via
+            // `BodyExecutionPolicy.Retrying(waitUntil = ...)`; any `core.waitUntil` envelope
+            // falls through to the `else` rejection below — as it must, since the registry
+            // is the only execution authority.
             // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID branch removed
             // (LEGACY_REMOVED). A core.archiveArtifacts node now falls through to the
             // `else` rejection below — as it must, since the registry and not this decoder

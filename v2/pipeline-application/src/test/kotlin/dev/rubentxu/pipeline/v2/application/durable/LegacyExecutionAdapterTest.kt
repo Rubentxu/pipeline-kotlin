@@ -30,11 +30,15 @@ class LegacyExecutionAdapterTest {
     private class RecordingLegacyExecutor : CanonicalInvocationExecutor {
         var calls: Int = 0
             private set
-        var lastCommand: CanonicalCoreStepCommand? = null
+        // WU-LPR-301 / G5 (2026-09-18): lastCommand now stores Any? because
+        // CanonicalInvocationExecutor.invoke receives Any?.
+        var lastCommand: Any? = null
             private set
 
+        // WU-LPR-301 / G5 (2026-09-18): CanonicalInvocationExecutor.invoke now receives Any?
+        // because every CanonicalCoreStepCommand subtype is LEGACY_REMOVED.
         override suspend fun invoke(
-            command: CanonicalCoreStepCommand,
+            command: Any?,
             context: CanonicalRuntimeContext,
         ): StepOutcome {
             calls++
@@ -59,7 +63,10 @@ class LegacyExecutionAdapterTest {
         val legacy = RecordingLegacyExecutor()
         val boundary = LegacyExecutionAdapter.adapt(legacy)
         val store = InMemoryEventStore()
-        val command = CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")
+        // WU-LPR-301 / G5 (2026-09-18): CanonicalCoreStepCommand.Load was removed
+        // (LEGACY_REMOVED); PreparedLegacyExecution.command is now Any?, so the fixture
+        // passes a synthetic opaque payload that the legacy executor receives opaquely.
+        val command: Any = "legacy-fixture.pipeline.kts"
 
         val outcome = boundary.execute(PreparedLegacyExecution(command), runtime(store))
 

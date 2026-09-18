@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.BodyInvocationPolicy
 import dev.rubentxu.pipeline.v2.domain.step.RetryPolicy
+import dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape
 
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
@@ -146,8 +147,9 @@ object CoreWaitUntilStep {
         }
     }
 
-    // WU-G5R.3: The coordinator's executeWaitUntilBody() implements the condition-polling
-    // loop. This descriptor matches the registry entry so body metadata is coherent.
+    // WU-LPR-301: waitUntil declares its execution shape structurally via the
+    // waitUntil sub-shape of BodyExecutionPolicy.Retrying. The coordinator dispatches
+    // the polling loop by reading the sub-shape, with no concrete-StepKey branch.
     private val descriptor = StepDescriptor(
         stepId = "core.waitUntil",
         name = "waitUntil",
@@ -159,9 +161,10 @@ object CoreWaitUntilStep {
             invocation = BodyInvocationPolicy.ZERO_OR_MORE,
             execution = BodyExecution(
                 owner = BodyExecutionOwner.CANONICAL_ENGINE,
-                // Coordinator executeWaitUntilBody reads initialRecurrencePeriod/quiet from
-                // the encoded input and runs the polling loop with exponential backoff.
-                policy = BodyExecutionPolicy.Retrying(RetryPolicy()),
+                policy = BodyExecutionPolicy.Retrying(
+                    policy = RetryPolicy(),
+                    waitUntil = WaitUntilShape(),
+                ),
             ),
             introduces = null,
         ),

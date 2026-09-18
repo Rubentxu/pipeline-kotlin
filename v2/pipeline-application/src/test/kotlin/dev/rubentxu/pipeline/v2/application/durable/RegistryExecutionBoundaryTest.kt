@@ -172,8 +172,11 @@ class RegistryExecutionBoundaryTest {
         runBlocking {
             org.junit.jupiter.api.Assertions.assertThrows(EngineInvariantViolation::class.java) {
                 runBlocking {
+                    // WU-LPR-301 / G5 (2026-09-18): CanonicalCoreStepCommand.Load was removed
+                    // (LEGACY_REMOVED); PreparedLegacyExecution.command is now Any?, so the
+                    // fixture passes a synthetic opaque payload.
                     boundary.execute(
-                        PreparedLegacyExecution(dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand.Load(path = "legacy-fixture.pipeline.kts")),
+                        PreparedLegacyExecution(command = "legacy-fixture.pipeline.kts"),
                         runtime(store),
                     )
                 }

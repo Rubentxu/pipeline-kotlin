@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.canonicalReentrySentinel
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
@@ -30,42 +29,34 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import kotlinx.coroutines.runBlocking
-import kotlin.sequences.generateSequence
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * WU-G5R.4 — In-process dispatch fitness for `core.waitUntil` canonical BodyInvoker re-entry.
+ * WU-LPR-301 — `core.waitUntil` fitness: the canonical body engine dispatches
+ * `core.waitUntil` via the open registry (CoreWaitUntilStep) and a structural
+ * declaration of the polling cadence (BodyExecutionPolicy.Retrying(waitUntil = ...)).
+ * There is no concrete-PluginStepId branch in the coordinator.
  *
- * Proves the four properties stated by the design §14 / tasks §8:
+ * Properties asserted (counterpart of the WU-G5R.4 properties, now re-proven under the
+ * WU-LPR-301 architecture):
  *
- *   1. `core.waitUntil` is absent from `CoreStepRegistryFactory.registerInto` calls
- *      (structural — it is now a pure BlockShellScope, not a registry Step).
+ *   1. `core.waitUntil` IS registered in `CoreStepRegistryFactory` (REGISTRY_PRIMARY).
+ *   2. The descriptor carries `BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape())`.
+ *   3. The canonical body engine dispatches the polling loop by reading the sub-shape,
+ *      with no `when(stepKey)` / `if (pluginStepId.value == "core.waitUntil")` branch.
+ *   4. The installed CLI emits `WaitUntilPolled` and `WaitUntilCompleted` through the
+ *      CoreWaitUntilStep handler (registry path).
  *
- *   2. The coordinator's `executeWaitUntilBody` fires the non-production
- *      `canonicalReentrySentinel` ThreadLocal when the canonical path is reached.
- *
- *   3. `waitUntilControlJournal` defaults to `null` — the inline polling loop
- *      is preserved (pre-WU-G5R.5 state).
- *
- *   4. The sentinel is cleared after the function returns.
- *
- * ## Non-production sentinel trade-off
- *
- * The `canonicalReentrySentinel` is a `ThreadLocal<Boolean>` read ONLY by this
- * test. It is not production API. The closure receipt (WU-G5R-GATE) documents
- * the trade-off: we accept a thread-local side channel in exchange for a
- * deterministic, observable reachability proof without coupling the production
- * code to test infrastructure.
+ * Out of scope: the actual condition-evaluating loop (RepeatUntil policy) is deferred to
+ * WU-LPR-302 (body/control execution consolidation). Until then the handler emits a single
+ * polled/completed pair; this fitness test asserts that the structural wiring (registration,
+ * descriptor shape, dispatch through the registry, event emission) is in place.
  */
-@DisplayName("WU-G5R.4 — canonical BodyInvoker re-entry fitness for core.waitUntil")
+@DisplayName("WU-LPR-301 — core.waitUntil canonical registry fitness")
 @Timeout(30)
 class Lfc2WaitUntilCanonicalReentryFitnessTest {
 
@@ -75,42 +66,30 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
         )
     }
 
-    /**
-     * WU-G5R.4: accesses the non-production sentinel `canonicalReentrySentinel`.
-     *
-     * The sentinel is `@PublishedApi internal` at file level in the coordinator file —
-     * accessible within the same Gradle module from any package via explicit import.
-     * Never called from production code. The closure receipt (WU-G5R-GATE) explains the trade-off.
-     */
-    internal fun sentinelAccessor(): AtomicBoolean = canonicalReentrySentinel
-
-    private fun waitUntilPipeline(succeedImmediately: Boolean = true): CompiledPipeline {
-        val shellCommand = if (succeedImmediately) "true" else "false"
-        return CompiledPipeline(
-            id = DefinitionId("waitUntil-reentry-test"),
-            source = SourceDescriptor("test.pipeline.kts", Digest("test")),
-            pluginLockDigest = Digest("test-lock"),
-            stages = listOf(
-                StageNode(
-                    id = StageId("test"),
-                    name = "test",
-                    body = StageBody.Steps(
-                        listOf(
-                            BlockStepNode(
-                                id = StepId("test/wait-until"),
-                                pluginStepId = PluginStepId("core.waitUntil"),
-                                payload = VersionedStepPayload(
-                                    "dsl-v1",
-                                    """{"kind":"waitUntilBlock","initialRecurrencePeriod":100,"quiet":false}""",
-                                ),
-                                body = listOf(
-                                    OpaqueStepNode(
-                                        id = StepId("test/wait-until/body-0"),
-                                        pluginStepId = PluginStepId("core.sh"),
-                                        payload = VersionedStepPayload(
-                                            "dsl-v1",
-                                            """{"kind":"sh","command":"$shellCommand","isScriptBlock":false,"returnStdout":false}""",
-                                        ),
+    private fun waitUntilPipeline(): CompiledPipeline = CompiledPipeline(
+        id = DefinitionId("waitUntil-reentry-test"),
+        source = SourceDescriptor("test.pipeline.kts", Digest("test")),
+        pluginLockDigest = Digest("test-lock"),
+        stages = listOf(
+            StageNode(
+                id = StageId("test"),
+                name = "test",
+                body = StageBody.Steps(
+                    listOf(
+                        BlockStepNode(
+                            id = StepId("test/wait-until"),
+                            pluginStepId = PluginStepId("core.waitUntil"),
+                            payload = VersionedStepPayload(
+                                "dsl-v1",
+                                """{"kind":"waitUntilBlock","initialRecurrencePeriod":100,"quiet":false}""",
+                            ),
+                            body = listOf(
+                                OpaqueStepNode(
+                                    id = StepId("test/wait-until/body-0"),
+                                    pluginStepId = PluginStepId("core.sh"),
+                                    payload = VersionedStepPayload(
+                                        "dsl-v1",
+                                        """{"kind":"sh","command":"true","isScriptBlock":false,"returnStdout":false}""",
                                     ),
                                 ),
                             ),
@@ -118,56 +97,59 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
                     ),
                 ),
             ),
-        )
-    }
+        ),
+    )
 
     /**
-     * Fitness 1: `core.waitUntil` is NOT registered via `registerInto` in the
-     * production factory. It is now a pure BlockShellScope projection, not a
-     * registry Step.
+     * Fitness 1: `core.waitUntil` IS registered in the production factory. The dispatch
+     * authority is exclusively the registry (CoreWaitUntilStep.definition); there is no
+     * canonical legacy dispatcher for this key.
      */
     @Test
-    fun `core dot waitUntil is not registered in the production factory`() {
+    fun `core dot waitUntil is registered in the production factory`() {
         val registry = CoreStepRegistryFactory.registry()
-        assertFalse(
+        assertTrue(
             registry.contains(PluginStepId("core.waitUntil")),
-            "core.waitUntil must NOT be in CoreStepRegistryFactory — it is a " +
-                "BlockShellScope projection, not a registry Step",
+            "core.waitUntil MUST be in CoreStepRegistryFactory — it is the registry " +
+                "authority for the canonical waitUntil dispatch (REGISTRY_PRIMARY)",
         )
     }
 
     /**
-     * Fitness 2: the coordinator's `executeWaitUntilBody` fires the sentinel
-     * when the canonical dispatch path is reached for a `waitUntil` block.
-     *
-     * The sentinel is set to `true` at the start of `executeWaitUntilBody` and cleared
-     * in the `finally` block. Since the clearing happens before `run()` returns, we use
-     * a monitoring thread to observe the transient `true` state during execution.
+     * Fitness 2: the CoreWaitUntilStep descriptor declares the polling cadence through
+     * `BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape())`. The body engine reads
+     * the sub-shape structurally; there is no concrete-PluginStepId comparison.
      */
     @Test
-    fun `sentinel fires during waitUntil canonical dispatch`(@TempDir tempDir: Path) = runBlocking {
+    fun `core dot waitUntil descriptor declares the waitUntil sub-shape`() {
+        val registry = CoreStepRegistryFactory.registry()
+        val definition = registry.definition(PluginStepId("core.waitUntil"))
+        requireNotNull(definition) { "core.waitUntil must be registered" }
+        val descriptor = definition.contract.descriptor
+        val body = descriptor.body as? dev.rubentxu.pipeline.v2.domain.StepBody.Declared
+        requireNotNull(body) { "core.waitUntil must declare a structural body" }
+        val policy = body.execution.policy
+        check(policy is dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy.Retrying) {
+            "core.waitUntil descriptor body policy must be Retrying; got: $policy"
+        }
+        assertTrue(
+            policy.waitUntil != null,
+            "core.waitUntil descriptor MUST carry a WaitUntilShape sub-shape so the body " +
+                "engine can dispatch the polling loop without a per-StepKey branch"
+        )
+    }
+
+    /**
+     * Fitness 3: the canonical coordinator succeeds end-to-end when `core.waitUntil` is
+     * routed through the registry. No exception, no legacy dispatcher call, no
+     * per-StepKey branch.
+     */
+    @Test
+    fun `waitUntil succeeds through the registry path`() = runBlocking {
         val clock = SystemClock()
         val eventStore = InMemoryEventStore()
-        val runId = RunId("waitUntil-canonical-reentry")
+        val runId = RunId("waitUntil-registry-path")
         val journal = InMemoryOperationJournal(clock)
-
-        // Clear any stale sentinel state before monitoring
-        val sentinel = sentinelAccessor()
-        sentinel.set(false)
-
-        // Monitoring thread: observes the sentinel during `run()` execution.
-        // The sentinel is `true` only during the brief window inside `executeWaitUntilBody`.
-        val fired = AtomicBoolean(false)
-        val monitor = Thread {
-            while (!fired.get()) {
-                if (sentinel.get()) {
-                    fired.set(true)
-                }
-                if (Thread.interrupted()) break
-                Thread.sleep(1)
-            }
-        }
-        monitor.start()
 
         val outcome = CanonicalDurableRunCoordinator(
             dispatcher = CanonicalNodeDispatcher(),
@@ -178,71 +160,22 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             eventSink = eventStore,
             credentialScopePort = noOpCredentialScopePort(),
             stepRegistry = CoreStepRegistryFactory.registry(),
-            // WU-G5R.4: waitUntilControlJournal defaults to null — inline polling loop
-        ).run(waitUntilPipeline(succeedImmediately = true), runId)
+        ).run(waitUntilPipeline(), runId)
 
         assertEquals(
             RunOutcome.Success,
             outcome,
-            "waitUntil with immediate-success condition must succeed",
-        )
-
-        monitor.interrupt()
-        monitor.join(2000)
-
-        // Fitness 2: sentinel fired during dispatch (observed by monitor thread)
-        assertTrue(
-            fired.get(),
-            "Sentinel MUST fire during canonical waitUntil dispatch — " +
-                "this proves executeWaitUntilBody was reached through the canonical path",
+            "waitUntil dispatched through the registry must succeed end-to-end",
         )
     }
 
     /**
-     * Fitness 3 + 4: the sentinel is cleared after `executeWaitUntilBody` returns.
+     * Fitness 4: Installed-CLI fitness — proves the registry path is the emitter of
+     * `WaitUntilPolled` / `WaitUntilCompleted`. The fixture exercises the same canonical
+     * body machinery as production, and the CLI exits 0 with the expected event shape.
      */
     @Test
-    fun `sentinel is cleared after waitUntil dispatch`(@TempDir tempDir: Path) = runBlocking {
-        val clock = SystemClock()
-        val eventStore = InMemoryEventStore()
-        val runId = RunId("waitUntil-sentinel-clear")
-        val journal = InMemoryOperationJournal(clock)
-
-        CanonicalDurableRunCoordinator(
-            dispatcher = CanonicalNodeDispatcher(),
-            journal = journal,
-            cursorStore = InMemoryReplayCursorStore(clock),
-            clock = clock,
-            effectReplayPolicy = DefaultEffectReplayPolicy(),
-            eventSink = eventStore,
-            credentialScopePort = noOpCredentialScopePort(),
-            stepRegistry = CoreStepRegistryFactory.registry(),
-        ).run(waitUntilPipeline(succeedImmediately = true), runId)
-
-        val sentinel = sentinelAccessor()
-
-        // Sentinel MUST be cleared after dispatch returns
-        assertFalse(
-            sentinel.get(),
-            "Sentinel must be cleared after executeWaitUntilBody returns — " +
-                "ThreadLocal.remove() in the finally block",
-        )
-    }
-
-    /**
-     * WU-G5R.6: Installed-CLI fitness — proves `dispatchRepeatUntilBody` is the
-     * emitter of `WaitUntilPolled` / `WaitUntilCompleted` through the canonical
-     * dispatch path (BlockStepNode + BodyExecutionPolicy.RepeatUntil), not the
-     * legacy `CanonicalWaitUntilNodeDispatcher` stub.
-     *
-     * Verifies:
-     * - The CLI exits 0 (waitUntil predicate satisfied).
-     * - The event stream contains ≥1 `WaitUntilPolled`.
-     * - The event stream contains `WaitUntilCompleted(outcome="completed")`.
-     * - No `WaitUntilPredicateEvaluated(Failed)` on the canonical path.
-     */
-    @Test
-    fun `installed CLI emits WaitUntilPolled and WaitUntilCompleted through canonical path`() {
+    fun `installed CLI emits WaitUntilPolled and WaitUntilCompleted through registry path`() {
         val appBin = AppBinSupport.discover()
         val fixture = generateSequence(
             java.io.File(System.getProperty("user.dir"))
@@ -251,8 +184,8 @@ class Lfc2WaitUntilCanonicalReentryFitnessTest {
             .firstOrNull { it.isFile }
             ?: error("Cannot locate v2/compatibility/22-wait-until.pipeline.kts")
 
-        val dbDir = java.io.File(java.io.File("/tmp"), "wu-g5r6-db-${System.currentTimeMillis()}")
-        val ctrlDir = java.io.File(java.io.File("/tmp"), "wu-g5r6-ctrl-${System.currentTimeMillis()}")
+        val dbDir = java.io.File(java.io.File("/tmp"), "wu-lpr301-db-${System.currentTimeMillis()}")
+        val ctrlDir = java.io.File(java.io.File("/tmp"), "wu-lpr301-ctrl-${System.currentTimeMillis()}")
         dbDir.deleteOnExit()
         ctrlDir.deleteOnExit()
 

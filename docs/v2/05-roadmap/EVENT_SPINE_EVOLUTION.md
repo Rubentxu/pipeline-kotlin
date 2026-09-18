@@ -1,6 +1,28 @@
 # EVT — Event Spine, Verification and Policy evolution
 
-Status: ACTIVE program — EVT-0 CLOSED, EVT-1 CLOSED (cycle evt-1-resource-ref-envelope), EVT-2 CLOSED @ 1b950074, **EVT-3 CLOSED @ df22ff01**. EVT-4 PENDING; EVT-5 PENDING.
+**Disposition (2026-09-18, WU-LPR-000 reconciliation):**
+EVT-0..EVT-3 **CLOSED**; EVT-4+ **DEFERRED** (detached/remote relay).
+LPR observation plane reuses EVT-2/3 (in-process history/tail + envelope +
+sequence) where it makes sense, but LPR does **NOT** absorb, replace or
+substitute EVT-4. EVT-4 resumes only after explicit post-LPR reprioritization.
+
+EVT-0 CLOSED; EVT-1 CLOSED (cycle `evt-1-resource-ref-envelope`);
+EVT-2 CLOSED @ `1b950074`; **EVT-3 CLOSED @ `df22ff01`**.
+EVT-4 PENDING (deferred — detached/remote relay); EVT-5 PENDING.
+
+**Sequence-assignment note (2026-09-18, WU-LPR-000):**
+The frozen law is *the store assigns a monotonically increasing per-run
+sequence, including across reopen/restart*. `OEVS-2` (reopen-resume
+sequence defect in `SqliteEventStore`) is a violation of that law.
+**Do not extract `EventSequenceAssigner` (or any other shared abstraction)
+before the required semantics are specified.** A premature abstraction
+that *appears* common to `InMemory` and `Sqlite` is likely to either (a)
+hide the durability requirement (the durable authority must live in the
+DB, while `InMemory` keeps a local counter) or (b) force one of the two
+adapters to lose a property. Fix the semantics first; let the abstraction
+follow. See `LPR_WORK_UNITS.md` `WU-LPR-041` (SQLite single writer +
+durable sequence resume) for the assigned owner.
+
 Placement: EVT-0..3 remain the local verification foundation. ADR-0082 moves the
 next P0 product work to LPR. LPR-O adds an in-process local observation plane on
 top of EVT-2 history/tail; it is NOT EVT-4. EVT-4 still owns detached/remote relay

@@ -73,9 +73,43 @@ Agent-efficient filters, fields, tail/context/follow; no query language.
 
 Generate source of truth from registry/tests/evidence; generated Markdown replaces manually drifting counts.
 
-## WU-LPR-061..063 — Real projects
+## WU-LPR-061 — `@Disabled` test classification (test-pruning)
 
-Gradle, Maven, Node installed-distribution fixtures; success and meaningful failure each.
+Inventory the **67 `@Disabled` tests** counted in WU-LPR-000. Classify each
+into exactly one of:
+
+- `MANDATORY_SUPPORTED` — required for LPR-GATE-1. Must be re-enabled (with
+  a characterization note if the previous green was based on a now-defunct
+  behaviour) or replaced by an equivalent live test. **Only this class can
+  block LPR-GATE-1.**
+- `COMPATIBILITY` — historical Jenkins-shaped regression suite. Retain as-is
+  unless `WU-LPR-103` (compatibility-curve burn-down) explicitly retires
+  fixtures.
+- `HISTORICAL` — quarantined evidence of a previously-closed cycle
+  (e.g. the seven quarantined UAT methods from `7c9ce5c7`). Preserve with
+  the cycle's receipt; do not re-enable.
+- `EXPERIMENTAL` — research/investigation tests that do not gate anything.
+  Move under a research-internal source set, not `src/test/`.
+- `OBSOLETE` — no longer relevant (e.g. a deleted step, a retired adapter).
+  Delete with a one-line deletion receipt pointing at the deletion.
+
+Only the `MANDATORY_SUPPORTED` subset may block `LPR-GATE-1`. The cycle
+produces a per-test classification table; production code is NOT modified
+by this WU.
+
+## WU-LPR-062..064 — Real projects
+
+## WU-LPR-062 — Gradle installed-distribution fixture
+
+`pipelinek` runs a real Gradle build (success + meaningful failure) end-to-end through the installed distribution. Receipt binds the produced events to expected outcome.
+
+## WU-LPR-063 — Maven installed-distribution fixture
+
+Same shape for Maven. Avoids the temptation to keep Maven as a Jenkins-only story; Maven compatibility belongs to `WU-LPR-103` separately.
+
+## WU-LPR-064 — Node installed-distribution fixture
+
+Same shape for Node. Not blocking Gate-1 if Node is not in the Gate-1 surface.
 
 ## WU-LPR-070 — Distribution
 

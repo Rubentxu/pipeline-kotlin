@@ -1,9 +1,15 @@
 # LFC-2 — Honest Jenkins-like DSL closure
 
-> **LPR disposition:** ABSORBED into `LOCAL_PRODUCTION_READY_ROADMAP.md` LPR-3.
-> This document remains the authoritative gap/evidence inventory for historical
-> LFC-2 DSL work, but it is no longer an independent product-priority sequence.
-> Supported DSL honesty is a release gate; non-Gate-1 surfaces may remain deferred.
+> **LPR disposition (2026-09-18, WU-LPR-000 reconciliation):**
+> **ABSORBED INTO LPR-3** (no longer an autonomous product-priority sequence).
+> The valid obligations of LFC-2 continue as LPR-3 obligations; this file
+> preserves the historical gap/evidence inventory and the receipts. It is
+> not deleted and not rewritten — receipts remain truthful, only the
+> scheduling authority changes.
+>
+> Honesty obligations (no fake runtime values, supported DSL surface as a
+> release gate) remain valid and move into LPR-3. Anything that was not a
+> Gate-1 surface in LFC-2 may stay deferred under LPR-3.
 
 Change: `openspec/changes/lfc-2-honest-dsl-closure`. Tracks "Honest Jenkins-like DSL: familiar DSL
 with no fake runtime values" as an OPEN milestone with an itemized list and an explicit exit gate.

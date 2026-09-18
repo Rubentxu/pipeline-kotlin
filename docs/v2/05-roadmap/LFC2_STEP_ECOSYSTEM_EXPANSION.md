@@ -1,5 +1,14 @@
 # LFC-2E — Local-first Step Ecosystem Expansion
 
+**Disposition (2026-09-18, WU-LPR-000 reconciliation):**
+**DEFERRED AS FULL PRIORITY SEQUENCE.**
+
+- E0 / E1 keep their status as **reusable evidence** (catalog, certification
+  burn-down, plugin-seam proof). They are not relitigated.
+- E2..E10 are **post `LPR-GATE-1`** and may be reordered by dogfooding
+  evidence from `local-core-v1`. LPR owns the active P0 lane; LFC-2E does
+  not gate LPR work.
+
 Status: DEFERRED AS FULL PRODUCT-PRIORITY SEQUENCE by ADR-0082 / LPR.
 Depends on: LFC-2 Step Constitution/extensibility proof, CTX-P/P4-EX, EVT-0..EVT-3.
 Defers: EVT-4+, M4 distributed/controller work, M5 Kubernetes workers, M6 Jenkins adapter, production policy enforcement.

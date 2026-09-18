@@ -2149,13 +2149,34 @@ class CanonicalDurableRunCoordinator(
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
     ): StepOutcome {
+        // WU-LPR-103 observability fix: an admission failure here is a REAL observable
+        // outcome, not a silent one. Before any StepStarted exists for the leased body,
+        // the failure MUST surface as a typed StepFailed event — otherwise external
+        // observers see StageStarted -> RunFinished(failure) with empty diagnostics and
+        // no way to know the credential lease was rejected.
         val leased: AcquiredCredentialScope = when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
-            is CredentialScopeOutcome.Unavailable -> return StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, acquisition.failure.describe()),
-            )
-            is CredentialScopeOutcome.Invalid -> return StepOutcome.Failure(
-                PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, acquisition.failure.describe()),
-            )
+            is CredentialScopeOutcome.Unavailable -> {
+                emitCredentialLeaseAdmissionFailure(
+                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
+                    stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
+                    failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                    message = acquisition.failure.describe(),
+                )
+                return StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, acquisition.failure.describe()),
+                )
+            }
+            is CredentialScopeOutcome.Invalid -> {
+                emitCredentialLeaseAdmissionFailure(
+                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
+                    stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
+                    failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    message = acquisition.failure.describe(),
+                )
+                return StepOutcome.Failure(
+                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, acquisition.failure.describe()),
+                )
+            }
             is CredentialScopeOutcome.Acquired -> acquisition.scope
         }
         val childContext = executionContext.pushed(
@@ -2202,6 +2223,35 @@ class CanonicalDurableRunCoordinator(
                 PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE, cleanup.message),
             )
         }
+
+    /**
+     * WU-LPR-103: emit a typed [StepFailed] for a credential-lease admission
+     * failure. The lease rejection happens BEFORE any child StepStarted, so
+     * this event is the only per-step observability the outcome has.
+     */
+    private fun emitCredentialLeaseAdmissionFailure(
+        runId: RunId,
+        stageIndex: Int,
+        stepIndex: Int,
+        stepName: String,
+        stepType: String,
+        failureKind: dev.rubentxu.pipeline.v2.domain.FailureKind,
+        message: String,
+    ) {
+        eventSink.append(
+            dev.rubentxu.pipeline.v2.events.StepFailed(
+                eventId = java.util.UUID.randomUUID().toString(),
+                runId = runId.value,
+                sequence = 0L,
+                occurredAt = clock.now(),
+                stepIndex = stepIndex,
+                stepName = stepName,
+                stepType = stepType,
+                failureKind = failureKind,
+                message = message,
+            ),
+        )
+    }
 
     private fun CredentialScopeFailure.describe(): String = when (this) {
         is CredentialScopeFailure.StoreUnavailable -> message

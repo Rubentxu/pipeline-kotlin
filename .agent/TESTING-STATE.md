@@ -1076,3 +1076,21 @@ wiring it will now fail the test loudly.
 4. `Lfc2ConcreteBodyRoutingDebtFitnessTest$ViolationFixture` covers `dispatchTimeoutBlock`
    (and similar) as INSTRUMENTED TEST FIXTURES that catalog what should NOT appear in
    production code — these are LEDGER ENTRIES, not violations.
+
+## Handoff — WU-LPR-103 (2026-09-18)
+
+What changed:
+- Main.kt: shared `composeWithCredentialsExecutor()`; in-memory `pipeline run` branch now wires credentials (parity with durable branch).
+- CanonicalDurableRunCoordinator: credential-lease admission failure now emits typed StepFailed (no more silent failure).
+- CompatibilityCorpusTest: fixture05 -> HISTORICAL compile-fail pin; fixture14 -> seeded-store pass harness; new fixture14WithoutStoreFailsTyped forever-fitness.
+
+What was tested (fresh, this session):
+- CompatibilityCorpusTest 22/22 (tests="22" failures="0" errors="0")
+- durable package 612/612
+- UatLocal008: CR-BD-027 fails; reproduced identically on base SHA c29e3c1f worktree -> PRE_EXISTING (not a regression).
+
+Fresh evidence reusable: CompatibilityCorpusTest, durable package (no prod changes since), UatLocal008 base characterization.
+Stale: any run predating the Main.kt/coordinator edits.
+Unknown: none material.
+
+Receipt: docs/v2/07-uat/WU_LPR_103_COMPATIBILITY_CURVE_RECEIPT.md

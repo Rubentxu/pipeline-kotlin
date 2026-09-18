@@ -15,6 +15,8 @@ kotlin {
 }
 
 application {
+    // WU-LPR-070: product name for the installed distribution (bin/pipelinek).
+    applicationName = "pipelinek"
     mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
 }
 

@@ -29,6 +29,16 @@ subprojects {
     }
 }
 
+// WU-LPR-070: reproducible archives (BUILD ONCE / PUBLISH SAME BYTES).
+// Nested project jars feed the pipelinek distZip; without these flags the
+// embedded jar CRCs change on every rebuild (observed 2026-09-19).
+subprojects {
+    tasks.withType<AbstractArchiveTask>().configureEach {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}
+
 // ── Lane R: external plugin reproducibility ────────────────────────────────────
 // example-uppercase-plugin is an INDEPENDENT Gradle build (its own settings file),
 // not a subproject of v2: that independence is the property it certifies. It

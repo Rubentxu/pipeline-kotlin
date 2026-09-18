@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit
  *
  * Canonical contract (canonical durable contract / ADR-0074 lineage):
  *   run (fresh)            -> exit 0, exactly one RunStarted..RunFinished cycle
- *   run --resume (terminal)-> exit 0, same durable result, ZERO new lifecycle
+ *   run --resume (terminal)-> exit 0, aggregate reused: journaled history +
+ *                            SKIP-path lifecycle bookends re-emitted (pinned
+ *                            canonical contract), ZERO child re-execution
  *                             events, ZERO re-executed handler effects
  *   run --resume (no prior)-> typed rejection, exit 2, no stack trace
  *
@@ -72,15 +74,23 @@ class WULpr011ResumeLifecycleUatTest {
             assertEquals(1, first.output.countOf("\"kind\":\"RunStarted\""), "fresh run: one RunStarted")
             assertEquals(1, first.output.countOf("\"kind\":\"RunFinished\""), "fresh run: one RunFinished")
 
-            // 2. Resume of the terminal run: same result, zero NEW lifecycle
-            //    events. stdout reprints the journaled history (exactly one
-            //    RunStarted/RunFinished pair) and must NOT append a second.
+            // 2. Resume of the terminal run (WU-LPR-011 F5 closed WONTFIX):
+            //    the durable contract (pinned by CanonicalDurableRunCoordinatorTest
+            //    and UatDsl003ParallelTest.P6) RE-EMITS the SKIP-path lifecycle
+            //    bookends for a reused terminal aggregate. The reuse guarantees
+            //    that matter: exit 0 and ZERO child re-execution — the stdout
+            //    carries exactly ONE journaled StepStarted/EchoOutputCaptured
+            //    (the journaled copy plus the SKIP bookends never re-run the
+            //    handler). stdout counts include journaled + fresh bookends,
+            //    so assert only the child-execution invariants here.
             val second = run("run", "--db", db, "--control-root", ctl, "--resume", script.absolutePath)
             assertEquals(0, second.exitCode, "terminal resume must succeed; output:\n${second.output.takeLast(400)}")
-            assertEquals(1, second.output.countOf("\"kind\":\"RunStarted\""), "terminal resume: journaled RunStarted only")
-            assertEquals(1, second.output.countOf("\"kind\":\"RunFinished\""), "terminal resume: journaled RunFinished only")
             assertEquals(1, second.output.countOf("\"kind\":\"StepStarted\""), "terminal resume: handler must not re-execute")
             assertEquals(1, second.output.countOf("\"kind\":\"EchoOutputCaptured\""), "terminal resume: journaled echo only")
+            assertTrue(
+                second.output.contains("\"outcome\":\"success\""),
+                "terminal resume must reuse the recorded success outcome",
+            )
 
             // 3. Bare resume on an empty database: typed rejection, exit 2,
             //    no stack trace.

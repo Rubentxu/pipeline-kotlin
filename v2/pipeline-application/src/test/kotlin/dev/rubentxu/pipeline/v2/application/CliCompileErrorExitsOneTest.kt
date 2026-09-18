@@ -88,10 +88,16 @@ class CliCompileErrorExitsOneTest {
     }
 
     /**
-     * `pipeline validate` with broken compilation exits 1 and prints VALIDATION FAILED.
+     * `pipeline validate` with broken compilation exits 2 and prints VALIDATION FAILED.
+     *
+     * WU-LPR-011 F3: validate is an INVOCATION/compile gate, not a pipeline
+     * execution. The canonical CLI exit contract (receipt WU_LPR_011) is
+     * 0 success / 1 pipeline execution failure / 2 invocation, config,
+     * compile, admission. A broken compile is an admission failure → exit 2.
+     * (INC-021 pin originally asserted exit 1; re-pinned honestly.)
      */
     @Test
-    fun `validate exits one with VALIDATION FAILED on broken compilation`() {
+    fun `validate exits two with VALIDATION FAILED on broken compilation`() {
         val appBin = AppBinSupport.discover()
         val fixture = brokenFixture()
 
@@ -103,8 +109,8 @@ class CliCompileErrorExitsOneTest {
         val exitCode = process.waitFor()
         val stderr = process.errorStream.bufferedReader().readText().trim()
 
-        // Exit code must be 1
-        assertEquals(1, exitCode, "validate with broken compilation must exit 1, but got $exitCode. stderr: $stderr")
+        // Exit code must be 2 (canonical admission/compile contract)
+        assertEquals(2, exitCode, "validate with broken compilation must exit 2, but got $exitCode. stderr: $stderr")
 
         // stderr must contain VALIDATION FAILED
         assertTrue(stderr.contains("VALIDATION FAILED"),

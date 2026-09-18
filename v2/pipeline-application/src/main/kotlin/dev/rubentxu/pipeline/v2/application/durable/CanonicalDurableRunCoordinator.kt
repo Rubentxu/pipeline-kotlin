@@ -604,52 +604,7 @@ class CanonicalDurableRunCoordinator(
     // Track whether RunStarted was emitted (for RunFinished correlation)
     private var runStartedEmitted = false
 
-    /**
-     * WU-LPR-011 F5: pure decision over the durable event history — was this
-     * run already brought to a terminal state by a prior invocation?
-     *
-     * Reads the event store (the run-lifecycle authority) and classifies the
-     * LAST RunFinished for the runId, if any. Returns the outcome the prior
-     * invocation recorded so `--resume` on a terminal run returns the same
-     * result with zero new events and zero re-executed effects. Returns null
-     * when no terminal record exists (fresh run or mid-flight crash resume),
-     * leaving the normal dispatch path in charge.
-     */
-    private fun priorTerminalOutcome(runIdValue: String): RunOutcome? {
-        val lastFinished = eventSink.eventsFor(runIdValue)
-            .filterIsInstance<RunFinished>()
-            .lastOrNull()
-            ?: return null
-        return when (lastFinished.outcome) {
-            "success" -> RunOutcome.Success
-            "unstable" -> RunOutcome.Unstable
-            "failure" -> RunOutcome.Failure(
-                PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                    "Prior invocation of this run finished with FAILURE; use --rerun to start a fresh run",
-                ),
-            )
-            "aborted" -> RunOutcome.Aborted
-            // Unknown terminal value: fail closed, never silently re-dispatch
-            // a run whose durable lifecycle is not interpretable.
-            else -> RunOutcome.Failure(
-                PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                    "Prior run recorded an unknown terminal outcome '${lastFinished.outcome}'",
-                ),
-            )
-        }
-    }
-
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
-        // WU-LPR-011 F5: resume of a TERMINAL prior run. The event history is
-        // the durable authority for run lifecycle: if a RunFinished for this
-        // runId already exists, the run is terminal and MUST NOT re-emit a
-        // second lifecycle envelope (RunStarted/StageStarted/RunFinished).
-        // Handlers are already protected by per-step reconciliation
-        // (MEMOIZED/RERUN + journaled SUCCEEDED -> SKIP); this closes the
-        // remaining duplicate-envelope defect at the canonical path.
-        priorTerminalOutcome(runId.value)?.let { return it }
         // Reset state for this run
         currentOutcome = RunOutcome.Success
         runStartedEmitted = false

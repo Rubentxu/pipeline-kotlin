@@ -1,7 +1,10 @@
 # EVT — Event Spine, Verification and Policy evolution
 
-Status: ACTIVE program — EVT-0 CLOSED, EVT-1 CLOSED (cycle evt-1-resource-ref-envelope), EVT-2 CLOSED @ 1b950074, **EVT-3 CLOSED @ df22ff01** (cycle evt-3-event-harness, branch docs/evt-3-event-harness). EVT-4 PENDING (deferred by local-first priority per LFC-2E program); EVT-5 PENDING (deferred, no transport selected).
-Placement: EVT-0..3 complete the local verification foundation; EVT-4+ resumes only after the LFC-2E local-first Step ecosystem freeze.
+Status: ACTIVE program — EVT-0 CLOSED, EVT-1 CLOSED (cycle evt-1-resource-ref-envelope), EVT-2 CLOSED @ 1b950074, **EVT-3 CLOSED @ df22ff01**. EVT-4 PENDING; EVT-5 PENDING.
+Placement: EVT-0..3 remain the local verification foundation. ADR-0082 moves the
+next P0 product work to LPR. LPR-O adds an in-process local observation plane on
+top of EVT-2 history/tail; it is NOT EVT-4. EVT-4 still owns detached/remote relay
+proof and resumes only after explicit post-LPR reprioritization.
 Maps forward to existing M4 (Protocol/Gateway), M6 (Jenkins UI), M8 (Graph/Provenance) and M9 (policies).
 
 ## Sequencing principle
@@ -9,19 +12,18 @@ Maps forward to existing M4 (Protocol/Gateway), M6 (Jenkins UI), M8 (Graph/Prove
 Do not build the final distributed platform first. Each slice must produce visible local value and leave a
 compatible seam for the next deployment topology.
 
-**Product-priority amendment:** EVT-3 is the final sequential P0 Event Spine slice before local feature expansion.
-After EVT-3, `LFC-2E` becomes the product-priority program so pipeline-kotlin can maximize and certify the
-local Step/plugin ecosystem. EVT-4 is intentionally deferred until the local-first feature freeze defined by
-`LFC2_STEP_ECOSYSTEM_EXPANSION.md`; it is not cancelled.
+**Product-priority amendment (2026-09-18):** EVT-3 is the final sequential P0
+Event Spine programme slice. LPR is now the active product lane. EVT-4 remains
+deferred; LPR local streaming must not be used to smuggle in controller/transport work.
 
 ```text
 EVT-0..3
    ↓
-LFC-2E local-first Step/plugin expansion
+LPR Local Production Ready
    ↓
-local-first feature freeze
+LPR-GATE-1 + dogfooding evidence
    ↓
-EVT-4 detached live relay
+LFC-2E selected expansion and/or EVT-4 by explicit priority review
    ↓
 EVT-5 transport spike
    ↓

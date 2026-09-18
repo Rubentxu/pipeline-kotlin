@@ -1,12 +1,17 @@
 # LFC-2E — Local-first Step Ecosystem Expansion
 
-Status: PROPOSED / implementation-ready after EVT-3 closes.
+Status: DEFERRED AS FULL PRODUCT-PRIORITY SEQUENCE by ADR-0082 / LPR.
 Depends on: LFC-2 Step Constitution/extensibility proof, CTX-P/P4-EX, EVT-0..EVT-3.
 Defers: EVT-4+, M4 distributed/controller work, M5 Kubernetes workers, M6 Jenkins adapter, production policy enforcement.
 
+Disposition: preserve E0/E1 inventories, certification evidence and the E2..E10
+capability backlog. Before LPR-GATE-1 only the Step families required by
+`local-core-v1` are P0. After LPR-GATE-1, resume/reorder E2..E10 from dogfooding
+evidence. See `LOCAL_PRODUCTION_READY_ROADMAP.md` and `ROADMAP_MIGRATION_LPR.md`.
+
 ## Strategic decision
 
-After EVT-3 closes, pipeline-kotlin prioritizes **maximum useful local-first Step coverage** before resuming live relay/controller/remote worker work.
+Historical decision retained below for traceability; LPR supersedes it as current sequencing authority.
 
 The sequence becomes:
 

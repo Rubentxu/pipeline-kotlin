@@ -1,5 +1,10 @@
 # LFC-2 — Honest Jenkins-like DSL closure
 
+> **LPR disposition:** ABSORBED into `LOCAL_PRODUCTION_READY_ROADMAP.md` LPR-3.
+> This document remains the authoritative gap/evidence inventory for historical
+> LFC-2 DSL work, but it is no longer an independent product-priority sequence.
+> Supported DSL honesty is a release gate; non-Gate-1 surfaces may remain deferred.
+
 Change: `openspec/changes/lfc-2-honest-dsl-closure`. Tracks "Honest Jenkins-like DSL: familiar DSL
 with no fake runtime values" as an OPEN milestone with an itemized list and an explicit exit gate.
 Scope: the DSL surface + observability fold. Durable-runtime spine work is out of scope (EM track);

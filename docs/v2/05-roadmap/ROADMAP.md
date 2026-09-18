@@ -1,5 +1,15 @@
 # Roadmap V2 — Desarrollo evolutivo guiado por UAT
 
+> **Product-priority amendment — LPR (2026-09-18).**
+> After acceptance of ADR-0082, `LOCAL_PRODUCTION_READY_ROADMAP.md` is the
+> active P0 sequencing authority until `LPR-GATE-1`. This file remains the
+> historical/top-level V2 chronology and its architecture/receipts remain
+> valid, but any later section that says LFC-2E E0..E10 must complete before
+> the next product milestone is superseded as a scheduling statement.
+> `LFC2_STEP_ECOSYSTEM_EXPANSION.md` remains the post-LPR ecosystem backlog;
+> `LFC2_HONEST_DSL_CLOSURE.md` is absorbed into LPR-3; EVT-0..3 remain closed
+> and EVT-4+ remain deferred. See `ROADMAP_MIGRATION_LPR.md`.
+
 ## Estrategia
 
 El roadmap no sigue “primero domain, después infra, después UI”. Sigue **vertical slices** que atraviesan DSL→runtime→eventos→storage→adapter y terminan en una capacidad demostrable.

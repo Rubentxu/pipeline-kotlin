@@ -62,6 +62,17 @@ data class ScriptedSourceLocation(
         "${sourceId.value}:$line:$column:isUnix",
     )
 
+    /**
+     * Stable source identity emitted for a generated runtime-returning workspace
+     * query call (`pwd()` / `pwd(tmp=true)`). Deliberately DISTINCT from
+     * [shellCallSite] and [unixCallSite]: three different steps transformed at
+     * the same source position must never collide on one durable call-site
+     * identity.
+     */
+    fun pwdCallSite(tmp: Boolean = false): ScriptedCallSiteId = ScriptedCallSiteId(
+        "${sourceId.value}:$line:$column:pwd${if (tmp) ":tmp" else ""}",
+    )
+
     /** Stable dynamic scope for a generated loop iteration. */
     fun loopScope(iteration: Int): ScriptedDynamicScopeId {
         require(iteration >= 0) { "Scripted loop iteration must not be negative" }
@@ -93,6 +104,21 @@ fun interface ScriptedSourceMapper {
 sealed interface ScriptedCallKind {
     data object Shell : ScriptedCallKind
     data object IsUnix : ScriptedCallKind
+
+    /**
+     * Runtime-returning workspace query (WU-LPR-402). Mirrors [IsUnix]:
+     * the returned path is a durable runtime value materialized before
+     * control returns to Kotlin; FRESH observes the canonical workspace
+     * through the registry Step, REUSE reproduces the persisted observation
+     * without re-observing.
+     *
+     * `pwd(tmp=true)` is the SAME kind with a tmp flag — the durable StepKey
+     * (`core.pwd` vs `core.pwd.tmp`) is decided by the façade based on
+     * [tmp], not by a separate ScriptedCallKind. This keeps the call-site
+     * mapper ADT closed while preserving the disambiguation at the
+     * registry-routing layer.
+     */
+    data class Pwd(val tmp: Boolean = false) : ScriptedCallKind
 }
 
 /** One mapped runtime-effectful call: its kind and exact source location. */
@@ -215,6 +241,25 @@ interface ScriptedStepFacade {
      * returns to Kotlin; a failure NEVER fabricates `false`.
      */
     suspend fun isUnix(callSite: ScriptedCallSiteId): Boolean
+
+    /**
+     * Runtime-returning workspace query (WU-LPR-402). Mirrors [isUnix] in shape
+     * but returns the canonical absolute workspace path (or, with [tmp] = true,
+     * a deterministic temp subdirectory under the workspace root).
+     *
+     * Like [isUnix], the returned path is a durable runtime value: FRESH
+     * observes through the registry Step (`core.pwd` or `core.pwd.tmp`); REUSE
+     * reproduces the persisted observation without re-observing. A failure
+     * NEVER fabricates a placeholder string.
+     *
+     * `tmp=true` is supported: the `core.pwd.tmp` registry Step is registered
+     * (S2-A6/G3T) and produces a deterministic `tmp-pwd-<sha256(opId)>` path
+     * (no timestamp/UUID). REUSE correctly returns the same path on resume
+     * without recreating the directory (the adapter skips the
+     * `Files.createDirectories` when the persisted observation already names
+     * an existing path).
+     */
+    suspend fun pwd(callSite: ScriptedCallSiteId, tmp: Boolean = false): String
 }
 
 private fun stableScriptedArtifactKey(fields: List<String>): String = fields.joinToString(separator = "") { field ->

@@ -1638,21 +1638,43 @@ class StageScope(
      * Jenkins verbatim:
      * `pwd()` or `pwd(tmp: Boolean)`
      *
-     * @param tmp If true, creates a temp subdirectory and returns its path
+     * **WU-LPR-402 — runtime-returning DSL fun.** This builder lowers to a
+     * registry Step that produces the path as a typed runtime value at
+     * execution time. It does NOT return the real path synchronously from
+     * this DSL call — that would be a fake runtime value (the path belongs
+     * to execution, not to IR construction).
+     *
+     * Supported usage:
+     *  - inside a `scriptable` block / a compiled scripted runtime context,
+     *    where the façade materialises the value before control returns;
+     *  - inside the generator form (`.pipeline.kts` lowered to a
+     *    `CompiledScriptedEntryPoint`), where `CorePwdStep` / `CorePwdTmpStep`
+     *    are invoked through `ScriptedRegistryInvoker`.
+     *
+     * Unsupported usage (fail-closed):
+     *  - reading the synchronous return value during IR construction (this
+     *    method returns the placeholder `<workspace>` for backward
+     *    compatibility, but the placeholder MUST NOT be used as if it were
+     *    the real runtime path).
+     *  - the eager `PipelineSpec` form. Scripts that need the real value
+     *    MUST route through the scripted runtime context.
+     *
+     * `tmp=false` lowers to `core.pwd` (READ_ONLY + MEMOIZED, replay
+     * reproduces the persisted path without re-observing the workspace).
+     * `tmp=true` lowers to `core.pwd.tmp` (deterministic
+     * `tmp-pwd-<sha256(opId)>` path; `tmp` directories persist across
+     * resume and are NOT recreated on REUSE).
+     *
+     * @param tmp If true, the registry Step creates a deterministic temp
+     *   subdirectory under the workspace root and returns its absolute path
      */
     fun pwd(tmp: Boolean = false): String {
-        // S2-A6 / G3R: pwd(tmp=true) lowers to the registry candidate `core.pwd.tmp`
-        // (deterministic tmp workspace). The structural StepSpec carries the plugin
-        // StepKey + encoded envelope verbatim; the runtime resolves the StepDefinition
-        // through the open registry. The compile-time DSL still returns the
-        // synchronous userDir() placeholder so the in-memory scripting host stays
-        // backward-compatible; the actual tmp path is computed by the runtime using
-        // the canonical OpId (sha256(opId.format())). Returning the real tmp path
-        // synchronously is out of G3R scope (the PWD_RUNTIME_RETURN_RECONNECTION
-        // blocker; see S2-A6 / G3R receipt).
-        //
-        // pwd(tmp=false) is unchanged: it still lowers to the legacy `StepSpec.Pwd`
-        // because `core.pwd` is NOT yet AUTHORITY_FLIP_READY (G4).
+        // WU-LPR-402 — both branches lower to the registry path. The legacy
+        // StepSpec.Pwd / StepSpec.PwdTmp steps were retired at S2-A6/G5
+        // (LEGACY_REMOVED) and S2-A6/G3T (deterministic tmp); the registry
+        // candidates `core.pwd` and `core.pwd.tmp` are the only production
+        // authorities (G8 final certification, see
+        // S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md pattern).
         if (tmp) {
             val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
             steps.add(
@@ -1663,15 +1685,23 @@ class StageScope(
                 ),
             )
         } else {
-            steps.add(StepSpec.Pwd(tmp = false))
+            val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(
+                """{"kind":"pwd","tmp":false}""",
+            )
+            steps.add(
+                StepSpec.RegistryStepSpec(
+                    stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.pwd"),
+                    schemaVersion = "dsl-v1",
+                    encodedInput = encoded,
+                ),
+            )
         }
-        // Return real workspace path synchronously for in-memory scripting host.
-        // Reads through the RuntimeConfig port so :pipeline-scripting-api does
-        // not couple to global JVM state; Lfc0GlobalStateFitnessTest enforces
-        // this constraint. When invoked with no explicit config (StubRuntimeConfig)
-        // the placeholder is "<workspace>" — preserved for backward compatibility
-        // with scripts that do not inject a runtime config.
-        return runtimeConfig.userDir().ifEmpty { "<workspace>" }
+        // Honest return: this DSL fun is data construction. The placeholder
+        // is preserved for in-memory scripting hosts (tests, ad-hoc harnesses)
+        // that read the return value, but scripts that need the real path
+        // MUST route through the scripted runtime context where
+        // CorePwdStep/CorePwdTmpStep materialise the typed value.
+        return RUNTIME_VALUE_PLACEHOLDER
     }
 
     /**
@@ -1680,19 +1710,63 @@ class StageScope(
      * Jenkins verbatim:
      * `isUnix()`
      *
-     * @return true on Linux or macOS, false otherwise
+     * **WU-LPR-402 — runtime-returning DSL fun.** This builder lowers to a
+     * registry Step that classifies the platform at execution time. It does
+     * NOT return the real classification synchronously from this DSL call —
+     * that would be a fake runtime value (the classification belongs to
+     * execution, not to IR construction).
+     *
+     * Supported usage:
+     *  - inside a `scriptable` block / a compiled scripted runtime context,
+     *    where `CoreIsUnixStep` materialises the Boolean through
+     *    `ScriptedRegistryInvoker`;
+     *  - inside the generator form, where the Boolean reaches the script
+     *    as a typed value with full REUSE replay semantics
+     *    (LFC-2R_R2_ISUNIX_SCRIPTED_RUNTIME_CONSUMER.md).
+     *
+     * Unsupported usage (fail-closed):
+     *  - reading the synchronous return value during IR construction (this
+     *    method returns `RUNTIME_VALUE_PLACEHOLDER_BOOLEAN` to make misuse
+     *    visible — see the WU-LPR-402 receipt for the matrix).
+     *  - the eager `PipelineSpec` form for branches that depend on the
+     *    real value.
+     *
+     * @return the placeholder sentinel; the real value is materialised by
+     *   `core.isUnix` at execution time. Reading this return value as the
+     *   real classification is a WU-LPR-402 contract violation.
      */
     fun isUnix(): Boolean {
-        steps.add(StepSpec.IsUnix())
-        // Return real OS detection synchronously for in-memory scripting host.
-        // Reads through the RuntimeConfig port so :pipeline-scripting-api does
-        // not couple to global JVM state; Lfc0GlobalStateFitnessTest enforces
-        // this constraint. With no explicit config (StubRuntimeConfig) this
-        // returns true as a placeholder — preserved for backward compatibility
-        // with scripts that do not inject a runtime config.
-        val osName = runtimeConfig.osName().lowercase()
-        if (osName.isEmpty()) return true
-        return osName in listOf("linux", "macos", "darwin", "sunos", "aix", "hp-ux", "freebsd", "openbsd", "netbsd")
+        val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue("{}")
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.isUnix"),
+                schemaVersion = "dsl-v1",
+                encodedInput = encoded,
+            ),
+        )
+        return ISUNIX_PLACEHOLDER
+    }
+
+    internal companion object {
+        /**
+         * Placeholder returned by [pwd] when called in IR-construction context.
+         * The real path is produced at execution time by `core.pwd` /
+         * `core.pwd.tmp` through the scripted runtime context. Reading this
+         * sentinel as if it were the real runtime path is a WU-LPR-402
+         * contract violation.
+         */
+        const val RUNTIME_VALUE_PLACEHOLDER: String = "<workspace>"
+
+        /**
+         * Placeholder returned by [isUnix] when called in IR-construction
+         * context. Reading this sentinel as if it were the real
+         * classification is a WU-LPR-402 contract violation. The choice of
+         * `true` (rather than `false`) preserves the previous
+         * `StubRuntimeConfig` behaviour so consumers that ignore the
+         * placeholder still get a non-error value; the FAIL-CLOSED behaviour
+         * lives at the runtime-routing seam, not at the placeholder.
+         */
+        const val ISUNIX_PLACEHOLDER: Boolean = true
     }
 
     /**

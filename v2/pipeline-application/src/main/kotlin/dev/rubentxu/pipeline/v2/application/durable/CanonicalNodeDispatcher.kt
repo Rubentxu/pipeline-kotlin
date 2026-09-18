@@ -34,6 +34,10 @@ data class CanonicalRuntimeContext(
     // construct the context directly keep compiling; the production wire-up
     // in CanonicalDurableRunCoordinator always supplies it.
     val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+    // WU-LPR-062: optional project-workspace override (--workspace <dir>). When set,
+    // stage workspaces resolve under <dir> instead of <controlRoot>/workspace, so real
+    // project fixtures (Gradle/Maven/Node) execute against the actual project files.
+    val workspaceBase: java.nio.file.Path? = null,
 )
 
 /**

@@ -76,12 +76,14 @@ class WorkspaceOperationsAdapter(
     private val controlDirRoot: Path?,
     private val eventSink: EventSink,
     private val runId: String = "",
+    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    private val workspaceBase: Path? = null,
 ) : WorkspaceOperations {
 
     override fun writeFile(file: String, text: String, encoding: String): FileWriteResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val resolver = WorkspaceResolver(root)
+        val resolver = WorkspaceResolver(root, workspaceBase)
         resolver.ensureCreated(resolver.resolve(stageName, stageIndex))
         val executor = FileWriteExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
@@ -98,7 +100,7 @@ class WorkspaceOperationsAdapter(
     override fun readFile(file: String, encoding: String): FileReadResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val resolver = WorkspaceResolver(root)
+        val resolver = WorkspaceResolver(root, workspaceBase)
         resolver.ensureCreated(resolver.resolve(stageName, stageIndex))
         val result = FileReadExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
@@ -122,7 +124,7 @@ class WorkspaceOperationsAdapter(
     override fun fileExists(file: String): FileExistsResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val resolver = WorkspaceResolver(root)
+        val resolver = WorkspaceResolver(root, workspaceBase)
         resolver.ensureCreated(resolver.resolve(stageName, stageIndex))
         val result = FileExistsExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },

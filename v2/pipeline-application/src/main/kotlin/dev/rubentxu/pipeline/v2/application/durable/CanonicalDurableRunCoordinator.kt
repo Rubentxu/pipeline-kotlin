@@ -513,6 +513,8 @@ class CanonicalDurableRunCoordinator(
     private val eventSink: EventSink,
     private val credentialScopePort: CredentialScopePort,
     private val controlDirRoot: Path? = null,
+    /** WU-LPR-062: optional project-workspace override (--workspace <dir>). */
+    private val workspaceBase: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
     // WU-LPR-011 secret-redaction slice: active secret registry threaded to the
     // runtime context so the durable console transcript is redacted at the
@@ -638,7 +640,7 @@ class CanonicalDurableRunCoordinator(
                 val steps = (stage.body as? StageBody.Steps)?.steps
                 var stageWorkspace: Path? = null
                 if (controlDirRoot != null) {
-                    val resolver = WorkspaceResolver(controlDirRoot)
+                    val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
                     val workspacePath = resolver.resolve(stage.name, stageIndex)
                     try {
                         resolver.ensureCreated(workspacePath)
@@ -965,6 +967,7 @@ class CanonicalDurableRunCoordinator(
                     // for legacy callers because the field defaults to null on the context.
                     bodyInvoker = bodyInvokerAdapter,
                     secretPatternRegistry = secretPatternRegistry,
+                    workspaceBase = workspaceBase,
                 )
 
                 // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER

@@ -109,6 +109,8 @@ data class PipelineCliConfig(
     val durableRunPolicy: DurableRunPolicy,
     val scriptPath: String?,
     val controlRoot: String? = null,
+    /** WU-LPR-062: project workspace base directory (--workspace). */
+    val workspace: String? = null,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /** External plugin JARs: same list feeds script-compile classpath and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
@@ -157,6 +159,7 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     var dbPath: String? = null
     var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun
     var controlRoot: String? = null
+    var workspace: String? = null
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE
     val pluginJars = mutableListOf<String>()
     var scriptArgIndex = 1
@@ -185,6 +188,13 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
                     return null
                 }
                 controlRoot = args[i + 1]
+                i += 2
+            }
+            "--workspace" -> {
+                if (i + 1 >= args.size) {
+                    return null
+                }
+                workspace = args[i + 1]
                 i += 2
             }
             "--sandbox-profile" -> {
@@ -231,6 +241,7 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         durableRunPolicy = durableRunPolicy,
         scriptPath = scriptPath,
         controlRoot = controlRoot,
+        workspace = workspace,
         sandboxProfile = sandboxProfile,
         pluginJars = pluginJars.toList(),
     )
@@ -469,6 +480,7 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
+                workspaceBase = config.workspace?.let { Path.of(it) },
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
@@ -786,6 +798,7 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
+            workspaceBase = config.workspace?.let { Path.of(it) },
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,
@@ -983,6 +996,7 @@ private fun runCanonicalPipeline(
     eventSink: EventSink,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
+    workspaceBase: Path? = null,
     withCredentialsExecutor: WithCredentialsExecutor? = null,
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
@@ -999,8 +1013,9 @@ private fun runCanonicalPipeline(
         eventSink = eventSink,
         credentialScopePort = WithCredentialsExecutorScopeAdapter(withCredentialsExecutor, eventSink),
         controlDirRoot = controlDirRoot,
+        workspaceBase = workspaceBase,
         shOptions = ShOptions(
-            workspaceRoot = controlDirRoot.resolve("workspace"),
+            workspaceRoot = (workspaceBase ?: controlDirRoot).resolve("workspace"),
             captureStdout = false,
             timeoutMs = null,
             env = emptyMap(),

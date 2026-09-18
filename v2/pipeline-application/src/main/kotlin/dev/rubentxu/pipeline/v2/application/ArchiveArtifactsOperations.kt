@@ -117,10 +117,12 @@ class ArchiveArtifactsOperationsAdapter(
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
+    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    private val workspaceBase: Path? = null,
 ) : ArchiveArtifactsOperations {
 
     override fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult {
-        val resolver = WorkspaceResolver(controlDirRoot)
+        val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspace = resolver.ensureCreated(resolver.resolve(stageIdentity.name, stageIdentity.index))
 
         val matched: List<Path> = try {

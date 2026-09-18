@@ -22,7 +22,15 @@ import java.nio.file.Path
  *
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
-class WorkspaceResolver(private val controlDirRoot: Path) {
+class WorkspaceResolver(
+    private val controlDirRoot: Path,
+    /**
+     * WU-LPR-062: optional project-workspace override (--workspace <dir>).
+     * When set, [resolve] returns paths under [workspaceBase]; the journal,
+     * artefacts and locks stay under [controlDirRoot].
+     */
+    private val workspaceBase: Path? = null,
+) {
 
     /**
      * The root directory for all control directories.
@@ -37,6 +45,10 @@ class WorkspaceResolver(private val controlDirRoot: Path) {
      * @return The deterministic workspace path: `<controlDirRoot>/workspace/<stageName>-<stageIndex>/`
      */
     fun resolve(stageName: String, stageIndex: Int): Path {
+        // WU-LPR-062: with an explicit project workspace (--workspace), stages SHARE
+        // the given directory (Jenkins-familiar single-workspace semantics): a real
+        // project build must run with CWD == the project root where gradlew lives.
+        if (workspaceBase != null) return workspaceBase
         val safeName = stageName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
         return controlDirRoot.resolve("workspace").resolve("${safeName}-${stageIndex}")
     }

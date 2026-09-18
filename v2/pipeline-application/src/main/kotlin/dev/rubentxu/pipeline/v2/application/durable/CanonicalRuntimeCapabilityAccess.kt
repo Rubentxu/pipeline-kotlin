@@ -97,6 +97,7 @@ open class CanonicalRuntimeCapabilityAccess(
             controlDirRoot = context.controlDirRoot,
             eventSink = context.eventSink,
             runId = context.runId,
+            workspaceBase = context.workspaceBase,
         )
         builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOps
         // S2-A4 / G1: narrow stage identity (name + index) for handlers needing the current
@@ -158,6 +159,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 stepIndex = context.stepIndex,
                 controlDirRoot = root,
                 eventSink = context.eventSink,
+                workspaceBase = context.workspaceBase,
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         }
@@ -180,6 +182,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 stepIndex = context.stepIndex,
                 controlDirRoot = root,
                 eventSink = context.eventSink,
+                workspaceBase = context.workspaceBase,
             )
             builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
         }
@@ -202,6 +205,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 ),
                 controlDirRoot = root,
                 eventSink = context.eventSink,
+                workspaceBase = context.workspaceBase,
             )
             builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
         }

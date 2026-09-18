@@ -314,6 +314,7 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
+        workspaceBase: java.nio.file.Path? = null,
     ): ShellInvocationResult {
         if (controlDirRoot == null) {
             return invokeShell(
@@ -328,7 +329,7 @@ object ShExecution {
             )
         }
 
-        val workspaceResolver = WorkspaceResolver(controlDirRoot)
+        val workspaceResolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val stageName = "stage-$stageIndex-branch"
         val workspacePath = workspaceResolver.ensureCreated(
             workspaceResolver.resolve(stageName, stageIndex)

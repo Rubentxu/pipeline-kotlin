@@ -49,10 +49,12 @@ class CleanWsOperationsAdapter(
     private val stepIndex: Int,
     private val controlDirRoot: java.nio.file.Path,
     private val eventSink: EventSink,
+    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    private val workspaceBase: java.nio.file.Path? = null,
 ) : CleanWsOperations {
 
     override fun clean(input: CleanWsInput): CleanWsResult {
-        val resolver = WorkspaceResolver(controlDirRoot)
+        val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
         resolver.ensureCreated(workspace)
 

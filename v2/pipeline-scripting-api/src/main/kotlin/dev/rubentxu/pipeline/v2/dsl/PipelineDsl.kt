@@ -1716,10 +1716,32 @@ class StageScope(
      * Jenkins verbatim:
      * `waitUntil(initialRecurrencePeriod: Long = 1, quiet: Boolean = false) { condition }`
      *
-     * Body-capturing variant (wu-g5-restore): the body lambda is captured as a
-     * `List<StepSpec>` via the `StageScope` mechanism. Eager evaluation of the
-     * condition is removed — DSL MUST NOT perform runtime effects at construction
-     * time (AGENTS.md §10).
+     * Body is the inner StepSpec list captured at construction time.
+     *
+     * **Construction-time body execution (WU-LPR-401 finding).** The body
+     * lambda is invoked exactly once at DSL construction time, on the
+     * `inner` StageScope, to extract its declared `List<StepSpec>` as data.
+     * This means the body MUST be pure data construction (calling other
+     * DSL builders like `sh("...")` or `echo("...")`); it MUST NOT perform
+     * runtime effects such as `pwd().length`, `isUnix()`-driven branches
+     * with side-effects, file I/O, network calls, or process execution.
+     *
+     * For side-effect-bearing predicates, route through the durable
+     * runtime predicate contract (the canonical coordinator re-enters the
+     * captured body via `BodyInvoker.invoke`, ADR-0073) — the lambda
+     * captures the *shape* of the predicate, not its evaluation result.
+     *
+     * The captured body is structurally equal to what a pure `() -> List<StepSpec>`
+     * would yield. If a future WU replaces this pattern with explicit
+     * lambda capture (e.g. `body: () -> List<StepSpec>` passed by the
+     * compiler after lowering), this comment and the implementation will
+     * converge. Until then, callers MUST honour the "pure data
+     * construction" rule above.
+     *
+     * Why this is not a regression: the same eager-evaluation pattern is
+     * used by `retry`, `timeout`, `timestamps`, `dir`, `withCredentials`,
+     * `script`, etc. WU-LPR-401 documents the pattern; it does not break
+     * consistency by fixing one builder.
      *
      * @param initialRecurrencePeriod Initial poll interval in milliseconds (default 1ms)
      * @param quiet If true, suppress output during polling
@@ -1731,9 +1753,11 @@ class StageScope(
         quiet: Boolean = false,
         body: StageScope.() -> Unit,
     ) {
-        // Capture body via inner StageScope (same pattern as retry / timeout).
-        // The body is NOT evaluated eagerly — it is stored as data for the
-        // canonical coordinator to re-enter via BodyInvoker.invoke (ADR-0073).
+        // Construction-time body capture: invoke the lambda once on a
+        // fresh StageScope so its declared steps land in `inner.steps`,
+        // then snapshot that list as data on the structural StepSpec.
+        // This is the same shape used by retry/timeout/timestamps/dir
+        // (see AGENTS.md DSL-vs-runtime section + WU-LPR-401 receipt).
         val inner = StageScope(stageName, runtimeConfig)
         inner.body()
         steps.add(StepSpec.WaitUntilBlock(

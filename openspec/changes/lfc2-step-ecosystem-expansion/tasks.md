@@ -1,5 +1,10 @@
 # Tasks: lfc2-step-ecosystem-expansion
 
+> **LPR disposition (2026-09-18):** pause this file as the full P0 sequence.
+> Preserve E0/E1 evidence and execute only Gate-1 `local-core-v1` certification
+> that maps into LPR-6. E2..E10 resume after LPR-GATE-1 and may be reordered by
+> dogfooding evidence. Do not delete completed receipts or rewrite history.
+
 ## LFC-2E0 (this cycle)
 - [x] enumerate every production Step key from LEGACY_PLUGIN_IDS + registry + ServiceLoader (`CanonicalCoreStepDecoder.kt`, `CoreStepRegistryFactory.kt`, `examples/example-uppercase-plugin`)
 - [x] for each Step key, gather the 12 fields (delivery, path, dsl, def, canonical, legacy, typed I/O, capabilities, replay, example, EH contract, certification) with file:line citations

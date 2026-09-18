@@ -1,5 +1,10 @@
 # Tasks: lfc2-step-constitution-plugin-seam (LFC-2 reconstitution)
 
+> **LPR disposition (2026-09-18):** retain this change as architectural and
+> certification authority. ADR-0070..0081 and completed evidence are not
+> superseded. Remaining B9..B16 work is sequenced through LPR-2/LPR-3 according
+> to product risk; B17 no longer blocks local product use as one monolithic gate.
+
 ## Phase A — Reconciliation + design (THIS change; no production edits)
 
 - [x] Reconstitution matrix (RECONCILIATION_MATRIX.md).

@@ -1,5 +1,9 @@
 # Tasks: lfc-2-honest-dsl-closure (LFC-2)
 
+> **LPR disposition (2026-09-18):** remaining honest-DSL obligations are
+> absorbed into LPR-3. This task file remains evidence/gap history and must not
+> compete with `openspec/changes/local-production-ready/tasks.md` for sequencing.
+
 ## Current disposition (2026-09-08, `7c9ce5c7`)
 
 OPEN. Historical DONE/green statements below for T1/T4 and aggregate Verify are superseded:

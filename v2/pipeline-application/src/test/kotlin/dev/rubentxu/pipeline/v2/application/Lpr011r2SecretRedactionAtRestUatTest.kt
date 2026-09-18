@@ -257,4 +257,48 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         assertEquals(0, eventRawCount(sink.eventsFor(runId).toList(), runId, secret))
         assertTrue(elapsed < 60_000, "pump must not stall the hot path; took ${elapsed}ms")
     }
+
+// 11. FOREVER-FITNESS (WU-LPR-061 receipt law): the typed capturedStdout value
+// is EXACT by contract, but any OBSERVABLE projection of the shell execution
+// (EchoOutputCaptured events, console.log) must not carry that typed value raw.
+// A typed value containing sensitive data must never reach the observable plane
+// through its exactness. This pins the channel separation at the event boundary.
+@org.junit.jupiter.api.Test
+fun `typed capturedStdout value never leaks raw into the observable event plane`() {
+    val runId = "r2-typed-leak"
+    val controlRoot = Files.createTempDirectory("r2-typed-leak")
+    val sink = InMemoryEventStore()
+    val a = ShOperationsAdapter(
+        runIdString = runId,
+        opId = OpId(runId, 0, 0),
+        shOptions = ShOptions.EMPTY.copy(captureStdout = true),
+        controlDirRoot = controlRoot,
+        eventSink = sink,
+        secretPatternRegistry = registry(),
+    )
+    runBlocking {
+        a.invoke(
+            command = ShellCommand(
+                script = "echo $secret; echo err-line $secret 1>&2",
+                returnMode = ShellReturnMode.STDOUT,
+            ),
+            runId = RunId(runId),
+            stepIndex = 0,
+        )
+    }
+    // Observable events: the console transcript event (stderr-only in capture
+    // mode) must be sanitized; stdout must NOT be re-emitted as a console event.
+    val contents = sink.eventsFor(runId).toList()
+        .filterIsInstance<EchoOutputCaptured>()
+        .filter { it.runId == runId }
+        .map { it.content }
+    for (c in contents) {
+        assertFalse(c.contains(secret),
+            "observable event leaked raw secret (typed-value boundary violation): [$c]")
+    }
+    // Retained-file at-rest check as well.
+    assertEquals(0, rawCount(consoleLog(controlRoot, runId), secret),
+        "stderr transcript on disk must contain zero raw secret bytes")
+}
+
 }

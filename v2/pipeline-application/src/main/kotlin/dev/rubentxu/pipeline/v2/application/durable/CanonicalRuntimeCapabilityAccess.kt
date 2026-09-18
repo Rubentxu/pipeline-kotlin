@@ -87,6 +87,7 @@ open class CanonicalRuntimeCapabilityAccess(
             shOptions = context.shOptions,
             controlDirRoot = context.controlDirRoot,
             eventSink = context.eventSink,
+            secretPatternRegistry = context.secretPatternRegistry,
         )
         builder[SHELL_OPERATIONS_CAPABILITY] = shellOps
         // S2-A3 / G1: workspace file operations bound to the current stage identity.

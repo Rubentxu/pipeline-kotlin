@@ -27,6 +27,13 @@ data class CanonicalRuntimeContext(
     val controlDirRoot: Path?,
     val eventSink: EventSink,
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
+    // WU-LPR-011 secret-redaction slice: the active secret pattern registry,
+    // threaded to the shell-operations adapter so the console transcript is
+    // redacted chunk-boundary-safe BEFORE it reaches the observable plane.
+    // Optional (null → no transcript redaction) so legacy callers/tests that
+    // construct the context directly keep compiling; the production wire-up
+    // in CanonicalDurableRunCoordinator always supplies it.
+    val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
 )
 
 /**

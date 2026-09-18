@@ -514,6 +514,10 @@ class CanonicalDurableRunCoordinator(
     private val credentialScopePort: CredentialScopePort,
     private val controlDirRoot: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
+    // WU-LPR-011 secret-redaction slice: active secret registry threaded to the
+    // runtime context so the durable console transcript is redacted at the
+    // transcript seam before reaching the observable event plane.
+    private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
     // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). Nullable default so a
     // registry-injected constructor can opt into the composite (CDE.3-e4.2); legacy call-sites that do
@@ -960,6 +964,7 @@ class CanonicalDurableRunCoordinator(
                     // Fail-closed admission (null bodyInvoker → no capability) is preserved
                     // for legacy callers because the field defaults to null on the context.
                     bodyInvoker = bodyInvokerAdapter,
+                    secretPatternRegistry = secretPatternRegistry,
                 )
 
                 // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER

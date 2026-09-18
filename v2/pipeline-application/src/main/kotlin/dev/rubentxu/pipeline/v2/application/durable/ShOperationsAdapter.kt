@@ -45,6 +45,9 @@ class ShOperationsAdapter(
     private val shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions,
     private val controlDirRoot: java.nio.file.Path?,
     private val eventSink: EventSink,
+    // WU-LPR-011 secret-redaction slice: registry threaded from the runtime
+    // context. Null = no transcript redaction (legacy/test composition).
+    private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
 ) : ShellOperations {
 
     override suspend fun invoke(
@@ -61,6 +64,7 @@ class ShOperationsAdapter(
             shOptions = shOptions,
             controlDirRoot = controlDirRoot,
             eventSink = eventSink,
+            secretPatternRegistry = secretPatternRegistry,
         )
     }
 }

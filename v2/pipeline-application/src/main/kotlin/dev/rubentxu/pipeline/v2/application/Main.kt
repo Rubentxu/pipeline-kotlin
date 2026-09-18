@@ -465,6 +465,7 @@ fun main(args: Array<String>) {
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
                 stepRegistry = composedStepRegistry,
+                secretPatternRegistry = secretPatternRegistry,
             )
             else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
@@ -781,6 +782,7 @@ fun main(args: Array<String>) {
             sandboxProfile = config.sandboxProfile,
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
+            secretPatternRegistry = secretPatternRegistry,
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
@@ -932,6 +934,7 @@ private fun runCanonicalPipeline(
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).
     stepRegistry: InMemoryStepRegistry = CoreStepRegistryFactory.registry(),
+    secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
 ): RunOutcome = kotlinx.coroutines.runBlocking {
     CanonicalDurableRunCoordinator(
         dispatcher = CanonicalNodeDispatcher(),
@@ -951,6 +954,7 @@ private fun runCanonicalPipeline(
         ),
         // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions.
         stepRegistry = stepRegistry,
+        secretPatternRegistry = secretPatternRegistry,
         // RETRY-D (ADR-0075): production wire-up. The retry aggregate is reconciled against
         // the on-disk control journal so a `run` invocation with the same --db and
         // --control-root reuses the prior aggregate terminal state and does not re-launch

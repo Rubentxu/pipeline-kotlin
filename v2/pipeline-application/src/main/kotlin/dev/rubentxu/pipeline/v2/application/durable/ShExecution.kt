@@ -62,12 +62,38 @@ object ShExecution {
      * for the observable console output. In capture mode this file holds stderr only; in plain mode
      * it holds the merged stdout+stderr transcript.
      */
-    private fun readConsoleTranscript(controlDir: Path): String = try {
+    private fun readConsoleTranscript(
+        controlDir: Path,
+        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+    ): String = try {
         val consoleLog = dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
             .resolveConsoleLog(controlDir)
-        if (Files.exists(consoleLog)) Files.readString(consoleLog) else ""
+        // WU-LPR-011 secret-redaction slice: chunk-boundary-safe redaction at the
+        // transcript seam. The registry flows from the runtime context via the
+        // shell-operations adapter; null registry = unredacted (legacy/test
+        // composition only; the production wire-up always supplies it).
+        if (secretPatternRegistry != null) {
+            dev.rubentxu.pipeline.v2.credentials.api.TranscriptRedactor(secretPatternRegistry)
+                .redactFile(consoleLog) ?: ""
+        } else {
+            if (Files.exists(consoleLog)) Files.readString(consoleLog) else ""
+        }
     } catch (_: Exception) {
         ""
+    }
+
+    /**
+     * WU-LPR-011: redacts observable transcript content when a secret registry
+     * is active. Chunk-boundary-safe: a secret split across process output
+     * chunks is still scrubbed (the registry's StreamingRedactor carries
+     * boundary state across reads).
+     */
+    private fun redactTranscript(
+        content: String,
+        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+    ): String = if (secretPatternRegistry == null) content else {
+        dev.rubentxu.pipeline.v2.credentials.api.TranscriptRedactor(secretPatternRegistry)
+            .redactStream(content.byteInputStream())
     }
 
     /**
@@ -154,6 +180,7 @@ object ShExecution {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
+        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
         // Use explicit controlDirRoot if provided; null means non-durable fallback
         // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
@@ -162,7 +189,7 @@ object ShExecution {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // P2: env injected via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot, secretPatternRegistry)
         }
 
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
@@ -201,9 +228,12 @@ object ShExecution {
             // Observable console output comes from the console transcript channel (console.log),
             // which the durable executor read BEFORE cleanup so success-path observability is
             // preserved. capturedStdout is the typed value channel (capture mode), NOT console output.
-            val consoleContent: String = terminalExited?.output?.consoleTranscript
-                ?: terminalExited?.output?.capturedStdout
-                ?: readConsoleTranscript(controlDir)
+            val consoleContent: String = redactTranscript(
+                terminalExited?.output?.consoleTranscript
+                    ?: terminalExited?.output?.capturedStdout
+                    ?: readConsoleTranscript(controlDir, secretPatternRegistry),
+                secretPatternRegistry,
+            )
             if (consoleContent.isNotEmpty()) {
                 eventSink.append(EchoOutputCaptured(
                     eventId = UUID.randomUUID().toString(),
@@ -220,7 +250,7 @@ object ShExecution {
             // Non-durable fallback for non-Linux platforms
             // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
             // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
-            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot)
+            return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot, secretPatternRegistry)
         } catch (failure: EngineInvariantViolation) {
             throw failure
         } catch (e: Exception) {
@@ -355,6 +385,7 @@ object ShExecution {
         runId: String,
         opId: String,
         controlDirRoot: Path?,
+        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
         // Env flows typed through the runtime boundary (M3 invariant: secret
         // bytes never escape SecretHandle here). The runtime materialises them
@@ -409,8 +440,10 @@ object ShExecution {
 
         // stdout + stderr merged into the single EchoOutputCaptured (matches
         // the legacy readText() which read merged process output). Tests assert
-        // a single event per step.
+        // a single event per step. WU-LPR-011: the observable content is
+        // redacted with the chunk-boundary-safe redactor before emission.
         val output = stdoutBuilder.toString() + stderrBuilder.toString()
+        val observableContent = redactTranscript(output, secretPatternRegistry)
         eventSink.append(
             EchoOutputCaptured(
                 eventId = UUID.randomUUID().toString(),
@@ -418,7 +451,7 @@ object ShExecution {
                 sequence = 0L,
                 occurredAt = Instant.now(),
                 stepIndex = stepIndex,
-                content = output,
+                content = observableContent,
             ),
         )
 

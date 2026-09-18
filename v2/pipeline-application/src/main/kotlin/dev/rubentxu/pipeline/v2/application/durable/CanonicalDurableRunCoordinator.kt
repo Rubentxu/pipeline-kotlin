@@ -100,22 +100,6 @@ import java.nio.file.Path
 import java.nio.file.Files
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
-
-/**
- * WU-G5R.4: non-production sentinel that fires when `executeWaitUntilBody` is re-entered.
- *
- * Read ONLY by `Lfc2WaitUntilCanonicalReentryFitnessTest`. Not production API.
- * The closure receipt (WU-G5R-GATE) explains the trade-off.
- *
- * Set at the top of `executeWaitUntilBody` and cleared when the function returns
- * (guaranteed by `AtomicBoolean.set(false)` on the execution path below).
- *
- * Class-level (not companion) so `@PublishedApi internal` exposes it at module scope.
- */
-@PublishedApi
-internal val canonicalReentrySentinel: AtomicBoolean =
-    AtomicBoolean(false)
 
 private val canonicalStepIds: Set<String> =
     CanonicalCoreStepMetadata.pluginIds +
@@ -1777,7 +1761,6 @@ class CanonicalDurableRunCoordinator(
                 // BodyInvoker port; the engine plans, persists, polls and folds
                 // outcomes, all `StepKey`-blind. The waitUntil legacy loop (no
                 // waitUntilControlJournal) remains bit-equivalent inline below.
-                canonicalReentrySentinel.set(true)
                 val waitUntilControlOpId =
                     dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory.controlOperationId(
                         runId.value, stageIndex, stepIndex, parentBodyPath,
@@ -1803,7 +1786,7 @@ class CanonicalDurableRunCoordinator(
             } else if (scope is BlockShellScope.WaitUntilScope) {
                 // Legacy waitUntil (no journal): the pre-WU-G5R.5 inline polling
                 // loop remains bit-equivalent.
-                outcome = executeWaitUntilBody(
+                outcome = executeWaitUntilBodyInline(
                     scope = scope,
                     block = block,
                     runId = runId,
@@ -1963,35 +1946,6 @@ class CanonicalDurableRunCoordinator(
      * [WaitUntilControlJournal] is bound. WU-LPR-302 Phase 3 keeps this loop
      * bit-equivalent for the no-journal case; the durable loop is now owned by
      * [dev.rubentxu.pipeline.v2.application.durable.waituntil.WaitUntilEngine].
-     */
-    private suspend fun executeWaitUntilBody(
-        scope: BlockShellScope.WaitUntilScope,
-        block: BlockStepNode,
-        runId: RunId,
-        stageName: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        childShOptions: ShOptions,
-        parentBodyPath: List<BlockSegment>,
-        executionContext: ExecutionContext,
-    ): StepOutcome {
-        // WU-G5R.4: fire the non-production sentinel so the fitness test can prove
-        // the canonical path was reached (read ONLY by Lfc2WaitUntilCanonicalReentryFitnessTest).
-        canonicalReentrySentinel.set(true)
-        try {
-            // WU-LPR-302 Phase 3: the durable waitUntil path (with
-            // waitUntilControlJournal != null) is owned by WaitUntilEngine; this
-            // function remains for callers that have not opted into the durable
-            // aggregate.
-            return executeWaitUntilBodyInline(scope, block, runId, stageName, stageIndex, stepIndex, childShOptions, parentBodyPath, executionContext)
-        } finally {
-            canonicalReentrySentinel.set(false)
-        }
-    }
-
-    /**
-     * Bit-equivalent legacy inline waitUntil polling loop preserved for callers
-     * without [WaitUntilControlJournal] wiring.
      */
     private suspend fun executeWaitUntilBodyInline(
         scope: BlockShellScope.WaitUntilScope,
@@ -2255,20 +2209,6 @@ class CanonicalDurableRunCoordinator(
 
     private companion object {
         const val REATTACH_TIMEOUT_MS = 60_000L
-
-        /**
-         * WU-G5R.4: non-production sentinel accessor for `Lfc2WaitUntilCanonicalReentryFitnessTest`.
-         *
-         * The sentinel is non-production (design §11 trade-off). It fires only during the canonical
-         * re-entry of `executeWaitUntilBody` and proves reachability for the fitness test.
-         * Never called from production code. The closure receipt (WU-G5R-GATE) explains the trade-off.
-         *
-         * @PublishedApi internal makes this callable from test code in the same module
-         * (different package, same Gradle artifact) without exposing it to external consumers.
-         */
-        @PublishedApi
-        internal val waitUntilReentrySentinel: AtomicBoolean
-            get() = canonicalReentrySentinel
     }
 
     /**

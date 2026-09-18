@@ -216,6 +216,12 @@ object ShExecution {
                 scriptContent = command.script,
                 opId = opId.format(),
                 shOptions = envOptions,
+                // WU-LPR-011R2 (Gate-1 at-rest closure): console.log receives ONLY
+                // already-redacted bytes. The wrap factory is built per launch; each
+                // StreamingRedactor instance carries independent boundary state.
+                transcriptRedactor = secretPatternRegistry?.let { registry ->
+                    { raw -> dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry).wrap(raw) }
+                },
             )
 
             // Project the durable console transcript and the typed value separately.

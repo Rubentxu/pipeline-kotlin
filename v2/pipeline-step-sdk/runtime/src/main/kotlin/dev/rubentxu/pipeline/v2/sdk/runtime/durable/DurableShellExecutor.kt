@@ -204,6 +204,11 @@ class DurableShellExecutor : DurableShellLaunching {
         env: Map<String, SecretHandle> = emptyMap(),
         workspaceRoot: Path? = null,
         sandbox: SandboxConfig = SandboxConfig.NONE,
+        // WU-LPR-011R2 (Gate-1 at-rest closure): wrap factory applied to the child's
+        // merged output stream BEFORE any byte reaches `console.log`. The factory
+        // must return a chunk-boundary-safe redacting stream (StreamingRedactor).
+        // Null = explicit legacy/test composition (raw transcript, unredacted).
+        transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
     ): ProcessHandle {
         checkLinuxOrThrow()
 
@@ -235,7 +240,7 @@ class DurableShellExecutor : DurableShellLaunching {
 
         // Build wrapper using D3 contract (tee-gated if captureStdout)
         // The real cookie value (opId) is embedded in the wrapper file content
-        val wrapperContent = buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId)
+        val wrapperContent = buildWrapperContent(controlDir, scriptFile, config, captureStdout, opId, transcriptRedactor != null)
         Files.writeString(wrapperFile, wrapperContent)
         Files.setPosixFilePermissions(wrapperFile, java.util.EnumSet.of(
             java.nio.file.attribute.PosixFilePermission.OWNER_READ,
@@ -314,18 +319,66 @@ class DurableShellExecutor : DurableShellLaunching {
         //     stderr to console.log (durable console transcript). No fusion: the typed value must
         //     never be polluted by stderr.
         // console.log always has a single writer per launch.
+        //
+        // WU-LPR-011R2 (Gate-1 at-rest closure): when a transcript redactor is active, the
+        // console transcript is NO LONGER a ProcessBuilder redirect target. The redirected
+        // stream is pumped through the redactor by a runtime-owned pump thread so ONLY
+        // already-redacted bytes reach `console.log` — redaction happens BEFORE persistence,
+        // not during cleanup. The typed value channel (output.txt) is unaffected: capture-mode
+        // stdout remains an exact redirect (typed values are never scrubbed).
         pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
         if (captureStdout) {
             val stdoutCapture = controlDir.resolve("output.txt")
             pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutCapture.toFile()))
-            pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
+            if (transcriptRedactor != null) {
+                pb.redirectError(ProcessBuilder.Redirect.PIPE)
+            } else {
+                pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
+            }
         } else {
             pb.redirectErrorStream(true)
-            pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+            if (transcriptRedactor != null) {
+                pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
+            } else {
+                pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
+            }
+        }
+        // Pre-create console.log so the wrapper heartbeat `touch` and external
+        // observers always see the transcript file, and so the pump owns the ONLY
+        // writer handle from the very first byte.
+        if (transcriptRedactor != null && !captureStdout) {
+            Files.newOutputStream(logFile).use { /* create/truncate */ }
         }
 
             return try {
             val process = pb.start()
+            // WU-LPR-011R2: drain the redirected stream through the redactor into
+            // console.log on a daemon pump. Redaction happens BEFORE persistence:
+            // at any instant the on-disk transcript contains only sanitized bytes,
+            // and a JVM crash can leave at most a partial SANITIZED transcript.
+            if (transcriptRedactor != null) {
+                val raw: java.io.InputStream = if (captureStdout) process.errorStream else process.inputStream
+                val sink = java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(logFile))
+                val pump = Thread {
+                    val redacted = transcriptRedactor(raw)
+                    try {
+                        redacted.copyTo(sink, 8192)
+                    } catch (_: Exception) {
+                        // Child killed / pipe broken mid-flight: keep whatever
+                        // sanitized bytes were already persisted.
+                    } finally {
+                        // Close the redacting stream FIRST: its pending buffer
+                        // (EOF drain) is what flushes the final sanitized bytes.
+                        try { redacted.close() } catch (_: Exception) {}
+                        try { sink.flush() } catch (_: Exception) {}
+                        try { sink.close() } catch (_: Exception) {}
+                    }
+                }
+                pump.isDaemon = true
+                pump.name = "durable-sh-transcript-pump-$opId"
+                pump.start()
+                lastTranscriptPump = pump
+            }
             val handle = process.toHandle()
 
             // Advisory session-leader verification (can be non-fatal if setsid forks).
@@ -510,6 +563,7 @@ class DurableShellExecutor : DurableShellLaunching {
         config: DurableShConfig,
         captureStdout: Boolean,
         opId: String,
+        transcriptRedacted: Boolean = false,
     ): String {
         val cookieFileEscaped = escapeForShell(controlDir.resolve(".cookie").toString())
         val logFileEscaped = escapeForShell(DurableShellFiles.consoleLog(controlDir).toString())
@@ -533,10 +587,15 @@ class DurableShellExecutor : DurableShellLaunching {
         // - Heartbeat (inner while) still touches jenkins-log.txt only
 
         // Outer redirect: tee to output.txt if captureStdout, otherwise just log
-        val outerRedirect = if (captureStdout) {
-            "> '$outputFileEscaped' 2> '$logFileEscaped'"
-        } else {
-            "> '$logFileEscaped' 2>&1"
+        // WU-LPR-011R2: when the transcript is redacted by the runtime pump, the
+        // wrapper MUST NOT open its own console.log handle. It inherits the PIPE
+        // and the pump is the single writer of only redacted bytes. For capture
+        // mode, stdout still tee's to output.txt; stderr inherits the pipe.
+        val outerRedirect = when {
+            transcriptRedacted && captureStdout -> "> '$outputFileEscaped'"
+            transcriptRedacted -> ""
+            captureStdout -> "> '$outputFileEscaped' 2> '$logFileEscaped'"
+            else -> "> '$logFileEscaped' 2>&1"
         }
 
         // The real cookie value is embedded in the file (not argv)
@@ -553,12 +612,11 @@ class DurableShellExecutor : DurableShellLaunching {
             // Create cookie file with PID - this is the heartbeat mechanism
             append("echo \$\$ > \"\$COOKIE_FILE\"; ")
             // Heartbeat: touch log file periodically to show process is alive
-            append("(")
-            append("while [ -f \"\$COOKIE_FILE\" ]; do ")
-            append("sleep \$CHECK_INTERVAL; ")
-            append("touch \"\$LOG_FILE\"; ")
-            append("done")
-            append(") & ")
+            // WU-LPR-011R2: capture the heartbeat PID. When the transcript is pumped
+            // through the redaction pipe, the heartbeat subshell holds the pipe's write
+            // end; if left running it delays EOF (and thus the final redactor drain)
+            // by up to CHECK_INTERVAL. The wrapper kills it explicitly at exit.
+            append("HB_PID=\$!; ")
             // Run the actual script
             append("'$scriptPathEscaped'; ")
             append("EXIT_CODE=\$?; ")
@@ -567,6 +625,7 @@ class DurableShellExecutor : DurableShellLaunching {
             append("mv \"\$RESULT_TMP\" \"\$RESULT_FILE\"; ")
             // Remove cookie file to signal completion
             append("rm -f \"\$COOKIE_FILE\"; ")
+            append("kill \$HB_PID 2>/dev/null; ")
             append("exit \$EXIT_CODE")
         }
     }
@@ -868,11 +927,13 @@ class DurableShellExecutor : DurableShellLaunching {
         opId: String,
         shOptions: ShOptions,
         config: DurableShConfig = DurableShConfig.fromSystemProperties(),
+        transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
     ): DurableTaskTerminal = executeCore(
         controlDir = controlDir,
         scriptContent = scriptContent,
         opId = opId,
         config = config,
+        transcriptRedactor = transcriptRedactor,
         request = DurableShellExecutionRequest(
             timeoutMs = shOptions.timeoutMs ?: 0L,
             env = shOptions.env,
@@ -918,17 +979,36 @@ class DurableShellExecutor : DurableShellLaunching {
         ),
     ).toLegacyShellResult(controlDir)
 
+    /**
+     * WU-LPR-011R2: the transcript pump created by the most recent [launch] call
+     * (single-threaded launch discipline: one launch per executeCore). Used by
+     * executeCore to drain the pump before projecting the persisted transcript.
+     */
+    @Volatile
+    private var lastTranscriptPump: Thread? = null
+
+    private fun consumeLastTranscriptPump(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): Thread? {
+        val pump = lastTranscriptPump
+        lastTranscriptPump = null
+        return pump
+    }
+
     private fun executeCore(
         controlDir: Path,
         scriptContent: String,
         opId: String,
         config: DurableShConfig,
         request: DurableShellExecutionRequest,
+        transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
     ): DurableTaskTerminal {
         var exitCode = -1
         var process: ProcessHandle? = null
         var launched = false
         val timeoutTriggered = AtomicBoolean(false)
+        // WU-LPR-011R2: reference to the transcript pump so the terminal projection
+        // can drain it BEFORE reading console.log (redaction-before-persistence
+        // means the file is only complete once the pump reaches EOF).
+        var transcriptPump: Thread? = null
 
         try {
             // Step 1: Launch
@@ -942,7 +1022,10 @@ class DurableShellExecutor : DurableShellLaunching {
                 request.env,
                 request.workspaceRoot,
                 request.sandbox,
-            )
+                transcriptRedactor,
+            ).also { handle ->
+                transcriptPump = consumeLastTranscriptPump(handle)
+            }
             launched = true
 
             // Step 2: Detach
@@ -1007,6 +1090,9 @@ class DurableShellExecutor : DurableShellLaunching {
             // observability is not lost when the policy deletes the control dir on success.
             // consoleTranscript is the console/event channel; capturedStdout is the typed value
             // channel (output.txt in capture mode). They are distinct (LB-02 / C4.5).
+            // WU-LPR-011R2: drain the redaction pump first (bounded join) so the persisted
+            // transcript is fully flushed before it is projected.
+            transcriptPump?.join(10_000)
             val consoleTranscript = readConsoleLogText(controlDir)
             val capturedStdout = when (request.outputProjection) {
                 DurableShellOutputProjection.CAPTURE_FILE -> readOutputText(controlDir, config.captureRetainPolicy)

@@ -57,14 +57,58 @@ the child in two halves (split across process writes) NEVER appears raw in any
 `EchoOutputCaptured` on the durable and non-durable paths, while the
 null-registry composition explicitly preserves legacy raw behavior.
 
-## 4. Honest scope notes
+## 4. R2 — Secret Redaction At-Rest Closure
 
-- The **on-disk `console.log`** written by the process-set during execution
-  still holds raw bytes until success cleanup. This slice closes the
-  observable event plane (what external observers and the journal see).
-  Persistent on-disk redaction-at-rest remains a follow-up (retention
-  semantics interplay: `cleanupRetainOnFailure`), documented as debt, NOT a
-  Gate-1 claim.
+Law: `console.log` MUST receive only already-redacted bytes. Redaction happens
+BEFORE persistence (streaming pump at the write boundary), never during
+cleanup. A JVM crash can leave at most a partial SANITIZED transcript.
+
+Flow change (single redaction engine reused; no second system):
+
+```text
+R1: child → raw console.log → TranscriptRedactor → EchoOutputCaptured   (LEAK)
+R2: child → PIPE → StreamingRedactor pump → console.log REDACTED → events
+```
+
+Mechanics (`DurableShellExecutor`):
+
+- With an active transcript redactor, the console transcript is no longer a
+  `ProcessBuilder` redirect target; the merged stream is drained by a
+  runtime-owned pump (`StreamingRedactor → BufferedOutputStream(console.log)`).
+- The wrapper no longer opens its own `console.log` handle in redacted mode;
+  the pump is the single writer. Capture-mode stdout (`output.txt`) stays an
+  exact redirect: typed values are NEVER scrubbed.
+- The wrapper kills its heartbeat subshell at exit (`kill $HB_PID`): the
+  heartbeat held the pipe's write end and otherwise delayed EOF (and the
+  final redactor drain) by up to CHECK_INTERVAL.
+- The pump closes the redacting stream in its finally (EOF drain of the
+  bounded pending buffer) and the executor joins the pump (bounded 10s)
+  BEFORE projecting the transcript.
+
+Port discipline: the SDK runtime receives a narrow wrap factory
+`((InputStream) -> InputStream)?`; no credentials-api dependency and no
+registry coupling in the SDK module. Null = explicit legacy/test composition
+(raw transcript preserved and characterized by test).
+
+### R2 evidence (UAT `Lpr011r2SecretRedactionAtRestUatTest`, 10/10 green)
+
+```text
+raw secrets in events       = ZERO   (R1 UAT + R2 assertions)
+raw secrets in console.log  = ZERO   (whole / split-2-writes / byte-wise /
+                                     stderr / failing+retained / timeout)
+raw secrets in diagnostics  = ZERO   (retained failing control dir: sanitized
+                                     transcript survives, marker present)
+typed capturedStdout        = exact by contract (capture-mode UAT)
+DURING-EXECUTION proof      : transcript observed sanitized while the child
+                              was still alive (before-persistence, not
+                              cleanup-time scrubbing)
+null registry               : raw legacy behavior preserved (characterized)
+large output                : 20k-line transcript streams within budget
+```
+
+The critical Gate-1 proof: child prints the secret and FAILS; the control dir
+is retained (`cleanupRetainOnFailure=true` default); the surviving
+`console.log` contains zero raw secret bytes and the redaction marker.
 - `recoveryPolicy`/replay semantics untouched. No journal schema change.
 - No test weakened or re-baselined; no pre-existing-failure classification
   needed (all suites green base-free at head).

@@ -946,8 +946,42 @@ fun pipeline(
 }
 
 /**
+ * WU-LPR-401 — DSL isolation markers.
+ *
+ * Each marker declares a separate lexical layer of the DSL. A `@DslMarker`
+ * on a receiver type tells the Kotlin compiler to reject implicit `this`
+ * from an outer scope when an inner scope is in scope: a method that
+ * belongs to [PipelineScope] cannot be called from inside a
+ * [StageScope] lambda, and vice versa. The user gets a compile-time
+ * error when they accidentally try to nest DSL calls in the wrong scope.
+ *
+ * The four layers are deliberately separate markers, not one umbrella
+ * marker: when [StagesScope] and [PipelineScope] both carried the same
+ * marker, a `stages { pipeline { ... } }` mistake would be rejected the
+ * same as a `stages { stages { ... } }` mistake — but those are different
+ * errors and the user-facing message should reflect that.
+ *
+ * What these markers do NOT do: they do not change the API surface, do
+ * not add runtime checks, and do not affect existing pipelines that use
+ * the DSL correctly. The only observable change is that misuse becomes
+ * a compile error instead of a silent miscompile.
+ */
+@DslMarker
+annotation class PipelineDslMarker
+
+@DslMarker
+annotation class StageDslMarker
+
+@DslMarker
+annotation class StepDslMarker
+
+@DslMarker
+annotation class PostDslMarker
+
+/**
  * Receiver scope for the `stages { }` block inside `pipeline { }`.
  */
+@PipelineDslMarker
 class PipelineScope(
     private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
         currentRuntimeConfig(),
@@ -966,6 +1000,7 @@ class PipelineScope(
 /**
  * Receiver scope for the `stage("name") { }` block inside `stages { }`.
  */
+@StageDslMarker
 class StagesScope(
     private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
         currentRuntimeConfig(),
@@ -999,6 +1034,7 @@ internal object StubRuntimeConfig : dev.rubentxu.pipeline.v2.domain.RuntimeConfi
 /**
  * Receiver scope for the step block inside `stage("name") { }`.
  */
+@StepDslMarker
 class StageScope(
     private val stageName: String,
     private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
@@ -1855,6 +1891,7 @@ class StageScope(
 /**
  * Environment variables scope.
  */
+@StepDslMarker
 class EnvironmentScope {
     private val values = mutableMapOf<String, String>()
 
@@ -1868,6 +1905,7 @@ class EnvironmentScope {
 /**
  * Options scope for stage configuration.
  */
+@StepDslMarker
 class OptionsScope {
     var timeout: Long? = null
     var retry: RetrySpec? = null
@@ -1891,6 +1929,7 @@ class OptionsScope {
 /**
  * Post conditions scope.
  */
+@PostDslMarker
 class PostScope {
     private val alwaysSteps = mutableListOf<StepSpec>()
     private val successSteps = mutableListOf<StepSpec>()
@@ -1920,6 +1959,7 @@ class PostScope {
 /**
  * Steps within post condition blocks.
  */
+@PostDslMarker
 class PostStepsScope {
     val steps = mutableListOf<StepSpec>()
 
@@ -1943,6 +1983,7 @@ class PostStepsScope {
 /**
  * Parallel execution scope.
  */
+@StepDslMarker
 class ParallelScope {
     private val branches = mutableListOf<StepSpec.BranchSpec>()
 
@@ -1958,6 +1999,7 @@ class ParallelScope {
 /**
  * Branch scope within parallel block.
  */
+@StepDslMarker
 class BranchScope {
     val steps = mutableListOf<StepSpec>()
 
@@ -1981,6 +2023,7 @@ class BranchScope {
 /**
  * Script scope for inline script blocks.
  */
+@StepDslMarker
 class ScriptScope {
     val commands = mutableListOf<String>()
 

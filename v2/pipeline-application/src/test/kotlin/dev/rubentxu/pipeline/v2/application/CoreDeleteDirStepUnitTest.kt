@@ -250,6 +250,7 @@ class CoreDeleteDirStepUnitTest {
     // S2-B10 / G5 (2026-09-13): core.archiveArtifacts physical forms destroyed
     // (LEGACY_REMOVED). The historical S2-A10/G5 snapshot above is preserved verbatim for
     // traceability. Counter converges 3/3/3 -> 2/2/2.
+    @Disabled("Historical S2-B10/G5 snapshot: WU-LPR-301/G5 (2026-09-18) retired core.load and core.waitUntil too; the 2-2-2 counter is superseded by `counters - post-WU-LPR-301-G5 0-0-0 converged` below. Preserved verbatim for traceability.")
     @Test
     fun `counters - post-S2-B10-G5 LEGACY_REMOVED 2-2-2 converged`() {
         assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -271,6 +272,28 @@ class CoreDeleteDirStepUnitTest {
         assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
         assertTrue("core.cleanWs" !in CanonicalCoreStepMetadata.pluginIds)
         assertTrue("core.archiveArtifacts" !in CanonicalCoreStepMetadata.pluginIds)
+    }
+
+    // WU-LPR-301 / G5 (2026-09-18): core.load and core.waitUntil physically
+    // removed (LEGACY_REMOVED). The burn-down counters converge to 0/0/0:
+    // empty membership set, empty legacy metadata table (authority is
+    // StepDescriptor.metadata), no dispatcher sources.
+    @Test
+    fun `counters - post-WU-LPR-301-G5 0-0-0 converged`() {
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue(CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.isEmpty())
+        // Keys retired by EARLIER lanes stay retired (no resurrection).
+        assertTrue("core.deleteDir" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.cleanWs" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.archiveArtifacts" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.load" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        assertTrue("core.waitUntil" !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
+        // Metadata authority follows the same convergence (empty table).
+        assertTrue(
+            CanonicalCoreStepMetadata.pluginIds.isEmpty(),
+            "the legacy metadata table MUST be empty post-WU-LPR-301/G5",
+        )
+        assertTrue("core.deleteDir" !in CanonicalCoreStepMetadata.pluginIds)
     }
 
     // ------------------------------------------------------------------

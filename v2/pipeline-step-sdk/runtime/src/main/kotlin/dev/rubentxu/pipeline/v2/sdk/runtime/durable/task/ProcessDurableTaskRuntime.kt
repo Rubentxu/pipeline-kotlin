@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
@@ -95,11 +96,28 @@ class ProcessDurableTaskRuntime(
 
         val exitCode: Int = try {
             coroutineScope {
+                // WU-LPR-043: sink invocation is decoupled from the pump
+                // threads. Pumps enqueue chunks (suspend, bounded: co-operate
+                // with a slow sink at capacity instead of dropping — the
+                // pipeline output is lossless) but the sink call itself runs
+                // on a dedicated renderer coroutine. A slow consumer slows
+                // the render, and past capacity the producers co-operate,
+                // but pump threads are never blocked in runBlocking and the
+                // durable outcome is unaffected. Memory stays O(capacity).
+                val chunkChannel = kotlinx.coroutines.channels.Channel<OutputChunk>(
+                    capacity = 4_096
+                )
+                val renderer = launch(Dispatchers.IO) {
+                    for (chunk in chunkChannel) {
+                        outputSink.append(chunk)
+                    }
+                }
+                suspend fun sink(chunk: OutputChunk) = chunkChannel.send(chunk)
                 val stdoutPump = async(Dispatchers.IO) {
-                    drain(process, TaskStreamKind.STDOUT, outputSink)
+                    drain(process, TaskStreamKind.STDOUT, ::sink)
                 }
                 val stderrPump = async(Dispatchers.IO) {
-                    drain(process, TaskStreamKind.STDERR, outputSink)
+                    drain(process, TaskStreamKind.STDERR, ::sink)
                 }
 
                 val exit: Int = try {
@@ -125,6 +143,8 @@ class ProcessDurableTaskRuntime(
                 // Both pumps drain to EOF after the process is gone.
                 stdoutPump.await()
                 stderrPump.await()
+                chunkChannel.close() // EOF: renderer finishes after last chunk
+                renderer.join()
                 exit
             }
         } catch (ce: CancellationException) {

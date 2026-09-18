@@ -342,6 +342,7 @@ class CoreIsUnixStepUnitTest {
     // (LEGACY_REMOVED). The historical S2-A6/G5 6-6-6 snapshot above is preserved verbatim
     // for traceability. Counter converges to 2-2-2: ids, metadata rows and dispatcher
     // sources all hold exactly the two keys still awaiting their own G4/G5 lanes.
+    @Disabled("Historical S2-B10/G5 snapshot: WU-LPR-301/G5 (2026-09-18) retired core.load and core.waitUntil too; the 2-2-2 counter is superseded by `counters are 0-0-0 post-WU-LPR-301-G5 and legacy dispatcher sources are physically removed` below. Preserved verbatim for traceability.")
     @Test
     fun `counters are 2-2-2 post-S2-B10-G5 and legacy dispatcher sources are physically removed`() {
         assertEquals(
@@ -379,6 +380,48 @@ class CoreIsUnixStepUnitTest {
                     "$key metadata row MUST stay physically removed",
                 )
             }
+    }
+
+    // WU-LPR-301 / G5 (2026-09-18): the last two legacy keys (core.load,
+    // core.waitUntil) were physically removed. Counters converge to 0/0/0:
+    // empty membership set, empty legacy metadata table, zero residual
+    // dispatcher sources (only CanonicalNodeDispatcher.kt remains).
+    @Test
+    fun `counters are 0-0-0 post-WU-LPR-301-G5 and legacy dispatcher sources are physically removed`() {
+        assertTrue(
+            CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.isEmpty(),
+            "ids MUST converge to the empty set",
+        )
+        assertTrue(
+            dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.pluginIds.isEmpty(),
+            "metadata rows MUST converge to the empty set",
+        )
+        val durable = java.nio.file.Paths.get(
+            "src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable",
+        )
+        val dispatcherFiles = java.nio.file.Files.list(durable).use { paths ->
+            paths.map { it.fileName.toString() }
+                .filter {
+                    it.startsWith("Canonical") && it.endsWith("NodeDispatcher.kt") &&
+                        it != "CanonicalNodeDispatcher.kt"
+                }
+                .toList().toSet()
+        }
+        assertTrue(
+            dispatcherFiles.isEmpty(),
+            "no residual dispatcher sources may remain, got $dispatcherFiles",
+        )
+        // Retired keys stay retired — no resurrection by any earlier lane.
+        listOf(
+            "core.isUnix", "core.pwd", "core.deleteDir", "core.milestone",
+            "core.cleanWs", "core.archiveArtifacts", "core.load", "core.waitUntil",
+        ).forEach { key ->
+            assertTrue(key !in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS, "$key MUST stay out of LEGACY_PLUGIN_IDS")
+            assertTrue(
+                key !in dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata.pluginIds,
+                "$key metadata row MUST stay physically removed",
+            )
+        }
     }
 
     @Test

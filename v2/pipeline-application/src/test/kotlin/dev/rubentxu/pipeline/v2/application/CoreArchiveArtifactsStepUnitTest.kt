@@ -348,6 +348,11 @@ class CoreArchiveArtifactsStepUnitTest {
         )
     }
 
+    @Disabled(
+        "Historical S2-B10/G5 snapshot: WU-LPR-301/G5 (2026-09-18) retired core.load and core.waitUntil too; " +
+            "the 2/2/2 counter is superseded by `core archiveArtifacts LEGACY_REMOVED - residual counters are 0 ids 0 metadata rows` below. " +
+            "Preserved verbatim for traceability.",
+    )
     @Test
     fun `core archiveArtifacts LEGACY_REMOVED - residual counters are 2 ids 2 metadata rows 2 dispatcher files`() {
         assertEquals(2, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
@@ -358,6 +363,18 @@ class CoreArchiveArtifactsStepUnitTest {
             CanonicalCoreStepMetadata.pluginIds,
             "the two unrelated residual keys MUST survive while core.archiveArtifacts converges",
         )
+        assertFalse("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
+    }
+
+    // WU-LPR-301 / G5 (2026-09-18): the last two legacy keys removed. The
+    // residual counters converge to 0 / 0 with core.archiveArtifacts staying
+    // retired (no resurrection).
+    @Test
+    fun `core archiveArtifacts LEGACY_REMOVED - residual counters are 0 ids 0 metadata rows`() {
+        assertEquals(0, CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.size)
+        assertTrue(CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS.isEmpty())
+        assertTrue(CanonicalCoreStepMetadata.pluginIds.isEmpty())
+        assertFalse("core.archiveArtifacts" in CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS)
         assertFalse("core.archiveArtifacts" in CanonicalCoreStepMetadata.pluginIds)
     }
 

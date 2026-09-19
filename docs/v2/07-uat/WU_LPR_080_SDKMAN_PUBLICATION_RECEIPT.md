@@ -181,11 +181,47 @@ Pending items:
 
 ---
 
+## Appendix: parallel diagnostic (WU-LPR-090)
+
+On 2026-09-19 a parallel diagnostic spike was run to validate the SDKMAN
+install protocol end-to-end against a local HTTP mirror, without
+requiring official vendor credentials.
+
+- **Status of this receipt unchanged.** This spike is **LOCAL_TEST_ONLY**
+  for installation and `NOT_PROVEN` for official publication. It does
+  not unblock the `WAITING_EXTERNAL` state above.
+- **What it proves:** the technical protocol used by `sdkman-cli 5.23.0`
+  to install a candidate is reproducible locally with HTTP, no TLS, no
+  auth, no remote deployment. The canonical ZIP for `pipelinek 0.39.0`
+  installs end-to-end through the real SDKMAN client.
+- **What it does NOT prove:** official publication on the public SDKMAN
+  catalog (`api.sdkman.io/2`); official installation from that catalog;
+  upgrade between two real releases.
+- **Failure mode documented:** SDKMAN post-installation hooks are
+  `source`-d, not executed; an `exit` in a hook body kills the caller
+  shell. Hooks must define `__sdkman_post_installation_hook` and not
+  call `exit`.
+- **Full evidence:** `docs/v2/07-uat/WU_LPR_090_SDKMAN_LOCAL_MIRROR_RECEIPT.md`
+- **Reproducer:** `scripts/release/sdkman-uat/{mirror.py, run-spike.sh}`
+  (committed in `3b986c01`; re-run on 2026-09-19 against the published
+  code: PASS).
+- **Use when credentials arrive:** flip `SDKMAN_CANDIDATES_API` and
+  `SDKMAN_BROKER_API` in `run-spike.sh` to the public URLs and re-run.
+  No other code change required.
+
+The official publication channel (`vendors.sdkman.io/release` with
+`SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`) remains the only path
+to put `pipelinek` on the public SDKMAN catalog. The local-mirror
+spike is a diagnostic, not a substitute.
+
+---
+
 ## References
 
 - SDKMAN vendor API: <https://sdkman.io/vendors>
 - SDKMAN vendor onboarding process: <https://github.com/sdkman/sdkman-cli/wiki/Vendor-onboarding-process>
 - SDKMAN well-formed SDK archives: <https://github.com/sdkman/sdkman-cli/wiki/Well-formed-SDK-archives>
 - `docs/v2/07-uat/WU_LPR_071_SDKMAN_RESUME_PROTOCOL.md` (handoff)
+- `docs/v2/07-uat/WU_LPR_090_SDKMAN_LOCAL_MIRROR_RECEIPT.md` (parallel diagnostic spike)
 - `docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md` (LPR-GATE-1 partial closure)
 - GitHub Release v0.39.0: <https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0>

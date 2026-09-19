@@ -14,6 +14,10 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import dev.rubentxu.pipeline.v2.events.FileExistsChecked
 import dev.rubentxu.pipeline.v2.events.FileRead
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -148,6 +152,89 @@ class CompatibilityCorpusTest {
         // INV-L6-EVT-001: file content never enters the event channel.
         val serialized = events.joinToString("\n") { it.kind + " " + it.toString() }
         assertTrue(!serialized.contains("hello-lpr-104")) { "File content leaked into the event channel" }
+    }
+
+    /**
+     * LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (24-utilities-roundtrip).
+     *
+     * Exercises the three first-slice Steps end-to-end through the installed
+     * `pipelinek` distribution: readJson, writeJson, sha256. The test
+     * asserts:
+     *
+     *  - the fixture exits with code 0;
+     *  - the canonical `StepStarted` / `StepFinished` events are emitted
+     *    for each registry-step with `stepType == "core-utils"` (the plugin
+     *    namespace prefix);
+     *  - the produced JSON file content survives the round-trip (the
+     *    `core.sh cat ...` Step echoes the file content as evidence).
+     */
+    @Test
+    fun fixture24UtilitiesRoundtrip() {
+        val name = "24-utilities-roundtrip.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+
+        // Use --workspace . so the produced file persists under the
+        // fixture directory for post-run inspection.
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", ".", path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, exitCode) {
+            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        }
+
+        val events = JsonEventLog.decode(stdout)
+        assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
+
+        val stepStartedCoreUtils = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
+        val stepFinishedCoreUtils = events.filterIsInstance<StepFinished>().filter { it.stepType == "core-utils" }
+        assertEquals(3, stepStartedCoreUtils.size) {
+            "Fixture $name must emit 3 core-utils StepStarted events (writeJson + readJson + sha256)"
+        }
+        assertEquals(3, stepFinishedCoreUtils.size) {
+            "Fixture $name must emit 3 core-utils StepFinished events"
+        }
+
+        // The `core.sh cat build/utils/data.json` echoes the file content as a
+        // durable console event; this is the simplest end-to-end proof that the
+        // JSON file survived the writeJson → readJson → sha256 chain.
+        val captured = events.filterIsInstance<EchoOutputCaptured>().map { it.content }
+        assertTrue(
+            captured.isNotEmpty(),
+            "Fixture $name must emit at least one EchoOutputCaptured (the cat command). Got: $captured",
+        )
+        val firstCaptured = captured.first()
+        assertTrue(
+            firstCaptured.contains("alice") && firstCaptured.contains("age") && firstCaptured.contains("30"),
+            "Fixture $name must echo the JSON file content with alice/age/30. Got: $firstCaptured",
+        )
+
+        val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
+        assertNotNull(outcome) { "Fixture $name must emit a RunFinished event" }
+        assertEquals("success", outcome!!.outcome.toString().lowercase()) {
+            "Fixture $name must terminate successfully; got outcome=${outcome.outcome}"
+        }
+
+        // The file content on disk must match the canonical `sha256sum` value;
+        // this is the durable evidence that the typed Step produced the same
+        // bytes the fixture asserted.
+        val producedFile = path.parent.resolve("build/utils/data.json")
+        if (producedFile.toFile().isFile) {
+            val bytes = java.nio.file.Files.readAllBytes(producedFile)
+            val canonical = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(bytes).joinToString("") { "%02x".format(it) }
+            // The fixture content is {"name":"alice","age":30} which canonicalises to:
+            // c3fdc275861cef9d29fab67ee0490a927e43338cd0d4e88309ac760c65138815
+            assertEquals(
+                "c3fdc275861cef9d29fab67ee0490a927e43338cd0d4e88309ac760c65138815",
+                canonical,
+                "Fixture $name produced file with unexpected SHA-256",
+            )
+        }
     }
 
     private fun runFixtureCompileFail(name: String) {
@@ -331,7 +418,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(22, fixtures.size, "Corpus must have 22 valid fixtures (WU-G5R6 added 22-wait-until; WU-LPR-104 added 23-readfile; 07 and 99 moved to broken/)")
+        assertEquals(23, fixtures.size, "Corpus must have 23 valid fixtures (WU-G5R6 added 22-wait-until; WU-LPR-104 added 23-readfile; LFC-2E2 added 24-utilities-roundtrip; 07 and 99 moved to broken/)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))

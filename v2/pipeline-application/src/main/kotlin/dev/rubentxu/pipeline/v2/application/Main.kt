@@ -352,11 +352,7 @@ fun main(args: Array<String>) {
         val scriptContent = scriptPath.toFile().readText()
         val validateRunId = java.util.UUID.randomUUID().toString()
         val host = Kotlin24ScriptingHost(store, validateRunId)
-        val dslJar = ScriptDefinition.dslApiJar()
-        val dslClasspath = buildList {
-            dslJar?.let(::add)
-            addAll(config.pluginJars)
-        }
+        val dslClasspath = computeScriptClasspath(config.pluginJars)
         val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
         // return values reflect the host environment during validation.
@@ -406,11 +402,7 @@ fun main(args: Array<String>) {
         runIdDirectory.record(definitionId, fresh)
         val runId: String = fresh.value
         val host = Kotlin24ScriptingHost(eventStore, runId)
-        val dslJar = ScriptDefinition.dslApiJar()
-        val dslClasspath = buildList {
-            dslJar?.let(::add)
-            addAll(config.pluginJars)
-        }
+        val dslClasspath = computeScriptClasspath(config.pluginJars)
         val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
         // return values reflect the host environment. Lfc0GlobalStateFitnessTest
@@ -603,11 +595,7 @@ fun main(args: Array<String>) {
     }
     val runId = runSelection.runId.value
     val host = Kotlin24ScriptingHost(eventStore, runId)
-    val dslJar = ScriptDefinition.dslApiJar()
-    val dslClasspath = buildList {
-        dslJar?.let(::add)
-        addAll(config.pluginJars)
-    }
+    val dslClasspath = computeScriptClasspath(config.pluginJars)
     val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
     // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
     // return values reflect the host environment for the durable run path.
@@ -677,10 +665,7 @@ fun main(args: Array<String>) {
             """.trimIndent()
             val scriptedDefinition = ScriptDefinition.inline(
                 text = definitionScript,
-                classpath = buildList {
-                    ScriptDefinition.dslApiJar()?.let(::add)
-                    addAll(config.pluginJars)
-                },
+                classpath = computeScriptClasspath(config.pluginJars),
             )
             // Compiled WITHOUT the eager RuntimeConfig injection: a runtime-returned
             // body must never observe the platform through the eager DSL port.
@@ -1015,6 +1000,62 @@ private fun pluginClassLoaderFor(jars: List<String>): ClassLoader =
         jars.map { java.io.File(it).toURI().toURL() }.toTypedArray(),
         Thread.currentThread().contextClassLoader,
     )
+
+/**
+ * SH-classpath WU: single composition authority for what JARs the
+ * script-compile and runtime-discovery classloaders must see.
+ *
+ * Returns the merged list of:
+ *  - bundled plugins resolved from the runtime classpath (install/lib + tests)
+ *    via [BundledPluginClasspathPlan];
+ *  - user-supplied `--plugin-jar` entries (`config.pluginJars`);
+ *  - the canonical SDK JARs the Kotlin compiler cannot see automatically
+ *    (pipeline-domain and pipeline-scripting-api), explicit by name only.
+ *
+ *  The same list feeds `updateClasspath` in `Kotlin24ScriptingHost.compile`
+ *  AND `pluginClassLoaderFor(...)` at runtime. Anything that mutates the
+ *  list per-call is a defect: the S3 invariant is "ONE classpath feeds BOTH
+ *  script compiler AND runtime ServiceLoader discovery — no split"
+ *  (see comment above `--plugin-jar` parsing at the top of `main`).
+ *
+ *  Failures are emitted to stderr as diagnostics and surface through the
+ *  calling site's exit code (typically 2). No silent fallbacks.
+ */
+private fun computeScriptClasspath(pluginJars: List<String>): List<String> {
+    val bundledPlugins = computeBundledPlugins()
+    return buildList {
+        // SDK public types the Kotlin compiler must see but `wholeClasspath=false`
+        // never adds automatically. Order is stable so the cache key stays stable.
+        ScriptDefinition.domainJar()?.let(::add)
+        ScriptDefinition.dslApiJar()?.let(::add)
+        addAll(bundledPlugins)
+        addAll(pluginJars)
+    }
+}
+
+private fun computeBundledPlugins(): List<String> {
+    val classpath = System.getProperty("java.class.path", "")
+    return when (val resolution = BundledPluginClasspathPlan.fromClasspathString(classpath)) {
+        is BundledPluginResolution.Resolved -> resolution.artifacts.map { it.canonicalPath }
+        BundledPluginResolution.Empty -> emptyList()
+        is BundledPluginResolution.Conflicting -> {
+            System.err.println(
+                "Bundled plugin classpath conflict: ${resolution.conflicts.size} group(s): " +
+                    resolution.conflicts.joinToString("; ") {
+                        "${it.baseName} (${it.reason}): ${it.first.canonicalPath} vs ${it.second.canonicalPath}"
+                    }
+            )
+            System.exit(2)
+            emptyList() // unreachable
+        }
+        is BundledPluginResolution.Rejected -> {
+            System.err.println("Bundled plugin classpath rejected: ${resolution.reason}")
+            if (resolution.cause != null) resolution.cause.printStackTrace(System.err)
+            System.exit(2)
+            emptyList() // unreachable
+        }
+    }
+}
 
 private fun runCanonicalPipeline(
     pipeline: CompiledPipeline,

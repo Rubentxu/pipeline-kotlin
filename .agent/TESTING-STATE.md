@@ -1109,3 +1109,23 @@ Receipt: docs/v2/07-uat/WU_LPR_103_COMPATIBILITY_CURVE_RECEIPT.md
 - E2E evidence: integration/gradle-demo success (exit 0, jar) + failure path (exit 1, SCRIPT StepFailed).
 - Green: corpus 23/23, targeted L2 131/131 (DurableShell/CtxP/DeleteDir/CleanWs/ArchiveArtifacts/UatLocal004).
 - Unknown impact: none identified; next train WU = 063 (Maven project), 064 (Node), 070 distZip, 071 GitHub Release.
+
+## WU-LPR-071 release prep handoff (2026-09-19, commit cce9b3ab)
+- Closed 5 round-gate defects + 7 fitness drifts accumulated from WU-LPR-060..070.
+- Production: SB-S-008 (parallel cwd isolated per branch), SB-S-010 (sandbox profile in fingerprint),
+  CR-BD-027 (CredentialUsed per USE, BoundPurpose from lease kind), CR-U9 (writeFile single-emitter
+  FileWritten), WULpr402 property 6 (Main.doctor via SystemRuntimeConfig adapter).
+- Fitness: LPR-301 residual empty (0/0/0), LPR-401 DslMarker pin, FArchLfc1 schemaVersion v1,
+  FArchL7 WaitUntilBlock body, ScriptScope shims, BodyAggregateIdentity 3rd key.
+- WULpr010 binary path aligned with AppBinSupport.discover() (distribution name pipelinek).
+- Fresh XML canaries: UatLocal007 12/0/0, UatLocal008 27/0/0 + 2 skipped, UatCompat001 2/0/0,
+  MainCliParsingTest 7/0/0, CanonicalInMemoryCliTest 1/0/0, CliNonCanonicalInMemoryExitsTwo 1/0/0,
+  WULpr010 11/0/0 (was 11/11 RED), UatParallelBlockDurableTest 3/0/0.
+- Architecture invariants preserved (canonical spine, body policies, zero step-routing, zero fake
+  runtime values, hexagonal direction).
+- Receipt: docs/v2/07-uat/WU_LPR_071_RELEASE_PREP_RECEIPT.md
+- Witness bundle `docs/pipeline-kotlin-local-production-ready-2026-09-18/` stays untracked (NOT
+  part of this release; it's the LPR-0 audit pack from WU-LPR-000 closure).
+- Next (B-direct, no checkpoints until publication phase): WU-LPR-071 release workflow →
+  root pipeline.kts + releaseVersion authority → RC v0.36.0 → certify ZIP → tag → GitHub Release
+  → SDKMAN → dogfooding → LPR-GATE-1.

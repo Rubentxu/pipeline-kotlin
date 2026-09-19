@@ -4,6 +4,8 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlSource
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import kotlinx.serialization.json.JsonElement
@@ -23,6 +25,7 @@ import kotlinx.serialization.json.JsonElement
 fun coreUtilsReadJsonStepKey(): PluginStepId = CoreUtilsReadJsonKey.VALUE
 fun coreUtilsWriteJsonStepKey(): PluginStepId = CoreUtilsWriteJsonKey.VALUE
 fun coreUtilsSha256StepKey(): PluginStepId = CoreUtilsSha256Key.VALUE
+fun coreUtilsReadYamlStepKey(): PluginStepId = CoreUtilsReadYamlKey.VALUE
 
 /**
  * `core-utils.readJson` DSL façade.
@@ -127,6 +130,60 @@ fun StageScope.sha256(
     val encoded: EncodedStepValue = CoreUtilsSha256InputCodec.encode(input)
     registryStep(
         stepKey = coreUtilsSha256StepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.readYaml` DSL façade (file source).
+ *
+ * Reads a UTF-8 YAML file from disk and returns a typed [dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlOutput].
+ *
+ * @param path workspace-relative or absolute path to the YAML file.
+ * @param codePointLimit override for the input size cap. `null` uses the
+ *   Step default (8 MiB). Values <= 0 are rejected at runtime as a typed
+ *   USER-class failure.
+ * @param maxAliasesForCollections override for the recursive collection alias
+ *   cap. `null` uses the Step default (64).
+ */
+fun StageScope.readYaml(
+    path: String,
+    codePointLimit: Int? = null,
+    maxAliasesForCollections: Int? = null,
+) {
+    val input = ReadYamlInput(
+        source = ReadYamlSource.FromFile(path = path),
+        codePointLimit = codePointLimit,
+        maxAliasesForCollections = maxAliasesForCollections,
+    )
+    val encoded: EncodedStepValue = CoreUtilsReadYamlInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsReadYamlStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.readYaml` DSL façade (inline text source).
+ *
+ * Parses an inline YAML string instead of reading from disk. The
+ * `file XOR text` invariant is enforced by the typed source: this function
+ * builds [ReadYamlSource.FromText], the `readYaml(path: ...)` overload
+ * builds [ReadYamlSource.FromFile], and both are mutually exclusive.
+ */
+fun StageScope.readYamlText(
+    text: String,
+    codePointLimit: Int? = null,
+    maxAliasesForCollections: Int? = null,
+) {
+    val input = ReadYamlInput(
+        source = ReadYamlSource.FromText(text = text),
+        codePointLimit = codePointLimit,
+        maxAliasesForCollections = maxAliasesForCollections,
+    )
+    val encoded: EncodedStepValue = CoreUtilsReadYamlInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsReadYamlStepKey(),
         encodedInput = encoded,
     )
 }

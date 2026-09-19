@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.sdk.junit.step
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import kotlinx.serialization.json.Json
@@ -101,4 +104,102 @@ object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
             reportPath = obj.getValue("reportPath").jsonPrimitive.content,
         )
     }
+}
+
+/**
+ * JSON codec for [JUnitResultsOutput] (F5.2 / WU-LPR-FK).
+ *
+ * Mirrors `CoreShellOutput`'s shape in `CoreShellStep.kt`: the durable
+ * payload is the carrier, not just the summary, so that the
+ * [dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary]
+ * can project `outcome` via `produced as? TypedStepOutput` without
+ * ever inspecting a concrete StepKey. The boundary stays Step-agnostic.
+ *
+ * On the wire:
+ *
+ *     {
+ *       "outcome": { "kind": "Success" }
+ *     |  "outcome": { "kind": "Failure", "failureKind": "USER", "message": "..." },
+ *       "summary": { "tests": ..., "failures": ..., ... }
+ *     }
+ *
+ * The legacy [JUnitReportSummaryCodec] (summary-only envelope) is still
+ * shipped for replay-decode of any historical journal entries; new
+ * production writes always use [JUnitResultsOutputCodec].
+ */
+object JUnitResultsOutputCodec : StepCodec<JUnitResultsOutput> {
+
+    override fun encode(value: JUnitResultsOutput): EncodedStepValue {
+        val obj = buildJsonObject {
+            put("outcome", encodeOutcome(value.outcome))
+            put("summary", encodeSummary(value.summary))
+        }
+        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
+    }
+
+    override fun decode(encoded: EncodedStepValue): JUnitResultsOutput {
+        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val summary = decodeSummary(obj.getValue("summary").jsonObject)
+        val outcome = decodeOutcome(obj.getValue("outcome").jsonObject)
+        return JUnitResultsOutput(summary, outcome)
+    }
+
+    private fun encodeOutcome(outcome: StepOutcome): JsonObject = when (outcome) {
+        StepOutcome.Success -> buildJsonObject {
+            put("kind", "Success")
+        }
+        StepOutcome.Unstable -> buildJsonObject {
+            put("kind", "Unstable")
+        }
+        is StepOutcome.Failure -> buildJsonObject {
+            put("kind", "Failure")
+            put("failureKind", outcome.failure.kind.name)
+            put("message", outcome.failure.message)
+        }
+    }
+
+    private fun decodeOutcome(obj: JsonObject): StepOutcome {
+        val kind = obj.getValue("kind").jsonPrimitive.content
+        return when (kind) {
+            "Success" -> StepOutcome.Success
+            "Unstable" -> StepOutcome.Unstable
+            "Failure" -> {
+                val failureKind = obj["failureKind"]?.jsonPrimitive?.contentOrNull
+                    ?.let { name ->
+                        runCatching { FailureKind.valueOf(name) }.getOrNull()
+                    }
+                    ?: FailureKind.ENGINE
+                val message = obj["message"]?.jsonPrimitive?.contentOrNull
+                    ?: "junit.results: missing failure message in encoded outcome"
+                StepOutcome.Failure(PipelineFailure(failureKind, message))
+            }
+            else -> StepOutcome.Failure(
+                PipelineFailure(
+                    FailureKind.ENGINE,
+                    "junit.results: unknown encoded outcome kind '$kind'",
+                ),
+            )
+        }
+    }
+
+    private fun encodeSummary(summary: JUnitReportSummary): JsonObject = buildJsonObject {
+        put("tests", summary.tests)
+        put("failures", summary.failures)
+        put("errors", summary.errors)
+        put("skipped", summary.skipped)
+        put("durationSeconds", summary.durationSeconds)
+        put("reportPath", summary.reportPath)
+        put("successful", summary.successful)
+        put("failed", summary.failed)
+        put("isClean", summary.isClean)
+    }
+
+    private fun decodeSummary(obj: JsonObject): JUnitReportSummary = JUnitReportSummary(
+        tests = obj.getValue("tests").jsonPrimitive.int,
+        failures = obj.getValue("failures").jsonPrimitive.int,
+        errors = obj.getValue("errors").jsonPrimitive.int,
+        skipped = obj.getValue("skipped").jsonPrimitive.int,
+        durationSeconds = obj.getValue("durationSeconds").jsonPrimitive.double,
+        reportPath = obj.getValue("reportPath").jsonPrimitive.content,
+    )
 }

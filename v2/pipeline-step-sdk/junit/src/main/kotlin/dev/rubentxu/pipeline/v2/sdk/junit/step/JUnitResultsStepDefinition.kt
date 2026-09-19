@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.v2.sdk.junit.step
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
-import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -18,18 +18,29 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * `junit.results` OFFICIAL_PLUGIN Step (F5.2 / LFC-2E2).
+ * `junit.results` OFFICIAL_PLUGIN Step (F5.2 / LFC-2E2 / WU-LPR-FK).
  *
- * Reads a JUnit XML report and produces a typed [JUnitReportSummary].
+ * Reads a JUnit XML report and produces a typed [JUnitResultsOutput]
+ * (a `TypedStepOutput` carrier pairing a [JUnitReportSummary] with the
+ * canonical [StepOutcome]).
+ *
  * The handler:
  *  - resolves the report path against `workspaceRoot`;
  *  - fails closed with USER kind if the file is missing, empty or
  *    exceeds the `maxReportBytes` cap;
  *  - delegates parsing to [JUnitReportParser];
  *  - when `failOnFailure=true` (default) and the report has failures
- *    or errors, throws a [PluginStepException] with USER kind so the
- *    canonical engine aborts the pipeline with a typed failure (no
- *    false successes).
+ *    or errors, returns a typed [StepOutcome.Failure] (kind=USER) via
+ *    the carrier so the canonical engine aborts the pipeline with the
+ *    declared kind preserved end-to-end.
+ *
+ * Why a carrier (WU-LPR-FK): throwing a [dev.rubentxu.pipeline.v2.domain.PluginStepException]
+ * is funnelled through the registry boundary's generic `catch (e: Exception)`
+ * and re-classified as `FailureKind.ENGINE`, losing the declared USER kind.
+ * Returning a [JUnitResultsOutput] makes the boundary project the carrier's
+ * `outcome` via `produced as? TypedStepOutput`, preserving the declared
+ * kind end-to-end. This mirrors the [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
+ * pattern that `core.sh` already uses.
  *
  * Capability discipline (F5.2 closure): the contract declares an
  * empty capability set, matching the F5.1 UAT-closure precedent. The
@@ -42,9 +53,9 @@ class JUnitResultsStepDefinition(
     private val workspaceRootResolver: () -> Path = {
         Path.of(System.getProperty("pipeline.workspace.root") ?: System.getProperty("user.dir") ?: ".")
     },
-) : StepDefinition<JUnitResultsInput, JUnitReportSummary> {
+) : StepDefinition<JUnitResultsInput, JUnitResultsOutput> {
 
-    override val contract: StepContract<JUnitResultsInput, JUnitReportSummary> = StepContract(
+    override val contract: StepContract<JUnitResultsInput, JUnitResultsOutput> = StepContract(
         key = JUnitResultsKey.VALUE,
         descriptor = StepDescriptor(
             stepId = JUnitResultsKey.VALUE.value,
@@ -58,11 +69,11 @@ class JUnitResultsStepDefinition(
             recoveryPolicy = RecoveryPolicy.None,
         ),
         inputCodec = JUnitResultsInputCodec,
-        outputCodec = JUnitReportSummaryCodec,
+        outputCodec = JUnitResultsOutputCodec,
         requiredCapabilities = emptySet(),
     )
 
-    override val handler = StepHandler<JUnitResultsInput, JUnitReportSummary> { input, _ ->
+    override val handler = StepHandler<JUnitResultsInput, JUnitResultsOutput> { input, _ ->
         // Resolve the effective workspaceRoot:
         // - absolute: caller-supplied authoritative (CI/test).
         // - empty / "." / "./" / not-a-directory: fall back to the
@@ -91,45 +102,35 @@ class JUnitResultsStepDefinition(
         val reportPath = resolveReport(workspaceRoot, input.reportPath)
 
         if (!Files.exists(reportPath)) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "junit.results: report file not found at $reportPath",
-                ),
-            )
+            return@StepHandler fail("junit.results: report file not found at $reportPath")
         }
         if (Files.isDirectory(reportPath)) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "junit.results: reportPath points at a directory, not a file: $reportPath",
-                ),
+            return@StepHandler fail(
+                "junit.results: reportPath points at a directory, not a file: $reportPath",
             )
         }
         val sizeBytes: Long = try {
             Files.size(reportPath)
         } catch (e: IOException) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.INFRASTRUCTURE,
-                    message = "junit.results: failed to stat report file $reportPath: ${e.message ?: "unknown"}",
+            // I/O stat failures are INFRASTRUCTURE, not USER — the user's
+            // input is fine, the storage layer rejected us.
+            return@StepHandler JUnitResultsOutput(
+                summary = emptySummary(reportPath),
+                outcome = StepOutcome.Failure(
+                    PipelineFailure(
+                        kind = FailureKind.INFRASTRUCTURE,
+                        message = "junit.results: failed to stat report file $reportPath: ${e.message ?: "unknown"}",
+                        cause = e,
+                    ),
                 ),
             )
         }
         if (sizeBytes == 0L) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "junit.results: report file is empty (0 bytes): $reportPath",
-                ),
-            )
+            return@StepHandler fail("junit.results: report file is empty (0 bytes): $reportPath")
         }
         if (sizeBytes > input.maxReportBytes) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "junit.results: report file is ${sizeBytes} bytes (maxReportBytes=${input.maxReportBytes}); refusing to parse. Raise maxReportBytes in the input if this is intentional.",
-                ),
+            return@StepHandler fail(
+                "junit.results: report file is ${sizeBytes} bytes (maxReportBytes=${input.maxReportBytes}); refusing to parse. Raise maxReportBytes in the input if this is intentional.",
             )
         }
 
@@ -140,10 +141,14 @@ class JUnitResultsStepDefinition(
                 try {
                     JUnitReportParser.parse(stream, reportPath.toString())
                 } catch (e: JUnitReportParseException) {
-                    throw PluginStepException(
-                        failure = PipelineFailure(
-                            kind = FailureKind.USER,
-                            message = "junit.results: malformed XML at $reportPath: ${e.message ?: "unknown"}",
+                    return@StepHandler JUnitResultsOutput(
+                        summary = emptySummary(reportPath),
+                        outcome = StepOutcome.Failure(
+                            PipelineFailure(
+                                kind = FailureKind.USER,
+                                message = "junit.results: malformed XML at $reportPath: ${e.message ?: "unknown"}",
+                                cause = e,
+                            ),
                         ),
                     )
                 }
@@ -151,18 +156,35 @@ class JUnitResultsStepDefinition(
         }
 
         if (input.failOnFailure && summary.failed > 0) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "junit.results: report has ${summary.failed} failed test(s) " +
-                        "(${summary.failures} failures + ${summary.errors} errors out of ${summary.tests}); " +
-                        "report=$reportPath",
+            return@StepHandler JUnitResultsOutput(
+                summary = summary,
+                outcome = StepOutcome.Failure(
+                    PipelineFailure(
+                        kind = FailureKind.USER,
+                        message = "junit.results: report has ${summary.failed} failed test(s) " +
+                            "(${summary.failures} failures + ${summary.errors} errors out of ${summary.tests}); " +
+                            "report=$reportPath",
+                    ),
                 ),
             )
         }
 
-        summary
+        JUnitResultsOutput.success(summary)
     }
+
+    private fun fail(message: String): JUnitResultsOutput = JUnitResultsOutput(
+        summary = emptySummary(Path.of("")),
+        outcome = StepOutcome.Failure(PipelineFailure(FailureKind.USER, message)),
+    )
+
+    private fun emptySummary(reportPath: Path): JUnitReportSummary = JUnitReportSummary(
+        tests = 0,
+        failures = 0,
+        errors = 0,
+        skipped = 0,
+        durationSeconds = 0.0,
+        reportPath = reportPath.toString(),
+    )
 
     private fun resolveReport(workspaceRoot: Path, rawPath: String): Path {
         val p = Paths.get(rawPath)

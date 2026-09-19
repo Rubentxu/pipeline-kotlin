@@ -2,9 +2,9 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -25,11 +25,11 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.domain.step.registerContributors
-import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportSummary
-import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportSummaryCodec
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsInput
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsInputCodec
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsKey
+import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsOutput
+import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsOutputCodec
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitResultsStepDefinition
 import dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitStepDefinitionContributor
 import kotlinx.coroutines.runBlocking
@@ -57,7 +57,10 @@ import java.nio.file.Path
  *    file, malformed XML, report with failures when failOnFailure=true,
  *    directory-not-file
  *  - handler success path: a clean XML roundtrips through the typed
- *    summary; relative path resolves against workspaceRoot
+ *    carrier; relative path resolves against workspaceRoot
+ *  - WU-LPR-FK: handler returns a `TypedStepOutput` carrier whose
+ *    `outcome` is the source of truth for pass/fail classification.
+ *    The boundary MUST NOT re-classify a typed USER failure as ENGINE.
  *
  * End-to-end UAT (real .pipeline.kts via installDist) lives in the
  * F5.2 closure receipt; this file is the regression surface.
@@ -192,37 +195,49 @@ class F5_2_JUnitStepContractTest {
         assertEquals(Delivery.EXTERNAL_REFERENCE, legacyProvider!!.delivery)
     }
 
+    // -- WU-LPR-FK: handler now returns a TypedStepOutput carrier ----------
+    //
+    // Each negative path below MUST return a `JUnitResultsOutput` with
+    // `outcome = StepOutcome.Failure(kind = USER, ...)`, never throw.
+    // The carrier preserves the declared kind end-to-end; the boundary
+    // does not re-classify the kind to ENGINE.
+
     @Test
-    fun `handler fails closed when the report file does not exist`() = runBlocking {
+    fun `handler fails USER when the report file does not exist`() = runBlocking {
         val missing = Path.of("/tmp/pk-uat-f5-2/missing-${System.nanoTime()}.xml")
         val definition = JUnitResultsStepDefinition()
         val ctx = newContext()
         val input = JUnitResultsInput(reportPath = missing.toString(), workspaceRoot = "/tmp")
-        val ex = assertThrows(PluginStepException::class.java) {
-            runBlocking { definition.handler.execute(input, ctx) }
-        }
-        assertEquals(FailureKind.USER, ex.failure.kind)
+        val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+        val outcome = output.outcome
         assertTrue(
-            ex.failure.message.contains("not found"),
-            "Expected USER failure naming the missing file, got: ${ex.failure.message}",
+            outcome is StepOutcome.Failure,
+            "missing-report path must yield a typed Failure, got $outcome",
+        )
+        val failure = (outcome as StepOutcome.Failure).failure
+        assertEquals(FailureKind.USER, failure.kind)
+        assertTrue(
+            failure.message.contains("not found"),
+            "Expected USER failure naming the missing file, got: ${failure.message}",
         )
     }
 
     @Test
-    fun `handler fails closed when the report file is empty`() = runBlocking {
+    fun `handler fails USER when the report file is empty`() = runBlocking {
         val tmp: Path = Files.createTempFile("junit-empty-", ".xml")
         Files.writeString(tmp, "")
         try {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = tmp.toString(), workspaceRoot = tmp.parent.toString())
-            val ex = assertThrows(PluginStepException::class.java) {
-                runBlocking { definition.handler.execute(input, ctx) }
-            }
-            assertEquals(FailureKind.USER, ex.failure.kind)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            val outcome = output.outcome
+            assertTrue(outcome is StepOutcome.Failure)
+            val failure = (outcome as StepOutcome.Failure).failure
+            assertEquals(FailureKind.USER, failure.kind)
             assertTrue(
-                ex.failure.message.contains("empty"),
-                "Expected USER failure naming empty file, got: ${ex.failure.message}",
+                failure.message.contains("empty"),
+                "Expected USER failure naming empty file, got: ${failure.message}",
             )
         } finally {
             Files.deleteIfExists(tmp)
@@ -230,7 +245,7 @@ class F5_2_JUnitStepContractTest {
     }
 
     @Test
-    fun `handler fails closed when the report file exceeds maxReportBytes`() = runBlocking {
+    fun `handler fails USER when the report file exceeds maxReportBytes`() = runBlocking {
         val tmp: Path = Files.createTempFile("junit-too-big-", ".xml")
         // 100 bytes of XML content, but we cap at 50.
         val content = "<?xml version=\"1.0\"?><testsuite tests=\"0\" failures=\"0\" errors=\"0\" skipped=\"0\" time=\"0.0\"/>"
@@ -243,13 +258,14 @@ class F5_2_JUnitStepContractTest {
                 workspaceRoot = tmp.parent.toString(),
                 maxReportBytes = 50L,
             )
-            val ex = assertThrows(PluginStepException::class.java) {
-                runBlocking { definition.handler.execute(input, ctx) }
-            }
-            assertEquals(FailureKind.USER, ex.failure.kind)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            val outcome = output.outcome
+            assertTrue(outcome is StepOutcome.Failure)
+            val failure = (outcome as StepOutcome.Failure).failure
+            assertEquals(FailureKind.USER, failure.kind)
             assertTrue(
-                ex.failure.message.contains("maxReportBytes"),
-                "Expected USER failure naming the byte cap, got: ${ex.failure.message}",
+                failure.message.contains("maxReportBytes"),
+                "Expected USER failure naming the byte cap, got: ${failure.message}",
             )
         } finally {
             Files.deleteIfExists(tmp)
@@ -257,20 +273,21 @@ class F5_2_JUnitStepContractTest {
     }
 
     @Test
-    fun `handler fails closed when the XML is malformed`() = runBlocking {
+    fun `handler fails USER when the XML is malformed`() = runBlocking {
         val tmp: Path = Files.createTempFile("junit-broken-", ".xml")
         Files.writeString(tmp, "<testsuite name=\"x\" tests=\"")
         try {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = tmp.toString(), workspaceRoot = tmp.parent.toString())
-            val ex = assertThrows(PluginStepException::class.java) {
-                runBlocking { definition.handler.execute(input, ctx) }
-            }
-            assertEquals(FailureKind.USER, ex.failure.kind)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            val outcome = output.outcome
+            assertTrue(outcome is StepOutcome.Failure)
+            val failure = (outcome as StepOutcome.Failure).failure
+            assertEquals(FailureKind.USER, failure.kind)
             assertTrue(
-                ex.failure.message.contains("malformed XML"),
-                "Expected USER failure naming malformed XML, got: ${ex.failure.message}",
+                failure.message.contains("malformed XML"),
+                "Expected USER failure naming malformed XML, got: ${failure.message}",
             )
         } finally {
             Files.deleteIfExists(tmp)
@@ -278,7 +295,7 @@ class F5_2_JUnitStepContractTest {
     }
 
     @Test
-    fun `handler fails closed when failOnFailure is true and the report has failures`() = runBlocking {
+    fun `handler fails USER when failOnFailure is true and the report has failures`() = runBlocking {
         val tmp: Path = Files.createTempFile("junit-failed-", ".xml")
         Files.writeString(
             tmp,
@@ -295,13 +312,14 @@ class F5_2_JUnitStepContractTest {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = tmp.toString(), workspaceRoot = tmp.parent.toString())
-            val ex = assertThrows(PluginStepException::class.java) {
-                runBlocking { definition.handler.execute(input, ctx) }
-            }
-            assertEquals(FailureKind.USER, ex.failure.kind)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            val outcome = output.outcome
+            assertTrue(outcome is StepOutcome.Failure)
+            val failure = (outcome as StepOutcome.Failure).failure
+            assertEquals(FailureKind.USER, failure.kind)
             assertTrue(
-                ex.failure.message.contains("1 failed"),
-                "Expected USER failure naming the number of failed tests, got: ${ex.failure.message}",
+                failure.message.contains("1 failed"),
+                "Expected USER failure naming the number of failed tests, got: ${failure.message}",
             )
         } finally {
             Files.deleteIfExists(tmp)
@@ -330,23 +348,25 @@ class F5_2_JUnitStepContractTest {
                 workspaceRoot = tmp.parent.toString(),
                 failOnFailure = false,
             )
-            val summary: JUnitReportSummary = definition.handler.execute(input, ctx)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            val summary = output.summary
             assertEquals(3, summary.tests)
             assertEquals(1, summary.failures)
             assertEquals(0, summary.errors)
             assertEquals(1, summary.skipped)
             assertFalse(summary.isClean)
-            // Roundtrip the typed output through the output codec.
-            val encoded = JUnitReportSummaryCodec.encode(summary)
-            val decoded = JUnitReportSummaryCodec.decode(encoded)
-            assertEquals(summary, decoded)
+            // Roundtrip the carrier through the output codec (lossless).
+            val encoded = JUnitResultsOutputCodec.encode(output)
+            val decoded = JUnitResultsOutputCodec.decode(encoded)
+            assertEquals(output, decoded)
         } finally {
             Files.deleteIfExists(tmp)
         }
     }
 
     @Test
-    fun `handler succeeds on a clean report and emits a typed summary`() = runBlocking {
+    fun `handler succeeds on a clean report and emits a typed carrier with Success`() = runBlocking {
         val tmp: Path = Files.createTempFile("junit-clean-", ".xml")
         Files.writeString(
             tmp,
@@ -364,7 +384,9 @@ class F5_2_JUnitStepContractTest {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = tmp.toString(), workspaceRoot = tmp.parent.toString())
-            val summary = definition.handler.execute(input, ctx)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            val summary = output.summary
             assertEquals(4, summary.tests)
             assertTrue(summary.isClean)
             assertEquals(tmp.toString(), summary.reportPath)
@@ -393,9 +415,10 @@ class F5_2_JUnitStepContractTest {
                 reportPath = "nested/results.xml",
                 workspaceRoot = wsDir.toString(),
             )
-            val summary = definition.handler.execute(input, ctx)
-            assertEquals(1, summary.tests)
-            assertEquals(report.toString(), summary.reportPath)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            assertEquals(1, output.summary.tests)
+            assertEquals(report.toString(), output.summary.reportPath)
         } finally {
             Files.walk(wsDir)
                 .sorted(Comparator.reverseOrder())
@@ -404,19 +427,20 @@ class F5_2_JUnitStepContractTest {
     }
 
     @Test
-    fun `handler refuses a reportPath that resolves to a directory`() = runBlocking {
+    fun `handler fails USER when reportPath points at a directory`() = runBlocking {
         val dir = Files.createTempDirectory("junit-dir-")
         try {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = dir.toString(), workspaceRoot = dir.parent.toString())
-            val ex = assertThrows(PluginStepException::class.java) {
-                runBlocking { definition.handler.execute(input, ctx) }
-            }
-            assertEquals(FailureKind.USER, ex.failure.kind)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            val outcome = output.outcome
+            assertTrue(outcome is StepOutcome.Failure)
+            val failure = (outcome as StepOutcome.Failure).failure
+            assertEquals(FailureKind.USER, failure.kind)
             assertTrue(
-                ex.failure.message.contains("directory"),
-                "Expected USER failure naming directory path, got: ${ex.failure.message}",
+                failure.message.contains("directory"),
+                "Expected USER failure naming directory path, got: ${failure.message}",
             )
         } finally {
             Files.deleteIfExists(dir)
@@ -456,9 +480,10 @@ class F5_2_JUnitStepContractTest {
                 reportPath = "nested/results.xml",
                 workspaceRoot = ".",
             )
-            val summary = definition.handler.execute(input, ctx)
-            assertEquals(2, summary.tests)
-            assertEquals(report.toString(), summary.reportPath)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            assertEquals(2, output.summary.tests)
+            assertEquals(report.toString(), output.summary.reportPath)
         } finally {
             if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
@@ -482,9 +507,10 @@ class F5_2_JUnitStepContractTest {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = "r.xml", workspaceRoot = "")
-            val summary = definition.handler.execute(input, ctx)
-            assertEquals(1, summary.tests)
-            assertEquals(report.toString(), summary.reportPath)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            assertEquals(1, output.summary.tests)
+            assertEquals(report.toString(), output.summary.reportPath)
         } finally {
             if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
@@ -511,9 +537,10 @@ class F5_2_JUnitStepContractTest {
                 reportPath = "r.xml",
                 workspaceRoot = "/nonexistent/should/never/be/used",
             )
-            val summary = definition.handler.execute(input, ctx)
-            assertEquals(1, summary.tests)
-            assertEquals(report.toString(), summary.reportPath)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            assertEquals(1, output.summary.tests)
+            assertEquals(report.toString(), output.summary.reportPath)
         } finally {
             if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
@@ -541,14 +568,41 @@ class F5_2_JUnitStepContractTest {
             val definition = JUnitResultsStepDefinition()
             val ctx = newContext()
             val input = JUnitResultsInput(reportPath = "a.xml", workspaceRoot = tmpWs2.toString())
-            val summary = definition.handler.execute(input, ctx)
-            assertEquals(1, summary.tests)
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            assertEquals(1, output.summary.tests)
         } finally {
             if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             for (d in listOf(tmpWs1, tmpWs2)) {
                 Files.walk(d).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
             }
         }
+    }
+
+    @Test
+    fun `carrier roundtrips failure kind through the output codec`() {
+        // Direct codec check: encode a typed-failure carrier, decode it
+        // back, and verify the kind is preserved. This is the durable-
+        // replay contract for WU-LPR-FK.
+        val output = JUnitResultsOutput(
+            summary = dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitReportSummary(
+                tests = 0,
+                failures = 0,
+                errors = 0,
+                skipped = 0,
+                durationSeconds = 0.0,
+                reportPath = "/tmp/x.xml",
+            ),
+            outcome = StepOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    FailureKind.USER,
+                    "junit.results: roundtrip test",
+                ),
+            ),
+        )
+        val encoded = JUnitResultsOutputCodec.encode(output)
+        val decoded = JUnitResultsOutputCodec.decode(encoded)
+        assertEquals(output, decoded)
     }
 
     // -- helpers ----------------------------------------------------------

@@ -22,7 +22,15 @@ import java.util.ServiceLoader
  */
 object ExternalStepPluginDiscovery {
 
-    /** Discovers contributors from the RUNTIME classpath and registers them into [registry]. */
+    /**
+     * Discovers contributors from the RUNTIME classpath and registers them into [registry].
+     *
+     * Uses the additive [StepDefinitionContributor.registrations] path
+     * (LFC-2E2 / F5.1 / ADR-0092). The default implementation wraps each
+     * [StepDefinition] in a [StepRegistration] with legacy-shape provider
+     * metadata, so contributors that only override `definitions()` continue
+     * to work unchanged (C10 backwards-compat).
+     */
     fun registerInto(registry: StepRegistry): List<String> {
         val registered = mutableListOf<String>()
         val loader = ServiceLoader.load(StepDefinitionContributor::class.java)
@@ -36,7 +44,9 @@ object ExternalStepPluginDiscovery {
                     e,
                 )
             }
-            contributor.definitions().forEach(registry::register)
+            // Use the additive path so every registration (legacy or new)
+            // is validated through StepRegistry.register(StepRegistration).
+            contributor.registrations().forEach(registry::register)
             registered.add(contributor.id)
         }
         return registered

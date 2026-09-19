@@ -262,10 +262,19 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
  */
 fun StepRegistry.registerContributors(contributors: Iterable<StepDefinitionContributor>) {
     for (contributor in contributors) {
-        for (definition in contributor.definitions()) {
-            val key = definition.contract.key
+        // Always use the additive registrations() path (LFC-2E2 / F5.1 /
+        // ADR-0092). The default implementation in StepDefinitionContributor
+        // wraps every definitions() entry into a StepRegistration with
+        // legacy-shape provider metadata, so legacy contributors continue
+        // to work without explicit provider metadata (C10 backwards-compat).
+        // New contributors (OFFICIAL_PLUGIN and beyond) override
+        // registrations() to return real StepRegistration instances built
+        // from a PluginManifest, so envelopes emitted during real execution
+        // carry the audit projection.
+        for (registration in contributor.registrations()) {
+            val key = registration.stepKey
             try {
-                register(definition)
+                register(registration)
             } catch (e: IllegalArgumentException) {
                 throw IllegalArgumentException(
                     "Duplicate StepKey '${key.value}' contributed by '${contributor.id}': ${e.message}",

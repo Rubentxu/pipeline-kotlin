@@ -64,14 +64,15 @@ Receipt: `LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md` §2 + commit body
 | Single-version provider verified end-to-end (`pipeline 0.36.0`) | `git log --oneline` between v0.36.0 tag and v0.39.0 tag | **PASS** (observed indirectly: the post-fix ZIP regeneration in 951b3cb5 was the corrected `pipeline 0.36.0` from the same source build) |
 | Release manifest emitted | `ls artifacts/release-manifest.json` | **FAIL** — file not in repo |
 
-**Goal status: PARTIAL** — the SBOM generator and the single-version
+**Goal status: PARTIAL** — the generator and the single-version
 provider landed. The artefacts themselves (`*.zip`, `*.sbom.json`,
 `release-manifest.json`) were transient build outputs that were not
-preserved; only the SHA file and the SBOM text file remain. This is
-acceptable for a release candidate that was superseded by v0.39.0,
-but it means **the v0.36.0 ZIP is no longer reproducible from the
-repo as-is** without re-running the build. **DEFERRED to v0.39.0
-audit** (the v0.39.0 ZIP, by contrast, is published and SHA-locked).
+preserved. Only the SHA file and the SBOM text file remain under
+`artifacts/`. Classification: `v0.36.0 = RC_SUPERSEDED /
+NOT_PUBLISHED`. The build did produce the ZIP; the artefact was not
+preserved in the Git repository — those are different facts. v0.39.0
+superseded the RC and **is** the canonical publication with
+preserved ZIP + SBOM JSON on the GitHub Release channel.
 
 ---
 
@@ -112,11 +113,13 @@ Receipt: receipt §3 cites `v0.39.0` tag-object `be3b1b42...`.
 This is a real gap: the RC was named but never published. The
 v0.39.0 supersedes it functionally.
 
-**Honest correction**: the previous `verified` mark on the
-"WU-LPR-071 tag v0.36.0" todo was wrong if it implied "and the
-release was published". The tag is real and pushed; the GitHub
-Release for v0.36.0 does not exist. The v0.39.0 release is the
-actual certified publication.
+**Classification (final, after human review):** `v0.36.0 = RC_SUPERSEDED /
+NOT_PUBLISHED`. No retroactive ZIP reconstruction. The .zip.sha256 file
+preserved under `artifacts/` is the SHA of the build artefact that
+existed at the time; not preserving the .zip itself inside the Git
+repo is a normal artefact retention choice and is **not** evidence the
+ZIP was never produced. The distinction "artefact not preserved"
+versus "artefact not produced" is recorded here for future audits.
 
 ---
 
@@ -134,8 +137,10 @@ Receipt: `LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md` §5
 
 **Goal status: PARTIAL** — `v0.39.0` GitHub Release exists with the
 expected assets and SHA-verified publication. **`v0.36.0` GitHub
-Release does NOT exist**. The v0.36.0 RC was a build artefact, not
-a published release.
+Release does NOT exist** and will not be retroactively created.
+Classification: `v0.36.0 = RC_SUPERSEDED / NOT_PUBLISHED`. The
+v0.36.0 RC was a build artefact, not a published release; v0.39.0
+is the first publication on the GitHub Release channel.
 
 ---
 
@@ -239,8 +244,21 @@ about this** (status `CLOSED` is on the GitHub channel only).
 The PARTIALs are not failures of the work; they are honest
 acknowledgements that some of the previous `verified` marks were
 inspection-only, and the underlying state is correctly documented
-in receipts. The genuinely actionable gap is **v0.36.0 was tagged
-but never released on GitHub**; it was superseded by v0.39.0, and
-the v0.36.0 ZIP is no longer preserved. This audit does not reopen
-that gap as work; it records it as **KNOWN — SUPERSEDED** so a
-future agent does not re-mark it green by inspection.
+in receipts.
+
+**Final state (after human review):**
+- `v0.36.0 = RC_SUPERSEDED / NOT_PUBLISHED`. No retroactive ZIP
+  reconstruction. No retroactive GitHub Release.
+- `v0.39.0 = PUBLISHED / CERTIFIED` (SHA `385b140c...cbb8`,
+  GitHub Release asset present, smoke fixtures PASS per receipt).
+- WU-LPR-080 SDKMAN remains `BLOCKED` on vendor credentials; the
+  on-pipeline-side work is complete.
+- Audit closed. The next actionable slice is **F5.1 — SCM/Git,
+  first OFFICIAL_PLUGIN** (see WU-LPR-110 closure receipt).
+
+The genuinely actionable gap is **v0.36.0 was tagged but never
+released on GitHub**. Classification `RC_SUPERSEDED / NOT_PUBLISHED`
+is the final state; no new defect is opened because the work was
+correctly superseded by v0.39.0. This audit does not reopen that
+gap as work; it records it so a future agent does not re-mark it
+green by inspection.

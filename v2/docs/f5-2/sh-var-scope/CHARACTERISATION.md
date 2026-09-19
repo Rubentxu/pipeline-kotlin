@@ -441,3 +441,180 @@ the runtime (just byte-level pass-through to disk).
    current `mapDiagnostic` does not transform positions back.
 
 ---
+
+## 6. S2 — three-phase byte-level probe (2026-09-19)
+
+Per the user's instruction in
+[`docs/v2/07-uat/E-EM-11.md` step 6](../uat/E-EM-11.md): "reproduce
+the three authoring forms with byte-level precision, isolate the
+escaper, locate the first divergence point."
+
+The probe lives in
+`v2/pipeline-scripting-kotlin24/src/test/kotlin/dev/rubentxu/pipeline/v2/scripting/S2ThreePhaseProbeTest.kt`.
+For each fixture it prints three phases:
+
+1. **PHASE_1_SOURCE** — the literal bytes the user wrote in the
+   `.pipeline.kts` file.
+2. **PHASE_2_ESCAPED** — the bytes after
+   `ScriptTextEscaper.escape(source, envVars)` where
+   `envVars = EnvVarNameExtractor.extract(source)`.
+3. **PHASE_3_COMPILE** — the result of compiling the source through
+   the project's `Kotlin24ScriptingHost`.
+
+### 6.1 The three authoring forms (and a fourth, a fifth)
+
+Captured at 2026-09-19T20:15Z:
+
+```
+=== A_raw ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=$USER") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=$USER") } } }|
+PHASE_3_COMPILE=FAIL ERROR:Unresolved reference 'USER'.:L1:C49
+
+=== B_trap ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=${'$'}USER") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=${'$'}USER") } } }|
+PHASE_3_COMPILE=OK
+
+=== C_simple ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=\$USER") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=\$USER") } } }|
+PHASE_3_COMPILE=OK
+
+=== D_braced ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=\${USER}") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=\${USER}") } } }|
+PHASE_3_COMPILE=OK
+
+=== E_withCreds ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { withCredentials(StepSpec.CredentialsBinding.string("id", "USER")) { sh("echo user=$USER") } } } }|
+PHASE_2_ENVVARS=|[USER]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { withCredentials(StepSpec.CredentialsBinding.string("id", "USER")) { sh("echo user=${'$'}USER") } } } }|
+PHASE_3_COMPILE=OK
+```
+
+### 6.2 What this proves
+
+- **Form A** (raw `$USER` in `sh()`): no `withCredentials` so
+  `envVars` is empty, escaper is a no-op, Kotlin tries to
+  template-expand `USER` and fails: `Unresolved reference 'USER'`.
+  **Author intent**: bash should expand `USER`. Kotlin blocks it.
+
+- **Form B** (trap form `${'$'}USER`): Kotlin sees `${'$'}` as a
+  string template evaluating to `$` and `USER` as adjacent literal
+  text. Kotlin compiles to the literal bytes `${'$'}USER`
+  (10 chars: `$ { ' $ ' } U S E R`). **bash rejects these bytes**
+  with `sustitución errónea` (or `bad substitution` in the English
+  locale). Reproduced live with the installed binary at
+  `s2-formB-with-local.pipeline.kts`: exit code 1,
+  `script.sh: línea 1: value=${'$'}VAR: sustitución errónea`.
+
+- **Form C** (Kotlin `\$USER`): Kotlin sees `\$` as the literal-`$`
+  escape, then `USER` as adjacent text. Kotlin compiles to
+  `$USER` (5 chars). **bash expands `USER` from env**. Live
+  reproduction at `s1-01-redo.pipeline.kts` and `s1-05-redo`
+  confirmed: success with bash value `rubentxu`.
+
+- **Form D** (Kotlin braced escape `\${USER}`): Kotlin sees
+  `\$` followed by `{USER}` as a non-template region (the `\$`
+  prevents the `$` from opening a template), so the bytes
+  `${USER}` survive intact into the compiled string. **bash
+  expands `${USER}` from env**. Live reproduction at
+  `s1-02-redo.pipeline.kts` confirmed.
+
+- **Form E** (raw `$USER` + `withCredentials`): `EnvVarNameExtractor`
+  captures `USER` from the binding; `ScriptTextEscaper.escape`
+  rewrites the **unbraced** `$USER` to `${'$'}USER` (line 60 of
+  `ScriptTextEscaper.kt`). Kotlin compiles the escaper's output
+  to `$USER` (5 chars). bash expands `USER` from env (or, in
+  practice, from the credential binding). **This is the
+  production flow**, and it works.
+
+### 6.3 First divergence point
+
+The **first divergence point** is **documentation**, not the
+escaper.
+
+The script in `v2/compatibility/14-credentials-bindings.pipeline.kts`
+line 7 said:
+
+```
+// Rule 13 ${'$'}VAR — shell variable expansion in strings.
+```
+
+That citation is **factually wrong**. The script body itself uses
+**Form D** (`\${API_KEY}` etc. on line 48), which is the safe
+form. The comment cited the trap form, leading users who read it
+into thinking Form B is the convention. **Form B is the trap**:
+Kotlin compiles `${'$'}VAR` to the literal bytes `${'$'}VAR`, and
+bash rejects those bytes.
+
+The **escaper's output is NOT the divergence point**. The escaper
+emits `${'$'}VAR` in the production flow (Form E), but that
+output is fed to a fresh Kotlin compilation where `${'$'}` is
+correctly evaluated to `$`. The escaper's output IS correct in
+production. The trap is the same text written by a user, which
+goes through Kotlin compilation as user source and yields the
+literal bytes bash rejects.
+
+### 6.4 Live verification of the trap form
+
+```
+$ pipelinek run 99-trap-form-dollar-dollar-quote.pipeline.kts
+exit=1
+{"kind":"StepFailed","failureKind":"SCRIPT","message":"shell exited with code 1"}
+{"kind":"EchoOutputCaptured","content":"...script.sh: línea 1: trap=${'$'}USER: sustitución errónea\n"}
+{"kind":"RunFinished","outcome":"failure"}
+```
+
+The Kotlin compiler accepts the source. bash rejects it. The
+negative fixture
+`v2/pipeline-application/src/test/resources/broken/99-trap-form-dollar-dollar-quote.pipeline.kts`
+locks this behaviour in test coverage. The companion test
+`TrapFormNegativeFixtureTest` asserts exit code is non-zero AND
+`CompilationFinished.diagnostics` is empty (the source
+compiles cleanly) AND the bash error message contains
+`sustitución errónea` (or `bad substitution` in English locale).
+
+### 6.5 Minimal correction (S3 = the gate)
+
+Per the user's instruction "if the incorrect form is in the
+fixture, correct the fixture and preserve the case as a negative
+authorship test", the minimal correction is:
+
+1. **Fix the doc comment** in
+   `v2/compatibility/14-credentials-bindings.pipeline.kts:7` to
+   cite the safe form `\${VAR}`, not the trap form `${'$'}VAR`.
+   (Done in this commit.)
+2. **Add the negative fixture** with the trap form and lock it
+   into test coverage. (Done in this commit:
+   `99-trap-form-dollar-dollar-quote.pipeline.kts` +
+   `TrapFormNegativeFixtureTest`.)
+
+The escaper's output is **not changed**: it produces `${'$'}VAR`
+in the production flow, which the Kotlin compiler evaluates to
+`$VAR` correctly. Changing the escaper to emit `\$VAR` instead
+would also be safe (Kotlin compiles `\$VAR` to `$VAR` correctly,
+as proven by Form C in §6.2), but is not required to fix the
+user-facing divergence: the divergence is the doc comment
+misleading users into writing the trap form themselves.
+
+### 6.6 What was NOT changed
+
+- `ScriptTextEscaper.escape` — left as-is. Its output is safe in
+  production flow. Changing it would invalidate all 7
+  `ScriptTextEscaperTest` assertions that bake in
+  `\${'$'}VAR` as the expected output, requiring a parallel test
+  rewrite for no behaviour change.
+- The compiler, `core.sh` handler, public DSL API — untouched,
+  per the WU scope.
+- The trap form is preserved as a negative fixture (Form B), not
+  silently "fixed" by changing the escaper to emit `\$VAR` — the
+  user explicitly said "conserva el caso como prueba negativa de
+  autoría".
+
+---

@@ -4,7 +4,13 @@ pipeline {
             // Exercise all 5 NEW binding kinds ( widened in ML-R10 / commit 682d4e5 )
             // plus the 2 pre-existing kinds for a complete 7-kind corpus entry.
             // DSL syntax: reconcile against fixture 08-withEnv + widened factories.
-            // Rule 13 ${'$'}VAR — shell variable expansion in strings.
+            // Rule 13: shell variable expansion in strings. The CORRECT Kotlin
+            // escape is `\${VAR}` (a single backslash before `$`, then the
+            // braced identifier). The form `\${'$'}VAR` looks similar but is
+            // a TRAP: Kotlin compiles `${'$'}` to a literal `$`, then `VAR`
+            // is adjacent text, and bash receives `${'$'}VAR` which it
+            // rejects as `sustitución errónea`. See CHARACTERISATION.md §5.3
+            // for the byte-level proof. The line below uses the safe form.
 
             withCredentials(listOf(
                 // Kind.STRING (pre-existing) — pure DSL, no FQCN imports

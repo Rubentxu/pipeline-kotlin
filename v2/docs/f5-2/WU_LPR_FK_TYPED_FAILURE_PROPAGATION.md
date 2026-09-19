@@ -2,7 +2,34 @@
 
 ## Status
 
-OPEN — characterise first, do not refactor.
+CLOSED_GREEN — 2026-09-19.
+
+## Closure summary
+
+The transformation site is `RegistryExecutionBoundary.coexecute`. The
+boundary was **NOT** modified: it correctly projects any kind declared
+on a `TypedStepOutput` carrier verbatim, and classifies an unhandled
+`Exception` as `FailureKind.ENGINE` (the only correct place ENGINE is
+produced today).
+
+The real defect was on the plugin side: `JUnitResultsStepDefinition.handler`
+threw `PluginStepException(USER)` instead of returning a `TypedStepOutput`
+carrier with `outcome = StepOutcome.Failure(kind=USER)`. The migration
+mirrors `CoreShellOutput` (`core.sh`) — a `data class JUnitResultsOutput(summary, outcome) : TypedStepOutput`
+plus a `JUnitResultsOutputCodec` that roundtrips `{ outcome, summary }`
+on the wire.
+
+Lock-in tests:
+- `RegistryExecutionBoundaryFailureKindTest` — 7 rows; unexpected
+  exception → ENGINE preserved; TypedStepOutput with USER/SCRIPT/TIMEOUT/INFRASTRUCTURE
+  → preserved verbatim.
+- `F5_2_JUnitStepContractTest` — 7 negative paths migrated from
+  `assertThrows(PluginStepException)` to `assertEquals(USER, outcome.failure.kind)`;
+  one new codec-roundtrip row preserves a typed failure through the
+  envelope.
+
+Receipt: `v2/docs/f5-2/FK_CLOSURE_RECEIPT.md`.
+Characterisation evidence: `v2/docs/f5-2/FK_CHARACTERISATION.md`.
 
 ## Background
 

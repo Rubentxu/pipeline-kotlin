@@ -17,18 +17,17 @@ work units discovered during the cycle.
   disproved that and pinpointed the workspaceRoot resolution in
   `JUnitResultsStepDefinition.handler`. Closed in commit `7e0e5953`.
 
-## Follow-up work units (OPEN)
+## Follow-up work units
 
 - [`WU_LPR_WC_WORKSPACE_CONTEXTUAL.md`](./WU_LPR_WC_WORKSPACE_CONTEXTUAL.md)
-  — replace `pipeline.workspace.root` (system property) with a typed
-  `WorkspaceProvider` capability. Characterise first, then migrate the
-  `junit.results` handler, then remove the bridge.
+  — `OPEN`. Replace `pipeline.workspace.root` (system property) with a
+  typed `WorkspaceProvider` capability. Characterise first, then migrate
+  the `junit.results` handler, then remove the bridge.
 
 - [`WU_LPR_FK_TYPED_FAILURE_PROPAGATION.md`](./WU_LPR_FK_TYPED_FAILURE_PROPAGATION.md)
-  — audit `RegistryExecutionBoundary` and decide whether the
-  USER → ENGINE transformation is intentional or an unintended loss.
-  Lock-in suite first, migration only if justified. No JUnit-specific
-  code path; the change is generic across all plugin handlers.
+  — `CLOSED_GREEN` 2026-09-19. Closure receipt:
+  [`FK_CLOSURE_RECEIPT.md`](./FK_CLOSURE_RECEIPT.md). Characterisation
+  evidence: [`FK_CHARACTERISATION.md`](./FK_CHARACTERISATION.md).
 
 ## Status summary
 
@@ -38,8 +37,10 @@ work units discovered during the cycle.
 | `CHECKOUT_BUILD_TEST_REPORT_E2E` | PASS |
 | `F5.2` | CLOSED_GREEN |
 | `WU_LPR_WC` (workspace contextual) | OPEN |
-| `WU_LPR_FK` (typed failure propagation) | OPEN |
+| `WU_LPR_FK` (typed failure propagation) | CLOSED_GREEN 2026-09-19 |
 | `SDKMAN` | WAITING_EXTERNAL |
 | `CanonicalDurableRunCoordinator` modifications during F5.2 | NONE |
 | `core.sh` modifications during F5.2 | NONE |
 | `core.echo` modifications during F5.2 | NONE |
+| `RegistryExecutionBoundary` modifications during FK | NONE (boundary contract preserved) |
+| `JUnitResultsStepDefinition` modifications during FK | migrated to `TypedStepOutput` carrier |

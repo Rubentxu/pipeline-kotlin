@@ -2,7 +2,49 @@
 
 ## Status
 
-OPEN — characterise first, do not refactor.
+CLOSED_GREEN — 2026-09-19.
+
+## Closure summary
+
+The `pipeline.workspace.root` system property was a pragmatic F5.1
+bridge. WU-LPR-WC replaces it with a typed
+`WORKSPACE_IDENTITY_CAPABILITY` seam the canonical runtime already
+exposes via `CanonicalRuntimeCapabilityAccess`. Two changes of shape:
+
+1. `WorkspaceIdentity` and `WORKSPACE_IDENTITY_CAPABILITY` hoisted
+   from `:pipeline-application` to `:pipeline-domain` (hexagonal-
+   correct: capability tokens live where plugin contracts consume
+   them; existing `:pipeline-application` callers re-export through
+   a typealias so nothing else moves).
+2. `JUnitResultsStepDefinition.contract.requiredCapabilities` now
+   declares `WORKSPACE_IDENTITY_CAPABILITY`; the handler reads the
+   workspace root from
+   `handlerContext.capabilities.get<WorkspaceIdentity>(...).workspaceRoot`.
+3. `Main.kt:583` (`System.setProperty("pipeline.workspace.root", ...)`)
+   removed; the canonical engine threads `workspaceBase` through
+   `CanonicalRuntimeContext`, and the capability bridge populates
+   the typed capability from `context.shOptions.workspaceRoot`.
+
+Tests:
+- `F5_2_JUnitStepContractTest` — 24/24 PASS (was 23; +1 isolation
+  row). Four workspaceRoot-fallback tests rewritten to thread the
+  typed capability access; `identity and contract completeness`
+  asserts the new `requiredCapabilities`.
+- `JUnitWorkspaceIsolationTest` (new) — 2/2 PASS. Two concurrent
+  handlers with independent capability accesses see independent
+  workspaces; sequential handlers with different capability accesses
+  do not leak state.
+- Regression sweep — 81 tests, 0 failures, 0 errors. F5.1 SCM/Git
+  closure preserved.
+
+Receipt: `v2/docs/f5-2/WC_CLOSURE_RECEIPT.md`.
+Characterisation evidence: `v2/docs/f5-2/wc-characterisation/CHARACTERISATION.md`.
+
+Out of scope (filed for sibling follow-up): `GitCheckoutStepDefinition`
+(F5.1 SCM/Git) still reads the system property. With the writer
+removed in this cycle, scm-git falls back to `user.dir` if its
+handler runs without a typed capability. The migration is
+independent of WC and not part of this cycle.
 
 ## Background
 

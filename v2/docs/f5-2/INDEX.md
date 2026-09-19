@@ -20,9 +20,12 @@ work units discovered during the cycle.
 ## Follow-up work units
 
 - [`WU_LPR_WC_WORKSPACE_CONTEXTUAL.md`](./WU_LPR_WC_WORKSPACE_CONTEXTUAL.md)
-  — `OPEN`. Replace `pipeline.workspace.root` (system property) with a
-  typed `WorkspaceProvider` capability. Characterise first, then migrate
-  the `junit.results` handler, then remove the bridge.
+  — `CLOSED_GREEN` 2026-09-19. Closure receipt:
+  [`WC_CLOSURE_RECEIPT.md`](./WC_CLOSURE_RECEIPT.md). Characterisation
+  evidence: [`WC_CHARACTERISATION.md`](./WC_CHARACTERISATION.md).
+  Out-of-scope sibling follow-up: `GitCheckoutStepDefinition` (F5.1
+  SCM/Git) still reads the system property and must migrate to the
+  typed seam in a separate WU.
 
 - [`WU_LPR_FK_TYPED_FAILURE_PROPAGATION.md`](./WU_LPR_FK_TYPED_FAILURE_PROPAGATION.md)
   — `CLOSED_GREEN` 2026-09-19. Closure receipt:
@@ -36,11 +39,14 @@ work units discovered during the cycle.
 | `PLUGIN_COMPOSITION_SMOKE` | PASS |
 | `CHECKOUT_BUILD_TEST_REPORT_E2E` | PASS |
 | `F5.2` | CLOSED_GREEN |
-| `WU_LPR_WC` (workspace contextual) | OPEN |
 | `WU_LPR_FK` (typed failure propagation) | CLOSED_GREEN 2026-09-19 |
+| `WU_LPR_WC` (workspace contextual) | CLOSED_GREEN 2026-09-19 |
 | `SDKMAN` | WAITING_EXTERNAL |
-| `CanonicalDurableRunCoordinator` modifications during F5.2 | NONE |
-| `core.sh` modifications during F5.2 | NONE |
-| `core.echo` modifications during F5.2 | NONE |
-| `RegistryExecutionBoundary` modifications during FK | NONE (boundary contract preserved) |
-| `JUnitResultsStepDefinition` modifications during FK | migrated to `TypedStepOutput` carrier |
+| `CanonicalDurableRunCoordinator` modifications during F5.2 / FK / WC | NONE |
+| `core.sh` modifications during F5.2 / FK / WC | NONE |
+| `core.echo` modifications during F5.2 / FK / WC | NONE |
+| `RegistryExecutionBoundary` modifications during FK / WC | NONE (boundary contract preserved) |
+| `JUnitResultsStepDefinition` modifications during FK / WC | migrated to `TypedStepOutput` carrier (FK); migrated to `WORKSPACE_IDENTITY_CAPABILITY` seam (WC) |
+| `Main.kt` `System.setProperty("pipeline.workspace.root", ...)` | REMOVED during WC |
+| Concurrent workspace isolation | LOCKED by `JUnitWorkspaceIsolationTest` |
+| Typed-failure propagation contract | LOCKED by `RegistryExecutionBoundaryFailureKindTest` |

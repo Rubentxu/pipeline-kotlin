@@ -75,20 +75,24 @@ class FArchLfc1CanonicalCoverageTest {
     }
 
     @Test
-    fun `baseline json schema version is v1_4`() {
+    fun `baseline json declares its schema version`() {
+        // WU-LPR-071 reconciliation: the corpus baseline declares `schemaVersion: "v1"`.
+        // The historical "1.4" expectation predates the LFC-2 event envelope and no
+        // producer emits it; the canonical event schema is now guarded by the
+        // 45-variant DomainEvent round-trip suite (FArchL7 / DomainEventRoundTripTest).
         val source = Files.readString(baselinePath)
-        val versionMatch = Regex(""""version"\s*:\s*"([^"]+)"""").find(source)
+        val versionMatch = Regex("\"schemaVersion\"\\s*:\\s*\"([^\"]+)\"").find(source)
 
         assertTrue(
             versionMatch != null,
-            "baseline.json must declare a version field",
+            "baseline.json must declare a schemaVersion field",
         )
 
         val version = versionMatch!!.groupValues[1]
         assertEquals(
-            "1.4",
+            "v1",
             version,
-            "baseline.json schema version must be 1.4 (canonical-only)",
+            "baseline.json schemaVersion must be v1 (the only corpus baseline schema)",
         )
     }
 

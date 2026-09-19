@@ -17,15 +17,16 @@ object AppBinSupport {
         } else {
             userDir.resolve("v2").resolve("pipeline-application")
         }
-        val bin = moduleDir
-            .resolve("build")
-            .resolve("install")
-            .resolve("pipeline-application")
-            .resolve("bin")
-            .resolve("pipeline-application")
-        if (!bin.toFile().exists()) {
+        // WU-LPR-070: the distribution applicationName is "pipelinek". The legacy
+        // "pipeline-application" install name is accepted for stale checkouts but the
+        // canonical bin is install/pipelinek/bin/pipelinek.
+        val installRoot = moduleDir.resolve("build").resolve("install")
+        val bin = listOf("pipelinek", "pipeline-application")
+            .map { installRoot.resolve(it).resolve("bin").resolve(it) }
+            .firstOrNull { it.toFile().exists() }
+        if (bin == null) {
             throw IllegalStateException(
-                "Application binary not found at $bin. " +
+                "Application binary not found under $installRoot. " +
                 "Run ./gradlew :pipeline-application:installDist first."
             )
         }

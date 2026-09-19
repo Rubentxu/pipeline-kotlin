@@ -27,10 +27,60 @@ class UatCompat001CorpusSmokeRunTest {
     // ArtifactArchiveFailed, which is correct canonical behaviour. Fixture 15 exercises the
     // canonical `error()` step which by design fails the run with exit 1. All other fixtures
     // exit 0.
+    // WU-LPR-071: fixture 10 now creates real build output (build/libs/smoke.jar) before
+    // archiveArtifacts, so the archive succeeds and the fixture exits 0 — the historical
+    // "no files matched" failure no longer applies. Only the deliberate-failure fixture
+    // remains in the broken set.
     private val brokenFixtures = setOf(
-        "10-smoke-e2e.pipeline.kts", // archiveArtifacts: no files matched → exit 1 (correct canonical behaviour)
         "15-error.pipeline.kts",    // `error("test")` step is a deliberate failure path
     )
+
+    /**
+     * WU-LPR-071 (CR corpus closure): fixture 14 exercises withCredentials with seven
+     * binding kinds, which requires a provisioned credentials store. The corpus runner
+     * seeds an ephemeral store once and exports the env contract
+     * (PIPELINE_CREDENTIALS_STORE / PIPELINE_STORE_PASSPHRASE) to every fixture process.
+     */
+    private val corpusPassphrase = "corpus-passphrase-0.36.0"
+
+    private fun seedCorpusCredentialsStore(controlRoot: java.nio.file.Path): java.nio.file.Path {
+        val storePath = controlRoot.resolve("credentials.store")
+        dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore(
+            storePath, corpusPassphrase.toCharArray()
+        ).use { store ->
+            fun bytes(s: String) = s.toByteArray()
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("string-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.SecretText(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("string-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, bytes("corpus-api-key")))
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("userpass-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("userpass-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, "corpus-user", bytes("corpus-pass")))
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ssh-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, "corpus@local", bytes("corpus-ssh-key")))
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("file-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.SecretFile(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("file-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, bytes("corpus-file")))
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.Certificate(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("cert-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, bytes("corpus-keystore")))
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("zip-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.Zip(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("zip-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL,
+                    mapOf("corpus.txt" to bytes("corpus-zip"))))
+            store.add(dev.rubentxu.pipeline.v2.domain.CredentialsId("ucp-creds"),
+                dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword(
+                    dev.rubentxu.pipeline.v2.domain.CredentialsId("ucp-creds"),
+                    dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope.GLOBAL, "corpus-user", bytes("corpus-pass")))
+        }
+        return storePath
+    }
 
     private fun discoverFixtures(): List<Path> {
         val userDir = File(System.getProperty("user.dir"))
@@ -47,15 +97,21 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(17, fixtures.size, "Corpus must have 17 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources; v0.33.1 added fixtures 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo)")
+        assertEquals(22, fixtures.size, "Corpus must have 22 valid fixtures (17 as of v0.33.1; 0.36.0 release cycle added 19-isunix, 20-pwd-tmp, 21-milestone, 22-wait-until, 23-readfile — WU-LPR-104/06x receipts)")
 
         val appBin = AppBinSupport.discover()
         val failures = mutableListOf<String>()
+        val controlRoot = java.nio.file.Files.createTempDirectory("compat-corpus-ctrl")
+        val storePath = seedCorpusCredentialsStore(controlRoot)
 
         fixtures.forEach { fixture ->
             val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
+                .apply {
+                    environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
+                    environment()["PIPELINE_STORE_PASSPHRASE"] = corpusPassphrase
+                }
 
             val process = pb.start()
             val exitCode = process.waitFor()
@@ -90,13 +146,19 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(17, fixtures.size, "Corpus must have 17 valid fixtures (07-writeFile-readFile moved to UAT-owned test resources; 99-broken-compilation moved to broken resources; v0.33.1 added fixtures 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo)")
+        assertEquals(22, fixtures.size, "Corpus must have 22 valid fixtures (17 as of v0.33.1; 0.36.0 release cycle added 19-isunix, 20-pwd-tmp, 21-milestone, 22-wait-until, 23-readfile — WU-LPR-104/06x receipts)")
         val appBin = AppBinSupport.discover()
+        val controlRoot = java.nio.file.Files.createTempDirectory("compat-corpus-ctrl")
+        val storePath = seedCorpusCredentialsStore(controlRoot)
 
         fixtures.forEach { fixture ->
             val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
+                .apply {
+                    environment()["PIPELINE_CREDENTIALS_STORE"] = storePath.toString()
+                    environment()["PIPELINE_STORE_PASSPHRASE"] = corpusPassphrase
+                }
 
             val process = pb.start()
             process.waitFor()

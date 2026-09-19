@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.cli
 
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -57,15 +58,11 @@ import java.util.concurrent.TimeUnit
 class WULpr010CliCharacterizationTest {
 
     private val binary: File by lazy {
-        // Locate the installDist output. The test only runs if the binary
-        // exists; otherwise it self-skips to keep the architecture test
-        // suite green when the binary has not been built.
-        val path = WULpr010ScannerSupport.v2Root()
-            .resolve("pipeline-application/build/install/pipeline-application/bin/pipeline-application")
-        require(path.toFile().exists()) {
-            "installDist output not found at $path; run :pipeline-application:installDist first"
-        }
-        path.toFile()
+        // WU-LPR-071: the distribution applicationName is "pipelinek" (WU-LPR-070).
+        // AppBinSupport discovers the canonical path (install/pipelinek/bin/pipelinek)
+        // and falls back to the legacy "pipeline-application" path. Using it keeps
+        // the suite aligned with the build graph and the canonical ZIP name.
+        AppBinSupport.discover().toFile()
     }
 
     private fun run(vararg args: String): ProcessResult {

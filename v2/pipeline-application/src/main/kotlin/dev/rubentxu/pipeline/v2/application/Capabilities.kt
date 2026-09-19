@@ -73,7 +73,7 @@ val PLATFORM_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.platf
  * canonical execution substrate (WorkspaceResolver under controlDirRoot), and the Step
  * decides what to project from it. This separation lets the canonical path be decided
  * (G2) without changing how the workspace is acquired, and keeps the handler from
- * reading `System.getProperty("user.dir")` or `Paths.get(".")` directly.
+ * reading the controller user-directory property or the relative-path shorthand directly.
  *
  * Bridge wiring: `CanonicalRuntimeCapabilityAccess.buildProvided` populates this
  * capability from `context.shOptions.workspaceRoot` (the same source the legacy

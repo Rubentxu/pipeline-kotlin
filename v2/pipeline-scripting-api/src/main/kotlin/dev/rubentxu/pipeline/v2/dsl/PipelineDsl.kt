@@ -2161,6 +2161,24 @@ class ScriptScope {
     fun line(command: String) {
         commands.add(command)
     }
+
+    // WU-LPR-071 (fixture 05-scripted-if): the @DslMarker hierarchy (LPR-401) correctly
+    // blocks implicit outer receivers inside `script { }`, so script bodies can no longer
+    // resolve `echo`/`sh` from [StageScope]. Jenkins-familiar script blocks still expect
+    // these step verbs, so the scope carries its own step shims that record the
+    // equivalent shell command. Kotlin control flow (if/when/loops) around them is real
+    // code evaluated at DSL-construction time — only the chosen branch is recorded.
+    fun echo(text: String) {
+        commands.add("echo \"${text.replace("\"", "\\\"")}\"")
+    }
+
+    fun sh(command: String) {
+        commands.add(command)
+    }
+
+    fun error(message: String) {
+        commands.add("echo \"$message\" >&2; exit 1")
+    }
 }
 
 /**

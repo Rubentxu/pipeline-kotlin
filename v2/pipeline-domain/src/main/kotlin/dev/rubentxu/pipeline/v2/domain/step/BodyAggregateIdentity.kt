@@ -104,5 +104,5 @@ enum class AggregateDurableRole(val authority: String) {
     RETRY_CONTROL_ROW("ADR-0075"),
     PARALLEL_STAGE_AGGREGATE("ADR-0076"),
     /** WU-G5R.5 — durable waitUntil predicate polling loop control row. */
-    WAIT_UNTIL_CONTROL_ROW("WU-G5R.5 / ADR-0075 analog"),
+    WAIT_UNTIL_CONTROL_ROW("ADR-0075 (waitUntil control journal, WU-G5R.5 analog)"),
 }

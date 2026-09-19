@@ -404,6 +404,9 @@ class UatLocal005CheckoutGitTest {
         val work = tempDir.resolve("work")
         Files.createDirectories(work)
         runGit(listOf("git", "clone", bareRepo.toString(), work.toString()))
+        // Environment git wrapper is fail-closed without an explicit identity.
+        runGit(listOf("git", "-C", work.toString(), "config", "user.email", "test@test.com"))
+        runGit(listOf("git", "-C", work.toString(), "config", "user.name", "Test User"))
         Files.writeString(work.resolve("newfile.txt"), "Content")
         runGit(listOf("git", "-C", work.toString(), "add", "."))
         runGit(listOf("git", "-C", work.toString(), "commit", "-m", "New commit"))

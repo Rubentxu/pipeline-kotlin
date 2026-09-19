@@ -61,6 +61,7 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.BoundPurpose
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
@@ -87,6 +88,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -864,7 +866,18 @@ class CanonicalDurableRunCoordinator(
         val operationId = opId.format()
         val input = OperationInput(
             stepId = step.pluginStepId.value,
-            params = mapOf("payload" to JsonPrimitive(step.payload.encoded)),
+            // SB-S-010 / D4: a non-NONE sandbox profile enters the operation fingerprint,
+            // so a resume with a CHANGED confinement profile diverges fail-closed instead
+            // of silently re-attaching under different semantics. NONE stays absent from
+            // params so default-run journals keep their historical fingerprints.
+            params = if (stageShOptions.sandbox.profile != SandboxProfile.NONE) {
+                mapOf(
+                    "payload" to JsonPrimitive(step.payload.encoded),
+                    "sandboxProfile" to JsonPrimitive(stageShOptions.sandbox.profile.name),
+                )
+            } else {
+                mapOf("payload" to JsonPrimitive(step.payload.encoded))
+            },
             runId = runId.value,
             attempt = 1,
         )
@@ -1493,6 +1506,20 @@ class CanonicalDurableRunCoordinator(
     ): StepOutcome {
         // CTX-P2 branch derivation: immutable value; today branchContext == parentContext.
         val branchContext = executionContext
+        // SB-S-008 / WU-LPR-071: parallel branches get ISOLATED cwds. The workspace is
+        // derived purely from (controlDirRoot, stageIndex, branchIndex) and carried in
+        // the branch's immutable ShOptions copy — no coordinator state is mutated and
+        // no branch can observe a sibling's working directory. With --workspace
+        // (workspaceBase set) the shared project workspace wins, per WU-LPR-062.
+        val branchShOptions = if (controlDirRoot != null && workspaceBase == null) {
+            val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
+            val branchWorkspace = resolver.ensureCreated(
+                resolver.resolve("stage-$stageIndex-b$branchIndex", 0)
+            )
+            stageShOptions.copy(workspaceRoot = branchWorkspace)
+        } else {
+            stageShOptions
+        }
         // P2 fitness: branches must observe an explicitly derived context, never coordinator state.
         val steps = (branch.body as? StageBody.Steps)?.steps
             ?: throw EngineInvariantViolation("Parallel branch '${branch.name}' has a non-linear body")
@@ -1513,7 +1540,7 @@ class CanonicalDurableRunCoordinator(
                 branch.name,
                 stageIndex,
                 stepIndex,
-                stageShOptions,
+                branchShOptions,
                 bodyPath,
                 branchContext,
             ).outcome
@@ -1921,6 +1948,10 @@ class CanonicalDurableRunCoordinator(
         childShOptions: ShOptions,
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
+        // CR-BD-027 (WU-LPR-071): bindings of the ACTIVE credential lease, if any.
+        // When non-empty, one CredentialUsed event per binding is emitted after each
+        // child step execution — per USE, not per lease.
+        leaseBindings: List<CredentialBindingSpec> = emptyList(),
     ): StepOutcome {
         for ((childIndex, child) in block.body.withIndex()) {
             val childOpId = OpId(
@@ -1940,6 +1971,26 @@ class CanonicalDurableRunCoordinator(
                 childOpId.bodyPath,
                 executionContext,
             ).outcome
+            if (leaseBindings.isNotEmpty()) {
+                for (binding in leaseBindings) {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.CredentialUsed(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = clock.now(),
+                            credentialsId = binding.credentialsId,
+                            purpose = when (binding.kind) {
+                                "string" -> BoundPurpose.API_KEY
+                                "usernamePassword" -> BoundPurpose.USERNAME_PASSWORD
+                                "sshUserPrivateKey" -> BoundPurpose.SSH_KEY
+                                else -> BoundPurpose.API_KEY
+                            },
+                            stepIndex = childIndex,
+                        ),
+                    )
+                }
+            }
             when (childOutcome) {
                 is StepOutcome.Failure, is StepOutcome.Unstable -> return childOutcome
                 else -> { /* continue to the next child */ }
@@ -2205,6 +2256,7 @@ class CanonicalDurableRunCoordinator(
                 childShOptions = childShOptions,
                 parentBodyPath = parentBodyPath,
                 executionContext = childContext,
+                leaseBindings = bindings,
             )
         } finally {
             cleanup = leased.close()

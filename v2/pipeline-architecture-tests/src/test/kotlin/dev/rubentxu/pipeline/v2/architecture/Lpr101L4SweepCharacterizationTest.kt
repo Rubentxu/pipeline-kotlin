@@ -122,17 +122,15 @@ class Lpr101L4SweepCharacterizationTest {
     // ---- F-DSL-2: absence of @DslMarker (characterization) ----
 
     @Test
-    fun `F-DSL-2 PipelineDsl currently has zero DslMarker annotations (characterization)`() {
+    fun `F-DSL-2 PipelineDsl declares DslMarker annotations (characterization satisfied)`() {
         val text = readOrSkip(pipelineDslPath) ?: return
         val count = Regex("@DslMarker").findAll(text).count()
-        // Characterization: today 0, target ≥1 (LPR-401 will add it).
-        // This test pins the BASELINE; the LPR-401 WU updates the asserted number and rationale.
-        assertEquals(
-            0,
-            count,
-            "PipelineDsl.kt currently has no @DslMarker (characterization for LPR-401). " +
-                "If a marker is added, update this test to assert the new count AND add the " +
-                "rationale comment in LPR_WORK_UNITS.md."
+        // LPR-401 was implemented: PipelineDsl.kt now declares a marker hierarchy
+        // (PipelineDslMarker/StageDslMarker/StepDslMarker/PostDslMarker) applied to the
+        // DSL scopes, satisfying the LPR-401 target (>= 1). Pin the declared markers.
+        assertTrue(
+            count >= 1,
+            "PipelineDsl.kt is expected to declare @DslMarker markers (LPR-401 satisfied); found $count",
         )
     }
 

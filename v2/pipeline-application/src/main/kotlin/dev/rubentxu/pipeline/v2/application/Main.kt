@@ -261,9 +261,13 @@ fun main(args: Array<String>) {
     // diagnostics: JDK version, working directory writability probe. Exits
     // 0 when the local runtime is healthy, 2 on an environment defect.
     if (args.firstOrNull() == "doctor") {
+        // WU-LPR-071: route host-environment reads through the canonical
+        // RuntimeConfig adapter (single authority); direct System.getProperty
+        // here would be a second runtime-value authority (WULpr402 property 6).
+        val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()
         val checks = buildList {
-            add("jdk: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
-            add("os: ${System.getProperty("os.name")} ${System.getProperty("os.version")}")
+            add("jdk: ${runtimeConfig.property("java.version")} (${runtimeConfig.property("java.vendor")})")
+            add("os: ${runtimeConfig.osName()} ${runtimeConfig.property("os.version")}")
             val cwd = Paths.get("").toAbsolutePath()
             val writable = try {
                 val probe = Files.createTempFile(cwd, "pipelinek-doctor-", ".probe")

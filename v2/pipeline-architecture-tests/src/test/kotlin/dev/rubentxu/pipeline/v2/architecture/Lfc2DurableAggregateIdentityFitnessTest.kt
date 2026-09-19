@@ -70,15 +70,17 @@ class Lfc2DurableAggregateIdentityFitnessTest {
      */
     @Test
     fun `the two durable aggregate identities are pinned, not deleted`() {
+        // WU-LPR-071 authority flip: WU-G5R.5 added the waitUntil control row as a third
+        // durable aggregate identity (ADR-0075 analog). Pinned set is now three.
         assertEquals(
-            2,
+            3,
             BodyAggregateIdentity.ALL.size,
-            "core.retry and core.parallel are durable replay keys (ADR-0075/ADR-0076). They " +
-                "leave the routing ledger by RECLASSIFICATION; deleting them would silence the " +
-                "guard instead of removing the identity",
+            "core.retry, core.parallel and the waitUntil control row are durable replay keys " +
+                "(ADR-0075/ADR-0076). They leave the routing ledger by RECLASSIFICATION; " +
+                "deleting them would silence the guard instead of removing the identity",
         )
         assertEquals(
-            setOf("core.retry", "core.parallel"),
+            setOf("core.retry", "core.parallel", "wait-until-control"),
             BodyAggregateIdentity.ALL.map { it.key.value }.toSet(),
             "The aggregate keys are fingerprint inputs of already-journaled rows: changing one " +
                 "is a replay-breaking change, not a rename",

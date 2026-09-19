@@ -71,9 +71,12 @@ object LegacyResidualSnapshot {
      * a legacy dispatcher file on disk. shrinks ONLY at G5 (physical removal).
      * ONE line to change per G5.
      */
-    private val physicalResidual: Set<String> = setOf(
-        "core.load", "core.waitUntil",
-    )
+    // WU-LPR-301 / G5 (2026-09-18, receipt
+    // docs/v2/07-uat/WU_LPR_301_LEGACY_EXECUTION_BURN_DOWN.md): "core.load" and
+    // "core.waitUntil" physically removed (decoder branch, metadata row, dispatcher
+    // forms). LEGACY_PLUGIN_IDS = empty set; burn-down closed-set complete. Counter
+    // converges 2/2/2 -> 0/0/0.
+    private val physicalResidual: Set<String> = emptySet()
     // S2-A7 / G5 (2026-09-12): "core.deleteDir" removed from the physical residual
     // (subtype, decoder branch, metadata row, dispatcher file all deleted).
     // S2-A9 / G5 (2026-09-13): "core.milestone" removed from the physical residual

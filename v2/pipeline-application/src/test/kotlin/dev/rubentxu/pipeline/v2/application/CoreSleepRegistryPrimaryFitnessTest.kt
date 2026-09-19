@@ -184,11 +184,15 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // above is preserved verbatim for traceability; the active property is the 14-key shape
     // (13 prior + core.waitUntil added back). core.load remains DEFERRED + UNSUPPORTED and is
     // not registered — the canonical body engine rejects any `core.load` envelope typed.
+    // WU-LPR-104 / 0.36.0 release reconciliation: core.readFile and core.fileExists
+    // are registered (CoreReadFileStep / CoreFileExistsStep) behind the same open
+    // registry. Registry key count: 14 -> 16.
     @Test fun `production registry contains exactly the registered core steps (post-WU-LPR-301-G5)`() {
         assertEquals(
             setOf(
                 "core.echo", "core.sh", "core.error", "core.sleep",
-                "core.file.writeFile", "core.emit.event", "core.isUnix",
+                "core.file.writeFile", "core.readFile", "core.fileExists",
+                "core.emit.event", "core.isUnix",
                 "core.pwd", "core.pwd.tmp",
                 "core.deleteDir", "core.milestone",
                 "core.cleanWs", "core.archiveArtifacts",

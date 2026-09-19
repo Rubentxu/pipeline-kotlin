@@ -138,7 +138,13 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
                 // Body-bearing iff the variant declares a constructor parameter named `steps`
                 // whose type is `List<StepSpec>`.
                 val ctor = kClass.primaryConstructor ?: return@filter false
-                val stepsParam = ctor.parameters.firstOrNull { it.name == "steps" } ?: return@filter false
+                val stepsParam = ctor.parameters.firstOrNull {
+                    it.name == "steps" ||
+                        // WU-G5R (ADR waitUntil certification): WaitUntilBlock carries its
+                        // child body as `body: List<StepSpec>`; the outer dispatch routes it
+                        // through the same block-step machinery.
+                        it.name == "body"
+                } ?: return@filter false
                 val typeName = stepsParam.type.toString()
                 // The Kotlin type string is `List<dev.rubentxu.pipeline.v2.dsl.StepSpec>`;
                 // match on the trailing type name only.
@@ -181,6 +187,12 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
         },
         "Timestamps" to { body ->
             StepSpec.Timestamps(steps = body)
+        },
+        // WU-G5R / waitUntil certification: WaitUntilBlock carries its child body as
+        // `body: List<StepSpec>` and is routed through blockStepNode like the rest of
+        // the block family.
+        "WaitUntilBlock" to { body ->
+            StepSpec.WaitUntilBlock(initialRecurrencePeriod = 5L, quiet = false, body = body)
         },
     )
 

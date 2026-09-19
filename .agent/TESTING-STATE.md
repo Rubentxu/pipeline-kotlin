@@ -1102,3 +1102,10 @@ Receipt: docs/v2/07-uat/WU_LPR_103_COMPATIBILITY_CURVE_RECEIPT.md
 - Fresh evidence: corpus 23/23, events module green, durable E2E probe sequences 1..20 no zeros.
 - Next: Release Train order = real Gradle (062) → Maven (063) → Node (064) → distZip (070) → GitHub Release (071) → SDKMAN (080) → dogfooding. BUILD ONCE/CERTIFY ONCE/PUBLISH SAME BYTES law applies.
 - EventHistoryContractTest PIN: if it flakes again, suspect writer batching changes first, NOT test flakiness.
+
+
+## WU-LPR-062 handoff (2026-09-18, commit 07fa8dec)
+- `--workspace <dir>` shipped: shared stage workspace (Jenkins semantics), journal/control stay under control root.
+- E2E evidence: integration/gradle-demo success (exit 0, jar) + failure path (exit 1, SCRIPT StepFailed).
+- Green: corpus 23/23, targeted L2 131/131 (DurableShell/CtxP/DeleteDir/CleanWs/ArchiveArtifacts/UatLocal004).
+- Unknown impact: none identified; next train WU = 063 (Maven project), 064 (Node), 070 distZip, 071 GitHub Release.

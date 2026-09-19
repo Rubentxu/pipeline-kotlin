@@ -33,7 +33,10 @@ class Lfc0GlobalStateFitnessTest {
                     .filter { it.isProductionKotlinSource() }
                     .flatMap { path ->
                         Files.readAllLines(path).mapIndexedNotNull { index, line ->
-                            forbidden.firstOrNull(line::contains)?.let { token ->
+                            // WU-LPR-071: scan code, not prose — a `//` line comment that
+                            // merely MENTIONS a forbidden token is not a global-state access.
+                            val code = line.substringBefore("//")
+                            forbidden.firstOrNull(code::contains)?.let { token ->
                                 Finding(path, index + 1, token, line.trim())
                             }
                         }.stream()

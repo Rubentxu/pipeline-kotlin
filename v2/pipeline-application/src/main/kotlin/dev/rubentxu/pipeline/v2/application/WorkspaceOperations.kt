@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.sdk.files.FileWriteResult
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.FileRead
+import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.FileExistsChecked
 import java.util.UUID
 import java.nio.file.Path
@@ -89,12 +90,29 @@ class WorkspaceOperationsAdapter(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
             eventSink = eventSink,
         )
-        return executor.execute(
+        val result = executor.execute(
             stageName,
             stageIndex,
-            0, // stepIndex is unused by the executor's event path (dispatcher emits)
+            0,
             StepSpec.WriteFile(file = file, text = text, encoding = encoding),
         )
+        // Single-emitter: the adapter is the ONLY FileWritten emitter (WU-LPR-071
+        // fix, CR-U9 family): the executor substrate carries the write evidence but
+        // event emission was left to a dispatcher that does not exist on the registry
+        // path, silently dropping the FileWritten contract.
+        eventSink.append(
+            FileWritten(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                path = result.path,
+                sha256 = result.sha256,
+                size = result.size,
+                atomicallyMoved = result.atomicallyMoved,
+            ),
+        )
+        return result
     }
 
     override fun readFile(file: String, encoding: String): FileReadResult {

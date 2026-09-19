@@ -130,12 +130,15 @@ class FArchL7JenkinsVerbatimSignatureReflectionTest {
             ),
             fieldNames = setOf("path")
         ),
-        "WaitUntil" to StepShape(
+        // WU-LPR-071 reconciliation: the sealed variant is named WaitUntilBlock
+        // (Jenkins verb `waitUntil`). It also carries the durable body.
+        "WaitUntilBlock" to StepShape(
             paramTypeDescriptors = listOf(
                 "J",                   // initialRecurrencePeriod (Long -> J)
-                "Z"                   // quiet (Boolean -> Z)
+                "Z",                   // quiet (Boolean -> Z)
+                "Ljava/util/List;"     // body
             ),
-            fieldNames = setOf("initialRecurrencePeriod", "quiet")
+            fieldNames = setOf("initialRecurrencePeriod", "quiet", "body")
         ),
 
         // ML-R9 output-decorator steps (DEC-S-006)

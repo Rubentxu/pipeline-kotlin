@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "dev.rubentxu.pipeline.v2"
-version = "0.1.0-SNAPSHOT"
+version = "0.36.0"
 
 // The V2 root is an aggregate build. Its lifecycle check is the repository
 // gate and deliberately covers every active V2 subproject declared in settings.

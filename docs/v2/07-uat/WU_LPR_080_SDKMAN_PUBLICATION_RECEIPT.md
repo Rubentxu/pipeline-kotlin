@@ -20,6 +20,32 @@
 
 ---
 
+## Defects observed in `pipelinek 0.39.0` (must be fixed before LPR-GATE-1 is fully closed)
+
+### Exit-code propagation (verified empirically by `scripts/release/cheat-sheet-uat.sh`)
+
+| Scenario | Expected exit | Observed (v0.39.0) |
+|---|---|---|
+| `run` on a passing script (fresh DB) | `0` | `0` ✓ |
+| `run` on a failing script (fresh DB) | `1` | `0` — **DEFECT** |
+| `run` on a failing script (after success in same DB, different script path) | `1` | `0` — **DEFECT** |
+| `run` on a failing script (after success in same DB, `--rerun`) | `1` | `1` ✓ |
+| `validate` on a malformed script | non-zero | `0` — **DEFECT** |
+| `pipelinek` (no args) | non-zero | `0` — **DEFECT** |
+| Unknown flag | non-zero | `0` — **DEFECT** |
+
+**Impact**: shell scripts gating on `$?` cannot reliably distinguish
+success from failure in `0.39.0`. Users must gate on the `RunFinished.outcome`
+field of the NDJSON event stream instead.
+
+**Until fixed**, the cheat sheet and CLI reference document the
+defect and provide the NDJSON-based gate as the recommended pattern.
+
+This is a release-gating defect. A follow-up release with the fix is
+required before LPR-GATE-1 can be declared fully closed.
+
+---
+
 ## What is done in this cycle
 
 ### ZIP compatibility with SDKMAN (verified empirically)

@@ -111,7 +111,11 @@ Downloaded the published ZIP from `https://github.com/Rubentxu/pipeline-kotlin/r
 
 ## 8. Outstanding
 
-- [ ] **SDKMAN publish** (`pipelinek` candidate on https://vendors.sdkman.io/) — blocked on `SDKMAN_CONSUMER_KEY` + `SDKMAN_CONSUMER_TOKEN` (vendor account `Rubentxu`). Publish script committed at `e9494f7d` (`scripts/release/sdkman-publish.sh`): bash-validated, fail-closed without credentials, real SDKMAN endpoint verified (403 on dummy creds). Idempotent; does NOT promote to default (separate PUT).
+The release is closed on the GitHub Release channel. The SDKMAN channel has three sequential steps; the first is script-ready, the next two are blocked on vendor credentials and a clean runner.
+
+- [ ] **SDKMAN publish** (`pipelinek` candidate on https://vendors.sdkman.io/release) — blocked on `SDKMAN_CONSUMER_KEY` + `SDKMAN_CONSUMER_TOKEN` (vendor account `Rubentxu`). Publish script committed at `e9494f7d` (`scripts/release/sdkman-publish.sh`): bash-validated, fail-closed without credentials, real SDKMAN endpoint verified (403 on dummy creds). Idempotent; does NOT promote to default.
+- [ ] **SDKMAN install UAT** (`sdk install pipelinek 0.39.0` on a clean runner) — gated by publish. Script committed at `22021085` (`scripts/release/sdkman-install-uat.sh`): bash-validated, fail-closed without `sdk` CLI (exit 1). Validates `pipelinek version` / `doctor` / `validate` / `run` end-to-end on the SDKMAN-installed binary. **Mandatory gate: a failed UAT is a hard STOP, no promotion to default.**
+- [ ] **SDKMAN promote to default** (PUT `https://vendors.sdkman.io/default`) — gated by UAT. Only after the UAT passes is `0.39.0` made the default candidate version. A one-line curl; not yet scripted because the UAT is the load-bearing check.
 - [ ] Self-hosting via root `/pipeline.kts` from `v0.39.0` onwards — bootstrap exception retired.
 
 ## 9. Receipts and artifacts
@@ -120,6 +124,7 @@ Downloaded the published ZIP from `https://github.com/Rubentxu/pipeline-kotlin/r
 - `docs/v2/07-uat/WU_LPR_060_CERTIFICATION_LEDGER.md` — certification ledger digest referenced by the manifest
 - `docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md` — this receipt
 - `scripts/release/sdkman-publish.sh` — SDKMAN vendor publish script (e9494f7d)
+- `scripts/release/sdkman-install-uat.sh` — SDKMAN install UAT (publish → UAT → default gate) (22021085)
 - `scripts/release/sbom-cyclonedx.py` — CycloneDX 1.5 SBOM generator (stdlib-only)
 - GitHub Release assets: `pipelinek-0.39.0.zip`, `.sbom.json`, `.zip.sha256`, `release-manifest.json`
 
@@ -150,7 +155,9 @@ Commits on main this release
   68ba01ab  chore(release): bump to 0.39.0 (cosmetic; ZIP bytes unchanged)
   320199fb  docs(lpr): LPR-GATE-1 closure receipt
   e9494f7d  feat(release): SDKMAN publish script (fail-closed)
+  22021085  docs(lpr): receipt refresh — record SDKMAN publish script (e9494f7d)
+  <next>    feat(release): SDKMAN install UAT script (publish → UAT → default gate)
 
 ---
 
-**Signed off**: WU-LPR-071 (2026-09-19). Local Production Ready (LPR-GATE-1) **CLOSED** for `pipelinek 0.39.0` on the GitHub Release channel. SDKMAN channel: publish script ready (e9494f7d); execution pending vendor credentials.
+**Signed off**: WU-LPR-071 (2026-09-19). Local Production Ready (LPR-GATE-1) **CLOSED** for `pipelinek 0.39.0` on the GitHub Release channel. SDKMAN channel: publish script (e9494f7d) and UAT script (next commit) ready; SDKMAN publish + UAT + default promotion pending vendor credentials and clean runner.

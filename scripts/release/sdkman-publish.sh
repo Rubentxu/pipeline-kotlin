@@ -46,11 +46,30 @@ if [ -z "$SHA256" ]; then
 fi
 echo "sha256:    $SHA256"
 
+# Defence-in-depth: verify the SHA matches what we'd compute locally from the
+# same URL. If GitHub ever returns a different .sha256 sidecar than the
+# archive, fail closed. (Cheap; one curl.)
+EXPECTED_VIA_LOCAL_SHA=$(curl -fsSL "${URL}" | sha256sum | awk '{print $1}')
+if [ "${EXPECTED_VIA_LOCAL_SHA}" != "${SHA256}" ]; then
+  echo "❌ SHA mismatch: GitHub .sha256 sidecar says ${SHA256}" >&2
+  echo "   but recomputing from ${URL} gives ${EXPECTED_VIA_LOCAL_SHA}" >&2
+  exit 1
+fi
+echo "sha256 verify: ✓ GitHub sidecar matches recomputed archive digest"
+echo
+
+# SDKMAN distribution: UNIVERSAL — single binary works on all platforms
+# because the archive contains BOTH bin/pipelinek (UNIX) and
+# bin/pipelinek.bat (Windows). Per SDKMAN docs, UNIVERSAL and platform-
+# specific binaries are mutually exclusive for the same version.
+PLATFORM="UNIVERSAL"
+
 PAYLOAD=$(cat <<JSON
 {
   "candidate": "${CANDIDATE}",
   "version":   "${VERSION}",
   "url":       "${URL}",
+  "platform":  "${PLATFORM}",
   "checksums": {
     "SHA-256": "${SHA256}"
   }

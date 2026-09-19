@@ -49,6 +49,9 @@ dependencies {
     implementation(project(":pipeline-step-sdk:runtime"))
     implementation(project(":pipeline-step-sdk:files"))
     implementation(project(":pipeline-step-sdk:scm-git"))
+    // F5.2: JUnit OFFICIAL_PLUGIN is bundled into the distribution so the
+    // external discovery seam can resolve it without `--plugin-jar`.
+    implementation(project(":pipeline-step-sdk:junit"))
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-credentials-local"))
     implementation(project(":pipeline-credentials-multipart")) // D2-rev: wire CredentialMaterializer for file-based credential dispatch
@@ -60,6 +63,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)
     testImplementation(project(":pipeline-step-sdk:scm-git"))
+    // F5.2: JUnit OFFICIAL_PLUGIN (typed report summary + XXE-hardened parser).
+    testImplementation(project(":pipeline-step-sdk:junit"))
     // LB-02 / Lane R: external plugin under certification (example.uppercase) — the
     // same JAR the installed distribution hosts via --plugin-jar. Test classpath only.
     // Produced by :buildExamplePlugin from THIS revision's SDK; not a committed artifact.

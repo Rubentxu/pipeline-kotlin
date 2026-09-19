@@ -107,9 +107,9 @@ No `CREDENTIAL_USE`, `NETWORK`, `PROCESS_EXECUTION`, or `SHELL_OPERATIONS_CAPABI
 
 | Step               | effects                        | replayPolicy | recoveryPolicy |
 |---|---|---|---|
-| `core-utils.readJson` | `READS_WORKSPACE`            | `MEMOIZED`   | `None`         |
+| `core-utils.readJson` | `READ_ONLY`                  | `MEMOIZED`   | `None`         |
 | `core-utils.writeJson`| `WRITES_WORKSPACE`           | `NEVER` (write side-effect; replay must NOT silently re-write) | `None` |
-| `core-utils.sha256`   | `READS_WORKSPACE`            | `MEMOIZED`   | `None`         |
+| `core-utils.sha256`   | `READ_ONLY`                  | `MEMOIZED`   | `None`         |
 
 `ReplayPolicy.NEVER` for `writeJson` matches the F5.1/SCM lesson (E-EM-11 NEVER-1): a write must NOT silently re-execute on replay. If a previous run recorded a successful write, replay aborts the re-execution with a typed failure rather than duplicating the effect.
 

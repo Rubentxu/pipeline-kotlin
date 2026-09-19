@@ -1,0 +1,8 @@
+# Fixture 28 (zip-slip-defense) creates a benign sentinel named
+# `abcdefghijklmn` at the workspace root to demonstrate Zip-Slip containment.
+# That name is the exact length of the smuggled `../escaped.txt` payload
+# (14 chars) so a pure byte-for-byte LFH/CDH rename keeps the EOCD CD offset
+# intact (avoiding CDH-length drift). The sentinel is part of the fixture's
+# CWD, so ignore it for cleanliness; the fixture is hermetic under
+# --control-root during the corpus run.
+abcdefghijklmn

@@ -49,16 +49,17 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
     private val readYamlStep: CoreUtilsReadYamlStepDefinition = CoreUtilsReadYamlStepDefinition()
     private val writeYamlStep: CoreUtilsWriteYamlStepDefinition = CoreUtilsWriteYamlStepDefinition()
     private val findFilesStep: CoreUtilsFindFilesStepDefinition = CoreUtilsFindFilesStepDefinition()
+    private val zipStep: CoreUtilsZipStepDefinition = CoreUtilsZipStepDefinition()
 
     override fun definitions(): Iterable<StepDefinition<*, *>> =
-        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep)
+        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
         val provider = buildProvider()
         val manifest = buildManifest(provider)
         PluginManifestValidator.validate(
             manifest,
-            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep),
+            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep),
         )
         return listOf(
             StepRegistration(readJsonStep, provider),
@@ -67,6 +68,7 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepRegistration(readYamlStep, provider),
             StepRegistration(writeYamlStep, provider),
             StepRegistration(findFilesStep, provider),
+            StepRegistration(zipStep, provider),
         )
     }
 
@@ -141,6 +143,10 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepManifest(
                 stepKey = CoreUtilsFindFilesKey.VALUE,
                 declaredCapabilities = findFilesStep.contract.requiredCapabilities,
+            ),
+            StepManifest(
+                stepKey = CoreUtilsZipKey.VALUE,
+                declaredCapabilities = zipStep.contract.requiredCapabilities,
             ),
         ),
     )

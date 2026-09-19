@@ -14,6 +14,8 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -34,6 +36,7 @@ fun coreUtilsSha256StepKey(): PluginStepId = CoreUtilsSha256Key.VALUE
 fun coreUtilsReadYamlStepKey(): PluginStepId = CoreUtilsReadYamlKey.VALUE
 fun coreUtilsWriteYamlStepKey(): PluginStepId = CoreUtilsWriteYamlKey.VALUE
 fun coreUtilsFindFilesStepKey(): PluginStepId = CoreUtilsFindFilesKey.VALUE
+fun coreUtilsZipStepKey(): PluginStepId = CoreUtilsZipKey.VALUE
 
 /**
  * `core-utils.readJson` DSL façade.
@@ -240,6 +243,77 @@ fun StageScope.writeYamlMultiple(
     val encoded: EncodedStepValue = CoreUtilsWriteYamlInputCodec.encode(input)
     registryStep(
         stepKey = coreUtilsWriteYamlStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.zip` DSL façade (archive a directory subtree).
+ *
+ * Creates a zip file at [path] (workspace-relative or absolute). Refuses
+ * to overwrite an existing archive unless [overwrite] is true (Jenkins
+ * default). Symlinks inside [directory] are followed and archived as
+ * regular files.
+ */
+fun StageScope.zipDir(
+    path: String,
+    directory: String,
+    overwrite: Boolean = false,
+) {
+    val input = ZipInput(
+        path = path,
+        overwrite = overwrite,
+        sources = ZipSources.FromDirectory(directory),
+    )
+    val encoded: EncodedStepValue = CoreUtilsZipInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsZipStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.zip` DSL façade (archive a glob of files).
+ *
+ * Globs are interpreted with the same Java NIO + Jenkins-compat two-
+ * stars-slash fallback that `findFiles` uses.
+ */
+fun StageScope.zipGlob(
+    path: String,
+    glob: String,
+    overwrite: Boolean = false,
+) {
+    val input = ZipInput(
+        path = path,
+        overwrite = overwrite,
+        sources = ZipSources.FromGlob(glob),
+    )
+    val encoded: EncodedStepValue = CoreUtilsZipInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsZipStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.zip` DSL façade (archive a literal list of paths).
+ */
+fun StageScope.zipFiles(
+    path: String,
+    paths: List<String>,
+    overwrite: Boolean = false,
+) {
+    require(paths.isNotEmpty()) {
+        "core-utils.zipFiles: paths list must not be empty"
+    }
+    val input = ZipInput(
+        path = path,
+        overwrite = overwrite,
+        sources = ZipSources.FromFiles(paths),
+    )
+    val encoded: EncodedStepValue = CoreUtilsZipInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsZipStepKey(),
         encodedInput = encoded,
     )
 }

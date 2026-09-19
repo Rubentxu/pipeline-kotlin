@@ -26,6 +26,9 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FileEntry
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipOutput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -87,6 +90,7 @@ class CoreUtilsStepContractSuiteTest {
     private val readYamlStep = CoreUtilsReadYamlStepDefinition()
     private val writeYamlStep = CoreUtilsWriteYamlStepDefinition()
     private val findFilesStep = CoreUtilsFindFilesStepDefinition()
+    private val zipStep = CoreUtilsZipStepDefinition()
 
     private fun stubWorkspaceRoot(): Path = tempDir.resolve("workspace").also { Files.createDirectories(it) }
 
@@ -1406,5 +1410,267 @@ class CoreUtilsStepContractSuiteTest {
         assertTrue("real.txt" in paths)
         assertFalse(paths.any { it.startsWith("link-out/") })
         assertFalse(paths.any { it.endsWith("secret.txt") })
+    }
+
+    // ==========================================================================
+    //  core-utils.zip (Slice 2 / S2.4) — Jenkins-reference Step.
+    //
+    //  Reference: pipeline-utility-steps-plugin ZipStep (MIT, CloudBees)
+    //  + CompressStepExecution. CVE-2023-32981 (SECURITY-2196) hardened the
+    //  Jenkins side; we apply the same canonical-path containment on the
+    //  archive-creation side (a malicious `FromFiles`/`FromDirectory`
+    //  payload cannot smuggle a path that escapes the workspace).
+    // ==========================================================================
+
+    // -------- identity --------
+
+    @Test
+    fun `identity — zip Key is core-utils dot zip`() {
+        assertEquals(PluginStepId("core-utils.zip"), CoreUtilsZipKey.VALUE)
+        assertEquals("core-utils.zip", CoreUtilsZipKey.VALUE.value)
+    }
+
+    // -------- contract completeness --------
+
+    @Test
+    fun `contract — zip declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+        val c = zipStep.contract
+        assertEquals(CoreUtilsZipKey.VALUE, c.key)
+        assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
+        assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
+        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertNotNull(c.inputCodec)
+        assertNotNull(c.outputCodec)
+    }
+
+    // -------- codec roundtrip --------
+
+    @Test
+    fun `codec zip input — roundtrip preserves path + overwrite + sources variants`() {
+        val glob = ZipInput(
+            path = "out.zip",
+            overwrite = true,
+            sources = ZipSources.FromGlob("**/*.txt"),
+        )
+        assertEquals(glob, CoreUtilsZipInputCodec.decode(CoreUtilsZipInputCodec.encode(glob)))
+
+        val dir = ZipInput(
+            path = "/tmp/abs.zip",
+            sources = ZipSources.FromDirectory("build/dist"),
+        )
+        assertEquals(dir, CoreUtilsZipInputCodec.decode(CoreUtilsZipInputCodec.encode(dir)))
+
+        val files = ZipInput(
+            path = "literal.zip",
+            overwrite = true,
+            sources = ZipSources.FromFiles(listOf("a.txt", "sub/b.txt")),
+        )
+        assertEquals(files, CoreUtilsZipInputCodec.decode(CoreUtilsZipInputCodec.encode(files)))
+    }
+
+    @Test
+    fun `codec zip output — roundtrip preserves absolutePath + byteSize + sha256Hex + entryCount`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "alpha")
+        val out = zipStep.handler.execute(
+            ZipInput(
+                path = "codec.zip",
+                sources = ZipSources.FromFiles(listOf("a.txt")),
+            ),
+            handlerContext(ws),
+        )
+        val decoded = CoreUtilsZipOutputCodec.decode(CoreUtilsZipOutputCodec.encode(out))
+        assertEquals(out, decoded)
+    }
+
+    // -------- canonical envelope --------
+
+    @Test
+    fun `envelope — zip input codec emits a well-formed JSON object (durable eligible)`() {
+        val encoded = CoreUtilsZipInputCodec.encode(
+            ZipInput(path = "x.zip", sources = ZipSources.FromFiles(listOf("a"))),
+        )
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
+        assertTrue(parsed is JsonObject, "input envelope must be a JSON object")
+    }
+
+    // -------- success --------
+
+    @Test
+    fun `success — zip FromFiles archives the listed files with the correct entry names`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "alpha")
+        Files.createDirectories(ws.resolve("sub"))
+        Files.writeString(ws.resolve("sub").resolve("b.txt"), "beta")
+
+        val out = zipStep.handler.execute(
+            ZipInput(
+                path = "result.zip",
+                sources = ZipSources.FromFiles(listOf("a.txt", "sub/b.txt")),
+            ),
+            handlerContext(ws),
+        )
+
+        assertEquals(ws.resolve("result.zip").toString(), out.absolutePath)
+        assertEquals(2, out.entryCount)
+        assertEquals(64, out.sha256Hex.length)
+        assertTrue(out.byteSize > 0)
+
+        // Verify the archive contents using java.util.zip
+        val entries = java.util.zip.ZipFile(ws.resolve("result.zip").toFile()).use { zf ->
+            zf.entries().asSequence().map { it.name }.toSet()
+        }
+        assertEquals(setOf("a.txt", "sub/b.txt"), entries)
+    }
+
+    @Test
+    fun `success — zip FromDirectory archives a full subtree`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.createDirectories(ws.resolve("src/main"))
+        Files.writeString(ws.resolve("src/main/A.kt"), "A")
+        Files.writeString(ws.resolve("src/main/B.kt"), "B")
+        Files.writeString(ws.resolve("README.md"), "R")
+
+        val out = zipStep.handler.execute(
+            ZipInput(
+                path = "src.zip",
+                sources = ZipSources.FromDirectory("src"),
+            ),
+            handlerContext(ws),
+        )
+        assertEquals(2, out.entryCount)
+        val entries = java.util.zip.ZipFile(ws.resolve("src.zip").toFile()).use { zf ->
+            zf.entries().asSequence().map { it.name }.toSet()
+        }
+        assertEquals(setOf("main/A.kt", "main/B.kt"), entries)
+    }
+
+    @Test
+    fun `success — zip FromGlob archives matching files (Jenkins-compat two-stars-slash)`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("top.txt"), "t")
+        Files.createDirectories(ws.resolve("a"))
+        Files.writeString(ws.resolve("a").resolve("nested.txt"), "n")
+
+        val out = zipStep.handler.execute(
+            ZipInput(
+                path = "g.zip",
+                sources = ZipSources.FromGlob("**/*.txt"),
+            ),
+            handlerContext(ws),
+        )
+        assertEquals(2, out.entryCount)
+    }
+
+    @Test
+    fun `success — zip computes a sha256Hex that matches the bytes on disk`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "alpha")
+        val out = zipStep.handler.execute(
+            ZipInput(
+                path = "x.zip",
+                sources = ZipSources.FromFiles(listOf("a.txt")),
+            ),
+            handlerContext(ws),
+        )
+        val recomputed = MessageDigest.getInstance("SHA-256")
+            .digest(Files.readAllBytes(ws.resolve("x.zip")))
+            .joinToString("") { "%02x".format(it) }
+        assertEquals(recomputed, out.sha256Hex)
+    }
+
+    @Test
+    fun `success — zip creates missing parent directories`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "a")
+        zipStep.handler.execute(
+            ZipInput(
+                path = "deep/nested/x.zip",
+                sources = ZipSources.FromFiles(listOf("a.txt")),
+            ),
+            handlerContext(ws),
+        )
+        assertTrue(Files.exists(ws.resolve("deep/nested/x.zip")))
+    }
+
+    // -------- typed failure --------
+
+    @Test
+    fun `typed failure — zip refuses to overwrite an existing file unless overwrite=true`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("preexisting.zip"), "old")
+        Files.writeString(ws.resolve("a.txt"), "alpha")
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                zipStep.handler.execute(
+                    ZipInput(
+                        path = "preexisting.zip",
+                        sources = ZipSources.FromFiles(listOf("a.txt")),
+                    ),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("overwrite=false"))
+    }
+
+    @Test
+    fun `typed failure — zip FromDirectory on a missing directory raises USER class`() {
+        val ws = stubWorkspaceRoot()
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                zipStep.handler.execute(
+                    ZipInput(
+                        path = "out.zip",
+                        sources = ZipSources.FromDirectory("does-not-exist"),
+                    ),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("directory does not exist"))
+    }
+
+    @Test
+    fun `typed failure — zip FromFiles with non-regular source raises USER class`() {
+        val ws = stubWorkspaceRoot()
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                zipStep.handler.execute(
+                    ZipInput(
+                        path = "out.zip",
+                        sources = ZipSources.FromFiles(listOf("does-not-exist.txt")),
+                    ),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("not a regular file"))
+    }
+
+    // -------- security: CVE-2023-32981 archive-side --------
+
+    @Test
+    fun `security — zip FromFiles refuses a path that escapes the workspace`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        // Create a file outside the workspace.
+        val outside = tempDir.resolve("outside.txt")
+        Files.writeString(outside, "secret")
+        val outsideAbs = outside.toAbsolutePath().toString()
+
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                zipStep.handler.execute(
+                    ZipInput(
+                        path = "x.zip",
+                        sources = ZipSources.FromFiles(listOf(outsideAbs)),
+                    ),
+                    handlerContext(ws),
+                )
+            }
+        }
+        // The error comes from the resolution check: the path resolves
+        // outside the workspace root.
+        assertNotNull(ex.failure.message)
     }
 }

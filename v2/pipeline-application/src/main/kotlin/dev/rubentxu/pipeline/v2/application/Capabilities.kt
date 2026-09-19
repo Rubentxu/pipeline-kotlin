@@ -81,12 +81,15 @@ val PLATFORM_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.platf
  *
  * Declared in `StepContract.requiredCapabilities`; admission is fail-closed before
  * the handler runs when it is not available.
+ *
+ * **WU-LPR-WC**: `WorkspaceIdentity` and `WORKSPACE_IDENTITY_CAPABILITY` were hoisted
+ * to `:pipeline-domain` so plugin handlers can declare the capability without
+ * depending on `:pipeline-application`. The declarations below are typealiases
+ * preserving the historical import path for application-internal code.
  */
-data class WorkspaceIdentity(
-    val workspaceRoot: java.nio.file.Path,
-)
+typealias WorkspaceIdentity = dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
 
-val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.workspace-identity")
+val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
 
 /**
  * Typed seam for `core.pwd.tmp` (S2-A6 / G3T post-correction) — the ONLY capability

@@ -76,10 +76,13 @@ class F5_2_JUnitStepContractTest {
         assertEquals("junit.results", definition.contract.descriptor.stepId)
         assertEquals(ReplayPolicy.MEMOIZED, definition.contract.descriptor.replayPolicy)
         assertTrue(definition.contract.descriptor.effects.contains(Effect.READ_ONLY))
-        // F5.1 / F5.2 UAT-closure precedent: the contract declares an
-        // empty capability set so the canonical engine admits the
-        // invocation; capability-routed workspace root is a follow-up.
-        assertTrue(definition.contract.requiredCapabilities.isEmpty())
+        // WU-LPR-WC: the contract declares WORKSPACE_IDENTITY_CAPABILITY so
+        // the handler can read the canonical workspace root from the typed
+        // capability seam without consulting process-global state.
+        assertEquals(
+            setOf(StepCapability("runtime.workspace-identity")),
+            definition.contract.requiredCapabilities,
+        )
     }
 
     @Test
@@ -448,17 +451,18 @@ class F5_2_JUnitStepContractTest {
     }
 
     // ----------------------------------------------------------------------
-    // workspaceRoot resolution (F5.2 follow-up: "pipeline.workspace.root"
-    // fallback when input.workspaceRoot is blank / "." / "./" or points at a
-    // non-existent directory). When the caller leaves it unset, the handler
-    // falls back to the system property `pipeline.workspace.root` (set by
-    // the binary when --workspace is provided), so a relative reportPath
-    // resolves against the actual pipeline workspace without the script
-    // author having to know the absolute path.
+    // workspaceRoot resolution (WU-LPR-WC: the canonical workspace is read
+    // from the typed WORKSPACE_IDENTITY_CAPABILITY, NOT from the system
+    // property `pipeline.workspace.root`). When the caller leaves it
+    // blank / "." / "./" or points at a non-existent directory, the
+    // handler falls back to the typed workspace identity supplied through
+    // the capability bridge, so a relative reportPath resolves against
+    // the actual pipeline workspace without the script author having to
+    // know its absolute path.
     // ----------------------------------------------------------------------
 
     @Test
-    fun `handler falls back to pipeline workspace when workspaceRoot is dot`() = runBlocking {
+    fun `handler falls back to typed workspace identity when workspaceRoot is dot`() = runBlocking {
         val tmpWs = Files.createTempDirectory("junit-pipeline-ws-")
         val report = tmpWs.resolve("nested/results.xml")
         Files.createDirectories(report.parent)
@@ -469,13 +473,14 @@ class F5_2_JUnitStepContractTest {
             <testsuite name="X" tests="2" failures="0" errors="0" skipped="0" time="0.0"/>
             """.trimIndent(),
         )
-        val saved = System.getProperty("pipeline.workspace.root")
         try {
-            System.setProperty("pipeline.workspace.root", tmpWs.toString())
             val definition = JUnitResultsStepDefinition()
-            val ctx = newContext()
+            // WU-LPR-WC: thread the typed workspace identity through the
+            // capability seam. The system property is unset on purpose —
+            // the resolver must succeed without consulting it.
+            val ctx = newContext(workspaceRoot = tmpWs)
             // Relative workspaceRoot="." + relative reportPath = "nested/results.xml"
-            // must resolve against the system property's workspace root.
+            // must resolve against the typed workspace identity.
             val input = JUnitResultsInput(
                 reportPath = "nested/results.xml",
                 workspaceRoot = ".",
@@ -485,13 +490,12 @@ class F5_2_JUnitStepContractTest {
             assertEquals(2, output.summary.tests)
             assertEquals(report.toString(), output.summary.reportPath)
         } finally {
-            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
         }
     }
 
     @Test
-    fun `handler falls back to pipeline workspace when workspaceRoot is blank`() = runBlocking {
+    fun `handler falls back to typed workspace identity when workspaceRoot is blank`() = runBlocking {
         val tmpWs = Files.createTempDirectory("junit-pipeline-ws-")
         val report = tmpWs.resolve("r.xml")
         Files.writeString(
@@ -501,24 +505,21 @@ class F5_2_JUnitStepContractTest {
             <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
             """.trimIndent(),
         )
-        val saved = System.getProperty("pipeline.workspace.root")
         try {
-            System.setProperty("pipeline.workspace.root", tmpWs.toString())
             val definition = JUnitResultsStepDefinition()
-            val ctx = newContext()
+            val ctx = newContext(workspaceRoot = tmpWs)
             val input = JUnitResultsInput(reportPath = "r.xml", workspaceRoot = "")
             val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
             assertEquals(StepOutcome.Success, output.outcome)
             assertEquals(1, output.summary.tests)
             assertEquals(report.toString(), output.summary.reportPath)
         } finally {
-            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
         }
     }
 
     @Test
-    fun `handler falls back to pipeline workspace when workspaceRoot points at a non-existent directory`() = runBlocking {
+    fun `handler falls back to typed workspace identity when workspaceRoot points at a non-existent directory`() = runBlocking {
         val tmpWs = Files.createTempDirectory("junit-pipeline-ws-")
         val report = tmpWs.resolve("r.xml")
         Files.writeString(
@@ -528,11 +529,9 @@ class F5_2_JUnitStepContractTest {
             <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
             """.trimIndent(),
         )
-        val saved = System.getProperty("pipeline.workspace.root")
         try {
-            System.setProperty("pipeline.workspace.root", tmpWs.toString())
             val definition = JUnitResultsStepDefinition()
-            val ctx = newContext()
+            val ctx = newContext(workspaceRoot = tmpWs)
             val input = JUnitResultsInput(
                 reportPath = "r.xml",
                 workspaceRoot = "/nonexistent/should/never/be/used",
@@ -542,13 +541,12 @@ class F5_2_JUnitStepContractTest {
             assertEquals(1, output.summary.tests)
             assertEquals(report.toString(), output.summary.reportPath)
         } finally {
-            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
         }
     }
 
     @Test
-    fun `handler respects absolute workspaceRoot even when system property is set`() = runBlocking {
+    fun `handler respects absolute workspaceRoot even when typed workspace identity is set`() = runBlocking {
         val tmpWs1 = Files.createTempDirectory("junit-pipeline-ws-a-")
         val tmpWs2 = Files.createTempDirectory("junit-pipeline-ws-b-")
         // Put a file in tmpWs2 with one test; tmpWs1 has zero tests.
@@ -560,22 +558,57 @@ class F5_2_JUnitStepContractTest {
             <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
             """.trimIndent(),
         )
-        val saved = System.getProperty("pipeline.workspace.root")
         try {
-            // System property points at ws1, but the caller explicitly set
-            // workspaceRoot to ws2 (absolute). The handler MUST use ws2.
-            System.setProperty("pipeline.workspace.root", tmpWs1.toString())
+            // Typed workspace identity points at ws1, but the caller
+            // explicitly set workspaceRoot to ws2 (absolute). The handler
+            // MUST use ws2.
             val definition = JUnitResultsStepDefinition()
-            val ctx = newContext()
+            val ctx = newContext(workspaceRoot = tmpWs1)
             val input = JUnitResultsInput(reportPath = "a.xml", workspaceRoot = tmpWs2.toString())
             val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
             assertEquals(StepOutcome.Success, output.outcome)
             assertEquals(1, output.summary.tests)
         } finally {
-            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
             for (d in listOf(tmpWs1, tmpWs2)) {
                 Files.walk(d).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
             }
+        }
+    }
+
+    @Test
+    fun `handler reads workspace root from capability access without consulting system property`() = runBlocking {
+        // WU-LPR-WC isolation: the handler MUST resolve via the typed
+        // capability even when the system property points elsewhere.
+        // Catches any future regression where the resolver falls back
+        // to the system property in production paths.
+        val tmpWs = Files.createTempDirectory("junit-pipeline-ws-cap-")
+        val report = tmpWs.resolve("nested/r.xml")
+        Files.createDirectories(report.parent)
+        Files.writeString(
+            report,
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
+            """.trimIndent(),
+        )
+        val saved = System.getProperty("pipeline.workspace.root")
+        try {
+            // System property points at a path with no XML file; the
+            // resolver must NOT consult it.
+            System.setProperty("pipeline.workspace.root", "/tmp")
+            val definition = JUnitResultsStepDefinition()
+            val ctx = newContext(workspaceRoot = tmpWs)
+            val input = JUnitResultsInput(
+                reportPath = "nested/r.xml",
+                workspaceRoot = ".",
+            )
+            val output: JUnitResultsOutput = definition.handler.execute(input, ctx)
+            assertEquals(StepOutcome.Success, output.outcome)
+            assertEquals(1, output.summary.tests)
+            assertEquals(report.toString(), output.summary.reportPath)
+        } finally {
+            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
+            Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
         }
     }
 
@@ -613,10 +646,33 @@ class F5_2_JUnitStepContractTest {
             error("Capability $key is not available")
     }
 
-    private fun newContext(): StepHandlerContext = StepHandlerContext(
+    /**
+     * WU-LPR-WC: the handler reads the canonical workspace root from the
+     * typed `WORKSPACE_IDENTITY_CAPABILITY` seam. Tests construct a
+     * minimal capability access that exposes ONLY this capability and
+     * points at a workspace directory supplied per-test via [workspaceRoot].
+     *
+     * The capability key and value type are imported from
+     * `:pipeline-domain` (their canonical home, hoisted there by WC);
+     * re-exported under `dev.rubentxu.pipeline.v2.application` for
+     * application-internal code that does not yet use the new path.
+     */
+    private class TestCapabilityAccess(
+        private val workspaceRoot: Path,
+    ) : StepCapabilityAccess {
+        private val provided: Map<StepCapability, Any> = mapOf(
+            dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY to
+                dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity(workspaceRoot),
+        )
+        override fun available(): Set<StepCapability> = provided.keys
+        override fun <T : Any> get(key: StepCapability): T = provided[key] as? T
+            ?: error("Capability $key is not available")
+    }
+
+    private fun newContext(workspaceRoot: Path = Path.of("/tmp")): StepHandlerContext = StepHandlerContext(
         runId = RunId("test-run"),
         stepIndex = 0,
-        capabilities = EmptyCapabilityAccess,
+        capabilities = TestCapabilityAccess(workspaceRoot),
     )
 
     private fun registerJUnitFixture(

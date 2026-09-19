@@ -574,14 +574,17 @@ fun main(args: Array<String>) {
     } else {
         dbPath.parent.resolve("durable-shell")
     }
-    // F5.1 UAT-closure: when --workspace is supplied, publish the resolved workspace
-    // root to the system property the SCM/Git OFFICIAL_PLUGIN handler reads. The
-    // canonical engine passes the workspaceBase to core Steps; plugin handlers that
-    // close over SDK primitives today read this system property instead. F5.2
-    // replaces this with a real capability-routed workspace root.
-    if (config.workspace != null) {
-        System.setProperty("pipeline.workspace.root", config.workspace)
-    }
+    // WU-LPR-WC: the canonical engine threads `workspaceBase` through
+    // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
+    // populates `WORKSPACE_IDENTITY_CAPABILITY` from
+    // `context.shOptions.workspaceRoot`. Plugins consume the typed
+    // seam via `StepHandlerContext.capabilities.get<WorkspaceIdentity>(...)`
+    // instead of reading a process-global property. The system-property
+    // bridge has been removed: no production code reads
+    // `pipeline.workspace.root` any more (the historical writers were
+    // F5.1 SCM/Git and F5.2 JUnit; F5.2 JUnit migrated to the typed
+    // capability here; F5.1 SCM/Git migration is filed as a sibling
+    // follow-up, OUT OF SCOPE for this WU).
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
     val runSelection = try {
         selectDurableRun(

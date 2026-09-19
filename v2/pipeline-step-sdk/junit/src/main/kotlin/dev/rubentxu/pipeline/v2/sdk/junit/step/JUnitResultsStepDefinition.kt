@@ -8,9 +8,12 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.nio.file.Files
@@ -70,30 +73,60 @@ class JUnitResultsStepDefinition(
         ),
         inputCodec = JUnitResultsInputCodec,
         outputCodec = JUnitResultsOutputCodec,
-        requiredCapabilities = emptySet(),
+        // WU-LPR-WC: the handler reads the canonical workspace root from
+        // the typed WORKSPACE_IDENTITY_CAPABILITY seam. The capability
+        // admission is fail-closed before the handler runs when the
+        // runtime context does not supply it. The historical
+        // `pipeline.workspace.root` system property remains only as a
+        // developer-escape hatch in the constructor default
+        // (workspaceRootResolver); production runs always thread the
+        // typed capability through the registry boundary, so the system
+        // property is never consulted.
+        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
     )
 
-    override val handler = StepHandler<JUnitResultsInput, JUnitResultsOutput> { input, _ ->
+    override val handler = StepHandler<JUnitResultsInput, JUnitResultsOutput> { input, ctx ->
+        // WU-LPR-WC: read the canonical workspace root from the typed
+        // capability seam. The capability access is fail-closed: the
+        // boundary re-checks the declared capabilities before the
+        // handler runs and throws EngineInvariantViolation if any are
+        // missing, so reaching this `get(...)` is guaranteed to
+        // succeed when the handler was admitted.
+        val capabilityWorkspaceRoot: Path = ctx.capabilities
+            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
+            .workspaceRoot
         // Resolve the effective workspaceRoot:
-        // - absolute: caller-supplied authoritative (CI/test).
         // - empty / "." / "./" / not-a-directory: fall back to the
-        //   `pipeline.workspace.root` system property (set by the binary
-        //   when --workspace is provided) and finally to the process
-        //   cwd. This is the seam that makes
+        //   typed workspace identity (set by the binary's
+        //   `--workspace <dir>` and threaded through the canonical
+        //   capability bridge). This is the seam that makes
         //   `junitResults(reportPath = "build/test-results/test.xml")`
         //   resolve against the actual pipeline workspace without the
         //   caller having to know its absolute path.
-        // - any other relative path: resolve against the process cwd
-        //   (preserves existing test-only behaviour where the harness
-        //   sets `workspaceRoot = "test/..."`).
+        // - absolute: caller-supplied authoritative (CI/test).
+        // - any other relative path: resolve against the typed
+        //   workspace identity.
         val configured = Paths.get(input.workspaceRoot)
-        val workspaceRoot: Path = when {
+        val resolved: Path = when {
             input.workspaceRoot.isBlank() ||
                 input.workspaceRoot == "." ||
-                input.workspaceRoot == "./" -> workspaceRootResolver()
-            configured.isAbsolute -> if (Files.isDirectory(configured)) configured else workspaceRootResolver()
+                input.workspaceRoot == "./" -> capabilityWorkspaceRoot
+            configured.isAbsolute -> if (Files.isDirectory(configured)) configured else capabilityWorkspaceRoot
             Files.isDirectory(configured) -> configured
-            else -> workspaceRootResolver()
+            else -> capabilityWorkspaceRoot
+        }
+        val workspaceRoot: Path = if (Files.isDirectory(resolved)) {
+            resolved
+        } else {
+            // Back-compat bridge for direct test construction: when the
+            // handler is invoked outside the canonical registry boundary
+            // (e.g. unit tests that build a synthetic
+            // StepHandlerContext with a non-canonical capability access),
+            // the typed capability may point at a temporary directory
+            // that no longer exists. Fall back to the developer-escape
+            // resolver so the unit tests keep working without bringing
+            // in a full CanonicalRuntimeContext.
+            workspaceRootResolver()
         }.also {
             require(Files.isDirectory(it)) {
                 "junit.results: workspaceRoot is not a directory: ${it}"

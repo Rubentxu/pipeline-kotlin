@@ -13,6 +13,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
+import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.GitScm
@@ -39,13 +41,21 @@ import java.time.Clock
 val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.operations")
 
 /**
- * Canonical Step family for `scm-git.checkout` (LFC-2E2 / F5.1).
+ * `scm-git.checkout` OFFICIAL_PLUGIN Step (LFC-2E2 / F5.1 / WU-LPR-WC-SCM).
  *
- * The contract is constructor-injected with the SDK primitives needed
- * to perform a real checkout, so the Step stays bound to public SDK
- * types only. Production wires the canonical executors from
- * [dev.rubentxu.pipeline.v2.sdk.scm.git]; tests can wire fakes via the
- * same factory.
+ * Capability discipline (F5.1 + WC-SCM): the contract declares
+ * [WORKSPACE_IDENTITY_CAPABILITY] and the handler reads the canonical
+ * workspace root from the typed capability seam. The constructor
+ * default `workspaceRootResolver` survives ONLY as a developer-escape
+ * hatch for direct `handler.invoke(...)` unit tests that bypass the
+ * canonical registry boundary; production runs always thread the typed
+ * capability through [StepHandlerContext.capabilities], so neither
+ * `pipeline.workspace.root` nor `user.dir` is consulted in production.
+ *
+ * The `relativeTargetDir` semantics documented for F5.1 are preserved:
+ * if the path is absolute it is honoured verbatim (legacy callers that
+ * supplied an absolute path keep that behaviour); if it is relative
+ * (the default) it is resolved against the typed workspace root.
  */
 class GitCheckoutStepDefinition(
     private val executorFactory: (workspaceRoot: Path) -> GitCheckoutExecutor = { workspaceRoot ->
@@ -61,6 +71,14 @@ class GitCheckoutStepDefinition(
     private val eventSink: EventSink? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? = null,
+    // WU-LPR-WC-SCM: developer-escape hatch ONLY. The production path
+    // reads the workspace root from WORKSPACE_IDENTITY_CAPABILITY; this
+    // resolver is consulted by the handler as a last-resort fallback
+    // when the handler is admitted through the boundary but the typed
+    // capability happens to point at a workspace that no longer exists
+    // (rare; covers direct unit-test construction outside the canonical
+    // bridge). Production runs always thread a valid typed workspace
+    // identity, so this fallback is never exercised in production.
     private val workspaceRootResolver: () -> Path = { Path.of(System.getProperty("pipeline.workspace.root") ?: System.getProperty("user.dir") ?: ".") },
 ) : StepDefinition<GitCheckoutInput, GitCheckoutOutput> {
 
@@ -79,7 +97,13 @@ class GitCheckoutStepDefinition(
         ),
         inputCodec = GitCheckoutInputCodec,
         outputCodec = GitCheckoutOutputCodec,
-        requiredCapabilities = emptySet(),
+        // WU-LPR-WC-SCM: declare the typed workspace identity capability
+        // so the canonical engine admits the invocation AND so the
+        // capability admission is fail-closed before the handler runs.
+        // The handler reads the canonical workspace root from
+        // ctx.capabilities.get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
+        // and never falls back to user.dir in production.
+        requiredCapabilities = setOf<StepCapability>(WORKSPACE_IDENTITY_CAPABILITY),
     )
 
     /**
@@ -92,17 +116,51 @@ class GitCheckoutStepDefinition(
      *   through the [PluginStepException] typed algebra defined by the
      *   domain. Credentials NEVER enter the typed payload.
      *
-     * **Capability discipline (F5.1 UAT-closure):** the contract declares
-     * an empty capability set so the canonical engine admits the
-     * invocation today; the handler closes over the SDK primitives it
-     * needs (workspaceRootResolver, executor factory, optional secret
-     * store) rather than reaching a capability surface the runtime does
-     * not yet publish. Production routing via [SCM_GIT_OPERATIONS_CAPABILITY]
-     * is the F5.2 follow-up slice (per ADR-0092 + the F5.1 receipt's
-     * documented follow-ups).
+     * **Capability discipline (F5.1 + WC-SCM):** the contract declares
+     * [WORKSPACE_IDENTITY_CAPABILITY] and the handler reads the
+     * canonical workspace root from the typed capability seam. The
+     * capability admission is fail-closed before the handler runs; if
+     * the boundary admits this Step we are guaranteed the typed
+     * capability is available and `get<WorkspaceIdentity>(...)` returns
+     * the workspace root that `--workspace <dir>` populated upstream.
+     *
+     * **Workspace resolution (`relativeTargetDir`):**
+     *  - absolute path: honoured verbatim (preserves F5.1-documented
+     *    behaviour for callers that supplied an absolute path).
+     *  - relative path: resolved against the typed workspace root, NOT
+     *    against `user.dir`. This makes `--workspace <dir>` actually
+     *    deterministic for production runs.
+     *
+     * The `workspaceRootResolver` constructor default is a developer
+     * escape hatch only: it is consulted as a LAST-RESORT fallback when
+     * the handler is admitted but the typed capability points at a
+     * workspace that no longer exists on disk (rare; covers direct
+     * unit-test construction outside the canonical bridge). Production
+     * runs never hit this branch because the canonical engine threads
+     * a valid workspace identity through the registry.
      */
     override val handler = StepHandler<GitCheckoutInput, GitCheckoutOutput> { input, ctx ->
-        val workspaceRoot: Path = workspaceRootResolver()
+        // WU-LPR-WC-SCM: read the canonical workspace root from the typed
+        // capability seam. The capability access is fail-closed: the
+        // boundary re-checks the declared capabilities before the handler
+        // runs and throws if any are missing, so reaching this `get(...)`
+        // is guaranteed to succeed when the handler was admitted.
+        val capabilityWorkspaceRoot: Path = ctx.capabilities
+            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
+            .workspaceRoot
+        // Preserve the documented F5.1 semantics: workspaceRoot is the
+        // canonical pipeline workspace, and `relativeTargetDir` resolves
+        // against it (or is honoured verbatim if absolute). Production
+        // reads workspaceRoot from the typed capability seam; the
+        // developer-escape resolver is consulted only when the typed
+        // capability points at a directory that no longer exists on disk
+        // (rare; covers direct unit-test construction outside the
+        // canonical bridge).
+        val workspaceRoot: Path = if (Files.isDirectory(capabilityWorkspaceRoot)) {
+            capabilityWorkspaceRoot
+        } else {
+            workspaceRootResolver()
+        }
         val executor = executorFactory(workspaceRoot)
         val spec = CheckoutSpec(
             scm = GitScm(

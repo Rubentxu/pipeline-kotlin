@@ -25,6 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepManifest
+import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.registerContributors
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutInputCodec
 import dev.rubentxu.pipeline.v2.sdk.scm.git.step.GitCheckoutOutput
@@ -93,10 +94,14 @@ class F5_1_ScmGitStepContractTest {
         assertTrue(contract.descriptor.effects.contains(Effect.EXECUTES_SUBPROCESS))
         assertEquals(ReplayPolicy.MEMOIZED, contract.descriptor.replayPolicy)
         assertNotNull(contract.descriptor.recoveryPolicy)
-        // F5.1 UAT-closure: the contract declares an empty capability set
-        // so the canonical engine admits the invocation; capability-routed
-        // workspace root lands with F5.2.
-        assertTrue(contract.requiredCapabilities.isEmpty())
+        // WU-LPR-WC-SCM: the contract declares the typed workspace identity
+        // capability so the canonical engine admits the invocation AND the
+        // capability admission is fail-closed before the handler runs.
+        // F5.1 originally declared an empty capability set with the
+        // workspace root resolved from the system property; that bridge
+        // was removed in WU-LPR-WC and the follow-up here migrates the
+        // first OFFICIAL_PLUGIN to the same typed seam as junit.results.
+        assertTrue(contract.requiredCapabilities.contains(WORKSPACE_IDENTITY_CAPABILITY))
     }
 
     @Test

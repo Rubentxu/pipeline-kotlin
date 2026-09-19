@@ -249,10 +249,25 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
 
 fun main(args: Array<String>) {
     // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version
-    // from the jar manifest (falls back to the packaged default) and exits 0.
+    // from the jar manifest (authoritative source = the build artifact) and exits 0.
+    // WU-LPR-071: the version MUST come from the jar manifest populated by Gradle from
+    // project.version (which is sourced from the git tag at release time). The legacy
+    // "0.1.0-SNAPSHOT" sentinel is removed: if the manifest is missing the
+    // Implementation-Version attribute, that is a packaging defect, NOT a fallback case.
+    // Fail-closed: print an explicit error and exit non-zero so CI cannot ship an
+    // unversioned artifact.
     if (args.firstOrNull() == "version") {
-        val version = object {}.javaClass.getPackage().implementationVersion ?: "0.1.0-SNAPSHOT"
-        println("pipeline $version")
+        val manifestVersion = object {}.javaClass.getPackage().implementationVersion
+        if (manifestVersion.isNullOrBlank()) {
+            System.err.println(
+                "pipeline: FATAL — jar manifest is missing Implementation-Version. " +
+                    "Refusing to report a version derived from a hard-coded sentinel. " +
+                    "Rebuild via Gradle so the manifest is populated from project.version."
+            )
+            System.exit(3)
+            return
+        }
+        println("pipeline $manifestVersion")
         System.exit(0)
         return
     }

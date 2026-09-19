@@ -4,7 +4,6 @@ plugins {
 }
 
 group = "dev.rubentxu.pipeline.v2"
-version = "0.36.0"
 
 kotlin {
     jvmToolchain(21)
@@ -18,6 +17,26 @@ application {
     // WU-LPR-070: product name for the installed distribution (bin/pipelinek).
     applicationName = "pipelinek"
     mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
+}
+
+// WU-LPR-071: single-version provider contract — the jar manifest MUST carry
+// Implementation-Version populated from project.version (which is sourced from the
+// git tag at release time via v2/build.gradle.kts root). Without this, the
+// fail-closed `pipeline version` subcommand exits non-zero, which is the desired
+// behaviour for an unversioned snapshot but breaks the published release contract.
+//
+// We also write the same attribute into every nested subproject jar so a future
+// runtime that introspects a dependency's manifest reports the matching version
+// instead of "unknown" / null.
+tasks.named<Jar>("jar") {
+    manifest {
+        attributes(
+            "Implementation-Title" to project.name,
+            "Implementation-Version" to project.version.toString(),
+            "Implementation-Vendor" to project.group.toString(),
+            "Built-By" to "Gradle",
+        )
+    }
 }
 
 dependencies {

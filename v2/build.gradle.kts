@@ -7,6 +7,32 @@ plugins {
 group = "dev.rubentxu.pipeline.v2"
 version = "0.36.0"
 
+// WU-LPR-071: single-version provider. The root project.version is the SOLE authority
+// for every subproject's publication version and for the jar manifest Implementation-Version
+// (which pipelinek reads at runtime via `version`). Subprojects inherit by default; we make
+// the policy explicit and refuse per-subproject overrides. Any future subproject MUST NOT
+// declare its own `version = "..."` — that is a release-time defect.
+//
+// Fail-closed law: the released artifact's `version` subcommand MUST equal the git tag.
+// If they ever diverge the build is broken at the source, not in the artifact.
+subprojects {
+    version = rootProject.version
+
+    // Every subproject jar carries the same Implementation-Version attribute so
+    // downstream introspection (or a future pipelinek that inspects dependency
+    // manifests) reports a real version rather than "unknown".
+    tasks.withType<Jar>().configureEach {
+        manifest {
+            attributes(
+                "Implementation-Title" to project.name,
+                "Implementation-Version" to project.version.toString(),
+                "Implementation-Vendor" to project.group.toString(),
+                "Built-By" to "Gradle",
+            )
+        }
+    }
+}
+
 // The V2 root is an aggregate build. Its lifecycle check is the repository
 // gate and deliberately covers every active V2 subproject declared in settings.
 subprojects {

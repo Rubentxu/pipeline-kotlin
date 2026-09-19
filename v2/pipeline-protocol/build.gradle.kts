@@ -7,7 +7,6 @@ plugins {
 }
 
 group = "dev.rubentxu.pipeline.v2"
-version = "0.36.0"
 
 kotlin {
     jvmToolchain(21)

@@ -1,0 +1,120 @@
+name: SDKMAN publish (WU-LPR-080)
+
+# Authority:
+#   docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md
+#   docs/v2/07-uat/WU_LPR_071_SDKMAN_RESUME_PROTOCOL.md
+#
+# Pre-conditions (enforced by the workflow; do not bypass):
+#   - A GitHub Release has been published (this workflow is triggered
+#     by `release: published`).
+#   - Repository secrets SDKMAN_CONSUMER_KEY and SDKMAN_CONSUMER_TOKEN
+#     are present (the workflow will fail with a clear message if not).
+#   - The release's tag matches a Git ref that exists in the checkout.
+#
+# Three-step chain (in strict order, mirroring the resume protocol):
+#   1. publish to SDKMAN Vendor API (NOT yet default)
+#   2. install UAT (mandatory gate)
+#   3. promote to default
+#
+# A version that fails step 2 MUST NOT be promoted (hard rule codified
+# in scripts/release/sdkman-install-uat.sh).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.39.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sdkman-publish:
+    name: SDKMAN publish + UAT + default promotion
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.release.tag_name || github.event.inputs.version || '' }}
+      # strip leading 'v' from tag_name to get the version literal
+      VERSION_LIT: ${{ github.event.release.tag_name && replace(github.event.release.tag_name, 'v', '') || github.event.inputs.version }}
+    steps:
+      - name: Verify release tag and secrets are present
+        env:
+          SDKMAN_CONSUMER_KEY: ${{ secrets.SDKMAN_CONSUMER_KEY }}
+          SDKMAN_CONSUMER_TOKEN: ${{ secrets.SDKMAN_CONSUMER_TOKEN }}
+        run: |
+          if [ -z "${VERSION}" ]; then
+            echo "::error::No release tag provided"
+            exit 2
+          fi
+          if [ -z "${SDKMAN_CONSUMER_KEY}" ] || [ -z "${SDKMAN_CONSUMER_TOKEN}" ]; then
+            echo "::error::SDKMAN_CONSUMER_KEY / SDKMAN_CONSUMER_TOKEN not configured in repository secrets"
+            echo "See docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md"
+            exit 2
+          fi
+          # echo secrets are NEVER logged, NEVER written to artifacts, NEVER echoed
+          echo "SDKMAN credentials present (not echoed)"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        # NOTE: third-party actions should be pinned to immutable
+        # commit SHAs in production. The tag @v4 is used here for
+        # readability; harden to a SHA before the workflow goes
+        # operational.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Step 1 — SDKMAN publish (NOT default)
+        env:
+          SDKMAN_CONSUMER_KEY: ${{ secrets.SDKMAN_CONSUMER_KEY }}
+          SDKMAN_CONSUMER_TOKEN: ${{ secrets.SDKMAN_CONSUMER_TOKEN }}
+        run: |
+          chmod +x scripts/release/sdkman-publish.sh
+          ./scripts/release/sdkman-publish.sh "${VERSION_LIT}"
+
+      - name: Step 2 — Install UAT (mandatory gate)
+        # The UAT script validates that the version actually installs
+        # and works on a clean SDKMAN runner BEFORE we promote to default.
+        # A failed UAT is a hard STOP.
+        run: |
+          # Install SDKMAN
+          curl -fsSL https://get.sdkman.io | bash
+          echo "sdkman_auto_use=true" >> "${HOME}/.sdkman/etc/config"
+          source "${HOME}/.sdkman/bin/sdkman-init.sh"
+          # Run UAT
+          chmod +x scripts/release/sdkman-install-uat.sh
+          ./scripts/release/sdkman-install-uat.sh "${VERSION_LIT}"
+
+      - name: Step 3 — Promote to default (only after UAT PASS)
+        if: success()
+        env:
+          SDKMAN_CONSUMER_KEY: ${{ secrets.SDKMAN_CONSUMER_KEY }}
+          SDKMAN_CONSUMER_TOKEN: ${{ secrets.SDKMAN_CONSUMER_TOKEN }}
+        run: |
+          source "${HOME}/.sdkman/bin/sdkman-init.sh"
+          curl -fsS -X PUT \
+            -H "Consumer-Key: ${SDKMAN_CONSUMER_KEY}" \
+            -H "Consumer-Token: ${SDKMAN_CONSUMER_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d "{\"candidate\":\"pipelinek\",\"version\":\"${VERSION_LIT}\"}" \
+            https://vendors.sdkman.io/default
+          echo
+          echo "✓ promoted ${VERSION_LIT} to default"
+
+      - name: Verify default on SDKMAN
+        if: success()
+        run: |
+          DEFAULT=$(curl -fsS "https://api.sdkman.io/2/pipelinek" | jq -r '.defaultVersion')
+          if [ "${DEFAULT}" != "${VERSION_LIT}" ]; then
+            echo "::error::SDKMAN default is '${DEFAULT}', expected '${VERSION_LIT}'"
+            exit 1
+          fi
+          echo "✓ SDKMAN defaultVersion = ${DEFAULT}"

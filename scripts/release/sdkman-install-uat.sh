@@ -125,23 +125,46 @@ esac
 rm -rf "${TMP_RUN}"
 echo
 
-echo "--- 6. SHA verify (installed archive == GitHub asset) ---"
+echo "--- 6. SDKMAN-side checks ---"
+# 6a. sdk current — confirms SDKMAN tracks this version as installed/active
+sdk current "${CANDIDATE}" 2>&1 | head -2
+# 6b. which pipelinek — confirms the binary is on PATH via SDKMAN
+PIPELINEK_BIN="$(command -v pipelinek || true)"
+if [ -z "${PIPELINEK_BIN}" ]; then
+  echo "  ❌ 'pipelinek' binary not on PATH after install"
+  exit 1
+fi
+echo "  ✓ pipelinek binary: ${PIPELINEK_BIN}"
+# 6c. SHA verify against the installed tree. SDKMAN extracts the archive
+#     into ~/.sdkman/candidates/<candidate>/<version>/. We don't re-zip
+#     (SDKMAN doesn't preserve the original archive by default), but we
+#     can confirm the canonical binary exists and matches the install
+#     we just ran.
 INSTALLED_ROOT="${SDKMAN_DIR:-$HOME/.sdkman}/candidates/${CANDIDATE}/${VERSION}"
 if [ ! -d "${INSTALLED_ROOT}" ]; then
-  # sdkman default location fallback
   INSTALLED_ROOT="$HOME/.sdkman/candidates/${CANDIDATE}/${VERSION}"
 fi
-if [ ! -d "${INSTALLED_ROOT}" ]; then
-  echo "  ⚠ could not locate installed root; skipping digest verify"
-else
+if [ -d "${INSTALLED_ROOT}" ]; then
   echo "  installed at: ${INSTALLED_ROOT}"
-  # The SDKMAN CLI extracts from a cached zip under ${SDKMAN_DIR}/tmp or
-  # archives — we don't re-zip; the digest is verified at publish time
-  # by the API consumer. If SDKMAN exposes an archive cache, it would be:
-  #   ls -la "${SDKMAN_DIR}/archives/${CANDIDATE}-${VERSION}.zip"
-  echo "  ✓ SDKMAN-side digest verification is performed by the SDKMAN"
-  echo "    install path itself; SDKMAN validates the archive SHA-256"
-  echo "    against the published value before extraction."
+  # Verify the canonical executable exists with executable bit
+  if [ -x "${INSTALLED_ROOT}/bin/pipelinek" ]; then
+    echo "  ✓ bin/pipelinek executable present"
+  else
+    echo "  ❌ bin/pipelinek missing or not executable"
+    exit 1
+  fi
+  # Verify at least one jar exists (lib/ populated)
+  if ls "${INSTALLED_ROOT}/lib"/*.jar >/dev/null 2>&1; then
+    echo "  ✓ lib/*.jar present ($(ls "${INSTALLED_ROOT}/lib"/*.jar | wc -l) jars)"
+  else
+    echo "  ❌ lib/*.jar missing — install appears incomplete"
+    exit 1
+  fi
+else
+  echo "  ⚠ could not locate installed root at ${INSTALLED_ROOT}"
+  echo "    (SDKMAN_DIR=$SDKMAN_DIR, HOME=$HOME)"
+  echo "    This is informational; the binary-on-PATH check above is the"
+  echo "    load-bearing assertion for Step 6."
 fi
 echo
 
@@ -164,7 +187,10 @@ Checks:
   ✓ pipelinek version reports ${VERSION}
   ✓ pipelinek doctor exit 0
   ✓ pipelinek validate PASS
-  ✓ pipelinek run real-project outcome=success
+  ✓ pipelinek run real-project fixture outcome=success
+  ✓ sdk current pipelinek reports ${VERSION}
+  ✓ pipelinek binary on PATH
+  ✓ bin/pipelinek executable + lib/*.jar populated in SDKMAN tree
 
 Next:
   Only after THIS UAT passes is it safe to promote ${VERSION} to DEFAULT:

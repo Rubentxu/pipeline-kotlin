@@ -132,13 +132,41 @@ sealed interface StepInvocationOutcome<out O : Any> {
  * Registration is open to core Steps and external plugins alike; there is no privileged
  * registration path. A duplicate key MUST fail deterministically so a plugin cannot
  * silently shadow a core Step.
+ *
+ * Two additive register overloads are supported:
+ * - [register] of a bare [StepDefinition] — the legacy path used by the 16 CORE Steps
+ *   and by `example.uppercase`; provider metadata is unknown to the registry, and
+ *   [providerOf] returns null for that key (C10 backwards-compat).
+ * - [register] of a [StepRegistration] — the additive path used by the new plugin
+ *   shape (LFC-2E2-prep / ADR-0092); the registry stores the provider metadata and
+ *   exposes it via [providerOf] (C3, O(1)).
+ *
+ * Both overloads share the same underlying map. A duplicate key is rejected on
+ * either path, naming the StepKey in the diagnostic. No plugin can shadow a CORE
+ * Step via either path.
  */
 interface StepRegistry {
     /** Registers a Step family. Throws [IllegalArgumentException] if the key is already present. */
     fun register(definition: StepDefinition<*, *>)
 
+    /**
+     * Registers a [StepRegistration] composed of a [StepDefinition] and its
+     * [StepProviderMetadata]. Throws [IllegalArgumentException] if the key is
+     * already present (including a legacy entry registered via the [register]
+     * overload above). The same Map-backed invariant applies.
+     */
+    fun register(registration: StepRegistration<*, *>)
+
     /** Returns the registered definition for [key], or null. */
     fun definition(key: PluginStepId): StepDefinition<*, *>?
+
+    /**
+     * Returns the registered provider metadata for [key], or null if the
+     * registration was made via the legacy [register] overload
+     * ([StepDefinition] only). Backed by the same Map as [definition], so it
+     * is O(1) (C3).
+     */
+    fun providerOf(key: PluginStepId): StepProviderMetadata?
 
     fun contains(key: PluginStepId): Boolean
 
@@ -147,21 +175,36 @@ interface StepRegistry {
 
 /** Default in-memory [StepRegistry] with deterministic duplicate-key rejection. */
 class InMemoryStepRegistry : StepRegistry {
-    private val definitions = linkedMapOf<PluginStepId, StepDefinition<*, *>>()
+    private data class Entry(
+        val definition: StepDefinition<*, *>,
+        val provider: StepProviderMetadata?,
+    )
+
+    private val entries = linkedMapOf<PluginStepId, Entry>()
 
     override fun register(definition: StepDefinition<*, *>) {
         val key = definition.contract.key
-        if (definitions.containsKey(key)) {
+        if (entries.containsKey(key)) {
             throw IllegalArgumentException("Duplicate StepKey '${key.value}'")
         }
-        definitions[key] = definition
+        entries[key] = Entry(definition = definition, provider = null)
     }
 
-    override fun definition(key: PluginStepId): StepDefinition<*, *>? = definitions[key]
+    override fun register(registration: StepRegistration<*, *>) {
+        val key = registration.stepKey
+        if (entries.containsKey(key)) {
+            throw IllegalArgumentException("Duplicate StepKey '${key.value}'")
+        }
+        entries[key] = Entry(definition = registration.definition, provider = registration.provider)
+    }
 
-    override fun contains(key: PluginStepId): Boolean = definitions.containsKey(key)
+    override fun definition(key: PluginStepId): StepDefinition<*, *>? = entries[key]?.definition
 
-    override fun keys(): Set<PluginStepId> = definitions.keys
+    override fun providerOf(key: PluginStepId): StepProviderMetadata? = entries[key]?.provider
+
+    override fun contains(key: PluginStepId): Boolean = entries.containsKey(key)
+
+    override fun keys(): Set<PluginStepId> = entries.keys
 }
 
 /**

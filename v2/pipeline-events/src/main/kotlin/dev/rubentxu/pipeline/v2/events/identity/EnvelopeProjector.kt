@@ -1,8 +1,11 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceKind
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
+import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
+import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
@@ -50,27 +53,28 @@ import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
 import dev.rubentxu.pipeline.v2.events.WsCleaned
 
-/**
- * The SINGLE authority that projects [DomainEvent]s into [PipelineEventEnvelope]s
- * (EVT-1/EVT-2 blast-radius rule: producers are untouched; this is the only place
- * where ResourceRefs are derived from domain facts).
- *
- * Derivation is deterministic and TOTAL over the current closed event family:
- * subject resolution uses only identity fields present in the event
- * (stageIndex+stepIndex → STEP; stageIndex → STAGE; stepIndex without stageIndex →
- * RUN ref per frozen EVT-1 law for StepFailed; no identity fields → RUN ref).
- * Branch names, completion ordering, occurrence timestamps and sequence numbers
- * never influence identity. Sequence is transported as a projection of the
- * store-assigned value; the store remains the sequence authority.
- */
 object EnvelopeProjector {
 
     /**
-     * Projects a domain event into its envelope. `source` is the RUN ref of the
-     * emitting run; `subject` is the most specific affected resource derivable
-     * from identity fields (see class doc).
+     * Projects a domain event into its envelope using the **legacy** path
+     * with no [ProviderProvenance] projection. Kept stable for all
+     * existing call sites that do not pass a provider seam.
+     *
+     * Equivalent to `project(event, null)`.
      */
-    fun project(event: DomainEvent): PipelineEventEnvelope {
+    fun project(event: DomainEvent): PipelineEventEnvelope = project(event, null)
+
+    /**
+     * Projects a domain event into its envelope, optionally attaching a
+     * [ProviderProvenance] audit projection when [providerLookup] is
+     * supplied and the event is Step-emitted by a Step registered with
+     * provider metadata.
+     *
+     * The lookup is O(1) (the registry's `providerOf(key)`); the
+     * projector does NOT scan and does NOT branch on [dev.rubentxu.pipeline.v2.domain.step.Delivery]
+     * (delivery is metadata, never a verdict).
+     */
+    fun project(event: DomainEvent, providerLookup: ((PluginStepId) -> StepProviderMetadata?)?): PipelineEventEnvelope {
         val runRef = ResourceRefs.run(event.runId)
         val subject: ResourceRef = subjectOf(event, runRef)
         return PipelineEventEnvelope(
@@ -82,6 +86,51 @@ object EnvelopeProjector {
             subject = subject,
             causation = null,
             correlation = null,
+            provenance = provenanceOf(event, providerLookup),
+        )
+    }
+
+    /**
+     * Resolves the audit [ProviderProvenance] for Step-emitted events when
+     * a [providerLookup] seam is available. Returns `null` otherwise
+     * (legacy path, run-lifecycle events, file-IO events).
+     */
+    private fun provenanceOf(
+        event: DomainEvent,
+        providerLookup: ((PluginStepId) -> StepProviderMetadata?)?,
+    ): ProviderProvenance? {
+        val lookup = providerLookup ?: return null
+        val stepKey: PluginStepId = when (event) {
+            is StepStarted -> PluginStepId(event.stepType)
+            is StepFinished -> PluginStepId(event.stepType)
+            is StepFailed -> PluginStepId(event.stepType)
+            is RetryAttemptStarted -> PluginStepId(event.stepType)
+            is RetryAttemptFinished -> PluginStepId(event.stepType)
+            is StepAdmissionObserved -> PluginStepId(event.stepKey)
+            is TimeoutScheduled ->
+                if (event.stepType != null) PluginStepId(event.stepType) else return null
+            else -> return null
+        }
+        val provider = lookup(stepKey) ?: return null
+        return provider.toProvenance()
+    }
+
+    /** Adapter: [StepProviderMetadata] → [ProviderProvenance] (C8 audit projection). */
+    private fun StepProviderMetadata.toProvenance(): ProviderProvenance {
+        val ns = plugin.segments.firstOrNull() ?: ""
+        val identity = if (plugin.segments.size >= 3) {
+            // segments = [namespace, "plugin", identity, ...]
+            plugin.segments.drop(2).joinToString("/")
+        } else {
+            ""
+        }
+        return ProviderProvenance(
+            pluginPublisher = publisher,
+            pluginNamespace = ns,
+            pluginIdentity = identity,
+            releaseVersion = release.version.toString(),
+            releaseDigest = release.digest.value,
+            families = families.map { it.name }.toSortedSet(),
         )
     }
 

@@ -49,4 +49,50 @@ object ResourceRefs {
                 "op", opKey,
             ),
         )
+
+    // ---- LFC-2E2-prep plugin provider builders (ADR-0092) ----
+
+    /**
+     * Logical plugin identity (PLUGIN_IDENTITY_MODEL §"ResourceRef").
+     * Segment convention: `<ns, plugin, <identity>>` (single-segment identity).
+     * Use this for the logical identity of a provider; for an immutable
+     * artifact, use [pluginRelease].
+     */
+    fun plugin(namespace: String, identity: String): ResourceRef =
+        ResourceRef(
+            ResourceKind.PLUGIN,
+            listOf(namespace, "plugin", identity),
+        )
+
+    /**
+     * Immutable plugin release identity.
+     * Segment convention: `<ns, plugin, <identity>, release, <version>>`.
+     * The release digest lives in `PluginReleaseRef`, not in segments
+     * (digests are too long and contain forbidden characters).
+     */
+    fun pluginRelease(namespace: String, identity: String, version: String): ResourceRef =
+        ResourceRef(
+            ResourceKind.PLUGIN_RELEASE,
+            listOf(namespace, "plugin", identity, "release", version),
+        )
+
+    /**
+     * One Step family's addressable identity under a plugin release.
+     * Segment convention: `<ns, plugin, <identity>, step, <stepKey>>`.
+     */
+    fun stepDefinition(namespace: String, identity: String, stepKey: String): ResourceRef =
+        ResourceRef(
+            ResourceKind.STEP_DEFINITION,
+            listOf(namespace, "plugin", identity, "step", stepKey),
+        )
+
+    /**
+     * A functional family under a plugin publisher.
+     * Segment convention: `<ns, plugin-family, <family>>`.
+     */
+    fun pluginFamily(namespace: String, family: String): ResourceRef =
+        ResourceRef(
+            ResourceKind.PLUGIN_FAMILY,
+            listOf(namespace, "plugin-family", family),
+        )
 }

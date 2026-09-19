@@ -37,10 +37,23 @@ data class PipelineEventEnvelope(
     val subject: ResourceRef,
     val causation: EventRef? = null,
     val correlation: EventRef? = null,
+    /**
+     * LFC-2E2-prep / ADR-0092 / C8: audit projection of the provider
+     * metadata for the Step that produced the event. `null` for Steps
+     * registered via the legacy `register(StepDefinition)` overload
+     * (C10 backwards-compat) and for events not emitted by a Step
+     * (run lifecycle, compile lifecycle, file-IO events, etc.).
+     */
+    val provenance: ProviderProvenance? = null,
 ) {
     companion object {
         /**
          * Envelope format version. Major bump = breaking codec change.
+         * Version is NOT bumped for the additive `provenance` field:
+         * a V1 wire form without `provenance` decodes to
+         * `provenance = null`. An encoder that does not know about
+         * `provenance` continues to produce a V1 form that the new
+         * decoder accepts (the field is optional).
          */
         const val VERSION: Int = 1
     }
@@ -74,6 +87,7 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
         val causationId: String? = null,
         val correlationSource: String? = null,
         val correlationId: String? = null,
+        val provenance: ProviderProvenance? = null,
     )
 
     override val descriptor: SerialDescriptor = Wire.serializer().descriptor
@@ -87,6 +101,7 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             occurredAt = value.occurredAt.toString(),
             sequence = value.sequence,
             subject = value.subject,
+            provenance = value.provenance,
         )
         encoder.encodeSerializableValue(Wire.serializer(), w)
     }
@@ -103,6 +118,7 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             occurredAt = Instant.parse(w.occurredAt),
             sequence = w.sequence,
             subject = w.subject,
+            provenance = w.provenance,
         )
     }
 }

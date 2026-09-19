@@ -14,6 +14,8 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipMode
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
 import kotlinx.serialization.json.JsonElement
@@ -37,6 +39,7 @@ fun coreUtilsReadYamlStepKey(): PluginStepId = CoreUtilsReadYamlKey.VALUE
 fun coreUtilsWriteYamlStepKey(): PluginStepId = CoreUtilsWriteYamlKey.VALUE
 fun coreUtilsFindFilesStepKey(): PluginStepId = CoreUtilsFindFilesKey.VALUE
 fun coreUtilsZipStepKey(): PluginStepId = CoreUtilsZipKey.VALUE
+fun coreUtilsUnzipStepKey(): PluginStepId = CoreUtilsUnzipKey.VALUE
 
 /**
  * `core-utils.readJson` DSL façade.
@@ -346,6 +349,80 @@ fun StageScope.findFiles(
     val encoded: EncodedStepValue = CoreUtilsFindFilesInputCodec.encode(input)
     registryStep(
         stepKey = coreUtilsFindFilesStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.unzip` DSL façade (extract mode, default Jenkins behaviour).
+ *
+ * Extracts every entry of [path] into [destination] (or the workspace root
+ * when [destination] is null). Applies a [glob] filter if provided.
+ *
+ * Security: every entry is checked against the destination root (Zip Slip /
+ * CVE-2023-32981 containment applied to the extraction side). Entries that
+ * resolve outside the workspace are rejected before any byte is written.
+ */
+fun StageScope.unzip(
+    path: String,
+    destination: String? = null,
+    glob: String? = null,
+) {
+    val input = UnzipInput(
+        path = path,
+        destination = destination,
+        glob = glob,
+        mode = UnzipMode.Extract,
+    )
+    val encoded: EncodedStepValue = CoreUtilsUnzipInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsUnzipStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.unzip` DSL façade (read mode — `read: true` Jenkins equivalent).
+ *
+ * Reads each matched entry as a UTF-8 string and returns it as
+ * `Map<String, String>` instead of writing files to disk.
+ */
+fun StageScope.unzipRead(
+    path: String,
+    glob: String? = null,
+) {
+    val input = UnzipInput(
+        path = path,
+        destination = null,
+        glob = glob,
+        mode = UnzipMode.Read,
+    )
+    val encoded: EncodedStepValue = CoreUtilsUnzipInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsUnzipStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.unzip` DSL façade (test mode — `test: true` Jenkins equivalent).
+ *
+ * Performs a CRC32 sweep over every entry without writing anything to disk
+ * and returns `TestReport(ok, entryCount, badEntries)`.
+ */
+fun StageScope.unzipTest(
+    path: String,
+    glob: String? = null,
+) {
+    val input = UnzipInput(
+        path = path,
+        destination = null,
+        glob = glob,
+        mode = UnzipMode.Test,
+    )
+    val encoded: EncodedStepValue = CoreUtilsUnzipInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsUnzipStepKey(),
         encodedInput = encoded,
     )
 }

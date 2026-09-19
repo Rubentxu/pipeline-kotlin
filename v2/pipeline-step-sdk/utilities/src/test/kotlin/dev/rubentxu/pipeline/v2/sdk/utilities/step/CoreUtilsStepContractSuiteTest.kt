@@ -29,6 +29,12 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipMode
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipOutput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ExtractedFile
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ExtractedFiles
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.TestReport
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -91,6 +97,7 @@ class CoreUtilsStepContractSuiteTest {
     private val writeYamlStep = CoreUtilsWriteYamlStepDefinition()
     private val findFilesStep = CoreUtilsFindFilesStepDefinition()
     private val zipStep = CoreUtilsZipStepDefinition()
+    private val unzipStep = CoreUtilsUnzipStepDefinition()
 
     private fun stubWorkspaceRoot(): Path = tempDir.resolve("workspace").also { Files.createDirectories(it) }
 
@@ -1672,5 +1679,412 @@ class CoreUtilsStepContractSuiteTest {
         // The error comes from the resolution check: the path resolves
         // outside the workspace root.
         assertNotNull(ex.failure.message)
+    }
+
+    // ==========================================================================
+    //  core-utils.unzip (Slice 2 / S2.5) — Jenkins-reference Step.
+    //
+    //  Reference: pipeline-utility-steps-plugin UnZipStep + UnZipStepExecution
+    //  (MIT, CloudBees). Jenkins Security Advisory 2023-05-16 /
+    //  CVE-2023-32981 / SECURITY-2196 fixed the original Zip Slip on the
+    //  extraction side; we apply the same canonical-path containment here
+    //  and additionally reject the `..`-segment form, backslash form and
+    //  absolute form to match the contract documented in
+    //  docs/v2/07-uat/S2_UNZIP_JENKINS_REFERENCE.md.
+    // ==========================================================================
+
+    // -------- identity --------
+
+    @Test
+    fun `identity — unzip Key is core-utils dot unzip`() {
+        assertEquals(PluginStepId("core-utils.unzip"), CoreUtilsUnzipKey.VALUE)
+        assertEquals("core-utils.unzip", CoreUtilsUnzipKey.VALUE.value)
+    }
+
+    // -------- contract completeness --------
+
+    @Test
+    fun `contract — unzip declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+        val c = unzipStep.contract
+        assertEquals(CoreUtilsUnzipKey.VALUE, c.key)
+        assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
+        assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
+        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertNotNull(c.inputCodec)
+        assertNotNull(c.outputCodec)
+    }
+
+    // -------- codec roundtrip --------
+
+    @Test
+    fun `codec unzip input — roundtrip preserves path + destination + glob + mode`() {
+        val plain = UnzipInput(path = "x.zip")
+        assertEquals(plain, CoreUtilsUnzipInputCodec.decode(CoreUtilsUnzipInputCodec.encode(plain)))
+
+        val withDest = UnzipInput(path = "/tmp/abs.zip", destination = "out")
+        assertEquals(withDest, CoreUtilsUnzipInputCodec.decode(CoreUtilsUnzipInputCodec.encode(withDest)))
+
+        val withGlob = UnzipInput(path = "x.zip", glob = "**/*.txt")
+        assertEquals(withGlob, CoreUtilsUnzipInputCodec.decode(CoreUtilsUnzipInputCodec.encode(withGlob)))
+
+        val readMode = UnzipInput(path = "x.zip", mode = UnzipMode.Read)
+        assertEquals(readMode, CoreUtilsUnzipInputCodec.decode(CoreUtilsUnzipInputCodec.encode(readMode)))
+
+        val testMode = UnzipInput(path = "x.zip", mode = UnzipMode.Test)
+        assertEquals(testMode, CoreUtilsUnzipInputCodec.decode(CoreUtilsUnzipInputCodec.encode(testMode)))
+    }
+
+    @Test
+    fun `codec unzip output — extract variant roundtrip preserves every field`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "alpha")
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            val entry = java.util.zip.ZipEntry("a.txt")
+            zos.putNextEntry(entry)
+            zos.write("alpha".toByteArray())
+            zos.closeEntry()
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip"),
+            handlerContext(ws),
+        )
+        val decoded = CoreUtilsUnzipOutputCodec.decode(CoreUtilsUnzipOutputCodec.encode(out))
+        assertEquals(out, decoded)
+        assertNotNull(decoded.extracted)
+        assertEquals(listOf("a.txt"), decoded.extracted!!.files.map { it.name })
+    }
+
+    @Test
+    fun `codec unzip output — read variant roundtrip preserves every entry`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            listOf("a.txt" to "alpha", "b.txt" to "beta").forEach { (name, text) ->
+                zos.putNextEntry(java.util.zip.ZipEntry(name))
+                zos.write(text.toByteArray())
+                zos.closeEntry()
+            }
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", mode = UnzipMode.Read),
+            handlerContext(ws),
+        )
+        val decoded = CoreUtilsUnzipOutputCodec.decode(CoreUtilsUnzipOutputCodec.encode(out))
+        assertEquals(out, decoded)
+        assertEquals(mapOf("a.txt" to "alpha", "b.txt" to "beta"), decoded.readEntries)
+    }
+
+    @Test
+    fun `codec unzip output — test variant roundtrip preserves every field`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            zos.putNextEntry(java.util.zip.ZipEntry("a.txt"))
+            zos.write("alpha".toByteArray())
+            zos.closeEntry()
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", mode = UnzipMode.Test),
+            handlerContext(ws),
+        )
+        val decoded = CoreUtilsUnzipOutputCodec.decode(CoreUtilsUnzipOutputCodec.encode(out))
+        assertEquals(out, decoded)
+        assertNotNull(decoded.testReport)
+        assertTrue(decoded.testReport!!.ok)
+        assertEquals(emptyList<String>(), decoded.testReport!!.badEntries)
+    }
+
+    // -------- canonical envelope --------
+
+    @Test
+    fun `envelope — unzip input codec emits a well-formed JSON object (durable eligible)`() {
+        val encoded = CoreUtilsUnzipInputCodec.encode(UnzipInput(path = "x.zip"))
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
+        assertTrue(parsed is JsonObject, "input envelope must be a JSON object")
+    }
+
+    @Test
+    fun `envelope — unzip output codec rejects envelopes with no populated field`() {
+        val encoded = kotlinx.serialization.json.Json.encodeToString(
+            JsonObject.serializer(),
+            buildJsonObject { put("extracted", null); put("readEntries", null); put("testReport", null) },
+        )
+        assertThrows(PluginStepException::class.java) {
+            CoreUtilsUnzipOutputCodec.decode(EncodedStepValue(encoded))
+        }
+    }
+
+    @Test
+    fun `envelope — unzip output codec rejects envelopes with two populated fields`() {
+        val encoded = kotlinx.serialization.json.Json.encodeToString(
+            JsonObject.serializer(),
+            buildJsonObject {
+                put("extracted", buildJsonObject {
+                    put("destination", "x")
+                    put("files", kotlinx.serialization.json.buildJsonArray { })
+                })
+                put("readEntries", buildJsonObject { put("a", "alpha") })
+            },
+        )
+        assertThrows(PluginStepException::class.java) {
+            CoreUtilsUnzipOutputCodec.decode(EncodedStepValue(encoded))
+        }
+    }
+
+    // -------- success paths (extract) --------
+
+    @Test
+    fun `success — unzip Extract writes every entry under the workspace root`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            listOf("a.txt" to "alpha", "b.txt" to "beta").forEach { (name, text) ->
+                zos.putNextEntry(java.util.zip.ZipEntry(name))
+                zos.write(text.toByteArray())
+                zos.closeEntry()
+            }
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip"),
+            handlerContext(ws),
+        )
+        assertNotNull(out.extracted)
+        val extracted = out.extracted!!
+        assertEquals(ws.toAbsolutePath().normalize().toString(), extracted.destination)
+        assertEquals(2, extracted.files.size)
+        assertEquals("alpha", Files.readString(ws.resolve("a.txt")))
+        assertEquals("beta", Files.readString(ws.resolve("b.txt")))
+    }
+
+    @Test
+    fun `success — unzip Extract with destination sub-dir writes under the sub-dir`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            zos.putNextEntry(java.util.zip.ZipEntry("hello.txt"))
+            zos.write("hi".toByteArray())
+            zos.closeEntry()
+        }
+
+        unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", destination = "out"),
+            handlerContext(ws),
+        )
+        assertEquals("hi", Files.readString(ws.resolve("out/hello.txt")))
+    }
+
+    @Test
+    fun `success — unzip Extract with glob filters entries by name`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            listOf("a.txt" to "alpha", "b.dat" to "beta").forEach { (name, text) ->
+                zos.putNextEntry(java.util.zip.ZipEntry(name))
+                zos.write(text.toByteArray())
+                zos.closeEntry()
+            }
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", glob = "**/*.txt"),
+            handlerContext(ws),
+        )
+        assertNotNull(out.extracted)
+        assertEquals(listOf("a.txt"), out.extracted!!.files.map { it.name })
+        assertTrue(Files.exists(ws.resolve("a.txt")))
+        assertFalse(Files.exists(ws.resolve("b.dat")))
+    }
+
+    @Test
+    fun `success — unzip Read returns entries as UTF-8 strings`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            listOf("a.txt" to "alpha", "b.txt" to "beta").forEach { (name, text) ->
+                zos.putNextEntry(java.util.zip.ZipEntry(name))
+                zos.write(text.toByteArray())
+                zos.closeEntry()
+            }
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", mode = UnzipMode.Read),
+            handlerContext(ws),
+        )
+        assertEquals(mapOf("a.txt" to "alpha", "b.txt" to "beta"), out.readEntries)
+    }
+
+    @Test
+    fun `success — unzip Test reports ok=true when every CRC matches`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            listOf("a.txt" to "alpha").forEach { (name, text) ->
+                zos.putNextEntry(java.util.zip.ZipEntry(name))
+                zos.write(text.toByteArray())
+                zos.closeEntry()
+            }
+        }
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", mode = UnzipMode.Test),
+            handlerContext(ws),
+        )
+        assertNotNull(out.testReport)
+        assertTrue(out.testReport!!.ok)
+        assertEquals(1, out.testReport!!.entryCount)
+        assertEquals(emptyList<String>(), out.testReport!!.badEntries)
+    }
+
+    // -------- typed failure --------
+
+    @Test
+    fun `typed failure — unzip on a missing archive raises USER class`() {
+        val ws = stubWorkspaceRoot()
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                unzipStep.handler.execute(
+                    UnzipInput(path = "missing.zip"),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("archive not found"))
+    }
+
+    @Test
+    fun `typed failure — unzip with destination outside workspace raises USER class`() {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            zos.putNextEntry(java.util.zip.ZipEntry("a.txt"))
+            zos.write("alpha".toByteArray())
+            zos.closeEntry()
+        }
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                unzipStep.handler.execute(
+                    UnzipInput(path = "seed.zip", destination = "/tmp/escape-out"),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("destination escapes the workspace"))
+    }
+
+    @Test
+    fun `typed failure — zip-slip entry with backslash name raises USER class (CVE-2023-32981)`() {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            // Force entry name with backslashes: ZipOutputStream rejects
+            // the backslash on put, so we use a ZipEntry constructor that
+            // bypasses validation (constructor only stores the name).
+            val entry = java.util.zip.ZipEntry("..\\Windows\\evil.txt")
+            zos.putNextEntry(entry)
+            zos.write("pwn".toByteArray())
+            zos.closeEntry()
+        }
+
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                unzipStep.handler.execute(
+                    UnzipInput(path = "seed.zip"),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("Zip Slip"))
+    }
+
+    @Test
+    fun `typed failure — zip-slip entry with parent-segment name raises USER class (CVE-2023-32981)`() {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            val entry = java.util.zip.ZipEntry("../escaped.txt")
+            zos.putNextEntry(entry)
+            zos.write("pwn".toByteArray())
+            zos.closeEntry()
+        }
+
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                unzipStep.handler.execute(
+                    UnzipInput(path = "seed.zip"),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("Zip Slip"))
+    }
+
+    @Test
+    fun `typed failure — zip-slip entry with absolute name raises USER class (CVE-2023-32981)`() {
+        val ws = stubWorkspaceRoot()
+        val archive = ws.resolve("seed.zip")
+        // ZipOutputStream does NOT sanitise entry names at write time
+        // (it stores whatever bytes the caller gives it). Our unzip
+        // step must reject the entry because the resolved target
+        // escapes the destination root.
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            val entry = java.util.zip.ZipEntry("/tmp/abs.txt")
+            zos.putNextEntry(entry)
+            zos.write("pwn".toByteArray())
+            zos.closeEntry()
+        }
+
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                unzipStep.handler.execute(
+                    UnzipInput(path = "seed.zip"),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("Zip Slip"))
+    }
+
+    @Test
+    fun `typed failure — corrupt CRC in Test mode is reported in the TestReport, not raised`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        // Build a zip with method=STORED so the data is uncompressed in
+        // the file. Then flip a bit in the data section: the stored
+        // CRC will no longer match the recomputed one. (If we left
+        // DEFLATE on, corrupting a byte would break the inflater
+        // before the CRC mismatch could be detected.)
+        val archive = ws.resolve("seed.zip")
+        val payload = "alpha".toByteArray()
+        val expectedCrc = java.util.zip.CRC32().apply { update(payload) }.value
+        java.util.zip.ZipOutputStream(Files.newOutputStream(archive)).use { zos ->
+            zos.setMethod(java.util.zip.ZipOutputStream.STORED)
+            val entry = java.util.zip.ZipEntry("a.txt")
+            entry.size = payload.size.toLong()
+            entry.compressedSize = payload.size.toLong()
+            entry.crc = expectedCrc
+            zos.putNextEntry(entry)
+            zos.write(payload)
+            zos.closeEntry()
+        }
+        val bytes = Files.readAllBytes(archive).toMutableList()
+        // Local file header = 30 bytes fixed + name (5) + extra (0).
+        // The first byte of the data section is at offset 35. Flip
+        // bit 0 so the stored CRC no longer matches.
+        val headerEnd = 30 + "a.txt".length
+        bytes[headerEnd] = bytes[headerEnd].toInt().xor(0x01).toByte()
+        Files.write(archive, bytes.toByteArray())
+
+        val out = unzipStep.handler.execute(
+            UnzipInput(path = "seed.zip", mode = UnzipMode.Test),
+            handlerContext(ws),
+        )
+        assertNotNull(out.testReport)
+        assertFalse(out.testReport!!.ok)
+        assertEquals(listOf("a.txt"), out.testReport!!.badEntries)
     }
 }

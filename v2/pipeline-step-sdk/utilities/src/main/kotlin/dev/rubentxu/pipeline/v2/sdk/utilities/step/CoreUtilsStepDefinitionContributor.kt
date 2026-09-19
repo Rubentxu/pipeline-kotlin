@@ -50,16 +50,17 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
     private val writeYamlStep: CoreUtilsWriteYamlStepDefinition = CoreUtilsWriteYamlStepDefinition()
     private val findFilesStep: CoreUtilsFindFilesStepDefinition = CoreUtilsFindFilesStepDefinition()
     private val zipStep: CoreUtilsZipStepDefinition = CoreUtilsZipStepDefinition()
+    private val unzipStep: CoreUtilsUnzipStepDefinition = CoreUtilsUnzipStepDefinition()
 
     override fun definitions(): Iterable<StepDefinition<*, *>> =
-        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep)
+        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep, unzipStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
         val provider = buildProvider()
         val manifest = buildManifest(provider)
         PluginManifestValidator.validate(
             manifest,
-            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep),
+            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep, zipStep, unzipStep),
         )
         return listOf(
             StepRegistration(readJsonStep, provider),
@@ -69,6 +70,7 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepRegistration(writeYamlStep, provider),
             StepRegistration(findFilesStep, provider),
             StepRegistration(zipStep, provider),
+            StepRegistration(unzipStep, provider),
         )
     }
 
@@ -147,6 +149,10 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepManifest(
                 stepKey = CoreUtilsZipKey.VALUE,
                 declaredCapabilities = zipStep.contract.requiredCapabilities,
+            ),
+            StepManifest(
+                stepKey = CoreUtilsUnzipKey.VALUE,
+                declaredCapabilities = unzipStep.contract.requiredCapabilities,
             ),
         ),
     )

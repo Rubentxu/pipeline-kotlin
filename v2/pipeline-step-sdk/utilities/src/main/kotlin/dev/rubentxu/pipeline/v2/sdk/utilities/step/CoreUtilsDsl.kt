@@ -7,6 +7,10 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlSource
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteJsonInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlDestination
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlPayload
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import kotlinx.serialization.json.JsonElement
 
@@ -26,6 +30,7 @@ fun coreUtilsReadJsonStepKey(): PluginStepId = CoreUtilsReadJsonKey.VALUE
 fun coreUtilsWriteJsonStepKey(): PluginStepId = CoreUtilsWriteJsonKey.VALUE
 fun coreUtilsSha256StepKey(): PluginStepId = CoreUtilsSha256Key.VALUE
 fun coreUtilsReadYamlStepKey(): PluginStepId = CoreUtilsReadYamlKey.VALUE
+fun coreUtilsWriteYamlStepKey(): PluginStepId = CoreUtilsWriteYamlKey.VALUE
 
 /**
  * `core-utils.readJson` DSL façade.
@@ -184,6 +189,54 @@ fun StageScope.readYamlText(
     val encoded: EncodedStepValue = CoreUtilsReadYamlInputCodec.encode(input)
     registryStep(
         stepKey = coreUtilsReadYamlStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.writeYaml` DSL façade (file destination, single document).
+ *
+ * Writes a typed [YamlDocument] to disk as a UTF-8 YAML file. Refuses to
+ * overwrite an existing file unless [overwrite] is explicitly `true` (Jenkins'
+ * default behaviour). Parent directories are created automatically.
+ */
+fun StageScope.writeYaml(
+    path: String,
+    value: YamlDocument,
+    overwrite: Boolean = false,
+) {
+    val input = WriteYamlInput(
+        destination = WriteYamlDestination.ToFile(path = path, overwrite = overwrite),
+        payload = WriteYamlPayload.Single(value = value),
+    )
+    val encoded: EncodedStepValue = CoreUtilsWriteYamlInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsWriteYamlStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.writeYaml` DSL façade (file destination, multiple documents).
+ *
+ * Writes a sequence of typed YAML documents as one file using SnakeYAML's
+ * `dumpAll` (each document separated by `---`).
+ */
+fun StageScope.writeYamlMultiple(
+    path: String,
+    documents: List<YamlDocument>,
+    overwrite: Boolean = false,
+) {
+    require(documents.isNotEmpty()) {
+        "core-utils.writeYamlMultiple: documents list must not be empty"
+    }
+    val input = WriteYamlInput(
+        destination = WriteYamlDestination.ToFile(path = path, overwrite = overwrite),
+        payload = WriteYamlPayload.Multiple(documents = documents),
+    )
+    val encoded: EncodedStepValue = CoreUtilsWriteYamlInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsWriteYamlStepKey(),
         encodedInput = encoded,
     )
 }

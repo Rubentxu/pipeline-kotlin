@@ -126,11 +126,11 @@ object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
             put("byteSize", value.byteSize)
             put("absolutePath", value.absolutePath)
             if (value.single != null) {
-                put("single", encodeDocument(value.single))
+                put("single", YamlDocumentCodec.encodeDocument(value.single))
             }
             if (value.documents != null) {
                 put("documents", buildJsonObject {
-                    put("items", kotlinx.serialization.json.JsonArray(value.documents.map { encodeDocument(it) }))
+                    put("items", kotlinx.serialization.json.JsonArray(value.documents.map { YamlDocumentCodec.encodeDocument(it) }))
                 })
             }
         }
@@ -142,10 +142,10 @@ object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
         val multiple = obj.getValue("multipleDocuments").jsonPrimitive.content.toBoolean()
         val singleEl = obj["single"]
         val docsEl = obj["documents"]
-        val single: YamlDocument? = if (singleEl != null) decodeDocument(singleEl) else null
+        val single: YamlDocument? = if (singleEl != null) YamlDocumentCodec.decodeDocument(singleEl) else null
         val documents: List<YamlDocument>? = if (docsEl != null) {
             val items = docsEl.jsonObject.getValue("items").jsonArray
-            items.map { decodeDocument(it) }
+            items.map { YamlDocumentCodec.decodeDocument(it) }
         } else null
         // Enforce the XOR invariant at decode time too — protects against
         // corrupt or hand-edited journals.
@@ -201,45 +201,4 @@ object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
           }
         }
     """.trimIndent()
-
-    // ----- YamlDocument ↔ JsonElement -----
-
-    private fun encodeDocument(doc: YamlDocument): kotlinx.serialization.json.JsonElement =
-        when (doc) {
-            is YamlDocument.Str -> kotlinx.serialization.json.buildJsonObject { put("str", doc.value) }
-            is YamlDocument.Integer -> kotlinx.serialization.json.buildJsonObject { put("int", doc.value) }
-            is YamlDocument.Real -> kotlinx.serialization.json.buildJsonObject { put("real", doc.value) }
-            is YamlDocument.Bool -> kotlinx.serialization.json.buildJsonObject { put("bool", doc.value) }
-            YamlDocument.Null -> kotlinx.serialization.json.buildJsonObject { put("null", kotlinx.serialization.json.JsonNull) }
-            is YamlDocument.Seq -> kotlinx.serialization.json.buildJsonObject {
-                put("seq", kotlinx.serialization.json.JsonArray(doc.items.map { encodeDocument(it) }))
-            }
-            is YamlDocument.Map -> kotlinx.serialization.json.buildJsonObject {
-                put("map", buildJsonObject {
-                    doc.entries.forEach { e -> put(e.key, encodeDocument(e.value)) }
-                })
-            }
-        }
-
-    private fun decodeDocument(el: kotlinx.serialization.json.JsonElement): YamlDocument {
-        val obj = el.jsonObject
-        // Exactly one discriminator field is present.
-        val keys = obj.keys.toList()
-        if (keys.size != 1) {
-            error("core-utils.readYaml: YamlDocument envelope has ${keys.size} discriminator fields, expected 1 (keys=$keys)")
-        }
-        return when (val key = keys.single()) {
-            "str" -> YamlDocument.Str(obj.getValue("str").jsonPrimitive.content)
-            "int" -> YamlDocument.Integer(obj.getValue("int").jsonPrimitive.content.toLong())
-            "real" -> YamlDocument.Real(obj.getValue("real").jsonPrimitive.content.toDouble())
-            "bool" -> YamlDocument.Bool(obj.getValue("bool").jsonPrimitive.content.toBoolean())
-            "null" -> YamlDocument.Null
-            "seq" -> YamlDocument.Seq(obj.getValue("seq").jsonArray.map { decodeDocument(it) })
-            "map" -> {
-                val mapObj = obj.getValue("map").jsonObject
-                YamlDocument.Map(mapObj.entries.map { (k, v) -> YamlDocument.Map.Entry(k, decodeDocument(v)) })
-            }
-            else -> error("core-utils.readYaml: unknown YamlDocument discriminator '$key'")
-        }
-    }
 }

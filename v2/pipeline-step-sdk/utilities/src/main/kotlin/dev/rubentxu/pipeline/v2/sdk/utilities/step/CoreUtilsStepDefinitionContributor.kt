@@ -47,19 +47,24 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
     private val writeJsonStep: CoreUtilsWriteJsonStepDefinition = CoreUtilsWriteJsonStepDefinition()
     private val sha256Step: CoreUtilsSha256StepDefinition = CoreUtilsSha256StepDefinition()
     private val readYamlStep: CoreUtilsReadYamlStepDefinition = CoreUtilsReadYamlStepDefinition()
+    private val writeYamlStep: CoreUtilsWriteYamlStepDefinition = CoreUtilsWriteYamlStepDefinition()
 
     override fun definitions(): Iterable<StepDefinition<*, *>> =
-        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep)
+        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
         val provider = buildProvider()
         val manifest = buildManifest(provider)
-        PluginManifestValidator.validate(manifest, listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep))
+        PluginManifestValidator.validate(
+            manifest,
+            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep),
+        )
         return listOf(
             StepRegistration(readJsonStep, provider),
             StepRegistration(writeJsonStep, provider),
             StepRegistration(sha256Step, provider),
             StepRegistration(readYamlStep, provider),
+            StepRegistration(writeYamlStep, provider),
         )
     }
 
@@ -126,6 +131,10 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepManifest(
                 stepKey = CoreUtilsReadYamlKey.VALUE,
                 declaredCapabilities = readYamlStep.contract.requiredCapabilities,
+            ),
+            StepManifest(
+                stepKey = CoreUtilsWriteYamlKey.VALUE,
+                declaredCapabilities = writeYamlStep.contract.requiredCapabilities,
             ),
         ),
     )

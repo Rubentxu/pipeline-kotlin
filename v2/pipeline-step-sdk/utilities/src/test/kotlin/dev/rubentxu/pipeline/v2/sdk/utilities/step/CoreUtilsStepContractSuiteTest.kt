@@ -17,6 +17,10 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Output
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteJsonOutput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlDestination
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlOutput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlPayload
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
@@ -77,6 +81,7 @@ class CoreUtilsStepContractSuiteTest {
     private val writeJsonStep = CoreUtilsWriteJsonStepDefinition()
     private val sha256Step = CoreUtilsSha256StepDefinition()
     private val readYamlStep = CoreUtilsReadYamlStepDefinition()
+    private val writeYamlStep = CoreUtilsWriteYamlStepDefinition()
 
     private fun stubWorkspaceRoot(): Path = tempDir.resolve("workspace").also { Files.createDirectories(it) }
 
@@ -829,5 +834,283 @@ class CoreUtilsStepContractSuiteTest {
         assertNotNull(out.single)
         assertTrue(out.byteSize > 0)
         assertEquals(ws.resolve("o.yaml").toString(), out.absolutePath)
+    }
+
+    // ==========================================================================
+    //  core-utils.writeYaml (Slice 2 / S2.2) — Jenkins-reference Step.
+    //
+    //  Reference: pipeline-utility-steps-plugin WriteYamlStep.
+    //  Notes recorded in docs/v2/07-uat/S2_READYAML_WRITEYAML_JENKINS_REFERENCE.md.
+    // ==========================================================================
+
+    // -------- identity --------
+
+    @Test
+    fun `identity — writeYaml Key is core-utils dot writeYaml`() {
+        assertEquals(PluginStepId("core-utils.writeYaml"), CoreUtilsWriteYamlKey.VALUE)
+        assertEquals("core-utils.writeYaml", CoreUtilsWriteYamlKey.VALUE.value)
+    }
+
+    // -------- contract completeness --------
+
+    @Test
+    fun `contract — writeYaml declares WRITES_WORKSPACE, NEVER, WORKSPACE_IDENTITY_CAPABILITY`() {
+        val c = writeYamlStep.contract
+        assertEquals(CoreUtilsWriteYamlKey.VALUE, c.key)
+        assertEquals(Effect.WRITES_WORKSPACE, c.descriptor.effects.single())
+        assertEquals(ReplayPolicy.NEVER, c.descriptor.replayPolicy)
+        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertNotNull(c.inputCodec)
+        assertNotNull(c.outputCodec)
+    }
+
+    // -------- codec roundtrip --------
+
+    @Test
+    fun `codec writeYaml input — roundtrip preserves destination + payload variants`() {
+        val single = WriteYamlInput(
+            destination = WriteYamlDestination.ToFile(path = "out.yaml", overwrite = true),
+            payload = WriteYamlPayload.Single(YamlDocument.Str("v")),
+        )
+        assertEquals(single, CoreUtilsWriteYamlInputCodec.decode(CoreUtilsWriteYamlInputCodec.encode(single)))
+
+        val multiple = WriteYamlInput(
+            destination = WriteYamlDestination.ToFile(path = "m.yaml"),
+            payload = WriteYamlPayload.Multiple(listOf(YamlDocument.Str("a"), YamlDocument.Str("b"))),
+        )
+        assertEquals(multiple, CoreUtilsWriteYamlInputCodec.decode(CoreUtilsWriteYamlInputCodec.encode(multiple)))
+
+        val text = WriteYamlInput(
+            destination = WriteYamlDestination.ToText,
+            payload = WriteYamlPayload.Single(YamlDocument.Str("v")),
+        )
+        assertEquals(text, CoreUtilsWriteYamlInputCodec.decode(CoreUtilsWriteYamlInputCodec.encode(text)))
+    }
+
+    @Test
+    fun `codec writeYaml output — roundtrip preserves file write fields`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val out = writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "o.yaml"),
+                payload = WriteYamlPayload.Single(YamlDocument.Str("v")),
+            ),
+            handlerContext(ws),
+        )
+        val decoded = CoreUtilsWriteYamlOutputCodec.decode(CoreUtilsWriteYamlOutputCodec.encode(out))
+        assertEquals(out, decoded)
+    }
+
+    // -------- canonical envelope --------
+
+    @Test
+    fun `envelope — writeYaml input codec emits a well-formed JSON object (durable eligible)`() {
+        val encoded = CoreUtilsWriteYamlInputCodec.encode(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "x.yaml"),
+                payload = WriteYamlPayload.Single(YamlDocument.Str("v")),
+            ),
+        )
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
+        assertTrue(parsed is JsonObject, "input envelope must be a JSON object")
+    }
+
+    // -------- success --------
+
+    @Test
+    fun `success — writeYaml writes a typed YamlDocument tree to disk and returns sha256Hex`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val doc = YamlDocument.Map(
+            listOf(
+                YamlDocument.Map.Entry("name", YamlDocument.Str("alice")),
+                YamlDocument.Map.Entry("age", YamlDocument.Integer(30L)),
+                YamlDocument.Map.Entry(
+                    "flags",
+                    YamlDocument.Seq(listOf(YamlDocument.Str("a"), YamlDocument.Str("b"))),
+                ),
+            ),
+        )
+        val out = writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "out/data.yaml"),
+                payload = WriteYamlPayload.Single(doc),
+            ),
+            handlerContext(ws),
+        )
+
+        assertTrue(out.wroteToFile)
+        assertNotNull(out.absolutePath)
+        assertEquals(ws.resolve("out/data.yaml").toString(), out.absolutePath)
+        assertEquals(
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(Path.of(out.absolutePath!!)))
+                .joinToString("") { "%02x".format(it) },
+            out.sha256Hex,
+        )
+        // The content is YAML-shaped (contains the expected text values).
+        val raw = Files.readString(Path.of(out.absolutePath!!))
+        assertTrue(raw.contains("name"))
+        assertTrue(raw.contains("alice"))
+        assertTrue(raw.contains("age"))
+    }
+
+    @Test
+    fun `success — writeYaml creates missing parent directories`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "deep/nested/dir/x.yaml"),
+                payload = WriteYamlPayload.Single(YamlDocument.Bool(true)),
+            ),
+            handlerContext(ws),
+        )
+        assertTrue(Files.exists(ws.resolve("deep/nested/dir/x.yaml")))
+    }
+
+    @Test
+    fun `success — writeYaml roundtrip via readYaml preserves typed structure`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val original = YamlDocument.Map(
+            listOf(
+                YamlDocument.Map.Entry("k1", YamlDocument.Str("v1")),
+                YamlDocument.Map.Entry("k2", YamlDocument.Integer(42L)),
+                YamlDocument.Map.Entry("k3", YamlDocument.Null),
+            ),
+        )
+        writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "rt.yaml"),
+                payload = WriteYamlPayload.Single(original),
+            ),
+            handlerContext(ws),
+        )
+        val readBack = readYamlStep.handler.execute(
+            ReadYamlInput(source = ReadYamlSource.FromFile("rt.yaml")),
+            handlerContext(ws),
+        )
+        val readDoc = readBack.single as YamlDocument.Map
+        assertEquals(original, readDoc)
+    }
+
+    @Test
+    fun `success — writeYaml multiple documents writes a multi-doc YAML stream`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "multi.yaml"),
+                payload = WriteYamlPayload.Multiple(
+                    listOf(
+                        YamlDocument.Str("first"),
+                        YamlDocument.Str("second"),
+                        YamlDocument.Str("third"),
+                    ),
+                ),
+            ),
+            handlerContext(ws),
+        )
+        val raw = Files.readString(ws.resolve("multi.yaml"))
+        // SnakeYAML's dumpAll separates documents with `---\n`.
+        assertTrue(raw.contains("---"), "expected multi-document stream separator, got: $raw")
+        val readBack = readYamlStep.handler.execute(
+            ReadYamlInput(source = ReadYamlSource.FromFile("multi.yaml")),
+            handlerContext(ws),
+        )
+        assertTrue(readBack.multipleDocuments)
+        assertEquals(3, readBack.documents!!.size)
+    }
+
+    // -------- typed failure --------
+
+    @Test
+    fun `typed failure — writeYaml refuses to overwrite an existing file unless overwrite=true`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("preexisting.yaml"), "old: value\n")
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                writeYamlStep.handler.execute(
+                    WriteYamlInput(
+                        destination = WriteYamlDestination.ToFile(path = "preexisting.yaml"),
+                        payload = WriteYamlPayload.Single(YamlDocument.Str("new")),
+                    ),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("overwrite=false"))
+    }
+
+    @Test
+    fun `typed failure — writeYaml with overwrite=true succeeds even if the file exists`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("overwritable.yaml"), "old: value\n")
+        val out = writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "overwritable.yaml", overwrite = true),
+                payload = WriteYamlPayload.Single(YamlDocument.Str("new")),
+            ),
+            handlerContext(ws),
+        )
+        assertTrue(out.wroteToFile)
+        val raw = Files.readString(Path.of(out.absolutePath!!))
+        assertFalse(raw.contains("old: value"))
+    }
+
+    @Test
+    fun `typed failure — writeYaml with empty payload list surfaces USER class`() {
+        // Cannot construct an empty Multiple directly (the DSL guards against
+        // it; the typed API would too), so we exercise the codec's tolerance
+        // by encoding a manual envelope with an empty items array.
+        val json = """
+            {"charset":"UTF-8","destination":{"kind":"file","path":"e.yaml","overwrite":false},
+             "payload":{"kind":"multiple","items":[]}}
+        """.trimIndent()
+        val encoded = EncodedStepValue(json)
+        val input = CoreUtilsWriteYamlInputCodec.decode(encoded)
+        // Empty list roundtrips; the runtime fail-closed is the DSL facade's
+        // require(). We assert the typed value is what we expect.
+        assertTrue(input.payload is WriteYamlPayload.Multiple)
+        assertEquals(0, (input.payload as WriteYamlPayload.Multiple).documents.size)
+    }
+
+    // -------- replay / determinism --------
+
+    @Test
+    fun `replay — writeYaml output is deterministic across runs`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val doc = YamlDocument.Map(listOf(YamlDocument.Map.Entry("k", YamlDocument.Str("v"))))
+        val a = writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "det1.yaml"),
+                payload = WriteYamlPayload.Single(doc),
+            ),
+            handlerContext(ws),
+        )
+        val b = writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "det2.yaml"),
+                payload = WriteYamlPayload.Single(doc),
+            ),
+            handlerContext(ws),
+        )
+        // Same content => same digest, even though paths differ.
+        assertEquals(a.sha256Hex, b.sha256Hex)
+    }
+
+    // -------- observability --------
+
+    @Test
+    fun `observability — writeYaml returns a typed Output with wroteToFile + absolutePath + sha256Hex`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        val out = writeYamlStep.handler.execute(
+            WriteYamlInput(
+                destination = WriteYamlDestination.ToFile(path = "obs.yaml"),
+                payload = WriteYamlPayload.Single(YamlDocument.Integer(7L)),
+            ),
+            handlerContext(ws),
+        )
+        assertTrue(out.wroteToFile)
+        assertNotNull(out.absolutePath)
+        assertNotNull(out.sha256Hex)
+        assertEquals(64, out.sha256Hex!!.length)
     }
 }

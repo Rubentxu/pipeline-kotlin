@@ -24,7 +24,7 @@
 // construction. The Gradle root build (v2/build.gradle.kts) carries the same
 // value; both MUST be updated together at release time. Keeping it top-level
 // so any sh() can interpolate it.
-val PKG_VERSION = "0.36.0"
+val PKG_VERSION = "0.39.0"
 val DIST = "v2/pipeline-application/build/distributions/pipelinek-${'$'}PKG_VERSION.zip"
 
 pipeline {

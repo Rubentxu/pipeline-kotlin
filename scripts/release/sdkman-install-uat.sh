@@ -57,16 +57,40 @@ echo "url:        $URL"
 echo "expected:   $EXPECTED_SHA"
 echo
 
-echo "--- 0. pre-check: sdk CLI present ---"
+echo "--- 0. pre-check: sdk CLI present + PATH extended ---"
 command -v sdk >/dev/null 2>&1 || { echo "❌ 'sdk' CLI not on PATH"; exit 1; }
 sdk version 2>&1 | head -3
+# SDKMAN adds ~/.sdkman/candidates/<candidate>/current/bin to PATH via
+# the init script. On a clean runner that init script may not have been
+# sourced yet. Source it idempotently so 'pipelinek' resolves below.
+SDKMAN_INIT="${SDKMAN_DIR:-$HOME/.sdkman}/bin/sdkman-init.sh"
+if [ -f "${SDKMAN_INIT}" ]; then
+  # shellcheck disable=SC1090
+  source "${SDKMAN_INIT}" 2>/dev/null || true
+fi
+# Belt-and-suspenders: also prepend the candidate's current bin dir.
+PIPELINEK_BIN_DIR="${SDKMAN_DIR:-$HOME/.sdkman}/candidates/${CANDIDATE}/current/bin"
+[ -d "${PIPELINEK_BIN_DIR}" ] && export PATH="${PIPELINEK_BIN_DIR}:${PATH}"
+echo "  PATH check: $(command -v pipelinek || echo 'pipelinek NOT yet on PATH (will be after install)')"
 echo
 
-echo "--- 1. install (noninteractive) ---"
-echo "yes" | sdk install "${CANDIDATE}" "${VERSION}"
+echo "--- 1. install (noninteractive, force-set default) ---"
+# 'sdk install <c> <v>' may prompt:
+#   - "Do you want <c> <v> to be set as default? (Y/n)"
+#   - "Do you want <c> <v> to be installed? (Y/n)"  (if candidate exists at other version)
+# Pre-answer both with 'Y' so the install runs in a single noninteractive pipe.
+# If the candidate is already at this exact version, sdkman is a no-op (still PASS).
+printf 'Y\nY\n' | sdk install "${CANDIDATE}" "${VERSION}"
 echo
 
 echo "--- 2. verify version ---"
+# After install, 'pipelinek' may resolve from the just-installed version
+# without needing PATH manipulation; but on a clean runner we re-source
+# SDKMAN init so the symlink chain is live.
+if [ -f "${SDKMAN_INIT}" ]; then
+  # shellcheck disable=SC1090
+  source "${SDKMAN_INIT}" 2>/dev/null || true
+fi
 INSTALLED_VERSION="$(pipelinek version 2>&1)"
 echo "${INSTALLED_VERSION}"
 case "${INSTALLED_VERSION}" in

@@ -107,7 +107,7 @@ OUT=$(${BIN} run --workspace . --db run.sqlite --control-root ctl fail.kts 2>&1)
 RC=$?
 printf '%s' "${OUT}" | grep -qF '"outcome":"failure"' || { echo "FAIL: outcome != failure (defect check)"; exit 1; }
 echo "  ✓ failure run after success on same DB: outcome=failure, exit ${RC}"
-echo "    (note: exit code propagation in --db-reuse scenarios is not guaranteed in 0.39.0)"
+echo "    (note: corrected 2026-09-19 — exit code DOES propagate in 0.39.0; see WU_LPR_080 correction)"
 
 echo
 echo "--- 5. validate OK (exit 0) ---"
@@ -117,7 +117,7 @@ RC=$?
 echo "  ✓ validate OK: exit 0"
 
 echo
-echo "--- 6. validate bad DSL (exit 1 in v0.39.0; not 2) ---"
+echo "--- 6. validate bad DSL (exit 2 per WU-LPR-011 contract) ---"
 cat > "${GRADLE_DEMO}/bad.kts" <<'KOTLIN'
 pipeline { stages { stage("bad") { steps { echo("x") } } } }
 KOTLIN

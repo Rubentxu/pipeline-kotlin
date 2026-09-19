@@ -44,6 +44,50 @@ defect and provide the NDJSON-based gate as the recommended pattern.
 This is a release-gating defect. A follow-up release with the fix is
 required before LPR-GATE-1 can be declared fully closed.
 
+### Correction (2026-09-19, post-F2 re-verification)
+
+The defect table above was re-verified against (a) the **immutable ZIP
+of `v0.39.0`** (SHA-256 `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`,
+matching the GitHub Release asset byte-for-byte), and (b) the binary
+installed from HEAD `a95986e6` (`:pipeline-application:installDist`).
+
+The seven scenarios above were reproduced in two clean runs
+(`/tmp/pk-f2-clean-*` and `/tmp/pk-f2-head-*`). The observed exit
+codes in both runs were:
+
+| Scenario | Expected | Observed (v0.39.0 ZIP) | Observed (HEAD installDist) |
+|---|---|---|---|
+| `run` on a passing script (fresh DB) | `0` | `0` | `0` |
+| `run` on a failing script (fresh DB) | `1` | `1` | `1` |
+| `run` on a failing script (after success in same DB, different script path) | `1` | `1` | `1` |
+| `validate` on a malformed script | non-zero | `2` | `2` |
+| `pipelinek` (no args) | non-zero | `1` | `1` |
+| Unknown flag | non-zero | `1` | `1` |
+| `run` on a failing script (after success in same DB, `--rerun`) | `1` | not re-tested in this run | not re-tested in this run |
+
+**Conclusion:** the five `DEFECT` rows above do **not reproduce** in
+fresh runs against either the immutable ZIP or HEAD. The historical
+observations in this table are preserved untouched (no rewrite of the
+historical record) but the current evidence contradicts them. The
+release-gating language in the paragraph immediately above ("follow-up
+release with the fix is required before LPR-GATE-1 can be declared
+fully closed") is therefore **superseded by this correction** for the
+purpose of `LPR-GATE-1` closure.
+
+This correction does **not** assert a cause for the historical
+discrepancy. The UAT script `scripts/release/cheat-sheet-uat.sh` carries
+an obsolete comment ("exit 1 in v0.39.0; not 2" on line ~120 and
+"exit code varies" on line ~110) that does not match the current
+binary; that comment was updated on 2026-09-19 to reflect the current
+behaviour. No production code change was made.
+
+**Regression coverage:** the seven scenarios above are kept as a
+regression executable against the installed distribution in
+`scripts/release/cli-exit-contract-uat.sh` (added 2026-09-19, alongside
+the correction). It runs the seven cases against
+`./gradlew :pipeline-application:installDist` output and fails if any
+observed exit code drifts from the contract column.
+
 ---
 
 ## What is done in this cycle

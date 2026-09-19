@@ -1034,7 +1034,13 @@ private fun runCanonicalPipeline(
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
         shOptions = ShOptions(
-            workspaceRoot = (workspaceBase ?: controlDirRoot).resolve("workspace"),
+            // WU-LPR-071: with --workspace <dir>, the project's own directory IS the
+            // workspace — stages share it (Jenkins-familiar semantics). Adding
+            // .resolve("workspace") would point to a subdirectory of the project root
+            // (typically nonexistent), and every `sh` step would fail with
+            // "No such file or directory" because gradlew/mvn/node live in the project
+            // root itself. Without --workspace we keep the legacy per-stage layout.
+            workspaceRoot = workspaceBase ?: controlDirRoot.resolve("workspace"),
             captureStdout = false,
             timeoutMs = null,
             env = emptyMap(),

@@ -111,7 +111,7 @@ Downloaded the published ZIP from `https://github.com/Rubentxu/pipeline-kotlin/r
 
 ## 8. Outstanding
 
-- [ ] **SDKMAN publish** (`pipelinek` candidate on https://api.sdkman.io/2/) — blocked on credentials. The release is GitHub-published; SDKMAN is a separate distribution channel. Requires consumer token (vendor account `Rubentxu`).
+- [ ] **SDKMAN publish** (`pipelinek` candidate on https://vendors.sdkman.io/) — blocked on `SDKMAN_CONSUMER_KEY` + `SDKMAN_CONSUMER_TOKEN` (vendor account `Rubentxu`). Publish script committed at `e9494f7d` (`scripts/release/sdkman-publish.sh`): bash-validated, fail-closed without credentials, real SDKMAN endpoint verified (403 on dummy creds). Idempotent; does NOT promote to default (separate PUT).
 - [ ] Self-hosting via root `/pipeline.kts` from `v0.39.0` onwards — bootstrap exception retired.
 
 ## 9. Receipts and artifacts
@@ -119,13 +119,15 @@ Downloaded the published ZIP from `https://github.com/Rubentxu/pipeline-kotlin/r
 - `docs/v2/07-uat/WU_LPR_071_RELEASE_PREP_RECEIPT.md` — closure of round-gate defects + workspace fix
 - `docs/v2/07-uat/WU_LPR_060_CERTIFICATION_LEDGER.md` — certification ledger digest referenced by the manifest
 - `docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md` — this receipt
+- `scripts/release/sdkman-publish.sh` — SDKMAN vendor publish script (e9494f7d)
+- `scripts/release/sbom-cyclonedx.py` — CycloneDX 1.5 SBOM generator (stdlib-only)
 - GitHub Release assets: `pipelinek-0.39.0.zip`, `.sbom.json`, `.zip.sha256`, `release-manifest.json`
 
 ## 10. Provenance summary
 
 ```
 git rev-parse HEAD
-  68ba01ab97feb9debb194e1ebbcd8c86991fb250
+  e9494f7d5ea586251824acd9902bb5080f953423  (SDKMAN publish script added)
 
 git rev-parse v0.39.0
   be3b1b42ee72c9b60f08f7d6ac5abe176caad61b (annotated tag object)
@@ -138,8 +140,17 @@ pipelinek-0.39.0.zip SHA-256
 
 GitHub Release URL
   https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0
-```
+
+Commits on main this release
+  cce9b3ab  fix(release-prep): close round-gate defects
+  bbe916fd  docs(lpr): release prep handoff + receipt
+  88b26b81  feat(release): release workflow
+  fb2ed28d  feat(release): RC SBOM generator + release artifacts ignored
+  951b3cb5  fix(release): --workspace . was nesting under project root  ← CERTIFIED
+  68ba01ab  chore(release): bump to 0.39.0 (cosmetic; ZIP bytes unchanged)
+  320199fb  docs(lpr): LPR-GATE-1 closure receipt
+  e9494f7d  feat(release): SDKMAN publish script (fail-closed)
 
 ---
 
-**Signed off**: WU-LPR-071 (2026-09-19). Local Production Ready (LPR-GATE-1) **CLOSED** for `pipelinek 0.39.0` on the GitHub Release channel. SDKMAN channel pending credentials.
+**Signed off**: WU-LPR-071 (2026-09-19). Local Production Ready (LPR-GATE-1) **CLOSED** for `pipelinek 0.39.0` on the GitHub Release channel. SDKMAN channel: publish script ready (e9494f7d); execution pending vendor credentials.

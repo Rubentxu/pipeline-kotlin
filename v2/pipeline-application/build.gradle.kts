@@ -52,6 +52,11 @@ dependencies {
     // F5.2: JUnit OFFICIAL_PLUGIN is bundled into the distribution so the
     // external discovery seam can resolve it without `--plugin-jar`.
     implementation(project(":pipeline-step-sdk:junit"))
+    // LFC-2E2: utilities OFFICIAL_PLUGIN (readJson / writeJson / sha256) is bundled
+    // into the distribution so the external discovery seam can resolve it without
+    // `--plugin-jar`. Has build-time provenance (sha256 + version) emitted by
+    // `:pipeline-step-sdk:utilities:computeUtilitiesDigest`.
+    implementation(project(":pipeline-step-sdk:utilities"))
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-credentials-local"))
     implementation(project(":pipeline-credentials-multipart")) // D2-rev: wire CredentialMaterializer for file-based credential dispatch

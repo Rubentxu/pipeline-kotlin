@@ -125,25 +125,21 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
     )
 
     private fun loadReleaseProperties(): Map<String, String> {
-        val resource = "/META-INF/utilities-release.properties"
-        val stream = javaClass.classLoader.getResourceAsStream(resource)
+        val resource = javaClass.classLoader.getResource("META-INF/utilities-release.properties")
             ?: return emptyMap()
-        return stream.use { input ->
-            val map = linkedMapOf<String, String>()
-            input.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                for (line in lines) {
-                    val trimmed = line.trim()
-                    if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
-                    val idx = trimmed.indexOf('=')
-                    if (idx > 0) {
-                        val k = trimmed.substring(0, idx).trim()
-                        val v = trimmed.substring(idx + 1).trim()
-                        map[k] = v
-                    }
-                }
+        val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
+        val map = linkedMapOf<String, String>()
+        for (line in text.lineSequence()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+            val idx = trimmed.indexOf('=')
+            if (idx > 0) {
+                val k = trimmed.substring(0, idx).trim()
+                val v = trimmed.substring(idx + 1).trim()
+                map[k] = v
             }
-            map
         }
+        return map
     }
 
     private fun parseSemVer(raw: String): SemVer {

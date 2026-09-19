@@ -10,6 +10,11 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    // LFC-2E2 Slice 2: SnakeYAML is the safe-loader for `core-utils.readYaml`.
+    // The version is pinned in libs.versions.toml; the Step uses a custom
+    // SafeConstructorOnlyOptions to refuse arbitrary-class instantiation,
+    // alias bombs, and oversize documents.
+    implementation(libs.snakeyaml)
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

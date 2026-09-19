@@ -735,6 +735,75 @@ plugin lifecycle manager, default-import discovery, advanced KSP automation. Doc
 implement only what `example.uppercase = CERTIFIED` has demonstrated.
 
 
+## REFERENCE IMPLEMENTATION RESEARCH — JENKINS & EQUIVALENT ECOSYSTEMS (MANDATORY)
+
+When implementing, extending, or changing a Step, first identify whether Jenkins
+or another mature ecosystem provides an equivalent capability. If a relevant
+reference implementation exists:
+
+1. **Inspect the public contract.** Documented parameters, defaults, return
+   values, error behaviour, and user-facing semantics. Pull these from the
+   plugin's own docs page; never infer implementation behaviour from
+   documentation alone.
+2. **Inspect the actual implementation and tests.** Locate the Step definition,
+   the execution class, the underlying algorithm or library, and the relevant
+   positive AND negative tests. Read the source — Javadoc and release notes
+   rarely cover the corner cases the tests reveal.
+3. **Review security and compatibility history.** Identify relevant CVEs,
+   fixes, version-dependent behaviour, and edge cases. Prefer current,
+   maintained implementations over historical code when making implementation
+   decisions; this is how we learn from history instead of repeating it.
+4. **Adapt rather than copy.** Implement the required behaviour through
+   PipelineK's public SDK, typed contracts, capabilities, workspace context,
+   replay semantics, and canonical execution path. Do not introduce
+   Jenkins-specific runtime dependencies (e.g. `FilePath`, `StepContext`,
+   remoting, `TaskListener`) without an independently justified requirement.
+5. **Record the decision.** Summarise the reference implementation, the
+   behaviour adopted, intentional deviations, security implications, and the
+   tests that demonstrate the chosen contract. Link to the exact source files,
+   tests, documentation, and relevant versions or commits examined.
+
+**Research must be proportional to the change.** A small, well-understood Step
+does not require an extensive research report. A Step involving credentials,
+process execution, filesystem access, deserialisation, archives, networking,
+or concurrency requires deeper investigation and adversarial tests (e.g. Zip
+Slip for `unzip` / `untar`, alias bombs for `readYaml`, env-injection for
+`withEnv`).
+
+**Reference implementations are evidence, not authority over PipelineK's
+architecture.** Jenkins compatibility is a deliberate product decision, not a
+reason to reproduce every historical behaviour or vulnerability.
+
+If no relevant implementation exists, record that briefly (one or two lines in
+the slice receipt: "no reference implementation found; contract derived from
+typed requirement") and proceed with an explicit contract and appropriate
+tests.
+
+**Do not stop for human approval merely because reference research is
+complete.** Continue through characterisation, design, implementation,
+verification, certification, and the next authorised roadmap increment. Stop
+only when an established human-decision gate is reached.
+
+When adapting code rather than implementing behaviour independently, verify the
+source licence, attribution requirements, and compatibility with the project's
+licences before incorporating it. The MIT-licensed
+`jenkinsci/pipeline-utility-steps-plugin` and Apache-licensed
+`jenkinsci/lib-*` are the canonical references for the LFC-2 family; their
+licences permit attribution-only reuse of design ideas, not of literal code
+without re-implementation through our own typed contracts.
+
+**End-of-work-unit closure check.** Every WU close-out MUST answer, in the
+slice receipt or PR description:
+
+```text
+Reference implementation consulted: <name + version, or "none applicable">
+Behaviour adopted:                  <1-line summary>
+Intentional deviations:             <1-line summary, or "none">
+Security implications reviewed:     <1-line summary, or "n/a for this WU">
+Tests demonstrating the contract:    <paths to the relevant contract/fixture tests>
+```
+
+
 ## RETRY-D — DURABLE CONTROL ROWS (MANDATORY)
 
 Authority: ADR-0075. The retry aggregate is a **durable control row**, not an

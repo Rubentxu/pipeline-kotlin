@@ -1,6 +1,8 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
+import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.events.EventSink
 
 /**
@@ -12,13 +14,32 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * envelope, and applies the closed 80/20 query filters in Kotlin. Local volumes
  * make in-code filtering appropriate now; pushing filters into SQL with an index
  * on (run_id, sequence, kind) is a recorded optimization trigger, not EVT-2 work.
+ *
+ * **F5.1 / ADR-0092 / C8**: the reader accepts an optional
+ * [providerLookup] seam so envelopes emitted for Step-keyed events can
+ * carry the [ProviderProvenance] projection when the Step was registered
+ * with [StepProviderMetadata] through the additive
+ * [dev.rubentxu.pipeline.v2.domain.step.StepRegistration] path. The
+ * lookup is O(1) (the registry's `providerOf(key)`); the projector does
+ * NOT scan and does NOT branch on
+ * [dev.rubentxu.pipeline.v2.domain.step.Delivery] (delivery is metadata,
+ * never a verdict).
+ *
+ * The default constructor signature is unchanged (providerLookup =
+ * null) — existing call sites continue to read envelopes with `null`
+ * provenance, which is the C10 backwards-compatible behaviour.
  */
-class EventHistoryReader(private val sink: EventSink) : EventHistory, EventTail {
+class EventHistoryReader(
+    private val sink: EventSink,
+    private val providerLookup: ((PluginStepId) -> StepProviderMetadata?)? = null,
+) : EventHistory, EventTail {
+
+    constructor(sink: EventSink) : this(sink, null)
 
     override fun history(run: ResourceRef, query: EventQuery): Sequence<PipelineEventEnvelope> {
         val runId = run.segments.last()
         return sink.eventsFor(runId)
-            .map { EnvelopeProjector.project(it) }
+            .map { EnvelopeProjector.project(it, providerLookup) }
             .filter { matches(it, query) }
     }
 
@@ -29,7 +50,7 @@ class EventHistoryReader(private val sink: EventSink) : EventHistory, EventTail 
         // Ordered by store-assigned sequence; cursor continuation is
         // sequence > lastSequence — NEVER occurredAt-based (INC-021d).
         val ordered = sink.eventsFor(runId)
-            .map { EnvelopeProjector.project(it) }
+            .map { EnvelopeProjector.project(it, providerLookup) }
             .sortedBy { it.sequence }
         val page = ordered.filter { it.sequence > after }.take(limit).toList()
         val last = page.lastOrNull()?.sequence ?: after

@@ -411,6 +411,213 @@ class CompatibilityCorpusTest {
     @Test
     fun fixture22WaitUntil() = runFixturePass("22-wait-until.pipeline.kts")
 
+    // ==========================================================================
+    //  Slice 2 / S2 corpus — five end-to-end fixtures that exercise
+    //  readYaml / writeYaml / findFiles / zip / unzip together.
+    //
+    //  Each fixture is a real `.pipeline.kts` file run through the installed
+    //  `pipelinek` distribution. They are NOT unit tests: they prove that the
+    //  new Steps compose with the canonical coordinator, the typed DSL and the
+    //  durable journal.
+    // ==========================================================================
+
+    /**
+     * `25-yaml-roundtrip` — writeYaml + readYaml with the typed YamlDocument ADT.
+     * Asserts the round-trip preserves the file on disk and emits a
+     * core-utils StepStarted/StepFinished pair for both Steps.
+     */
+    @Test
+    fun fixture25YamlRoundtrip() {
+        val name = "25-yaml-roundtrip.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, exitCode) {
+            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        }
+        val events = JsonEventLog.decode(stdout)
+        assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
+        val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
+        assertEquals(2, coreUtilsStarted.size) {
+            "Fixture $name must emit 2 core-utils StepStarted (writeYaml + readYaml). Got ${coreUtilsStarted.size}"
+        }
+        // The script ends with `core.sh cat .../config.yaml`; the echoed YAML
+        // must mention every primitive we wrote.
+        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        assertTrue(captured.contains("name: pipelinek")) { "YAML must contain name=pipelinek. Got: $captured" }
+        assertTrue(captured.contains("version: 2.0.0")) { "YAML must contain version=2.0.0" }
+        assertTrue(captured.contains("- unzip")) { "YAML must list unzip in features" }
+        val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
+        assertNotNull(outcome) { "Fixture $name must emit RunFinished" }
+        assertEquals("success", outcome!!.outcome.toString().lowercase())
+    }
+
+    /**
+     * `26-find-files` — findFiles with both direct-children and recursive
+     * globs. Asserts the Step emits the expected core-utils events and that
+     * the cross-check `core.sh find` echoes matching files.
+     */
+    @Test
+    fun fixture26FindFiles() {
+        val name = "26-find-files.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, exitCode) {
+            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        }
+        val events = JsonEventLog.decode(stdout)
+        assertTrue(events.isNotEmpty())
+        // Two findFiles invocations in the script.
+        val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
+        assertEquals(2, coreUtilsStarted.size) {
+            "Fixture $name must emit 2 core-utils StepStarted events (two findFiles calls)"
+        }
+        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        assertTrue(captured.contains("a.txt") && captured.contains("sub/c.txt")) {
+            "findFiles + core.sh find must surface both direct and nested .txt files. Got: $captured"
+        }
+        val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
+        assertNotNull(outcome)
+        assertEquals("success", outcome!!.outcome.toString().lowercase())
+    }
+
+    /**
+     * `27-zip-unzip` — zip + unzip + sha256 round-trip on a directory tree.
+     * Asserts the file content survives the archive/extract cycle (proven
+     * by `core.sh cat` echoing "one\ntwo\nthree").
+     */
+    @Test
+    fun fixture27ZipUnzip() {
+        val name = "27-zip-unzip.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, exitCode) {
+            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        }
+        val events = JsonEventLog.decode(stdout)
+        assertTrue(events.isNotEmpty())
+        // zip + 3 sha256 + unzip = 5 core-utils invocations.
+        val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
+        assertEquals(5, coreUtilsStarted.size) {
+            "Fixture $name must emit 5 core-utils StepStarted (zip + 3*sha256 + unzip). Got ${coreUtilsStarted.size}"
+        }
+        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        assertTrue(captured.contains("one") && captured.contains("two") && captured.contains("three")) {
+            "Unzipped content must echo one/two/three. Got: $captured"
+        }
+        val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
+        assertNotNull(outcome)
+        assertEquals("success", outcome!!.outcome.toString().lowercase())
+    }
+
+    /**
+     * `28-zip-slip-defense` — negative fixture. The script plants a zip with
+     * a smuggled `../escaped.txt` entry name (spliced into both the LFH and
+     * the CDH), then runs `core-utils.unzip` against it. The handler MUST
+     * raise a typed USER failure containing "Zip Slip", and the run finishes
+     * with `outcome=failure`.
+     */
+    @Test
+    fun fixture28ZipSlipDefense() {
+        val name = "28-zip-slip-defense.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertNotEquals(0, exitCode) {
+            "Fixture $name must exit non-zero (typed USER failure on Zip Slip). Got exit=$exitCode"
+        }
+        val events = JsonEventLog.decode(stdout)
+        val stepFailed = events.filter { it.kind == "StepFailed" && it.javaClass.simpleName.contains("StepFailed", ignoreCase = false) }
+        assertTrue(stepFailed.isNotEmpty()) {
+            "Fixture $name must emit at least one StepFailed event. Got: ${events.map { it.kind }}"
+        }
+        // The handler emits a typed failure containing the words "Zip Slip"
+        // and the entry name that smuggled out of the workspace. We assert
+        // on either signal so the assertion stays robust against
+        // event-channel formatting changes.
+        val serialized = events.joinToString("\n") { it.toString() }
+        assertTrue(serialized.contains("Zip Slip") || serialized.contains(".. segment")) {
+            "Events must surface Zip Slip / '..' containment. Got: $serialized"
+        }
+        val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
+        assertNotNull(outcome)
+        assertEquals("failure", outcome!!.outcome.toString().lowercase()) {
+            "Fixture $name must finish with outcome=failure. Got: ${outcome.outcome}"
+        }
+    }
+
+    /**
+     * `29-mixed-utilities` — five stages chaining writeYaml → readYaml →
+     * findFiles → zipDir → unzip. Asserts all five Steps run and the
+     * extracted content survives.
+     */
+    @Test
+    fun fixture29MixedUtilities() {
+        val name = "29-mixed-utilities.pipeline.kts"
+        val path = fixture(name)
+        val appBin = AppBinSupport.discover()
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+        val process = pb.start()
+        val exitCode = process.waitFor()
+        val stdout = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, exitCode) {
+            "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()}"
+        }
+        val events = JsonEventLog.decode(stdout)
+        val stages = events.filter { it.kind == "StageStarted" }
+        assertEquals(5, stages.size) {
+            "Fixture $name must have 5 stages. Got ${stages.size}"
+        }
+        val stageNames = stages.mapNotNull { ev ->
+            // StageStarted events carry a `stageName` field; we read it
+            // reflectively so we don't pin a strongly-typed import on a
+            // contract that may evolve.
+            runCatching {
+                ev.javaClass.getDeclaredField("stageName").apply { isAccessible = true }
+                    .get(ev) as? String
+            }.getOrNull()
+        }
+        assertEquals(
+            setOf("write-manifest", "read-manifest", "enumerate", "archive", "extract"),
+            stageNames.toSet(),
+        ) { "Fixture $name stage names: $stageNames" }
+        val coreUtilsStarted = events.filterIsInstance<StepStarted>().filter { it.stepType == "core-utils" }
+        assertEquals(5, coreUtilsStarted.size) {
+            "Fixture $name must emit 5 core-utils StepStarted. Got ${coreUtilsStarted.size}"
+        }
+        val captured = events.filterIsInstance<EchoOutputCaptured>().joinToString("\n") { it.content }
+        assertTrue(captured.contains("alpha") && captured.contains("beta")) {
+            "Unzipped content must echo alpha/beta. Got: $captured"
+        }
+        val outcome = events.filterIsInstance<RunFinished>().singleOrNull()
+        assertNotNull(outcome)
+        assertEquals("success", outcome!!.outcome.toString().lowercase())
+    }
+
     /**
      * Verifies that a script with compilation errors exits with non-zero code.
      * INC-R10-ARC-001: compilation failure is a FAILURE outcome, not success.
@@ -418,7 +625,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(23, fixtures.size, "Corpus must have 23 valid fixtures (WU-G5R6 added 22-wait-until; WU-LPR-104 added 23-readfile; LFC-2E2 added 24-utilities-roundtrip; 07 and 99 moved to broken/)")
+        assertEquals(28, fixtures.size, "Corpus must have 28 valid fixtures (S2 added 25..29; 07 and 99 moved to broken/)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))

@@ -120,12 +120,13 @@ class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOu
     }
 
     companion object {
-        // Lenient parser: accept pretty-printed or compact JSON without
-        // requiring strict input. We surface invalid JSON as a typed failure,
-        // not as a parser exception bubbling through the boundary.
+        // Strict parser: accept pretty-printed or compact JSON, but reject
+        // anything that is not a well-formed JSON value. We surface invalid
+        // JSON as a typed failure rather than a parser exception bubbling
+        // through the boundary.
         private val JSON_PARSER: Json = Json {
             ignoreUnknownKeys = true
-            isLenient = true
+            isLenient = false
         }
 
         /**

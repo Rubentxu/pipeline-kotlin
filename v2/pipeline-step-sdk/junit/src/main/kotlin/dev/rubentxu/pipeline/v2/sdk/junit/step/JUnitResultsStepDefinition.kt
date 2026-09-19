@@ -63,7 +63,27 @@ class JUnitResultsStepDefinition(
     )
 
     override val handler = StepHandler<JUnitResultsInput, JUnitReportSummary> { input, _ ->
-        val workspaceRoot = Paths.get(input.workspaceRoot).also {
+        // Resolve the effective workspaceRoot:
+        // - absolute: caller-supplied authoritative (CI/test).
+        // - empty / "." / "./" / not-a-directory: fall back to the
+        //   `pipeline.workspace.root` system property (set by the binary
+        //   when --workspace is provided) and finally to the process
+        //   cwd. This is the seam that makes
+        //   `junitResults(reportPath = "build/test-results/test.xml")`
+        //   resolve against the actual pipeline workspace without the
+        //   caller having to know its absolute path.
+        // - any other relative path: resolve against the process cwd
+        //   (preserves existing test-only behaviour where the harness
+        //   sets `workspaceRoot = "test/..."`).
+        val configured = Paths.get(input.workspaceRoot)
+        val workspaceRoot: Path = when {
+            input.workspaceRoot.isBlank() ||
+                input.workspaceRoot == "." ||
+                input.workspaceRoot == "./" -> workspaceRootResolver()
+            configured.isAbsolute -> if (Files.isDirectory(configured)) configured else workspaceRootResolver()
+            Files.isDirectory(configured) -> configured
+            else -> workspaceRootResolver()
+        }.also {
             require(Files.isDirectory(it)) {
                 "junit.results: workspaceRoot is not a directory: ${it}"
             }

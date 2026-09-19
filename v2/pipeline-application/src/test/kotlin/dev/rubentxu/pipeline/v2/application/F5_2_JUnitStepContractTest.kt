@@ -423,6 +423,134 @@ class F5_2_JUnitStepContractTest {
         }
     }
 
+    // ----------------------------------------------------------------------
+    // workspaceRoot resolution (F5.2 follow-up: "pipeline.workspace.root"
+    // fallback when input.workspaceRoot is blank / "." / "./" or points at a
+    // non-existent directory). When the caller leaves it unset, the handler
+    // falls back to the system property `pipeline.workspace.root` (set by
+    // the binary when --workspace is provided), so a relative reportPath
+    // resolves against the actual pipeline workspace without the script
+    // author having to know the absolute path.
+    // ----------------------------------------------------------------------
+
+    @Test
+    fun `handler falls back to pipeline workspace when workspaceRoot is dot`() = runBlocking {
+        val tmpWs = Files.createTempDirectory("junit-pipeline-ws-")
+        val report = tmpWs.resolve("nested/results.xml")
+        Files.createDirectories(report.parent)
+        Files.writeString(
+            report,
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuite name="X" tests="2" failures="0" errors="0" skipped="0" time="0.0"/>
+            """.trimIndent(),
+        )
+        val saved = System.getProperty("pipeline.workspace.root")
+        try {
+            System.setProperty("pipeline.workspace.root", tmpWs.toString())
+            val definition = JUnitResultsStepDefinition()
+            val ctx = newContext()
+            // Relative workspaceRoot="." + relative reportPath = "nested/results.xml"
+            // must resolve against the system property's workspace root.
+            val input = JUnitResultsInput(
+                reportPath = "nested/results.xml",
+                workspaceRoot = ".",
+            )
+            val summary = definition.handler.execute(input, ctx)
+            assertEquals(2, summary.tests)
+            assertEquals(report.toString(), summary.reportPath)
+        } finally {
+            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
+            Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+        }
+    }
+
+    @Test
+    fun `handler falls back to pipeline workspace when workspaceRoot is blank`() = runBlocking {
+        val tmpWs = Files.createTempDirectory("junit-pipeline-ws-")
+        val report = tmpWs.resolve("r.xml")
+        Files.writeString(
+            report,
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
+            """.trimIndent(),
+        )
+        val saved = System.getProperty("pipeline.workspace.root")
+        try {
+            System.setProperty("pipeline.workspace.root", tmpWs.toString())
+            val definition = JUnitResultsStepDefinition()
+            val ctx = newContext()
+            val input = JUnitResultsInput(reportPath = "r.xml", workspaceRoot = "")
+            val summary = definition.handler.execute(input, ctx)
+            assertEquals(1, summary.tests)
+            assertEquals(report.toString(), summary.reportPath)
+        } finally {
+            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
+            Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+        }
+    }
+
+    @Test
+    fun `handler falls back to pipeline workspace when workspaceRoot points at a non-existent directory`() = runBlocking {
+        val tmpWs = Files.createTempDirectory("junit-pipeline-ws-")
+        val report = tmpWs.resolve("r.xml")
+        Files.writeString(
+            report,
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
+            """.trimIndent(),
+        )
+        val saved = System.getProperty("pipeline.workspace.root")
+        try {
+            System.setProperty("pipeline.workspace.root", tmpWs.toString())
+            val definition = JUnitResultsStepDefinition()
+            val ctx = newContext()
+            val input = JUnitResultsInput(
+                reportPath = "r.xml",
+                workspaceRoot = "/nonexistent/should/never/be/used",
+            )
+            val summary = definition.handler.execute(input, ctx)
+            assertEquals(1, summary.tests)
+            assertEquals(report.toString(), summary.reportPath)
+        } finally {
+            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
+            Files.walk(tmpWs).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+        }
+    }
+
+    @Test
+    fun `handler respects absolute workspaceRoot even when system property is set`() = runBlocking {
+        val tmpWs1 = Files.createTempDirectory("junit-pipeline-ws-a-")
+        val tmpWs2 = Files.createTempDirectory("junit-pipeline-ws-b-")
+        // Put a file in tmpWs2 with one test; tmpWs1 has zero tests.
+        val report = tmpWs2.resolve("a.xml")
+        Files.writeString(
+            report,
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <testsuite name="X" tests="1" failures="0" errors="0" skipped="0" time="0.0"/>
+            """.trimIndent(),
+        )
+        val saved = System.getProperty("pipeline.workspace.root")
+        try {
+            // System property points at ws1, but the caller explicitly set
+            // workspaceRoot to ws2 (absolute). The handler MUST use ws2.
+            System.setProperty("pipeline.workspace.root", tmpWs1.toString())
+            val definition = JUnitResultsStepDefinition()
+            val ctx = newContext()
+            val input = JUnitResultsInput(reportPath = "a.xml", workspaceRoot = tmpWs2.toString())
+            val summary = definition.handler.execute(input, ctx)
+            assertEquals(1, summary.tests)
+        } finally {
+            if (saved != null) System.setProperty("pipeline.workspace.root", saved) else System.clearProperty("pipeline.workspace.root")
+            for (d in listOf(tmpWs1, tmpWs2)) {
+                Files.walk(d).sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+        }
+    }
+
     // -- helpers ----------------------------------------------------------
 
     private object EmptyCapabilityAccess : StepCapabilityAccess {

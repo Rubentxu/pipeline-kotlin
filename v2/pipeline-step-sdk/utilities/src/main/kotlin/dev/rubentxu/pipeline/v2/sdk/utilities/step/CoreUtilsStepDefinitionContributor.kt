@@ -48,16 +48,17 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
     private val sha256Step: CoreUtilsSha256StepDefinition = CoreUtilsSha256StepDefinition()
     private val readYamlStep: CoreUtilsReadYamlStepDefinition = CoreUtilsReadYamlStepDefinition()
     private val writeYamlStep: CoreUtilsWriteYamlStepDefinition = CoreUtilsWriteYamlStepDefinition()
+    private val findFilesStep: CoreUtilsFindFilesStepDefinition = CoreUtilsFindFilesStepDefinition()
 
     override fun definitions(): Iterable<StepDefinition<*, *>> =
-        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep)
+        listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
         val provider = buildProvider()
         val manifest = buildManifest(provider)
         PluginManifestValidator.validate(
             manifest,
-            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep),
+            listOf(readJsonStep, writeJsonStep, sha256Step, readYamlStep, writeYamlStep, findFilesStep),
         )
         return listOf(
             StepRegistration(readJsonStep, provider),
@@ -65,6 +66,7 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepRegistration(sha256Step, provider),
             StepRegistration(readYamlStep, provider),
             StepRegistration(writeYamlStep, provider),
+            StepRegistration(findFilesStep, provider),
         )
     }
 
@@ -135,6 +137,10 @@ class CoreUtilsStepDefinitionContributor : StepDefinitionContributor {
             StepManifest(
                 stepKey = CoreUtilsWriteYamlKey.VALUE,
                 declaredCapabilities = writeYamlStep.contract.requiredCapabilities,
+            ),
+            StepManifest(
+                stepKey = CoreUtilsFindFilesKey.VALUE,
+                declaredCapabilities = findFilesStep.contract.requiredCapabilities,
             ),
         ),
     )

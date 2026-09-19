@@ -22,6 +22,10 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlPayload
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FileEntry
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesOutput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -82,6 +86,7 @@ class CoreUtilsStepContractSuiteTest {
     private val sha256Step = CoreUtilsSha256StepDefinition()
     private val readYamlStep = CoreUtilsReadYamlStepDefinition()
     private val writeYamlStep = CoreUtilsWriteYamlStepDefinition()
+    private val findFilesStep = CoreUtilsFindFilesStepDefinition()
 
     private fun stubWorkspaceRoot(): Path = tempDir.resolve("workspace").also { Files.createDirectories(it) }
 
@@ -1112,5 +1117,294 @@ class CoreUtilsStepContractSuiteTest {
         assertNotNull(out.absolutePath)
         assertNotNull(out.sha256Hex)
         assertEquals(64, out.sha256Hex!!.length)
+    }
+
+    // ==========================================================================
+    //  core-utils.findFiles (Slice 2 / S2.3) — Jenkins-reference Step.
+    //
+    //  Reference: pipeline-utility-steps-plugin FindFilesStep (MIT, CloudBees).
+    //  Notes recorded in docs/v2/07-uat/S2_FINDFILES_JENKINS_REFERENCE.md.
+    // ==========================================================================
+
+    // -------- identity --------
+
+    @Test
+    fun `identity — findFiles Key is core-utils dot findFiles`() {
+        assertEquals(PluginStepId("core-utils.findFiles"), CoreUtilsFindFilesKey.VALUE)
+        assertEquals("core-utils.findFiles", CoreUtilsFindFilesKey.VALUE.value)
+    }
+
+    // -------- contract completeness --------
+
+    @Test
+    fun `contract — findFiles declares READ_ONLY, MEMOIZED, WORKSPACE_IDENTITY_CAPABILITY`() {
+        val c = findFilesStep.contract
+        assertEquals(CoreUtilsFindFilesKey.VALUE, c.key)
+        assertEquals(Effect.READ_ONLY, c.descriptor.effects.single())
+        assertEquals(ReplayPolicy.MEMOIZED, c.descriptor.replayPolicy)
+        assertEquals(setOf(WORKSPACE_IDENTITY_CAPABILITY), c.requiredCapabilities)
+        assertNotNull(c.inputCodec)
+        assertNotNull(c.outputCodec)
+    }
+
+    // -------- codec roundtrip --------
+
+    @Test
+    fun `codec findFiles input — roundtrip preserves base + pattern variants`() {
+        val none = FindFilesInput(base = "sub")
+        assertEquals(none, CoreUtilsFindFilesInputCodec.decode(
+            CoreUtilsFindFilesInputCodec.encode(none),
+        ))
+
+        val withGlob = FindFilesInput(
+            base = "anywhere",
+            pattern = FindFilesPattern.Glob(glob = "*.txt", excludes = "build/**"),
+        )
+        assertEquals(withGlob, CoreUtilsFindFilesInputCodec.decode(
+            CoreUtilsFindFilesInputCodec.encode(withGlob),
+        ))
+    }
+
+    @Test
+    fun `codec findFiles output — roundtrip preserves basePath + patternEcho + files`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "alpha")
+        Files.writeString(ws.resolve("b.txt"), "beta")
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("*.txt")),
+            handlerContext(ws),
+        )
+        val decoded = CoreUtilsFindFilesOutputCodec.decode(CoreUtilsFindFilesOutputCodec.encode(out))
+        assertEquals(out, decoded)
+        assertEquals(FindFilesPattern.Glob("*.txt"), decoded.patternEcho)
+    }
+
+    // -------- canonical envelope --------
+
+    @Test
+    fun `envelope — findFiles input codec emits a well-formed JSON object (durable eligible)`() {
+        val encoded = CoreUtilsFindFilesInputCodec.encode(
+            FindFilesInput(base = "x", pattern = FindFilesPattern.Glob("**/*.txt", null)),
+        )
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(encoded.value)
+        assertTrue(parsed is JsonObject, "input envelope must be a JSON object")
+    }
+
+    // -------- success (Jenkins FindFilesStepTest contract) --------
+
+    @Test
+    fun `success — findFiles no glob returns direct children only (Jenkins simpleList)`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("1.txt"), "x")
+        Files.writeString(ws.resolve("2.txt"), "x")
+        Files.createDirectories(ws.resolve("a"))
+        Files.writeString(ws.resolve("a").resolve("3.txt"), "x")
+        Files.createDirectories(ws.resolve("b"))
+        Files.writeString(ws.resolve("b").resolve("11.txt"), "x")
+
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.None),
+            handlerContext(ws),
+        )
+        val names = out.files.map { it.name }.toSet()
+        // Direct children only: the two files plus the two directories.
+        assertEquals(setOf("1.txt", "2.txt", "a", "b"), names)
+        // And nothing deeper: no path contains a slash BEFORE the trailing
+        // slash (directories report `subdir/`, never `parent/subdir/`).
+        assertTrue(out.files.none { it.path.removeSuffix("/").contains("/") })
+    }
+
+    @Test
+    fun `success — findFiles recursive glob returns all matching files (Jenkins listAll)`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        // Build a tree mirroring Jenkins' FindFilesStepTest.setUp
+        Files.writeString(ws.resolve("1.txt"), "x")
+        Files.writeString(ws.resolve("2.txt"), "x")
+        Files.createDirectories(ws.resolve("a"))
+        Files.writeString(ws.resolve("a").resolve("3.txt"), "x")
+        Files.writeString(ws.resolve("a").resolve("4.txt"), "x")
+        Files.createDirectories(ws.resolve("a/aa"))
+        Files.writeString(ws.resolve("a/aa").resolve("5.txt"), "x")
+        Files.writeString(ws.resolve("a/aa").resolve("6.txt"), "x")
+        Files.createDirectories(ws.resolve("a/ab"))
+        Files.writeString(ws.resolve("a/ab").resolve("7.txt"), "x")
+        Files.writeString(ws.resolve("a/ab").resolve("8.txt"), "x")
+        Files.createDirectories(ws.resolve("a/ab/aba"))
+        Files.writeString(ws.resolve("a/ab/aba").resolve("9.txt"), "x")
+        Files.writeString(ws.resolve("a/ab/aba").resolve("10.txt"), "x")
+        Files.createDirectories(ws.resolve("b"))
+        Files.writeString(ws.resolve("b").resolve("11.txt"), "x")
+        Files.writeString(ws.resolve("b").resolve("12.txt"), "x")
+
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("**/*.txt")),
+            handlerContext(ws),
+        )
+        // Mirrors Jenkins' FindFilesStepTest.listAll: the recursive scan
+        // returns every file (12 in their tree); a `*.txt` include would
+        // filter to 8. We assert the larger set because the includes glob
+        // is recursive.
+        val paths = out.files.map { it.path }.toSet()
+        assertTrue("1.txt" in paths && "2.txt" in paths)
+        assertTrue("a/3.txt" in paths && "a/4.txt" in paths)
+        assertTrue("a/aa/5.txt" in paths && "a/aa/6.txt" in paths)
+        assertTrue("a/ab/7.txt" in paths && "a/ab/8.txt" in paths)
+        assertTrue("b/11.txt" in paths && "b/12.txt" in paths)
+        assertEquals(12, out.files.size)
+    }
+
+    @Test
+    fun `success — findFiles sub-tree glob matches only nested files (Jenkins listSome)`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.createDirectories(ws.resolve("a"))
+        Files.writeString(ws.resolve("1.txt"), "x")
+        Files.writeString(ws.resolve("a").resolve("3.txt"), "x")
+        Files.writeString(ws.resolve("a").resolve("4.txt"), "x")
+        Files.createDirectories(ws.resolve("a/aa"))
+        Files.writeString(ws.resolve("a/aa").resolve("5.txt"), "x")
+
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("a/*.txt")),
+            handlerContext(ws),
+        )
+        val paths = out.files.map { it.path }.toSet()
+        assertEquals(setOf("a/3.txt", "a/4.txt"), paths)
+    }
+
+    @Test
+    fun `success — findFiles excludes drops matches (Jenkins listSomeWithExclusions)`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("1.txt"), "x")
+        Files.writeString(ws.resolve("2.txt"), "x")
+        Files.createDirectories(ws.resolve("a"))
+        Files.writeString(ws.resolve("a").resolve("3.txt"), "x")
+        Files.writeString(ws.resolve("a").resolve("4.txt"), "x")
+        Files.createDirectories(ws.resolve("a/aa"))
+        Files.writeString(ws.resolve("a/aa").resolve("5.txt"), "x")
+        Files.createDirectories(ws.resolve("b"))
+        Files.writeString(ws.resolve("b").resolve("11.txt"), "x")
+
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(
+                base = ".",
+                pattern = FindFilesPattern.Glob("**/*.txt", excludes = "b/*.txt"),
+            ),
+            handlerContext(ws),
+        )
+        val paths = out.files.map { it.path }.toSet()
+        assertTrue("1.txt" in paths && "2.txt" in paths)
+        assertTrue("a/3.txt" in paths && "a/4.txt" in paths)
+        assertTrue("a/aa/5.txt" in paths)
+        assertTrue("b/11.txt" !in paths)
+    }
+
+    // -------- FileEntry shape --------
+
+    @Test
+    fun `success — findFiles returns FileEntry with all five fields populated`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("hello.txt"), "hello")
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("*.txt")),
+            handlerContext(ws),
+        )
+        assertEquals(1, out.files.size)
+        val entry: FileEntry = out.files.single()
+        assertEquals("hello.txt", entry.name)
+        assertEquals("hello.txt", entry.path)
+        assertFalse(entry.directory)
+        assertEquals(5L, entry.length)
+        assertTrue(entry.lastModified > 0L)
+    }
+
+    @Test
+    fun `success — findFiles directories appear with trailing slash and directory=true`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.createDirectories(ws.resolve("subdir"))
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.None),
+            handlerContext(ws),
+        )
+        val entry = out.files.single()
+        assertEquals("subdir", entry.name)
+        assertEquals("subdir/", entry.path)
+        assertTrue(entry.directory)
+    }
+
+    // -------- typed failure --------
+
+    @Test
+    fun `typed failure — findFiles on missing base raises USER class`() {
+        val ws = stubWorkspaceRoot()
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                findFilesStep.handler.execute(
+                    FindFilesInput(base = "does-not-exist", pattern = FindFilesPattern.None),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("does not exist"))
+    }
+
+    @Test
+    fun `typed failure — findFiles on file (not directory) raises USER class`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a-file.txt"), "x")
+        val ex = assertThrows(PluginStepException::class.java) {
+            runBlocking {
+                findFilesStep.handler.execute(
+                    FindFilesInput(base = "a-file.txt", pattern = FindFilesPattern.None),
+                    handlerContext(ws),
+                )
+            }
+        }
+        assertTrue(ex.failure.message!!.contains("not a directory"))
+    }
+
+    // -------- replay / determinism --------
+
+    @Test
+    fun `replay — findFiles output is deterministic for identical workspace contents`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        Files.writeString(ws.resolve("a.txt"), "x")
+        Files.writeString(ws.resolve("b.txt"), "x")
+
+        val a = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("*.txt")),
+            handlerContext(ws),
+        )
+        val b = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("*.txt")),
+            handlerContext(ws),
+        )
+        assertEquals(a.files.map { it.path }, b.files.map { it.path })
+    }
+
+    // -------- security --------
+
+    @Test
+    fun `security — findFiles does NOT follow symlinks (symlink target outside base is not enumerated)`() = runBlocking {
+        val ws = stubWorkspaceRoot()
+        // Create a directory outside the workspace containing a target file.
+        val outside = tempDir.resolve("outside")
+        Files.createDirectories(outside)
+        Files.writeString(outside.resolve("secret.txt"), "secret")
+
+        // Drop a symlink inside the workspace pointing at the outside dir.
+        val linkPath = ws.resolve("link-out")
+        java.nio.file.Files.createSymbolicLink(linkPath, outside)
+        Files.writeString(ws.resolve("real.txt"), "x")
+
+        val out = findFilesStep.handler.execute(
+            FindFilesInput(base = ".", pattern = FindFilesPattern.Glob("**/*.txt")),
+            handlerContext(ws),
+        )
+        val paths = out.files.map { it.path }
+        // The real file is matched. The symlink is not traversed, so the
+        // outside target's contents are not enumerated.
+        assertTrue("real.txt" in paths)
+        assertFalse(paths.any { it.startsWith("link-out/") })
+        assertFalse(paths.any { it.endsWith("secret.txt") })
     }
 }

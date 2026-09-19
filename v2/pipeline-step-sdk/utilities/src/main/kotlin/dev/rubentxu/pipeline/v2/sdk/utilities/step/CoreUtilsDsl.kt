@@ -12,6 +12,8 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlPayload
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
+import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -31,6 +33,7 @@ fun coreUtilsWriteJsonStepKey(): PluginStepId = CoreUtilsWriteJsonKey.VALUE
 fun coreUtilsSha256StepKey(): PluginStepId = CoreUtilsSha256Key.VALUE
 fun coreUtilsReadYamlStepKey(): PluginStepId = CoreUtilsReadYamlKey.VALUE
 fun coreUtilsWriteYamlStepKey(): PluginStepId = CoreUtilsWriteYamlKey.VALUE
+fun coreUtilsFindFilesStepKey(): PluginStepId = CoreUtilsFindFilesKey.VALUE
 
 /**
  * `core-utils.readJson` DSL façade.
@@ -237,6 +240,38 @@ fun StageScope.writeYamlMultiple(
     val encoded: EncodedStepValue = CoreUtilsWriteYamlInputCodec.encode(input)
     registryStep(
         stepKey = coreUtilsWriteYamlStepKey(),
+        encodedInput = encoded,
+    )
+}
+
+/**
+ * `core-utils.findFiles` DSL façade (file-system scanner).
+ *
+ * Enumerates entries under a workspace-relative directory, optionally
+ * filtered by a glob and an exclusion glob. An empty glob lists direct
+ * children (Jenkins `findFiles()` default). The handler never follows
+ * symlinks — they appear in the listing as themselves.
+ *
+ * @param base workspace-relative or absolute path to scan.
+ * @param glob optional glob pattern. Java NIO glob syntax.
+ *   Use `*.txt` for direct children, or `two stars slash star.txt` for
+ *   recursive matching.
+ * @param excludes optional glob pattern to drop matches against.
+ */
+fun StageScope.findFiles(
+    base: String,
+    glob: String? = null,
+    excludes: String? = null,
+) {
+    val pattern: FindFilesPattern = if (glob == null) {
+        FindFilesPattern.None
+    } else {
+        FindFilesPattern.Glob(glob = glob, excludes = excludes)
+    }
+    val input = FindFilesInput(base = base, pattern = pattern)
+    val encoded: EncodedStepValue = CoreUtilsFindFilesInputCodec.encode(input)
+    registryStep(
+        stepKey = coreUtilsFindFilesStepKey(),
         encodedInput = encoded,
     )
 }

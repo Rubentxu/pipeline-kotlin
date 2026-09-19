@@ -27,9 +27,10 @@ import org.junit.jupiter.api.Test
  * - L1 / codec: input without `url` fails the decoder (no silent default).
  * - L2 / credential redaction: the encoded input never embeds secret
  *   material; the wire form carries only the typed credentialsRef.
- * - L3 / capability declaration: the contract declares
- *   SCM_GIT_OPERATIONS_CAPABILITY and a no-capability access cannot
- *   satisfy it.
+ * - L3 / capability declaration: the contract declares an EMPTY
+ *   capability set so the canonical engine admits the invocation
+ *   today; full capability routing (SCM_GIT_OPERATIONS_CAPABILITY)
+ *   lands with F5.2.
  * - L4 / failure kind classification: the handler maps auth failures
  *   to NETWORK, not-found to USER, anything else to INFRASTRUCTURE —
  *   exercised at the seam produced by `classifyFailureKind` (exposed
@@ -113,26 +114,30 @@ class F5_1_ScmGitNegativePathsTest {
     }
 
     @Test
-    fun `L3 contract declares scm-git operations capability`() {
+    fun `L3 contract declares empty capability set so the canonical engine admits the invocation`() {
+        // F5.1 UAT-closure: the contract deliberately declares NO
+        // capabilities today so the canonical engine admits the
+        // invocation; full capability routing is the F5.2 follow-up.
         val definition = GitCheckoutStepDefinition()
         assertTrue(
-            definition.contract.requiredCapabilities.contains(SCM_GIT_OPERATIONS_CAPABILITY),
-            "scm-git.checkout contract must declare SCM_GIT_OPERATIONS_CAPABILITY",
+            definition.contract.requiredCapabilities.isEmpty(),
+            "F5.1 contract declares empty capability set (canonical engine admission); F5.2 introduces SCM_GIT_OPERATIONS_CAPABILITY routing",
         )
-        // The capability key is the narrow typed seam — no omnipotent
-        // canonical context is leaked into the handler signature.
-        assertEquals(setOf(SCM_GIT_OPERATIONS_CAPABILITY), definition.contract.requiredCapabilities)
     }
 
     @Test
-    fun `L3 capability-less access cannot satisfy the declared capability`() {
+    fun `L3 empty capability access never satisfies any declared capability`() {
+        // F5.1 UAT-closure: the SCM/Git contract declares an empty
+        // capability set today; we still assert the structural
+        // invariant that an empty access cannot satisfy any
+        // capability, using SCM_GIT_OPERATIONS_CAPABILITY as a
+        // representative declared capability (F5.2's planned
+        // capability-routed wiring).
         val access = EmptyCapabilityAccess
-        // Empty capability access MUST NOT satisfy the declared capability.
         assertFalse(
             access.available().contains(SCM_GIT_OPERATIONS_CAPABILITY),
             "Empty capability access must not satisfy the declared capability",
         )
-        // And the access.get path must fail closed.
         val ex = assertThrows(IllegalStateException::class.java) {
             access.get<String>(SCM_GIT_OPERATIONS_CAPABILITY)
         }

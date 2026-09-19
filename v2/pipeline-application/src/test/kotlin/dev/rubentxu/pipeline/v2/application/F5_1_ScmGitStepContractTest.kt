@@ -93,7 +93,10 @@ class F5_1_ScmGitStepContractTest {
         assertTrue(contract.descriptor.effects.contains(Effect.EXECUTES_SUBPROCESS))
         assertEquals(ReplayPolicy.MEMOIZED, contract.descriptor.replayPolicy)
         assertNotNull(contract.descriptor.recoveryPolicy)
-        assertEquals(SCM_GIT_OPERATIONS_CAPABILITY, contract.requiredCapabilities.single())
+        // F5.1 UAT-closure: the contract declares an empty capability set
+        // so the canonical engine admits the invocation; capability-routed
+        // workspace root lands with F5.2.
+        assertTrue(contract.requiredCapabilities.isEmpty())
     }
 
     @Test
@@ -261,7 +264,14 @@ class F5_1_ScmGitStepContractTest {
     }
 
     @Test
-    fun `ScmGitStepDefinitionContributor refuses to register without build-time digest properties`() {
+    fun `ScmGitStepDefinitionContributor refuses to register when digest is malformed even with build-time provenance present`() {
+        // F5.1 UAT-closure: the contributor accepts build-time provenance
+        // from system properties OR from META-INF/scm-git-release.properties
+        // (whichever wins). The fail-closed invariant we still enforce is
+        // that a MALFORMED digest (not 'sha256:<64-hex>') is rejected.
+        // We override the publisher / namespace / version with valid
+        // values via system properties and tamper with the digest to
+        // prove the structural guard stays.
         val keys = listOf(
             "pipeline.scm-git.publisher",
             "pipeline.scm-git.namespace",
@@ -269,17 +279,17 @@ class F5_1_ScmGitStepContractTest {
             "pipeline.scm-git.release.digest",
         )
         val previous = keys.associateWith { System.getProperty(it) }
-        keys.forEach { System.clearProperty(it) }
+        System.setProperty("pipeline.scm-git.publisher", "pipeline-kotlin")
+        System.setProperty("pipeline.scm-git.namespace", "pipeline.scm-git")
+        System.setProperty("pipeline.scm-git.release.version", "0.36.0")
+        System.setProperty("pipeline.scm-git.release.digest", "not-a-valid-digest")
         try {
-            val ex = assertThrows(IllegalStateException::class.java) {
-                ScmGitStepDefinitionContributor.registrations().toList()
+            val ex = assertThrows(IllegalArgumentException::class.java) {
+                ScmGitStepDefinitionContributor().registrations().toList()
             }
-            // The contributor fail-closed diagnostic MUST name the missing
-            // build-time property. We assert against any of them since the
-            // first null read throws (order is publisher -> digest).
             assertTrue(
-                keys.any { ex.message!!.contains(it) },
-                "Expected the fail-closed diagnostic to mention one of the SCM/Git build-time properties, got: ${ex.message}",
+                ex.message!!.contains("sha256"),
+                "Expected the structural guard to mention the sha256: prefix, got: ${ex.message}",
             )
         } finally {
             previous.forEach { (k, v) ->
@@ -328,7 +338,7 @@ class F5_1_ScmGitStepContractTest {
             System.setProperty("pipeline.scm-git.namespace", namespace)
             System.setProperty("pipeline.scm-git.release.version", version)
             System.setProperty("pipeline.scm-git.release.digest", digestSha256)
-            val registration = ScmGitStepDefinitionContributor.registrations().single()
+            val registration = ScmGitStepDefinitionContributor().registrations().single()
             registry.register(registration)
             return registration.provider
         } finally {

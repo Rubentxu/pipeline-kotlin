@@ -104,6 +104,13 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
         "-p", pluginDir.absolutePath,
         "--console=plain",
         "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        // Pass the SDK version the external plugin must resolve. Without this the
+        // plugin's default sdkVersion is 0.1.0-SNAPSHOT, which is not in the local
+        // sdk-repo (it carries the root project version 0.39.0). The --rerun-tasks
+        // failure mode observed 2026-09-19 was caused by this omission: the example
+        // build re-resolved the SDK from scratch, hit the default version, and could
+        // not find the module.
+        "-PsdkVersion=" + rootProject.version.toString(),
         "jar",
     )
 }

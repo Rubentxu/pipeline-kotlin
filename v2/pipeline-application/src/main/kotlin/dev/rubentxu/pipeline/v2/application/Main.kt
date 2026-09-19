@@ -574,6 +574,14 @@ fun main(args: Array<String>) {
     } else {
         dbPath.parent.resolve("durable-shell")
     }
+    // F5.1 UAT-closure: when --workspace is supplied, publish the resolved workspace
+    // root to the system property the SCM/Git OFFICIAL_PLUGIN handler reads. The
+    // canonical engine passes the workspaceBase to core Steps; plugin handlers that
+    // close over SDK primitives today read this system property instead. F5.2
+    // replaces this with a real capability-routed workspace root.
+    if (config.workspace != null) {
+        System.setProperty("pipeline.workspace.root", config.workspace)
+    }
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
     val runSelection = try {
         selectDurableRun(

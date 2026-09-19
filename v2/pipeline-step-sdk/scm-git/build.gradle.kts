@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-step-sdk:runtime"))
+    implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
 

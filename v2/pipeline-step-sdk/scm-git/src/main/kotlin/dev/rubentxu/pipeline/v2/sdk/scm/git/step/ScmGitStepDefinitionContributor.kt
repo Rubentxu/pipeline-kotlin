@@ -45,7 +45,7 @@ import java.nio.file.Path
  * and `pipeline.scm-git.namespace`. Defaults: `pipeline-kotlin` and
  * `pipeline.scm-git`.
  */
-object ScmGitStepDefinitionContributor : StepDefinitionContributor {
+class ScmGitStepDefinitionContributor : StepDefinitionContributor {
 
     override val id: String = "scm-git"
 
@@ -70,18 +70,28 @@ object ScmGitStepDefinitionContributor : StepDefinitionContributor {
     }
 
     /**
-     * The publisher / version / digest / namespace come from Gradle
-     * properties (computed at JAR build time). Fail-closed if any of
-     * them is missing — the contract requires real provenance, not
-     * self-declared values.
+     * The publisher / version / digest / namespace come from build-time
+     * provenance (Gradle writes them to `META-INF/scm-git-release.properties`
+     * inside the JAR). System properties override the resource values when
+     * present so tests can pin metadata without rebuilding the JAR.
+     *
+     * Fail-closed if neither source yields the publisher / digest — the
+     * contract requires real provenance, not self-declared values.
      */
     private fun buildProvider(): StepProviderMetadata {
+        val releaseProps = loadReleaseProperties()
         val publisher = System.getProperty("pipeline.scm-git.publisher")
-            ?: error("Missing system property 'pipeline.scm-git.publisher' (set it in build.gradle.kts before assembling the SCM/Git OFFICIAL_PLUGIN)")
-        val namespace = System.getProperty("pipeline.scm-git.namespace") ?: "pipeline.scm-git"
-        val versionRaw = System.getProperty("pipeline.scm-git.release.version") ?: "0.0.0-dev"
+            ?: releaseProps["pipeline.scm-git.publisher"]
+            ?: error("Missing publisher provenance (no system property 'pipeline.scm-git.publisher' and no META-INF/scm-git-release.properties in the JAR). The SCM/Git OFFICIAL_PLUGIN refuses to register without it.")
+        val namespace = System.getProperty("pipeline.scm-git.namespace")
+            ?: releaseProps["pipeline.scm-git.namespace"]
+            ?: "pipeline.scm-git"
+        val versionRaw = System.getProperty("pipeline.scm-git.release.version")
+            ?: releaseProps["pipeline.scm-git.release.version"]
+            ?: "0.0.0-dev"
         val digestRaw = System.getProperty("pipeline.scm-git.release.digest")
-            ?: error("Missing system property 'pipeline.scm-git.release.digest' — the SCM/Git OFFICIAL_PLUGIN refuses to register without the real SHA-256 of its own JAR. Run `:pipeline-step-sdk:scm-git:jar` first; the digest is computed by the build.")
+            ?: releaseProps["pipeline.scm-git.release.digest"]
+            ?: error("Missing digest provenance (no system property 'pipeline.scm-git.release.digest' and no META-INF/scm-git-release.properties in the JAR). The SCM/Git OFFICIAL_PLUGIN refuses to register without the real SHA-256 of its own artefact.")
         val semver = parseSemVer(versionRaw)
         val plugin: ResourceRef = ResourceRefs.plugin(namespace, "scm-git")
         val release = PluginReleaseRef(
@@ -114,6 +124,29 @@ object ScmGitStepDefinitionContributor : StepDefinitionContributor {
         ),
     )
 
+    /**
+     * Reads `META-INF/scm-git-release.properties` from the classpath if
+     * present. Returns an empty map otherwise (the system-property path
+     * still works for tests that pin metadata explicitly).
+     */
+    private fun loadReleaseProperties(): Map<String, String> {
+        val resource = javaClass.classLoader.getResource("META-INF/scm-git-release.properties")
+            ?: return emptyMap()
+        val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
+        val map = linkedMapOf<String, String>()
+        for (line in text.lineSequence()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+            val idx = trimmed.indexOf('=')
+            if (idx > 0) {
+                val k = trimmed.substring(0, idx).trim()
+                val v = trimmed.substring(idx + 1).trim()
+                map[k] = v
+            }
+        }
+        return map
+    }
+
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")
         require(parts.size == 3) {
@@ -124,6 +157,17 @@ object ScmGitStepDefinitionContributor : StepDefinitionContributor {
             minor = parts[1].toInt(),
             patch = parts[2].toInt(),
         )
+    }
+
+    companion object {
+        /**
+         * Singleton access used by tests and the legacy `registerScmGit`
+         * helper. ServiceLoader-driven discovery instantiates a fresh
+         * instance via the public no-arg constructor; both paths converge
+         * on the same [registrations] implementation.
+         */
+        @JvmStatic
+        fun instance(): ScmGitStepDefinitionContributor = ScmGitStepDefinitionContributor()
     }
 }
 
@@ -158,13 +202,13 @@ fun StepRegistry.registerScmGit(
     val saved = prev.map { (k, _) -> k to System.getProperty(k) }
     prev.forEach { (k, v) -> System.setProperty(k, v) }
     try {
-        ScmGitStepDefinitionContributor.registrations().forEach { register(it) }
+        ScmGitStepDefinitionContributor().registrations().forEach { register(it) }
     } finally {
         saved.forEach { (k, prev) ->
             if (prev == null) System.clearProperty(k) else System.setProperty(k, prev)
         }
     }
-    return ScmGitStepDefinitionContributor.registrations().first().provider
+    return ScmGitStepDefinitionContributor().registrations().first().provider
 }
 
 /**

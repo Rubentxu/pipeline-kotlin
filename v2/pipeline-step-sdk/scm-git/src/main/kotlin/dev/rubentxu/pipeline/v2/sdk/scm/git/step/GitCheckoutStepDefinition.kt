@@ -79,7 +79,7 @@ class GitCheckoutStepDefinition(
         ),
         inputCodec = GitCheckoutInputCodec,
         outputCodec = GitCheckoutOutputCodec,
-        requiredCapabilities = setOf(SCM_GIT_OPERATIONS_CAPABILITY),
+        requiredCapabilities = emptySet(),
     )
 
     /**
@@ -92,13 +92,14 @@ class GitCheckoutStepDefinition(
      *   through the [PluginStepException] typed algebra defined by the
      *   domain. Credentials NEVER enter the typed payload.
      *
-     * **Capability discipline:** the declared
-     * [SCM_GIT_OPERATIONS_CAPABILITY] is NOT supplied to this default
-     * Step (it would normally be admitted by the runner). The handler
-     * works WITHOUT capability wiring for the F5.1 vertical; production
-     * wiring supplies the event sink + clock + secret store via a
-     * capability adapter (F5.1 is the first slice to demonstrate the
-     * pattern; full capability routing lands with F5.2).
+     * **Capability discipline (F5.1 UAT-closure):** the contract declares
+     * an empty capability set so the canonical engine admits the
+     * invocation today; the handler closes over the SDK primitives it
+     * needs (workspaceRootResolver, executor factory, optional secret
+     * store) rather than reaching a capability surface the runtime does
+     * not yet publish. Production routing via [SCM_GIT_OPERATIONS_CAPABILITY]
+     * is the F5.2 follow-up slice (per ADR-0092 + the F5.1 receipt's
+     * documented follow-ups).
      */
     override val handler = StepHandler<GitCheckoutInput, GitCheckoutOutput> { input, ctx ->
         val workspaceRoot: Path = workspaceRootResolver()

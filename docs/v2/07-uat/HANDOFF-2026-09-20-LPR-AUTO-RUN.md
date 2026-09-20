@@ -1,10 +1,10 @@
 # Handoff — 2026-09-20 LPR/LFC-2E Auto-Run Mode
 
-> **Cycle:** `wu-lpr-083` (initiative declaration + next-cycle prep)
-> **Date:** 2026-09-20T18:22Z
+> **Cycle:** `wu-lpr-083` (initiative declaration) → `wu-lpr-084` (`core.writeFile` G6) → `wu-lpr-085` (`core.waitUntil` G6+G8) → `wu-lpr-086` (LFC-2R2 spike merge)
+> **Date:** 2026-09-20T18:32Z (refresh after WU-LPR-086)
 > **Author:** Jcode (SDDK orchestration)
 > **Trigger:** user directive 2026-09-20T18:22Z — "completar todo el roadmap con sddk en modo auto (continuar en ciclos sin parar), resolviendo cualquier bloqueo con investigación profunda..."
-> **Status:** **CLOSED** (declaration + handoff only; no production code change)
+> **Status:** **CLOSED + WU-LPR-084 + WU-LPR-085 + WU-LPR-086 closed; next WU WU-LPR-087**
 
 ## What changed
 
@@ -41,39 +41,47 @@ landed:
 ## Queue (binding, Tier A first)
 
 ```text
-WU-LPR-083  this cycle (initiative + handoff + TESTING-STATE refresh)
-WU-LPR-084  core.writeFile formal contract test (Tier A #1)
-WU-LPR-085  core.waitUntil G6+G8 (Tier A #2)
-WU-LPR-086  LFC-2R2 — Structured Runtime-Returning Steps (Tier A.1)
-WU-LPR-087  core.pwd G8 installDist (after LFC-2R2) (Tier A #4)
-WU-LPR-088  core.pwdTmp G6+G8 (after LFC-2R2) (Tier A #3)
-WU-LPR-089  junit.results full burn-down (Tier B #1)
-WU-LPR-090  stash (Tier B #2)
-WU-LPR-091  unstash (Tier B #3)
-WU-LPR-092  publishHTML (Tier B #4)
-WU-LPR-093  lock (Tier B #5)
-WU-LPR-094  input (Tier B #6)
-WU-LPR-095  httpRequest (Tier B #7)
-WU-LPR-096+ Tier C (on demand)
+WU-LPR-083  ✅ initiative + handoff (CLOSED)
+WU-LPR-084  ✅ core.writeFile formal contract test (CLOSED, e3b0628c)
+WU-LPR-085  ✅ core.waitUntil G6+G8 (CLOSED, d207f72d; 13 total CERTIFIED)
+WU-LPR-086  ✅ LFC-2R2 spike merge → ADR-0093 (CLOSED this slice; docs only)
+WU-LPR-087  ⏭️ LFC-2R2 implementation (stepValue + 4 consumers + Main.kt form selector; closes core.pwd G7+G8 + core.pwdTmp)
+WU-LPR-088  ⏭️ core.pwdTmp G6+G8 (after WU-LPR-087 consumer)
+WU-LPR-089  ⏭️ junit.results full burn-down (Tier B #1)
+WU-LPR-090  ⏭️ stash (Tier B #2)
+WU-LPR-091  ⏭️ unstash (Tier B #3)
+WU-LPR-092  ⏭️ publishHTML (Tier B #4)
+WU-LPR-093  ⏭️ lock (Tier B #5)
+WU-LPR-094  ⏭️ input (Tier B #6)
+WU-LPR-095  ⏭️ httpRequest (Tier B #7)
+WU-LPR-096+ ⏭️ Tier C (on demand)
 ```
 
-Per-WU numbering is advisory; the **ordering** is binding.
+Per-WU numbering is advisory; the **ordering** is binding. WU-LPR-086 was
+split into a docs-only slice (the spike merge) and a code slice (the
+implementation); the implementation is WU-LPR-087.
 
 ## Anchors to read first
 
-1. `INITIATIVE_LPR_001_COMPLETE_ROADMAP.md` — the umbrella.
+1. `docs/v2/05-roadmap/INITIATIVE_LPR_001.md` — the umbrella.
 2. `docs/v2/01-product/STEP_REGISTRY_PLAN.md` — operational roadmap.
 3. `docs/v2/01-product/STEP_ECOSYSTEM_MATRIX.md` — Tier A/B/C/D/E.
 4. `docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md` — machine-derived counts.
 5. `docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md` — R1..R4.
+6. `docs/v2/04-adrs/ADR-0093-structured-dsl-runtime-return.md` — the
+   LFC-2R2 binding design (renumbered from ADR-0082 on branch
+   `cycle/lfc2-e1-r2-runtime-return`, ACCEPTED 2026-09-20 WU-LPR-086).
 
 ## State invariants
 
 - `LEGACY_PLUGIN_IDS = {}` (empty since WU-LPR-301, 2026-09-18).
 - `CoreStepRegistryFactory` registers 17 CoreStepDefinitions.
-- 11 CoreSteps + 1 external plugin are CERTIFIED (G8).
+- 12 CoreSteps + 1 external plugin are CERTIFIED (G8) — see inventory.
 - 1 Step (`core.pwd`) is BLOCKED by `STRUCTURED_DSL_RUNTIME_RETURN_GAP`.
-- L5 round gate green at HEAD `73dac3dc` (after WU-LPR-082).
+  LFC-2R2 design (ADR-0093) ACCEPTED on `main`; implementation slice
+  WU-LPR-087 is the next binding step.
+- L5 round gate green at HEAD `302bd811` (last full check, LPR-074..081
+  close-out cycle).
 
 ## Verification
 

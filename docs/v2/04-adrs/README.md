@@ -52,3 +52,5 @@
 - [ADR-0089: Distribution artifact authority + SDKMAN](ADR-0089-distribution-artifact-authority-sdkman.md)
 - [ADR-0090: LPR compatibility contract](ADR-0090-compatibility-contract-lpr.md)
 - [ADR-0091: Trunk authority / historical branches](ADR-0091-trunk-authority-historical-branches.md)
+- [ADR-0092: Plugin identity provider registration (additive)](ADR-0092-plugin-identity-provider-registration-additive.md)
+- [ADR-0093: Structured DSL runtime return — suspend structured DSL](ADR-0093-structured-dsl-runtime-return.md)

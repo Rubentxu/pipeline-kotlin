@@ -127,6 +127,9 @@ Tier A — burn down already-registry Steps (LFC-2E1-S2)
 
 Tier A.1 — LFC-2R2 (horizontal blocker)
   - Structured Runtime-Returning Steps (pwd/pwdTmp/readFile/fileExists)
+  - Design binding: ADR-0093 (suspend structured DSL, ACCEPTED 2026-09-20 WU-LPR-086)
+  - Spike merged from branch cycle/lfc2-e1-r2-runtime-return (renumbered 0082 → 0093)
+  - Implementation slice: WU-LPR-087 (production code change; not in WU-LPR-086)
 
 Tier B — CORE next gate (genéricos universales, 7 Steps)
   5. junit.results (full burn-down)

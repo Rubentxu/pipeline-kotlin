@@ -93,9 +93,9 @@ Columns:
 | `core.cleanWs` | CORE | registry | **CERTIFIED** | `S2_A10_CORE_CLEANWS_G8_CERTIFICATION_RECEIPT.md` | |
 | `core.archiveArtifacts` | CORE | registry | **CERTIFIED** | `S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md` | |
 | `core.emit.event` | CORE | registry | **CERTIFIED** | `S2_A4_CORE_EMITEVENT_G8_FINAL_CERTIFICATION_RECEIPT.md` | |
-| `core.pwd` | CORE | registry | **BLOCKED (STRUCTURED_DSL_RUNTIME_RETURN_GAP)** | `S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md` | G7 2/4 pass; needs LFC-2R2 horizontal fix |
+| `core.pwd` | CORE | registry | **BLOCKED (STRUCTURED_DSL_RUNTIME_RETURN_GAP)** | `S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md` + [ADR-0093](../04-adrs/ADR-0093-structured-dsl-runtime-return.md) | G7 2/4 pass; LFC-2R2 design spike ACCEPTED on main (WU-LPR-086); implementation deferred to WU-LPR-087 |
 | `core.waitUntil` | CORE | registry | **CERTIFIED** | `S2_A8_CORE_WAITUNTIL_G7_INSTALLED_ACCEPTANCE_RECEIPT.md` + `S2_A8_CORE_WAITUNTIL_G8_FINAL_CERTIFICATION_RECEIPT.md` | G6+G8 closed 2026-09-20 WU-LPR-085 (18 contract tests + 9 unit tests green; installed-CLI canary fresh EXIT 0 + replay EXIT 0; ReplayPolicy.MEMOIZED confirmed) |
-| `core.pwdTmp` | CORE | registry | no G6/G8 yet | (none) | depends on LFC-2R2 like pwd |
+| `core.pwdTmp` | CORE | registry | no G6/G8 yet | (none) | depends on LFC-2R2 like pwd; will follow WU-LPR-087 |
 | `core.artifact.query` | CORE | registry | **REGISTERED + contract** | `CoreArtifactQueryStepContractTest.kt` | E1.1 bridge; G6/G8 pending |
 | `scm-git.checkout` | OFFICIAL_PLUGIN | registry (SDK plugin) | **REGISTERED + contract** | `F5_1_ScmGitStepContractTest.kt` | in `pipeline-step-sdk/scm-git` |
 | `junit.results` | OFFICIAL_PLUGIN | registry (SDK plugin) | **REGISTERED + contract** | `F5_2_JUnitStepContractTest.kt` | full burn-down to CERTIFIED pending |
@@ -135,7 +135,12 @@ STRUCTURED_DSL_RUNTIME_RETURN_GAP  (S2-A6 / G7 STOP_BLOCKED)
   (initial consumers: pwd(), pwd(tmp=true), readFile(), fileExists();
    architectural references: isUnix/sh(returnStdout) generator-level seams).
 
+  Design: ADR-0093 — Structured DSL Runtime Return (suspend structured DSL,
+  ACCEPTED on main per WU-LPR-086, 2026-09-20; renumbered from ADR-0082 on
+  branch cycle/lfc2-e1-r2-runtime-return). Implementation slice: WU-LPR-087.
+
   Source: docs/v2/07-uat/S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md
+  Spike source: docs/v2/04-adrs/ADR-0093-structured-dsl-runtime-return.md
 ```
 
 ```text

@@ -423,12 +423,14 @@ class A4_8LegacyRegistrySemanticParityTest {
             .filter { it.readText().contains("TypedStepOutput") }
             .map { it.name }
             .toList()
-        // Only the marker file itself should match — no other domain class
-        // imports it. If the marker ever leaks into a domain service, this fails.
+        // The marker is permitted in the marker declaration and in explicit domain
+        // Step outputs. E1 adds ArtifactHandle: it is a typed value returned by
+        // core.archiveArtifacts/core.artifact.query, not a journal, recovery, or
+        // coordinator state carrier. Any other domain reference remains a leak.
         assertEquals(
-            listOf("TypedStepOutput.kt"),
-            typedInDomain,
-            "TypedStepOutput must remain a marker in pipeline-domain; " +
+            setOf("TypedStepOutput.kt", "ArtifactHandle.kt"),
+            typedInDomain.toSet(),
+            "TypedStepOutput must remain confined to declared domain outputs; " +
                 "found in: $typedInDomain",
         )
 
@@ -443,39 +445,46 @@ class A4_8LegacyRegistrySemanticParityTest {
             "TypedStepOutput must NOT appear in the events module (event log substrate)",
         )
 
-        // CoreShellOutput is concrete and lives in pipeline-application only.
+        // Concrete CoreShellOutput coupling outside pipeline-application is forbidden.
+        // Documentation may cite it as the reference implementation for an external
+        // plugin's TypedStepOutput carrier, so search actual imports rather than raw
+        // text. A dependency edge, not prose, is the architectural invariant.
         val v2Root = java.io.File(workspaceRoot, "v2")
         val coreShellOutsideApp: List<String> = v2Root.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".kt") }
-            .filter { it.readText().contains("CoreShellOutput") }
+            .filter { file ->
+                file.readLines().any { line ->
+                    line.trimStart().startsWith("import ") && line.contains("CoreShellOutput")
+                }
+            }
             .map { it.path }
             .filterNot { it.startsWith(java.io.File(workspaceRoot, "v2/pipeline-application").path + "/") }
             .toList()
         assertEquals(
             emptyList<String>(),
             coreShellOutsideApp,
-            "CoreShellOutput must NOT leak outside pipeline-application; " +
+            "CoreShellOutput must NOT be imported outside pipeline-application; " +
                 "found in: $coreShellOutsideApp",
         )
 
-        // TypedStepOutput must NOT leak into the recovery / journal / fingerprint
-        // substrate either — the only files that may reference it are:
-        //   - the marker (pipeline-domain/.../TypedStepOutput.kt)
-        //   - the carrier (pipeline-application/.../CoreShellOutput.kt)
-        //   - the boundary single-reader (pipeline-application/.../durable/RegistryExecutionBoundary.kt)
-        //   - the docs / tests
-        val typedOutsideMarkerAndApp: List<String> = v2Root.walkTopDown()
+        // TypedStepOutput must NOT leak into the event, recovery, journal, or
+        // fingerprint substrate. It is a public domain output contract, so a
+        // certified plugin may implement it through pipeline-step-sdk (for
+        // example, junit.results) without coupling to application internals.
+        // The allowed ownership boundary is domain + application + public SDK.
+        val typedOutsidePublicOutputBoundary: List<String> = v2Root.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".kt") }
             .filter { it.readText().contains("TypedStepOutput") }
             .map { it.relativeTo(workspaceRoot).path }
             .filterNot { it.startsWith("v2/pipeline-domain/") }
             .filterNot { it.startsWith("v2/pipeline-application/") }
+            .filterNot { it.startsWith("v2/pipeline-step-sdk/") }
             .toList()
         assertEquals(
             emptyList<String>(),
-            typedOutsideMarkerAndApp,
-            "TypedStepOutput must NOT leak outside pipeline-domain + pipeline-application; " +
-                "found in: $typedOutsideMarkerAndApp",
+            typedOutsidePublicOutputBoundary,
+            "TypedStepOutput must NOT leak outside the public output boundary; " +
+                "found in: $typedOutsidePublicOutputBoundary",
         )
     }
 

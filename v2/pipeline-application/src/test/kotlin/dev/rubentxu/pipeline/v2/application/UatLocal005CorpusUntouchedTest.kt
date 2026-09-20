@@ -101,11 +101,14 @@ class UatLocal005CorpusUntouchedTest {
     }
 
     /**
-     * CP-002: corpus has exactly 22 valid files after WU-LPR-104 (fixture 23-readfile added):
-     * 01-06 original + 08-22 existing + 23-readfile (file 07 was writeFile-readFile, moved to broken/).
+     * CP-002: corpus has exactly 29 valid files. The frozen ML-R7 original-6 byte-identity
+     * guarantee is enforced by CP-001 above. Subsequent fixtures are tracked by name in
+     * `newFiles`; their content is validated by their own focused tests in
+     * `CompatibilityCorpusTest`. WU-LPR-077 keeps this count in lock-step with the inventory
+     * (`ls v2/compatibility/` then filtering entries that end with `.pipeline.kts | wc -l`).
      */
     @Test
-    fun `CP-002 corpus has exactly 22 valid fixture files after WU-LPR-104`(@TempDir tempDir: Path) {
+    fun `CP-002 corpus has exactly 29 valid fixture files after WU-LPR-077`(@TempDir tempDir: Path) {
         val projectRoot = TestProjectRoot.dir.toPath()
         val compatibilityDir = projectRoot.resolve("v2/compatibility")
 
@@ -114,8 +117,8 @@ class UatLocal005CorpusUntouchedTest {
             .sorted()
             .toList()
 
-        assertEquals(22, pipelineFiles.size,
-            "Corpus must have exactly 22 valid pipeline fixtures (WU-LPR-104 added 23-readfile; WU-G5R6 added 22-wait-until; 07 and 99 moved to broken/; v0.33.1 corpus-closure added 15-error, 16-sleep, 17-writeFile, 18-cleanWs and renamed 09-archive-artefacts → 09-sh-then-echo; S2-A5/G8 added 19-isunix; S2-A6/G3R added 20-pwd-tmp; WU-G5R6 added 22-wait-until). Found: " +
+        assertEquals(29, pipelineFiles.size,
+            "Corpus must have exactly 29 valid pipeline fixtures (WU-LPR-077 keeps the count in lock-step with CompatibilityCorpusTest; S2 added 25..29; ML-R7 byte-identity frozen in CP-001). Found: " +
             pipelineFiles.joinToString { it.fileName.toString() })
 
         // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix; S2-A6/G3R: 1 pwd-tmp; WU-G5R6: 1 wait-until)
@@ -138,6 +141,13 @@ class UatLocal005CorpusUntouchedTest {
             "21-milestone.pipeline.kts",
             "22-wait-until.pipeline.kts",
             "23-readfile.pipeline.kts",
+            "24-utilities-roundtrip.pipeline.kts",
+            "25-yaml-roundtrip.pipeline.kts",
+            "26-find-files.pipeline.kts",
+            "27-zip-unzip.pipeline.kts",
+            "28-zip-slip-defense.pipeline.kts",
+            "29-mixed-utilities.pipeline.kts",
+            "30-artifact-query-bridge.pipeline.kts",
         )
         val actualNames = pipelineFiles.map { it.fileName.toString() }.toSet()
         assertTrue(actualNames.containsAll(newFiles),

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 /**
  * UAT-LOCAL-005: Env special chars — WS-S-005/008/009/010 behavioral coverage
@@ -277,6 +278,8 @@ pipeline {
         controlRoot: Path,
         scriptPath: Path,
     ): String {
+        val stdoutFile = scriptPath.parent.resolve("pipeline.stdout.log").toFile()
+        val stderrFile = scriptPath.parent.resolve("pipeline.stderr.log").toFile()
         val pb = ProcessBuilder(
             javaHome + "/bin/java",
             "-cp", classpath,
@@ -284,16 +287,27 @@ pipeline {
             "run",
             "--db", dbPath.toString(),
             "--control-root", controlRoot.toString(),
-            scriptPath.toString()
+            scriptPath.toString(),
         )
             .directory(scriptPath.parent.toFile())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
+            // Redirect each stream to its own file before launch. Reading stdout while
+            // stderr remains an undrained pipe can deadlock a noisy child process.
+            .redirectOutput(stdoutFile)
+            .redirectError(stderrFile)
 
         val process = pb.start()
-        val stdout = process.inputStream.bufferedReader().readText()
-        process.waitFor()
-        return stdout
+        try {
+            assertTrue(
+                process.waitFor(90, TimeUnit.SECONDS),
+                "pipeline process timed out; stderr=${stderrFile.takeIf { it.exists() }?.readText()?.takeLast(4_000)}",
+            )
+            return Files.readString(stdoutFile.toPath())
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+                process.waitFor(5, TimeUnit.SECONDS)
+            }
+        }
     }
 
     /**

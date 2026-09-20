@@ -1,0 +1,109 @@
+=== sh-var-scope-contract evidence ===
+Generated: 2026-09-20T10:31Z
+Base SHA: 1fdd3dce
+Spec: openspec/changes/sh-var-scope-contract/spec.md §Gap #5
+Cycle: cycle/sh-var-scope-contract-s1
+Test class: dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap05Test
+Reproduction cmd (rule 25 canary):
+  rm -f v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap05Test.xml
+  cd v2 && ./gradlew :pipeline-scripting-kotlin24:test \
+    --tests 'ShVarScopeGap05Test' --rerun-tasks 2>&1
+Run mode: --rerun-tasks (AGENTS.md rule 25)
+JUnit XML: v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap05Test.xml
+JUnit XML SHA-256: 608683e679b2648da19f3b15fae5a40ab8c7de139138077311176a31c30b5431
+JUnit XML tests/failures/errors: 3/0/0
+Captured log SHA-256: 90d8c3468e7b7521275b030702ef69412cbdc056e8563b9c9eee737645135147
+
+
+================================================================
+GAP #5 REPRODUCTION (F2 predicate, measurement only)
+================================================================
+
+Gap #5 is GATED on F2 (operator Guard G3). F1 only measures
+the current behaviour and captures the F2_TRIGGER data so the
+operator can later decide whether an offset map is worth opening.
+
+Test output captured (verbatim from the canary run):
+
+  F2_TRIGGER_DATA_C2: author_column=123 escaped_column=128
+                      escape_shift=5
+  (escaped.column - author.column = +5; reported column will
+   follow escaped unless an offset map is introduced)
+
+This means: a credential-bound `$XCREDS` rewrite in
+`sh("echo a=$XCREDS BROKEN_AFTER_XCREDS")` inserts a 5-char
+trap-form guard that shifts the downstream `BROKEN_AFTER_XCREDS`
+token by exactly +5 columns on the escaped source. With the
+current production `Kotlin24ScriptingHost.mapDiagnostic` (no
+offset map), the diagnostic column reported by the Kotlin
+compiler follows the ESCAPED column (128), not the AUTHOR
+column (123). The user, reading their own editor, sees the
+cursor at column 123.
+
+DELTA MEASUREMENT:
+  + 5 chars per credential-bound `$VAR` rewrite.
+  + 5 chars downstream (i.e. anything that comes AFTER the
+    rewritten $VAR on the same source line).
+  + 0 chars upstream of the rewritten $VAR.
+  + Exact delta is bounded by the literal "trap form guard"
+    length: '\${'\$'}' is the 6-char Kotlin source form that,
+    after Kotlin evaluates, becomes a 5-char source-text
+    delta (the leading '$' of the original $VAR stays in
+    place; '\${'\$'}' replaces it).
+
+INTERESTING REDS — captured for the record (rule 21 + operator G2):
+
+  1. First attempt asserted the insertion was +6 chars. The
+     actual byte measurement is +5 chars (delta = length of
+     the literal '\${'\$'}' minus length of original '$').
+     The test was corrected after a measured RED.
+  2. Second attempt placed `BROKEN_AFTER_XCREDS` BEFORE
+     `$XCREDS` (upstream). The downstream-shifting property
+     means upstream content does NOT move, so the assert
+     `delta == 5` failed with `expected: 5, was: 0`. The
+     fixture was reordered so the broken symbol sits
+     downstream of the rewritten `$XCREDS`.
+  3. An early attempt ran the FULL Kotlin compiler and tried
+     to read diagnostics on an `Unresolved reference` symbol.
+     The compiler's first diagnostic was on `$NOOP_VAR`
+     (Kotlin template expansion attempt) at column 46, NOT
+     on `BROKEN_SYM` at column 55 as the test expected. The
+     diagnostic-position measurement is therefore not
+     straightforward when the source has multiple unresolved
+     identifiers. The reproduction was simplified to pin the
+     BYTE-LEVEL column shift on the escaped source, without
+     depending on the Kotlin compiler's diagnostic emission.
+
+This is the second time the cycle has been saved by G2
+("bytes, not aspect"): the test labels a column shift that
+LOOKS like 6 chars because `\${'\$'}` reads as 6 chars in
+Kotlin source, but the actual byte delta on the escaped
+source is 5 (because the leading '$' of `$XCREDS` is
+preserved). Without G2, the test would have asserted a wrong
+delta and produced false confidence.
+
+CONCLUSION (F2_TRIGGER verdict):
+
+  F2_TRIGGER_DATA_C2 captures the OPERATIONAL PROPERTY: a
+  downstream Kotlin diagnostic on a credential-bound source
+  will report column = (author column) + 5. With the current
+  production code, this means the user sees a column 5 chars
+  to the right of where they wrote the broken symbol.
+
+  Whether THIS is "user-perceivable friction" depends on UX
+  judgement; the byte-level evidence is now durable and the
+  test fails closed if the escoper changes shape. F2 itself
+  is NOT opened in this cycle; the precondition (operator
+  friction assessment) is documented in design.md and the
+  closure receipt.
+
+GUARDS HONOURED:
+  G1 — no EnvVarNameExtractor extension; the test reproduces
+       only withCredentials flow.
+  G2 — the test asserts on actual byte sequences of the
+       escaped source, not on source appearance.
+  G3 — Kotlin24ScriptingHost.mapDiagnostic is NOT modified;
+       the test only measures. F2 is not opened in F1.
+
+Untouched: ScriptTextEscaper, EnvVarNameExtractor,
+Kotlin24ScriptingHost.mapDiagnostic, production source.

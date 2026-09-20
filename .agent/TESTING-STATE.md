@@ -1,5 +1,32 @@
 
 
+## Active Change — LPR compatibility corpus recovery (2026-09-20, base `adab94d1`, `main`)
+
+**Status: VALIDATED, ready for WU-LPR-075 receipt/commit.**
+
+### Changed surface and impact
+
+- `CompatibilityCorpusTest`: fixture 05 was a stale compile-failure expectation.
+- Fixtures 25 and 27 wrote default non-overwriting outputs into the shared
+  checked-in corpus workspace. They now copy their inputs to JUnit `@TempDir`
+  workspaces before installed-binary execution.
+- Known impact is limited to application compatibility test reproducibility.
+  No production source, DSL fixture source, registry, or durable protocol changed.
+
+### Fresh evidence
+
+- `:pipeline-application:compileTestKotlin --rerun-tasks`: PASS, 33s,
+  SHA `e61764b61ddbd3c1eaff5be1c7d95947b2dc3f754eea81810122c762d1a106a7`.
+- Focused fixtures 05, 25 and 27: PASS individually.
+- `CompatibilityCorpusTest`: PASS, fresh XML `tests=30 failures=0 errors=0`,
+  3m06s, SHA `a955c7883fd90b977060cc1a91b055205627a9737586504466f9215cf964978f`.
+
+### Next verification
+
+- After WU-LPR-075 commit, retry the application module regression once.
+  It previously had this corpus trio plus the independently corrected
+  UatLocal005 stream hang (WU-LPR-074). Do not run Gradle tasks concurrently.
+
 ## Active Change — SH-VAR-SCOPE-CONTRACT cycle (2026-09-20, base `1fdd3dce`, branch `cycle/sh-var-scope-contract-s1`)
 
 **Status: GO_RECEIVED, branch opening + T1 (contract document) in flight.**

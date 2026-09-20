@@ -25,7 +25,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -61,6 +63,16 @@ class CompatibilityCorpusTest {
         }
 
     /**
+     * Mutable fixtures must run in a fresh workspace: their declarative file
+     * paths intentionally begin at `build/`, and must not persist outputs in
+     * the checked-in corpus directory between test runs.
+     */
+    private fun copyFixtureInto(name: String, workspace: Path): Path =
+        workspace.resolve(name).also { destination ->
+            Files.copy(fixture(name), destination)
+        }
+
+    /**
      * Fixtures that fail at runtime (exit non-zero).
      *
      * After v0.33.1 (corpus-closure cycle), fixtures 02, 10, 13, 14 now PASS:
@@ -72,18 +84,6 @@ class CompatibilityCorpusTest {
      * `load` step still quarantined under INC-024 — not exercised by these fixtures.
      */
     private val runtimeFailureFixtures: Set<String> = emptySet()
-
-    /**
-     * Fixtures classified HISTORICAL: they rely on the legacy in-process
-     * compilation behavior (implicit StageScope receivers inside `script {}`)
-     * that the installed binary's compiler rejects with a typed compile error
-     * (WU-LPR-103). The SUPPORTED surface per WU_LPR_032 admission is
-     * `script { line("...") }`; raw Kotlin control flow with `echo()` calls
-     * inside `script {}` is not admitted. Characterized: exit 1, compile
-     * diagnostic "cannot be called in this context with an implicit receiver".
-     */
-    private val historicalCompileFailureFixtures: Set<String> =
-        setOf("05-scripted-if.pipeline.kts")
 
     /**
      * Run a fixture that is expected to succeed (exit 0).
@@ -108,10 +108,6 @@ class CompatibilityCorpusTest {
         assertTrue(events.isNotEmpty()) { "Fixture $name produced no events" }
     }
 
-    /**
-     * Run a fixture classified HISTORICAL that fails at COMPILE time with a
-     * typed diagnostic (not silently and not with an unrelated crash).
-     */
     /**
      * WU-LPR-104: core.readFile / core.fileExists live fixture. Beyond pass/fail,
      * asserts the typed observability contract:
@@ -237,30 +233,6 @@ class CompatibilityCorpusTest {
         }
     }
 
-    private fun runFixtureCompileFail(name: String) {
-        val path = fixture(name)
-        val appBin = AppBinSupport.discover()
-
-        val pb = ProcessBuilder(appBin.toString(), "run", path.toString())
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-
-        val process = pb.start()
-        val exitCode = process.waitFor()
-        val stdout = process.inputStream.bufferedReader().readText().trim()
-
-        assertEquals(1, exitCode) { "Fixture $name should fail compile with exit 1 but got $exitCode" }
-        val events = JsonEventLog.decode(stdout)
-        assertTrue(
-            events.any { it.javaClass.simpleName == "CompilationFinished" },
-            "Fixture $name must emit CompilationFinished",
-        )
-        assertTrue(
-            stdout.contains("ERROR") || stdout.contains("error"),
-            "Fixture $name must surface a typed compile diagnostic",
-        )
-    }
-
     /**
      * Run a fixture that is expected to fail (exit non-zero).
      * Used for fixtures with known runtime failures.
@@ -288,7 +260,7 @@ class CompatibilityCorpusTest {
 
     @Test fun fixture04Sh() = runFixturePass("04-sh.pipeline.kts")
 
-    @Test fun fixture05ScriptedIf() = runFixtureCompileFail("05-scripted-if.pipeline.kts")
+    @Test fun fixture05ScriptedIf() = runFixturePass("05-scripted-if.pipeline.kts")
 
     @Test fun fixture06Loop() = runFixturePass("06-loop.pipeline.kts")
 
@@ -427,11 +399,11 @@ class CompatibilityCorpusTest {
      * core-utils StepStarted/StepFinished pair for both Steps.
      */
     @Test
-    fun fixture25YamlRoundtrip() {
+    fun fixture25YamlRoundtrip(@TempDir workspace: Path) {
         val name = "25-yaml-roundtrip.pipeline.kts"
-        val path = fixture(name)
+        val path = copyFixtureInto(name, workspace)
         val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()
@@ -498,11 +470,11 @@ class CompatibilityCorpusTest {
      * by `core.sh cat` echoing "one\ntwo\nthree").
      */
     @Test
-    fun fixture27ZipUnzip() {
+    fun fixture27ZipUnzip(@TempDir workspace: Path) {
         val name = "27-zip-unzip.pipeline.kts"
-        val path = fixture(name)
+        val path = copyFixtureInto(name, workspace)
         val appBin = AppBinSupport.discover()
-        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", path.parent.toString(), path.toString())
+        val pb = ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), path.toString())
             .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .redirectError(ProcessBuilder.Redirect.PIPE)
         val process = pb.start()

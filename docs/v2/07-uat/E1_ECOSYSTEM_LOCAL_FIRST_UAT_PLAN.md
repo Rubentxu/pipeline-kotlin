@@ -9,91 +9,100 @@ scenario. The UAT dashboard renders this file via the project's
 
 ## Suite: e1-ecosystem-local-first
 
-### S1 — happy_junit_read
+### S1 — happy_junit_results
 
 ```yaml
-id: e1.S1.happy_junit_read
-title: "core.junit reads canonical JUnit XML into typed JunitReport"
+id: e1.S1.happy_junit_results
+title: "junit.results (OFFICIAL_PLUGIN, F5.2) reads canonical JUnit XML into typed JUnitReportSummary"
 given:
-  - "A pipeline.kts with a stage that calls core.junit on a real Gradle-produced JUnit XML"
+  - "A pipeline.kts with a stage that calls junitResults() on a real Gradle-produced JUnit XML"
   - "The XML conforms to the Ant/Maven schema (testsuite/testcase/failure/error/skipped)"
 when:
   - "The pipeline runs end-to-end against a clean install"
 then:
-  - "core.junit returns a typed JunitReport with non-null suites and totals"
-  - "totals.tests > 0 AND totals.failures == 0 AND totals.errors == 0"
-  - "outcome == Passed"
-  - "Events emitted: JunitReadStarted, JunitSuiteRead (>= 1), JunitReadCompleted"
+  - "junit.results returns a typed JUnitReportSummary with tests/failures/errors/skipped/durationSeconds/reportPath"
+  - "tests > 0 AND failures == 0 AND errors == 0"
+  - "isClean == true"
+  - "CommonExecutionResult.success == true"
+  - "Events emitted per F5.2 contract test"
 evidence_artifact: docs/v2/07-uat/evidence/e1-ecosystem-local-first/S1-happy.txt
+uath_under_test: "v2/pipeline-step-sdk/junit (F5.2 CERTIFIED)"
+uath_owner: "F5.2 closure — NOT modified by this cycle"
 ```
 
-### S2 — junit_test_failures_surface
+### S2 — junit_results_test_failures
 
 ```yaml
-id: e1.S2.junit_test_failures_surface
-title: "core.junit surfaces failing cases without aborting the pipeline"
+id: e1.S2.junit_results_test_failures
+title: "junit.results surfaces failing cases; with failOnFailure=false the pipeline does not abort"
 given:
   - "A pipeline.kts reading a JUnit XML with at least one <failure> or <error>"
+  - "failOnFailure=false (informational mode)"
 when:
   - "The pipeline runs"
 then:
-  - "outcome == Failed"
-  - "failingCases is non-empty AND contains the failing case names + messages"
-  - "CommonExecutionResult.success is TRUE for the Step itself (the typed FAIL is the side channel)"
-  - "The pipeline does not abort unless the author explicitly checks the outcome"
-  - "Events emitted: JunitReadStarted, JunitSuiteRead, JunitReadCompleted(FAIL)"
+  - "JUnitReportSummary.failures + errors > 0"
+  - "JUnitResultsOutput.outcome carries the typed failure classification"
+  - "CommonExecutionResult.success == true (failOnFailure=false)"
+  - "The pipeline does not abort"
 evidence_artifact: docs/v2/07-uat/evidence/e1-ecosystem-local-first/S2-fail.txt
+uath_under_test: "v2/pipeline-step-sdk/junit (F5.2 CERTIFIED)"
+uath_owner: "F5.2 closure — NOT modified by this cycle"
 ```
 
-### S3 — junit_missing_file
+### S3 — junit_results_missing_file
 
 ```yaml
-id: e1.S3.junit_missing_file
-title: "core.junit fails closed with INPUT_INVALID on missing file"
+id: e1.S3.junit_results_missing_file
+title: "junit.results fails closed with USER kind on missing file"
 given:
-  - "A glob that matches no file on disk"
+  - "A report path that does not exist on disk"
 when:
-  - "core.junit runs"
+  - "junitResults() runs"
 then:
   - "CommonExecutionResult.success == false"
-  - "failureKind == INPUT_INVALID"
-  - "message contains 'JUnit XML not found'"
-  - "Events emitted: JunitReadStarted, JunitReadFailed(MISSING_FILE)"
-  - "No partial report is constructed"
+  - "failureKind == USER (typed, not INFRASTRUCTURE)"
+  - "message contains 'not found' or 'missing'"
+  - "No partial summary is constructed"
 evidence_artifact: docs/v2/07-uat/evidence/e1-ecosystem-local-first/S3-missing.txt
+uath_under_test: "v2/pipeline-step-sdk/junit (F5.2 CERTIFIED)"
+uath_owner: "F5.2 closure — NOT modified by this cycle"
 ```
 
-### S4 — junit_malformed_xml
+### S4 — junit_results_malformed_xml
 
 ```yaml
-id: e1.S4.junit_malformed_xml
-title: "core.junit fails closed with INPUT_INVALID on malformed XML"
+id: e1.S4.junit_results_malformed_xml
+title: "junit.results fails closed with USER kind on malformed XML"
 given:
-  - "A file at the glob path that is not well-formed XML OR has an unexpected root element"
+  - "A file at the report path that is not well-formed XML OR has an unexpected root element"
 when:
-  - "core.junit runs"
+  - "junitResults() runs"
 then:
   - "CommonExecutionResult.success == false"
-  - "failureKind == INPUT_INVALID"
-  - "message contains 'malformed'"
-  - "Events emitted: JunitReadStarted, JunitReadFailed(MALFORMED)"
+  - "failureKind == USER"
+  - "message indicates malformed / parse failure"
 evidence_artifact: docs/v2/07-uat/evidence/e1-ecosystem-local-first/S4-malformed.txt
+uath_under_test: "v2/pipeline-step-sdk/junit (F5.2 CERTIFIED)"
+uath_owner: "F5.2 closure — NOT modified by this cycle"
 ```
 
-### S5 — junit_unsupported_schema
+### S5 — junit_results_hardened_parser
 
 ```yaml
-id: e1.S5.junit_unsupported_schema
-title: "core.junit fails closed on non-canonical schema variants"
+id: e1.S5.junit_results_hardened_parser
+title: "junit.results parser is hardened (XXE, streaming, byte cap)"
 given:
-  - "A well-formed XML with non-canonical extensions (e.g. JUnit 5 standalone schema elements)"
+  - "A maliciously-crafted XML with external entities / DOCTYPE / oversized body"
 when:
-  - "core.junit runs"
+  - "junitResults() runs"
 then:
-  - "failureKind == INPUT_INVALID"
-  - "message contains 'Unsupported JUnit schema variant'"
-  - "Events emitted: JunitReadStarted, JunitReadFailed(UNSUPPORTED_SCHEMA)"
-evidence_artifact: docs/v2/07-uat/evidence/e1-ecosystem-local-first/S5-unsupported.txt
+  - "External entities are NOT resolved (no XXE)"
+  - "Files exceeding maxReportBytes (default 10 MiB) fail closed with USER"
+  - "Parser uses SAX streaming (no DOM tree built)"
+evidence_artifact: docs/v2/07-uat/evidence/e1-ecosystem-local-first/S5-hardened.txt
+uath_under_test: "v2/pipeline-step-sdk/junit (F5.2 CERTIFIED)"
+uath_owner: "F5.2 closure — NOT modified by this cycle"
 ```
 
 ### S6 — artifact_query_happy

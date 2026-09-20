@@ -1,32 +1,37 @@
-// E1.1 / T8 corpus fixture — DSL compile surface for core.artifact.query.
+// E1.2 / T4 corpus fixture — E2E archive->query cross-step data path.
 //
-// Purpose: assert the E1.1 ecosystem-local-first DSL facade
-// compiles inside a real pipeline script and is reachable by an
-// orchestrator bootstrap (NOT a data round-trip — that belongs to
-// E1.2 once ArtifactIndexCapability is wired into the production
-// runtime context).
+// Pipeline shape (real binary, real coordinator, real process side-effects):
+//   stage("seed-then-archive"):
+//     sh seeds a tree at <stage-workspace>/build/utils/mix/...
+//     archiveArtifacts(...) archives the tree AND records the handle under
+//       name "mix" into the per-run ArtifactIndexCapability (E1.2 / T1).
+//   stage("query-by-name"):
+//     artifactQuery("mix") looks it up via the registered Step. Because
+//     E1.2 wires the artifact index into the runtime context, the query
+//     sees the handle and resolves it. Before T1, this fixture was RED
+//     (registry boundary failed closed because ARTIFACT_INDEX_CAPABILITY
+//     was not admitted).
 //
-// Pipeline shape (single stage, single step, legacy path only):
-//   archiveArtifacts("build/utils/**", allowEmptyArchive = true)
-//     — registers the legacy codec path unchanged from F1.
-//   sh("echo E1_1_T8_DSL_OK")
-//     — terminates with an observable marker so an external
-//       probe (UAT S1..S5) can distinguish a green run from a
-//       coroutine-only exit-zero.
+// seed and archive must live in the SAME stage: per the WorkspaceResolver,
+// each stage has its own workspace directory, so the archive glob has to
+// run against the same workspace the seed wrote into. Splitting them
+// across stages makes the glob return 0 matches and the artifact handle
+// records an empty file set — still a valid archive (with empty files),
+// but the integration evidence is weaker than the same-stage layout.
 //
-// The cross-step archive→query data path is intentionally
-// deferred to E1.2; a runtime-bound artifactQuery that resolves
-// against a wired artifact index would fail-closed today and
-// produce a red fixture, which is the wrong narrative for a
-// "DSL compile surface" check.
+// No fabricated runtime values, no DSL-time construction of state.
 pipeline {
     stages {
-        stage("artifact-query-dsl-surface") {
+        stage("seed-then-archive") {
+            sh("mkdir -p build/utils/mix && echo 'alpha' > build/utils/mix/a.txt && echo 'beta' > build/utils/mix/b.txt")
             archiveArtifacts(
-                artifacts = "build/utils/**",
+                artifacts = "build/utils/mix/**",
                 allowEmptyArchive = true,
+                name = "mix",
             )
-            sh("echo E1_1_T8_DSL_OK")
+        }
+        stage("query-by-name") {
+            artifactQuery("mix")
         }
     }
 }

@@ -1110,5 +1110,10 @@ private fun runCanonicalPipeline(
         // retryControlJournal pattern — persisted before child effects, read on plan(),
         // authoritative over the aggregate state on replay.
         waitUntilControlJournal = FileBasedWaitUntilControlJournal(controlDirRoot),
+        // E1.2 / T1: per-run artifact index for the core.archiveArtifacts
+        // -> core.artifact.query bridge. Constructed fresh per run; the same
+        // instance is shared between the producer (archive with name=...) and
+        // the consumer (artifactQuery) within the run.
+        artifactIndex = dev.rubentxu.pipeline.v2.application.durable.ArtifactIndexAdapter.build(),
     ).run(pipeline, runId)
 }

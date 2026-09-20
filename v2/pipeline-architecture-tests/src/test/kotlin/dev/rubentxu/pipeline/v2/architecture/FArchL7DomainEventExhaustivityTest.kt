@@ -78,13 +78,16 @@ class FArchL7DomainEventExhaustivityTest {
      * 43. TimestampsExited (ML-R9 T-08)
      * 44. StepAdmissionObserved (S2.5.7 / B1.2c3 — LB-01 spine consolidation, WU-1)
      * 45. FileExistsChecked (WU-LPR-104 — core.fileExists observability)
+     * 46. StashCreated (WU-LPR-089 — core.stash durable cross-stage data movement)
+     * 47. StashRestored (WU-LPR-089 — core.unstash durable cross-stage data movement)
+     * 48. StashFailed (WU-LPR-089 — core.stash/core.unstash typed failure observability)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_45_variants`() {
+    fun `domain_event_sealed_hierarchy_has_48_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 45 // 44 + FileExistsChecked (WU-LPR-104)
+        val expectedCount = 48 // 45 + StashCreated + StashRestored + StashFailed (WU-LPR-089)
 
         assertEquals(
             expectedCount,

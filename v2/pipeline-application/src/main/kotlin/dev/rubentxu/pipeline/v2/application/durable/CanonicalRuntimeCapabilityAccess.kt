@@ -17,6 +17,9 @@ import dev.rubentxu.pipeline.v2.application.WorkspaceOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.ArchiveArtifactsOperations
 import dev.rubentxu.pipeline.v2.application.ArchiveArtifactsOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.STASH_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.StashOperations
+import dev.rubentxu.pipeline.v2.application.StashOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
@@ -216,6 +219,24 @@ open class CanonicalRuntimeCapabilityAccess(
                 workspaceBase = context.workspaceBase,
             )
             builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
+        }
+        // WU-LPR-089: stash/unstash capability. Same conditional exposure as
+        // ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY — bound ONLY when controlDirRoot
+        // is supplied (production path). Absent otherwise so the registry boundary
+        // fails closed at admission. Both CoreStashStep and CoreUnstashStep share
+        // the same STASH_OPERATIONS_CAPABILITY seam.
+        context.controlDirRoot?.let { root ->
+            val stashOps: StashOperations = StashOperationsAdapter(
+                runIdString = context.runId,
+                stageIdentity = StageIdentity(
+                    name = context.stageName,
+                    index = context.stageIndex,
+                ),
+                controlDirRoot = root,
+                eventSink = context.eventSink,
+                workspaceBase = context.workspaceBase,
+            )
+            builder[STASH_OPERATIONS_CAPABILITY] = stashOps
         }
         // S2-A9 spike: milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the

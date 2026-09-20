@@ -163,5 +163,11 @@ object CoreStepRegistryFactory {
         // canonical body engine dispatches the polling loop from the declaration,
         // not from a per-StepKey branch in the coordinator.
         CoreWaitUntilStep.registerInto(this)
+        // WU-LPR-089: register CoreStashStep + CoreUnstashStep (Tier B batch 1).
+        // Both Steps reach the typed STASH_OPERATIONS_CAPABILITY seam through
+        // the adapter wired at composition time; the registry seam is the only
+        // path that produces a StashCreated/StashRestored/StashFailed event.
+        CoreStashStep.registerInto(this)
+        CoreUnstashStep.registerInto(this)
     }
 }

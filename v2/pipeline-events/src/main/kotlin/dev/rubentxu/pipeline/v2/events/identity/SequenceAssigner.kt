@@ -34,6 +34,9 @@ import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageStarted
+import dev.rubentxu.pipeline.v2.events.StashCreated
+import dev.rubentxu.pipeline.v2.events.StashFailed
+import dev.rubentxu.pipeline.v2.events.StashRestored
 import dev.rubentxu.pipeline.v2.events.StepAdmissionObserved
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -87,6 +90,9 @@ internal object SequenceAssigner {
         is StageFinished -> event.copy(sequence = sequence)
         is StageMarkedUnstable -> event.copy(sequence = sequence)
         is StageStarted -> event.copy(sequence = sequence)
+        is StashCreated -> event.copy(sequence = sequence)
+        is StashFailed -> event.copy(sequence = sequence)
+        is StashRestored -> event.copy(sequence = sequence)
         is StepAdmissionObserved -> event.copy(sequence = sequence)
         is StepFailed -> event.copy(sequence = sequence)
         is StepFinished -> event.copy(sequence = sequence)

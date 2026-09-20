@@ -39,6 +39,9 @@ import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageStarted
+import dev.rubentxu.pipeline.v2.events.StashCreated
+import dev.rubentxu.pipeline.v2.events.StashFailed
+import dev.rubentxu.pipeline.v2.events.StashRestored
 import dev.rubentxu.pipeline.v2.events.StepAdmissionObserved
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
@@ -174,6 +177,9 @@ object EnvelopeProjector {
         is FileExistsChecked,
         is ArtifactArchived,
         is ArtifactArchiveFailed,
+        is StashCreated,
+        is StashFailed,
+        is StashRestored,
         is DirEntered,
         is DirExited,
         is DirDeleted,

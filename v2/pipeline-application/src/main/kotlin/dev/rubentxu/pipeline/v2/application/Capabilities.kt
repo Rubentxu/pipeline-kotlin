@@ -272,3 +272,146 @@ val CLEAN_WS_OPERATIONS_CAPABILITY: StepCapability = StepCapability("clean-ws.op
  */
 val MILESTONE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("milestone.operations")
+
+/**
+ * Typed seam for `core.stash` / `core.unstash` (WU-LPR-089 / Tier B #1) — the ONLY
+ * capability the registry-routed `CoreStashStep.handler` / `CoreUnstashStep.handler`
+ * consume to move files across stage boundaries within a run.
+ *
+ * ## Why a typed seam and not filesystem primitives directly?
+ *
+ * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
+ * seams, never embeds IO logic). Mirrors the certified pattern:
+ * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
+ * - `ArchiveArtifactsOperations` / `ArchiveArtifactsOperationsAdapter` (S2-B10 / G1)
+ * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)
+ *
+ * ## Scope
+ *
+ * The seam intentionally hides:
+ * - **Storage location**: `<controlRoot>/stashes/<runId>/<name>/` (sibling of
+ *   `<controlRoot>/artefacts/` and `<controlRoot>/workspace/`; NOT a descendant
+ *   of the stage workspace, so `WorkspaceResolver.cleanupAfterComplete()` cannot
+ *   destroy the stash when the producing stage finishes).
+ * - **Ant-style glob expansion**: the adapter uses [dev.rubentxu.pipeline.v2.artefacts.local.AntStyleGlob]
+ *   internally; the handler receives ONLY typed `StashInput` and never touches the glob.
+ * - **sha256 computation**: the adapter computes the per-file sha256 + size when
+ *   stashing; the handler never calls `MessageDigest`.
+ * - **Event emission**: the adapter is the ONLY emitter of `StashCreated`,
+ *   `StashRestored`, and `StashFailed`. The handler never touches `EventSink`.
+ * - **Workspace-root guard**: every restore path is canonicalised and rejected
+ *   if it escapes `workspaceRoot` (Zip-Slip-style attack prevention, by analogy
+ *   with the `core.unzip` Zip-Slip guard).
+ *
+ * ## Failure semantics
+ *
+ * Implementations return a closed [StashResult] ADT. The handler maps each case
+ * to the typed output (success / typed failure) so the boundary projects the
+ * declared [dev.rubentxu.pipeline.v2.domain.FailureKind] end-to-end.
+ *
+ * ## Replay
+ *
+ * The Step declares [dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy.MEMOIZED]:
+ * - `stash`: idempotent — re-running with the same name overwrites the existing
+ *   stash with the current snapshot (the durable directory IS the cache).
+ * - `unstash`: idempotent — re-running reads from the durable directory without
+ *   re-fetching from a producer.
+ *
+ * The handler does NOT branch on replay: the adapter always returns the same
+ * closed result shape; replay law is enforced by the durable protocol above
+ * the handler, not within it.
+ */
+interface StashOperations {
+
+    /**
+     * Copies workspace files matching [StashInput.includes] (Ant-style) into the
+     * run-scoped stash directory. [StashInput.excludes] is applied first.
+     *
+     * Returns [StashSuccess] with the deterministic per-file summaries, or
+     * [StashFailed] with [dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT] for
+     * user errors (empty match, illegal name) and IO errors are surfaced as
+     * [StashFailed] with [dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE].
+     */
+    fun stash(input: StashInput): StashResult
+
+    /**
+     * Restores files from the run-scoped stash directory into the current stage
+     * workspace. Existing files are OVERWRITTEN (matching Jenkins `unstash` semantics).
+     *
+     * Returns [StashRestoredResult] with the per-file summaries, or [StashFailed]
+     * if the stash does not exist for the given name (USER error: the producer
+     * never ran, or the name is mistyped).
+     */
+    fun unstash(input: UnstashInput): StashResult
+}
+
+/**
+ * Input payload for `core.stash` (G6 typed contract).
+ *
+ * Jenkins-verbatim signature `stash(name, includes, excludes = "")`.
+ */
+data class StashInput(
+    val name: String,
+    val includes: String,
+    val excludes: String = "",
+) {
+    init {
+        require(name.isNotBlank()) { "core.stash 'name' must be non-blank" }
+        require('\n' !in name && '\r' !in name && '/' !in name && '\\' !in name) {
+            "core.stash 'name' must not contain path separators or newlines (got '$name')"
+        }
+        require(includes.isNotBlank()) { "core.stash 'includes' must be non-blank" }
+    }
+}
+
+/**
+ * Input payload for `core.unstash` (G6 typed contract).
+ *
+ * Jenkins-verbatim signature `unstash(name)`. The optional `into` parameter is
+ * Pipeline-K local-first: it scopes the restore to a subdirectory of the
+ * workspace (relative path, must not escape the workspace via `..` segments).
+ * When `into` is null/blank, files are restored at the workspace root.
+ */
+data class UnstashInput(
+    val name: String,
+    val into: String? = null,
+) {
+    init {
+        require(name.isNotBlank()) { "core.unstash 'name' must be non-blank" }
+        require('\n' !in name && '\r' !in name && '/' !in name && '\\' !in name) {
+            "core.unstash 'name' must not contain path separators or newlines (got '$name')"
+        }
+        if (into != null) {
+            require(into.isNotBlank()) {
+                "core.unstash 'into' must be null or non-blank"
+            }
+            require(!into.startsWith("/") && !into.startsWith("\\")) {
+                "core.unstash 'into' must be a relative path (got '$into')"
+            }
+            require(".." !in into.split("/") && ".." !in into.split("\\")) {
+                "core.unstash 'into' must not contain '..' segments (Zip-Slip guard)"
+            }
+        }
+    }
+}
+
+val STASH_OPERATIONS_CAPABILITY: StepCapability = StepCapability("stash.operations")
+
+/** Closed ADT of stash/unstash outcomes. */
+sealed interface StashResult
+
+/** Successful stash outcome with per-file deterministic summaries. */
+data class StashSuccess(
+    val entries: List<dev.rubentxu.pipeline.v2.events.StashedEntry>,
+) : StashResult
+
+/** Successful unstash outcome with per-file deterministic summaries. */
+data class StashRestoredResult(
+    val entries: List<dev.rubentxu.pipeline.v2.events.RestoredEntry>,
+) : StashResult
+
+/** Typed failure outcome; the handler maps this to a typed failure output. */
+data class StashFailed(
+    val failureKind: dev.rubentxu.pipeline.v2.domain.FailureKind,
+    val message: String,
+) : StashResult

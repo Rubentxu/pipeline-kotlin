@@ -58,6 +58,10 @@ class InMemoryEventStore : EventSink {
             is FileExistsChecked -> event.copy(sequence = assignedSequence)
             is ArtifactArchived -> event.copy(sequence = assignedSequence)
             is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
+            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            is StashCreated -> event.copy(sequence = assignedSequence)
+            is StashRestored -> event.copy(sequence = assignedSequence)
+            is StashFailed -> event.copy(sequence = assignedSequence)
             // ML-R9 workflow-control events
             is DirEntered -> event.copy(sequence = assignedSequence)
             is DirExited -> event.copy(sequence = assignedSequence)

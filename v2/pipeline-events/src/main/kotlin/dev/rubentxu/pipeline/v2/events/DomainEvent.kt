@@ -907,3 +907,87 @@ data class StepAdmissionObserved(
 ) : DomainEvent {
     override val kind: String get() = "StepAdmissionObserved"
 }
+
+/**
+ * Emitted when `core.stash` successfully copies workspace files into the
+ * run-scoped stash directory.
+ *
+ * ONE event per call (not per file) — INV-L6-ARC-006 journal hygiene.
+ * The list of [StashedEntry]s carries `sha256` + `sizeBytes` for auditability.
+ * Payload is restricted to typed entries — NEVER file content/bytes/data.
+ *
+ * Durability: the durable side-effect is the directory tree under
+ * `<controlRoot>/stashes/<runId>/<name>/`. The event is observability only.
+ *
+ * @param runId Run ID
+ * @param stageName Stage that produced the stash (origin)
+ * @param name Logical stash name (re-used by `core.unstash` consumers)
+ * @param files Stashed entries (sha256 + size)
+ */
+data class StashCreated(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val name: String,
+    val files: List<StashedEntry>,
+) : DomainEvent {
+    override val kind: String get() = "StashCreated"
+}
+
+/**
+ * Emitted when `core.unstash` successfully restores stashed files into a
+ * stage workspace.
+ *
+ * The list of [RestoredEntry]s records `relPath` + `sha256` for auditability
+ * and to allow divergence checks on replay.
+ *
+ * @param runId Run ID
+ * @param stageName Stage that consumed the stash (destination)
+ * @param name Logical stash name (must match a previous `StashCreated`)
+ * @param entries Restored entries
+ */
+data class StashRestored(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val name: String,
+    val entries: List<RestoredEntry>,
+) : DomainEvent {
+    override val kind: String get() = "StashRestored"
+}
+
+/**
+ * Emitted when `core.stash` or `core.unstash` fails (empty match, missing
+ * stash, IO error). The reason is passed through `SecretPatternRegistry.scrub()`
+ * BEFORE emit (INV-L6-EVT-001 no-secret-material contract).
+ */
+data class StashFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val name: String,
+    val operation: String, // "stash" or "unstash"
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "StashFailed"
+}
+
+/** Deterministic per-file summary of a stashed file (no content, no timestamp). */
+data class StashedEntry(
+    val relPath: String,
+    val sha256: String,
+    val sizeBytes: Long,
+)
+
+/** Deterministic per-file summary of a restored file. */
+data class RestoredEntry(
+    val relPath: String,
+    val sha256: String,
+    val sizeBytes: Long,
+)

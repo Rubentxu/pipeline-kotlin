@@ -295,6 +295,33 @@ object JsonEventLog {
                 sb.append(",\"reason\":")
                 sb.append(jsonString(event.reason))
             }
+            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            is StashCreated -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"name\":")
+                sb.append(jsonString(event.name))
+                sb.append(",\"files\":")
+                sb.append(serializeStashedEntries(event.files))
+            }
+            is StashRestored -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"name\":")
+                sb.append(jsonString(event.name))
+                sb.append(",\"entries\":")
+                sb.append(serializeRestoredEntries(event.entries))
+            }
+            is StashFailed -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"name\":")
+                sb.append(jsonString(event.name))
+                sb.append(",\"operation\":")
+                sb.append(jsonString(event.operation))
+                sb.append(",\"reason\":")
+                sb.append(jsonString(event.reason))
+            }
             is DirEntered -> {
                 sb.append(",\"path\":")
                 sb.append(jsonString(event.path))
@@ -1287,5 +1314,34 @@ object JsonEventLog {
             try { ScriptDiagnosticSeverity.valueOf(it) } catch (_: Exception) { ScriptDiagnosticSeverity.INFO }
         } ?: ScriptDiagnosticSeverity.INFO
         return ScriptingDiagnostic(severity, message, line, column, path)
+    }
+
+    // WU-LPR-089 — Stash helpers (compact JSON arrays).
+    private fun serializeStashedEntries(entries: List<StashedEntry>): String {
+        val sb = StringBuilder("[")
+        entries.forEachIndexed { idx, e ->
+            if (idx > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"relPath\":").append(jsonString(e.relPath))
+            sb.append(",\"sha256\":").append(jsonString(e.sha256))
+            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+
+    private fun serializeRestoredEntries(entries: List<RestoredEntry>): String {
+        val sb = StringBuilder("[")
+        entries.forEachIndexed { idx, e ->
+            if (idx > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"relPath\":").append(jsonString(e.relPath))
+            sb.append(",\"sha256\":").append(jsonString(e.sha256))
+            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
     }
 }

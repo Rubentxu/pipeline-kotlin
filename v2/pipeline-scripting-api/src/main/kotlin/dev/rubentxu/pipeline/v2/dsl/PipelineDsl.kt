@@ -2046,6 +2046,78 @@ class StageScope(
         return sb.toString()
     }
 
+    /**
+     * Copies workspace files matching an Ant-style `includes` pattern into the
+     * run-scoped stash directory, so a later stage (within the same run) can
+     * restore them via [unstash].
+     *
+     * WU-LPR-089 (Tier B #1): lowers directly to `StepSpec.RegistryStepSpec`
+     * for `core.stash` with the canonical encoded envelope
+     * `{"kind":"stash","name":"<name>","includes":"<includes>","excludes":"<excludes>"}` —
+     * byte-for-byte identical to `CoreStashStep.inputCodec.encode()` so the
+     * durable fingerprint round-trips through the G5 registry path.
+     *
+     * Jenkins verbatim (catalog §2.x): `stash(name: String, includes: String, excludes: String = "")`.
+     *
+     * @param name Stash logical name (re-used by [unstash]). Must be non-blank
+     *             and contain no path separators / newlines (validated by the
+     *             Step's typed input contract at handler time).
+     * @param includes Ant-style pattern to match workspace files
+     * @param excludes Comma-separated Ant-style patterns to exclude
+     */
+    fun stash(name: String, includes: String, excludes: String = "") {
+        val sb = StringBuilder()
+        sb.append("{\"kind\":\"stash\",\"name\":\"").append(escapeJsonString(name)).append("\",")
+        sb.append("\"includes\":\"").append(escapeJsonString(includes)).append("\"")
+        if (excludes.isNotEmpty()) {
+            sb.append(",\"excludes\":\"").append(escapeJsonString(excludes)).append("\"")
+        }
+        sb.append("}")
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.stash"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(sb.toString()),
+            ),
+        )
+    }
+
+    /**
+     * Restores files from a previously-produced stash (same run, any earlier
+     * stage) into the current stage workspace.
+     *
+     * WU-LPR-089 (Tier B #2): lowers directly to `StepSpec.RegistryStepSpec`
+     * for `core.unstash` with the canonical encoded envelope
+     * `{"kind":"unstash","name":"<name>","into":"<into>"}` — byte-for-byte
+     * identical to `CoreUnstashStep.inputCodec.encode()` so the durable
+     * fingerprint round-trips through the G5 registry path.
+     *
+     * Jenkins verbatim: `unstash(name: String)`. Pipeline-K local-first extends
+     * with an optional `into` parameter that scopes the restore to a
+     * subdirectory of the workspace (must not contain `..` segments — Zip-Slip
+     * guard).
+     *
+     * @param name Stash logical name (must match a previous [stash] in this run)
+     * @param into Optional subdirectory of the workspace to restore into. Must
+     *             be a relative path; the Step's typed contract forbids `..`
+     *             segments at handler time.
+     */
+    fun unstash(name: String, into: String? = null) {
+        val sb = StringBuilder()
+        sb.append("{\"kind\":\"unstash\",\"name\":\"").append(escapeJsonString(name)).append("\"")
+        if (!into.isNullOrBlank()) {
+            sb.append(",\"into\":\"").append(escapeJsonString(into)).append("\"")
+        }
+        sb.append("}")
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.unstash"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(sb.toString()),
+            ),
+        )
+    }
+
     // =============================================================================
     // ML-R9 timeout/retry DSL (T-10)
     // =============================================================================

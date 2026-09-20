@@ -252,6 +252,10 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is FileExistsChecked -> event.copy(sequence = assignedSequence)
                 is ArtifactArchived -> event.copy(sequence = assignedSequence)
                 is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
+                // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+                is StashCreated -> event.copy(sequence = assignedSequence)
+                is StashRestored -> event.copy(sequence = assignedSequence)
+                is StashFailed -> event.copy(sequence = assignedSequence)
                 is DirEntered -> event.copy(sequence = assignedSequence)
                 is DirExited -> event.copy(sequence = assignedSequence)
                 is DirDeleted -> event.copy(sequence = assignedSequence)

@@ -86,9 +86,35 @@ data class ArchiveArtifactsInput(
     val allowEmptyArchive: Boolean = false,
     val excludes: String = "",
     val fingerprint: Boolean = false,
+    /**
+     * Optional logical name attached to this archive (E1.ecosystem-local-first).
+     *
+     * When non-null AND non-blank, the archive's files are recorded in the
+     * `ArtifactIndexCapability` under this name, and a subsequent
+     * `core.artifact.query(name = ...)` call can retrieve the handle.
+     *
+     * When null (the default), the archive behaves exactly as before the
+     * E1 cycle: files are copied to the retention directory, no index
+     * entry is recorded, the legacy byte-shape is preserved.
+     *
+     * Backward-compatibility:
+     *  - The codec includes `name` only when non-null.
+     *  - The handler ignores null `name` (no index interaction).
+     *  - Existing tests that construct `ArchiveArtifactsInput(artifacts, ...)`
+     *    continue to compile and behave the same.
+     */
+    val name: String? = null,
 ) {
     init {
         require(artifacts.isNotBlank()) { "core.archiveArtifacts requires a non-blank artifacts pattern" }
+        if (name != null) {
+            require(name.isNotBlank()) {
+                "core.archiveArtifacts 'name' must be null or non-blank (got blank)"
+            }
+            require('\n' !in name && '\r' !in name) {
+                "core.archiveArtifacts 'name' must not contain newlines"
+            }
+        }
     }
 }
 

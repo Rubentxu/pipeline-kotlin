@@ -8,6 +8,8 @@ import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+
 /**
  * WU-LPR-011 — installed-distribution UAT for the `--resume` run lifecycle.
  *
@@ -28,9 +30,9 @@ import java.util.concurrent.TimeUnit
 @Timeout(10, unit = TimeUnit.MINUTES)
 class WULpr011ResumeLifecycleUatTest {
 
-    private val binary: File = WULpr010ScannerSupport.v2Root()
-        .resolve("pipeline-application/build/install/pipeline-application/bin/pipeline-application")
-        .toFile()
+    // WU-LPR-072: shared AppBinSupport handles the pipelinek (post-WU-LPR-070)
+    // and pipeline-application (legacy) install locations.
+    private val binary: File = AppBinSupport.discover().toFile()
 
     private fun run(vararg args: String): CliResult {
         val pb = ProcessBuilder(binary.absolutePath, *args)

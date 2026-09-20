@@ -12,6 +12,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+
 /**
  * UAT-DSL-006: Body Execution Substrate (EM-4 JEP-020/029).
  *
@@ -36,27 +38,9 @@ import java.nio.file.Paths
 @Timeout(120)
 class UatDsl006BodyExecutionTest {
 
-    private val appBin: Path by lazy {
-        val userDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
-        val moduleDir = if (userDir.fileName?.toString() == "pipeline-application") {
-            userDir
-        } else {
-            userDir.resolve("v2").resolve("pipeline-application")
-        }
-        val bin = moduleDir
-            .resolve("build")
-            .resolve("install")
-            .resolve("pipeline-application")
-            .resolve("bin")
-            .resolve("pipeline-application")
-        if (!bin.toFile().exists()) {
-            throw IllegalStateException(
-                "Application binary not found at $bin. " +
-                "Run ./gradlew :pipeline-application:installDist first."
-            )
-        }
-        bin
-    }
+    // WU-LPR-072: shared AppBinSupport handles the pipelinek (post-WU-LPR-070)
+    // and pipeline-application (legacy) install locations.
+    private val appBin: Path by lazy { AppBinSupport.discover() }
 
     /**
      * Creates a temporary pipeline script file.

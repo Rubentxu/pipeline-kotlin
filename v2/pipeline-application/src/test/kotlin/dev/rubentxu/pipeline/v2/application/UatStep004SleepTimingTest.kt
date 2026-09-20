@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+
 /**
  * UAT-STEP-004: sleep timing
  * Tests that sleep blocks for at least N seconds and emits timing.
@@ -17,27 +19,9 @@ import java.nio.file.Paths
 @Timeout(120)
 class UatStep004SleepTimingTest {
 
-    private val appBin: Path by lazy {
-        val userDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
-        val moduleDir = if (userDir.fileName?.toString() == "pipeline-application") {
-            userDir
-        } else {
-            userDir.resolve("v2").resolve("pipeline-application")
-        }
-        val bin = moduleDir
-            .resolve("build")
-            .resolve("install")
-            .resolve("pipeline-application")
-            .resolve("bin")
-            .resolve("pipeline-application")
-        if (!bin.toFile().exists()) {
-            throw IllegalStateException(
-                "Application binary not found at $bin. " +
-                "Run ./gradlew :pipeline-application:installDist first."
-            )
-        }
-        bin
-    }
+    // WU-LPR-072: shared AppBinSupport handles the pipelinek (post-WU-LPR-070)
+    // and pipeline-application (legacy) install locations.
+    private val appBin: Path by lazy { AppBinSupport.discover() }
 
     private val sleepTimingScript: Path by lazy {
         Paths.get(javaClass.getResource("/sleep-timing.pipeline.kts")!!.toURI())

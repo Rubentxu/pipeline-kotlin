@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Timeout
 import java.nio.file.Path
 import java.nio.file.Paths
 
+import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
+
 /**
  * UAT-STEP-001: sh execution
  * Tests that sh step runs successfully, respects argv list, and captures stdout.
@@ -22,27 +24,9 @@ import java.nio.file.Paths
 @Timeout(120)
 class UatStep001ShExecutionTest {
 
-    private val appBin: Path by lazy {
-        val userDir = Paths.get(System.getProperty("user.dir")).toAbsolutePath()
-        val moduleDir = if (userDir.fileName?.toString() == "pipeline-application") {
-            userDir
-        } else {
-            userDir.resolve("v2").resolve("pipeline-application")
-        }
-        val bin = moduleDir
-            .resolve("build")
-            .resolve("install")
-            .resolve("pipeline-application")
-            .resolve("bin")
-            .resolve("pipeline-application")
-        if (!bin.toFile().exists()) {
-            throw IllegalStateException(
-                "Application binary not found at $bin. " +
-                "Run ./gradlew :pipeline-application:installDist first."
-            )
-        }
-        bin
-    }
+    // WU-LPR-072: shared AppBinSupport handles the pipelinek (post-WU-LPR-070)
+    // and pipeline-application (legacy) install locations.
+    private val appBin: Path by lazy { AppBinSupport.discover() }
 
     private val shExecScript: Path by lazy {
         Paths.get(javaClass.getResource("/sh-exec.pipeline.kts")!!.toURI())

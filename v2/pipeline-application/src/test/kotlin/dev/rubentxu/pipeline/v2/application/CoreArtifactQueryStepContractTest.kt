@@ -258,6 +258,24 @@ class CoreArtifactQueryStepContractTest {
         )
     }
 
+    // ---------- DSL → input codec roundtrip (E1.1 / T7) ----------
+
+    @Test
+    fun `DSL envelope encoded by StageScope_artifactQuery decodes byte-for-byte`() {
+        // The DSL façade in pipeline-scripting-api/.../PipelineDsl.kt
+        // produces a canonical JSON envelope; the registered Step codec
+        // must decode it back to the exact same typed Input. This is
+        // the durable fingerprint invariant.
+        val sb = StringBuilder()
+        sb.append("{\"kind\":\"artifactQuery\",\"name\":\"")
+        sb.append("e1-fixture")  // no escaping needed, plain ASCII
+        sb.append("\"}")
+        val encoded = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(sb.toString())
+
+        val decoded = CoreArtifactQueryStep.definition.contract.inputCodec.decode(encoded)
+        assertEquals(ArtifactQueryInput(name = "e1-fixture"), decoded)
+    }
+
     // ---------- Test helpers ----------
 
     private class TestArtifactIndex : ArtifactIndexCapability {

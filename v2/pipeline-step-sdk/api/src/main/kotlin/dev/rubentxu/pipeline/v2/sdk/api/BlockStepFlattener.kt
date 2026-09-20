@@ -185,6 +185,8 @@ object BlockStepFlattener {
             is StepSpec.ReadFile,
             is StepSpec.FileExists,
             is StepSpec.ArchiveArtifacts,
+            // E1.1 / T7: artifactQuery is a terminal leaf (registry step with no body)
+            is StepSpec.ArtifactQuery,
             is StepSpec.DeleteDir,
             is StepSpec.CleanWs,
             is StepSpec.Unstable,

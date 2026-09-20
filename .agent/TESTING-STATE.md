@@ -1,10 +1,10 @@
 
 
-## Active Change — LPR-076/077/078 corpus cycle closeout (2026-09-20, base `214278fa`, `main`)
+## Active Change — LPR-076/077/078/079 corpus cycle closeout (2026-09-20, base `214278fa`, `main`)
 
-**Status: CLOSED, all commits pushed (HEAD `c33f1528`), tags `wu-lpr-076/077/078` published.**
+**Status: CLOSED, all commits pushed (HEAD `26b425fc`), tags `wu-lpr-076/077/078/079` published.**
 
-### Cycle outcomes (range `adab94d1..c33f1528`, 4 WUs)
+### Cycle outcomes (range `adab94d1..26b425fc`, 5 WUs)
 
 | WU | Commit | Module | Outcome |
 |----|--------|--------|---------|
@@ -13,6 +13,7 @@
 | **WU-LPR-076** | `7bdf19f0` | test (UAT-COMPAT-001) | Runner bifurcated: per-test `@TempDir` workspace, fixture 10 preserved. `28-zip-slip-defense` registered as broken. 2/0/0/0. |
 | **WU-LPR-077** | `88fdda29` | test (corpus untouched) | CP-002 inventory lock-step 22 → 29 + `*.pipeline.kts` KDoc fix. 2/0/0/0. |
 | **WU-LPR-078** | `c33f1528` | docs (architecture fitness) | DIAG: 3 pre-existing failures in `pipeline-architecture-tests` NOT a regression. Worktree reproduction at `adab94d1` confirmed identical failure pattern. |
+| **WU-LPR-079** | `26b425fc` | docs (root README) | Closed `Lfc0V1QuarantineFitnessTest` by linking `LOCAL_FOUNDATION_CONSOLIDATION.md` and the LFC token in the root README. 5/0/0. |
 
 ### Cumulative round evidence (modules swept this cycle)
 
@@ -28,8 +29,8 @@
 | `:pipeline-scripting-{api,kotlin24}` | 101 | 0 | Scripting host green. |
 | `:pipeline-testkit` | 2 | 0 | TestKit green. |
 | `:pipeline-artefacts-local` | 32 | 0 | Artefacts production wiring green. |
-| `:pipeline-architecture-tests` | 309 | **3 pre-existing** | Lfc0GlobalState / Lfc0V1Quarantine / FArchL7JenkinsVerbatimStep. See WU-LPR-078 receipt. |
-| **TOTAL** | **2350** | **3 pre-existing** | **All non-pre-existing green.** |
+| `:pipeline-architecture-tests` (after WU-LPR-079) | 309 | **2 pre-existing** | Lfc0GlobalState / FArchL7JenkinsVerbatimStep. See WU-LPR-078 receipt. |
+| **TOTAL** | **2350** | **2 pre-existing** | **All non-pre-existing green.** |
 
 ### Receipts (canonical evidence)
 
@@ -37,33 +38,35 @@
 - `v2/docs/v2/07-uat/WU_LPR_076_UAT_COMPAT_CORPUS_INVENTORY_AND_WORKSPACE_RECEIPT.md`
 - `v2/docs/v2/07-uat/WU_LPR_077_CP002_CORPUS_INVENTORY_LOCKSTEP_RECEIPT.md`
 - `v2/docs/v2/07-uat/WU_LPR_078_ARCHITECTURE_FITNESS_DIAG_RECEIPT.md`
+- `v2/docs/v2/07-uat/WU_LPR_079_README_LFC_ROADMAP_LINK_RECEIPT.md`
 
 ### Quarantined pre-existing failures (NOT blocking LPR cycle)
 
 | Test | Cause | Owner branch | WU-LPR dependency |
 |------|-------|--------------|--------------------|
-| `Lfc0GlobalStateFitnessTest` | Step plugins fall back to `System.getProperty("user.dir")` | follow-up CTX-P migration to `WorkspaceResolver` | independent of LPR cycle |
-| `Lfc0V1QuarantineFitnessTest` | Root README missing `LOCAL_FOUNDATION_CONSOLIDATION.md` link | doc-only follow-up | independent of LPR cycle |
+| `Lfc0GlobalStateFitnessTest` | Step plugins fall back to `System.getProperty("user.dir")` | follow-up CTX-P / hexagonal port: introduce `WorkspaceRootProvider` in `pipeline-step-sdk:api`, implement adapter in `pipeline-application`, migrate `GitCheckoutStepDefinition` + `JUnitResultsStepDefinition` to consume it. | independent of LPR cycle; requires OpenSpec proposal first |
 | `FArchL7JenkinsVerbatimStepTest` | `StepSpec$ArchiveArtifacts` data class retired; registry path is `CoreArchiveArtifactsStep` | `cycle/lfc2-e1-archive-artifacts-g8` (in flight, worktree `pipeline-archive-g8`) | closes when archive-artifacts-g8 merges |
 
 ### L5 round gate (`./gradlew -p v2 check`)
 
-Not run end-to-end because the 3 pre-existing failures in
+Not run end-to-end because the 2 remaining pre-existing failures in
 `:pipeline-architecture-tests` keep it red. They are quarantined and
 will close when the corresponding owner branches land in main. The LPR
 cycle's own deliverables are green; the L5 gate cannot advance until
-the archive-artifacts-g8 burn-down lands.
+the archive-artifacts-g8 burn-down lands (and the CTX-P migration if
+the Lfc0GlobalState failure is to be closed by LPR).
 
 ### Next WU candidates (next cycle)
 
-- **WU-LPR-079+**: continue the corpus UAT regression sweep across
-  remaining `CompatibilityCorpusTest` invariants (e.g. fixture 25-27
-  contract invariants not yet covered).
-- **Doc WU**: append `LOCAL_FOUNDATION_CONSOLIDATION.md` link in root
-  README to close `Lfc0V1QuarantineFitnessTest` (5-minute change).
+- **WU-LPR-079+ (already done above as `wu-lpr-079`)** — closes
+  `Lfc0V1QuarantineFitnessTest`.
+- **Spec WU-LPR-080**: write OpenSpec proposal for the hexagonal
+  `WorkspaceRootProvider` port (CTX-P follow-up). Needs proposal +
+  design before any implementation WU. Owner: same LPR cycle.
+- **WU-LPR-090+**: continue the corpus UAT regression sweep across
+  remaining `CompatibilityCorpusTest` invariants.
 - After `cycle/lfc2-e1-archive-artifacts-g8` lands in main: revisit
-  `FArchL7JenkinsVerbatimStepTest` and migrate the two Step plugins
-  in scope of `Lfc0GlobalStateFitnessTest`.
+  `FArchL7JenkinsVerbatimStepTest`.
 
 ## Active Change — SH-VAR-SCOPE-CONTRACT cycle (2026-09-20, base `1fdd3dce`, branch `cycle/sh-var-scope-contract-s1`)
 

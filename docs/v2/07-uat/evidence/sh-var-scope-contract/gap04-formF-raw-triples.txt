@@ -1,0 +1,85 @@
+=== sh-var-scope-contract evidence ===
+Generated: 2026-09-20T10:27Z
+Base SHA: 1fdd3dce
+Spec: openspec/changes/sh-var-scope-contract/spec.md §Gap #4
+Cycle: cycle/sh-var-scope-contract-s1
+Test class: dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap04FormFProbeTest
+Reproduction cmd (rule 25 canary):
+  rm -f v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap04FormFProbeTest.xml
+  cd v2 && ./gradlew :pipeline-scripting-kotlin24:test \
+    --tests 'ShVarScopeGap04FormFProbeTest' --rerun-tasks 2>&1
+Run mode: --rerun-tasks (AGENTS.md rule 25)
+JUnit XML: v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap04FormFProbeTest.xml
+JUnit XML SHA-256: af53a4056e2a814d55873064fe6934d085226d72ca9cbba9ce35540596bee2fc
+JUnit XML tests/failures/errors: 2/0/0
+Captured log SHA-256: 5152a5dfd6e669d3095ffb0d2fc191a8c4f1d990bf019a009e2ffc4e3d9d0b10
+
+
+================================================================
+CONTRACT BEHAVIOUR LOCKED BY THIS GAP04 TEST (layer 4)
+================================================================
+
+The test invokes `bash -c <bytes>` in-process for the two Form F
+variants that the production compiler would have accepted (F1 is the
+compile-failure path already locked at the byte level by
+S2ThreePhaseProbeTest Form F1 at L1:C53; not duplicated here).
+
+f2 — safe form in raw triple — bash expands \$USER
+  bash sees:  echo user=\$USER
+  bash prints: user=rubentxu            (USER env expanded)
+
+f3 — trap form in raw triple — bash does NOT expand
+  bash sees:   echo user=\\\$USER
+  bash prints: user=\$USER              (backslash consumed by bash
+                                        as its own escape; no env
+                                        expansion performed)
+
+INTERESTING RED — captured for the record (rule 21 + operator G2):
+
+  First attempt at f3 asserted `escaped == "user=\\\$USER"`. It
+  failed because:
+    - bash CONSUMES the backslash as its own escape at parse time.
+    - The captured stdout is `user=$USER` (no backslash, no
+      expansion either), NOT `user=\$USER`.
+  The assertion was rewritten to match the byte truth:
+    - The expected printed output is `user=$USER` (no expansion).
+    - The output MUST NOT contain a backslash byte (bash ate it).
+  This is exactly the kind of source-appearance vs bytes mistake
+  Guard G2 was written to catch: the source `\$USER` LOOKS like it
+  would make bash reject; in fact bash DOES accept the bytes but
+  treats them as "escape and don't expand", which is also a
+  failure mode for the author's intent.
+
+FOUR-LAYER MEASUREMENT (operator G2 verbatim):
+
+  Layer 1 (Kotlin source literal type) -> raw `"""..."""` triple:
+    distinguished from ordinary `"..."` because the backslash
+    does NOT escape `$`.
+  Layer 2 (post-Kotlin-compile bytes) -> captured in T2's
+    S2ThreePhaseProbeTest Forms F1/F2/F3 byte-level output.
+  Layer 3 (bytes bash receives) -> the assembled bash script is
+    fed by `ProcessBuilder("bash", "-c", script)`.
+  Layer 4 (bash expansion semantics) -> the captured stdout:
+    f2 -> env expansion; f3 -> no expansion (failure mode).
+
+The matrix that emerges for raw `"""..."""` triples:
+
+  Form F1 (`\${USER}`):   never reaches bash (Kotlin compile error).
+  Form F2 (`${'$'}USER`): bash sees `$USER` -> expanded by env.
+  Form F3 (`\$USER`):     bash sees `\$USER` -> no env expansion,
+                          user gets literal `$USER` text (no env value).
+
+CONCLUSION: only Form F2 is the safe form inside raw triples.
+F1 fails earlier (Kotlin compile); F3 silently fails at runtime.
+
+GUARDS HONOURED:
+  G1 — envVars not consulted by withEnv (this test bypasses the
+       escoper entirely and writes straight to bash; documents
+       the test scope).
+  G2 — All four layers asserted on actual bytes, not source aspect.
+       The red above is worked-example evidence.
+  G3 — ScriptTextEscaper, EnvVarNameExtractor, and any production
+       source remain untouched.
+
+Untouched: ScriptTextEscaper, EnvVarNameExtractor,
+Kotlin24ScriptingHost.mapDiagnostic, production source.

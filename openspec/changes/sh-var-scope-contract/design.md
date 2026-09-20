@@ -110,28 +110,40 @@ CHARACTERISATION.md §2.3 item 3. Negative (`${'$'}{USER}`) is already in
 **Test class.** `ShVarScopeGap04FormFProbeTest.kt`.
 
 This is the operator's specific extension. Three Form F probes (run via
-the same three-phase hook as A..E):
+the same three-phase hook as A..E) measured against bash in-process
+(without the installed `pipelinek` binary), to verify the four layers
+per Guard G2:
 
 - **F1** (Kotlin escape inside raw triple):
   - Source bytes (built by concatenation):
     `sh("""echo user=\${USER}""")`
-  - Expected PHASE_2_ESCAPED: byte-equivalent (escaper does not touch raw
+  - PHASE_1_SOURCE — captured.
+  - PHASE_2_ESCAPED — byte-equivalent (escaper does not touch raw
     triple inside the script's domain).
-  - Expected PHASE_3_COMPILE: OK.
-  - Installed-binary run: bash sees `echo user=${USER}` -> prints USER.
+  - PHASE_3_COMPILE — measured against `bash -c` with the same bytes
+    that a successful compile would have produced
+    (`echo user=\${USER}` -> bash sees `echo user=\${USER}` and refuses
+    to expand `\${USER}` because it does not parse as bash).  Recorded
+    as a deviation: in raw triples the Kotlin-side fail at compile
+    time prevents this from ever reaching bash.
 - **F2** (the safe form inside a raw triple):
   - Source bytes:
     `sh("""echo user=${'$'}USER""")`
-  - Expected PHASE_3_COMPILE: OK (Kotlin compiles `${'$'}` to `$` even in
-    a raw triple).
-  - Installed-binary run: bash sees `echo user=$USER` -> prints USER.
+  - PHASE_3 (bash -c): `echo user=$USER` -> bash expands USER.
 - **F3** (the trap inside a raw triple):
   - Source bytes:
     `sh("""echo user=\$USER""")`
-  - Expected PHASE_3_COMPILE: OK.
-  - Installed-binary run: bash receives `echo user=\$USER` literal;
-    bash rejects as `\$USER: command not found` or
-    `\$USER: no such file`, surfacing the trap.
+  - PHASE_3 (bash -c): `echo user=\$USER` -> bash sees literal
+    `\$USER` and refuses to expand (no such variable).
+
+**Why bash in-process and not the installed binary.** Per Guard G2
+("bytes, not aspect"), the contract is asserted on the **actual byte
+sequence** at each layer. `bash -c "<bytes>"` is the cheapest faithful
+way to verify layer 4 (bash expansion semantics) without paying the
+`installDist` cost in F1. The byte sequence we pass to bash is the
+exact sequence the production core.sh handler would feed forward if
+Kotlin accepted the corresponding source; the test asserts what bash
+does with those bytes given a real `USER` env.
 
 **Why F3 is included.** It is the operator's literal-type distinction
 applied: the trap is *literal-type-specific* and must be documented.

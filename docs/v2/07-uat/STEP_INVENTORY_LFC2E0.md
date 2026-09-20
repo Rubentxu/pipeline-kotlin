@@ -51,8 +51,9 @@ REGISTRY_PRIMARY, contract pending, installDist pending:  2
   core.waitUntil         (G5 done; G6+G8 pending)
   core.pwdTmp            (no G6/G8 yet; depends on LFC-2R2 like pwd)
 
-CERTIFIED but missing formal contract suite:    1
-  core.writeFile         (G8 done; StepContractSuiteTest not yet authored)
+CERTIFIED but missing formal contract suite:    0
+  (corrected 2026-09-20 WU-LPR-084; WriteFileStepContractSuiteTest
+   exists with 21/0/0 — see S2_A3_CORE_WRITEFILE_G6_CONTRACT_CERTIFICATION_RECEIPT.md)
 
 Step SDK plugins (open-world, registry seam):
   scm-git.checkout       (registry)
@@ -86,7 +87,7 @@ Columns:
 | `core.sh` | CORE | registry | **CERTIFIED** | `LB02_S6_BURN_DOWN_AND_CERTIFICATION.md` | reference effectful Step |
 | `core.error` | CORE | registry | **CERTIFIED** | `S2_A1_CORE_ERROR_G8_FINAL_CERTIFICATION_RECEIPT.md` | typed failure |
 | `core.sleep` | CORE | registry | **CERTIFIED** | `S2_A2_CORE_SLEEP_G8_FINAL_CERTIFICATION_RECEIPT.md` | |
-| `core.writeFile` | CORE | registry | **CERTIFIED** (formal contract test pending) | `S2_A3_CORE_WRITEFILE_G8_FINAL_CERTIFICATION_RECEIPT.md` | add `StepContractSuiteTest` |
+| `core.writeFile` | CORE | registry | **CERTIFIED** | `S2_A3_CORE_WRITEFILE_G8_FINAL_CERTIFICATION_RECEIPT.md` + `S2_A3_CORE_WRITEFILE_G6_CONTRACT_CERTIFICATION_RECEIPT.md` | 18/18 strict validation rows green (21 contract tests); G6 closed 2026-09-20 WU-LPR-084 |
 | `core.isUnix` | CORE | registry | **CERTIFIED** | `S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md` | |
 | `core.deleteDir` | CORE | registry | **CERTIFIED** | `S2_A7_CORE_DELETEDIR_G8_CERTIFICATION_RECEIPT.md` | |
 | `core.milestone` | CORE | registry | **CERTIFIED** | `S2_A9_CORE_MILESTONE_G8_CERTIFICATION_RECEIPT.md` | |

@@ -33,32 +33,58 @@ chosen by the author.
 
 ## 2. Safe forms (operator-known table)
 
+The following table is the SHIP-CYCLE byte-level capture of the
+contract. Each row was probed in-process by the Form A..F probe in
+`S2ThreePhaseProbeTest` (T2 evidence, sha256 below). The byte-level
+truth supersedes any earlier hypothesis on the literal-type
+distinction; the trap-form table in §3 lists the forms where the
+contract is FAIL.
+
 | Outer Kotlin literal | Author intent | Author types | Kotlin compiles | bash sees | Notes |
 |---|---|---|---|---|---|
 | `"…"` ordinary | expand shell var | `"\$USER"` | `"$USER"` | `$USER` | The backslash IS an escape in `"…"`. |
-| `"…"` ordinary | braced shell var | `"\${USER}"` | `"${USER}"` | `${USER}` | Inside `"…"`, the `${` opens a Kotlin template if the next chars form `$IDENT`; `\$` neutralises it. |
-| `"…"` ordinary | Kotlin local value | `"$USERNAME"` with `val USERNAME` | `"alice"` | `alice` | Kotlin wins. |
-| `"""…"""` raw triple | expand shell var | `"""\${USER}"""` | `${USER}` | `${USER}` | Same as above: `\$` neutralises `${`. |
-| `"""…"""` raw triple | expand shell var | `"""${'$'}USER"""` | `$USER` | `$USER` | **Only safe form in raw triples when `\$` is unwanted**. `${'$'}` evaluates to `$` regardless of outer literal type. |
+| `"…"` ordinary | braced shell var | `"\${USER}"` | `"${USER}"` | `${USER}` | Inside `"…"`, `\$` neutralises `${`. |
+| `"…"` ordinary | Kotlin local value | `"$USERNAME"` with `val USERNAME` | `"alice"` | `alice` | Kotlin wins; user chose this. |
+| `"…"` ordinary | unbound UPPER | `"$NOPE_NO_BINDING"` | (Kotlin compile error: `Unresolved reference 'NOPE_NO_BINDING'`) | (won't compile) | Author must escape. |
+| `"""…"""` raw triple | braced shell var | `"""\${USER}"""` | **COMPILE FAILS** (`Unresolved reference 'USER'.` at L1:C53, see T2 evidence F1) | (won't reach bash) | `\$` is NOT an escape in raw triples. The backslash survives as a literal byte, Kotlin still sees `${...}` and tries to expand. |
+| `"""…"""` raw triple | braced shell var | `"""${'$'}USER"""` | `"$USER"` | `$USER` | **`${'$'}` is the only safe form inside raw triples when `\$IDENT` is desired.** |
+| `"""…"""` raw triple | unbraced shell var | `"""\$USER"""` | **COMPILE FAILS** (`Unresolved reference 'USER'.` at L1:C52, see T2 evidence F3) | (won't reach bash) | Same as F1: `\$` is not escape in raw triples. |
 | `"…"` + `withCredentials(…) { … }` | expand credential var | `"$USER_PASS"` | (escaper rewrites `$USER_PASS` → `${'$'}USER_PASS` in source; Kotlin then compiles to `$USER_PASS`) | `$USER_PASS` | Escaper output is correct in every literal type. |
 
-**Author rule of thumb.** Prefer `\$IDENT` in `"…"` and `\${IDENT}` in
-matching cases. Switch to `${'$'}IDENT` only inside `"""…"""` raw triples
-where you actually want the literal `$` to survive into bash.
+**Author rule of thumb.**
+- Inside ordinary `"…"`: use `\$IDENT` or `\${IDENT}`. Both compile to
+  literal `$IDENT` / `${IDENT}`. bash expands as expected.
+- Inside raw `"""…"""`: use `${'$'}IDENT` if you want a literal `$`
+  to survive into bash. The `\$` form is also rejected (compile
+  fail), because raw triples do not honour backslash escapes on `$`.
+- When Kotlin should win (Kotlin local shadowing): bare `$IDENT`
+  (no escape) in any literal type.
+
+> Byte-level evidence (Form A..F three-phase probes): see
+> `docs/v2/07-uat/evidence/sh-var-scope-contract/S2-three-phase-probe-extended.txt`
+> (sha256
+> `896e5f1dd5003a608ca9ef043a3053eac9c3b32c8ec509c096c29ab9c17951ca`).
+> Layer-4 (bash in-process) confirmation: see
+> `gap04-formF-raw-triples.txt`.
 
 ## 3. Trap forms (author-avoidance table)
 
-These compile but produce invalid bash. The compile error is silent.
+These compile but produce invalid output. Some fail Kotlin compile
+before reaching bash; others silently fail at runtime.
 
-| Form | What the author wrote (literally) | Bash receives | Bash result |
-|---|---|---|---|
-| Trap T1 — trap inside ordinary `"…"` | `"echo ${'$'}USER"` (treating `${'$'}` as escape) | `${'$'}USER` (8 chars literal: `$ { ' $ ' } U S E R`) | `sustitución errónea` / `bad substitution` |
-| Trap T2 — Kotlin-escape inside raw triple | `"""echo \$USER"""` (thinking `\` is escape) | `\$USER` literally (6 chars: `\` `$` `U` `S` `E` `R`) | `\$USER: command not found` |
-| Trap T3 — unbraced credential with no escape and no `withCredentials` | `"echo $USER_NO_BINDING"` | (compile error: `Unresolved reference 'USER_NO_BINDING'`) | (won't compile) |
-| Trap T4 — unbraced shell var when Kotlin local shadows it | `val USERNAME="alice"; sh("echo $USERNAME")` | (Kotlin wins, substitutes `alice`) | output `alice`, not env value |
+| Form | What the author wrote (literally) | Kotlin verdict | bash verdict | Notes |
+|---|---|---|---|---|
+| Trap T1 — `\${'$'}USER` outside raw triple | `"echo ${'$'}USER"` | OK (compile) | bash rejects: `sustitución errónea` / `bad substitution` | Locked by `S2ThreePhaseProbeTest` Form B; negative fixture `99-trap-form-dollar-dollar-quote.pipeline.kts` + `TrapFormNegativeFixtureTest` (commit `83882467`). |
+| Trap T2 — `\${'$'}{USER}` outside raw triple | `"echo ${'$'}{USER}"` | OK (compile) | bash rejects: same as T1 with extra `{` | Same lock as T1, captured byte-level in CHARACTERISATION.md §5.3. |
+| Trap T3 — bare unbraced credential with no escape and no `withCredentials` | `"echo $USER_NO_BINDING"` | FAIL (`Unresolved reference`) | (won't compile) | Author must escape, or scope a Kotlin local. |
+| Trap T4 — bare unbraced shell var when Kotlin local shadows it | `val USERNAME="alice"; sh("echo $USERNAME")` | OK (Kotlin resolves) | (bash never sees `$USERNAME`) | Kotlin wins. Author's responsibility to choose. |
+| Trap T5 — `\${USER}` inside raw triple | `"""echo user=\${USER}"""` | **FAIL** (`Unresolved reference 'USER'.` at L1:C53) | (won't compile) | NEW: cycle T2 measurement. `\$` is not escape in raw triples. |
+| Trap T6 — `\$USER` inside raw triple | `"""echo user=\$USER"""` | **FAIL** (`Unresolved reference 'USER'.` at L1:C52) | (won't compile) | NEW: cycle T2 measurement. Same property as T5. |
+| Trap T7 — `\$USER` in raw triple, compile-passes-only | n/a in raw triples | (always fails compile per T5/T6) | n/a | The compile-time fail is the protective side of raw triples. |
 
-Trap T1 is the historical S1 discovery; locked as a negative fixture by
-commit `83882467` at `v2/pipeline-application/src/test/resources/broken/99-trap-form-dollar-dollar-quote.pipeline.kts` plus `TrapFormNegativeFixtureTest`. Reproductions of T1..T4 are in `CHARACTERISATION.md §5.3` and §6.4.
+> Byte-level evidence: `S2-three-phase-probe-extended.txt` Form B
+> for T1; Forms F1, F3 for T5, T6 (sha256
+> `896e5f1dd5003a608ca9ef043a3053eac9c3b32c8ec509c096c29ab9c17951ca`).
 
 ## 4. Same-name collisions (author's responsibility, documented)
 
@@ -138,13 +164,29 @@ MUST remain untouched** during F1 (Guard G2).
 
 ## 8. Diagnostics (Gap #5, gated F2)
 
-`Kotlin24ScriptingHost.mapDiagnostic` currently reports positions against
-the *escaped* source, not the original. Each `$VAR` → `${'$'}VAR`
-insertion adds exactly **6 characters** per token past the insertion point
-in the same line. The byte-level delta is bounded and predictable.
+`Kotlin24ScriptingHost.mapDiagnostic` currently reports positions
+against the *escaped* source, not the original. The escoper inserts
+a trap-form guard (`\${'\$'}`, **5 chars net delta**) before each
+credential-bound `$VAR` reference, so any diagnostic emitted by the
+Kotlin compiler on the ESCAPED source points at a column that is
+**shifted +5 chars per credential-bound $VAR upstream** of the
+diagnostic's column on the original source.
 
-A reproduction test (`ShVarScopeGap05Test`, T6 of the cycle) measures this
-delta in-process. The predicate for opening F2 is:
+This cycle's byte-level measurement (`ShVarScopeGap05Test` T6,
+evidence file `gap05-diagnostics.txt`, sha256
+`9395c1476b37f5fc4a922e78162a4dbe5c26152eecc64212683c689eac53d3e8`):
+
+```text
+F2_TRIGGER_DATA_C2: author_column=123 escaped_column=128 escape_shift=5
+```
+
+The user's editor cursor sits at column 123; the Kotlin diagnostic
+currently points at column 128.
+
+The opening of F2 is **gated** by the operator's UX judgement
+(not-yet-made: is +5 characters of diagnostic drift on every
+credential-bound `$VAR` reference user-perceivable friction?). The
+predicate for opening F2 is exactly:
 
 ```text
 F2_TRIGGER = (Gap05Test reproduces a deviation where
@@ -152,8 +194,15 @@ F2_TRIGGER = (Gap05Test reproduces a deviation where
               AND that deviation causes user-perceivable friction)
 ```
 
-Until `F2_TRIGGER = YES`, this is documented as a known, measured
-limitation. No offset map is added (Guard G3).
+If the operator judges YES, a NEW cycle (under its own GO) opens
+with a proposal for an offset map in `mapDiagnostic`. The byte-level
+data above is durable evidence for that future decision.
+
+Until then, the contract is: **diagnostic columns follow the
+escaped source, not the original**. With no `withCredentials`
+active, the escoper is byte-identity and the columns match the
+author's; this baseline is locked by the third sub-case of
+`ShVarScopeGap05Test`.
 
 ## 9. Layered invariants already in the receiver (do NOT re-derive)
 

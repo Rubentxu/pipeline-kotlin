@@ -71,6 +71,10 @@ object CoreArchiveArtifactsStep {
                         put("allowEmptyArchive", JsonPrimitive(value.allowEmptyArchive))
                         put("excludes", JsonPrimitive(value.excludes))
                         put("fingerprint", JsonPrimitive(value.fingerprint))
+                        // E1.ecosystem-local-first: optional name. Only
+                        // emitted when non-null to preserve byte-shape for
+                        // legacy callers (backward-compat).
+                        value.name?.let { put("name", JsonPrimitive(it)) }
                     },
                 ),
             )
@@ -85,6 +89,7 @@ object CoreArchiveArtifactsStep {
                 allowEmptyArchive = obj["allowEmptyArchive"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
                 excludes = obj["excludes"]?.jsonPrimitive?.content ?: "",
                 fingerprint = obj["fingerprint"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false,
+                name = obj["name"]?.jsonPrimitive?.content,
             )
         }
     }
@@ -174,13 +179,64 @@ object CoreArchiveArtifactsStep {
      * [ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] and maps the closed typed result to the
      * typed output ADT. The adapter is the single emitter of `ArtifactArchived` /
      * `ArtifactArchiveFailed`; the handler never touches the event sink.
+     *
+     * E1.ecosystem-local-first: when `input.name != null`, the handler ALSO
+     * resolves the [ARTIFACT_INDEX_CAPABILITY] (via `available()` since the
+     * capability is OPTIONAL — see contract KDoc). When the capability is
+     * absent, the handler returns a typed SCRIPT failure. When
+     * `input.name == null`, the index is not consulted; legacy behaviour is
+     * preserved verbatim.
      */
     private val capabilityRoutedHandler: StepHandler<ArchiveArtifactsInput, TypedStepOutput> =
         StepHandler { input, ctx ->
             val ops: ArchiveArtifactsOperations =
                 ctx.capabilities.get(ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY)
             when (val result = ops.archive(input)) {
-                is ArchiveArtifactsSuccess -> ArchiveArtifactsOutput(archivedCount = result.files.size)
+                is ArchiveArtifactsSuccess -> {
+                    if (input.name != null) {
+                        // Index capability is OPTIONAL. Check availability
+                        // before resolving to avoid the boundary's
+                        // `get(key)` that fails on missing capabilities.
+                        if (ARTIFACT_INDEX_CAPABILITY !in ctx.capabilities.available()) {
+                            return@StepHandler ArchiveArtifactsFailureOutput(
+                                failureKind = FailureKind.SCRIPT,
+                                message = "archiveArtifacts 'name=${input.name}' requires " +
+                                    "ARTIFACT_INDEX_CAPABILITY at composition root, but it is " +
+                                    "not registered",
+                            )
+                        }
+                        val index: dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability =
+                            ctx.capabilities.get(ARTIFACT_INDEX_CAPABILITY)
+                        val handle = dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactHandle(
+                            name = input.name,
+                            files = result.files.map {
+                                dev.rubentxu.pipeline.v2.domain.step.artifact.ArchivedFileEntry(
+                                    relPath = it.relPath,
+                                    sha256 = it.sha256,
+                                    sizeBytes = it.size,
+                                    // ArchiveArtifactsOperations does NOT
+                                    // expose absolutePath in the typed result
+                                    // (it's a relative-path contract by design).
+                                    // We synthesise a placeholder; the
+                                    // filesystem remains the durable record
+                                    // and the absolute path is recovered via
+                                    // WorkspaceResolver at materialisation
+                                    // time. Recorded as future-work item.
+                                    absolutePath = "<archive://${it.relPath}>",
+                                )
+                            },
+                        )
+                        try {
+                            index.record(handle)
+                        } catch (e: dev.rubentxu.pipeline.v2.domain.step.artifact.DuplicateArtifactNameException) {
+                            return@StepHandler ArchiveArtifactsFailureOutput(
+                                failureKind = FailureKind.SCRIPT,
+                                message = "archiveArtifacts name '${input.name}' is already recorded in this run",
+                            )
+                        }
+                    }
+                    ArchiveArtifactsOutput(archivedCount = result.files.size)
+                }
                 is ArchiveArtifactsFailed -> ArchiveArtifactsFailureOutput(
                     failureKind = result.failureKind,
                     message = result.message,
@@ -195,6 +251,14 @@ object CoreArchiveArtifactsStep {
                 descriptor = descriptor,
                 inputCodec = inputCodec,
                 outputCodec = outputCodec,
+                // ARTIFACT_INDEX_CAPABILITY is NOT in the contract's
+                // requiredCapabilities list because the same Step serves
+                // both legacy (name=null) and named (name=...) modes, and
+                // the contract is fixed at registration time. Instead, the
+                // handler resolves the capability at runtime via
+                // `ctx.capabilities.available()` and fails closed when
+                // `input.name != null` but the index is absent. Legacy
+                // callers (name=null) see no change.
                 requiredCapabilities = setOf(ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY),
             )
 

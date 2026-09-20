@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext
+import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -61,10 +62,34 @@ object RegistryExecutionBoundary {
      *   Always non-null in production; nullable for test/adapter flexibility.
      */
     fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
+        adapt(milestoneStateStore = milestoneStateStore, artifactIndex = null)
+
+    /**
+     * E1.ecosystem-local-first / T1: per-run artifact index threaded
+     * into the registry boundary's capability bridge. The same instance
+     * is shared between the producer (core.archiveArtifacts) and the
+     * consumer (core.artifact.query). When null the capability stays
+     * unexposed and both Steps fail closed at registry-prepare-time.
+     *
+     * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
+     *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
+     *   Always non-null in production; nullable for test/adapter flexibility.
+     * @param artifactIndex Optional per-run ArtifactIndexCapability. Same lifetime as the run.
+     *   When provided, ARTIFACT_INDEX_CAPABILITY is exposed to both core.archiveArtifacts
+     *   and core.artifact.query.
+     */
+    fun adapt(
+        milestoneStateStore: MilestoneStateStore?,
+        artifactIndex: ArtifactIndexCapability?,
+    ): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->
             when (prepared) {
                 is PreparedRegistryExecution -> coexecute(prepared, context) { ctx ->
-                    CanonicalRuntimeCapabilityAccess(ctx, milestoneStateStore = milestoneStateStore)
+                    CanonicalRuntimeCapabilityAccess(
+                        ctx,
+                        milestoneStateStore = milestoneStateStore,
+                        artifactIndex = artifactIndex,
+                    )
                 }
                 is PreparedLegacyExecution -> throw EngineInvariantViolation(
                     "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",

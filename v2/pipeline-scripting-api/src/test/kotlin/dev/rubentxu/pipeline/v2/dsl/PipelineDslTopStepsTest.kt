@@ -179,6 +179,59 @@ class PipelineDslTopStepsTest {
     }
 
     // =============================================================================
+    // archiveArtifacts name= (E1.2 / T2)
+    // =============================================================================
+
+    @Test
+    fun `archiveArtifacts_builder_with_name_record_optional_artifactName_into_data_class`() {
+        val scope = StageScope("test")
+        scope.archiveArtifacts("build/**", allowEmptyArchive = true, name = "mix")
+        val step = scope.steps().last() as StepSpec.ArchiveArtifacts
+        assertEquals("mix", step.artifactName)
+    }
+
+    @Test
+    fun `archiveArtifacts_builder_without_name_keeps_artifactName_null_for_backward_compat`() {
+        val scope = StageScope("test")
+        scope.archiveArtifacts("build/**", allowEmptyArchive = true)
+        val step = scope.steps().last() as StepSpec.ArchiveArtifacts
+        assertEquals(null, step.artifactName)
+    }
+
+    // =============================================================================
+    // artifactQuery (E1.1 / T7)
+    // =============================================================================
+
+    @Test
+    fun `artifactQuery_builder_lowers_to_RegistryStepSpec_with_canonical_envelope`() {
+        val scope = StageScope("test")
+        scope.artifactQuery("app-jar")
+        val step = scope.steps().last()
+        assertTrue(step is StepSpec.RegistryStepSpec, "Expected RegistryStepSpec, got ${step::class.simpleName}")
+        val reg = step as StepSpec.RegistryStepSpec
+        assertEquals(
+            dev.rubentxu.pipeline.v2.domain.PluginStepId("core.artifact.query"),
+            reg.stepKey,
+        )
+        // Canonical envelope matches CoreArtifactQueryStep.inputCodec.encode():
+        // {"kind":"artifactQuery","name":"<name>"}
+        val expected = "{\"kind\":\"artifactQuery\",\"name\":\"app-jar\"}"
+        val actual: String = reg.encodedInput.value
+        assertEquals(expected, actual)
+    }
+
+    @Test
+    fun `artifactQuery_builder_with_quoted_name_escapes_json_correctly`() {
+        val scope = StageScope("test")
+        // Names with quotes are runtime values; the canonical envelope must
+        // JSON-escape correctly so the codec can decode byte-for-byte.
+        scope.artifactQuery("app\"jar")
+        val step = scope.steps().last() as StepSpec.RegistryStepSpec
+        val expected = "{\"kind\":\"artifactQuery\",\"name\":\"app\\\"jar\"}"
+        assertEquals(expected, step.encodedInput.value)
+    }
+
+    // =============================================================================
     // Combined pipeline
     // =============================================================================
 

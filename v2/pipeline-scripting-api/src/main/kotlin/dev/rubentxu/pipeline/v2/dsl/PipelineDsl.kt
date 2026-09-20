@@ -474,9 +474,30 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val allowEmptyArchive: Boolean? = false,
         val excludes: String = "",
         val fingerprint: Boolean? = false,
+        val artifactName: String? = null,
     ) : StepSpec {
         override val name: String get() = "archiveArtifacts"
         override val type: String get() = "archiveArtifacts"
+    }
+
+    // =============================================================================
+    // E1.1 / core.artifact.query (T7) — DSL lowering form
+    // =============================================================================
+
+    /**
+     * DSL data form for `core.artifact.query`. The runtime registered Step
+     * accepts [ArtifactQueryInput] in domain; the DSL façade lowers to
+     * `StepSpec.RegistryStepSpec` with the canonical encoded envelope so the
+     * durable fingerprint matches `CoreArtifactQueryStep.definition.inputCodec`.
+     *
+     * Kept as a sealed data class so ScriptCompiler visibility tests can
+     * pattern-match without coupling to the registry transport.
+     */
+    data class ArtifactQuery(
+        val artifactName: String,
+        override val name: String = "artifactQuery",
+    ) : StepSpec {
+        override val type: String get() = "artifactQuery"
     }
 
     // =============================================================================
@@ -1331,6 +1352,8 @@ class StageScope(
             // ML-R9 T-10 timeout/retry blocks: not retryable at step level
             is StepSpec.TimeoutBlock -> currentStep
             is StepSpec.RetryBlock -> currentStep
+            // E1.1 / T7: artifactQuery is read-only — not retryable at step level
+            is StepSpec.ArtifactQuery -> currentStep
         }
     }
 
@@ -1476,17 +1499,29 @@ class StageScope(
      *                  excludes: String = "", fingerprint: Boolean = false)`
      *
      * F1: artifacts required. F2: allowEmptyArchive, excludes, fingerprint.
+     * F3 (E1.ecosystem-local-first): an optional `name` parameter, when
+     * non-null, records the archived handle into the run-scoped
+     * [dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability]
+     * under that name so a subsequent [artifactQuery] call resolves it.
+     * The name is optional; when null, the legacy archive behaviour is
+     * preserved verbatim (no index consultation).
      *
      * @param artifacts Ant-style glob patterns (comma-separated)
      * @param allowEmptyArchive If true, empty archive is not a failure (default false)
      * @param excludes Ant-style patterns to exclude from archive
      * @param fingerprint If true, record fingerprints (F2)
+     * @param name Optional logical artifact name (E1.1 / T1). When non-null,
+     *   the archived handle is recorded in the per-run artifact index under
+     *   this name; subsequent [artifactQuery] calls resolve this name to the
+     *   archived file set. Backward-compat: when null, the legacy archive-only
+     *   behaviour is preserved (no index interaction).
      */
     fun archiveArtifacts(
         artifacts: String,
         allowEmptyArchive: Boolean = false,
         excludes: String = "",
         fingerprint: Boolean = false,
+        name: String? = null,
     ) {
         steps.add(
             StepSpec.ArchiveArtifacts(
@@ -1494,7 +1529,40 @@ class StageScope(
                 allowEmptyArchive = allowEmptyArchive,
                 excludes = excludes,
                 fingerprint = fingerprint,
+                artifactName = name,
             )
+        )
+    }
+
+    /**
+     * Looks up an artifact previously archived with `archiveArtifacts(name = ...)`.
+     *
+     * E1.1 (ML-R9 local-first ecosystem): the bridge from `core.archiveArtifacts`
+     * to a queryable, name-addressable artifact registry. This DSL lowers
+     * directly to `StepSpec.RegistryStepSpec` for `core.artifact.query` with the
+     * canonical encoded envelope `{"kind":"artifactQuery","name":"<name>"}` —
+     * byte-for-byte identical to `CoreArtifactQueryStep.inputCodec.encode()` so
+     * the durable fingerprint round-trips through the G5 registry path.
+     *
+     * Bridge invariant: name must match the one supplied at `archiveArtifacts(name = ...)`.
+     * Mismatch is a typed USER failure (`ArtifactQueryFailure.NotFound`) at handler time —
+     * not a DSL validation, since names are runtime values (the dynamic part).
+     *
+     * @param name Artifact logical name (matches `archiveArtifacts(name = "…")`)
+     */
+    fun artifactQuery(name: String) {
+        // Canonical envelope: {"kind":"artifactQuery","name":"<escapeJsonString(name)>"}
+        // Matches CoreArtifactQueryStep.inputCodec.encode output (E1.1 / T7).
+        val sb = StringBuilder()
+        sb.append("{\"kind\":\"artifactQuery\",\"name\":\"")
+        sb.append(escapeJsonString(name))
+        sb.append("\"}")
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.artifact.query"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(sb.toString()),
+            ),
         )
     }
 

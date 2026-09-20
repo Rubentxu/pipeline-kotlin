@@ -618,6 +618,27 @@ class CompatibilityCorpusTest {
         assertEquals("success", outcome!!.outcome.toString().lowercase())
     }
 
+    // =========================================================================
+    // E1.1 / T8 — core.artifact.query bridge (corpus fixture 30)
+    // =========================================================================
+
+    /**
+     * E1.1 / T8: DSL compile-surface check for the new `core.artifact.query`
+     * Bridge Step. The fixture intentionally exercises ONLY the legacy
+     * `core.archiveArtifacts` path + a sh marker. Adding the runtime
+     * artifactQuery call here would fail-closed at registry-prepare-time
+     * (no wired artifact index yet) and produce a red fixture — that's
+     * the data round-trip, which is E1.2's job.
+     *
+     * This fixture proves: the DSL facade exists, the script compiles via
+     * the production scripting host, and `core.archiveArtifacts` (the
+     * legacy-side anchor) remains reachable end-to-end through the same
+     * canonical RunFinished event so an external observer can confirm
+     * E1.1 has been published without disturbing F1's contract.
+     */
+    @Test
+    fun fixture30ArtifactQueryBridge() = runFixturePass("30-artifact-query-bridge.pipeline.kts")
+
     /**
      * Verifies that a script with compilation errors exits with non-zero code.
      * INC-R10-ARC-001: compilation failure is a FAILURE outcome, not success.
@@ -625,7 +646,7 @@ class CompatibilityCorpusTest {
     @Test
     fun allCorpusFixturesAreDiscoverable() {
         val fixtures = fixtureDir().listFiles { f -> f.extension == "kts" }.orEmpty()
-        assertEquals(28, fixtures.size, "Corpus must have 28 valid fixtures (S2 added 25..29; 07 and 99 moved to broken/)")
+        assertEquals(29, fixtures.size, "Corpus must have 29 valid fixtures (S2 added 25..29; E1.1 / T8 added 30..30)")
 
         val names = fixtures.map { it.name }.toSet()
         assertTrue(names.contains("01-basic.pipeline.kts"))

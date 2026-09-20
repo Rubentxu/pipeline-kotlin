@@ -1203,3 +1203,89 @@ Receipt: docs/v2/07-uat/WU_LPR_103_COMPATIBILITY_CURVE_RECEIPT.md
 - Next (B-direct, no checkpoints until publication phase): WU-LPR-071 release workflow →
   root pipeline.kts + releaseVersion authority → RC v0.36.0 → certify ZIP → tag → GitHub Release
   → SDKMAN → dogfooding → LPR-GATE-1.
+
+## Active Change — E1.ecosystem-local-first cycle (2026-09-20, base `7f4ab469`, branch `cycle/e1-ecosystem-local-first`)
+
+**Status: GO_RECEIVED on first increment; proposal committed; E1.0 in flight.**
+
+Continuation after F1 (`sh` variable-scope contract) closure. The
+operator authorized one long cycle (`E1.ecosystem-local-first`) with
+four checkpoints (E1.0..E1.3) under a single cycle, instead of four
+separate cycles. The first increment inside E1.1 is `core.junit`
+(read JUnit XML into typed report) per operator GO at
+2026-09-20T08:44:00.852Z.
+
+### What this cycle does
+
+Closes the missing piece of the local CI/CD loop: a pipeline can
+build with `core.sh`, archive with `core.archiveArtifacts`, but
+cannot currently read the JUnit report back. `core.junit` adds that,
+plus an `core.artifact.query` bridge so the pipeline can ask "where
+is the JAR?" by name.
+
+### Operator authorization table (verbatim, 2026-09-20T08:41:29Z)
+
+Authorized within cycle:
+- Investigate inventory; pick an increment inside agreed scope.
+- Write OpenSpec, ADR if needed, tasks, UAT.
+- Implement plugins via existing SDK.
+- Fix locally-reproduced defects that don't break contracts.
+- Run tests, capture evidence, commit, advance to next checkpoint.
+- Close cycle, integrate, archive via SDDK flow.
+
+Requires operator GO:
+- Change a public certified semantics.
+- Modify `sh` contract or open F2 without trigger.
+- Add a plugin-specific exception to engine or coordinator.
+- Introduce remote storage, new protocols, or incompatible public API.
+- Alter historical receipts, replace a published release, delete foreign work.
+- Continue if the integral goal is technically infeasible inside the limits above.
+
+Out-of-cycle (no work in any checkpoint):
+- F2 (offset map in `Kotlin24ScriptingHost.mapDiagnostic`) unless its trigger fires.
+- Remote artifact storage (S3/GCS/OCI/Azure).
+- Worker distribution / multi-node coordination.
+- New public DSL surface incompatible with the existing DSL contract.
+- Re-implementing `core.archiveArtifacts` (already REGISTRY_PRIMARY).
+- Modifying F1 (`sh` variable-scope contract).
+
+### Cycle map
+
+| Checkpoint | Tasks | Status |
+|---|---|---|
+| E1.0 — Inventory + scope + UAT | T1 UAT plan, T2 inventory, T3 decision receipt | pending |
+| E1.1 — `core.junit` plugin | T1..T10 (ADT, parser, capability, codecs, step, events, contract suite, DSL, corpus, receipt) | pending |
+| E1.2 — `core.artifact.query` bridge | T1..T10 | pending |
+| E1.3 — UAT integral + closure | T1..T9 (demo, pipeline, evidence, failure modes, resume, roadmap pointer, closure receipt, L5, tag) | pending |
+
+### Verification ladder
+
+L0 compile after each task batch. L1 individual test after each
+production edit. L2 owning class batch at end of each checkpoint.
+L4 module suites at end of each checkpoint (changes touch
+production `src/main`). L5 `./gradlew -p v2 check` ONLY at cycle
+end (E1.3.T8) — production source IS touched, so an L5 is justified
+to lock no regression.
+
+### Reused evidence
+
+- F1 closure receipt `docs/v2/07-uat/SH_VAR_SCOPE_CONTRACT_CLOSURE_RECEIPT.md`.
+- F1 contract `docs/v2/03-specifications/SH_VAR_SCOPE_CONTRACT.md`
+  (sha256 `abc8f5bed09f109205a4b7451a801eee272685f544ed973b19b6e65d6d076f7b`).
+- WU-LPR-062 Gradle installed-distribution fixture (re-used by
+  E1.3.T3 as the default build driver for the demo).
+- `core.archiveArtifacts` REGISTRY_PRIMARY (LB-02 / G4); not
+  re-implemented by E1.2, only bridged to a derived index.
+
+### Forbidden in this cycle
+
+Any modification of F1 contract or F2 trigger; any engine or
+coordinator special-case for `core.junit` or `core.artifact.query`;
+any remote storage or new protocol; any modification to `core.sh`
+or `core.archiveArtifacts` semantics; any alteration to historical
+receipts / releases / tagged SHAs.
+
+### Next
+
+E1.0.T1 UAT plan, E1.0.T2 inventory, E1.0.T3 decision receipt.
+Each task its own commit with `--rerun-tasks` evidence.

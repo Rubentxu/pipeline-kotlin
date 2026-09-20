@@ -27,6 +27,8 @@ import dev.rubentxu.pipeline.v2.application.MILESTONE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.MilestoneOperations
 import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
+import dev.rubentxu.pipeline.v2.application.ARTIFACT_INDEX_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
@@ -54,6 +56,12 @@ open class CanonicalRuntimeCapabilityAccess(
     // S2-A9: milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
     // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
     private val milestoneStateStore: MilestoneStateStore? = null,
+    // E1.ecosystem-local-first / T1: per-run artifact index. Bound at
+    // composition root; shared between the producer (core.archiveArtifacts)
+    // and the consumer (core.artifact.query). When null (e.g. legacy /
+    // nested-step sub-contexts) the capability stays unexposed and BOTH
+    // Steps fail closed at registry-prepare-time / availability-check time.
+    private val artifactIndex: ArtifactIndexCapability? = null,
 ) : StepCapabilityAccess {
 
     private val provided: Map<StepCapability, Any> = buildProvided(context)
@@ -217,6 +225,19 @@ open class CanonicalRuntimeCapabilityAccess(
         milestoneStateStore?.let { store ->
             val milestoneOps: MilestoneOperations = MilestoneOperationsAdapter(store)
             builder[MILESTONE_OPERATIONS_CAPABILITY] = milestoneOps
+        }
+        // E1.ecosystem-local-first / T1: per-run artifact index for the
+        // core.archiveArtifacts → core.artifact.query bridge. Bound at
+        // composition root; the same instance is shared between the
+        // producer and the consumer so a successful archive is visible
+        // to the query Step within the same run.
+        //
+        // When null, the capability stays unexposed: archive with
+        // name=...  returns a typed SCRIPT failure, and artifactQuery
+        // returns typed USER failure (NotFound). Both fail-closed per
+        // the registry boundary's contract.
+        artifactIndex?.let { idx ->
+            builder[ARTIFACT_INDEX_CAPABILITY] = idx
         }
         // B11 / W2: body-reentry seam (ADR-0073 / ADR-0081 D1).
         // BODY_INVOKER_CAPABILITY is exposed ONLY when the canonical runtime context carries

@@ -59,6 +59,7 @@ class S2ThreePhaseProbeTest {
     private fun bsl() = "\\"
     private fun lc() = "{"
     private fun rc() = "}"
+    private fun dq() = "\""
 
     @Test
     fun `probe three forms all three phases`() {
@@ -90,5 +91,62 @@ class S2ThreePhaseProbeTest {
         // Kotlin source:  withCredentials(StepSpec.CredentialsBinding.string("id","USER")) { sh("echo user=$USER") }
         val fE = "pipeline { stages { stage(\"s\") { withCredentials(StepSpec.CredentialsBinding.string(\"id\", \"USER\")) { sh(\"echo user=" + dollar() + "USER\") } } } }"
         phase1_3("E_withCreds", fE)
+    }
+
+    /**
+     * Form F probes — added by SH-VAR-SCOPE-CONTRACT cycle (2026-09-20).
+     *
+     * Reference: SH_VAR_SCOPE_CONTRACT.md §7 (multi-line + raw triples).
+     * Operador's literal-type distinction: in a raw triple-quoted
+     * """...""" literal, the backslash does NOT escape `$`, so
+     * \$USER produces the literal two bytes `\` `$` followed by `USER`.
+     * The author-visible safe form inside a raw triple is
+     * `${'$'}USER`, which compiles to `$USER` regardless of outer
+     * literal flavour.
+     *
+     * Per Guard G2 (verbatim, 2026-09-20T08:16Z):
+     *   "bytes, not aspect". These probes verify the actual byte
+     *   sequence at four measurable layers (literal type, post-Kotlin-
+     *   compile bytes, bytes shell receives, bash expansion semantics).
+     *   ScriptTextEscaper MUST remain untouched during F1.
+     *
+     * Each fixture is built by String concatenation so the bytes we pass
+     * to the script compiler are exactly the bytes a hand-written
+     * .pipeline.kts file would contain. dq() yields a single double-quote
+     * character without the Kotlin compiler of the test source trying to
+     * interpret a string boundary where the raw triple sits.
+     */
+    @Test
+    fun `probe Form F raw triple-quoted literal all three phases`() {
+        // Form F1: Kotlin escape inside raw triple.
+        // Kotlin source:  sh("""echo user=\${USER}""")
+        //   - In an ordinary "...": \$ is escape, ${USER} is literal.
+        //   - In a raw """...""" : \$ is two literal bytes; ${USER}
+        //     is NOT compiled as a template (the $ escapes because \$ is
+        //     still not a Kotlin escape in raw triples — actually the
+        //     Kotlin reference 1.9+ does handle \\$ inside raw strings
+        //     as a non-template escape). Phase 3 measures the truth.
+        val fF1 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + bsl() + dollar() + lc() + "USER" + rc() + dq() + dq() + dq() + ") } } }"
+        phase1_3("F1_kotlin_escape_in_raw", fF1)
+
+        // Form F2: the safe form ${'$'}USER inside raw triple.
+        // Kotlin source:  sh("""echo user=${'$'}USER""")
+        //   - Kotlin compiles ${'$'} -> literal `$`; adjacent USER is text.
+        //   - Compiled string contains the 5 bytes: $USER.
+        //   - bash sees `$USER` and expands from env (or treated as literal
+        //     if USER is not in env).
+        val fF2 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + dollar() + lc() + "'" + dollar() + "'" + rc() + "USER" + dq() + dq() + dq() + ") } } }"
+        phase1_3("F2_safe_form_in_raw", fF2)
+
+        // Form F3: Kotlin-style \$ escape inside raw triple.
+        // Kotlin source:  sh("""echo user=\$USER""")
+        //   - In a raw triple, the `\` is NOT an escape; Kotlin compiles
+        //     the literal two bytes `\` `$` followed by `USER`.
+        //   - bash receives `\$USER` (6 chars) which it treats as text
+        //     (no expansion). This is the operator's literal-type trap:
+        //     the same bytes that are safe in "..." become unsafe in
+        //     """...""" .
+        val fF3 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + bsl() + dollar() + "USER" + dq() + dq() + dq() + ") } } }"
+        phase1_3("F3_kotlin_escape_trap_in_raw", fF3)
     }
 }

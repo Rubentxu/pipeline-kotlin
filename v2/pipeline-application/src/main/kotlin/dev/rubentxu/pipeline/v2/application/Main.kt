@@ -828,12 +828,16 @@ fun main(args: Array<String>) {
         else -> compileOutcome
     }
 
+    // WU-LPR-089 + WU-LPR-011 regression fix: the WU-LPR-042 single-writer thread
+    // is non-daemon and processes events asynchronously. We must FLUSH the pending
+    // writes BEFORE reading the events back from SQL, otherwise async events emitted
+    // just before run-finished (e.g. StashCreated/StashRestored from a final stage)
+    // are lost from the stdout JSON envelope (the SQL row exists but hasn't been
+    // committed when eventsFor(runId) runs). After flush, close() stops the writer
+    // and releases the persistent connection; the JVM exits cleanly because
+    // DestroyJavaVM no longer waits on queue.take().
+    rawEventStore.flush()
     val events = eventStore.eventsFor(runId).toList()
-    // WU-LPR-011 regression fix: the WU-LPR-042 single-writer thread is
-    // non-daemon; without an explicit close() the successful durable run
-    // never terminates the JVM (DestroyJavaVM waits on queue.take()).
-    // Failure paths exit via System.exit() which forcibly terminates, so
-    // only the natural-success return needed this.
     rawEventStore.close()
     // Jenkins verbatim: print events first, then propagate failure to OS exit code
     println(JsonEventLog.encode(events))

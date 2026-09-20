@@ -890,6 +890,51 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            "StashCreated" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val name = stringField(s, "name") ?: ""
+                val files = decodeStashedEntries(s)
+                StashCreated(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    name = name,
+                    files = files,
+                )
+            }
+            "StashRestored" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val name = stringField(s, "name") ?: ""
+                val entries = decodeRestoredEntries(s)
+                StashRestored(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    name = name,
+                    entries = entries,
+                )
+            }
+            "StashFailed" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val name = stringField(s, "name") ?: ""
+                val operation = stringField(s, "operation") ?: ""
+                val reason = stringField(s, "reason") ?: ""
+                StashFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    name = name,
+                    operation = operation,
+                    reason = reason,
+                )
+            }
             "DirEntered" -> {
                 val path = stringField(s, "path") ?: ""
                 val previousPath = stringField(s, "previousPath") ?: ""
@@ -1343,5 +1388,100 @@ object JsonEventLog {
         }
         sb.append("]")
         return sb.toString()
+    }
+
+    // WU-LPR-089 — Stash decoders (inverse of the serializers above).
+    // The `files`/`entries` array is a compact JSON list of objects; we
+    // delegate to the existing stringField/longField helpers plus
+    // parseJsonArrayObjects (which the ArtifactArchiveFailed-family already uses).
+    private fun decodeStashedEntries(s: String): List<StashedEntry> {
+        val arr = extractJsonArray(s, "files") ?: return emptyList()
+        return arr.mapNotNull { obj ->
+            val relPath = stringField(obj, "relPath") ?: return@mapNotNull null
+            val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
+            val sizeBytes = longField(obj, "sizeBytes") ?: 0L
+            StashedEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
+        }
+    }
+
+    private fun decodeRestoredEntries(s: String): List<RestoredEntry> {
+        val arr = extractJsonArray(s, "entries") ?: return emptyList()
+        return arr.mapNotNull { obj ->
+            val relPath = stringField(obj, "relPath") ?: return@mapNotNull null
+            val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
+            val sizeBytes = longField(obj, "sizeBytes") ?: 0L
+            RestoredEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
+        }
+    }
+
+    /**
+     * Extracts the JSON array of objects for the named field from a single
+     * event payload. Returns one string per object in the array, or null if
+     * the field is missing or not an array.
+     */
+    private fun extractJsonArray(payload: String, fieldName: String): List<String>? {
+        // Find the field marker (e.g. `"files":[`)
+        val marker = "\"$fieldName\":["
+        val start = payload.indexOf(marker)
+        if (start < 0) return null
+        val arrayStart = start + marker.length
+        // Walk forward, tracking depth, until matching ']' is found at depth 0.
+        var depth = 0
+        var i = arrayStart
+        var inString = false
+        var escape = false
+        while (i < payload.length) {
+            val c = payload[i]
+            if (escape) { escape = false; i++; continue }
+            if (c == '\\') { escape = true; i++; continue }
+            if (c == '"') { inString = !inString; i++; continue }
+            if (inString) { i++; continue }
+            when (c) {
+                '[' -> depth++
+                ']' -> {
+                    depth--
+                    if (depth == 0) {
+                        val arrayText = payload.substring(arrayStart, i)
+                        // Split top-level objects by tracking brace depth.
+                        return splitTopLevelObjects(arrayText)
+                    }
+                }
+            }
+            i++
+        }
+        return null
+    }
+
+    /** Splits a JSON array body like `{...},{...},{...}` into one string per top-level object. */
+    private fun splitTopLevelObjects(arrayText: String): List<String> {
+        val results = mutableListOf<String>()
+        var depth = 0
+        var start = -1
+        var inString = false
+        var escape = false
+        var i = 0
+        while (i < arrayText.length) {
+            val c = arrayText[i]
+            if (escape) { escape = false; i++; continue }
+            if (c == '\\') { escape = true; i++; continue }
+            if (c == '"') { inString = !inString; i++; continue }
+            if (inString) { i++; continue }
+            when (c) {
+                '{' -> {
+                    if (depth == 0) start = i
+                    depth++
+                }
+                '}' -> {
+                    depth--
+                    if (depth == 0 && start >= 0) {
+                        results.add(arrayText.substring(start, i + 1))
+                        start = -1
+                    }
+                }
+                ',' -> if (depth == 0) { /* skip separators between objects */ }
+            }
+            i++
+        }
+        return results
     }
 }

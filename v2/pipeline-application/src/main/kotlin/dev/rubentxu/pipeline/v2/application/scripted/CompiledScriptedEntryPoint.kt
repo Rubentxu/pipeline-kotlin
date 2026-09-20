@@ -188,6 +188,51 @@ internal class RuntimeScriptedStepFacade(
         }
         return codec.decode(encoded).path
     }
+
+    /**
+     * WU-LPR-087 (LFC-2R2) — runtime-returning file-read façade. Phase A
+     * (LFC-2R2) declared the seam; the canonical registry Step
+     * (`core.readFile`) is WIP and will be wired in Phase B. Until then,
+     * the façade is fail-closed: a missing wiring surfaces as a typed
+     * `EngineInvariantViolation`, never a fabricated empty String. This
+     * keeps the L0 build green while the registry Step is being built.
+     */
+    override suspend fun readFile(
+        callSite: ScriptedCallSiteId,
+        file: String,
+    ): String = throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+        "core.readFile facade is declared (WU-LPR-087 Phase A) but not yet " +
+            "wired to a registry Step; this seam activates once CoreReadFileStep " +
+            "is added and registered alongside core.pwd in CoreStepRegistryFactory.",
+    )
+
+    /**
+     * WU-LPR-087 (LFC-2R2) — runtime-returning file-existence check façade.
+     * Fail-closed until `core.fileExists` is registered.
+     */
+    override suspend fun fileExists(
+        callSite: ScriptedCallSiteId,
+        file: String,
+    ): Boolean = throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+        "core.fileExists facade is declared (WU-LPR-087 Phase A) but not yet " +
+            "wired to a registry Step; this seam activates once CoreFileExistsStep " +
+            "is added and registered alongside core.pwd in CoreStepRegistryFactory.",
+    )
+
+    /**
+     * WU-LPR-087 (LFC-2R2) — runtime-returning `sh(..., returnStdout = true)`
+     * façade. Fail-closed until `core.sh` registry routing is verified
+     * end-to-end with `returnMode = STDOUT`; Phase B wires the real impl.
+     */
+    override suspend fun shReturnStdout(
+        callSite: ScriptedCallSiteId,
+        script: String,
+        encoding: String?,
+    ): String = throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+        "core.sh returnStdout facade is declared (WU-LPR-087 Phase A) but not " +
+            "yet routed to CoreShellStep with returnMode=STDOUT; this seam " +
+            "activates in WU-LPR-087 Phase B.",
+    )
 }
 
 /** Closed result of selecting a host compilation for durable scripted execution. */

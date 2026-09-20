@@ -83,6 +83,37 @@ data class ScriptedSourceLocation(
     fun blockScope(blockName: ScriptedBlockName): ScriptedDynamicScopeId = ScriptedDynamicScopeId(
         "block:${blockName.value}@${sourceId.value}:$line:$column",
     )
+
+    /**
+     * Stable source identity emitted for a generated runtime-returning file-read
+     * call (LFC-2R2). Deliberately DISTINCT from [shellCallSite], [unixCallSite],
+     * and [pwdCallSite]: each call-site kind keeps its own collision-free bucket
+     * so the same source position never produces two competing identities.
+     */
+    fun readFileCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
+        "${sourceId.value}:$line:$column:readFile",
+    )
+
+    /**
+     * Stable source identity emitted for a generated runtime-returning
+     * file-existence check (LFC-2R2). Deliberately DISTINCT from
+     * [readFileCallSite], [shellCallSite], [unixCallSite], and
+     * [pwdCallSite]: one identity per kind, no collision across kinds.
+     */
+    fun fileExistsCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
+        "${sourceId.value}:$line:$column:fileExists",
+    )
+
+    /**
+     * Stable source identity emitted for a generated runtime-returning
+     * `sh(...)` invocation with `returnStdout = true` (LFC-2R2).
+     * Deliberately DISTINCT from [shellCallSite] (eager `sh`): the same
+     * source position with different `returnStdout` arity must never
+     * collide on one durable identity.
+     */
+    fun shReturnStdoutCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
+        "${sourceId.value}:$line:$column:sh:ro",
+    )
 }
 
 /** Source text supplied to a compiler-backed scripted source mapper. */
@@ -119,6 +150,32 @@ sealed interface ScriptedCallKind {
      * registry-routing layer.
      */
     data class Pwd(val tmp: Boolean = false) : ScriptedCallKind
+
+    /**
+     * Runtime-returning workspace file read (LFC-2R2). Mirrors [IsUnix] and
+     * [Pwd]: the returned String is the file content materialised before
+     * control returns to Kotlin. FRESH observes through the registry Step
+     * (`core.readFile`); REUSE reproduces the persisted observation
+     * without re-reading the file.
+     */
+    data object ReadFile : ScriptedCallKind
+
+    /**
+     * Runtime-returning workspace file existence check (LFC-2R2). Mirrors
+     * [IsUnix] and [Pwd]: the returned Boolean is a durable runtime value.
+     * FRESH observes through the registry Step (`core.fileExists`);
+     * REUSE reproduces the persisted observation without re-stat-ing.
+     */
+    data object FileExists : ScriptedCallKind
+
+    /**
+     * Runtime-returning `sh(...)` invocation with `returnStdout = true`
+     * (LFC-2R2). Distinct from [Shell] (which is eager / Unit). The
+     * rewriter uses [script] to produce the textual rewrite target
+     * `steps.shReturnStdout(callSite, script)`; the façade then routes
+     * through the registry Step (`core.sh` with `returnStdout = true`).
+     */
+    data class ShellReturnStdout(val script: String) : ScriptedCallKind
 }
 
 /** One mapped runtime-effectful call: its kind and exact source location. */
@@ -260,6 +317,34 @@ interface ScriptedStepFacade {
      * an existing path).
      */
     suspend fun pwd(callSite: ScriptedCallSiteId, tmp: Boolean = false): String
+
+    /**
+     * Runtime-returning workspace file read (LFC-2R2). Mirrors [pwd] in shape:
+     * FRESH observes the file content through the registry Step (`core.readFile`);
+     * REUSE reproduces the persisted observation without re-reading the file.
+     * A failure NEVER fabricates an empty string.
+     */
+    suspend fun readFile(callSite: ScriptedCallSiteId, file: String): String
+
+    /**
+     * Runtime-returning workspace file existence check (LFC-2R2). Mirrors
+     * [isUnix] in shape (returns Boolean): FRESH observes through the
+     * registry Step (`core.fileExists`); REUSE reproduces the persisted
+     * observation without re-stat-ing. A failure NEVER fabricates `false`.
+     */
+    suspend fun fileExists(callSite: ScriptedCallSiteId, file: String): Boolean
+
+    /**
+     * Runtime-returning shell invocation with `returnStdout = true` (LFC-2R2).
+     * Mirrors the existing [sh] overloads but returns the captured stdout as
+     * a String. The route is the same: registry Step (`core.sh`) with
+     * `returnStdout = true` and the Step's declared output codec decoded.
+     */
+    suspend fun shReturnStdout(
+        callSite: ScriptedCallSiteId,
+        script: String,
+        encoding: String? = null,
+    ): String
 }
 
 private fun stableScriptedArtifactKey(fields: List<String>): String = fields.joinToString(separator = "") { field ->

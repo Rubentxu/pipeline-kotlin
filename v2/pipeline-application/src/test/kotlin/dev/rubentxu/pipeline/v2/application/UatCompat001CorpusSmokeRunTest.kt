@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -33,6 +35,7 @@ class UatCompat001CorpusSmokeRunTest {
     // remains in the broken set.
     private val brokenFixtures = setOf(
         "15-error.pipeline.kts",    // `error("test")` step is a deliberate failure path
+        "28-zip-slip-defense.pipeline.kts", // CVE-2023-32981 containment proof must raise a typed failure
     )
 
     /**
@@ -42,6 +45,30 @@ class UatCompat001CorpusSmokeRunTest {
      * (PIPELINE_CREDENTIALS_STORE / PIPELINE_STORE_PASSPHRASE) to every fixture process.
      */
     private val corpusPassphrase = "corpus-passphrase-0.36.0"
+
+    /**
+     * Mutable fixtures (zip / unzip / archiveArtifacts / mixed / findFiles / etc.)
+     * persist outputs under their declarative `build/` paths. Running them in
+     * the checked-in corpus directory would either reuse stale outputs from
+     * a previous run or, worse, contaminate the corpus workspace itself.
+     * The corpus smoke runner therefore copies each fixture into a JUnit
+     * temporary workspace before invoking the installed binary, matching
+     * CompatibilityCorpusTest's WU-LPR-075 pattern.
+     *
+     * Legacy fixtures (10-smoke-e2e) use absolute `/tmp/...` paths and rely on
+     * the launched process having the fixture directory as its cwd. For those
+     * fixtures we deliberately launch the binary WITHOUT `--workspace`, so the
+     * process inherits the tempdir as cwd and the legacy sh steps keep
+     * behaving like they did against the corpus directory.
+     */
+    private val fixturesWithoutWorkspace: Set<String> = setOf(
+        "10-smoke-e2e.pipeline.kts",
+    )
+
+    private fun stageFixture(name: String, workspace: Path): Path =
+        workspace.resolve(name).also { destination ->
+            Files.copy(discoverFixtures().first { it.fileName.toString() == name }, destination)
+        }
 
     private fun seedCorpusCredentialsStore(controlRoot: java.nio.file.Path): java.nio.file.Path {
         val storePath = controlRoot.resolve("credentials.store")
@@ -93,11 +120,11 @@ class UatCompat001CorpusSmokeRunTest {
 
     @Test
     @Timeout(value = 180, unit = TimeUnit.SECONDS)
-    fun `corpus smoke-runs green and satisfies M2 exit criterion`() {
+    fun `corpus smoke-runs green and satisfies M2 exit criterion`(@TempDir workspace: Path) {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(22, fixtures.size, "Corpus must have 22 valid fixtures (17 as of v0.33.1; 0.36.0 release cycle added 19-isunix, 20-pwd-tmp, 21-milestone, 22-wait-until, 23-readfile — WU-LPR-104/06x receipts)")
+        assertEquals(29, fixtures.size, "Corpus must have 29 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest)")
 
         val appBin = AppBinSupport.discover()
         val failures = mutableListOf<String>()
@@ -105,7 +132,14 @@ class UatCompat001CorpusSmokeRunTest {
         val storePath = seedCorpusCredentialsStore(controlRoot)
 
         fixtures.forEach { fixture ->
-            val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
+            val staged = stageFixture(fixture.fileName.toString(), workspace)
+            val name = fixture.fileName.toString()
+            val pb = if (fixturesWithoutWorkspace.contains(name)) {
+                ProcessBuilder(appBin.toString(), "run", staged.toString())
+                    .directory(workspace.toFile())
+            } else {
+                ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
+            }
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
                 .apply {
@@ -142,17 +176,24 @@ class UatCompat001CorpusSmokeRunTest {
 
     @Test
     @Timeout(value = 180, unit = TimeUnit.SECONDS)
-    fun `each corpus fixture produces non-empty event stream`() {
+    fun `each corpus fixture produces non-empty event stream`(@TempDir workspace: Path) {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(22, fixtures.size, "Corpus must have 22 valid fixtures (17 as of v0.33.1; 0.36.0 release cycle added 19-isunix, 20-pwd-tmp, 21-milestone, 22-wait-until, 23-readfile — WU-LPR-104/06x receipts)")
+        assertEquals(29, fixtures.size, "Corpus must have 29 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest)")
         val appBin = AppBinSupport.discover()
         val controlRoot = java.nio.file.Files.createTempDirectory("compat-corpus-ctrl")
         val storePath = seedCorpusCredentialsStore(controlRoot)
 
         fixtures.forEach { fixture ->
-            val pb = ProcessBuilder(appBin.toString(), "run", fixture.toString())
+            val staged = stageFixture(fixture.fileName.toString(), workspace)
+            val name = fixture.fileName.toString()
+            val pb = if (fixturesWithoutWorkspace.contains(name)) {
+                ProcessBuilder(appBin.toString(), "run", staged.toString())
+                    .directory(workspace.toFile())
+            } else {
+                ProcessBuilder(appBin.toString(), "run", "--workspace", workspace.toString(), staged.toString())
+            }
                 .redirectOutput(ProcessBuilder.Redirect.PIPE)
                 .redirectError(ProcessBuilder.Redirect.PIPE)
                 .apply {

@@ -1,5 +1,79 @@
 
 
+## Active Change — SH-VAR-SCOPE-CONTRACT cycle (2026-09-20, base `1fdd3dce`, branch `cycle/sh-var-scope-contract-s1`)
+
+**Status: GO_RECEIVED, branch opening + T1 (contract document) in flight.**
+
+F5.2 confirmed `CLOSED_GREEN` by the operator at 2026-09-20T08:03Z;
+the historical `9093..4716` instruction predates `7e0e5953` (`F5.2.fix`)
+which closed the actual `workspaceRoot` defect, plus `WU-LPR-062` which
+ran the real `checkout → build → test → report` path end-to-end. F5.2
+re-opens only on a concrete regression.
+
+### What this cycle does
+
+Continuation of SH-VAR-SCOPE.S0/S1/S2 already in main (`eff39dbe`,
+`83882467`). F1 produces a verifiable contract for `sh` (no production
+code change). F2 is gated, only triggered by Gap #5 reproduction.
+
+### Operator guard rails (verbatim, 2026-09-20T08:16Z)
+
+```text
+G1 — DOC only is not abandonment.
+   #1 links to byte-level S1 evidence (CHARACTERISATION.md §5.2);
+   #6 explicitly documents that withEnv does NOT auto-protect $VAR.
+   EnvVarNameExtractor MUST NOT be extended.
+
+G2 — bytes, not aspect.
+   Form F probes MUST verify actual byte sequence at four layers:
+   (a) Kotlin source literal type, (b) post-Kotlin-compile bytes,
+   (c) bytes shell receives, (d) bash expansion semantics.
+   ScriptTextEscaper MUST remain untouched during F1.
+
+G3 — F2 is conditional, not automatic.
+   offset map only if Gap #5 reproduction shows concrete deviation.
+   Nothing pre-authorised; no new APIs, no semantic rewrites,
+   no production code in pipeline-application / -domain / -step-sdk.
+```
+
+### Deliverables (cycle, no L5 full gate expected)
+
+- `openspec/changes/sh-var-scope-contract/{proposal,spec,design,tasks}.md`
+  (DONE — proposal + addendum signed, spec/design/tasks aligned with guards).
+- T1 `docs/v2/03-specifications/SH_VAR_SCOPE_CONTRACT.md` (in-flight on branch).
+- T2 extension to `S2ThreePhaseProbeTest` (Forms F1/F2/F3).
+- T3 `ShVarScopeGap02Test`, T4 `ShVarScopeGap03Test`,
+  T5 `ShVarScopeGap04FormFProbeTest`, T6 `ShVarScopeGap05Test`.
+- T7 fixtures + corpus registration.
+- T8 `docs/v2/07-uat/SH_VAR_SCOPE_CONTRACT_CLOSURE_RECEIPT.md`.
+
+### Evidence reuse (do NOT re-run; SHA-256s in closure receipt)
+
+- `eff39dbe` SH-VAR-SCOPE.characterisation
+- `83882467` SH-VAR-SCOPE.S2 (byte-level Forms A..E)
+- `ScriptTextEscaperTest`, `EnvVarNameExtractorTest`
+- `WithCredentialsCompileIntegrationTest`
+- `LB02_G3_A4_2_SHELL_OPERATIONS_CAPABILITY.md`
+
+### Verification ladder
+
+L0 compileScriptingKotlin24 -> L1 targeted tests per T2..T7 --rerun-tasks ->
+L7 closure receipt with sha256 of each evidence file -> FF to main after
+operator merge approval. NO L5 because no production code changes
+(AGENTS.md rule 23 + scope firewall).
+
+### Forbidden in this cycle
+
+Any modification of `ScriptTextEscaper`, `EnvVarNameExtractor`,
+`Kotlin24ScriptingHost.mapDiagnostic`, any new DSL API, any change to
+script semantics, any architectural fitness change, any production
+code change in pipeline-application / -domain / -step-sdk.
+
+### Next
+
+T2..T7 on `cycle/sh-var-scope-contract-s1` (branch cut next). Operator
+approval required for FF-merge to `main`.
+
 ## Active Change — STOP (operador pidió pausa) 2026-09-18
 
 **Status: ESPERANDO_INSTRUCCIONES.** Operador pidió parar y esperar nuevas instrucciones tras pivote de plan-b (cherry-pick a rama divergente NO cumple "integrado en trunk").

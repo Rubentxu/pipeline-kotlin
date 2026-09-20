@@ -47,8 +47,7 @@ G6/G7 BLOCKED by horizontal blocker:          1
                           root cause affects the whole runtime-returning family
                           pwd/readFile/fileExists; needs LFC-2R2 scope)
 
-REGISTRY_PRIMARY, contract pending, installDist pending:  2
-  core.waitUntil         (G5 done; G6+G8 pending)
+REGISTRY_PRIMARY, contract pending, installDist pending:  1
   core.pwdTmp            (no G6/G8 yet; depends on LFC-2R2 like pwd)
 
 CERTIFIED but missing formal contract suite:    0
@@ -95,7 +94,7 @@ Columns:
 | `core.archiveArtifacts` | CORE | registry | **CERTIFIED** | `S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md` | |
 | `core.emit.event` | CORE | registry | **CERTIFIED** | `S2_A4_CORE_EMITEVENT_G8_FINAL_CERTIFICATION_RECEIPT.md` | |
 | `core.pwd` | CORE | registry | **BLOCKED (STRUCTURED_DSL_RUNTIME_RETURN_GAP)** | `S2_A6_CORE_PWD_G7_STOP_BLOCKED_RECEIPT.md` | G7 2/4 pass; needs LFC-2R2 horizontal fix |
-| `core.waitUntil` | CORE | registry | G5 done; G6+G8 pending | (G6 not yet attempted) | registry-primary; needs contract suite + G8 |
+| `core.waitUntil` | CORE | registry | **CERTIFIED** | `S2_A8_CORE_WAITUNTIL_G7_INSTALLED_ACCEPTANCE_RECEIPT.md` + `S2_A8_CORE_WAITUNTIL_G8_FINAL_CERTIFICATION_RECEIPT.md` | G6+G8 closed 2026-09-20 WU-LPR-085 (18 contract tests + 9 unit tests green; installed-CLI canary fresh EXIT 0 + replay EXIT 0; ReplayPolicy.MEMOIZED confirmed) |
 | `core.pwdTmp` | CORE | registry | no G6/G8 yet | (none) | depends on LFC-2R2 like pwd |
 | `core.artifact.query` | CORE | registry | **REGISTERED + contract** | `CoreArtifactQueryStepContractTest.kt` | E1.1 bridge; G6/G8 pending |
 | `scm-git.checkout` | OFFICIAL_PLUGIN | registry (SDK plugin) | **REGISTERED + contract** | `F5_1_ScmGitStepContractTest.kt` | in `pipeline-step-sdk/scm-git` |

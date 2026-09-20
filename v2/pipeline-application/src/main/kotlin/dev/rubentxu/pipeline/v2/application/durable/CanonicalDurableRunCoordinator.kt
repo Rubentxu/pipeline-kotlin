@@ -556,6 +556,15 @@ class CanonicalDurableRunCoordinator(
     // a store; tests that need to control the store explicitly pass their own instance.
     private val milestoneStateStore: MilestoneStateStore = MilestoneStateStore(),
 
+    // E1.1 / T1: per-run artifact index for the core.archiveArtifacts →
+    // core.artifact.query bridge. Defaults to a fresh InMemoryArtifactIndex
+    // when absent; tests that need to control the index explicitly pass
+    // their own instance. Lifetime is the coordinator lifetime — i.e. one
+    // index per run, shared between the producer (archive with name=...) and
+    // the consumer (artifactQuery). When null is supplied (legacy callers),
+    // the bridge stays unwired and both Steps fail closed at runtime.
+    private val artifactIndex: dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability? = null,
+
     // B10/W1c: the body execution policy authority. The production default resolves the
     // DECLARED policy of a block Step from the descriptor registry, bounded by the shapes
     // this engine executes; a caller may inject another authority to characterize the
@@ -600,11 +609,14 @@ class CanonicalDurableRunCoordinator(
         // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
         // S2-A9 spike: pass milestoneStateStore so RegistryExecutionBoundary can provide
         // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
+        // E1.1 / T1: pass artifactIndex so the producer (core.archiveArtifacts)
+        // and the consumer (core.artifact.query) share one instance per run.
         ?: ExecutionBoundaryFactory.build(
             dispatcher = dispatcher,
             invocationExecutor = invocationExecutor,
             stepRegistry = stepRegistry,
             milestoneStateStore = milestoneStateStore,
+            artifactIndex = artifactIndex,
         )
 
     // C3: RunStarted/RunFinished state
@@ -1009,6 +1021,7 @@ class CanonicalDurableRunCoordinator(
                             availableCapabilities = CanonicalRuntimeCapabilityAccess(
                                 runtime,
                                 milestoneStateStore = milestoneStateStore,
+                                artifactIndex = artifactIndex,
                             ).available(),
                         )
                         when (admission) {

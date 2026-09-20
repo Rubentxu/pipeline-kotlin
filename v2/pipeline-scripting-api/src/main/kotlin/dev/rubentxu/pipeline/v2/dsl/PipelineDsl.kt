@@ -474,6 +474,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val allowEmptyArchive: Boolean? = false,
         val excludes: String = "",
         val fingerprint: Boolean? = false,
+        val artifactName: String? = null,
     ) : StepSpec {
         override val name: String get() = "archiveArtifacts"
         override val type: String get() = "archiveArtifacts"
@@ -1498,17 +1499,29 @@ class StageScope(
      *                  excludes: String = "", fingerprint: Boolean = false)`
      *
      * F1: artifacts required. F2: allowEmptyArchive, excludes, fingerprint.
+     * F3 (E1.ecosystem-local-first): an optional `name` parameter, when
+     * non-null, records the archived handle into the run-scoped
+     * [dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability]
+     * under that name so a subsequent [artifactQuery] call resolves it.
+     * The name is optional; when null, the legacy archive behaviour is
+     * preserved verbatim (no index consultation).
      *
      * @param artifacts Ant-style glob patterns (comma-separated)
      * @param allowEmptyArchive If true, empty archive is not a failure (default false)
      * @param excludes Ant-style patterns to exclude from archive
      * @param fingerprint If true, record fingerprints (F2)
+     * @param name Optional logical artifact name (E1.1 / T1). When non-null,
+     *   the archived handle is recorded in the per-run artifact index under
+     *   this name; subsequent [artifactQuery] calls resolve this name to the
+     *   archived file set. Backward-compat: when null, the legacy archive-only
+     *   behaviour is preserved (no index interaction).
      */
     fun archiveArtifacts(
         artifacts: String,
         allowEmptyArchive: Boolean = false,
         excludes: String = "",
         fingerprint: Boolean = false,
+        name: String? = null,
     ) {
         steps.add(
             StepSpec.ArchiveArtifacts(
@@ -1516,6 +1529,7 @@ class StageScope(
                 allowEmptyArchive = allowEmptyArchive,
                 excludes = excludes,
                 fingerprint = fingerprint,
+                artifactName = name,
             )
         )
     }

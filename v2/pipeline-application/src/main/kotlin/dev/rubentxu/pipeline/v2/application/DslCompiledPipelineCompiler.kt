@@ -686,6 +686,10 @@ object DslCompiledPipelineCompiler {
                     put("allowEmptyArchive", step.allowEmptyArchive ?: false)
                     put("excludes", step.excludes)
                     put("fingerprint", step.fingerprint ?: false)
+                    // E1.1 / T1: optional artifactName. Only emitted when
+                    // non-null to preserve byte-shape for legacy callers
+                    // (backward-compat with F1 archive fixtures).
+                    step.artifactName?.let { put("name", it) }
                 }
                 else -> put("declarativeValue", step.toString())
             }

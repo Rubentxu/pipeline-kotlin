@@ -179,6 +179,26 @@ class PipelineDslTopStepsTest {
     }
 
     // =============================================================================
+    // archiveArtifacts name= (E1.2 / T2)
+    // =============================================================================
+
+    @Test
+    fun `archiveArtifacts_builder_with_name_record_optional_artifactName_into_data_class`() {
+        val scope = StageScope("test")
+        scope.archiveArtifacts("build/**", allowEmptyArchive = true, name = "mix")
+        val step = scope.steps().last() as StepSpec.ArchiveArtifacts
+        assertEquals("mix", step.artifactName)
+    }
+
+    @Test
+    fun `archiveArtifacts_builder_without_name_keeps_artifactName_null_for_backward_compat`() {
+        val scope = StageScope("test")
+        scope.archiveArtifacts("build/**", allowEmptyArchive = true)
+        val step = scope.steps().last() as StepSpec.ArchiveArtifacts
+        assertEquals(null, step.artifactName)
+    }
+
+    // =============================================================================
     // artifactQuery (E1.1 / T7)
     // =============================================================================
 

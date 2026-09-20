@@ -1,0 +1,80 @@
+=== sh-var-scope-contract evidence ===
+Generated: 2026-09-20T10:24Z
+Base SHA: 1fdd3dce
+Spec: openspec/changes/sh-var-scope-contract/spec.md §Gap #2
+Cycle: cycle/sh-var-scope-contract-s1
+Test class: dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap02Test
+Reproduction cmd (rule 25 canary):
+  rm -f v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap02Test.xml
+  cd v2 && ./gradlew :pipeline-scripting-kotlin24:test \
+    --tests 'ShVarScopeGap02Test' --rerun-tasks 2>&1
+Run mode: --rerun-tasks (AGENTS.md rule 25: fresh JUnit XML canary)
+JUnit XML: v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap02Test.xml
+JUnit XML SHA-256: 1fbff882a3afd50b8bf1cf2820757624549dd145ee33b2efcd5a68f67ee572a9
+JUnit XML tests/failures/errors: 3/0/0
+Captured log SHA-256: 74952af6495a3a0cccb383a8b2423682cd5901abfa5fc532c7e4ad15eee160ad
+
+
+================================================================
+CONTRACT BEHAVIOUR LOCKED BY THIS GAP02 TEST
+================================================================
+
+The test runs three sub-cases against the production
+EnvVarNameExtractor + ScriptTextEscaper pipeline (no compiler, no
+bash). It pins the bytes that the production flow feeds forward when
+there is NO withCredentials binding active.
+
+Verbatim assertions:
+
+gap02a — Kotlin local resolves, escoper is no-op
+  source: pipeline { stages { stage("s") { val user="alice";
+            sh("echo user=$user") } } }
+  envVars: {}                    (no withCredentials in source)
+  escaped: byte-equivalent to source
+  contract: when no env bound identifiers are in scope, the
+            escoper leaves user-written bytes unchanged.
+
+gap02b — Kotlin escape survives escoper byte-equivalent
+  source: pipeline { ... sh("echo user=\${USER}") ... }
+  envVars: {}
+  escaped: byte-equivalent to source; contains literal "${USER}"
+  contract: the Kotlin escape form is preserved end-to-end when
+            no withCredentials is active; bash will expand.
+
+gap02c — bare unbound $UPPER passes through, compile must fail
+  source: pipeline { ... sh("echo user=$NOPE_NO_BINDING") ... }
+  envVars: {}
+  escaped: byte-equivalent to source; does NOT contain ${'$'}
+  contract: empty envVars => ScriptTextEscaper.escape is the
+            early-return byte-identity path (line 33 of
+            ScriptTextEscaper.kt); the bytes the Kotlin compiler
+            rejects are exactly the user-written bytes; the
+            observed diagnostic is the existing 'Unresolved
+            reference' from the byte-level capture in
+            S2ThreePhaseProbeTest Form A (L1:C49).
+
+CONCLUSION (operator G2 — bytes, not aspect):
+
+  - When envVars is empty, the escoper does byte-identity on user source.
+  - When envVars is empty, no trap-form injection happens (the
+    ${'$'} check in 02c is the contract that a future refactor
+    cannot silently flip).
+  - When envVars is empty AND the user writes an unbound $UPPER,
+    the Kotlin compiler is what fails (with the same diagnostic
+    already captured in Form A).
+
+  This locks the SH_VAR_SCOPE_CONTRACT.md Gap #2 contract: the
+  $VAR-outside-withCredentials authoring patterns produce
+  byte-identical flow-through, and the Kotlin compiler's
+  `Unresolved reference` is the surface error.
+
+GUARDS HONOURED:
+  G1 — Gap #1 link to byte-level S1 evidence preserved (no new
+       test equivalent to §5.2 was authored).
+  G2 — All three sub-cases assert on actual bytes of the
+       production pipeline, not on source appearance.
+  G3 — Nothing changed in ScriptTextEscaper,
+       EnvVarNameExtractor, or any production source.
+
+Untouched (Guard G3): ScriptTextEscaper, EnvVarNameExtractor,
+Kotlin24ScriptingHost.mapDiagnostic, production source.

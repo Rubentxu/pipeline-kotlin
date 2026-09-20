@@ -1,0 +1,120 @@
+=== sh-var-scope-contract evidence ===
+Generated: 2026-09-20T10:20Z
+Base SHA: 1fdd3dce
+Spec: openspec/changes/sh-var-scope-contract/spec.md
+Cycle: cycle/sh-var-scope-contract-s1
+Test class: dev.rubentxu.pipeline.v2.scripting.S2ThreePhaseProbeTest
+Reproduction cmd (rule 25 canary):
+  rm -f v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.S2ThreePhaseProbeTest.xml
+  cd v2 && ./gradlew :pipeline-scripting-kotlin24:test \
+    --tests 'S2ThreePhaseProbeTest' --rerun-tasks --info -i 2>&1
+Run mode: --rerun-tasks (AGENTS.md rule 25: fresh JUnit XML canary)
+JUnit XML: v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.S2ThreePhaseProbeTest.xml
+JUnit XML SHA-256: 60f12afcb3918546750ae33049db4a3d071913f3c45e02511b658a6fd0aaf232
+JUnit XML tests/failures/errors: 2/0/0
+Captured log SHA-256: 442af174bd2590295bc467b1ebeba25768d0367f9c3b78ef461c475b2952aaba
+
+=== A_raw ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=$USER") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=$USER") } } }|
+PHASE_3_COMPILE=FAIL ERROR:Unresolved reference 'USER'.:L1:C49
+
+=== B_trap ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=${'$'}USER") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=${'$'}USER") } } }|
+PHASE_3_COMPILE=OK
+
+=== C_simple ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=\$USER") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=\$USER") } } }|
+PHASE_3_COMPILE=OK
+
+=== D_braced ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("echo user=\${USER}") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("echo user=\${USER}") } } }|
+PHASE_3_COMPILE=OK
+
+=== E_withCreds ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { withCredentials(StepSpec.CredentialsBinding.string("id", "USER")) { sh("echo user=$USER") } } } }|
+PHASE_2_ENVVARS=|[USER]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { withCredentials(StepSpec.CredentialsBinding.string("id", "USER")) { sh("echo user=${'$'}USER") } } } }|
+PHASE_3_COMPILE=OK
+
+=== F1_kotlin_escape_in_raw ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("""echo user=\${USER}""") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("""echo user=\${USER}""") } } }|
+PHASE_3_COMPILE=FAIL ERROR:Unresolved reference 'USER'.:L1:C53
+
+=== F2_safe_form_in_raw ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("""echo user=${'$'}USER""") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("""echo user=${'$'}USER""") } } }|
+PHASE_3_COMPILE=OK
+
+=== F3_kotlin_escape_trap_in_raw ===
+PHASE_1_SOURCE=|pipeline { stages { stage("s") { sh("""echo user=\$USER""") } } }|
+PHASE_2_ENVVARS=|[]|
+PHASE_2_ESCAPED=|pipeline { stages { stage("s") { sh("""echo user=\$USER""") } } }|
+PHASE_3_COMPILE=FAIL ERROR:Unresolved reference 'USER'.:L1:C52
+
+
+=========================================================================
+F1..F3 DECISIVE FINDINGS (re-read with the operator's G2 verbatim):
+"bytes, not aspect — medir los bytes, no dar por correcto un literal
+únicamente por su aspecto en el código fuente"
+=========================================================================
+
+The Forms F probes are the empirical capture that closes the operator's
+literal-type distinction. The byte-level truth:
+
+F1 (sh with raw triple + \${USER}) — COMPILE FAILS.
+   PHASE_3_COMPILE=FAIL ERROR:Unresolved reference 'USER'.:L1:C53
+   The Kotlin compiler, on seeing `"""\${USER}"""`, does NOT interpret
+   `\$` as an escape inside the raw triple, so the source remains
+   `${USER}` from Kotlin's point of view and Kotlin tries to expand it
+   as a template — failing because `USER` is not in scope.
+
+F2 (sh with raw triple + ${'$'}USER) — COMPILE OK.
+   PHASE_3_COMPILE=OK
+   `${'$'}` evaluates to literal `$` in any literal type (raw or
+   ordinary). The compiled string contains the 5 bytes `$USER`. This
+   is the only safe form for a `$IDENT` reference inside a raw triple
+   quoted `"""..."""` literal.
+
+F3 (sh with raw triple + \$USER) — COMPILE FAILS.
+   PHASE_3_COMPILE=FAIL ERROR:Unresolved reference 'USER'.:L1:C52
+   Same diagnostic column position as F1 (C52 vs C53 difference is one
+   byte — the missing `{`). Kotlin sees `\$` as two literal bytes in
+   raw triples, NOT as an escape; the next chars form `$USER` and
+   Kotlin tries to expand as a template.
+
+CONTRAST WITH ORDINARY "..." LITERAL (Forms A..D):
+   Form C (ordinary "..." + \$USER) → OK. The backslash IS escape in "...".
+   Form D (ordinary "..." + \${USER}) → OK. \$ + {USER} survives intact.
+
+The trap is literal-type-specific. Inside raw triples, the backslash
+does not escape `$`, so any author who carries an ordinary-string
+escape habit into a raw triple will hit a compile error rather than a
+bash error. This is at least as good as the failure mode in "..."
+literals — Kotlin refuses to compile before bash sees anything.
+
+WHAT THE CONTRACT DOCUMENT SAYS (must be revised at T8):
+   SH_VAR_SCOPE_CONTRACT.md §2 row "raw triple \${USER}" claims the
+   backslash neutralises the template. Phase 3 above contradicts that
+   claim: Kotlin still sees `${USER}` because `\$` is not escape in
+   raw triples. The contract must:
+   - mark `\${...}` inside raw triple as UNSAFE (compile fails);
+   - mark `${'$'}...` inside raw triple as the SAFE form;
+   - keep `\$IDENT` inside "..." as the safe form there.
+
+This correction is recorded, NOT applied in F1 per Guard G2:
+   "Si una sonda descubre una brecha, la registramos sin obligarnos
+    a corregirla en este mismo ciclo."
+
+The corrected rows belong to T8 (closure receipt + contract
+revision) following operator review.

@@ -1,0 +1,86 @@
+=== sh-var-scope-contract evidence ===
+Generated: 2026-09-20T10:26Z
+Base SHA: 1fdd3dce
+Spec: openspec/changes/sh-var-scope-contract/spec.md §Gap #3
+Cycle: cycle/sh-var-scope-contract-s1
+Test class: dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap03Test
+Reproduction cmd (rule 25 canary):
+  rm -f v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap03Test.xml
+  cd v2 && ./gradlew :pipeline-scripting-kotlin24:test \
+    --tests 'ShVarScopeGap03Test' --rerun-tasks 2>&1
+Run mode: --rerun-tasks (AGENTS.md rule 25)
+JUnit XML: v2/pipeline-scripting-kotlin24/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.scripting.ShVarScopeGap03Test.xml
+JUnit XML SHA-256: adf0eb8a3217da8fc84d9cbd3b904d76a80d91de526861a912185a7a301f0369
+JUnit XML tests/failures/errors: 3/0/0
+Captured log SHA-256: 273d996e3a806e4972245a0407b160eeb23146255c84b12db083d33e45086a59
+
+
+================================================================
+CONTRACT BEHAVIOUR LOCKED BY THIS GAP03 TEST
+================================================================
+
+The test pins byte-level behaviour for the three authorised shell
+expansion shapes referenced by Gap #3 in spec.md. Each sub-case
+constructs source with `String` concatenation so the bytes the test
+passes to the production pipeline are exactly the bytes a user
+would type into a `.pipeline.kts` file.
+
+Verbatim assertions:
+
+gap03a — braced default expansion \${OPTIONAL:-fallback}
+  envVars: {}      (withEnv is NOT a source of envVars by G1)
+  escaped: byte-identical to source
+  contract: \${VAR:-default} survives the escoper so bash applies
+            its default-expansion semantics when VAR is empty.
+
+gap03b — command substitution \$(hostname)
+  envVars: {}
+  escaped: byte-identical to source; contains literal \$(hostname)
+  contract: \$(...) survives the escoper so bash performs command
+            substitution at run time.
+
+gap03c — glob-strip \${PATH_STR##*/}
+  envVars: {}
+  escaped: byte-identical to source; contains \${PATH_STR##*/};
+           does NOT contain \${'$'} (no trap injection)
+  contract: the glob-strip suffix form reaches bash verbatim;
+            the escoper does not inject a trap-form footprint.
+
+INTERESTING RED — captured for the record (rule 21 compliance):
+
+  The first attempt at gap03c concatenated `bsl()+"*/"` before the
+  closing brace, producing `\${PATH_STR##\*/}` (with an extra
+  backslash). The assert `escaped.contains("\${PATH_STR##*/}")`
+  failed because the byte stream had a backslash where the
+  contract says none should be. The test was rewritten to
+  `"PATH_STR##*/" + rc()` (no bsl() before `*`), and went
+  green on the next run.
+
+  This is exactly the failure mode that Guard G2 ("bytes, not
+  aspect") catches — a source that LOOKS like it has the right
+  pattern (##*/ is the glob-strip) but the actual byte stream
+  carries a stray escape byte that bash would never read as a
+  glob.
+
+CONCLUSION:
+
+  - The three authorised shell expansion forms survive the
+    production escoper pipeline when envVars is empty.
+  - The trap form (\${'\$'}) is NEVER injected by the escoper
+    when envVars is empty (asserted in 03c, same property locked
+    by Gap #2 02c).
+  - The bytes that flow forward to core.sh carry the literal
+    shell-expansion forms the user wrote.
+
+GUARDS HONOURED:
+  G1 — withEnv is treated as a user-responsibility layer; the test
+       asserts envVars stays empty when withEnv is the only env
+       surface, documenting the operator decision.
+  G2 — All three sub-cases assert on actual bytes produced by the
+       production pipeline, not on source appearance. The red
+       captured above is a worked example.
+  G3 — ScriptTextEscaper, EnvVarNameExtractor, and any production
+       source remain untouched.
+
+Untouched: ScriptTextEscaper, EnvVarNameExtractor,
+Kotlin24ScriptingHost.mapDiagnostic, production source.

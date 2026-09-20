@@ -9,6 +9,8 @@ import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
+import org.jetbrains.kotlin.psi.KtValueArgument
+import org.jetbrains.kotlin.psi.KtValueArgumentName
 
 /**
  * Kotlin-compiler adapter for [ScriptedSourceMapper]. Compiler PSI stays in
@@ -54,6 +56,44 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                                 ScriptedCallKind.IsUnix,
                                 source.locationAt(expression.textRange.startOffset),
                             )
+                        // Unqualified runtime-returning `pwd()` / `pwd(tmp=true)`:
+                        // workspace query step (WU-LPR-402). Argument-less → core.pwd,
+                        // `tmp = true` → core.pwd.tmp.
+                        expression.calleeExpression?.text == "pwd" &&
+                            !isDotQualified ->
+                            calls += ScriptedMappedCall(
+                                ScriptedCallKind.Pwd(tmp = expression.hasNamedArgTrue("tmp")),
+                                source.locationAt(expression.textRange.startOffset),
+                            )
+                        // Unqualified runtime-returning `readFile(...)`: workspace file-read
+                        // step (LFC-2R2). The argument is the path; encoding defaults at the
+                        // façade.
+                        expression.calleeExpression?.text == "readFile" &&
+                            !isDotQualified &&
+                            expression.valueArguments.isNotEmpty() ->
+                            calls += ScriptedMappedCall(
+                                ScriptedCallKind.ReadFile,
+                                source.locationAt(expression.textRange.startOffset),
+                            )
+                        // Unqualified runtime-returning `fileExists(...)`: workspace
+                        // file-existence check (LFC-2R2). The argument is the path.
+                        expression.calleeExpression?.text == "fileExists" &&
+                            !isDotQualified &&
+                            expression.valueArguments.isNotEmpty() ->
+                            calls += ScriptedMappedCall(
+                                ScriptedCallKind.FileExists,
+                                source.locationAt(expression.textRange.startOffset),
+                            )
+                        // Unqualified runtime-returning `sh(..., returnStdout = true)`:
+                        // captures stdout as a typed value (LFC-2R2). Distinct from
+                        // the eager `sh(...)` branch above — both compile-time legal.
+                        expression.calleeExpression?.text == "sh" &&
+                            !isDotQualified &&
+                            expression.hasNamedArgTrue("returnStdout") ->
+                            calls += ScriptedMappedCall(
+                                ScriptedCallKind.ShellReturnStdout(script = expression.scriptText()),
+                                source.locationAt(expression.textRange.startOffset),
+                            )
                     }
                     super.visitCallExpression(expression)
                 }
@@ -89,6 +129,28 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
         val before = text.substring(0, offset)
         return before.length - before.lastIndexOf('\n')
     }
+
+    /**
+     * Returns true iff [name] is a named argument in the call with a literal `true`
+     * value. Recognises the canonical `name = true` and the shorthand `name = 1`
+     * that Kotlin allows for boolean parameters.
+     */
+    private fun KtCallExpression.hasNamedArgTrue(name: String): Boolean =
+        valueArguments.any { arg ->
+            arg.getArgumentName()?.asName?.asString() == name &&
+                arg.getArgumentExpression()?.text?.trim()?.equals("true", ignoreCase = true) == true
+        }
+
+    /**
+     * Returns the textual form of the FIRST positional argument (assumed to be the
+     * `script` parameter for `sh(...)`). Used by [ScriptedCallKind.ShellReturnStdout]
+     * to carry the script text into the rewrite target.
+     */
+    private fun KtCallExpression.scriptText(): String =
+        valueArguments.firstOrNull { it.getArgumentName()?.asName?.asString() == null }
+            ?.getArgumentExpression()
+            ?.text
+            ?: ""
 
     private companion object {
         /** Kotlin compiler PSI application state is process-global. */

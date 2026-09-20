@@ -48,6 +48,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput
 import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSource
+import dev.rubentxu.pipeline.v2.scripting.isRuntimeReturning
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
 import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
@@ -627,7 +628,7 @@ fun main(args: Array<String>) {
         if (result.isSuccess) {
             val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent))
             val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
-                mapping.calls.filter { it.kind == dev.rubentxu.pipeline.v2.scripting.ScriptedCallKind.IsUnix }
+                mapping.calls.filter { it.kind.isRuntimeReturning() }
             } else emptyList()
             // R4B scope: the R3 lowering emits a generator-level entry point
             // body only. A `pipeline { stages { stage { ... } } }` structure

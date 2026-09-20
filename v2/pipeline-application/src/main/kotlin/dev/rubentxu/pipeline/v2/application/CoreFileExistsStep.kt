@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,16 +34,16 @@ data class CoreFileExistsInput(val file: String) {
 }
 
 /**
- * Typed successful output for `core.fileExists` (statement semantics: the DSL
- * `fileExists` fun returns Unit today).
+ * Typed successful output for `core.fileExists` (WU-LPR-087, LFC-2R2).
  *
  * Jenkins semantics: `fileExists` is a predicate, NOT an assertion — `exists == false`
- * is a legitimate success outcome, not a step failure. Observable evidence is the
- * `FileExistsChecked` domain event emitted by the workspace operations adapter
- * (path + exists flag only, no content).
+ * is a legitimate success outcome, not a step failure. The runtime-returning façade
+ * decodes this typed field back to `Boolean` for the scripted caller.
  */
-data object CoreFileExistsOutput : TypedStepOutput {
-    override val outcome: StepOutcome = StepOutcome.Success
+data class CoreFileExistsOutput(
+    val exists: Boolean,
+) : TypedStepOutput {
+    override val outcome: StepOutcome get() = StepOutcome.Success
 }
 
 /**
@@ -89,17 +90,26 @@ object CoreFileExistsStep {
 
     private val outputCodec = object : StepCodec<CoreFileExistsOutput> {
         override fun encode(value: CoreFileExistsOutput): EncodedStepValue =
-            EncodedStepValue("{\"kind\":\"fileExists\",\"outcome\":\"SUCCESS\"}")
+            EncodedStepValue(
+                Json.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put("kind", JsonPrimitive("fileExists"))
+                        put("exists", JsonPrimitive(value.exists))
+                    },
+                ),
+            )
 
         override fun decode(encoded: EncodedStepValue): CoreFileExistsOutput {
             val obj = Json.parseToJsonElement(encoded.value).jsonObject
             require(obj["kind"]?.jsonPrimitive?.content == "fileExists") {
                 "core.fileExists output payload kind must be 'fileExists'"
             }
-            require(obj["outcome"]?.jsonPrimitive?.content == "SUCCESS") {
-                "core.fileExists output outcome must be 'SUCCESS'"
-            }
-            return CoreFileExistsOutput
+            // Back-compat: legacy envelope `{"kind":"fileExists","outcome":"SUCCESS"}` has no
+            // `exists` field — decode as exists=true (the original Unit-only step never
+            // observed absence, so the legacy wire implies success-implies-exists).
+            val exists = obj["exists"]?.jsonPrimitive?.booleanOrNull ?: true
+            return CoreFileExistsOutput(exists = exists)
         }
     }
 
@@ -115,8 +125,8 @@ object CoreFileExistsStep {
     private val capabilityRoutedHandler: StepHandler<CoreFileExistsInput, CoreFileExistsOutput> =
         StepHandler { input, ctx ->
             val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY)
-            ops.fileExists(file = input.file)
-            CoreFileExistsOutput
+            val result = ops.fileExists(file = input.file)
+            CoreFileExistsOutput(exists = result.exists)
         }
 
     val definition: StepDefinition<CoreFileExistsInput, CoreFileExistsOutput> =

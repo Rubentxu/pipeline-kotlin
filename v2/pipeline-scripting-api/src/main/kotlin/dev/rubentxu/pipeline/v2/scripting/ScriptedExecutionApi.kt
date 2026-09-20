@@ -178,6 +178,26 @@ sealed interface ScriptedCallKind {
     data class ShellReturnStdout(val script: String) : ScriptedCallKind
 }
 
+/**
+ * Closed predicate: returns `true` iff [this] is one of the LFC-2R2 family of
+ * runtime-returning scripted calls. The Main form selector uses this to decide
+ * whether the source is a generator-level body (scripted frontend) or a
+ * `pipeline { }` body (eager DSL frontend).
+ *
+ * Closing this as an extension on the ADT, rather than as a `when (kind) { is X -> true; ... }`
+ * inside Main.kt, keeps the ADT closed AND keeps Main.kt's selector honest:
+ * adding a future runtime-returning kind is one line in this extension, with
+ * no central dispatcher change.
+ */
+fun ScriptedCallKind.isRuntimeReturning(): Boolean = when (this) {
+    ScriptedCallKind.IsUnix -> true
+    is ScriptedCallKind.Pwd -> true
+    ScriptedCallKind.ReadFile -> true
+    ScriptedCallKind.FileExists -> true
+    is ScriptedCallKind.ShellReturnStdout -> true
+    ScriptedCallKind.Shell -> false
+}
+
 /** One mapped runtime-effectful call: its kind and exact source location. */
 data class ScriptedMappedCall(
     val kind: ScriptedCallKind,

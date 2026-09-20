@@ -1,8 +1,14 @@
 package dev.rubentxu.pipeline.v2.application.scripted
 
+import dev.rubentxu.pipeline.v2.application.CoreFileExistsInput
+import dev.rubentxu.pipeline.v2.application.CoreFileExistsStep
 import dev.rubentxu.pipeline.v2.application.CoreIsUnixStep
 import dev.rubentxu.pipeline.v2.application.CorePwdStep
 import dev.rubentxu.pipeline.v2.application.CorePwdTmpStep
+import dev.rubentxu.pipeline.v2.application.CoreReadFileInput
+import dev.rubentxu.pipeline.v2.application.CoreReadFileStep
+import dev.rubentxu.pipeline.v2.application.CoreShellInput
+import dev.rubentxu.pipeline.v2.application.CoreShellStep
 import dev.rubentxu.pipeline.v2.application.IsUnixInput
 import dev.rubentxu.pipeline.v2.application.PwdInput
 import dev.rubentxu.pipeline.v2.application.PwdTmpInput
@@ -190,49 +196,189 @@ internal class RuntimeScriptedStepFacade(
     }
 
     /**
-     * WU-LPR-087 (LFC-2R2) — runtime-returning file-read façade. Phase A
-     * (LFC-2R2) declared the seam; the canonical registry Step
-     * (`core.readFile`) is WIP and will be wired in Phase B. Until then,
-     * the façade is fail-closed: a missing wiring surfaces as a typed
-     * `EngineInvariantViolation`, never a fabricated empty String. This
-     * keeps the L0 build green while the registry Step is being built.
+     * WU-LPR-087 (LFC-2R2) — runtime-returning file-read façade. Mirrors the
+     * existing `pwd` impl shape: identity + encoded input → invoker → encoded
+     * output → Step's declared codec → String.
+     *
+     * The StepKey is `core.readFile`, registered in
+     * [dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory] alongside
+     * `core.pwd`. Missing registry → typed Rejection, never a fabricated empty
+     * String.
      */
     override suspend fun readFile(
         callSite: ScriptedCallSiteId,
         file: String,
-    ): String = throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-        "core.readFile facade is declared (WU-LPR-087 Phase A) but not yet " +
-            "wired to a registry Step; this seam activates once CoreReadFileStep " +
-            "is added and registered alongside core.pwd in CoreStepRegistryFactory.",
-    )
+    ): String {
+        val invoker = registryInvoker
+            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+                "runtime-returning scripted steps require a registry invoker; " +
+                    "wire ScriptedRegistryInvoker into this entry point runtime",
+            )
+        val identity = scope.identity
+        val definition = dev.rubentxu.pipeline.v2.application.CoreReadFileStep.definition
+        val result = invoker.invoke(
+            ScriptedRegistryCall(
+                runId = identity.runId,
+                entryPointId = identity.entryPointId,
+                callSiteId = callSite,
+                dynamicScopePath = identity.dynamicScopePath,
+                invocationOrdinal = scope.nextOrdinal(callSite),
+                stepKey = dev.rubentxu.pipeline.v2.application.CoreReadFileStep.KEY,
+                encodedInput = definition.contract.inputCodec.encode(
+                    dev.rubentxu.pipeline.v2.application.CoreReadFileInput(
+                        file = file,
+                        encoding = "UTF-8",
+                    ),
+                ),
+            ),
+        )
+        return when (result) {
+            is ScriptedRegistryResult.Success -> try {
+                val output = definition.contract.outputCodec.decode(result.encodedOutput)
+                if (!output.exists) {
+                    throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                            dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                            "readFile($file) reported exists=false; runtime-returning façade cannot materialise content",
+                        ),
+                    )
+                }
+                output.content
+                    ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                            dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                            "persisted readFile output has exists=true but content=null",
+                        ),
+                    )
+            } catch (e: IllegalArgumentException) {
+                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                        "persisted readFile output is not decodable by the step's declared codec: ${e.message}",
+                    ),
+                )
+            }
+            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                result.failure,
+            )
+        }
+    }
 
     /**
      * WU-LPR-087 (LFC-2R2) — runtime-returning file-existence check façade.
-     * Fail-closed until `core.fileExists` is registered.
+     * Mirrors the existing `isUnix` impl shape (returns Boolean): identity +
+     * encoded input → invoker → encoded output → Step's declared codec →
+     * Boolean. The StepKey is `core.fileExists`.
      */
     override suspend fun fileExists(
         callSite: ScriptedCallSiteId,
         file: String,
-    ): Boolean = throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-        "core.fileExists facade is declared (WU-LPR-087 Phase A) but not yet " +
-            "wired to a registry Step; this seam activates once CoreFileExistsStep " +
-            "is added and registered alongside core.pwd in CoreStepRegistryFactory.",
-    )
+    ): Boolean {
+        val invoker = registryInvoker
+            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+                "runtime-returning scripted steps require a registry invoker; " +
+                    "wire ScriptedRegistryInvoker into this entry point runtime",
+            )
+        val identity = scope.identity
+        val definition = dev.rubentxu.pipeline.v2.application.CoreFileExistsStep.definition
+        val result = invoker.invoke(
+            ScriptedRegistryCall(
+                runId = identity.runId,
+                entryPointId = identity.entryPointId,
+                callSiteId = callSite,
+                dynamicScopePath = identity.dynamicScopePath,
+                invocationOrdinal = scope.nextOrdinal(callSite),
+                stepKey = dev.rubentxu.pipeline.v2.application.CoreFileExistsStep.KEY,
+                encodedInput = definition.contract.inputCodec.encode(
+                    dev.rubentxu.pipeline.v2.application.CoreFileExistsInput(file = file),
+                ),
+            ),
+        )
+        return when (result) {
+            is ScriptedRegistryResult.Success -> try {
+                definition.contract.outputCodec.decode(result.encodedOutput).exists
+            } catch (e: IllegalArgumentException) {
+                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                        "persisted fileExists output is not decodable by the step's declared codec: ${e.message}",
+                    ),
+                )
+            }
+            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                result.failure,
+            )
+        }
+    }
 
     /**
      * WU-LPR-087 (LFC-2R2) — runtime-returning `sh(..., returnStdout = true)`
-     * façade. Fail-closed until `core.sh` registry routing is verified
-     * end-to-end with `returnMode = STDOUT`; Phase B wires the real impl.
+     * façade. Mirrors the existing `pwd` impl shape but routes through
+     * [CoreShellStep] with [ShellReturnMode.STDOUT]: identity + encoded input
+     * → invoker → encoded output → Step's declared codec → captured stdout
+     * String.
+     *
+     * Reuses the certified `core.sh` Step; no new StepKey, no new capability.
+     * The rewriter produces `steps.shReturnStdout(callSite, script)` calls
+     * with the script text preserved; the façade encodes the same script with
+     * `returnMode = STDOUT` and decodes `CoreShellOutput.stdout`.
      */
     override suspend fun shReturnStdout(
         callSite: ScriptedCallSiteId,
         script: String,
         encoding: String?,
-    ): String = throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
-        "core.sh returnStdout facade is declared (WU-LPR-087 Phase A) but not " +
-            "yet routed to CoreShellStep with returnMode=STDOUT; this seam " +
-            "activates in WU-LPR-087 Phase B.",
-    )
+    ): String {
+        val invoker = registryInvoker
+            ?: throw dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation(
+                "runtime-returning scripted steps require a registry invoker; " +
+                    "wire ScriptedRegistryInvoker into this entry point runtime",
+            )
+        val identity = scope.identity
+        val definition = CoreShellStep.definition
+        val input = CoreShellInput(
+            command = ShellCommand(
+                script = script,
+                encoding = encoding,
+                label = null,
+                returnMode = ShellReturnMode.STDOUT,
+            ),
+        )
+        val result = invoker.invoke(
+            ScriptedRegistryCall(
+                runId = identity.runId,
+                entryPointId = identity.entryPointId,
+                callSiteId = callSite,
+                dynamicScopePath = identity.dynamicScopePath,
+                invocationOrdinal = scope.nextOrdinal(callSite),
+                stepKey = CoreShellStep.KEY,
+                encodedInput = definition.contract.inputCodec.encode(input),
+            ),
+        )
+        return when (result) {
+            is ScriptedRegistryResult.Success -> try {
+                val output = definition.contract.outputCodec.decode(result.encodedOutput)
+                val stdoutValue = (output.result as? dev.rubentxu.pipeline.v2.domain.ShellInvocationResult.Stdout)?.value
+                    ?: throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                        dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                            dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                            "core.sh succeeded but the persisted output is not a Stdout variant " +
+                                "(got ${output.result::class.simpleName}); the sh(returnStdout=true) facade requires ShellReturnMode.STDOUT",
+                        ),
+                    )
+                stdoutValue
+            } catch (e: IllegalArgumentException) {
+                throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                    dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.REPLAY_COMPATIBILITY,
+                        "persisted shReturnStdout output is not decodable by core.sh's declared codec: ${e.message}",
+                    ),
+                )
+            }
+            is ScriptedRegistryResult.Failed -> throw dev.rubentxu.pipeline.v2.domain.PipelineStepException(
+                result.failure,
+            )
+        }
+    }
 }
 
 /** Closed result of selecting a host compilation for durable scripted execution. */

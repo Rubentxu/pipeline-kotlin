@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,16 +34,24 @@ data class CoreReadFileInput(val file: String, val encoding: String) {
 }
 
 /**
- * Typed successful output for `core.readFile` (statement semantics: the DSL `readFile`
- * fun returns Unit today; the typed value exists so the durable channel never erases
- * the step result shape).
+ * Typed successful output for `core.readFile` (WU-LPR-087, LFC-2R2).
  *
- * Observable read evidence is the `FileRead` domain event emitted by the workspace
- * operations adapter (path, sha256, size — NEVER content, INV-L6-EVT-001). Missing or
- * guarded files surface as a typed step failure from the substrate, not silent success.
+ * `content` is the file content as String (null when the file does not exist
+ * — the substrate's path guard returns `exists=false` for out-of-workspace,
+ * reserved-`.v2`, or missing targets). `exists = false` is a successful
+ * observation in Jenkins predicate semantics, NOT a typed step failure.
+ *
+ * Observable read evidence is the `FileRead` domain event emitted by the
+ * [WorkspaceOperationsAdapter] (path, sha256, size — NEVER content,
+ * INV-L6-EVT-001). The content stays inside the typed step result and the
+ * codec's canonical envelope; the runtime-returning façade decodes it back
+ * to `String` for the scripted caller.
  */
-data object CoreReadFileOutput : TypedStepOutput {
-    override val outcome: StepOutcome = StepOutcome.Success
+data class CoreReadFileOutput(
+    val content: String?,
+    val exists: Boolean,
+) : TypedStepOutput {
+    override val outcome: StepOutcome get() = StepOutcome.Success
 }
 
 /**
@@ -91,17 +100,28 @@ object CoreReadFileStep {
 
     private val outputCodec = object : StepCodec<CoreReadFileOutput> {
         override fun encode(value: CoreReadFileOutput): EncodedStepValue =
-            EncodedStepValue("{\"kind\":\"readFile\",\"outcome\":\"SUCCESS\"}")
+            EncodedStepValue(
+                Json.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put("kind", JsonPrimitive("readFile"))
+                        value.content?.let { put("content", JsonPrimitive(it)) }
+                        put("exists", JsonPrimitive(value.exists))
+                    },
+                ),
+            )
 
         override fun decode(encoded: EncodedStepValue): CoreReadFileOutput {
             val obj = Json.parseToJsonElement(encoded.value).jsonObject
             require(obj["kind"]?.jsonPrimitive?.content == "readFile") {
                 "core.readFile output payload kind must be 'readFile'"
             }
-            require(obj["outcome"]?.jsonPrimitive?.content == "SUCCESS") {
-                "core.readFile output outcome must be 'SUCCESS'"
-            }
-            return CoreReadFileOutput
+            // Back-compat: legacy envelope `{"kind":"readFile","outcome":"SUCCESS"}` has no
+            // content/exists fields — decode as exists=true, content=null so REUSE of old
+            // journals does not blow up. New writes always include the typed fields.
+            val exists = obj["exists"]?.jsonPrimitive?.booleanOrNull ?: true
+            val content = obj["content"]?.jsonPrimitive?.content
+            return CoreReadFileOutput(content = content, exists = exists)
         }
     }
 
@@ -117,8 +137,8 @@ object CoreReadFileStep {
     private val capabilityRoutedHandler: StepHandler<CoreReadFileInput, CoreReadFileOutput> =
         StepHandler { input, ctx ->
             val ops: WorkspaceOperations = ctx.capabilities.get(WORKSPACE_OPERATIONS_CAPABILITY)
-            ops.readFile(file = input.file, encoding = input.encoding)
-            CoreReadFileOutput
+            val result = ops.readFile(file = input.file, encoding = input.encoding)
+            CoreReadFileOutput(content = result.content, exists = result.exists)
         }
 
     val definition: StepDefinition<CoreReadFileInput, CoreReadFileOutput> =

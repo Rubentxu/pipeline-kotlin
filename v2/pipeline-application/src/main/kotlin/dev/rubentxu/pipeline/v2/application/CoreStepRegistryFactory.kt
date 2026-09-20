@@ -66,6 +66,14 @@ object CoreStepRegistryFactory {
         // authority. Legacy decoder branch / metadata row / dispatcher file are NOT changed
         // in this gate (physical removal is G5); they are UNREACHABLE in production from here.
         CoreArchiveArtifactsStep.registerInto(this)
+        // LFC-2E1 / E1.ecosystem-local-first: `core.artifact.query` is the
+        // bridge Step that lets the pipeline ask "where is the JAR named
+        // 'app'?" after `core.archiveArtifacts(name='app', ...)`. It reads
+        // the ARTIFACT_INDEX_CAPABILITY (admitted via InMemoryArtifactIndex
+        // at composition root). The key is NOT in LEGACY_PLUGIN_IDS, so
+        // StructuralFamilyResolver returns Registry from the moment of
+        // registration.
+        CoreArtifactQueryStep.registerInto(this)
         // LFC-2E1-S2-A4 / G1: candidate registration only. `core.emit.event` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,

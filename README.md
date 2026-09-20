@@ -104,6 +104,9 @@ The full user documentation lives in [`docs/user/`](docs/user/):
 
 - [`docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md`](docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md)
   — LPR-GATE-1 closure (GitHub channel closed; SDKMAN pending).
+- [`docs/v2/05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md`](docs/v2/05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md)
+  — LFC (Local Foundation Consolidation) roadmap — the architectural
+  foundation that backs the LPR milestones.
 - [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md)
   — SDKMAN publication status and known defects in `0.39.0`.
 - [`docs/v2/07-uat/WU_LPR_071_SDKMAN_RESUME_PROTOCOL.md`](docs/v2/07-uat/WU_LPR_071_SDKMAN_RESUME_PROTOCOL.md)

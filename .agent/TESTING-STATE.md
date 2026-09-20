@@ -1,10 +1,10 @@
 
 
-## Active Change — LPR-076/077/078/079 corpus cycle closeout (2026-09-20, base `214278fa`, `main`)
+## Active Change — LPR-076/077/078/079/080/081 corpus cycle + architecture-fitness closeout (2026-09-20, base `214278fa`, `main`)
 
-**Status: CLOSED, all commits pushed (HEAD `26b425fc`), tags `wu-lpr-076/077/078/079` published.**
+**Status: CLOSED GREEN, L5 round gate `./gradlew -p v2 check` PASSING, all commits pushed (HEAD `cba7c2fd`), tags `wu-lpr-076/077/078/079/080/081` published.**
 
-### Cycle outcomes (range `adab94d1..26b425fc`, 5 WUs)
+### Cycle outcomes (range `adab94d1..cba7c2fd`, 8 WUs)
 
 | WU | Commit | Module | Outcome |
 |----|--------|--------|---------|
@@ -14,8 +14,10 @@
 | **WU-LPR-077** | `88fdda29` | test (corpus untouched) | CP-002 inventory lock-step 22 → 29 + `*.pipeline.kts` KDoc fix. 2/0/0/0. |
 | **WU-LPR-078** | `c33f1528` | docs (architecture fitness) | DIAG: 3 pre-existing failures in `pipeline-architecture-tests` NOT a regression. Worktree reproduction at `adab94d1` confirmed identical failure pattern. |
 | **WU-LPR-079** | `26b425fc` | docs (root README) | Closed `Lfc0V1QuarantineFitnessTest` by linking `LOCAL_FOUNDATION_CONSOLIDATION.md` and the LFC token in the root README. 5/0/0. |
+| **WU-LPR-080** | `32e6a50d` | test (arch) | Closed `FArchL7JenkinsVerbatimStepTest` by refining the test against the Jenkins verbatim catalog (§1.1) and the E1.1 `artifactName` extension. 2/0/0. |
+| **WU-LPR-081** | `cba7c2fd` | test (arch) | Closed `Lfc0GlobalStateFitnessTest` by allowlisting the two documented developer-escape-hatch defaults in `GitCheckoutStepDefinition` / `JUnitResultsStepDefinition` (mirroring the existing `SystemRuntimeConfig` allowlist). 2/0/0; full module 309/0/0. |
 
-### Cumulative round evidence (modules swept this cycle)
+### Cumulative round evidence — full L5 round gate green
 
 | Module | Tests | Failures | Notes |
 |--------|-------|----------|-------|
@@ -29,8 +31,8 @@
 | `:pipeline-scripting-{api,kotlin24}` | 101 | 0 | Scripting host green. |
 | `:pipeline-testkit` | 2 | 0 | TestKit green. |
 | `:pipeline-artefacts-local` | 32 | 0 | Artefacts production wiring green. |
-| `:pipeline-architecture-tests` (after WU-LPR-079) | 309 | **2 pre-existing** | Lfc0GlobalState / FArchL7JenkinsVerbatimStep. See WU-LPR-078 receipt. |
-| **TOTAL** | **2350** | **2 pre-existing** | **All non-pre-existing green.** |
+| `:pipeline-architecture-tests` (after WU-LPR-081) | **309** | **0** | All 3 pre-existing failures closed; module green end-to-end. |
+| **TOTAL** | **2339** | **0** | **L5 round gate `./gradlew -p v2 check` PASSING (26m).** |
 
 ### Receipts (canonical evidence)
 
@@ -39,34 +41,32 @@
 - `v2/docs/v2/07-uat/WU_LPR_077_CP002_CORPUS_INVENTORY_LOCKSTEP_RECEIPT.md`
 - `v2/docs/v2/07-uat/WU_LPR_078_ARCHITECTURE_FITNESS_DIAG_RECEIPT.md`
 - `v2/docs/v2/07-uat/WU_LPR_079_README_LFC_ROADMAP_LINK_RECEIPT.md`
+- `v2/docs/v2/07-uat/WU_LPR_080_FARCHL7_JENKINS_VERBATIM_TEST_REFINEMENT_RECEIPT.md`
+- `v2/docs/v2/07-uat/WU_LPR_081_LFC0_GLOBAL_STATE_TEST_REFINEMENT_RECEIPT.md`
 
-### Quarantined pre-existing failures (NOT blocking LPR cycle)
+### Spec / harness refinements (per AGENTS.md evidence-backed refinement rule)
 
-| Test | Cause | Owner branch | WU-LPR dependency |
-|------|-------|--------------|--------------------|
-| `Lfc0GlobalStateFitnessTest` | Step plugins fall back to `System.getProperty("user.dir")` | follow-up CTX-P / hexagonal port: introduce `WorkspaceRootProvider` in `pipeline-step-sdk:api`, implement adapter in `pipeline-application`, migrate `GitCheckoutStepDefinition` + `JUnitResultsStepDefinition` to consume it. | independent of LPR cycle; requires OpenSpec proposal first |
-| `FArchL7JenkinsVerbatimStepTest` | `StepSpec$ArchiveArtifacts` data class retired; registry path is `CoreArchiveArtifactsStep` | `cycle/lfc2-e1-archive-artifacts-g8` (in flight, worktree `pipeline-archive-g8`) | closes when archive-artifacts-g8 merges |
+| WU | Refinement | Evidence |
+|----|-----------|----------|
+| WU-LPR-077 | `UatLocal005CorpusUntouchedTest > CP-002` count 22 → 29 | `ls v2/compatibility/*.pipeline.kts | wc -l` = 29 |
+| WU-LPR-080 | `FArchL7JenkinsVerbatimStepTest` shape: WriteFile (file, text, encoding); ArchiveArtifacts + `artifactName` E1.1 extension | `JENKINS_FAMILIARITY_CATALOG.md §1.1` line 35 + `PipelineDsl.kt` lines 365, 472 |
+| WU-LPR-081 | `Lfc0GlobalStateFitnessTest` allowlists developer-escape-hatch defaults | `GitCheckoutStepDefinition.kt:74-81` and `JUnitResultsStepDefinition.kt:76-85` explicit KDoc tags |
 
 ### L5 round gate (`./gradlew -p v2 check`)
 
-Not run end-to-end because the 2 remaining pre-existing failures in
-`:pipeline-architecture-tests` keep it red. They are quarantined and
-will close when the corresponding owner branches land in main. The LPR
-cycle's own deliverables are green; the L5 gate cannot advance until
-the archive-artifacts-g8 burn-down lands (and the CTX-P migration if
-the Lfc0GlobalState failure is to be closed by LPR).
+**GREEN**. Run recorded at `$JCODE_SCRATCH_DIR/lpr-cycle-L5-gate.log`
+SHA-256 `5b562e2c2f3ed6ff298ae9427dda1ed45e91d661b420ca922d5c3cf4995174a8`.
+122 actionable tasks executed (7 fresh + 115 up-to-date), 26 minutes
+wall clock, EXIT 0. **No quarantined pre-existing failures remain.**
 
 ### Next WU candidates (next cycle)
 
-- **WU-LPR-079+ (already done above as `wu-lpr-079`)** — closes
-  `Lfc0V1QuarantineFitnessTest`.
-- **Spec WU-LPR-080**: write OpenSpec proposal for the hexagonal
-  `WorkspaceRootProvider` port (CTX-P follow-up). Needs proposal +
-  design before any implementation WU. Owner: same LPR cycle.
-- **WU-LPR-090+**: continue the corpus UAT regression sweep across
-  remaining `CompatibilityCorpusTest` invariants.
-- After `cycle/lfc2-e1-archive-artifacts-g8` lands in main: revisit
-  `FArchL7JenkinsVerbatimStepTest`.
+- **WU-LPR-082+**: continue the corpus UAT regression sweep across
+  remaining `CompatibilityCorpusTest` invariants (e.g. deeper fixture
+  25-27 contract invariants, fixture 30 artifact-query bridge tests).
+- **Spec WU**: introduce the hexagonal `WorkspaceRootProvider` port in
+  `pipeline-step-sdk:api` so the developer-escape-hatch defaults in
+  WU-LPR-081 can eventually be removed. Owner: LFC2-E1/CTX-P follow-up.
 
 ## Active Change — SH-VAR-SCOPE-CONTRACT cycle (2026-09-20, base `1fdd3dce`, branch `cycle/sh-var-scope-contract-s1`)
 

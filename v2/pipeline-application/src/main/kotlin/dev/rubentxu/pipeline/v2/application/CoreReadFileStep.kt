@@ -120,7 +120,16 @@ object CoreReadFileStep {
             // content/exists fields — decode as exists=true, content=null so REUSE of old
             // journals does not blow up. New writes always include the typed fields.
             val exists = obj["exists"]?.jsonPrimitive?.booleanOrNull ?: true
-            val content = obj["content"]?.jsonPrimitive?.content
+            // The `content` field can be (a) absent (legacy / exists=true with no read),
+            // (b) the JSON literal `null` (exists=false with no read), or (c) a string.
+            // We must distinguish (a)/(b) from (c) — `.jsonPrimitive.content` collapses
+            // `JsonNull` to the literal string "null", which is a defect.
+            val contentElement = obj["content"]
+            val content: String? = when {
+                contentElement == null -> null
+                contentElement is kotlinx.serialization.json.JsonNull -> null
+                else -> contentElement.jsonPrimitive.content
+            }
             return CoreReadFileOutput(content = content, exists = exists)
         }
     }

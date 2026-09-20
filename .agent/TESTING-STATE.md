@@ -1,31 +1,69 @@
 
 
-## Active Change — LPR compatibility corpus recovery (2026-09-20, base `adab94d1`, `main`)
+## Active Change — LPR-076/077/078 corpus cycle closeout (2026-09-20, base `214278fa`, `main`)
 
-**Status: VALIDATED, ready for WU-LPR-075 receipt/commit.**
+**Status: CLOSED, all commits pushed (HEAD `c33f1528`), tags `wu-lpr-076/077/078` published.**
 
-### Changed surface and impact
+### Cycle outcomes (range `adab94d1..c33f1528`, 4 WUs)
 
-- `CompatibilityCorpusTest`: fixture 05 was a stale compile-failure expectation.
-- Fixtures 25 and 27 wrote default non-overwriting outputs into the shared
-  checked-in corpus workspace. They now copy their inputs to JUnit `@TempDir`
-  workspaces before installed-binary execution.
-- Known impact is limited to application compatibility test reproducibility.
-  No production source, DSL fixture source, registry, or durable protocol changed.
+| WU | Commit | Module | Outcome |
+|----|--------|--------|---------|
+| **WU-LPR-074** | `adab94d1` | test (env UAT subprocess) | Env subprocess streams bound (no more hang). |
+| **WU-LPR-075** | `214278fa` | test (corpus) | `CompatibilityCorpusTest` 30/0/0/0 via `@TempDir` workspace isolation. |
+| **WU-LPR-076** | `7bdf19f0` | test (UAT-COMPAT-001) | Runner bifurcated: per-test `@TempDir` workspace, fixture 10 preserved. `28-zip-slip-defense` registered as broken. 2/0/0/0. |
+| **WU-LPR-077** | `88fdda29` | test (corpus untouched) | CP-002 inventory lock-step 22 → 29 + `*.pipeline.kts` KDoc fix. 2/0/0/0. |
+| **WU-LPR-078** | `c33f1528` | docs (architecture fitness) | DIAG: 3 pre-existing failures in `pipeline-architecture-tests` NOT a regression. Worktree reproduction at `adab94d1` confirmed identical failure pattern. |
 
-### Fresh evidence
+### Cumulative round evidence (modules swept this cycle)
 
-- `:pipeline-application:compileTestKotlin --rerun-tasks`: PASS, 33s,
-  SHA `e61764b61ddbd3c1eaff5be1c7d95947b2dc3f754eea81810122c762d1a106a7`.
-- Focused fixtures 05, 25 and 27: PASS individually.
-- `CompatibilityCorpusTest`: PASS, fresh XML `tests=30 failures=0 errors=0`,
-  3m06s, SHA `a955c7883fd90b977060cc1a91b055205627a9737586504466f9215cf964978f`.
+| Module | Tests | Failures | Notes |
+|--------|-------|----------|-------|
+| `:pipeline-application` (corpus + UAT + residual) | 577 | 0 | All `Uat*`, `UatDsl*`, `UatEvt*`, `UatStep*`, `UatLocal*`, `CompatibilityCorpusTest`, `cli.*`, `durable.*`, `spike.*`, `support.*` green. |
+| `:pipeline-step-sdk:{api,files,junit,processor,runtime,scm-git,utilities,workflow-control}` | 393 | 0 | All Step SDK subprojects green. |
+| `:pipeline-domain` | 554 | 0 | Domain model + reactive surface green. |
+| `:pipeline-events` | 178 | 0 | Event spine green. |
+| `:pipeline-event-harness` | 19 | 0 | Event harness green. |
+| `:pipeline-binding-factory` | 37 | 0 | Binding factory green. |
+| `:pipeline-credentials-{api,executor,local,multipart}` | 137 | 0 | Credentials binding chain green. |
+| `:pipeline-scripting-{api,kotlin24}` | 101 | 0 | Scripting host green. |
+| `:pipeline-testkit` | 2 | 0 | TestKit green. |
+| `:pipeline-artefacts-local` | 32 | 0 | Artefacts production wiring green. |
+| `:pipeline-architecture-tests` | 309 | **3 pre-existing** | Lfc0GlobalState / Lfc0V1Quarantine / FArchL7JenkinsVerbatimStep. See WU-LPR-078 receipt. |
+| **TOTAL** | **2350** | **3 pre-existing** | **All non-pre-existing green.** |
 
-### Next verification
+### Receipts (canonical evidence)
 
-- After WU-LPR-075 commit, retry the application module regression once.
-  It previously had this corpus trio plus the independently corrected
-  UatLocal005 stream hang (WU-LPR-074). Do not run Gradle tasks concurrently.
+- `v2/docs/v2/07-uat/WU_LPR_075_COMPATIBILITY_FIXTURE_ISOLATION_RECEIPT.md`
+- `v2/docs/v2/07-uat/WU_LPR_076_UAT_COMPAT_CORPUS_INVENTORY_AND_WORKSPACE_RECEIPT.md`
+- `v2/docs/v2/07-uat/WU_LPR_077_CP002_CORPUS_INVENTORY_LOCKSTEP_RECEIPT.md`
+- `v2/docs/v2/07-uat/WU_LPR_078_ARCHITECTURE_FITNESS_DIAG_RECEIPT.md`
+
+### Quarantined pre-existing failures (NOT blocking LPR cycle)
+
+| Test | Cause | Owner branch | WU-LPR dependency |
+|------|-------|--------------|--------------------|
+| `Lfc0GlobalStateFitnessTest` | Step plugins fall back to `System.getProperty("user.dir")` | follow-up CTX-P migration to `WorkspaceResolver` | independent of LPR cycle |
+| `Lfc0V1QuarantineFitnessTest` | Root README missing `LOCAL_FOUNDATION_CONSOLIDATION.md` link | doc-only follow-up | independent of LPR cycle |
+| `FArchL7JenkinsVerbatimStepTest` | `StepSpec$ArchiveArtifacts` data class retired; registry path is `CoreArchiveArtifactsStep` | `cycle/lfc2-e1-archive-artifacts-g8` (in flight, worktree `pipeline-archive-g8`) | closes when archive-artifacts-g8 merges |
+
+### L5 round gate (`./gradlew -p v2 check`)
+
+Not run end-to-end because the 3 pre-existing failures in
+`:pipeline-architecture-tests` keep it red. They are quarantined and
+will close when the corresponding owner branches land in main. The LPR
+cycle's own deliverables are green; the L5 gate cannot advance until
+the archive-artifacts-g8 burn-down lands.
+
+### Next WU candidates (next cycle)
+
+- **WU-LPR-079+**: continue the corpus UAT regression sweep across
+  remaining `CompatibilityCorpusTest` invariants (e.g. fixture 25-27
+  contract invariants not yet covered).
+- **Doc WU**: append `LOCAL_FOUNDATION_CONSOLIDATION.md` link in root
+  README to close `Lfc0V1QuarantineFitnessTest` (5-minute change).
+- After `cycle/lfc2-e1-archive-artifacts-g8` lands in main: revisit
+  `FArchL7JenkinsVerbatimStepTest` and migrate the two Step plugins
+  in scope of `Lfc0GlobalStateFitnessTest`.
 
 ## Active Change — SH-VAR-SCOPE-CONTRACT cycle (2026-09-20, base `1fdd3dce`, branch `cycle/sh-var-scope-contract-s1`)
 

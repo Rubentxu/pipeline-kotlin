@@ -421,3 +421,50 @@ LFC-2E2           new plugin families born with provider/release/family/policy-s
 LFC-2E3 (future)  Cedar runtime binding; consumes the frozen shape; no runtime
                   data reconstruction needed because C1..C10 were green before LFC-2E2
 ```
+
+## DEPURATION 2026-09-20 (cycle `lfc2-step-ecosystem-depuration-2026-09-20`)
+
+The E2..E10 sequence above was the pre-2026-09-20 plan. It was depurated
+against the user's criteria (genericidad + utilidad real; no tool-
+specific; mandatory G0..G8 certification) and replaced by a binding
+plan in [`docs/v2/01-product/STEP_REGISTRY_PLAN.md`](../01-product/STEP_REGISTRY_PLAN.md).
+The depurated sequence is:
+
+```text
+Tier A       burn down 3-4 already-registry Steps to G8 (LFC-2E1-S2)
+             + 1 horizontal blocker (LFC-2R2 — STRUCTURED_DSL_RUNTIME_RETURN_GAP)
+LFC-2E2      Tier B batch 1: junit.results, stash, unstash, publishHTML
+LFC-2E3      Tier B batch 2: lock, input, httpRequest
+LFC-2E4+     Tier C on demand: readTOML/writeTOML, tar/untar
+Tier D       REJECTED (binding; ADR-level only)
+             - toolchains (Maven/Gradle/NodeJS/Python/.NET/Go)
+             - containers (Docker/Podman/Kubernetes)
+             - vendor (Slack/Artifactory/SonarQube/Vault/AWS/Azure/GCP)
+             - Jenkins-only idioms (sshagent/copyArtifacts/build/etc)
+             - cosmetic (timestamps/ansiColor)
+             - SCM advanced flags (git --depth/submodule/LFS in `sh`)
+             - weak hashes (md5/sha1)
+             - niche (readManifest/compareVersions/SVN/Mercurial)
+Tier E       EXTERNAL (vendor responsibility)
+```
+
+Every Step on the depurated plan must reach `CERTIFIED` (full G0..G8 +
+fitness + StepContractSuite + installDist + receipt) or be `REJECTED`
+with a recorded reason. **No `IMPLEMENTED_UNCERTIFIED` /
+`LEGACY_IMPLEMENTED_UNCERTIFIED` / `DONE/PASS` / `WIP` / `TBD` /
+`partial` are accepted as final states** in the depurated plan
+(per user directive 2026-09-20).
+
+The detailed roadmap with per-Step G0..G8 plan, validation set, and
+binding ordering is in
+[`docs/v2/01-product/STEP_REGISTRY_PLAN.md`](../01-product/STEP_REGISTRY_PLAN.md).
+
+## Acceptance: strict certification law (re-asserted)
+
+Every Step on this roadmap must reach `CERTIFIED` (ADR-0074 +
+`STEP_PLUGIN_CERTIFICATION.md` §R1..R4) before the cycle closes.
+`IMPLEMENTED_UNCERTIFIED` / `LEGACY_IMPLEMENTED_UNCERTIFIED` / `DONE` /
+`PASS` / `WIP` / `TBD` / `partial` are forbidden as final states.
+
+The strict validation set per Step (binding): see
+[`docs/v2/01-product/STEP_REGISTRY_PLAN.md §Strict Validation Set`](../01-product/STEP_REGISTRY_PLAN.md#strict-validation-set-per-step-applied-to-every-candidate).

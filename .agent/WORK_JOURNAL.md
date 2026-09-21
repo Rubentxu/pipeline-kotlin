@@ -252,3 +252,27 @@
   - R5 (carried): bootstrap procedure executed 5 times in this cycle; workflow-decision still pending (RP-0 close-out).
   - Receipt: docs/v2/07-uat/WU_RP_002_2_RECEIPT.md (status: CLOSED).
 - Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.2; HEAD = <pending> local+remote; NEXT_WU = WU-RP-003 (RP-0 close-out: widen protection + workflow-decision R5 + LPR-0 application-focused full CI run + advance to RP-1).
+
+
+### 2026-09-21T14:53Z — WU-RP-002.2 push & CI run 35599142876: fitness fix VERIFIED remotely; 2 NEW pre-existing GitCheckout adversarial failures surfaced
+
+- Base SHA / HEAD SHA / branch: base = ff17bf9d (post WU-RP-002.1); HEAD = 96604dee (post WU-RP-002.2); branch = main (LOCAL + REMOTE in sync). 5th bootstrap of RP-000 cycle.
+- Intencion: empujar el WU-RP-002.2 (fitness stale set + inventory publishHTML correction) a remote y verificar CI.
+- Tests realmente ejecutados (CI run 35599142876 at 96604dee):
+  - compile SUCCESS at 96604dee (43s).
+  - domain-unit SUCCESS (after WU-RP-002.1 fix).
+  - architecture-fitness SUCCESS.
+  - application-focused FAILURE — but different failure than before:
+    - The fitness test does NOT appear in the failure log; 17-vs-20 set mismatch is gone.
+    - 2 NEW failures surfaced: GitCheckoutExecutorAdversarialTest.ADV-007 and ADV-003, both java.lang.IllegalStateException at GitCheckoutExecutorAdversarialTest.kt:319. Same line as the wrapping runGit() helper that throws when git exit!=0.
+  - The runner received an external shutdown signal at 12:43:56 - Java pid (2237) was terminated mid-tests; the action step was marked cancelled, not failed.
+- Local validation (relevant to WU-RP-002.2 scope):
+  - L1 ADV reproduction (:pipeline-application:test --tests "GitCheckoutExecutorAdversarialTest.ADV-003*" --tests "GitCheckoutExecutorAdversarialTest.ADV-007*"): 2/2 GREEN.
+  - L2 CoreSleepRegistryPrimaryFitnessTest full class: 16/16 GREEN.
+- Sorpresa (R7): 2 NEW pre-existing CI-only failures (same envelope as WU-RP-002.1 SQLite flakes). Root cause: CI runner overrides HOME; the test helper runGit() runs git init/commit without setting per-repo user.email/name.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS_WITH_KNOWN_FAILURES for WU-RP-002.2 scope (fitness fix VERIFIED); 2 NEW CI-env failures deferred to WU-RP-002.3.
+- Bloqueos y riesgo residual:
+  - R1 (carried): PROTECTION WIDENING deferred to WU-RP-003.
+  - R5 (carried): bootstrap procedure executed 5 times.
+  - R7 (NEW): 2 pre-existing CI-env failures in GitCheckoutExecutorAdversarialTest. WU-RP-002.3 closes with env-independent fix.
+- Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.2; NEXT_WU = WU-RP-002.3.

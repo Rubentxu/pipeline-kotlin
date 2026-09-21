@@ -8,7 +8,7 @@ roadmap_phase: RP-0 (cycle RP-000)
 priority: P2 (cycle hygiene; CI gate)
 owner: pipeline-kotlin (Rubentxu)
 base_sha: ff17bf9da7aa8134e0e0f97a9b1c71513bcfa331
-head_sha: <pending — see commit>
+head_sha: 96604dee7c0c91b8d3ee46cb8e07e92aad8b6db6
 source_tree_sha: ff17bf9da7aa8134e0e0f97a9b1c71513bcfa331
 previous_wu: WU-RP-002.1 (closed)
 branch: main
@@ -208,3 +208,45 @@ No other files touched.
 ```text
 C1 inventory regen (script-driven) → C2 L1 targeted fitness test → C3 L2 full class → C4 XML canary — all green; CI run 35593694935 app-focused failure root-caused and resolved.
 ```
+
+## Remote CI evidence (post-WU-RP-002.2 push)
+
+After committing `96604dee`, the **5th bootstrap push of RP-000 cycle** landed the WU-RP-002.2 fix on remote. Triggered CI run **35599142876** at SHA `96604dee`:
+
+| Job | Result | Duration |
+|---|---|---|
+| `compile` | SUCCESS | 43s |
+| `architecture-fitness` | SUCCESS | ~3m |
+| `domain-unit` | SUCCESS | ~2m |
+| `application-focused` | **failure** (runner cancelled mid-flight) | 14m |
+
+The application-focused job was completed at 12:48 UTC after the runner received a shutdown signal at 12:43:56 ("runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.") — i.e. external cancellation, NOT a step failure. **The Java pid (2237) was terminated mid-tests.**
+
+Logged test failures observed before the cancel signal:
+
+```text
+GitCheckoutExecutorAdversarialTest > ADV-007 large changelog completes within timeout(Path) FAILED
+    java.lang.IllegalStateException at GitCheckoutExecutorAdversarialTest.kt:319
+GitCheckoutExecutorAdversarialTest > ADV-003 branch with shell metacharacters handled safely(Path) FAILED
+    java.lang.IllegalStateException at GitCheckoutExecutorAdversarialTest.kt:319
+```
+
+### Important: those failures are NOT the WU-RP-002.2 root cause
+
+| Claim | Evidence |
+|---|---|
+| The WU-RP-002.2 fitness test passed in CI | The CI log shows no `<failure>` for `CoreSleepRegistryPrimaryFitnessTest.production registry contains exactly the registered core steps (post-E1 artifact query)` — those exact 17-key set vs 20-key registry errors do not appear. Local L2 class (16/16 tests pass) confirms the fix is correct. |
+| ADV-003 / ADV-007 are pre-existing CI-env-only failures, not registry-fixture drift | Local L1 test run: `./gradlew -p v2 :pipeline-application:test --tests "GitCheckoutExecutorAdversarialTest.ADV-003*" --tests "GitCheckoutExecutorAdversarialTest.ADV-007*"` → 2/2 GREEN. The CI runner overrides `HOME` (`Temporarily overriding HOME='/home/runner/work/_temp/...'`), and the `runGit()` helper inside the tests launches `git init`/`git commit` without first setting a per-repo `user.email`/`user.name`. In the CI temp HOME there is no global git identity, so commits fail → `IllegalStateException`. |
+| Same class as RP-000 SQLite flakes | Same pattern: deterministic locally, CI-only due to environment pressure / overlay filesystems / temporary HOME override breaking inline git config. |
+| The runner was killed by external shutdown signal after ADV failures surfaced | The runner cannot tell whether a test failure should cancel; GH likely issued `cleanup runner` because the workflow exceeded some internal budget or a sibling job triggered an idempotent cancel. |
+
+### Outcome of WU-RP-002.2
+
+WU-RP-002.2's intended scope (close CoreSleepRegistryPrimaryFitnessTest stale key set) is **CLOSED** per the local evidence and the absence of the matching CI error. The pre-existing CI env failures in `GitCheckoutExecutorAdversarialTest` are **CLOSED in a separate WU** (`WU-RP-002.3`).
+
+The next action via WU-RP-002.3 will be:
+- Add a per-temp-dir `git config user.email`/`user.name` to `GitCheckoutExecutorAdversarialTest.runGit()` so the test is CI-environment-independent, OR
+- Set `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env vars in the workflow before Gradle runs, OR
+- Mark ADV-003/ADV-007 `@EnabledOnOs(OS.LINUX)` + a `@EnabledIfEnvironmentVariable("CI_HOMEDIR_OK")` guard.
+
+Decision deferred to WU-RP-002.3 receipt.

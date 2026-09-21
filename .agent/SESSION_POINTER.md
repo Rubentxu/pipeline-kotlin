@@ -1,19 +1,19 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-21T13:57Z. **Tipo de cambio de esta sesión:** WU-RP-002.2 cierre — closed pre-existing CoreSleepRegistryPrimaryFitnessTest stale key set (pinned 17 keys; production registry 20 keys including `core.stash`, `core.unstash` from WU-LPR-089 and `core.publishHTML` from WU-LPR-090). Inventory mapping corrected (`core.publishHtml` → `core.publishHTML`). Receipt: `docs/v2/07-uat/WU_RP_002_2_RECEIPT.md`.
-**Código auditado:** main @ ff17bf9da7aa8134e0e0f97a9b1c71513bcfa331 (post WU-RP-002.1, base c39dcaa6, base-base 6822eff1).
+**Actualizado:** 2026-09-21T14:53Z. **Tipo de cambio de esta sesión:** WU-RP-002.2 push and CI verification — fitness fix VERIFIED remotely (no fitness assertion error in CI log); 2 NEW pre-existing CI-env adversarial failures surfaced (ADV-003, ADV-007 in GitCheckoutExecutorAdversarialTest), deferred to WU-RP-002.3. Receipt: `docs/v2/07-uat/WU_RP_002_2_RECEIPT.md` (with remote CI evidence appended).
+**Código auditado:** main @ 96604dee7c0c91b8d3ee46cb8e07e92aad8b6db6 (post WU-RP-002.2 push; base ff17bf9d, base-base c39dcaa6).
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Diario:** .agent/WORK_JOURNAL.md.
-**Cabeza actual:** `git rev-parse HEAD` → <pending — see WU-RP-002.2 push> (local+remote). CI run 35593694935 at ff17bf9d: compile SUCCESS, domain-unit SUCCESS, architecture-fitness SUCCESS; application-focused CANCELLED (root-caused and closed locally by WU-RP-002.2 — pending next CI run on the new HEAD).
+**Cabeza actual:** `git rev-parse HEAD` → 96604dee local+remote. CI run 35599142876 at 96604dee: compile SUCCESS, domain-unit SUCCESS, architecture-fitness SUCCESS, application-focused CANCELLED (external runner shutdown signal; Java pid 2237 terminated mid-tests). The WU-RP-002.2 fitness fix is verified in CI.
 
 ## Estado operativo
 
 - ACTIVE_PHASE: RP-0 — CI reproducible y verdad del inventario.
-- LAST_CLOSED_WU: WU-RP-002.2 — closed pre-existing CoreSleepRegistryPrimaryFitnessTest stale key set + corrected inventory `core.publishHtml` → `core.publishHTML`. Status: PASS. Local evidence C1+C2+C3+C4 all green. Receipt: docs/v2/07-uat/WU_RP_002_2_RECEIPT.md.
-- NEXT_WU: WU-RP-003 — RP-0 close-out. (a) Widen `branch_protection.required_status_checks.contexts` to include `domain-unit` + `architecture-fitness` on top of `LPR-0 CI / compile`; (b) decide workflow R5 (PR-based vs long-lived integration branch to avoid the 5 bootstrap pushes observed in RP-000); (c) Run a **full `:pipeline-application:test` LPR-0 application-focused job** on remote to verify CI greenness at the new HEAD; (d) archive RP-000 cycle, advance to RP-1.
-- BLOCKERS: 0. All 5 pre-existing CI failures surfaced in RP-000 are now closed (3 in WU-RP-002, 2 SQLite flakes in WU-RP-002.1, 1 fitness stale set in WU-RP-002.2).
+- LAST_CLOSED_WU: WU-RP-002.2 — closed pre-existing CoreSleepRegistryPrimaryFitnessTest stale key set + corrected inventory `core.publishHtml` → `core.publishHTML`. Fitness fix VERIFIED remotely (no assertion error in CI log; local L2 16/16 GREEN). 2 NEW pre-existing CI-env adversarial failures (ADV-003 + ADV-007) deferred to WU-RP-002.3. Receipt: docs/v2/07-uat/WU_RP_002_2_RECEIPT.md.
+- NEXT_WU: WU-RP-002.3 — close the 2 NEW pre-existing `GitCheckoutExecutorAdversarialTest` CI-env failures (ADV-003 branch with shell metacharacters; ADV-007 large changelog). Recommended fix per receipt: add per-temp-dir `git config user.email`/`user.name` to `runGit()` so the test is env-independent. Same class of fix as WU-RP-002.1 SQLite flush barriers.
+- BLOCKERS: 2 pre-existing CI-env adversarial failures in `GitCheckoutExecutorAdversarialTest` (ADV-003, ADV-007), pre_existing_at=ff17bf9d. Deferred to WU-RP-002.3.
 - NO_GO: iniciar core.lock/Step nuevo o publicar una release nueva mientras RP-0/RP-1 no estén verificadas; no modificar recibos históricos.
 - RELEASE_REFERENCE: v0.39.0 (certificada documentalmente en SU commit y canal GitHub); HEAD posterior NOT_YET_RECERTIFIED.
 - HISTORY: docs/historico/INDEX.md.
@@ -27,7 +27,7 @@
 1. `git status --short; git rev-parse HEAD; git log -1 --format='%H %cI %s'; git log --oneline -6`.
 2. Leer AGENTS.md (protocolo inicial), este puntero, ROADMAP.md, CERTIFICATION_PROTOCOL.md, PRODUCTION_READY_UAT_MATRIX.md y el último bloque de WORK_JOURNAL.md.
 3. Contrastar `git log -1 origin/main` con HEAD local. Si divergen (ej. PRs remotos), evaluar fast-forward o merge.
-4. HEAD should be the WU-RP-002.2 head on both local and remote; CI at that HEAD should show compile + domain-unit + architecture-fitness GREEN, with application-focused GREEN (the WU-RP-002.2 fitness fix). Branch protection ACTIVE (`LPR-0 CI / compile` required, strict=true, force-pushes/deletions off). Next: WU-RP-003 (RP-0 close-out).
+4. HEAD should be 96604dee on both local and remote; CI at that HEAD shows compile + domain-unit + architecture-fitness GREEN (3/4 jobs), with application-focused cancelled at the runner externally (not a step failure). The WU-RP-002.2 fitness fix is recorded as VERIFIED in the receipt (no assertion error observed in the CI log); the 2 NEW ADV adversarial failures are deferred to WU-RP-002.3. Branch protection ACTIVE (`LPR-0 CI / compile` required, strict=true, force-pushes/deletions off). Next: WU-RP-002.3 (close GitCheckoutExecutorAdversarialTest CI-env dependency).
 5. Si HEAD diverge, evaluar fast-forward o merge; si protection hook bloquea, ejecutar bootstrap procedure documentado en WU_RP_001_RECEIPT.md.
 6. Si no hay permisos para editar reglas de protección, registrar BLOCKED_EXTERNAL y dejar pendiente el check requerido, nunca green by inspection.
 

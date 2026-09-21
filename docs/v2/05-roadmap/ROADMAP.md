@@ -63,6 +63,19 @@
 **WU-RP-040:** configurar cobertura por módulo y umbrales fundamentados por riesgo (branch/line) sobre partes críticas, mutación selectiva de codecs/políticas; registrar exclusiones y @Disabled clasificados, nunca contar tests omitidos como PASS. Crear informes SAST/dependency audit/secret scan/SBOM y fijación de acciones por SHA según política de suministro.
 **WU-RP-041:** probar aislamiento del runner local, filesystem, proceso, límites de CPU/memoria/tiempo, egress y secretos; declarar claramente modelo de amenaza y diferenciar ejecución confiable de multi-tenant. Cualquier capacidad que aún sea best-effort queda fuera del perfil de ejecución no confiable.
 **WU-RP-042:** construir distZip reproducible a partir de commit inmutable, manifiesto y hashes; instalar de cero; ejecutar Gradle/Maven/Node reales, fallos de compilación, rollback/restart, uso de credenciales, CLI validate/run/inspect y corpus. Publicar sólo el ZIP EXACTO probado. Congelar API/schema para el candidato; certificación caduca si cambian los bytes.
+**WU-RP-043 (self-hosted CI / dogfooding progresivo):** convertir el CI en
+tres niveles. N1 bootstrap independiente: checkout + JDK + build pipelinek +
+canary de arranque, válido aunque el DSL/registro/ejecutor estén rotos. N2
+dogfooding: el pipelinek del mismo SHA ejecuta un `.pipeline.kts` del repos
+itorio con las pruebas de integración/acotadas (per-shard), dejando los
+`--tests` actuales como fallback. N3 verificación externa: comprobar resultado
+e informes desde fuera del motor. Criterios de salida: (a) pipelinek construido
+desde checkout limpio; (b) un `.pipeline.kts` real del mismo SHA ejecutado;
+(c) salida/artefactos verificados fuera del motor; (d) fallo intencional deja
+CI en rojo; (e) un error de DSL no impide diagnósticos del bootstrap. GitHub
+Actions queda como lanzador y publicador de checks; pipelinek define y ejecuta
+la lógica de CI. El motor de selección por impacto (ADR-0094) será la fuente
+común de la política de testing para local, Actions y pipelinek.
 **Salida RP-4:** todos los checks de release vinculados a commit, artefacto, SO/JDK y logs. No declarar cobertura/seguridad/rendimiento verificados sin resultados fechados.
 
 ## 7. RP-5 — Gate Local Production Ready de main / candidata

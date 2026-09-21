@@ -175,29 +175,45 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         val logPath = consoleLog(controlRoot, runId)
         // Launch on another thread; poll the transcript WHILE the child sleeps.
         val t = Thread {
+            // 100 echo lines each containing the secret (≈3.4KB) far exceeds the
+            // redactor's maxLiteralByteLength (~56), so pending flushes (and the
+            // "****" marker lands on disk) while `sleep 2` keeps the child alive.
             invoke(adapter(runId, controlRoot, registry(), sink), runId,
-                "echo $secret; sleep 2")
+                "for i in \$(seq 1 100); do echo $secret-line-\$i; done; sleep 2")
         }
         t.isDaemon = true
         t.start()
+        // WU-RP-005 r6 (CI flake fix, run 35646215918 + local repro ~1/3):
+        // the StreamingRedactor holds bytes in its pending buffer until it has
+        // maxLiteralByteLength (~56 for this registry) of lookahead or EOF.
+        // A tiny `echo` line cannot cross that threshold while the child is
+        // alive, so sanitized bytes only reach console.log near process exit,
+        // racing the success-path cleanup. To make the DURING-EXECUTION window
+        // deterministic we produce enough output to force repeated pending
+        // flushes while the child is still sleeping, then assert the at-rest
+        // invariants on every observation inside that window.
         val deadline = System.currentTimeMillis() + 30_000
-        var observedSanitized = false
+        var observedLive = false
         while (System.currentTimeMillis() < deadline) {
             if (Files.exists(logPath)) {
-                val content = Files.readString(logPath)
+                val content = try { Files.readString(logPath) } catch (_: Exception) { "" }
                 if (content.contains("****")) {
                     assertEquals(0, rawCount(logPath, secret),
                         "live transcript must never contain the raw secret")
                     assertFalse(content.contains("echo $secret"), "script echo must be scrubbed live")
-                    observedSanitized = true
+                    observedLive = true
                     break
                 }
             }
             Thread.sleep(50)
         }
         t.join(35_000)
-        assertTrue(observedSanitized, "must observe the sanitized transcript DURING execution")
-        assertEquals(0, rawCount(logPath, secret), "post-run check: still zero raw bytes")
+        assertTrue(observedLive, "must observe the sanitized transcript DURING execution")
+        // Success-path cleanup may delete the control dir right after exit; if the
+        // transcript still exists, the at-rest properties must hold.
+        if (Files.exists(logPath)) {
+            assertEquals(0, rawCount(logPath, secret), "post-run check: still zero raw bytes")
+        }
     }
 
     // 8. capture mode: typed value exact, stderr transcript safe

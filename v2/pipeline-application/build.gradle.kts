@@ -99,6 +99,17 @@ tasks.test {
     // the exact CI command still executed all 203 classes). CI now passes
     // -PexcludeSlowTests=true; the full suite (gate-app / release) runs
     // without the property and keeps every test.
+    // WU-RP-005 r6: shard exclusions from CI. `--tests '!X'` on the command
+    // line is silently ignored by Gradle (verified in run 35646215918: the
+    // engine shard re-ran every UatLocal class), so the workflow passes the
+    // shard's exclusion patterns here instead.
+    val shardExcludes = providers.gradleProperty("shard.excludes").orElse("")
+    if (shardExcludes.get().isNotBlank()) {
+        val patterns = shardExcludes.get().split(',').map { it.trim().removeSurrounding("'") }.filter { it.isNotBlank() }
+        filter {
+            patterns.forEach { excludeTestsMatching(it) }
+        }
+    }
     if (providers.gradleProperty("excludeSlowTests").isPresent) {
         // JUnit tag-based exclusion (WU-RP-005 r4). Gradle's test-source
         // exclude("...") trips the FArch011 textual fitness scanner (any

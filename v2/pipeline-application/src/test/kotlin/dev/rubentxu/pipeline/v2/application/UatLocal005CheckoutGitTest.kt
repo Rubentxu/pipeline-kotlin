@@ -200,7 +200,7 @@ class UatLocal005CheckoutGitTest {
             runGit(listOf("git", "-C", pusher.toString(), "add", "."))
             runGit(listOf("git", "-C", pusher.toString(), "commit", "-m", "Second commit"))
             // Use force to reliably advance bare's master regardless of prior state
-            runGit(listOf("git", "-C", pusher.toString(), "push", "--force", bareRepo.toString(), "main:master"))
+            runGit(listOf("git", "-C", pusher.toString(), "push", "--force", bareRepo.toString(), "HEAD:master"))
 
             // Verify bare's master now points to the new commit
             val newRemoteSha = gitLsRemote(bareRepo.toString(), "master")
@@ -410,7 +410,7 @@ class UatLocal005CheckoutGitTest {
         Files.writeString(work.resolve("newfile.txt"), "Content")
         runGit(listOf("git", "-C", work.toString(), "add", "."))
         runGit(listOf("git", "-C", work.toString(), "commit", "-m", "New commit"))
-        runGit(listOf("git", "-C", work.toString(), "push", "--force", bareRepo.toString(), "main:master"))
+        runGit(listOf("git", "-C", work.toString(), "push", "--force", bareRepo.toString(), "HEAD:master"))
 
         val newSha = runGitWithOutput(listOf("git", "ls-remote", bareRepo.toString(), "master"))
             .split("\t")[0].trim()

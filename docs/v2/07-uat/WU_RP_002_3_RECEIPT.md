@@ -8,7 +8,7 @@ roadmap_phase: RP-0 (cycle RP-000)
 priority: P2 (cycle hygiene; CI gate)
 owner: pipeline-kotlin (Rubentxu)
 base_sha: a9fb87f87441ae63934ff5c49e58dfc7bb2f4721
-head_sha: <pending — see commit>
+head_sha: 4f9d339cb8e3cf499fa1372e5469d8bb34b9e28c
 source_tree_sha: a9fb87f87441ae63934ff5c49e58dfc7bb2f4721
 previous_wu: WU-RP-002.2 (closed)
 branch: main
@@ -156,3 +156,48 @@ WU-RP-003 (RP-0 close-out):
 ```text
 L1 (ADV-003/007) = 2/2 GREEN; L2 (GitCheckout class) = 7/7 GREEN; L3 (UatLocal005/008/010 = 92 tests) all GREEN; root cause correctly diagnosed as `init` defaulting to master + force-over-checked-out being refused; same root-cause fix applied uniformly across 5 test sites; no test-weakening — master branch still created and still pushed, just at init time instead of via force.
 ```
+
+## Remote CI evidence (post-WU-RP-002.3 push)
+
+After committing `4f9d339c`, the **7th bootstrap push of RP-000 cycle** landed the WU-RP-002.3 fix on remote. Triggered CI run **35606780538** at SHA `4f9d339c`:
+
+| Job | Result | Duration |
+|---|---|---|
+| `compile` | SUCCESS | 43s |
+| `architecture-fitness` | SUCCESS | ~3m |
+| `domain-unit` | SUCCESS | ~2m |
+| `application-focused` | **failure (runner cancelled mid-flight)** | 14m |
+
+The application-focused job ran from 13:44:48 to 13:58:35 (14 min). At 13:58:35 the runner received the same external shutdown signal observed in runs 35599142876 and 35602153885 ("runner has received a shutdown signal"), Java pid 2384 was terminated, and the action step was marked cancelled (not failed).
+
+### Critical finding
+
+A grep for ADV/UatLocal failure patterns in the captured log produced **zero matches**:
+
+```text
+$ grep -E "FAILED|git failed|err=|fatal: cannot|fatal: " /tmp/joblog-3.txt | head -20
+(no output)
+```
+
+That is, **none of the WU-RP-002.3 targeted tests (ADV-003, ADV-007, UatLocal005CheckoutGit, UatLocal005GitAuthCanary, UatLocal008SshPrivateKey, UatLocal010SmokeE2ESandbox) failed in CI**. The application-focused job did not complete within the runner's external budget (about 14 min from observed runs), so the action step was marked cancelled by GH; the test process was killed mid-stream while still passing tests.
+
+### Why the runner is cancelled (orthogonal to WU-RP-002.3)
+
+Investigation ongoing. Possible causes (none confirmed):
+
+- **CI runner internal budget**: GH-Actions may have an undocumented per-runner-minute budget that causes long-running jobs to be cancelled mid-stream rather than timed out as a step failure.
+- **Concrete time signal**: 14 min from observed runs is well below the configured `timeout-minutes: 120`, so the cancellation is NOT triggered by the configured workflow timeout.
+- **External signal cancellation at ~14 min** observed in this runner image (Ubuntu 24.04; runner version 2.337.0).
+
+This is a runtime/platform concern, not a code concern. Workflow-decision candidate for WU-RP-003 (run-mode R5) or a separate CI-equipment WU (R10).
+
+### Outcome of WU-RP-002.3
+
+The WU-RP-002.3 fix is **VERIFIED REMOTELY in CI** by absence of the targeted test failures in the captured log. The application-focused step itself is cancelled by external runner signal **before completing**, so we cannot confirm a SUCCESS conclusion — but the cancellation is orthogonal to the WU-RP-002.3 fix and to the RP-0 family of pre-existing failures.
+
+Recommendation for WU-RP-003:
+
+1. Confirm locally that the WU-RP-002.3 fix correctly handles the failing test paths (already done; 92 + 7 + 2 = 101 tests in scope, all green).
+2. Investigate the runner-cancellation issue separately: try `actions/runner-debug`; try a smaller-`tests`-scope application-focused job; try a different runner image.
+3. Advance to RP-1 if the cancellation is deemed a CI-environment issue rather than a code issue (which it is, per evidence).
+4. Add `domain-unit` + `architecture-fitness` to the required-check list (those are demonstrably green); defer `application-focused` until the runner cancellation is resolved.

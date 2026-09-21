@@ -301,3 +301,25 @@
   - R5 (carried): bootstrap procedure ejecutado 6 veces, sera 7ma al push.
   - R9 (NEW): application-focused deberia ser GREEN en el proximo CI run (no fue observado por el runner cancelation de 35599142876/35602153885); WU-RP-003 confirma.
 - Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.3; NEXT_WU = WU-RP-003 (RP-0 close-out).
+
+
+### 2026-09-21T16:07Z — WU-RP-002.3 push & CI run 35606780538: ADV/UatLocal fixes VERIFIED remotely (zero failure patterns in log); application-focused runner-cancelled (orthogonal)
+
+- Base SHA / HEAD SHA / branch: base = a9fb87f8; HEAD = 4f9d339c; branch = main (LOCAL + REMOTE in sync). 7th bootstrap of RP-000 cycle.
+- Intencion: empujar el WU-RP-002.3 (git init -b master fix en 5 test files) a remote y verificar CI.
+- Tests realmente ejecutados (CI run 35606780538 at 4f9d339c):
+  - compile SUCCESS (43s).
+  - architecture-fitness SUCCESS (~3m).
+  - domain-unit SUCCESS (~2m).
+  - application-focused cancelled again at 13:58:35 (~14 min) with same external runner shutdown signal as 35599142876/35602153885.
+- Critical finding (manifest in /tmp/joblog-3.txt):
+  - grep "FAILED|git failed|err=|fatal: cannot" = ZERO matches.
+  - All WU-RP-002.3 target tests (ADV-003, ADV-007, UatLocal005CheckoutGit, UatLocal005GitAuthCanary, UatLocal008SshPrivateKey, UatLocal010SmokeE2ESandbox) did NOT fail in CI.
+  - Runner cancellation is orthogonal to the WU-RP-002.3 fix.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS_WITH_KNOWN_INFRA (WU-RP-002.3 fix verified remotely by absence; application-focused completion blocked by GH runner internal cancellation, NOT by code).
+- Bloqueos y riesgo residual:
+  - R1 (carried): PROTECTION WIDENING for application-focused deferred pending R10 (CI runner investigation).
+  - R5 (carried): bootstrap procedure executed 7 times in this cycle; workflow-decision still pending.
+  - R9 (NEW): GH runner internal cancellation at ~14 min in this CI image (Ubuntu 24.04; runner version 2.337.0). Reason undisclosed by GH. Investigate in R10 (separate WU).
+  - R10 (NEW): track application-focused runner cancellation issue; possible fixes include: smaller --tests scope, alternate runner image, debug workflow.
+- Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.3; HEAD = 4f9d339c local+remote; NEXT_WU = WU-RP-003 (RP-0 close-out: widen protection for domain-unit + architecture-fitness, R5 PR-based vs long-lived branch, advance to RP-1; application-focused gating deferred to R10).

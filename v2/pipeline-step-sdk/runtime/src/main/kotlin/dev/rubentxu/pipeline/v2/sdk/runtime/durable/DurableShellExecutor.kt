@@ -1124,7 +1124,14 @@ class DurableShellExecutor : DurableShellLaunching {
                 DurableShellOutputProjection.JENKINS_LOG -> consoleTranscript
             }
 
-            return if (timeoutTriggered.get() && exitCode == -1) {
+            // WU-RP-005 r9 (CI run 35656479415): when the watchdog triggered, the
+            // terminal is a timeout REGARDLESS of the wrapper exit code. The race
+            // evidence: the killed child's surviving bash wrote result.txt=0 after
+            // the SIGKILL; classifying Exited(0) marked the run success AND the
+            // success-path cleanup deleted the control dir (removing the
+            // authoritative timeout.flag). A wrapper exit code published after its
+            // child was killed is not a legitimate completion; timeout abort wins.
+            return if (timeoutTriggered.get()) {
                 DurableTaskTerminal.Cancelled(
                     InterruptionRecord(
                         kind = InterruptionKind.TIMEOUT,

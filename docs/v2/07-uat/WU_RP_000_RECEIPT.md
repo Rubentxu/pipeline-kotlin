@@ -2,13 +2,24 @@
 
 ~~~yaml
 id: WU-RP-000
-status: PASS
+status: PASS_WITH_KNOWN_FAILURES
 base_sha: 8b5f41bfc9239a72de01a063e433875912357ae8
 head_sha: 5aa318029337dd5fbbf3fe54a3233b91a2a8bda4
-source_tree_sha: 5aa318029337dd5fbbf3fe54a3233b91a2a8bda4
+source_tree_sha: 3e916dd91bd9575cf4d029acbcdc1e1d1b944f5e (parent of head_sha is 5aa31802; receipt + state commit)
 artifact: NOT_BUILT
 artifact_sha256: NOT_BUILT
 scope: lpr0-ci.yml + v2-baseline.yml + build.yml CI path correctness only
+remote_ci:
+  run_id: 35586291124
+  head_sha: 3e916dd9
+  status: completed
+  conclusion: failure
+  url: https://github.com/Rubentxu/pipeline-kotlin/actions/runs/35586291124
+  jobs:
+    compile: SUCCESS (2m27s)
+    domain-unit: FAILURE (1 test failed; see known_failures)
+    architecture-fitness: FAILURE (2 tests failed; see known_failures)
+    application-focused: SKIPPED (dependency chain from domain-unit)
 checks:
   - id: gh-run-precondition-evidence
     command: gh run view 35584931177 --log-failed
@@ -32,8 +43,8 @@ checks:
     command: cd v2 && ./gradlew :pipeline-domain:test --no-daemon --quiet
     exit_code: 0
     xml: v2/pipeline-domain/build/test-results/test/TEST-*.xml
-    evidence: tests=554 failures=0 errors=0 skipped=0
-    result: PASS
+    evidence: tests=554 failures=0 errors=0 skipped=0 (local; CI found 1 flake, see known_failures)
+    result: PASS_LOCAL; FLAKY_IN_CI
   - id: L1-local-events-tests
     command: cd v2 && ./gradlew :pipeline-events:test --no-daemon --quiet
     exit_code: 0
@@ -47,6 +58,14 @@ checks:
     evidence: tests=309 failures=2 errors=0 skipped=0
     result: KNOWN_FAILURE (pre-existing; see known_failures)
 known_failures:
+  - id: ConcurrentStepDispatcherTest.dispatches every wave step through the SAME delegate instance
+    cause: Concurrency test (CountDownLatch + Executors.newFixedThreadPool) — sensitive to runner
+            timing. Reproduces on slow CI runners; 3/3 stable on local warm daemon.
+    evidence: gh run 35586291124, job domain-unit, step 5 (L1 — domain unit tests):
+              "554 tests completed, 1 failed" — ConcurrentStepDispatcherTest.kt:23
+    owner: WU-RP-002 (sub-WU or part of inventory reconciliation; consider pinning latches,
+            adding @Timeout, or rerun-on-flake in CI)
+    pre_existing_at: 8b5f41bf (test exists; failure surfaces only when CI executes it)
   - id: FArchL7DomainEventExhaustivityTest.domain_event_sealed_hierarchy_has_48_variants
     cause: Drift 48 -> 51. LPR-090 phase-a (8dd59eba) added HtmlReport{Failed,Published,Skipped}
             events without bumping the architecture fitness counter.
@@ -65,9 +84,11 @@ coverage: UNKNOWN (coverage gate is WU-RP-040, not WU-RP-000)
 security: UNKNOWN (security gate is RP-1, not WU-RP-000)
 performance: UNKNOWN (perf gate is WU-RP-022, not WU-RP-000)
 next_action: WU-RP-001 — map required CI checks + branch protection; WU-RP-002 — regenerate
-             Step inventory and reconcile the two pre-existing architecture fitness failures.
-             Push head_sha and verify the GH Actions run for 5aa31802 shows compile PASS
-             and domain-unit / architecture-fitness / application-focused jobs NOT skipped.
+             Step inventory + reconcile counter/path drift AND harden / fix the
+             ConcurrentStepDispatcherTest flake.
+             Remote CI at 3e916dd9 shows compile SUCCESS — the path fix from 5aa31802
+             is VERIFIED in production; jobs NO LONGER skipped (3 of 4 jobs executed).
+             application-focused is skipped only because domain-unit failed (cascade).
 ~~~
 
 ## Scope firewall

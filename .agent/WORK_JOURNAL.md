@@ -503,3 +503,13 @@
 - Lesson: filesystem-order-dependent dir pickers (Files.list/find + findFirst +
   name heuristics) are green locally and red on CI; always select by canonical
   identity (OpId.parse), never by name substring.
+
+## 2026-09-21 SESSION CLOSE
+- RP-0 CLOSED at WU-RP-005 r12 (174bd060, run 35660883142, 7/7 green).
+- Docs head: 48c73d42. Protection: 7 contexts (3 base + 4 shards).
+- NEXT SESSION: open RP-1 (Integridad, seguridad y verdad de certificación).
+  First step: inventory UAT-SEC/ART matrix scenarios vs fresh HEAD evidence
+  (ROADMAP.md §3), classify timing-sensitive classes (re-tier to release gate,
+  never weaken assertions), plan WU-RP-101.
+- Note: docs pushes (9b2cf1d9, 48c73d42) triggered new CI runs; verify green
+  at HEAD before starting RP-1 work: `gh run list --limit 2`.

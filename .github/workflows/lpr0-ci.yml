@@ -23,7 +23,7 @@ jobs:
           java-version: '21'
       - uses: gradle/wrapper-validation-action@v3
       - name: L0 — compile main + test sources
-        run: ./gradlew -p v2 compileKotlin compileTestKotlin --no-daemon
+        run: cd v2 && ./gradlew compileKotlin compileTestKotlin --no-daemon
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -42,9 +42,9 @@ jobs:
           java-version: '21'
       - uses: gradle/wrapper-validation-action@v3
       - name: L1 — domain unit tests
-        run: ./gradlew -p v2 :pipeline-domain:test --no-daemon
+        run: cd v2 && ./gradlew :pipeline-domain:test --no-daemon
       - name: L1 — events tests
-        run: ./gradlew -p v2 :pipeline-events:test --no-daemon
+        run: cd v2 && ./gradlew :pipeline-events:test --no-daemon
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -63,9 +63,9 @@ jobs:
           java-version: '21'
       - uses: gradle/wrapper-validation-action@v3
       - name: L2 — architecture fitness tests
-        run: ./gradlew -p v2 :pipeline-architecture-tests:test --no-daemon
+        run: cd v2 && ./gradlew :pipeline-architecture-tests:test --no-daemon
       - if: failure()
-        uses: uploads/upload-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: lpr0-arch-test-reports
           path: v2/**/build/test-results/test/
@@ -82,7 +82,7 @@ jobs:
           java-version: '21'
       - uses: gradle/wrapper-validation-action@v3
       - name: L3 — application focused tests (excludes expensive compatibility)
-        run: ./gradlew -p v2 :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*' --no-daemon
+        run: cd v2 && ./gradlew :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*' --no-daemon
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

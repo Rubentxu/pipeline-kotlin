@@ -221,3 +221,83 @@ Tests demonstrating the contract: the 3 checks above + post-push CI run.
    protection contexts updated to per-shard checks) and/or persistent
    Gradle/Kotlin-scripting cache via `actions/cache` keyed on `cacheKey.version`.
 3. Update SESSION_POINTER + WORK_JOURNAL in same commit as this receipt.
+
+---
+
+# Round R6-R7 (2026-09-21): first sharded runs — real defects surfaced and fixed
+
+## Context
+
+Run 35646215918 (r5, first 4-shard matrix): compile/domain/arch/uat-dsl/uat-core
+green in ~3 min, but uat-local and engine shards failed. Diagnosis from CI
+artifacts (JUnit XML) plus local repro.
+
+## Findings
+
+- F1 (CRITICAL, tooling): Gradle `--tests '!pattern'` CLI negation is silently
+  ignored (same class of bug as r3). The engine shard re-ran every UatLocal
+  class: duplicated work AND repeated failures.
+- F2 (test fixture): `git push main:master` fails on runners whose clone
+  default branch is not `main` (`src refspec main does not match any`).
+  SC-003/SC-007 broken. Fix: push `HEAD:master`.
+- F3 (CI env): `just` not installed (SC-010-09 `just doctor`); CP-001 needs
+  full history (`git show base^` breaks in shallow clones).
+- F4 (test design, real): Lpr011r2 live-window test gated the DURING-EXECUTION
+  assertion on the `****` marker. StreamingRedactor holds bytes until
+  maxLiteralByteLength (~56 for the test registry) lookahead or EOF; a tiny
+  `echo` line cannot cross that threshold while the child sleeps, so the
+  marker only lands at exit, racing success-path cleanup. Local repro ~1/3.
+  Fix: script now emits ~3.4KB (100 lines) so pending flushes during the
+  sleep window; at-rest raw-secret invariants asserted on every observation.
+- F5 (ENGINE RACE, real): TMO-S-001/002 + RG-004 +
+  CanonicalDurableRunCoordinatorTest stage-timeout — transcript showed
+  `sleep 30 Killed ... done` with outcome=success. Under CPU load the
+  watchdog kill lands AFTER pollResult read wrapper exit 0 (the killed
+  script's bash continues past the killed child, writes result.txt 0) while
+  `timeoutTriggered` is not yet published → terminal classified Exited(0)
+  instead of FAILED_TIMEOUT. Guard (r7): bounded 2s settle loop after the
+  poll loop lets the watchdog publish its flag before classification.
+
+## Remediation rounds
+
+- r6 (a89ecb2e): workflow fetch-depth 0 + just install; engine shard
+  exclusion via `-Pshard.excludes` → `Test.filter.excludeTestsMatching`
+  (build.gradle.kts); HEAD:master fixture fix; Lpr011r2 deterministic live
+  window. Local evidence: CheckoutGit 13/13, shard-exclusion repro run
+  (164 engine classes, 0 application.Uat* leakage), L2 uat-local set 130
+  tests / 0 failures / 6m48s, Lpr011r2 4/4 runs green.
+- r7 (d462196b): DurableShellExecutor watchdog-settle race guard. Local
+  evidence: UatLocal004TimeoutTest 2/2 green, :pipeline-step-sdk:runtime
+  187 tests / 0 failures, CanonicalDurableRunCoordinatorTest 26/26.
+
+## CI evidence (observed)
+
+- 35646215918 (r5): compile/domain/arch/uat-dsl/uat-core SUCCESS; uat-local
+  8 failures / 119 tests; engine shard duplicated UatLocal classes (F1).
+- 35653013723 (r6): 5 jobs SUCCESS; uat-local + engine failures reduced to
+  the TMO timeout-classification race (F5) — deterministic defects only.
+- 35654575139 (r7): pending at receipt-write time; result to be appended.
+
+## Reference implementation consulted
+
+Gradle test-filter semantics (`--tests` negation; TestFilter
+excludeTestsMatching); StreamingRedactor bounded-prefix-scanner contract
+(pipeline-credentials-api). Jenkins-faithful timeout pattern per ADR-0047
+watchdog semantics.
+
+Behaviour adopted: engine exclusion property + watchdog flag settle window.
+Intentional deviations: none.
+Security implications reviewed: none (classification path hardening only;
+no new capability surface).
+Tests demonstrating the contract: UatLocal004TimeoutTest,
+CanonicalDurableRunCoordinatorTest 'projects a stage timeout...',
+UatLocal005CheckoutGitTest SC-003/SC-007,
+Lpr011r2SecretRedactionAtRestUatTest.
+
+## next_action
+
+1. Append 35654575139 outcome; if green → update protection contexts to the
+   four shard names + existing 3 checks (WU-RP-005 closure step).
+2. If uat-local still exceeds its window or flakes on timing tests, consider
+   tagging timing-sensitive classes for the release gate only (never weaken
+   assertions).

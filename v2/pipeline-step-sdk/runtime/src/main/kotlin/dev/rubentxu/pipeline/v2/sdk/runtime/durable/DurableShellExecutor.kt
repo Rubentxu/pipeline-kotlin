@@ -1168,8 +1168,12 @@ class DurableShellExecutor : DurableShellLaunching {
                 )
             }
         } finally {
-            // Cleanup based on final state
-            cleanup(controlDir, exitCode)
+            // Cleanup based on final state. A watchdog timeout is a failure, not a
+            // success: the surviving wrapper can publish exit code 0 after its child
+            // was SIGKILLed (WU-RP-005 r9, CI 35656479415/35657576105), so cleanup
+            // MUST NOT read that code as success and delete the control dir (which
+            // would erase the authoritative timeout.flag, TMO-S-005).
+            cleanup(controlDir, if (timeoutTriggered.get()) -1 else exitCode)
         }
     }
 

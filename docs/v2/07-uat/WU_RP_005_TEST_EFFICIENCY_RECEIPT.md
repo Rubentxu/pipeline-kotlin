@@ -132,6 +132,15 @@ Local validation: 200 XMLs (3 excluded absent), 0 failures, sum class time
 CI workflow updated to the property form. Full suite (no property) unchanged
 for gate-app / release.
 
+## Remediation round 4 (FArch011 false positive -> JUnit tag exclusion)
+
+CI run 35643136093: architecture-fitness FAILED - FArch011V2NoCompileExcludes
+textually forbids "exclude(" in ANY build file, so the r3 test-source exclude()
+tripped it. Fix: JUnit @Tag("release-scale") on the 3 release-scale classes +
+useJUnitPlatform { excludeTags("release-scale") } under the property. FArch011
+now passes (validated locally), exclusions verified (21 UatLocal* XMLs, the
+tagged classes absent), L0/L1 green.
+
 ## Remediation rejected (with reasons)
 
 - **CI command scope reduction** (`--tests 'UatLocal00*'` etc.): weakens the

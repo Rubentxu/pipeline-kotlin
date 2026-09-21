@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
@@ -51,6 +52,7 @@ import java.util.concurrent.TimeUnit
  * @see <a href="ADR-0049">ADR-0049 — Local Credentials + Secret Redaction</a>
  */
 @Timeout(120)
+@Tag("release-scale")
 class UatLocal008CredentialsTest {
 
     private val processes = mutableListOf<Process>()

@@ -476,3 +476,8 @@
   under 2-fork load + the never-excluded corpus classes; timeout UatCompat001 x2; byte-identical
   corpus assert. Corpus failures explained by ignored negation. RG-004 timing flakiness under
   parallel forks -> follow-up WU-RP-006.
+
+### 2026-09-21T19:28Z — WU-RP-005 r4: FArch011 textual scanner tripped by exclude(); switched to @Tag("release-scale") exclusion
+- CI 35643136093: arch-fitness FAILED on FArch011 (any "exclude(" in build files).
+- Fix: JUnit tags. 3 classes tagged; build uses excludeTags under -PexcludeSlowTests.
+- Local: L0 ok; L1 UatLocal* with property 379s, tagged classes absent; FArch011 rc=0.

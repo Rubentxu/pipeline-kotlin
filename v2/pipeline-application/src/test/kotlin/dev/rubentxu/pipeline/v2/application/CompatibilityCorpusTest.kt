@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -49,6 +50,7 @@ import java.util.concurrent.TimeUnit
  * script-block semantics through compilation and execution.
  */
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
+@Tag("release-scale")
 class CompatibilityCorpusTest {
 
     private fun fixtureDir(): File =

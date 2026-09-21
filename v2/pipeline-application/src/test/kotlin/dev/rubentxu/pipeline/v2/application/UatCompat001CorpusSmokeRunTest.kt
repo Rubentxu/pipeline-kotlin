@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
@@ -20,6 +21,7 @@ import java.util.concurrent.TimeUnit
  * Each fixture exercises the public compatibility DSL and produces events.
  */
 @Timeout(120)
+@Tag("release-scale")
 class UatCompat001CorpusSmokeRunTest {
 
     // Fixtures that currently fail at runtime (exit non-zero).

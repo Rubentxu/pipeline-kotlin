@@ -1074,6 +1074,21 @@ class DurableShellExecutor : DurableShellLaunching {
                 }
             }
 
+            // TMO race guard (WU-RP-005 r7, CI run 35653013723): under CPU load the
+            // watchdog's kill lands AFTER pollResult already read a (misleading)
+            // wrapper exit code — the killed script's bash continued, echoed `done`
+            // and wrote result.txt 0 just before the SIGKILL, while the watchdog
+            // thread had not yet published timeoutTriggered. Without this bounded
+            // settle the terminal is classified Exited(0) → success, defeating
+            // FAILED_TIMEOUT (TMO-S-001/002). Give the watchdog a bounded window to
+            // publish its flag before classifying.
+            if (!timeoutTriggered.get() && watchdogThread != null && request.timeoutMs > 0) {
+                val settleDeadline = System.currentTimeMillis() + 2_000
+                while (!timeoutTriggered.get() && System.currentTimeMillis() < settleDeadline) {
+                    Thread.sleep(50)
+                }
+            }
+
             // Cancel watchdog if still running
             watchdogThread?.interrupt()
 

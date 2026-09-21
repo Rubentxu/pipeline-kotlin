@@ -1543,8 +1543,18 @@ object JsonEventLog {
         val start = payload.indexOf(marker)
         if (start < 0) return null
         val arrayStart = start + marker.length
-        // Walk forward, tracking depth, until matching ']' is found at depth 0.
-        var depth = 0
+        // Walk forward, tracking BOTH bracket depth (`[`/`]`) AND brace depth (`{`/`}`)
+        // because the payload we receive here is a single event object (already extracted
+        // from the outer JSON array), and the array-of-objects inside it must be balanced
+        // through brace depth (the opening `[` is consumed by the marker itself).
+        // WU-LPR-090 fix: prior implementation only tracked `[`/`]`, which caused arrays
+        // of objects (StashCreated/StashRestored entries, HtmlReportPublished entries) to
+        // decode as empty lists — the outer `]` at end-of-array decremented past 0 and
+        // never matched `depth == 0`.
+        // `bracketDepth` starts at 1 because the opening `[` of the array is consumed by the
+        // marker itself; we only see the matching `]` once on the closing side.
+        var bracketDepth = 1
+        var braceDepth = 0
         var i = arrayStart
         var inString = false
         var escape = false
@@ -1555,15 +1565,17 @@ object JsonEventLog {
             if (c == '"') { inString = !inString; i++; continue }
             if (inString) { i++; continue }
             when (c) {
-                '[' -> depth++
+                '[' -> bracketDepth++
                 ']' -> {
-                    depth--
-                    if (depth == 0) {
+                    bracketDepth--
+                    if (bracketDepth == 0 && braceDepth == 0) {
                         val arrayText = payload.substring(arrayStart, i)
                         // Split top-level objects by tracking brace depth.
                         return splitTopLevelObjects(arrayText)
                     }
                 }
+                '{' -> braceDepth++
+                '}' -> braceDepth--
             }
             i++
         }

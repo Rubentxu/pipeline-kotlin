@@ -75,6 +75,38 @@ Todos simultáneos en la MISMA candidata: RP-0..4 cerrados; checks obligatorios 
 
 Tras RP-5, reconciliar Tier A y B existentes sin reimplementar capacidades certificadas. Cola provisional heredada: WU-091 core.lock → WU-092 core.input → WU-093 core.httpRequest → WU-094 por concretar mediante inventario y decisión de producto; Tier C (readTOML/writeTOML, tar/untar) sólo si necesidad real y clasificación vigente lo requiere. Mantener distinción entre 20 REGISTERED y CERTIFIED por SHA; junit.results es plugin externo, no un nuevo core universal. Cada Step: contrato tipado, registro sin bypass, capability + policy, semántica/replay/cancelación, compilación positiva/negativa, fitness, UAT instalada, Jenkins-diff donde aplique y recibo verificable. No sumar features a core por comodidad: vendor/toolchains/contenedores van a plugins independientes y versionados.
 
+**WU-094 (proposed): plugin externo `markdown-toolkit-plugin` — multi-step library para procesar Markdown en pipelines.**
+- **Motivación**: pipelines de libros (book-builder skill) y de docs-as-code necesitan renderizar Markdown a HTML, generar TOC y validar headings dentro del pipeline. Hoy esto se hace con `sh("markdownlint ...")` / `sh("md-to-pdf ...")` invocando binarios externos, lo que mezcla el transcript de consola con la salida tipada y depende de tooling presente en la imagen CI. Un plugin externo dedicado permite tipar la salida (`{ htmlPath, byteCount, sha256 }`), separar el canal tipado del transcript (mismo principio que `core.sh`), y declarar `ReplayPolicy.NEVER` cuando el render escribe a disco.
+- **Forma**: nueva carpeta `examples/markdown-toolkit-plugin` siguiendo **exactamente** el patrón de `examples/example-uppercase-plugin` (mismo `build.gradle.kts`, mismo `StepDefinitionContributor` SPI, mismo `StepDefinitionContributor`/`StepCodec`/`StepContract` flujo, mismo burn-down G0..G8 hasta CERTIFIED). NO se toca `pipeline-application`, NO se añade StepKey en `CoreStepRegistryFactory`, NO se modifica coordinator.
+- **Pasos incluidos (3 steps, single concern = markdown processing)**:
+  1. `markdown.render(input: String, outputPath: String, flavor: RenderFlavor)` → typed `MarkdownRenderResult(htmlPath: String, byteCount: Long, sha256: String, headings: List<Heading>)`. Flavor enum: COMMONMARK | GFM. Usa `org.commonmark:commonmark` (BSD-2-Clause) como adapter inicial; puerta port para swap a flexmark si surge necesidad.
+  2. `markdown.headings(input: String, minLevel: Int = 1, maxLevel: Int = 6)` → typed `List<Heading>(level: Int, text: String, line: Int)`. Parseo puro, sin I/O.
+  3. `markdown.toc(input: String, minLevel: Int = 1, maxLevel: Int = 6, bullets: BulletStyle)` → typed `MarkdownTocResult(toc: String, headings: List<Heading>)`. BulletStyle enum: DASH | ASTERISK.
+- **Modelo de datos (ADT, sellado)** — el siguiente bloque es Kotlin, no parte de la lista numerada anterior:
+
+    ```kotlin
+    sealed interface MarkdownNode {
+        data class Heading(val level: Int, val text: String, val line: Int) : MarkdownNode
+        data class Paragraph(val text: String, val line: Int) : MarkdownNode
+        data class CodeBlock(val language: String?, val content: String) : MarkdownNode
+        // ...extensible sin tocar el handler
+    }
+    ```
+- **Capability**: declarar `MARKDOWN_OPERATIONS_CAPABILITY` en cada `StepContract.requiredCapabilities`. El adapter (no el handler) tiene acceso al port; el handler no toca fs ni red directamente.
+- **Replay policies**: `NEVER` en `markdown.render` (cada invocación debe escribir; sin reutilización — análogo a `core.echo`); `ALWAYS` en `markdown.headings` y `markdown.toc` (puro, sin side-effects, idempotente).
+- **Output channels**: typed `O` via `outputCodec.encode`; durable HTML se escribe a disco por el handler con un único `O_TRUNC` open; el transcript opcional emite un preview corto (primeras 5 líneas del HTML) por canal independiente — mismo principio de `core.sh` (typed ≠ console).
+- **Neutral naming**: nada de "Jenkins markdown", "GitHub markdown", etc. en runtime. Adapter específico sí puede mencionarlo (p.ej. `GitHubFlavoredMarkdownAdapter`), pero los StepKeys son `markdown.render`, `markdown.headings`, `markdown.toc`.
+- **DSL facade**: `StageScope.markdownRender(text, path)` / `.markdownHeadings(text)` / `.markdownToc(text)`. Cada una baja solo a `registryStep(...)`, igual que `uppercase(text)`.
+- **Reference research (AGENTS.md §reference-implementation-research)**:
+  - commonmark-java (`org.commonmark:commonmark:0.21.0`, BSD-2-Clause) — parser/renderer canónico, mismo formato que GitHub. Adoptado como adapter inicial.
+  - flexmark-java (`com.vladsch.flexmark:flexmark-all:0.64.0`, BSD-2-Clause) — alternativo con tablas, footnotes, strikethrough. Considerado para Fase 2 si surge necesidad real.
+  - markdownlint-cli (`npm`, MIT) — referencia para validar reglas de estilo; NO se adopta (sería acoplarse a npm); se documenta la diferencia para el usuario en el DSL doc.
+- **Tests (StepContractSuite adaptado al plugin pattern)**:
+  - identity, contract completeness, input codec, output codec, canonical envelope, registry resolution, capability admission, fresh / replay / divergence, typed rejection, missing capability, observability, real DSL, real external JAR, instalado-distribución execution, absence/isolation, zero-production-change.
+  - UAT instalada con al menos 1 caso por step: `markdown.render` con un Markdown pequeño → HTML generado y validado por sha256 contra baseline; `markdown.headings` con un doc de 3 niveles → typed list correcta; `markdown.toc` con el mismo doc → string TOC contiene los 3 headings en orden.
+- **NO_GO mientras RP-0/RP-1 abiertos**: esta WU solo se planifica y entra al backlog; la implementación arranca únicamente tras WU-RP-005 cerrar RP-0 y tras decisión explícita de abrir RP-6.
+- **Estado**: PLANNED (NO STARTED). Plan-budget: 1 WU = bloque de 4-6 commits (plugin skeleton + 3 steps + tests + DSL + integración + receipt).
+
 ## 9. RP-7 — Local-first ampliado, sin dependencia prematura del control-plane
 
 Plugins de reportes/testing/artifacts/toolchains/SCM/HTTP y coordinación local priorizados por dogfooding. Sandbox opcional OS/container y límites verificables, secreto/egress, almacenamiento local robusto, migraciones de schema, cobertura de plataforma Linux/macOS/Windows declarada por separado. Antes de extender el SDK: compatibilidad semántica/binary, identidad/digest/provenance/versión del plugin, cargas externas en instalación limpia y certificación idéntica a core. Estudiar Cedar/policy con un spike y ADR; no activar enforcement opaco sin pruebas de deny/allow/versioning.

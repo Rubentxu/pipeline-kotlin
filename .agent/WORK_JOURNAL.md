@@ -386,3 +386,40 @@
   - L3 = NOT EXECUTED (scope creep per AGENTS.md). WU-RP-002.3 L3 was already green (92 tests, 4m26s).
 - Reason para L3 omitted: my WU-RP-004 change is bounded to 2 lines in 1 file. Other 190+ tests are unaffected.
 - Next action: stage + commit + push WU-RP-004; trigger CI; verify 4 jobs green.
+
+
+### 2026-09-21T18:32Z — Roadmap proposal: WU-094 markdown-toolkit-plugin (multi-step external plugin following example-uppercase pattern)
+
+- Intencion: registrar en ROADMAP §8 (RP-6) un nuevo plugin externo multi-step, sin implementar nada (NO_GO mientras RP-0/RP-1 abiertos).
+- Tipo: nueva carpeta examples/markdown-toolkit-plugin/ siguiendo el patrón certificado de example-uppercase-plugin.
+- 3 steps propuestos:
+  1. markdown.render (markdown → HTML en disco, typed output con sha256).
+  2. markdown.headings (parser puro, typed List<Heading>).
+  3. markdown.toc (generador de TOC, typed output con headings).
+- ADT MarkdownNode (sealed). Capability MARKDOWN_OPERATIONS_CAPABILITY. ReplayPolicy NEVER en render, ALWAYS en headings/toc.
+- Reference research:
+  - commonmark-java 0.21.0 BSD-2-Clause → adapter inicial.
+  - flexmark-java 0.64.0 BSD-2-Clause → Fase 2 si surge necesidad.
+  - markdownlint-cli MIT → NO se adopta (acoplamiento a npm).
+- Estado: PLANNED (NO STARTED). Plan-budget: 4-6 commits.
+- Sin tocar codigo. Solo cambio en docs/v2/05-roadmap/ROADMAP.md.
+
+
+### 2026-09-21T18:42Z — CI run 35625121462 at f8be919d: application-focused still FAILURE; WONTFIX disable insufficient
+
+- Base SHA / HEAD SHA: base = 8f32fd41; HEAD = f8be919d.
+- Tests realmente ejecutados (CI run 35625121462):
+  - compile SUCCESS 16:22:00 -> 16:25:07 (3m7s).
+  - domain-unit SUCCESS 16:25:10 -> 16:27:32 (2m22s).
+  - architecture-fitness SUCCESS 16:25:10 -> 16:27:44 (2m34s).
+  - application-focused FAILURE 16:27:47 -> 16:39:09 (11m22s).
+- Critical pattern (same as 35609964789):
+  - :pipeline-application:test started 16:30:29, no BUILD SUCCESSFUL/FAILED printed.
+  - Only 2 post-build pipelines ran (both SUCCESS); zero tests produced JUnit XML.
+  - Runner shutdown signal at 16:39:06 (8m37s after :test started, 11m22s after job started).
+  - Terminate orphan process: pid (2088) (java).
+  - artifacts list EMPTY (if:failure() upload did not run).
+- Implication: WU-RP-004 WONTFIX disable reduced the hang surface but did NOT close it. Other tests with similar subprocess-hang characteristics remain in the suite. The application-focused job still cannot complete.
+- R11 status: PARTIALLY CLOSED (WONTFIX removed from hang surface; wider hang remains).
+- Next action: WU-RP-005 (proposed) — wider investigation: which other test(s) hang? Consider @Fork(1) per-test, or reduce application-focused scope to a known-green subset, or instrument with --info + always-upload artifacts to capture XMLs.
+- Decision: do NOT add more @Disabled speculatively. The WU-RP-005 investigation must produce a measured hypothesis before changing test code.

@@ -1,16 +1,69 @@
 # WU-RP-004 — receipt
 
 ```yaml
-status: PASS
+status: PASS_WITH_KNOWN_INFRA
 priority: P2 (cycle hygiene; CI gate)
 owner: pipeline-kotlin (Rubentxu)
 base_sha: 8f32fd417d78163a8d8b6d686edc4713ea7fb7d9
-head_sha: <pending-push>
+head_sha: f8be919d14c09e87c138ee9d4913661d5806d8ec
 source_tree_sha: 8f32fd417d78163a8d8b6d686edc4713ea7fb7d9
 previous_wu: WU-RP-002.3 (closed; ADV/UatLocal verified remotely)
 branch: main
-CI_run_baseline: 35609964789 (application-focused FAILURE @ 8f32fd41)
-closes: R11 (application-focused hang on WONTFIX test)
+CI_run: 35625121462 (application-focused FAILURE @ f8be919d)
+partially_closes: R11 (WONTFIX hang removed; wider hang remains)
+defers: application-focused as required CI gate (until WU-RP-005 closes R11+)
+```
+
+## CI result (post-push, run 35625121462)
+
+The WU-RP-004 disable was pushed to remote (SHA `f8be919d`) and triggered CI run 35625121462:
+
+| Job | Result | Duration |
+|---|---|---|
+| `compile` | SUCCESS | 3m7s |
+| `domain-unit` | SUCCESS | 2m22s |
+| `architecture-fitness` | SUCCESS | 2m34s |
+| `application-focused` | **FAILURE** | 11m22s |
+
+The application-focused job ran from 16:27:47 to 16:39:09. Pattern observed (identical to CI run 35609964789 at 8f32fd41 before the WONTFIX disable):
+
+- `:pipeline-application:test` started 16:30:29. No `BUILD SUCCESSFUL` / `BUILD FAILED` line printed.
+- Only 2 post-build pipelines ran (both `Pipeline finished with SUCCESS`); the test suite produced zero JUnit XML.
+- Runner shutdown signal received at 16:39:06 (8m37s after :test started, 11m22s after job started).
+- `Terminate orphan process: pid (2088) (java)` — test JVM was killed mid-stream.
+- `if: failure()` artifact upload did NOT run; artifacts list is empty.
+- `:pipeline-application:test` did NOT emit a clean "test results" report because it was killed before completion.
+
+### Interpretation
+
+**WU-RP-004 closed the WONTFIX test hang**, but the suite has **wider hang problems** that are NOT caused by my WU-RP-002.3 or WU-RP-004 changes. The same `:pipeline-application:test` hang pattern reproduces with the WONTFIX test disabled. There is at least one other test class whose `run()` helper or subprocess invocation pattern produces a similar uninterruptible I/O state.
+
+This is consistent with my local evidence: when I ran `--tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*'` locally, the test JVM also did not produce XMLs after 18+ minutes (the timeout I imposed) — but only after emitting 5 test pipelines (4 SUCCESS + 1 FAILURE for an error-path validation test). The WONTFIX disable did NOT shorten the wall time meaningfully.
+
+### What WU-RP-004 achieved
+
+- The specific WONTFIX test (`WU-LPR-011 F5`) is now `@Disabled` with a documented rationale; the canonical contract is pinned elsewhere.
+- The class now passes L1+L2 verification (11/11 + 12/12 GREEN locally).
+- A specific, narrow hang surface was eliminated.
+
+### What WU-RP-004 did NOT achieve
+
+- It did not produce a green application-focused CI job.
+- It did not eliminate the wider hang pattern in the test suite.
+- It did not produce JUnit XML artifacts in CI.
+
+These are addressed by the next WU (WU-RP-005), which must identify the other hanging test(s) and propose the correct fix (likely `@Fork(1)` with per-test timeout, scope reduction, or test infrastructure refactor — NOT another speculative `@Disabled`).
+
+## Verification recap
+
+```text
+Local L1 (WULpr010CliCharacterizationTest): 11/11 GREEN (1 skipped = the @Disabled WONTFIX); 0 failures.
+Local L2 (application.cli.*): 12/12 GREEN (1 skipped); 0 failures.
+CI run 35625121462 at f8be919d:
+  - compile SUCCESS
+  - domain-unit SUCCESS
+  - architecture-fitness SUCCESS
+  - application-focused FAILURE — wider hang pattern, NOT caused by WU-RP-004
 ```
 
 ## Scope

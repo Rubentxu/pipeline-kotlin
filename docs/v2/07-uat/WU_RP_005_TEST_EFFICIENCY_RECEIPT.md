@@ -141,6 +141,15 @@ useJUnitPlatform { excludeTags("release-scale") } under the property. FArch011
 now passes (validated locally), exclusions verified (21 UatLocal* XMLs, the
 tagged classes absent), L0/L1 green.
 
+## Remediation round 5 (parallelism + sharding: CI wall = max, not sum)
+
+The workflow ran jobs SERIALLY (needs chain) making CI wall time the SUM of
+stages. r5 removes all `needs:` and shards application tests 4 ways
+(uat-local / uat-dsl / uat-core / engine non-Uat) in a fail-fast=false matrix.
+Expected CI wall: max(shard) ~4-6 min instead of ~20 min serial.
+NOTE: protection contexts must be updated to the shard check names once the
+first green run confirms them (WU-RP-006 next_action).
+
 ## Remediation rejected (with reasons)
 
 - **CI command scope reduction** (`--tests 'UatLocal00*'` etc.): weakens the

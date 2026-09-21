@@ -481,3 +481,8 @@
 - CI 35643136093: arch-fitness FAILED on FArch011 (any "exclude(" in build files).
 - Fix: JUnit tags. 3 classes tagged; build uses excludeTags under -PexcludeSlowTests.
 - Local: L0 ok; L1 UatLocal* with property 379s, tagged classes absent; FArch011 rc=0.
+
+### 2026-09-21T19:40Z — WU-RP-005 r5: workflow de-serialized + application sharded 4-way
+- Removed needs chain; application-focused -> application-shard matrix (4 shards).
+- YAML validated locally before push (lesson from run 35637488765).
+- Protection contexts will need shard names after first green run.

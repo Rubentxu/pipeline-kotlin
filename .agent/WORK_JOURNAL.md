@@ -493,3 +493,13 @@
 - r7: settle guard de 2s para watchdog flag; SDK runtime 187/0, Coordinator 26/0, TMO 2/2.
 - ROADMAP: WU-RP-043 registrado (dogfooding CI en RP-4).
 - Pendiente: run 35654575139; si verde → contexts de protection a 4 shards; cierre WU-RP-005.
+
+## 2026-09-21 WU-RP-005 CLOSED (r9..r12)
+- r9 4655e60c: timeoutTriggered wins over wrapper exit code (classification)
+- r10 35d4ed31: cleanup retains control dir on timeout (timeout.flag survives)
+- r11 2869f3fa: UatLocal004 step-dir selection via OpId.parse (was findFirst)
+- r12 174bd060: findOpId via OpId.parse (was 'contains -0' heuristic)
+- CI run 35660883142: 7/7 jobs SUCCESS. Protection contexts = 3 base + 4 shards.
+- Lesson: filesystem-order-dependent dir pickers (Files.list/find + findFirst +
+  name heuristics) are green locally and red on CI; always select by canonical
+  identity (OpId.parse), never by name substring.

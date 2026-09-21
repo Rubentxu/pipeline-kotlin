@@ -301,3 +301,66 @@ Lpr011r2SecretRedactionAtRestUatTest.
 2. If uat-local still exceeds its window or flakes on timing tests, consider
    tagging timing-sensitive classes for the release gate only (never weaken
    assertions).
+
+---
+
+## round: r9..r12 (CI closure)
+
+```yaml
+rounds:
+  - id: r9
+    sha: 4655e60c
+    run: 35657576105
+    change: >-
+      executeCore classified Exited(exitCode) even when timeoutTriggered; the
+      surviving wrapper wrote result.txt=0 after the SIGKILL -> success +
+      success-path cleanup erased timeout.flag. Timeout now wins over the
+      wrapper exit code.
+    result: 4 failures (TMO-S-001/002, TMO-S-011, SB-S-007) — cleanup defect remained
+  - id: r10
+    sha: 35d4ed31
+    run: 35658798881
+    change: cleanup() receives -1 when timeoutTriggered so the timeout path
+      retains the control dir (authoritative timeout.flag survives, TMO-S-005).
+    result: 3 failures — root-caused as TEST defect (dir selection)
+  - id: r11
+    sha: 2869f3fa
+    run: 35659766527
+    change: UatLocal004 selected the step dir with Files.list().findFirst();
+      filesystem-order dependent, CI picked sibling journals (TMO-S-011
+      asserted against opId=retry-control). Replaced by OpId.parse selector.
+    result: 1 failure (SB-S-007 findOpId heuristic 'contains -0' matched
+      workspace dir TestStage-0)
+  - id: r12
+    sha: 174bd060
+    run: 35660883142
+    change: findOpId now selects by OpId.parse (deterministic).
+    result: "7/7 jobs SUCCESS (compile, domain-unit, architecture-fitness,
+      uat-local, uat-core, uat-dsl, engine)"
+```
+
+### closure evidence
+
+- Branch protection required contexts updated to the full shard set
+  (3 base checks + 4 application shards).
+- Defect classes fixed this WU:
+  1. engine: timeout classification + cleanup retention (2 production fixes).
+  2. tests: two nondeterministic directory-selection heuristics (2 test fixes,
+     assertions NOT weakened — made deterministic).
+- Local validation ladder per round: L1 adapter/adversarial, L2 UatLocal004/005/007
+  + CanonicalDurableRunCoordinatorTest, all green before push.
+
+### closure checklist (per AGENTS.md)
+
+```text
+Reference implementation consulted: Jenkins TimeoutStepWrapper (abort semantics;
+timeout outcome wins over post-abort exit codes)
+Behaviour adopted: watchdog timeout is terminal regardless of wrapper exit code;
+control dir retained on timeout
+Intentional deviations: SIGKILL escalation per TMO-S-004 (documented r6)
+Security implications reviewed: none (no new capability surface)
+Tests demonstrating the contract: UatLocal004TimeoutTest, UatLocal007SandboxProfileTest
+SB-S-007, UatLocal005RegressionGateTest RG-004, CanonicalDurableRunCoordinatorTest
+```
+
+WU-RP-005 CLOSED at r12 (174bd060, run 35660883142 — all green).

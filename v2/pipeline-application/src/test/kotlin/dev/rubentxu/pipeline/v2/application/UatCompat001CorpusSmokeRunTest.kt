@@ -124,7 +124,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(30, fixtures.size, "Corpus must have 30 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash)")
+        assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")
 
         val appBin = AppBinSupport.discover()
         val failures = mutableListOf<String>()
@@ -180,7 +180,7 @@ class UatCompat001CorpusSmokeRunTest {
         AppBinSupport.discover()
 
         val fixtures = discoverFixtures()
-        assertEquals(30, fixtures.size, "Corpus must have 30 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash)")
+        assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")
         val appBin = AppBinSupport.discover()
         val controlRoot = java.nio.file.Files.createTempDirectory("compat-corpus-ctrl")
         val storePath = seedCorpusCredentialsStore(controlRoot)

@@ -107,13 +107,7 @@ pipeline {
             "Pipeline with timeout should fail (watchdog fires). stdout=$stdout")
 
         // Find the step control directory (same as run directory in this implementation)
-        val runIdPath: Path = Files.list(controlRoot)
-            .filter { Files.isDirectory(it) }
-            .findFirst()
-            .orElseThrow {
-                val contents = try { Files.list(controlRoot).toList() } catch (_: Exception) { emptyList() }
-                AssertionError("No run directory found in controlRoot. Contents: $contents. stdout=$stdout")
-            }
+        val runIdPath: Path = findStepControlDir(controlRoot)
         // Step directory == run directory in this structure
         val stepPath: Path = runIdPath
 
@@ -179,10 +173,7 @@ pipeline {
             "Pipeline with non-zero exit should fail (RunFinished.outcome). stdout=$stdout")
 
         // Find the step control directory (step dir == run dir in this structure)
-        val runIdPath: Path = Files.list(controlRoot)
-            .filter { Files.isDirectory(it) }
-            .findFirst()
-            .orElseThrow { AssertionError("No run directory") }
+        val runIdPath: Path = findStepControlDir(controlRoot)
         // Step directory == run directory in this implementation
         val stepPath: Path = runIdPath
         val opId = stepPath.fileName.toString()
@@ -241,10 +232,7 @@ pipeline {
         val stdout = runPipeline(javaHome, classpath, dbPath, controlRoot, scriptPath)
 
         // Find the step control directory
-        val runIdPath: Path = Files.list(controlRoot)
-            .filter { Files.isDirectory(it) }
-            .findFirst()
-            .orElseThrow { AssertionError("No run directory") }
+        val runIdPath: Path = findStepControlDir(controlRoot)
         // Step directory == run directory in this implementation
         val stepPath: Path = runIdPath
 
@@ -313,4 +301,19 @@ pipeline {
             ?: throw AssertionError("No RunFinished event in output: $jsonText")
         return runFinished.outcome
     }
+
+    /**
+     * Deterministically locates the step control directory under controlRoot.
+     * WU-RP-005 r11 (CI 35658798881): Files.list order is filesystem-dependent;
+     * blind findFirst() picked sibling journals (e.g. retry-control) on CI while
+     * local ext4 happened to return the step dir first. The step dir is the one
+     * whose name parses as a canonical OpId.
+     */
+    private fun findStepControlDir(controlRoot: Path): Path =
+        Files.list(controlRoot).use { stream ->
+            stream.filter { Files.isDirectory(it) }
+                .filter { dev.rubentxu.pipeline.v2.application.durable.OpId.parse(it.fileName.toString()) != null }
+                .findFirst()
+                .orElseThrow { AssertionError("No OpId-shaped run directory under $controlRoot") }
+        }
 }

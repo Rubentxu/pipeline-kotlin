@@ -81,7 +81,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/wrapper-validation-action@v3
-      - name: Gradle cache (WU-RP-005 RC2: warm scripting/compile cache)
+      - name: "Gradle cache (WU-RP-005 RC2 - warm scripting/compile cache)"
         uses: actions/cache@v4
         with:
           path: |

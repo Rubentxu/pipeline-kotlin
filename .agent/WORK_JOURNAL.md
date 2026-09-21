@@ -23,3 +23,36 @@
 - PASS / FAIL / BLOCKED / NOT_RUN y causa; evidencia histórica todavía válida/caducada:
 - Bloqueos y riesgo residual:
 - Puntero actualizado: NEXT_WU y primer comando reproducible:
+
+### 2026-09-21T11:58Z — WU-RP-000 — CI path repair (PASS local; remote CI verification pending push)
+
+- Base SHA / HEAD SHA / branch: base = 8b5f41bfc9239a72de01a063e433875912357ae8 (origin/main @ audit baseline); HEAD = 5aa318029337dd5fbbf3fe54a3233b91a2a8bda4 (local, NOT_YET_PUSHED); branch = main.
+- Intención: ROADMAP.md §2 WU-RP-000 — fix CI workflows so the SHA actually executes. Caracterizar la falla del run 35584931177 (compile job FAIL exit 127; domain/arch-fitness/application-focused SKIPPED) y corregir wrapper path + typo + build.yml vacío. NO_GO respetado: cero código de aplicación, cero Steps nuevos, cero releases. Receipt: docs/v2/07-uat/WU_RP_000_RECEIPT.md.
+- Decisión/ADR; rutas modificadas: 3 archivos, 7 líneas modificadas + 1 archivo (0 bytes) eliminado. No se requieren ADRs nuevos — el cambio es corrección de paths, sin tocar contratos.
+  - .github/workflows/lpr0-ci.yml (5 sitios): `./gradlew -p v2 ...` → `cd v2 && ./gradlew ...`
+  - .github/workflows/lpr0-ci.yml (1 sitio): `uploads/upload-artifact@v4` → `actions/upload-artifact@v4` (typo que hubiera roto architecture-fitness si corriera).
+  - .github/workflows/v2-baseline.yml (1 sitio): `./gradlew -p v2 check` → `cd v2 && ./gradlew check`.
+  - .github/workflows/build.yml: eliminado (0 bytes, sin valor; LPR-0 CI lo cubre).
+  - Causa raíz: `.gitignore:12` ignora `gradlew` raíz; sólo `v2/gradlew` está tracked. Por eso CI falla con "No such file or directory" exit 127.
+- Tests realmente ejecutados (todos locales; remote GH Actions pendiente del push):
+  - `cd v2 && ./gradlew compileKotlin --no-daemon --quiet` → exit 0. NO XML (no es test).
+  - `cd v2 && ./gradlew :pipeline-domain:test --no-daemon --quiet` → exit 0. XML aggregate v2/pipeline-domain/build/test-results/test/TEST-*.xml: tests=554 failures=0 errors=0 skipped=0.
+  - `cd v2 && ./gradlew :pipeline-events:test --no-daemon --quiet` → exit 0. XML aggregate v2/pipeline-events/build/test-results/test/TEST-*.xml: tests=178 failures=0 errors=0 skipped=0.
+  - `cd v2 && ./gradlew :pipeline-architecture-tests:test --no-daemon --quiet` → exit 1. XML aggregate v2/pipeline-architecture-tests/build/test-results/test/TEST-*.xml: tests=309 failures=2 errors=0 skipped=0.
+    - Failure 1: `FArchL7DomainEventExhaustivityTest.domain_event_sealed_hierarchy_has_48_variants` — drift 48→51; LPR-090 phase-a (8dd59eba) añadió HtmlReport{Failed,Published,Skipped} sin bumpear el contador. PRE-EXISTING en 8b5f41bf. WU-RP-002.
+    - Failure 2: `Lfc0V1QuarantineFitnessTest.UAT catalogue lists all four governance contracts` — apunta a `docs/pipeline-kotlin-local-foundation-consolidation/.../UAT_CATALOG.md` archivado en 8b5f41bf. PRE-EXISTING en 8b5f41bf. WU-RP-002.
+  - yaml syntax: `python3 -c "import yaml; yaml.safe_load(...)"` para lpr0-ci.yml y v2-baseline.yml → OK.
+  - Remote CI: pendiente. Acción: push 5aa31802 y verificar `gh run list --workflow=lpr0-ci.yml --limit 3` para confirmar compile PASS + jobs NO skipped.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS local scope (workflow YAML syntax + local L0/L1 GREEN). REMOTE_GATE: NOT_RUN (push pendiente). Pre-existing KNOWN_FAILURES (arch-fitness 2) documentadas y deferidas a WU-RP-002.
+- Bloqueos y riesgo residual:
+  - GH Actions run de 5aa31802 no ejecutado todavía. Hasta verlo verde NO se puede afirmar PRODUCT-GATE verde en este SHA (per CERTIFICATION_PROTOCOL §4 y SESSION_POINTER NO_GO).
+  - Pre-existing drift en arch-fitness (48 vs 51; archived path) → WU-RP-002 (inventory + path reconciliation).
+  - SDKMAN channel state: independiente; no en scope WU-RP-000.
+  - v0.39.0 release certification permanece en su propio SHA; HEAD=5aa31802 NOT_YET_RECERTIFIED hasta T3/T4/T5 verde.
+- Puntero actualizado: NEXT_WU = WU-RP-001 (mapear checks obligatorios + protección de main + verificar GH Actions run verde de 5aa31802). Primer comando reproducible:
+  ```bash
+  cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+  git checkout main && git push origin main  # push 5aa31802
+  gh run list --workflow=lpr0-ci.yml --limit 3
+  gh run view <new-run-id> --json jobs
+  ```

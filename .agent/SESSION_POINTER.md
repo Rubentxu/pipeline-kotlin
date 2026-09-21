@@ -1,31 +1,33 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-21. **Tipo de cambio de esta sesión:** exclusivamente documentación y movimiento de propuestas históricas; NINGÚN código de aplicación, test, workflow ni receipt histórico se ha modificado en esta entrega.
-**Código auditado:** main @ a554fd5544f74f580bbd531c9b394cff1e073621 (2026-09-21).
+**Actualizado:** 2026-09-21T11:58Z. **Tipo de cambio de esta sesión:** WU-RP-000 (CI path repair); cierre local, pendiente push + verificación GH Actions del nuevo SHA.
+**Código auditado:** main @ 5aa318029337dd5fbbf3fe54a3233b91a2a8bda4 (post WU-RP-000, base 8b5f41bf).
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Diario:** .agent/WORK_JOURNAL.md.
-**Cabeza actual:** DETERMINAR con git rev-parse HEAD al iniciar sesión; el commit de documentación es posterior al SHA de código auditado. Nunca copiar el SHA anterior como resultado de un test nuevo.
+**Cabeza actual:** `git rev-parse HEAD` → 5aa31802 (local, NOT_YET_PUSHED). NO copiar este SHA como resultado de un test verde hasta verificar GH Actions run verde en 5aa31802.
 
 ## Estado operativo
 
 - ACTIVE_PHASE: RP-0 — CI reproducible y verdad del inventario.
-- NEXT_WU: WU-RP-000 — reparar wrapper y definición del pipeline CI; a continuación WU-RP-001 y WU-RP-002.
-- BLOCKERS: CI de a554fd55, GitHub Actions LPR-0, falla antes de compilar (./gradlew inexistente en raíz). El resto de jobs quedan skipped; no equivale a error de Kotlin. SDKMAN pendiente según receipt histórico, verificar vigencia antes de afirmar estado remoto.
+- LAST_CLOSED_WU: WU-RP-000 — CI path repair (lpr0-ci.yml + v2-baseline.yml + build.yml). Receipt: docs/v2/07-uat/WU_RP_000_RECEIPT.md. Status: PASS in local scope (compile + domain + events GREEN; arch-fitness 2 pre-existing KNOWN_FAILURES deferred to WU-RP-002). NOT YET verified by remote GH Actions.
+- NEXT_WU: WU-RP-001 — mapear checks obligatorios + protección de main + verificar GH Actions run verde de 5aa31802. Si permisos faltan para reglas de protección, registrar BLOCKED_EXTERNAL.
+- BLOCKERS: GH Actions run de 5aa31802 no ejecutado todavía (pendiente push). Pre-existing drift en arch-fitness (48 vs 51; archived path) → WU-RP-002.
 - NO_GO: iniciar core.lock/Step nuevo o publicar una release nueva mientras RP-0/RP-1 no estén verificadas; no modificar recibos históricos.
 - RELEASE_REFERENCE: v0.39.0 (certificada documentalmente en SU commit y canal GitHub); HEAD posterior NOT_YET_RECERTIFIED.
 - HISTORY: docs/historico/INDEX.md.
-- TESTS_THIS_DOCUMENTATION_CHANGE: NOT_RUN; documentos/textos no implican certificación.
+- TESTS_THIS_WU: local only (cd v2 && ./gradlew ...). Remote CI verification pending push + GH Actions run.
 - STALE_LEGACY_POINTERS: .agent/HANDOFF-WU-LPR-090.md, .agent/LPR-001_CYCLE_STATE.md, .agent/TESTING-STATE.md contienen secciones históricas de Phase D pending o contadores anteriores. NO usarlos como cola actual; conservar su evidencia y reconciliarlos en RP-002.
+- STASH_REF: 1 stash entry pre-8b5f41bf con WU-LPR-091 phase-b-untouched (handler try/catch fix + test). Preservado por NO_GO, no aplicarlo.
 
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
-1. git status --short; git rev-parse HEAD; git log -1 --format='%H %cI %s'; git log --oneline -6.
+1. `git status --short; git rev-parse HEAD; git log -1 --format='%H %cI %s'; git log --oneline -6`.
 2. Leer AGENTS.md (protocolo inicial), este puntero, ROADMAP.md, CERTIFICATION_PROTOCOL.md, PRODUCTION_READY_UAT_MATRIX.md y el último bloque de WORK_JOURNAL.md.
-3. Contrastar main/remoto/CI, branch y commits posteriores a a554fd55; si HEAD cambió, efectuar análisis incremental y actualizar este puntero ANTES de codificar.
-4. Confirmar que v2/gradlew existe y que .github/workflows/lpr0-ci.yml lo invoca mal; abrir WU-RP-000 y caracterizar el CI fallido sin falsificar una baseline verde.
-5. Implementar la corrección MÍNIMA en una WU; ejecutar targeted tests y gate remote del nuevo SHA; registrar en nuevo receipt y WORK_JOURNAL.md. Recién entonces actualizar NEXT_WU.
+3. Contrastar `git log -1 origin/main` con HEAD local. Si divergen (ej. PRs remotos), evaluar fast-forward o merge.
+4. Verificar GH Actions run de 5aa31802 (`gh run list --workflow=lpr0-ci.yml --limit 3`); si NO existe, push primero. Si existe y es verde, continuar WU-RP-001. Si existe y es rojo, diagnosticar antes de continuar.
+5. Si todo verde en 5aa31802, ejecutar WU-RP-001 (mapear checks obligatorios; caracterizar rama main y reglas de protección).
 6. Si no hay permisos para editar reglas de protección, registrar BLOCKED_EXTERNAL y dejar pendiente el check requerido, nunca green by inspection.
 
 ## Handoff transaccional

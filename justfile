@@ -54,6 +54,20 @@ set dotenv-load := false
 @t pattern:
     timeout 600 ./gradlew -p v2 :pipeline-application:test --tests '{{pattern}}'
 
+# WU-RP-005: application inner loop, excludes the two most expensive CLI-fork
+# classes (UatDsl003ParallelTest 65s, UatLocal010SmokeE2ESandboxTest 34s).
+# Those run only in gate-app / round gate. Budget 900s.
+@app-fast budget="900":
+    timeout {{budget}} ./gradlew -p v2 :pipeline-application:test \
+      --tests 'dev.rubentxu.pipeline.v2.application.*' \
+      --tests '!dev.rubentxu.pipeline.v2.application.UatDsl003ParallelTest*' \
+      --tests '!dev.rubentxu.pipeline.v2.application.UatLocal010SmokeE2ESandboxTest*'
+
+# WU-RP-005: full application-module gate (L3 round-gate equivalent) before
+# pushing WUs that touch pipeline-application. Budget 1500s.
+@gate-app budget="1500":
+    timeout {{budget}} ./gradlew -p v2 :pipeline-application:test
+
 # Round gate: incremental by default (1s when nothing changed since last green)
 @gate budget="1270":
     timeout {{budget}} ./gradlew -p v2 check

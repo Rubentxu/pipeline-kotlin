@@ -450,3 +450,20 @@
   - application-focused NOT in required list (deferred per WU-RP-005).
 - Outcome: RP-000 partially closed. The 3 demonstrably-green jobs are now enforced on protected main branch. CI run 35627552382 reports overall "failure" because of application-focused, but the 3 required checks are all SUCCESS, so the protection would permit merge if this were a PR.
 - Outstanding: R11 (wider application-focused hang) — WU-RP-005 to investigate and propose measured fix.
+
+### 2026-09-21T18:20Z — WU-RP-005: measured root cause + remediation of application-focused slow/cancelled CI
+
+- RC1 (OBSERVED): 17 classes fork installed CLI at ~5s/fork; measured class costs.
+- RC2 (OBSERVED): Kotlin scripting recompile per fork; cold Gradle cache in CI.
+- RC3 (OBSERVED): hosted-runner shutdown signal at ~14 min; log has ZERO test
+  failures — job is arithmetically over budget, not hung.
+- RC4: 2 CLI-fork classes lacked @Timeout (rule 7) — fixed (MinMainKt is a
+  forked helper object, exempt).
+- Remediation: maxParallelForks=2 + forkEvery=40 (module-local, rule 11
+  exception documented); @Timeout on F5_1 + WcScmE2E; CI excludes 2
+  release-scale corpus UAT classes (re-tiered to gate-app/release); Gradle
+  cache in workflow; just app-fast / gate-app recipes.
+- Local evidence: full module suite BUILD SUCCESSFUL 1130s wall (was >40min
+  serialized estimate), 0 failures; L2 edited classes 14s.
+- User directive encoded: progressive change-scoped testing; total suites
+  reserved for release gating (annex compliance).

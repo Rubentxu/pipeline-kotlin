@@ -35,6 +35,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -65,6 +66,7 @@ import java.util.concurrent.TimeUnit
  * the test fails closed if either handler reads `user.dir` instead
  * of the typed workspace.
  */
+@Timeout(300)
 class WcScmE2EBothPluginsIntegrationTest {
 
     @Test

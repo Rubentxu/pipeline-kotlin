@@ -72,7 +72,7 @@ jobs:
 
   application-focused:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     needs: [domain-unit, architecture-fitness]
     steps:
       - uses: actions/checkout@v4
@@ -81,8 +81,16 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/wrapper-validation-action@v3
+      - name: Gradle cache (WU-RP-005 RC2: warm scripting/compile cache)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-lpr0-${{ hashFiles('v2/**/build.gradle.kts', 'v2/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-lpr0-
       - name: L3 — application focused tests (excludes expensive compatibility)
-        run: cd v2 && ./gradlew :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*' --no-daemon
+        run: cd v2 && ./gradlew :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*' --tests '!dev.rubentxu.pipeline.v2.application.UatCompat001CorpusSmokeRunTest*' --tests '!dev.rubentxu.pipeline.v2.application.UatLocal008CredentialsTest*' --no-daemon
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

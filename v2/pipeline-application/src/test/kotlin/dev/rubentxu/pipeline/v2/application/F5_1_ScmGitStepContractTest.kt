@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -73,6 +74,7 @@ import java.nio.file.Path
  *      real SHA-256 digest (no fabricated values; sentinel-only when
  *      build properties are absent).
  */
+@Timeout(300)
 class F5_1_ScmGitStepContractTest {
 
     @Test

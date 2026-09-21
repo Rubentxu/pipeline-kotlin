@@ -86,4 +86,12 @@ tasks.test {
     dependsOn(":pipeline-application:installDist")
     dependsOn(":buildExamplePlugin")
     useJUnitPlatform()
+    // WU-RP-005 (docs/v2/07-uat/WU_RP_005_TEST_EFFICIENCY_RECEIPT.md):
+    // measured decision under AGENTS.md rule 11 exception path. The suite is
+    // dominated by ~5s-per-fork installed-CLI invocations with no timing
+    // semantics (no heartbeat/backoff/LOST classification); 2 parallel forks
+    // halve wall time on 2-core CI runners. forkEvery recycles test JVMs that
+    // accumulate CLI child processes.
+    maxParallelForks = 2
+    forkEvery = 40
 }

@@ -20,7 +20,14 @@ class ConcurrentStepDispatcherTest {
 
             dispatcher.dispatchAll(listOf(step("a"), step("b"), step("c")), StepExecutionContext(RunId("r1")))
 
-            assertEquals(listOf("a", "b", "c"), delegate.dispatchedStepIds)
+            // Asserts: every dispatched step went through THIS delegate instance.
+            // The recorded ids form a SET, not an ordered list, because the wave uses
+            // a 3-thread executor and RecordingStepDispatcher's synchronized(calls) acquire
+            // order is not part of the contract (see its "Thread safety" section).
+            // Declaration-order outcome semantics are verified by
+            // `outcomes are returned in declaration order regardless of completion order`.
+            assertEquals(setOf("a", "b", "c"), delegate.dispatchedStepIds.toSet())
+            assertEquals(3, delegate.dispatchedStepIds.size, "no duplicate or missing dispatch")
         } finally {
             executor.shutdownNow()
         }

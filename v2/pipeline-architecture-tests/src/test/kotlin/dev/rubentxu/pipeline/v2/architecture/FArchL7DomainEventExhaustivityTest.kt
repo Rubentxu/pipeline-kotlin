@@ -30,7 +30,7 @@ import kotlin.reflect.full.memberProperties
 class FArchL7DomainEventExhaustivityTest {
 
     /**
-     * Verifies DomainEvent sealed hierarchy contains exactly 43 variants.
+     * Verifies DomainEvent sealed hierarchy contains exactly 51 variants.
      *
      * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9 T-06 + 3 ML-R9 T-07 + 2 ML-R9 T-07 + 2 ML-R9 T-09 + 1 ML-R9 T-10 + 2 ML-R9 T-08):
      * 1. RunStarted
@@ -81,13 +81,16 @@ class FArchL7DomainEventExhaustivityTest {
      * 46. StashCreated (WU-LPR-089 — core.stash durable cross-stage data movement)
      * 47. StashRestored (WU-LPR-089 — core.unstash durable cross-stage data movement)
      * 48. StashFailed (WU-LPR-089 — core.stash/core.unstash typed failure observability)
+     * 49. HtmlReportPublished (WU-LPR-090 phase-a — core.publishHtml observability)
+     * 50. HtmlReportSkipped (WU-LPR-090 phase-a — core.publishHtml observability)
+     * 51. HtmlReportFailed (WU-LPR-090 phase-a — core.publishHtml typed failure observability)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_48_variants`() {
+    fun `domain_event_sealed_hierarchy_has_51_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 48 // 45 + StashCreated + StashRestored + StashFailed (WU-LPR-089)
+        val expectedCount = 51 // 48 + HtmlReport{Published,Skipped,Failed} (WU-LPR-090 phase-a)
 
         assertEquals(
             expectedCount,

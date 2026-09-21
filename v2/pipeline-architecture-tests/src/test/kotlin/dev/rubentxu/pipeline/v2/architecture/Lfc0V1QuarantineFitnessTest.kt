@@ -50,7 +50,12 @@ class Lfc0V1QuarantineFitnessTest {
 
     @Test
     fun `UAT catalogue lists all four governance contracts`() {
-        val cataloguePath = ScannerSupport.v2Root().resolve("..").resolve("docs/pipeline-kotlin-local-foundation-consolidation/docs/v2/06-uat/UAT_CATALOG.md")
+        // WU-RP-002: the consolidated catalogue moved into the historical archive on 2026-09-21
+        // (8b5f41bf). The test now reads the archived copy and asserts the four governance
+        // contract ids (UAT-GOV-001..004) are still discoverable there.
+        val cataloguePath = ScannerSupport.v2Root()
+            .resolve("..")
+            .resolve("docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/06-uat/UAT_CATALOG.md")
         val catalogue = cataloguePath.toFile().readText()
 
         listOf("UAT-GOV-001", "UAT-GOV-002", "UAT-GOV-003", "UAT-GOV-004").forEach { id ->

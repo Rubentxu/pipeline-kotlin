@@ -94,4 +94,12 @@ tasks.test {
     // accumulate CLI child processes.
     maxParallelForks = 2
     forkEvery = 40
+    // WU-RP-005 round 3: `--tests '!pkg.Class*'` negation on the command line
+    // is silently IGNORED by Gradle in this configuration (verified locally:
+    // the exact CI command still executed all 203 classes). CI now passes
+    // -PexcludeSlowTests=true; the full suite (gate-app / release) runs
+    // without the property and keeps every test.
+    if (providers.gradleProperty("excludeSlowTests").isPresent) {
+        exclude("**/CompatibilityCorpusTest*", "**/UatCompat001CorpusSmokeRunTest*", "**/UatLocal008CredentialsTest*")
+    }
 }

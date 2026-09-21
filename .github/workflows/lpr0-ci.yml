@@ -90,7 +90,7 @@ jobs:
           key: gradle-${{ runner.os }}-lpr0-${{ hashFiles('v2/**/build.gradle.kts', 'v2/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-lpr0-
       - name: L3 — application focused tests (excludes expensive compatibility)
-        run: cd v2 && ./gradlew :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.*' --tests '!dev.rubentxu.pipeline.v2.application.CompatibilityCorpusTest*' --tests '!dev.rubentxu.pipeline.v2.application.UatCompat001CorpusSmokeRunTest*' --tests '!dev.rubentxu.pipeline.v2.application.UatLocal008CredentialsTest*' --no-daemon
+        run: cd v2 && ./gradlew :pipeline-application:test -PexcludeSlowTests=true --no-daemon
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

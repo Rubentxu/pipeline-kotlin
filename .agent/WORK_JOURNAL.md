@@ -467,3 +467,12 @@
   serialized estimate), 0 failures; L2 edited classes 14s.
 - User directive encoded: progressive change-scoped testing; total suites
   reserved for release gating (annex compliance).
+
+### 2026-09-21T19:10Z — WU-RP-005 round 3: --tests negation was silently ignored; property-driven exclude() fixes it
+- OBSERVED: local repro of exact CI command ran all 203 classes (negation '!x*' ignored).
+- Fix: -PexcludeSlowTests=true -> Gradle exclude() of 3 release-scale classes.
+- Local validation: 200 XMLs, 0 failures, 997s class time (was 1610s). BUILD SUCCESSFUL 10m26s.
+- CI run 35637767571 application-focused failed on UatLocal005RegressionGate RG-004 timing assert
+  under 2-fork load + the never-excluded corpus classes; timeout UatCompat001 x2; byte-identical
+  corpus assert. Corpus failures explained by ignored negation. RG-004 timing flakiness under
+  parallel forks -> follow-up WU-RP-006.

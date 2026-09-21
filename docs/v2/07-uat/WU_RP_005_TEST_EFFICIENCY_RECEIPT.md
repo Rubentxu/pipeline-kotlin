@@ -117,6 +117,21 @@ Additional changes (commit at this SHA):
   ((1610s - 707s excluded) / 2 forks + compile with warm cache), under the
   ~14 min preemption window.
 
+## Remediation round 3 (CRITICAL: --tests negation was silently ignored)
+
+EVIDENCE (local repro of the exact CI command): the `--tests '!pkg.Class*'`
+negation flag did NOT exclude anything - the repro run executed all 203
+classes including CompatibilityCorpusTest (153s), UatCompat001CorpusSmokeRun
+(337s) and UatLocal008CredentialsTest (135s). This explains every prior
+"over budget" CI outcome: the exclusions never applied, in any round.
+
+Fix: property-driven exclude() in the build script:
+  ./gradlew :pipeline-application:test -PexcludeSlowTests=true
+Local validation: 200 XMLs (3 excluded absent), 0 failures, sum class time
+997s (was 1610s with the ignored negation). BUILD SUCCESSFUL in 10m26s.
+CI workflow updated to the property form. Full suite (no property) unchanged
+for gate-app / release.
+
 ## Remediation rejected (with reasons)
 
 - **CI command scope reduction** (`--tests 'UatLocal00*'` etc.): weakens the

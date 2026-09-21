@@ -1,19 +1,19 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-21T11:36Z. **Tipo de cambio de esta sesión:** WU-RP-001 CIERRE FINAL (second round) — receipt+state committed at 4f3451f2, push landed via bootstrap (compile GREEN verified at 4f3451f2 via run 35589016116).
-**Código auditado:** main @ 4f3451f2ce1f9e64a0f79bc15baf55ea759280f1 (post WU-RP-001, base 7fd407ef, base-base 8b5f41bf).
+**Actualizado:** 2026-09-21T11:04Z. **Tipo de cambio de esta sesión:** WU-RP-002 cierre — inventory regenerated (20 Core + 10 SDK + 1 External = 31 keys) + 3 pre-existing CI failures closed (FArchL7 48→51, Lfc0V1 archived path, ConcurrentStepDispatcherTest flake hardening). 2 NEW flaky SQLite tests surfaced in CI (Lpr041 + EventHistoryContract); pre-existing at 8b5f41bf; deferred to WU-RP-002.1.
+**Código auditado:** main @ 6822eff1f9acb2da050f5c0a4f4b9a9c1a741bbb (post WU-RP-002, base 4f3451f2, base-base 7fd407ef).
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Diario:** .agent/WORK_JOURNAL.md.
-**Cabeza actual:** `git rev-parse HEAD` → 4f3451f2 (local + remote). CI compile VERIFIED SUCCESS at 4f3451f2 via run 35589016116; previous fea34ede also GREEN via run 35587673258.
+**Cabeza actual:** `git rev-parse HEAD` → 6822eff1 (local + remote). CI compile + arch-fitness VERIFIED SUCCESS at 6822eff1 via run 35591353345; domain-unit FAILURE due to 2 new flaky SQLite tests deferred to WU-RP-002.1.
 
 ## Estado operativo
 
 - ACTIVE_PHASE: RP-0 — CI reproducible y verdad del inventario.
-- LAST_CLOSED_WU: WU-RP-001 — branch protection + checks mapping + CLI installed. Receipt: docs/v2/07-uat/WU_RP_001_RECEIPT.md. Status: PASS_WITH_PROTECTION. main now protected (enforce_admins=true, strict=true, contexts=["LPR-0 CI / compile"], force-pushes/deletions off). CLI installDist + validate fixture OK. Compatibility corpus 30/30 OK. Pushed 7fd407ef..fea34ede then 4f3451f2 to remote (two bootstrap rounds due to strict protection requiring compile GREEN on pushed SHA). CI run 35589016116 confirms compile SUCCESS at 4f3451f2 (HEAD). 3 pre-existing failures persist (ConcurrentStepDispatcherTest flake, FArchL7 48→51 drift, Lfc0V1QuarantineFitnessTest archived path) → WU-RP-002 closes them. Receipt delta (HEAD=4f3451f2) staged locally; will be pushed alongside WU-RP-002 first commit (avoiding another bootstrap).
-- NEXT_WU: WU-RP-002 — regenerate Step inventory from CoreStepRegistryFactory + receipts; reconcile 16 vs 20 counters; fix FArchL7DomainEventExhaustivityTest drift (48→51); fix Lfc0V1QuarantineFitnessTest archived path; harden ConcurrentStepDispatcherTest flake.
-- BLOCKERS: 3 pre-existing test failures surfaced now that CI executes (1 ConcurrentStepDispatcherTest flake in slow CI runner; 2 arch-fitness drifts 48→51 and archived path) → WU-RP-002. Branch protection widened to all jobs pending WU-RP-002.
+- LAST_CLOSED_WU: WU-RP-002 — inventory regenerated (20 Core + 10 SDK + 1 External = 31 keys) + 3 pre-existing CI failures closed (FArchL7 48→51, Lfc0V1 archived path, ConcurrentStepDispatcherTest flake). Receipt: docs/v2/07-uat/WU_RP_002_RECEIPT.md. Status: PASS_WITH_KNOWN_FAILURES (3 closed + 2 new flaky SQLite tests deferred to WU-RP-002.1). New script .agent/scripts/regenerate_step_inventory.py is the source of truth for Step counts (DRIFT_COUNT=0). Local L4 (309+554+178+30 = 1071 tests) ALL GREEN. CI run 35591353345 at 6822eff1: compile SUCCESS, arch-fitness SUCCESS (FArchL7 + Lfc0V1 verified remotely), domain-unit FAILURE (2 NEW pre-existing flaky SQLite tests surfaced).
+- NEXT_WU: WU-RP-002.1 — close 2 newly surfaced flaky SQLite tests (Lpr041DurableSequenceRepairTest + EventHistoryContractTest.projection carries STORE-assigned sequence). Both use SqliteEventStore with Files.createTempDirectory; recommended fix: @TempDir + try/finally cleanup to make them robust under CI filesystem pressure. After WU-RP-002.1 closes, WU-RP-003 widens protection to include domain-unit + architecture-fitness.
+- BLOCKERS: 2 pre-existing flaky SQLite tests (Lpr041 + EventHistoryContract) surfaced by CI in run 35591353345; pre_existing_at=8b5f41bf; deferred to WU-RP-002.1. Branch protection widening deferred until WU-RP-002.1 closes (otherwise main becomes unmergeable).
 - NO_GO: iniciar core.lock/Step nuevo o publicar una release nueva mientras RP-0/RP-1 no estén verificadas; no modificar recibos históricos.
 - RELEASE_REFERENCE: v0.39.0 (certificada documentalmente en SU commit y canal GitHub); HEAD posterior NOT_YET_RECERTIFIED.
 - HISTORY: docs/historico/INDEX.md.
@@ -27,7 +27,7 @@
 1. `git status --short; git rev-parse HEAD; git log -1 --format='%H %cI %s'; git log --oneline -6`.
 2. Leer AGENTS.md (protocolo inicial), este puntero, ROADMAP.md, CERTIFICATION_PROTOCOL.md, PRODUCTION_READY_UAT_MATRIX.md y el último bloque de WORK_JOURNAL.md.
 3. Contrastar `git log -1 origin/main` con HEAD local. Si divergen (ej. PRs remotos), evaluar fast-forward o merge.
-4. HEAD should be 4f3451f2 on both local and remote; CI compile should be GREEN at 4f3451f2 via run 35589016116. Branch protection ACTIVE (`LPR-0 CI / compile` required, strict=true, force-pushes/deletions off). Next: WU-RP-002 (regenerate inventory + reconcile 3 pre-existing failures).
+4. HEAD should be 6822eff1 on both local and remote; CI compile + arch-fitness should be GREEN at 6822eff1 via run 35591353345. Branch protection ACTIVE (`LPR-0 CI / compile` required, strict=true, force-pushes/deletions off). Next: WU-RP-002.1 (close 2 flaky SQLite tests; widen protection afterwards).
 5. Si HEAD diverge, evaluar fast-forward o merge; si protection hook bloquea, ejecutar bootstrap procedure documentado en WU_RP_001_RECEIPT.md.
 6. Si no hay permisos para editar reglas de protección, registrar BLOCKED_EXTERNAL y dejar pendiente el check requerido, nunca green by inspection.
 

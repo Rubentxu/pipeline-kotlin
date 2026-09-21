@@ -486,3 +486,10 @@
 - Removed needs chain; application-focused -> application-shard matrix (4 shards).
 - YAML validated locally before push (lesson from run 35637488765).
 - Protection contexts will need shard names after first green run.
+
+## 2026-09-21 WU-RP-005 r6-r7 (a89ecb2e, d462196b)
+- r5 sharded run expuso: Gradle `--tests '!X'` ignorado (engine duplicaba UatLocal), fixture git `main:master`, `just` ausente, shallow clone rompía CP-001, test de redacción timing-dependent, y RACE REAL en DurableShellExecutor (watchdog kill después de pollResult → outcome=success pese a timeout).
+- r6: exclusiones por -Pshard.excludes + filter.excludeTestsMatching; HEAD:master; fetch-depth 0; just instalado; Lpr011r2 determinista (4/4 verde local).
+- r7: settle guard de 2s para watchdog flag; SDK runtime 187/0, Coordinator 26/0, TMO 2/2.
+- ROADMAP: WU-RP-043 registrado (dogfooding CI en RP-4).
+- Pendiente: run 35654575139; si verde → contexts de protection a 4 shards; cierre WU-RP-005.

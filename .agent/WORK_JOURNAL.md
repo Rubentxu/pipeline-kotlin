@@ -276,3 +276,28 @@
   - R5 (carried): bootstrap procedure executed 5 times.
   - R7 (NEW): 2 pre-existing CI-env failures in GitCheckoutExecutorAdversarialTest. WU-RP-002.3 closes with env-independent fix.
 - Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.2; NEXT_WU = WU-RP-002.3.
+
+
+### 2026-09-21T15:36Z — WU-RP-002.3: close pre-existing GitCheckoutExecutorAdversarialTest + UatLocal* branch --force failures with `git init -b master`
+
+- Base SHA / HEAD SHA / branch: base = a9fb87f8 (post WU-RP-002.2 docs); HEAD = <pending — see commit> (post WU-RP-002.3); branch = main (LOCAL + REMOTE pending 7th bootstrap).
+- Intencion: cerrar los 2 NEW pre-existing CI-env failures (ADV-003 + ADV-007 + 3 latent UatLocal* sites with same root cause) identificados por WU-RP-002.2.
+- Diagnosis discrepancy: la hipotesis de `WU_RP_002_2_RECEIPT.md` (HOME-pinning, GIT_CONFIG_NOSYSTEM=1) era INCORRECTA. La causa real fue otra:
+  - Tests en CI: `git init` defaults a `master` (no `~/.gitconfig` en /home/runner) porque el runner image no lleva `init.defaultBranch`.
+  - Tests en CI: `git branch --force master HEAD` luego FALLA con `fatal: cannot force update the branch 'master' used by worktree at '<workdir>'` (regla moderna de git >= 2.x que rechaza force-over-current-checked-out).
+  - En mi local con `~/.gitconfig:init.defaultBranch=main`, `git init` crea `main` y `branch --force master HEAD` la CREA como rama nueva (identity), no force-overwrite, por eso local pasaba.
+- Decision: fix estructural unico aplicado a 5 sitios (1 adversarial class con 2 tests + 3 UatLocal tests con el mismo patron):
+  - `git init` -> `git init -b master`
+  - Remover `git branch --force master HEAD` (ya no necesario; master existe desde init).
+  - Diagnostic improvement: `runGit()` ahora captura stdout + stderr en el `IllegalStateException` message.
+- Tests realmente ejecutados (L1 + L2 + L3):
+  - L1: ADV-003 + ADV-007 --tests: 2/2 GREEN, 0 failures, 0 skipped.
+  - L2: GitCheckoutExecutorAdversarialTest full class (7 tests): 7/7 GREEN, time=25s.
+  - L3: UatLocal005* + UatLocal008* + UatLocal010*: 12 classes, 92 tests, 0 failures, 0 errors, time=4m26s.
+- Sorpresa (R8): la recomendacion de WU-RP-002.2 estaba incorrecta. Sin captura de stdout en CI log, especular sobre la causa real es enga~oso. El fix correcto fue diagnosticar y enriquecer diagnostic surface primero.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS (WU-RP-002.3 scope COMPLETE). 6 pre-existing CI-env failures closed en total en RP-000 cycle.
+- Bloqueos y riesgo residual:
+  - R1 (carried): PROTECTION WIDENING deferred to WU-RP-003 (RP-0 close-out).
+  - R5 (carried): bootstrap procedure ejecutado 6 veces, sera 7ma al push.
+  - R9 (NEW): application-focused deberia ser GREEN en el proximo CI run (no fue observado por el runner cancelation de 35599142876/35602153885); WU-RP-003 confirma.
+- Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.3; NEXT_WU = WU-RP-003 (RP-0 close-out).

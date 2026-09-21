@@ -250,7 +250,7 @@ class UatLocal008SshPrivateKeyRoundGateTest {
 
         val workDir = tempDir.resolve("work_$name")
         Files.createDirectories(workDir)
-        runGit(listOf("git", "init"), workDir.toFile())
+        runGit(listOf("git", "init", "-b", "master"), workDir.toFile())
         runGit(listOf("git", "-C", workDir.toString(), "config", "user.email", "test@test.com"))
         runGit(listOf("git", "-C", workDir.toString(), "config", "user.name", "Test User"))
 
@@ -260,7 +260,10 @@ class UatLocal008SshPrivateKeyRoundGateTest {
             runGit(listOf("git", "-C", workDir.toString(), "commit", "-m", msg))
         }
 
-        runGit(listOf("git", "-C", workDir.toString(), "branch", "--force", "master", "HEAD"))
+        // WU-RP-002.3: `init -b master` already creates the master branch,
+        // so the obsolete `branch --force master HEAD` op is removed
+        // (it was the cause of the CI pre-existing failure where newer git
+        // versions refuse to force a checked-out branch).
         runGit(listOf("git", "init", "--bare", bareRepo.toString()))
         runGit(listOf("git", "-C", workDir.toString(), "push", bareRepo.toString(), "master"))
         return bareRepo

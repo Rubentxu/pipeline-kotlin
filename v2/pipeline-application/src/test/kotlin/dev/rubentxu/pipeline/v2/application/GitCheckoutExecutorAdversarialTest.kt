@@ -144,13 +144,20 @@ class GitCheckoutExecutorAdversarialTest {
         val bareRepo = tempDir.resolve("fixture.git")
         val work = tempDir.resolve("work")
         Files.createDirectories(work)
-        runGit(listOf("git", "init"), work.toFile())
+        // WU-RP-002.3: pin the initial branch to "master" so we don't need
+        // to force-reset the checked-out branch later (newer git versions
+        // refuse `git branch --force <current> HEAD`).
+        runGit(listOf("git", "init", "-b", "master"), work.toFile())
         runGit(listOf("git", "-C", work.toString(), "config", "user.email", "test@test.com"))
         runGit(listOf("git", "-C", work.toString(), "config", "user.name", "Test"))
         Files.writeString(work.resolve("f.txt"), "hi")
         runGit(listOf("git", "-C", work.toString(), "add", "."))
         runGit(listOf("git", "-C", work.toString(), "commit", "-m", "init"))
-        runGit(listOf("git", "-C", work.toString(), "branch", "--force", "master", "HEAD"))
+        // WU-RP-002.3: previously `git branch --force master HEAD` was emitted
+        // to coerce the branch name; with `init -b master` that branch is
+        // already created at init time and the force-over-checked-out
+        // operation is no longer required (and is rejected by newer git
+        // versions).
         runGit(listOf("git", "init", "--bare", bareRepo.toString()))
         runGit(listOf("git", "-C", work.toString(), "push", bareRepo.toString(), "master"))
 
@@ -244,7 +251,10 @@ class GitCheckoutExecutorAdversarialTest {
         val bareRepo = tempDir.resolve("large.git")
         val work = tempDir.resolve("work")
         Files.createDirectories(work)
-        runGit(listOf("git", "init"), work.toFile())
+        // WU-RP-002.3: pin the initial branch to "master" so we don't need to
+        // force-reset the checked-out branch later (newer git versions
+        // refuse `git branch --force <current> HEAD`).
+        runGit(listOf("git", "init", "-b", "master"), work.toFile())
         runGit(listOf("git", "-C", work.toString(), "config", "user.email", "test@test.com"))
         runGit(listOf("git", "-C", work.toString(), "config", "user.name", "Test"))
 
@@ -253,7 +263,9 @@ class GitCheckoutExecutorAdversarialTest {
             runGit(listOf("git", "-C", work.toString(), "add", "."))
             runGit(listOf("git", "-C", work.toString(), "commit", "-m", "Commit number $i"))
         }
-        runGit(listOf("git", "-C", work.toString(), "branch", "--force", "master", "HEAD"))
+        // WU-RP-002.3: with `init -b master` the master branch already
+        // exists, so the obsolete `branch --force master HEAD` op is
+        // removed (it was the cause of the CI pre-existing failure).
         runGit(listOf("git", "init", "--bare", bareRepo.toString()))
         runGit(listOf("git", "-C", work.toString(), "push", bareRepo.toString(), "master"))
 
@@ -315,8 +327,16 @@ class GitCheckoutExecutorAdversarialTest {
         processes.add(p)
         val ok = p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
         if (!ok || p.exitValue() != 0) {
+            // WU-RP-002.3: capture BOTH stderr and stdout to make the failure
+            // message self-explanatory in the JUnit XML / CI log without
+            // needing to ssh into the runner. Diagnostic improvement only;
+            // does not change test semantics.
             val err = p.errorStream.bufferedReader().readText()
-            throw IllegalStateException("git failed: ${args.joinToString(" ")}, exit=${p.exitValue()}, err=$err")
+            val out = p.inputStream.bufferedReader().readText()
+            throw IllegalStateException(
+                "git failed: ${args.joinToString(" ")}, exit=${p.exitValue()}, " +
+                    "err=$err${if (out.isNotBlank()) ", out=$out" else ""}"
+            )
         }
     }
 

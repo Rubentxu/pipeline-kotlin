@@ -1,19 +1,19 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-21T14:53Z. **Tipo de cambio de esta sesión:** WU-RP-002.2 push and CI verification — fitness fix VERIFIED remotely (no fitness assertion error in CI log); 2 NEW pre-existing CI-env adversarial failures surfaced (ADV-003, ADV-007 in GitCheckoutExecutorAdversarialTest), deferred to WU-RP-002.3. Receipt: `docs/v2/07-uat/WU_RP_002_2_RECEIPT.md` (with remote CI evidence appended).
-**Código auditado:** main @ 96604dee7c0c91b8d3ee46cb8e07e92aad8b6db6 (post WU-RP-002.2 push; base ff17bf9d, base-base c39dcaa6).
+**Actualizado:** 2026-09-21T15:36Z. **Tipo de cambio de esta sesión:** WU-RP-002.3 — closed pre-existing CI-env `git branch --force master HEAD` failures (ADV-003, ADV-007, UatLocal005*, UatLocal008*, UatLocal010*) by replacing `git init` with `git init -b master` and removing the obsolete force command. Local L1+L2+L3 evidence: 2+7+92 tests, 0 failures. Receipt: `docs/v2/07-uat/WU_RP_002_3_RECEIPT.md`.
+**Código auditado:** main @ a9fb87f87441ae63934ff5c49e58dfc7bb2f4721 (post WU-RP-002.2 docs-only, base ff17bf9d). HEAD a9fb87f8 local+remote; WU-RP-002.3 fix in working tree awaiting push.
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Diario:** .agent/WORK_JOURNAL.md.
-**Cabeza actual:** `git rev-parse HEAD` → 96604dee local+remote. CI run 35599142876 at 96604dee: compile SUCCESS, domain-unit SUCCESS, architecture-fitness SUCCESS, application-focused CANCELLED (external runner shutdown signal; Java pid 2237 terminated mid-tests). The WU-RP-002.2 fitness fix is verified in CI.
+**Cabeza actual:** `git rev-parse HEAD` → a9fb87f8 local+remote. Working tree has WU-RP-002.3 uncommitted (5 file edits + receipt). Push (7th bootstrap) will produce the WU-RP-002.3 head.
 
 ## Estado operativo
 
 - ACTIVE_PHASE: RP-0 — CI reproducible y verdad del inventario.
-- LAST_CLOSED_WU: WU-RP-002.2 — closed pre-existing CoreSleepRegistryPrimaryFitnessTest stale key set + corrected inventory `core.publishHtml` → `core.publishHTML`. Fitness fix VERIFIED remotely (no assertion error in CI log; local L2 16/16 GREEN). 2 NEW pre-existing CI-env adversarial failures (ADV-003 + ADV-007) deferred to WU-RP-002.3. Receipt: docs/v2/07-uat/WU_RP_002_2_RECEIPT.md.
-- NEXT_WU: WU-RP-002.3 — close the 2 NEW pre-existing `GitCheckoutExecutorAdversarialTest` CI-env failures (ADV-003 branch with shell metacharacters; ADV-007 large changelog). Recommended fix per receipt: add per-temp-dir `git config user.email`/`user.name` to `runGit()` so the test is env-independent. Same class of fix as WU-RP-002.1 SQLite flush barriers.
-- BLOCKERS: 2 pre-existing CI-env adversarial failures in `GitCheckoutExecutorAdversarialTest` (ADV-003, ADV-007), pre_existing_at=ff17bf9d. Deferred to WU-RP-002.3.
+- LAST_CLOSED_WU: WU-RP-002.3 — closed ADV-003 + ADV-007 + 3 latent UatLocal* failures with uniform `git init -b master` fix. The WU-RP-002.2 receipt's HOME-pinning recommendation was incorrect; the actual root cause was `init` defaulting to `master` + force-over-checked-out being rejected. Status: PASS. Local evidence C1+C2+C3+C4 all green. Receipt: docs/v2/07-uat/WU_RP_002_3_RECEIPT.md.
+- NEXT_WU: WU-RP-003 (RP-0 close-out). (a) Push WU-RP-002.3 (7th bootstrap). (b) Confirm 4-job CI greenness (compile + domain-unit + architecture-fitness + application-focused). (c) Widen `branch_protection.required_status_checks.contexts` to include domain-unit + architecture-fitness (+ application-focused if green). (d) Decide workflow R5 (PR-based vs long-lived integration branch to avoid 7+ bootstraps). (e) Archive RP-000 cycle, advance to RP-1.
+- BLOCKERS: 0 pre-existing failures remaining in RP-000 cycle. All 6 pre-existing CI-env failures surfaced in this cycle are now closed.
 - NO_GO: iniciar core.lock/Step nuevo o publicar una release nueva mientras RP-0/RP-1 no estén verificadas; no modificar recibos históricos.
 - RELEASE_REFERENCE: v0.39.0 (certificada documentalmente en SU commit y canal GitHub); HEAD posterior NOT_YET_RECERTIFIED.
 - HISTORY: docs/historico/INDEX.md.

@@ -11,9 +11,9 @@
 ## Estado operativo
 
 - ACTIVE_PHASE: RP-0 — CI reproducible y verdad del inventario.
-- LAST_CLOSED_WU: WU-RP-000 — CI path repair (lpr0-ci.yml + v2-baseline.yml + build.yml). Receipt: docs/v2/07-uat/WU_RP_000_RECEIPT.md. Status: PASS_WITH_KNOWN_FAILURES. Remote CI run 35586291124 @ 3e916dd9 — compile SUCCESS (path fix VERIFIED in production); 3 pre-existing failures (1 flake + 2 drifts) deferred to WU-RP-002.
-- NEXT_WU: WU-RP-001 — mapear checks obligatorios + protección de main. Si permisos faltan para reglas de protección, registrar BLOCKED_EXTERNAL.
-- BLOCKERS: 3 pre-existing test failures surfaced now that CI executes (1 ConcurrentStepDispatcherTest flake in slow CI runner; 2 arch-fitness drifts 48→51 and archived path) → WU-RP-002. Branch protection not mapped → WU-RP-001.
+- LAST_CLOSED_WU: WU-RP-001 — branch protection + checks mapping + CLI installed. Receipt: docs/v2/07-uat/WU_RP_001_RECEIPT.md. Status: PASS_WITH_PROTECTION. main now protected (enforce_admins=true, strict=true, contexts=["LPR-0 CI / compile"], force-pushes/deletions off). CLI installDist + validate fixture OK. Compatibility corpus 30/30 OK.
+- NEXT_WU: WU-RP-002 — regenerate Step inventory from CoreStepRegistryFactory + receipts; reconcile 16 vs 20 counters; fix FArchL7DomainEventExhaustivityTest drift (48→51); fix Lfc0V1QuarantineFitnessTest archived path; harden ConcurrentStepDispatcherTest flake.
+- BLOCKERS: 3 pre-existing test failures surfaced now that CI executes (1 ConcurrentStepDispatcherTest flake in slow CI runner; 2 arch-fitness drifts 48→51 and archived path) → WU-RP-002. Branch protection widened to all jobs pending WU-RP-002.
 - NO_GO: iniciar core.lock/Step nuevo o publicar una release nueva mientras RP-0/RP-1 no estén verificadas; no modificar recibos históricos.
 - RELEASE_REFERENCE: v0.39.0 (certificada documentalmente en SU commit y canal GitHub); HEAD posterior NOT_YET_RECERTIFIED.
 - HISTORY: docs/historico/INDEX.md.

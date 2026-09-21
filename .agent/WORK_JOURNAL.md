@@ -56,3 +56,37 @@
   gh run list --workflow=lpr0-ci.yml --limit 3
   gh run view <new-run-id> --json jobs
   ```
+
+### 2026-09-21T10:08Z — WU-RP-001 — branch protection + checks mapping + CLI installed (PASS_WITH_PROTECTION)
+
+- Base SHA / HEAD SHA / branch: base = 7fd407ef827cb4ea47339b8ba76277a55841d95f (post WU-RP-000 final); HEAD = 7fd407ef (no source change in this WU); branch = main.
+- Intención: ROADMAP.md §2 WU-RP-001 — mapear checks obligatorios + protección de main + recoger resultados reales (no skipped) de compile/domain/events/architecture/application/compatibility/CLI instalada/release; comprobar GitHub Actions del SHA. Si permisos faltan para reglas de protección, registrar BLOCKED_EXTERNAL.
+- Decisión/ADR; rutas modificadas: 0 source files; 1 GitHub API call (PUT branch protection); receipts + state files. No se requieren ADRs nuevos.
+- Tests realmente ejecutados:
+  - `gh api repos/Rubentxu/pipeline-kotlin/branches/main/protection` (pre) → HTTP 404 "Branch not protected".
+  - `gh api -X PUT repos/Rubentxu/pipeline-kotlin/branches/main/protection` (apply) → HTTP 200. enforce_admins=true, strict=true, contexts=["LPR-0 CI / compile"], force-pushes=false, deletions=false.
+  - `gh api repos/Rubentxu/pipeline-kotlin/branches/main/protection` (post-verify) → re-read confirms same state.
+  - `gh api repos/Rubentxu/pipeline-kotlin/actions/workflows` → 4 active workflows (LPR-0 CI, V2 Baseline CI, SDKMAN publish, Legacy V1 Release). build.yml absent (removed by WU-RP-000).
+  - `cd v2 && ./gradlew :pipeline-application:installDist --no-daemon --quiet` → exit 0. Launcher at v2/pipeline-application/build/install/pipelinek/bin/pipelinek.
+  - `./v2/.../pipelinek validate v2/compatibility/01-basic.pipeline.kts` → exit 0, "VALIDATION SUCCESSFUL".
+  - `cd v2 && ./gradlew :pipeline-application:test --tests "*CompatibilityCorpusTest*" --no-daemon --quiet` → exit 0. XML aggregate: tests=30 failures=0 errors=0 skipped=0.
+  - `gh release list --limit 1` → v0.39.0 "pipelinek 0.39.0 — Local Production Ready (LPR-GATE-1)" published 2026-09-19T09:28:28Z (NO_GO: not modified).
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS_WITH_PROTECTION. Branch protection applied; compile-only gating for now (widening pending WU-RP-002 — otherwise main becomes unmergeable today given 3 pre-existing failures).
+- Bloqueos y riesgo residual:
+  - R1: Branch protection currently gates ONLY `LPR-0 CI / compile`. After WU-RP-002 closes the 3 known failures, widen required_status_checks to include domain-unit and architecture-fitness (and CompatibilityCorpusTest as a nightly gate).
+  - R2: HEAD = 7fd407ef unchanged; no new commit needed beyond state + receipt.
+  - R3: 3 pre-existing failures still surface on the protected compile-gated main. WU-RP-002 must close before broadening protection.
+- Puntero actualizado: NEXT_WU = WU-RP-002 (regenerate Step inventory + reconcile counter/path drift + harden ConcurrentStepDispatcherTest flake). Primer comando reproducible:
+  ```bash
+  cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+  # Confirm branch protection is in place
+  gh api repos/Rubentxu/pipeline-kotlin/branches/main/protection | python3 -c "import json,sys; print(json.load(sys.stdin).get('enforce_admins',{}).get('enabled'))"
+  # Inventory Steps
+  grep -E "Core\w+Step|registerInto" v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt
+  # Arch-fitness counter
+  grep -nE "expectedCount|has_48_variants|has_51_variants" v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/FArchL7DomainEventExhaustivityTest.kt
+  # Archived path test
+  grep -nE "pipeline-kotlin-local-foundation-consolidation|UAT_CATALOG" v2/pipeline-architecture-tests/src/test/kotlin/dev/rubentxu/pipeline/v2/architecture/Lfc0V1QuarantineFitnessTest.kt
+  # Flake test
+  cat v2/pipeline-domain/src/test/kotlin/dev/rubentxu/pipeline/v2/domain/ConcurrentStepDispatcherTest.kt
+  ```

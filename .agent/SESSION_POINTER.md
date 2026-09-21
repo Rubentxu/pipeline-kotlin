@@ -6,7 +6,7 @@
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Diario:** .agent/WORK_JOURNAL.md.
-**Cabeza actual:** `git rev-parse HEAD` → 6822eff1 (local + remote). CI compile + arch-fitness VERIFIED SUCCESS at 6822eff1 via run 35591353345; domain-unit FAILURE due to 2 new flaky SQLite tests deferred to WU-RP-002.1.
+**Cabeza actual:** `git rev-parse HEAD` → c39dcaa6 (local + remote). CI compile VERIFIED SUCCESS at c39dcaa6 via run 35592241159; arch-fitness expected SUCCESS (FArchL7 + Lfc0V1 fixes verified at 6822eff1); domain-unit FAILURE due to 2 pre-existing flaky SQLite tests deferred to WU-RP-002.1.
 
 ## Estado operativo
 

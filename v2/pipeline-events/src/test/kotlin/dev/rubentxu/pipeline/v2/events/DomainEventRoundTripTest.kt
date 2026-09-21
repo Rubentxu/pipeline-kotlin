@@ -325,13 +325,13 @@ class DomainEventRoundTripTest {
     }
 
     @Test
-    fun `sealed hierarchy contains 48 variants`() {
+    fun `sealed hierarchy contains 51 variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
         val count = sealedSubclasses.size
         assertEquals(
-            48,
+            51,
             count,
-            "DomainEvent sealed hierarchy must have exactly 48 variants (added StashCreated/StashRestored/StashFailed in WU-LPR-089). Found: ${sealedSubclasses.map { it.simpleName }}"
+            "DomainEvent sealed hierarchy must have exactly 51 variants (48 + 3 added in WU-LPR-090: HtmlReportPublished/HtmlReportSkipped/HtmlReportFailed). Found: ${sealedSubclasses.map { it.simpleName }}"
         )
     }
 }

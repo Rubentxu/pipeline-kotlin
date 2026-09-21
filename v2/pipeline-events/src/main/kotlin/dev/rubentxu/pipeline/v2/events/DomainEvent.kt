@@ -991,3 +991,75 @@ data class RestoredEntry(
     val sha256: String,
     val sizeBytes: Long,
 )
+
+// ---------------------------------------------------------------------------
+// core.publishHTML (WU-LPR-090, Tier B #2) — see openspec/changes/wu-lpr-090-publish-html
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-file deterministic summary of a published HTML report (no content,
+ * no timestamp). Mirrors StashedEntry/RestoredEntry contract: stable for
+ * fingerprinting, no secret material, INV-L6-EVT-001 compliant.
+ */
+data class HtmlReportEntry(
+    val relPath: String,
+    val sha256: String,
+    val sizeBytes: Long,
+)
+
+/**
+ * Emitted when `core.publishHTML` successfully copies report files into the
+ * reports archive under a sanitized `reportName` and generates `index.html`.
+ * `entries` is the deterministic per-file summary used for fingerprinting.
+ */
+data class HtmlReportPublished(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val reportName: String,
+    val reportDir: String,
+    val entries: List<HtmlReportEntry>,
+    val targetPath: String,
+) : DomainEvent {
+    override val kind: String get() = "HtmlReportPublished"
+}
+
+/**
+ * Emitted when `core.publishHTML` is invoked with `allowMissing=true` and
+ * the report directory is missing or no files match the glob. `reason`
+ * is one of the closed values: "DIRECTORY_MISSING" or "NO_FILES_MATCHED".
+ */
+data class HtmlReportSkipped(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val reportName: String,
+    val reportDir: String,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "HtmlReportSkipped"
+}
+
+/**
+ * Emitted when `core.publishHTML` fails. `failureKind` distinguishes a
+ * typed Step failure (`SCRIPT`) from an infrastructure failure
+ * (`INFRASTRUCTURE`). `reason` is passed through `SecretPatternRegistry.scrub()`
+ * BEFORE emit (INV-L6-EVT-001 no-secret-material contract).
+ */
+data class HtmlReportFailed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val stageName: String,
+    val reportName: String,
+    val reportDir: String,
+    val failureKind: FailureKind,
+    val reason: String,
+) : DomainEvent {
+    override val kind: String get() = "HtmlReportFailed"
+}

@@ -169,5 +169,10 @@ object CoreStepRegistryFactory {
         // path that produces a StashCreated/StashRestored/StashFailed event.
         CoreStashStep.registerInto(this)
         CoreUnstashStep.registerInto(this)
+        // WU-LPR-090: register CorePublishHtmlStep (Tier B batch 2).
+        // Reaches the typed PUBLISH_HTML_OPERATIONS_CAPABILITY seam through
+        // the adapter wired at composition time; the registry seam is the only
+        // path that produces HtmlReportPublished/HtmlReportSkipped/HtmlReportFailed.
+        CorePublishHtmlStep.registerInto(this)
     }
 }

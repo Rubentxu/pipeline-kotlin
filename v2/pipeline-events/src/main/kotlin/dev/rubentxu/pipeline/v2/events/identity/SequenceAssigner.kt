@@ -22,6 +22,9 @@ import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
 import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
 import dev.rubentxu.pipeline.v2.events.GitPollChanged
+import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
+import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
+import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
 import dev.rubentxu.pipeline.v2.events.MilestoneAborted
 import dev.rubentxu.pipeline.v2.events.MilestoneReached
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
@@ -93,6 +96,10 @@ internal object SequenceAssigner {
         is StashCreated -> event.copy(sequence = sequence)
         is StashFailed -> event.copy(sequence = sequence)
         is StashRestored -> event.copy(sequence = sequence)
+        // WU-LPR-090 — core.publishHTML (Tier B #2)
+        is HtmlReportPublished -> event.copy(sequence = sequence)
+        is HtmlReportSkipped -> event.copy(sequence = sequence)
+        is HtmlReportFailed -> event.copy(sequence = sequence)
         is StepAdmissionObserved -> event.copy(sequence = sequence)
         is StepFailed -> event.copy(sequence = sequence)
         is StepFinished -> event.copy(sequence = sequence)

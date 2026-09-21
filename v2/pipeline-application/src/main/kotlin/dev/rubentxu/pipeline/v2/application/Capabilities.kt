@@ -415,3 +415,110 @@ data class StashFailed(
     val failureKind: dev.rubentxu.pipeline.v2.domain.FailureKind,
     val message: String,
 ) : StashResult
+
+// ---------------------------------------------------------------------------
+// WU-LPR-090 — core.publishHTML (Tier B #2) capability seam + closed result ADT
+// Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
+//   HtmlPublisher.java + HtmlPublisherTarget.java (MIT)
+//   sanitizeReportName() replicated verbatim in PublishHtmlSanitiser
+// ---------------------------------------------------------------------------
+
+/**
+ * Port interface for `core.publishHTML`. Mirrors the StashOperations pattern
+ * (closed result ADT, narrow declared capability, IO is in the adapter, not
+ * here). The handler consumes [PublishHtmlInput] and produces a closed
+ * [PublishHtmlResult] — no `Any?`, no nullable sentinels.
+ *
+ * Replay law: the adapter always overwrites the target directory with the
+ * current snapshot (the durable target IS the archive); a second invocation
+ * with the same inputs is idempotent.
+ */
+interface PublishHtmlOperations {
+
+    /**
+     * Copies workspace files matching [PublishHtmlInput.reportFiles] glob
+     * (Ant-style) into the run-scoped reports archive under
+     * `reports/[sanitized reportName]/`. Generates `index.html` with one
+     * `<a>` link per published file.
+     *
+     * Returns [PublishHtmlPublished] with the per-file summaries, or
+     * [PublishHtmlSkipped] (only when [PublishHtmlInput.allowMissing] is true)
+     * with a closed [PublishHtmlSkipReason], or [PublishHtmlFailed] with
+     * [dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT] for user errors
+     * (empty match, illegal name, traversal) and IO errors as
+     * [dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE].
+     */
+    fun publish(input: PublishHtmlInput): PublishHtmlResult
+}
+
+/**
+ * Input payload for `core.publishHTML` (G6 typed contract).
+ *
+ * Jenkins-verbatim signature `publishHTML(target)` where `target` is a
+ * [HtmlPublisherTarget] in upstream Java. Pipeline-K keeps the public DSL
+ * surface narrow and typed: name, reportFiles glob, reportDir (workspace
+ * relative), keepAll (replay override), allowMissing, escapeUnderscores
+ * (sanitiser mode).
+ *
+ * Validation:
+ * - `name`: non-blank, no path separators, no newlines (mirrors StashInput).
+ * - `reportDir`: non-blank, relative to workspace, no `..` segments (Zip-Slip).
+ * - `reportFiles`: non-blank Ant-style glob (default in the DSL extension).
+ */
+data class PublishHtmlInput(
+    val name: String,
+    val reportDir: String,
+    val reportFiles: String,
+    val keepAll: Boolean = false,
+    val allowMissing: Boolean = false,
+    val escapeUnderscores: Boolean = false,
+) {
+    init {
+        require(name.isNotBlank()) { "core.publishHTML 'name' must be non-blank" }
+        require('\n' !in name && '\r' !in name && '/' !in name && '\\' !in name) {
+            "core.publishHTML 'name' must not contain path separators or newlines (got '$name')"
+        }
+        require(reportDir.isNotBlank()) { "core.publishHTML 'reportDir' must be non-blank" }
+        require(!reportDir.startsWith("/") && !reportDir.startsWith("\\")) {
+            "core.publishHTML 'reportDir' must be a relative path (got '$reportDir')"
+        }
+        require(".." !in reportDir.split("/") && ".." !in reportDir.split("\\")) {
+            "core.publishHTML 'reportDir' must not contain '..' segments (Zip-Slip guard)"
+        }
+        require(reportFiles.isNotBlank()) { "core.publishHTML 'reportFiles' must be non-blank" }
+    }
+}
+
+val PUBLISH_HTML_OPERATIONS_CAPABILITY: StepCapability = StepCapability("publishhtml.operations")
+
+/** Closed ADT of publishHTML outcomes. */
+sealed interface PublishHtmlResult
+
+/** Successful publish outcome with per-file deterministic summaries. */
+data class PublishHtmlPublished(
+    val entries: List<dev.rubentxu.pipeline.v2.events.HtmlReportEntry>,
+    val targetPath: String,
+) : PublishHtmlResult
+
+/**
+ * Skipped outcome (only when [PublishHtmlInput.allowMissing] is true).
+ * `reason` is one of the closed values in [PublishHtmlSkipReason].
+ */
+data class PublishHtmlSkipped(
+    val reason: PublishHtmlSkipReason,
+) : PublishHtmlResult
+
+/** Closed set of skip reasons. */
+enum class PublishHtmlSkipReason {
+    /** The report directory does not exist in the workspace. */
+    DIRECTORY_MISSING,
+
+    /** The report directory exists but contains no files matching the glob. */
+    NO_FILES_MATCHED,
+}
+
+/** Typed failure outcome; the handler maps this to a typed failure output. */
+data class PublishHtmlFailed(
+    val failureKind: dev.rubentxu.pipeline.v2.domain.FailureKind,
+    val message: String,
+) : PublishHtmlResult

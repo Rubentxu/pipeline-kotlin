@@ -27,6 +27,9 @@ import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
 import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
 import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
 import dev.rubentxu.pipeline.v2.events.GitPollChanged
+import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
+import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
+import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
 import dev.rubentxu.pipeline.v2.events.MilestoneAborted
 import dev.rubentxu.pipeline.v2.events.MilestoneReached
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
@@ -180,6 +183,10 @@ object EnvelopeProjector {
         is StashCreated,
         is StashFailed,
         is StashRestored,
+        // WU-LPR-090 — core.publishHTML (Tier B #2)
+        is HtmlReportPublished,
+        is HtmlReportSkipped,
+        is HtmlReportFailed,
         is DirEntered,
         is DirExited,
         is DirDeleted,

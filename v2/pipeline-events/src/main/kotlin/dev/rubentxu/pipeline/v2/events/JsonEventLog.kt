@@ -322,6 +322,41 @@ object JsonEventLog {
                 sb.append(",\"reason\":")
                 sb.append(jsonString(event.reason))
             }
+            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            is HtmlReportPublished -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"reportName\":")
+                sb.append(jsonString(event.reportName))
+                sb.append(",\"reportDir\":")
+                sb.append(jsonString(event.reportDir))
+                sb.append(",\"entries\":")
+                sb.append(serializeHtmlReportEntries(event.entries))
+                sb.append(",\"targetPath\":")
+                sb.append(jsonString(event.targetPath))
+            }
+            is HtmlReportSkipped -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"reportName\":")
+                sb.append(jsonString(event.reportName))
+                sb.append(",\"reportDir\":")
+                sb.append(jsonString(event.reportDir))
+                sb.append(",\"reason\":")
+                sb.append(jsonString(event.reason))
+            }
+            is HtmlReportFailed -> {
+                sb.append(",\"stageName\":")
+                sb.append(jsonString(event.stageName))
+                sb.append(",\"reportName\":")
+                sb.append(jsonString(event.reportName))
+                sb.append(",\"reportDir\":")
+                sb.append(jsonString(event.reportDir))
+                sb.append(",\"failureKind\":")
+                sb.append(jsonString(event.failureKind.name))
+                sb.append(",\"reason\":")
+                sb.append(jsonString(event.reason))
+            }
             is DirEntered -> {
                 sb.append(",\"path\":")
                 sb.append(jsonString(event.path))
@@ -935,6 +970,64 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
+            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            "HtmlReportPublished" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val reportName = stringField(s, "reportName") ?: ""
+                val reportDir = stringField(s, "reportDir") ?: ""
+                val entries = decodeHtmlReportEntries(s)
+                val targetPath = stringField(s, "targetPath") ?: ""
+                HtmlReportPublished(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    reportName = reportName,
+                    reportDir = reportDir,
+                    entries = entries,
+                    targetPath = targetPath,
+                )
+            }
+            "HtmlReportSkipped" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val reportName = stringField(s, "reportName") ?: ""
+                val reportDir = stringField(s, "reportDir") ?: ""
+                val reason = stringField(s, "reason") ?: ""
+                HtmlReportSkipped(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    reportName = reportName,
+                    reportDir = reportDir,
+                    reason = reason,
+                )
+            }
+            "HtmlReportFailed" -> {
+                val stageName = stringField(s, "stageName") ?: ""
+                val reportName = stringField(s, "reportName") ?: ""
+                val reportDir = stringField(s, "reportDir") ?: ""
+                val failureKindStr = stringField(s, "failureKind") ?: "UNKNOWN"
+                val failureKind = try {
+                    FailureKind.valueOf(failureKindStr)
+                } catch (_: IllegalArgumentException) {
+                    FailureKind.UNKNOWN
+                }
+                val reason = stringField(s, "reason") ?: ""
+                HtmlReportFailed(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageName = stageName,
+                    reportName = reportName,
+                    reportDir = reportDir,
+                    failureKind = failureKind,
+                    reason = reason,
+                )
+            }
             "DirEntered" -> {
                 val path = stringField(s, "path") ?: ""
                 val previousPath = stringField(s, "previousPath") ?: ""
@@ -1411,6 +1504,31 @@ object JsonEventLog {
             val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
             val sizeBytes = longField(obj, "sizeBytes") ?: 0L
             RestoredEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
+        }
+    }
+
+    // WU-LPR-090 — HtmlReport helpers (compact JSON arrays, same shape as Stash).
+    private fun serializeHtmlReportEntries(entries: List<HtmlReportEntry>): String {
+        val sb = StringBuilder("[")
+        entries.forEachIndexed { idx, e ->
+            if (idx > 0) sb.append(",")
+            sb.append("{")
+            sb.append("\"relPath\":").append(jsonString(e.relPath))
+            sb.append(",\"sha256\":").append(jsonString(e.sha256))
+            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
+            sb.append("}")
+        }
+        sb.append("]")
+        return sb.toString()
+    }
+
+    private fun decodeHtmlReportEntries(s: String): List<HtmlReportEntry> {
+        val arr = extractJsonArray(s, "entries") ?: return emptyList()
+        return arr.mapNotNull { obj ->
+            val relPath = stringField(obj, "relPath") ?: return@mapNotNull null
+            val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
+            val sizeBytes = longField(obj, "sizeBytes") ?: 0L
+            HtmlReportEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
         }
     }
 

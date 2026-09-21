@@ -62,6 +62,10 @@ class InMemoryEventStore : EventSink {
             is StashCreated -> event.copy(sequence = assignedSequence)
             is StashRestored -> event.copy(sequence = assignedSequence)
             is StashFailed -> event.copy(sequence = assignedSequence)
+            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            is HtmlReportPublished -> event.copy(sequence = assignedSequence)
+            is HtmlReportSkipped -> event.copy(sequence = assignedSequence)
+            is HtmlReportFailed -> event.copy(sequence = assignedSequence)
             // ML-R9 workflow-control events
             is DirEntered -> event.copy(sequence = assignedSequence)
             is DirExited -> event.copy(sequence = assignedSequence)

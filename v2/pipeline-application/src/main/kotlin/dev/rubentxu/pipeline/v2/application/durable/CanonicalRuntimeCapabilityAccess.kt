@@ -20,6 +20,9 @@ import dev.rubentxu.pipeline.v2.application.ArchiveArtifactsOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.STASH_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.StashOperations
 import dev.rubentxu.pipeline.v2.application.StashOperationsAdapter
+import dev.rubentxu.pipeline.v2.application.PUBLISH_HTML_OPERATIONS_CAPABILITY
+import dev.rubentxu.pipeline.v2.application.PublishHtmlOperations
+import dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
@@ -237,6 +240,24 @@ open class CanonicalRuntimeCapabilityAccess(
                 workspaceBase = context.workspaceBase,
             )
             builder[STASH_OPERATIONS_CAPABILITY] = stashOps
+        }
+        // WU-LPR-090: core.publishHTML capability. Same conditional exposure as
+        // STASH_OPERATIONS_CAPABILITY — bound ONLY when controlDirRoot is supplied
+        // (production path). Absent otherwise so the registry boundary fails
+        // closed at admission. CorePublishHtmlStep shares the same
+        // PUBLISH_HTML_OPERATIONS_CAPABILITY seam.
+        context.controlDirRoot?.let { root ->
+            val publishHtmlOps: PublishHtmlOperations = PublishHtmlOperationsAdapter(
+                runIdString = context.runId,
+                stageIdentity = StageIdentity(
+                    name = context.stageName,
+                    index = context.stageIndex,
+                ),
+                controlDirRoot = root,
+                eventSink = context.eventSink,
+                workspaceBase = context.workspaceBase,
+            )
+            builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
         }
         // S2-A9 spike: milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the

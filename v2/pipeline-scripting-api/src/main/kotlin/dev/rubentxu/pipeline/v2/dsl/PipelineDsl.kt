@@ -2119,6 +2119,61 @@ class StageScope(
     }
 
     // =============================================================================
+    // WU-LPR-090 (Tier B #2): core.publishHTML DSL extension
+    // =============================================================================
+
+    /**
+     * Publishes an HTML report from the stage workspace into the run-scoped
+     * reports archive.
+     *
+     * Jenkins verbatim: `publishHTML(target: HtmlPublisherTarget)` where
+     * `target` carries name, reportFiles, reportDir, keepAll, allowMissing,
+     * escapeUnderscores. Pipeline-K keeps the public DSL surface narrow and
+     * typed (positional + named args) instead of a target POJO.
+     *
+     * Lowers directly to `StepSpec.RegistryStepSpec` for `core.publishHTML`
+     * with the canonical encoded envelope
+     * `{"kind":"publishHTML","name":"<n>","reportDir":"<r>","reportFiles":"<f>",...}`
+     * — byte-for-byte identical to `CorePublishHtmlStep.inputCodec.encode()`
+     * so the durable fingerprint round-trips through the G5 registry path.
+     *
+     * @param name Logical name of the report (used to derive the archive
+     *             subdirectory; sanitised by [dev.rubentxu.pipeline.v2.application.PublishHtmlSanitiser]).
+     * @param reportDir Workspace-relative directory containing the report files.
+     * @param reportFiles Ant-style glob (default `**` recursive match).
+     * @param keepAll Whether to keep historical reports across runs (Pipeline-K
+     *                 treats this as a typed hint; v1 always overwrites).
+     * @param allowMissing When true, do not fail the Step if the directory or
+     *                     glob is empty (emit `HtmlReportSkipped` instead).
+     * @param escapeUnderscores When true, escape `_` in the sanitised name (Jenkins-canonical).
+     */
+    @JvmOverloads
+    fun publishHTML(
+        name: String,
+        reportDir: String,
+        reportFiles: String = "**",
+        keepAll: Boolean = false,
+        allowMissing: Boolean = false,
+        escapeUnderscores: Boolean = false,
+    ) {
+        val sb = StringBuilder()
+        sb.append("{\"kind\":\"publishHTML\",\"name\":\"").append(escapeJsonString(name)).append("\",")
+        sb.append("\"reportDir\":\"").append(escapeJsonString(reportDir)).append("\",")
+        sb.append("\"reportFiles\":\"").append(escapeJsonString(reportFiles)).append("\"")
+        if (keepAll) sb.append(",\"keepAll\":true")
+        if (allowMissing) sb.append(",\"allowMissing\":true")
+        if (escapeUnderscores) sb.append(",\"escapeUnderscores\":true")
+        sb.append("}")
+        steps.add(
+            StepSpec.RegistryStepSpec(
+                stepKey = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.publishHTML"),
+                schemaVersion = "dsl-v1",
+                encodedInput = dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue(sb.toString()),
+            ),
+        )
+    }
+
+    // =============================================================================
     // ML-R9 timeout/retry DSL (T-10)
     // =============================================================================
 

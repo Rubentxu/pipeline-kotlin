@@ -117,11 +117,11 @@ class UatLocal005CorpusUntouchedTest {
             .sorted()
             .toList()
 
-        assertEquals(29, pipelineFiles.size,
+        assertEquals(30, pipelineFiles.size,
             "Corpus must have exactly 30 valid pipeline fixtures (WU-LPR-077 keeps the count in lock-step with CompatibilityCorpusTest; S2 added 25..29; ML-R7 byte-identity frozen in CP-001; WU-LPR-089 added 31-stash-unstash). Found: " +
             pipelineFiles.joinToString { it.fileName.toString() })
 
-        // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix; S2-A6/G3R: 1 pwd-tmp; WU-G5R6: 1 wait-until)
+        // Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix; S2-A6/G3R: 1 pwd-tmp; WU-G5R6: 1 wait-until; WU-LPR-089: 1 stash-unstash)
         // Note: 07-writeFile-readFile and 99-broken-compilation moved to broken/
         // Note: 09 renamed archive-artefacts -> sh-then-echo (F10) in v0.33.1
         val newFiles = setOf(
@@ -148,6 +148,7 @@ class UatLocal005CorpusUntouchedTest {
             "28-zip-slip-defense.pipeline.kts",
             "29-mixed-utilities.pipeline.kts",
             "30-artifact-query-bridge.pipeline.kts",
+            "31-stash-unstash.pipeline.kts",
         )
         val actualNames = pipelineFiles.map { it.fileName.toString() }.toSet()
         assertTrue(actualNames.containsAll(newFiles),

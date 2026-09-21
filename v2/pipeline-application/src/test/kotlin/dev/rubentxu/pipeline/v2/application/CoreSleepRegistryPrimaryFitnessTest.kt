@@ -188,6 +188,16 @@ class CoreSleepRegistryPrimaryFitnessTest {
     // core.fileExists (14 -> 16). E1.ecosystem-local-first then registered the
     // production core.artifact.query bridge (16 -> 17). This is registry
     // composition truth, independent of legacy-residual counters.
+    //
+    // Tier-B implementations registered subsequent to the E1 snapshot, all
+    // without breaking the registry-spine contract:
+    //   - WU-LPR-089 / 2026-09-13: core.stash + core.unstash (17 -> 19)
+    //   - WU-LPR-090 / 2026-09-13: core.publishHtml (19 -> 20)
+    // This row was stale from WU-LPR-090 (registry shape drifted but the
+    // pinning was not refreshed), surfacing only after the WU-RP-001 CI
+    // bootstrap brought the application-focused job online for the first
+    // time. WU-RP-002.2 reconciles the registry key set to the actual 20-key
+    // production shape.
     @Test fun `production registry contains exactly the registered core steps (post-E1 artifact query)`() {
         assertEquals(
             setOf(
@@ -198,6 +208,7 @@ class CoreSleepRegistryPrimaryFitnessTest {
                 "core.deleteDir", "core.milestone",
                 "core.cleanWs", "core.archiveArtifacts",
                 "core.artifact.query", "core.waitUntil",
+                "core.stash", "core.unstash", "core.publishHTML",
             ),
             CoreStepRegistryFactory.registry().keys().map { it.value }.toSet(),
         )

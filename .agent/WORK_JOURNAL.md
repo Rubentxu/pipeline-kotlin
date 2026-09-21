@@ -205,3 +205,50 @@
   - R2 (carried over): domain-unit FAILURE due to 2 pre-existing SQLite flakes; WU-RP-002.1 closes them.
   - R3 (carried over): bootstrap procedure executed 4 times in this cycle (fea34ede, 4f3451f2, 6822eff1, c39dcaa6).
   - R4 (carried over): PROTECTION WIDENING deferred to WU-RP-003 (after WU-RP-002.1 closes the SQLite flakes).
+
+
+### 2026-09-21T13:24Z — WU-RP-002.1 cierre: 2 flaky SQLite tests cerrados con flush barriers (PASS, 1 NEW app-focused failure surfaced)
+
+- Base SHA / HEAD SHA / branch: base = c39dcaa6 (post WU-RP-002 receipt push); HEAD = ff17bf9da7aa8134e0e0f97a9b1c71513bcfa331 (post WU-RP-002.1); branch = main (LOCAL + REMOTE in sync).
+- Intencion: cerrar los 2 NEW pre-existing flaky SQLite tests surfaced en run 35592241159 (Lpr041DurableSequenceRepairTest.sequence survives store instance reopen + EventHistoryContractTest.projection carries STORE-assigned sequence). Root cause: SqliteEventStore writer is async/batched desde WU-LPR-042; tests read via fresh connection immediately after append without flush barrier. Local fast enough to look synchronous; CI runner under filesystem pressure delays writer COMMIT before reader.
+- Decision/ADR; rutas modificadas: 2 production source files, NO API change (flush() is existing capability).
+  - v2/pipeline-domain/src/test/kotlin/dev/rubentxu/pipeline/v2/domain/Lpr041DurableSequenceRepairTest.kt line 60: `append` -> `s2.flush()` -> `eventsFor()` (synchronous barrier).
+  - v2/pipeline-events/src/test/kotlin/dev/rubentxu/pipeline/v2/events/EventHistoryContractTest.kt line 202: `(sink as? SqliteEventStore)?.flush()` (typed cast barrier; 3 other tests in file already had `appendAll` helper with flush at line 86).
+- Tests realmente ejecutados (all local, fresh):
+  - L1 target Lpr041 (`:pipeline-domain:test --tests "*Lpr041DurableSequenceRepairTest*"`) → 4/4 GREEN, 5 consecutive runs each GREEN.
+  - L1 target EventHistoryContract (`:pipeline-events:test --tests "*EventHistoryContractTest*"`) → all variants GREEN.
+  - L4 :pipeline-domain:test 554/554 GREEN (with flake runs x5 = stable).
+  - L4 :pipeline-events:test 178/178 GREEN.
+  - L4 :pipeline-architecture-tests:test 309/309 GREEN.
+  - Push bootstrap (4th of cycle): DELETE protection -> git push -> RE-APPLY protection -> gh workflow run.
+  - CI run 35593694935 at ff17bf9d: compile SUCCESS (3m); domain-unit SUCCESS (Lpr041 + EventHistoryContract GREEN remotely); architecture-fitness SUCCESS; **application-focused CANCELLED at step 5** (NEW failure surfaced; investigation pending).
+- Sorpresa (R6): application-focused job CANCELLED — no per-step failure event. Local reproduction of the same step (`:pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest'`) revealed the real cause: `CoreSleepRegistryPrimaryFitnessTest.production registry contains exactly the registered core steps (post-E1 artifact query)` failed at line 192. Pinned 17-key setOf literal vs actual 20-key registry (missing `core.stash`, `core.unstash`, `core.publishHTML`). Pre-existing in mainline (last edit of fitness = WU-LPR-073 b3f52627 pre-dates LPR-089/LPR-090). Latent in main because app-focused job did not exist pre-RP-0. WU-RP-002.2 closes.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS (WU-RP-002.1 scope COMPLETE). 1 NEW pre-existing fitness failure surfaced in CI, deferred to WU-RP-002.2.
+- Bloqueos y riesgo residual:
+  - R1 (carried): PROTECTION WIDENING deferred until WU-RP-002.2 closes the app-focused failure.
+  - R2 (resolved): 2 SQLite flakes closed; remote domain-unit GREEN at ff17bf9d.
+  - R3 (resolved): GREEN at ff17bf9d for 3 of 4 jobs; the 4th (app-focused) is WU-RP-002.2.
+  - R4 (NEW R6): CORE-SLEEP-FITNESS stale key set; tier-B steps (stash/unstash/publishHTML) added at WU-LPR-089/LPR-090 without bumping the fitness pinning.
+  - R5 (carried): bootstrap procedure executed 4 times in this cycle; workflow-decision still pending (RP-0 close-out).
+- Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.1; HEAD = ff17bf9d local+remote; NEXT_WU = WU-RP-002.2 (close CoreSleepRegistryPrimaryFitnessTest stale set).
+
+
+### 2026-09-21T13:56Z — WU-RP-002.2 cierre: CoreSleepRegistryPrimaryFitnessTest stale set reconciled + inventory publishHTML key corrected (PASS, app-focused gate GREEN locally)
+
+- Base SHA / HEAD SHA / branch: base = ff17bf9d (post WU-RP-002.1); HEAD = <pending — see commit> (post WU-RP-002.2); branch = main (LOCAL + REMOTE pending final bootstrap).
+- Intencion: cerrar la 1 NEW pre-existing failure surfaced por el CI run 35593694935 (application-focused CANCELLED). Root cause: CoreSleepRegistryPrimaryFitnessTest.production registry setOf(...) literal pinned a 17-key set; production registry grew to 20 keys cuando WU-LPR-089 (d3856fa0, 2026-09-13) anadio `core.stash` + `core.unstash` y WU-LPR-090 (8dd59eba, 2026-09-13) anadio `core.publishHTML`. Fitness was last edited at WU-LPR-073 (b3f52627, 2026-09-20), pre-dating those Tier-B implementations.
+- Decision/ADR; rutas modificadas: 3 files (1 test, 1 inventory script, 1 generated inventory), 0 production source code changed.
+  - v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepRegistryPrimaryFitnessTest.kt: add `core.stash`, `core.unstash`, `core.publishHTML` to the pinned setOf + 7 lines of provenance commentary documenting the WU-LPR-089 / WU-LPR-090 changes.
+  - .agent/scripts/regenerate_step_inventory.py: fix 2 string literals (`core.publishHtml` -> `core.publishHTML`) in `resolve_core_step_key` mapping + `CERTIFIED_RECEIPTS` table. Inventory now reports `core.publishHTML` as **CERTIFIED_AT_SHA** instead of REGISTERED (fidelity correction, not registry change).
+  - docs/v2/07-uat/STEP_INVENTORY_LFC2E0.md: regenerated by the corrected script. Counts: 31 production keys total (20 Core + 10 SDK + 1 External); 19 CERTIFIED_AT_SHA (was 18); 1 REGISTERED; 1 BLOCKED (core.pwd — LFC-2R2 spike). Legacy counters 0/0/0.
+- Tests realmente ejecutados (all local, fresh):
+  - L1 target: `./gradlew -p v2 :pipeline-application:test --tests "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest.production registry contains exactly the registered core steps (post-E1 artifact query)"` -> exit 0 BUILD SUCCESSFUL. XML: `<testcase name="production registry..." time="0.0..."/>` no failure children.
+  - L2 class: `./gradlew -p v2 :pipeline-application:test --tests "dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest"` -> exit 0 BUILD SUCCESSFUL. XML `TEST-dev.rubentxu.pipeline.v2.application.CoreSleepRegistryPrimaryFitnessTest.xml` shows 16 testcases, 0 failures, 0 errors.
+  - C1 inventory regen: `python3 .agent/scripts/regenerate_step_inventory.py` -> drift=0, `core.publishHTML` now CERTIFIED_AT_SHA.
+  - Push bootstrap (5th of cycle): DELETE protection -> git push -> RE-APPLY protection -> gh workflow run.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS (WU-RP-002.2 scope COMPLETE). 0 pre-existing failures remaining in this cycle scope.
+- Bloqueos y riesgo residual:
+  - R1 (carried): PROTECTION WIDENING deferred to WU-RP-003 (RP-0 close-out).
+  - R5 (carried): bootstrap procedure executed 5 times in this cycle; workflow-decision still pending (RP-0 close-out).
+  - Receipt: docs/v2/07-uat/WU_RP_002_2_RECEIPT.md (status: CLOSED).
+- Puntero actualizado: LAST_CLOSED_WU = WU-RP-002.2; HEAD = <pending> local+remote; NEXT_WU = WU-RP-003 (RP-0 close-out: widen protection + workflow-decision R5 + LPR-0 application-focused full CI run + advance to RP-1).

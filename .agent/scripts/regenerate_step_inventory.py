@@ -58,7 +58,7 @@ CERTIFIED_RECEIPTS = {
     "core.archiveArtifacts": "S2_B10_ARCHIVEARTIFACTS_G8_CERTIFICATION_RECEIPT.md",
     "core.stash": "WU_LPR_089_CORE_STASH_UNSTASH_TIER_B1.md",
     "core.unstash": "WU_LPR_089_CORE_STASH_UNSTASH_TIER_B1.md",
-    "core.publishHtml": "WU_LPR_090_CORE_PUBLISH_HTML_TIER_B2.md",
+    "core.publishHTML": "WU_LPR_090_CORE_PUBLISH_HTML_TIER_B2.md",
     "core.artifact.query": None,  # E1.1 bridge; G6/G8 pending
     "example.uppercase": "LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md",
 }
@@ -180,7 +180,7 @@ def resolve_core_step_key(class_short: str) -> str | None:
         "CleanWs": "core.cleanWs",
         "Stash": "core.stash",
         "Unstash": "core.unstash",
-        "PublishHtml": "core.publishHtml",
+        "PublishHtml": "core.publishHTML",
     }
     return mapping.get(class_short)
 

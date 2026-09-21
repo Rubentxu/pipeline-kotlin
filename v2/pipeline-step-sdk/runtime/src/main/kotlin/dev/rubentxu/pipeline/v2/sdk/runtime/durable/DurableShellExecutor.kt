@@ -1089,6 +1089,16 @@ class DurableShellExecutor : DurableShellLaunching {
                 }
             }
 
+            // The persisted flag file is the AUTHORITATIVE timeout marker
+            // (written BEFORE the kill, TMO-S-005). The in-memory flag depends on
+            // watchdog-thread scheduling AND kill completion (KILL_RESULT), so on a
+            // loaded 2-core runner it can lose the race against a wrapper that
+            // writes result.txt after its child was killed. If the flag file
+            // exists, the run timed out regardless of the exit code.
+            if (!timeoutTriggered.get() && hasTimeoutFlag(controlDir)) {
+                timeoutTriggered.set(true)
+            }
+
             // Cancel watchdog if still running
             watchdogThread?.interrupt()
 

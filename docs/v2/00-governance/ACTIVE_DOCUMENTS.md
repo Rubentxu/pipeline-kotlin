@@ -25,3 +25,12 @@ docs/historico/INDEX.md contiene el inventario de documentos trasladados. Los pa
 ## Norma de navegación y porcentajes
 
 Señalar siempre SHA, fecha y origen al presentar un estado. Distinción obligatoria: REGISTERED, IMPLEMENTED_UNCERTIFIED, CERTIFIED_AT_SHA, RELEASED_ARTIFACT, VERIFIED_ON_CURRENT_HEAD y BLOCKED. Un recuento antiguo de 16, 19 o 20 Steps no reemplaza un inventario nuevo. Sin denominador comprobado no se publica % global.
+
+## Propuesta diferida — Intelligent Test Orchestrator (ITO)
+
+- ADR-0094 PROPOSED: docs/v2/04-adrs/ADR-0094-standalone-test-orchestrator-external-step.md.
+- Contratos YAML/Git/runners/UAT/estado externo: docs/v2/03-specifications/INTELLIGENT_TEST_ORCHESTRATOR.md.
+- WUs futuras RP-4/RP-7, no cola paralela: docs/v2/05-roadmap/INTELLIGENT_TESTING_ROADMAP.md.
+- Matriz de UAT PLANNED/NOT_RUN: docs/v2/07-uat/INTELLIGENT_TEST_ORCHESTRATOR_UAT.md.
+- Guía de uso futura: docs/v2/06-quality/INTELLIGENT_TESTING_OPERATIONS.md.
+- No activar nuevo Step, modificar AGENTS/CI ni mover NEXT_WU hasta cumplir la secuencia y las UAT; required checks y matriz V2 continúan intactos.

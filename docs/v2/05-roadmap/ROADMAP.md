@@ -63,6 +63,8 @@
 **WU-RP-040:** configurar cobertura por módulo y umbrales fundamentados por riesgo (branch/line) sobre partes críticas, mutación selectiva de codecs/políticas; registrar exclusiones y @Disabled clasificados, nunca contar tests omitidos como PASS. Crear informes SAST/dependency audit/secret scan/SBOM y fijación de acciones por SHA según política de suministro.
 **WU-RP-041:** probar aislamiento del runner local, filesystem, proceso, límites de CPU/memoria/tiempo, egress y secretos; declarar claramente modelo de amenaza y diferenciar ejecución confiable de multi-tenant. Cualquier capacidad que aún sea best-effort queda fuera del perfil de ejecución no confiable.
 **WU-RP-042:** construir distZip reproducible a partir de commit inmutable, manifiesto y hashes; instalar de cero; ejecutar Gradle/Maven/Node reales, fallos de compilación, rollback/restart, uso de credenciales, CLI validate/run/inspect y corpus. Publicar sólo el ZIP EXACTO probado. Congelar API/schema para el candidato; certificación caduca si cambian los bytes.
+**WU-RP-043..047 (TST-00..04; propuesta diferida):** tras cerrar RP-0/RP-1 y completar RP-2/RP-3, implementar en RP-4 un motor Kotlin autónomo de testing Git+YAML+contratos, CLI independiente de V2, ejecución de runners multilenguaje, estado fuera del proyecto y UAT first-class. Empezar en shadow mode sin alterar required checks, matriz UAT o recibos existentes. **NO_GO** mientras RP-0/RP-1 abiertos o RP-2/RP-3 pendientes. Detalle y secuencias: INTELLIGENT_TESTING_ROADMAP.md; ADR-0094 PROPOSED, sin implementación.
+
 **Salida RP-4:** todos los checks de release vinculados a commit, artefacto, SO/JDK y logs. No declarar cobertura/seguridad/rendimiento verificados sin resultados fechados.
 
 ## 7. RP-5 — Gate Local Production Ready de main / candidata
@@ -111,6 +113,8 @@ Tras RP-5, reconciliar Tier A y B existentes sin reimplementar capacidades certi
 
 Plugins de reportes/testing/artifacts/toolchains/SCM/HTTP y coordinación local priorizados por dogfooding. Sandbox opcional OS/container y límites verificables, secreto/egress, almacenamiento local robusto, migraciones de schema, cobertura de plataforma Linux/macOS/Windows declarada por separado. Antes de extender el SDK: compatibilidad semántica/binary, identidad/digest/provenance/versión del plugin, cargas externas en instalación limpia y certificación idéntica a core. Estudiar Cedar/policy con un spike y ADR; no activar enforcement opaco sin pruebas de deny/allow/versioning.
 
+**WU-RP-071..072 (TST-05..06; propuesta posterior a RP-5):** una vez certificado el CLI en RP-4, y solo después de RP-5, ofrecerlo como plugin externo OFFICIAL_PLUGIN de testing mediante SDK público; ampliar runners Maven/pytest/Jest/Vitest/Cargo/Go por demanda. STEP-CERT G0..G8, C01..C19 aplicables, Event Harness y UAT instalada sin bypass al coordinator. No implementar durante RP-0/RP-1. Plan: INTELLIGENT_TESTING_ROADMAP.md.
+
 ## 10. RP-8 — Control plane, ejecución remota y protocolo
 
 **Dependencias:** RP-5 producto local estable, RP-7 contratos/persistencia/identidad, ADR de threat model y versionado. Recuperar M4 E5-02..10 como INPUT histórico, NO como código listo para integrar sin revalidar. Vertical: worker aislado → handshake/protobuf versionado → leases/fencing → ACK/replay/event ordering → reconexión → cancelación → multi-worker → resiliencia. Requerir mTLS/autorización, compatibilidad N/N-1, backpressure, límites, pruebas kill/network partition/duplicate y observabilidad. Seleccionar backend de transporte por spike, no por preferencia heredada. Remote storage/protocol/API incompatibles requieren autorización explícita.
@@ -126,3 +130,7 @@ Plugins de reportes/testing/artifacts/toolchains/SCM/HTTP y coordinación local 
 - Cada cierre registra fecha UTC, base SHA, HEAD SHA, WU, decisiones, paths, test argv/exit/XML, hashes de artefactos, errores abiertos, evidencia caducada, próximo primer comando y motivo. La validación histórica no se reescribe.
 - Los porcentajes se publican sólo para cohortes cerradas con denominador verificable (p. ej. WUs 2/6); si una WU está TBD, el avance global es NO_CALCULABLE.
 - La secuencia puede evolucionar por descubrimiento respaldado por un ADR/recibo, preservando trazabilidad y gates. Ni un TODO ni un comentario de código prevalecen sobre una prueba ejecutada.
+
+## 13. Propuesta diferida de testing inteligente (sin cambio en la WU actual)
+
+ITO queda planificada en RP-4 (CLI autónomo opt-in, shadow comparison) y RP-7 (plugin externo solo después de RP-5), subordinada al orden existente RP-0→RP-9. Documentación propuesta: ../04-adrs/ADR-0094-standalone-test-orchestrator-external-step.md, ../03-specifications/INTELLIGENT_TEST_ORCHESTRATOR.md, INTELLIGENT_TESTING_ROADMAP.md, ../07-uat/INTELLIGENT_TEST_ORCHESTRATOR_UAT.md, ../06-quality/INTELLIGENT_TESTING_OPERATIONS.md. Estado: PLANNED/NOT_IMPLEMENTED, todas UAT-ITO NOT_RUN. No altera UAT-RP-001..027, required CI checks, AGENTS.md ni SESSION_POINTER; el agente continúa WU-RP-005.

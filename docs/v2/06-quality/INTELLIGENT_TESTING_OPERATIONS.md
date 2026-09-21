@@ -1,0 +1,13 @@
+# Uso futuro — testing inteligente con feedback rápido y evidencia real
+
+**PROPUESTA, comandos no implementados aún; no sustituyen el CI normativo.** Puntero único: .agent/SESSION_POINTER.md; autoridad: ROADMAP.md y CERTIFICATION_PROTOCOL.md.
+
+1. Antes de cada WU verificar Git/CI, base SHA, contratos afectados y UAT; solicitar testing plan --profile dev --base <WU_BASE>, inspeccionar selector, reasons, UNKNOWN, HF necesaria y tests NO_RUN. Si ITO no está disponible, seguir comandos acotados ya existentes de AGENTS.md sin inventar un PASS.
+2. Durante un cambio pequeño, ejecutar uno o varios tests directos por lote y cerrar con closure/UAT realmente pertinentes; NO lanzar toda :pipeline-application:test por reflejo. Un cambio a API compartida, events, DSL, build, coordinator o política de testing puede exigir ensanchar a todo el ámbito afectado. El número de tests no sustituye al análisis de riesgos.
+3. Cierre de WU: testing verify produce resultado VERIFIED_SCOPED con pruebas realmente corridas, elapsed/wall, artefactos externos y explicación de tests no lanzados; no se llama CERTIFIED salvo gate completo correspondiente.
+4. PR/integración: SHA candidato inmutable + required checks reales + testing gate --profile integration con inventario obligatorio exhaustivo. Release: perfil release, ZIP exacto y UAT de producto/canal. Un shard perdido, test mandatory skipped o runner sin XML requerido invalida gate.
+5. Timeout/hang: identificar último test y árbol PID, drenar stdout/stderr, obtener dump en fallo, clasificar TIMED_OUT/INFRA_ERROR. No elevar timeout indiscriminadamente ni @Disabled para que pase CI; resolver causa y preservar cobertura.
+6. Resultados operativos SOLO en state/cache/temp OS/almacén CI externos; el repositorio conserva, si es necesario, testing.yaml y fixtures versionados, no XML o logs por iteración. Los runners ajenos que escriben build/ pueden requerir workspace externo cuando la UAT imponga cero modificaciones al proyecto.
+7. Medir startup cold/warm, plan time, primer FAIL, tiempo dev/verify/gate y skips/misses reales contra un oráculo independiente; definir SLO numéricos solo tras baseline. No optimizar acortando requisitos de producto.
+
+**Encaje de AGENTS.md:** durante TST-04, tras certificar CLI, reducir duplicidad documental y apuntar a un protocolo ejecutable; no alterar AGENTS.md ni los gates actuales solo por aprobar esta propuesta.

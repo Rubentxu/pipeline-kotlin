@@ -812,9 +812,13 @@ pipeline {
     }
 
     private fun findOpId(controlRoot: Path): String? {
+        // WU-RP-005 r12 (CI 35659766527): heuristic "contains -0 / .journal" is
+        // filesystem-order dependent and matched non-OpId entries (e.g. the stage
+        // workspace dir "TestStage-0"), yielding an opId the journal never wrote.
+        // The canonical step dir name parses as an OpId.
         return try {
             Files.find(controlRoot, 5,
-                { path, _ -> path.fileName.toString().endsWith(".journal") || path.fileName.toString().contains("-0") }
+                { path: java.nio.file.Path, _ -> dev.rubentxu.pipeline.v2.application.durable.OpId.parse(path.fileName.toString()) != null }
             ).findFirst().orElse(null)?.fileName?.toString()
         } catch (_: Exception) {
             null

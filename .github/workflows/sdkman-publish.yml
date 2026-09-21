@@ -39,17 +39,28 @@ jobs:
     env:
       VERSION: ${{ github.event.release.tag_name || github.event.inputs.version || '' }}
       # strip leading 'v' from tag_name to get the version literal
-      VERSION_LIT: ${{ github.event.release.tag_name && replace(github.event.release.tag_name, 'v', '') || github.event.inputs.version }}
+      # VERSION_LIT: computed safely. The previous expression called replace()
+      # directly on a possibly-null tag_name, which fails expression evaluation
+      # on every `push` event and killed the whole run ("workflow file issue",
+      # 0 jobs). Stripping now happens shell-side in the verify step.
+      VERSION_LIT: ${{ github.event.inputs.version || '' }}
     steps:
       - name: Verify release tag and secrets are present
+        id: verify
         env:
           SDKMAN_CONSUMER_KEY: ${{ secrets.SDKMAN_CONSUMER_KEY }}
           SDKMAN_CONSUMER_TOKEN: ${{ secrets.SDKMAN_CONSUMER_TOKEN }}
         run: |
-          if [ -z "${VERSION}" ]; then
+          RAW_TAG="${VERSION}"
+          if [ -z "${RAW_TAG}" ]; then
             echo "::error::No release tag provided"
             exit 2
           fi
+          # strip leading 'v' (shell-side: no expression parsing hazards)
+          VER="${RAW_TAG#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          VERSION_LIT="${VER}"
+          echo "Publishing version ${VER}"
           if [ -z "${SDKMAN_CONSUMER_KEY}" ] || [ -z "${SDKMAN_CONSUMER_TOKEN}" ]; then
             echo "::error::SDKMAN_CONSUMER_KEY / SDKMAN_CONSUMER_TOKEN not configured in repository secrets"
             echo "See docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md"
@@ -77,7 +88,7 @@ jobs:
           SDKMAN_CONSUMER_TOKEN: ${{ secrets.SDKMAN_CONSUMER_TOKEN }}
         run: |
           chmod +x scripts/release/sdkman-publish.sh
-          ./scripts/release/sdkman-publish.sh "${VERSION_LIT}"
+          ./scripts/release/sdkman-publish.sh "${{ steps.verify.outputs.version }}"
 
       - name: Step 2 — Install UAT (mandatory gate)
         # The UAT script validates that the version actually installs
@@ -90,7 +101,7 @@ jobs:
           source "${HOME}/.sdkman/bin/sdkman-init.sh"
           # Run UAT
           chmod +x scripts/release/sdkman-install-uat.sh
-          ./scripts/release/sdkman-install-uat.sh "${VERSION_LIT}"
+          ./scripts/release/sdkman-install-uat.sh "${{ steps.verify.outputs.version }}"
 
       - name: Step 3 — Promote to default (only after UAT PASS)
         if: success()
@@ -104,17 +115,17 @@ jobs:
             -H "Consumer-Token: ${SDKMAN_CONSUMER_TOKEN}" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
-            -d "{\"candidate\":\"pipelinek\",\"version\":\"${VERSION_LIT}\"}" \
+            -d "{\"candidate\":\"pipelinek\",\"version\":\"${{ steps.verify.outputs.version }}\"}" \
             https://vendors.sdkman.io/default
           echo
-          echo "✓ promoted ${VERSION_LIT} to default"
+          echo "✓ promoted ${{ steps.verify.outputs.version }} to default"
 
       - name: Verify default on SDKMAN
         if: success()
         run: |
           DEFAULT=$(curl -fsS "https://api.sdkman.io/2/pipelinek" | jq -r '.defaultVersion')
-          if [ "${DEFAULT}" != "${VERSION_LIT}" ]; then
-            echo "::error::SDKMAN default is '${DEFAULT}', expected '${VERSION_LIT}'"
+          if [ "${DEFAULT}" != "${{ steps.verify.outputs.version }}" ]; then
+            echo "::error::SDKMAN default is '${DEFAULT}', expected '${{ steps.verify.outputs.version }}'"
             exit 1
           fi
           echo "✓ SDKMAN defaultVersion = ${DEFAULT}"

@@ -54,6 +54,11 @@ class Lpr041DurableSequenceRepairTest {
         // Fresh instance, same DB: must continue at 51, not restart at 1.
         val s2 = SqliteEventStore(dbPath.toString())
         s2.append(newStageStarted(runId, "after-reopen"))
+        // WU-RP-002.1: SqliteEventStore writer is async/batched since WU-LPR-042;
+        // eventsFor() reads via a fresh connection and may observe the pre-COMMIT
+        // state if we don't wait for the durable barrier. flush() blocks until
+        // every enqueued append is COMMITted (the durable unit per LPR-042).
+        s2.flush()
         val events = s2.eventsFor(runId).toList()
         val seqs = events.map { it.sequence }.sorted()
         println("LPR-041: count=${seqs.size} maxSeq=${seqs.maxOrNull()} minSeq=${seqs.minOrNull()}")

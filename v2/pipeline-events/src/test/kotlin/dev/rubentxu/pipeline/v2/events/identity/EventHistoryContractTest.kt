@@ -199,6 +199,12 @@ class EventHistoryContractTest {
             projecting.append(
                 RunStarted(eventId = "eZ", runId = "run-auth", sequence = 0, occurredAt = at, scriptPath = "/p"),
             )
+            // WU-RP-002.1: SqliteEventStore writer is async/batched since LPR-042;
+            // the read-model barrier requires flush() before eventsFor(). Without
+            // it, eventsFor() may observe the pre-COMMIT state and return 0 rows
+            // (NoSuchElementException at .single() under CI filesystem pressure).
+            // InMemoryEventStore is synchronous, so flush() is a no-op there.
+            (sink as? SqliteEventStore)?.flush()
             val stored = sink.eventsFor("run-auth").single()
             assertEquals(stored.sequence, publisher.envelopes.single().sequence, "$name: envelope must carry stored sequence")
             assertEquals(1L, stored.sequence, "$name: store assigns 1 for fresh run")

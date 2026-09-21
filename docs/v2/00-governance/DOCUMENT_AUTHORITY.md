@@ -1,5 +1,8 @@
 # Document authority — Local Foundation Consolidation
 
+> **Actualización de secuencia — 2026-09-21:** este documento describe la autoridad LFC de 2026-09-03 y se conserva como contexto y garantías de ADR-0064. La autoridad ACTUAL de prioridades V2 es docs/v2/05-roadmap/ROADMAP.md, tras ADR-0082/LPR y la reconciliación RP. Consultar ACTIVE_DOCUMENTS.md; los paquetes de propuestas mencionados abajo se movieron a docs/historico/INDEX.md. ADRs y especificaciones aceptadas siguen vinculantes; la planificación antigua no es una cola adicional.
+
+
 **Status:** accepted  
 **Effective:** 2026-09-03  
 **Authority:** ADR-0064

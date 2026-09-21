@@ -1,5 +1,8 @@
 # Pipeline Kotlin V2 — Architecture & Delivery Pack
 
+> **Navegación activa 2026-09-21:** empezar por [roadmap vigente](05-roadmap/ROADMAP.md), [autoridad documental](00-governance/ACTIVE_DOCUMENTS.md), [certificación](07-uat/CERTIFICATION_PROTOCOL.md), [UAT](07-uat/PRODUCTION_READY_UAT_MATRIX.md) y el puntero .agent/SESSION_POINTER.md. Esta introducción de 2026-08 se conserva por contexto, no como la cola de implementación. Las propuestas originales están en docs/historico/INDEX.md.
+
+
 > **Scope notice (2026-09-03):** this delivery pack is retained as historical
 > evidence where it conflicts with the active
 > [Local Foundation Consolidation programme](05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md).

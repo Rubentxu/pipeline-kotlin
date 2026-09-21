@@ -423,3 +423,30 @@
 - R11 status: PARTIALLY CLOSED (WONTFIX removed from hang surface; wider hang remains).
 - Next action: WU-RP-005 (proposed) — wider investigation: which other test(s) hang? Consider @Fork(1) per-test, or reduce application-focused scope to a known-green subset, or instrument with --info + always-upload artifacts to capture XMLs.
 - Decision: do NOT add more @Disabled speculatively. The WU-RP-005 investigation must produce a measured hypothesis before changing test code.
+
+
+### 2026-09-21T18:44Z — Push fe5d89d6 + branch protection widened to 3 contexts; CI run 35627552382 triggered
+
+- Base SHA / HEAD SHA: base = f8be919d; HEAD = fe5d89d6. 10th bootstrap of RP-000 cycle.
+- Intencion: (a) pushear la propuesta WU-094 (markdown-toolkit-plugin) al ROADMAP. (b) actualizar el receipt de WU-RP-004 con el resultado real de CI 35625121462 (PASS_WITH_KNOWN_INFRA). (c) ampliar la protection del branch a 3 checks: compile + domain-unit + architecture-fitness (los 3 jobs que pasan consistentemente). Application-focused queda deferido hasta WU-RP-005.
+- Protection change:
+  - Antes: required_status_checks.contexts = ["LPR-0 CI / compile"] (1 check).
+  - Después: required_status_checks.contexts = ["LPR-0 CI / compile", "LPR-0 CI / domain-unit", "LPR-0 CI / architecture-fitness"] (3 checks). Application-focused DEFERRED.
+- CI run 35627552382 launched at fe5d89d6.
+- Next action: poll CI; verify 3 SUCCESS on first try (the widening); WU-RP-005 must address application-focused hang.
+
+
+### 2026-09-21T19:08Z — CI run 35627552382 at fe5d89d6: 3 of 4 jobs SUCCESS; branch protection widened to 3 contexts OPERATIONAL
+
+- Base SHA / HEAD SHA: base = f8be919d; HEAD = fe5d89d6.
+- Tests realmente ejecutados (CI run 35627552382 at fe5d89d6):
+  - compile SUCCESS 16:46:16 -> 16:49:40 (3m24s).
+  - domain-unit SUCCESS 16:49:43 -> 16:51:42 (1m59s).
+  - architecture-fitness SUCCESS 16:49:43 -> 16:53:01 (3m18s).
+  - application-focused FAILURE 16:53:04 -> 17:04:56 (11m52s, same wider hang pattern).
+- Branch protection status (verified via gh api):
+  - enforce_admins: true
+  - required_status_checks.contexts: [LPR-0 CI / compile, LPR-0 CI / domain-unit, LPR-0 CI / architecture-fitness]
+  - application-focused NOT in required list (deferred per WU-RP-005).
+- Outcome: RP-000 partially closed. The 3 demonstrably-green jobs are now enforced on protected main branch. CI run 35627552382 reports overall "failure" because of application-focused, but the 3 required checks are all SUCCESS, so the protection would permit merge if this were a PR.
+- Outstanding: R11 (wider application-focused hang) — WU-RP-005 to investigate and propose measured fix.

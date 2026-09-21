@@ -4,18 +4,19 @@
 id: WU-RP-001
 status: PASS_WITH_PROTECTION
 base_sha: 7fd407ef827cb4ea47339b8ba76277a55841d95f
-head_sha: fea34ededde3210113ab47ed9b3e101648f83252 (this WU pushed again; HEAD IS fea34ede)
-source_tree_sha: fea34ededde3210113ab47ed9b3e101648f83252
+head_sha: 4f3451f2ce1f9e64a0f79bc15baf55ea759280f1 (this WU pushed twice; HEAD IS 4f3451f2)
+source_tree_sha: 4f3451f2ce1f9e64a0f79bc15baf55ea759280f1
 artifact: NOT_BUILT (no new release; this WU is operational hardening only)
 artifact_sha256: NOT_BUILT
 scope: branch protection + required checks mapping + CI evidence inventory + CLI installed
 remote_ci:
   run_id_initial: 35586291124 (at 3e916dd9, WU-RP-000 head before receipt update)
-  run_id_push_target: 35587673258 (at fea34ede, WU-RP-001 head; protection gate verified here)
+  run_id_push_target_1: 35587673258 (at fea34ede, first push with compile GREEN; protection gate GREEN)
+  run_id_push_target_2: 35589016116 (at 4f3451f2, second push (receipt+state commit) with compile GREEN)
   status: completed
-  conclusion: failure (compile SUCCESS, 3 pre-existing failures persist; protection gate GREEN)
+  conclusion: failure (compile SUCCESS, 3 pre-existing failures persist; protection gate GREEN at 4f3451f2)
   jobs:
-    compile: SUCCESS (verified required check for protection at fea34ede)
+    compile: SUCCESS (verified required check for protection at 4f3451f2 via run 35589016116)
     domain-unit: FAILURE (1 pre-existing flake -- ConcurrentStepDispatcherTest)
     architecture-fitness: FAILURE (2 pre-existing drifts -- FArchL7 + Lfc0V1)
     application-focused: SKIPPED (cascade)
@@ -87,7 +88,7 @@ checks:
     exit_code: 0
     evidence: v0.39.0 "pipelinek 0.39.0 — Local Production Ready (LPR-GATE-1)" published
               2026-09-19T09:28:28Z. NOT modified by this WU (NO_GO respected).
-              HEAD fea34ede is NOT a release; CERTIFICATION_PROTOCOL §4 CHANNEL-GATE
+              HEAD 4f3451f2 is NOT a release; CERTIFICATION_PROTOCOL §4 CHANNEL-GATE
               independent of CI green.
     result: PASS_REFERENCE_ONLY (not a new release)
 
@@ -128,9 +129,9 @@ risks_residual:
         closes the 3 known failures, widen required_status_checks to include
         domain-unit / architecture-fitness (and CompatibilityCorpusTest as a nightly gate
         per RP-0 WU-RP-002 + LPR-0 lpr0-ci.yml NOTE).
-  - R2: HEAD = fea34ede on remote. compile gate GREEN at fea34ede (verified by run
-        35587673258). 3 pre-existing failures still surface, but they are not yet
-        required checks.
+  - R2: HEAD = 4f3451f2 on remote. compile gate GREEN at 4f3451f2 (verified by run
+        35589016116) and previously at fea34ede (run 35587673258). 3 pre-existing
+        failures still surface, but they are not yet required checks.
   - R3: 3 pre-existing failures still surface on the protected compile-gated main.
         Today, merges with compile-only green will land; WU-RP-002 must close this
         gap before broadening protection.

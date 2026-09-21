@@ -1,36 +1,29 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-21T18:20Z. **Tipo de cambio de esta sesión:** WU-RP-004 — Disable pre-existing WONTFIX test in `WULpr010CliCharacterizationTest.kt` whose `run()` helper hangs in uninterruptible I/O, causing application-focused CI to fail at 14 min. Change = 2 lines (1 import + 1 `@Disabled` annotation). L1+L2 GREEN (11/11 + 12/12, 1 skipped). Receipt: `docs/v2/07-uat/WU_RP_004_RECEIPT.md`.
-**Código auditado:** main @ 8f32fd417d78163a8d8b6d686edc4713ea7fb7d9 (post WU-RP-002.3 docs-only; WU-RP-004 changes staged, awaiting push).
+**Actualizado:** 2026-09-21T22:15Z. **Tipo de cambio de esta sesión:** WU-RP-005 CLOSED — RP-0 closure round r9..r12. Two production fixes (timeout classification wins over post-kill wrapper exit code; cleanup retains control dir on timeout) + two test determinism fixes (step-dir selection via OpId.parse in UatLocal004; findOpId via OpId.parse in UatLocal007). CI run 35660883142 at 174bd060: 7/7 jobs SUCCESS. Receipt: docs/v2/07-uat/WU_RP_005_TEST_EFFICIENCY_RECEIPT.md.
+**Código auditado:** main @ 9b2cf1d9 (receipt+pointer commit). WU head = 174bd060 (r12, all-green CI).
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 **Diario:** .agent/WORK_JOURNAL.md.
-**Cabeza actual:** `git rev-parse HEAD` → 8f32fd41 local+remote. Working tree: WU-RP-004 staged (1 test file + 1 receipt + SESSION_POINTER + JOURNAL). Push (9th bootstrap) will produce WU-RP-004 head.
+**Cabeza actual:** `git rev-parse HEAD` → 9b2cf1d9 local+remote.
 
 ## Estado operativo
 
-- ACTIVE_PHASE: RP-0 — CI reproducible y verdad del inventario.
-- LAST_CLOSED_WU: WU-RP-004 — `@Disabled` pre-existing WONTFIX test whose `run()` helper hangs. Verified locally: L1 11/11 GREEN, L2 12/12 GREEN. CI run 35625121462 at f8be919d still FAILURE on application-focused — WONTFIX disable removed one hang source but the suite has wider hang problems. Receipt: docs/v2/07-uat/WU_RP_004_RECEIPT.md. Status: PASS_WITH_KNOWN_INFRA — local evidence green, but CI application-focused job still cannot complete.
-- NEXT_WU: WU-RP-005 (wider investigation + RP-0 close-out). (a) Investigate other hanging tests in application-focused (which one(s)?). (b) Decide between options: `@Fork(1)` per-test with timeout, reduce scope, or instrument with --info + always-upload artifacts. (c) Widen `branch_protection.required_status_checks.contexts` to include `domain-unit` + `architecture-fitness` (those are demonstrably green) — DEFER application-focused until WU-RP-005 closes R11. (d) Decide workflow R5 (PR-based vs long-lived integration branch; 9 bootstrap pushes observed). (e) Archive RP-000 cycle, advance to RP-1.
-- BLOCKERS: R11 (PARTIALLY CLOSED) — application-focused job still cannot complete in CI due to wider hang issues in the test suite (WONTFIX disable insufficient). WU-RP-005 needed to identify and fix the other hanging tests.
-- PLANNED: WU-094 (proposed) — markdown-toolkit-plugin (3 steps: markdown.render, markdown.headings, markdown.toc). See ROADMAP §8. NO_GO until RP-0/RP-1 closed.
-- NO_GO: iniciar core.lock/Step nuevo o publicar una release nueva mientras RP-0/RP-1 no estén verificadas; no modificar recibos históricos.
-- RELEASE_REFERENCE: v0.39.0 (certificada documentalmente en SU commit y canal GitHub); HEAD posterior NOT_YET_RECERTIFIED.
-- HISTORY: docs/historico/INDEX.md.
-- TESTS_THIS_WU: local only (`cd v2 && ./gradlew :pipeline-application:test --tests "CoreSleepRegistryPrimaryFitnessTest"`). Remote CI verification pending the WU-RP-002.2 push. Locally all tests in the fitness class are green (16/16).
-- STALE_LEGACY_POINTERS: .agent/HANDOFF-WU-LPR-090.md, .agent/LPR-001_CYCLE_STATE.md, .agent/TESTING-STATE.md contienen secciones históricas de Phase D pending o contadores anteriores. NO usarlos como cola actual; conservar su evidencia y reconciliarlos en RP-002.
-- STASH_REF: 1 stash entry pre-8b5f41bf con WU-LPR-091 phase-b-untouched (handler try/catch fix + test). Preservado por NO_GO, no aplicarlo.
-- BOOTSTRAP_NOTE: Bootstrap push (DELETE protection -> push -> RE-APPLY) executed 5 times in RP-000 cycle (fea34ede, 4f3451f2, 6822eff1, c39dcaa6, ff17bf9d, <pending WU-RP-002.2>). WU-RP-003 SHOULD resolve this by adopting a PR-based workflow or a long-lived branch strategy.
+- ACTIVE_PHASE: RP-0 CLOSED (CI reproducible: lpr0-ci.yml sharded workflow, 7 required contexts green at HEAD). Awaiting RP-0 archive decision, then RP-1 — Integridad, seguridad y verdad de certificación.
+- LAST_CLOSED_WU: WU-RP-005 — root cause of application-focused budget overrun: (1) engine race — wrapper exit 0 published after watchdog SIGKILL misclassified as success (r9/r10 fixes); (2) test nondeterminism — filesystem-order dir pickers (r11/r12 fixes). All evidence in receipt rounds r9..r12.
+- NEXT_WU: RP-1 opening — UAT-SEC/ART matrix scenarios green with fresh HEAD evidence; revised certification per dimension. No new Steps (NO_GO stands).
+- BLOCKERS: none.
+- NO_GO: iniciar Step core nuevo o publicar release mientras RP-1 no cierre; no modificar recibos históricos.
+- RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED (RP-1 scope).
+- BOOTSTRAP_NOTE: 5 bootstrap cycles this session (protection PUT with plain-bool payload via Python tempfile; PATCH on subresources returns spurious 404). Contexts now: 3 base checks + 4 application shard names (literal job names).
 
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
-1. `git status --short; git rev-parse HEAD; git log -1 --format='%H %cI %s'; git log --oneline -6`.
-2. Leer AGENTS.md (protocolo inicial), este puntero, ROADMAP.md, CERTIFICATION_PROTOCOL.md, PRODUCTION_READY_UAT_MATRIX.md y el último bloque de WORK_JOURNAL.md.
-3. Contrastar `git log -1 origin/main` con HEAD local. Si divergen (ej. PRs remotos), evaluar fast-forward o merge.
-4. HEAD should be 96604dee on both local and remote; CI at that HEAD shows compile + domain-unit + architecture-fitness GREEN (3/4 jobs), with application-focused cancelled at the runner externally (not a step failure). The WU-RP-002.2 fitness fix is recorded as VERIFIED in the receipt (no assertion error observed in the CI log); the 2 NEW ADV adversarial failures are deferred to WU-RP-002.3. Branch protection ACTIVE (`LPR-0 CI / compile` required, strict=true, force-pushes/deletions off). Next: WU-RP-002.3 (close GitCheckoutExecutorAdversarialTest CI-env dependency).
-5. Si HEAD diverge, evaluar fast-forward o merge; si protection hook bloquea, ejecutar bootstrap procedure documentado en WU_RP_001_RECEIPT.md.
-6. Si no hay permisos para editar reglas de protección, registrar BLOCKED_EXTERNAL y dejar pendiente el check requerido, nunca green by inspection.
+1. `git status --short; git rev-parse HEAD; git log --oneline -6`.
+2. Leer AGENTS.md, este puntero, ROADMAP.md (§3 RP-1), WORK_JOURNAL.md último bloque.
+3. Confirmar CI verde en HEAD: `gh run list --limit 1`.
+4. Abrir RP-1: inventariar matriz UAT-SEC/ART, clasificar clases sensibles a timing (gate release, nunca debilitar aserciones), y planificar WU-RP-101.
 
 ## Handoff transaccional
 

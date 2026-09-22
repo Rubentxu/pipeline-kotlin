@@ -821,3 +821,11 @@
 - Gotcha: orden de inicialización de propiedades (stepExecutor antes que executionBoundary/factory fallback) -> movido tras ExecutionBoundaryFactory.build.
 - Tests: durable+arch/fitness 547/547, kill/resume/UAT 148/148. CI a1eeb2f7 7/7 SUCCESS.
 - WU-RP-031 CLOSED. Siguiente: WU-RP-032 (semánticas DSL).
+
+## 2026-09-22T16:02Z — WU-RP-032 CLOSED (r1+r2)
+- Base: a1eeb2f7 (post WU-RP-031). Head: **04180921**.
+- r1 (ad4cd996): defecto P1 — `post { }` aceptado en DSL pero descartado en toStageBuilder. Fix fail-closed (IllegalStateException con diagnóstico) + PostDslFailClosedTest (RED→GREEN). scripting-api 47/47, DSL/corpus 66/66, arch 313/313.
+- r2 (04180921): options de stage `retry`/`skip` eran superficie muerta (OptionSpec rows sin intérprete; solo timeout se proyecta a ShOptions). Decisión del operador: quitar superficie muerta (estados irrepresentables) en vez de rechazar en runtime. OptionsSpec/OptionsScope timeout-only, RetrySpec eliminado, toOptions simplificado. UatDsl008StageOptionsFailClosedTest 3/3. Regresión: scripting-api 47/47, UatDsl+corpus+compat+grammar 70/70, arch 313/313.
+- CI: ad4cd996 1 shard failure por infra (wrapper-validation timeout), rerun limpio -> SUCCESS; 04180921 SUCCESS (7/7).
+- Receipts: WU_RP_032_R1_RECEIPT.md, WU_RP_032_R2_RECEIPT.md.
+- Siguiente: RP-3 continúa — Step externo con/sin cuerpo por registro genérico (DSL-004/005); auditoría declaración-vs-ejecución; semánticas de cancelación.

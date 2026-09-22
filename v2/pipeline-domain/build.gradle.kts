@@ -2,6 +2,20 @@ plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
     `maven-publish`
+    // WU-RP-040 R4: selective mutation (ReplayPolicy core). Run explicitly: :pipeline-domain:pitest
+    id("info.solidsoft.pitest")
+}
+
+pitest {
+    junit5PluginVersion = "1.2.1"
+    targetClasses = listOf("dev.rubentxu.pipeline.v2.domain.durable.*")
+    targetTests = listOf(
+        "dev.rubentxu.pipeline.v2.domain.durable.*Test",
+    )
+    threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
+    timeoutConstInMillis = 10000
+    outputFormats = listOf("XML", "HTML")
+    mutators = listOf("DEFAULTS")
 }
 
 dependencies {

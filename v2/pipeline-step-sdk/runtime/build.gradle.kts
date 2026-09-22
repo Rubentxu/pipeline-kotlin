@@ -1,6 +1,23 @@
 plugins {
     kotlin("jvm")
     id("com.google.devtools.ksp")
+    // WU-RP-040 R4: selective mutation (durable decision kernels). Run explicitly: :pipeline-step-sdk:runtime:pitest
+    id("info.solidsoft.pitest")
+}
+
+pitest {
+    junit5PluginVersion = "1.2.1"
+    targetClasses = listOf(
+        "dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy*",
+        "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy",
+    )
+    targetTests = listOf(
+        "dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy*Test",
+    )
+    threads = System.getenv("PIT_THREADS")?.toInt() ?: 4
+    timeoutConstInMillis = 10000
+    outputFormats = listOf("XML", "HTML")
+    mutators = listOf("DEFAULTS")
 }
 
 group = "dev.rubentxu.pipeline.v2"

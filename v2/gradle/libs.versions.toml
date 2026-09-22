@@ -7,6 +7,7 @@ junitLauncher = "1.11.4"
 protobuf = "3.25.5"
 protobufPlugin = "0.9.4"
 cyclonedx = "1.8.2"
+
 # BouncyCastle (credentials-local module only - ADR-0049 D2)
 # NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
 bouncycastle = "1.80.2"

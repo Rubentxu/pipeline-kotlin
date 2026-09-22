@@ -40,3 +40,33 @@ informes SAST/dependency audit/secret scan/SBOM; fijación de acciones por SHA.
 - Economía de Gradle (reglas 1-6), cero fabricación, no debilitar tests.
 - Cobertura NO sustituye a las UAT obligatorias; es prevención de huecos.
 - Cada ronda: evidencia local + CI del SHA antes de cerrar.
+
+## R4 RESULTADO (2026-09-22, SHA c74146e4+)
+
+**Setup final:** pitest via gradle-pitest-plugin 1.19.0 (pluginManagement en settings.gradle.kts;
+1.15 no soporta class-file major 68/JDK24: "Unsupported class file major version 68").
+
+**Módulos objetivo y configuración:**
+- `pipeline-domain`: paquete `domain.durable.*` contra `*Test` del mismo paquete.
+- `pipeline-step-sdk:runtime`: `EffectReplayPolicy*` (interface + DefaultEffectReplayPolicy).
+
+**Resultados (fresh):**
+- domain: 762 mutantes, 322 KILLED (42%), 118 SURVIVED, 322 NO_COVERAGE, 2 TIMED_OUT.
+- runtime: 20 mutantes, 10 KILLED (50%), 10 SURVIVED.
+
+**Clasificación de supervivientes (no se debilita nada, se documenta):**
+- runtime: los 10 supervivientes son mutantes EQUIVALENTES por construcción — guardas
+  (`MEMOIZED&&!hasJournal`, `EXECUTES_SUBPROCESS`, `WRITES_WORKSPACE`, READ_ONLY/SUCCEEDED)
+  cuya rama devuelve RERUN, idéntico al default fall-through. Eliminar la guarda no
+  cambia el output observable. Verificado contra la tabla de decisión del contract test.
+- domain: 322 NO_COVERAGE concentrados en clases de datos/identidad
+  (DurableTaskTerminal 140, OperationInput/Output, RetryControlIdentity...) —
+  equals/hashCode/copy sin test directo. Se registra como deuda clasificada:
+  (a)mutantes en data classes con igualdad estructural requieren tests de igualdad
+  explícitos de bajo valor relativo; (b)Reconcilers con supervivientes parciales
+  (RetryReconciler 41, Fingerprint 23) son objetivo REAL de refuerzo en futura ronda.
+
+**Decisión:** pitest se queda cableado como tarea EXPLÍCITA (no en `check`); budget
+controlado por PIT_THREADS. El umbral de kill-rate se introducirá cuando los
+NO_COVERAGE de data classes se clasifiquen/excluyan, para no convertir el gate en
+ruido. Round gate `check` verde con la nueva configuración de build.

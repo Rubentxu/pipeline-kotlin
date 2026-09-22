@@ -6,6 +6,8 @@ pluginManagement {
     plugins {
         id("com.google.devtools.ksp") version "2.3.11"
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
+        // WU-RP-040 R4: selective mutation testing (codecs/policies only).
+        id("info.solidsoft.pitest") version "1.19.0"
     }
 }
 

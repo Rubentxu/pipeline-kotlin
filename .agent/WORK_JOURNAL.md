@@ -573,3 +573,32 @@
 - Surprise: the first push-triggered run `35697313992` was cancelled by GitHub because the manual `workflow_dispatch` from earlier (`35697316273`) was still in the queue; same race pattern observed in WU-RP-101. Resolved by waiting for the dispatch to clear then re-running dispatch cleanly. Lesson recorded: with `workflow_dispatch` in flight, the push-triggered run is auto-cancelled; for a single CI confirmation per push, prefer waiting for the push-triggered run OR run dispatch alone, not both.
 - Estado anterior NOT_RUN de la entrada 06:58Z queda cerrado: **PASS_GREEN_CI**. Receipt regenerated in receipt file path `docs/v2/07-uat/WU_RP_010_RECEIPT.md` (no SHA change; same evidence as round-1 local).
 - Puntero actualizado: NEXT_WU = WU-RP-013 (test-only G7 reconciliation). Operador debe decidir si abre WU-RP-010 round 2 (MANIFEST.json) o WU-RP-011 (HTML injection, producción con escape fix) antes/después.
+
+## 2026-09-22T07:30Z — WU-RP-013 closed — G7 StepContractSuite reconciliation for core.publishHTML (PASS_GREEN_CI)
+
+- Base SHA / HEAD SHA / branch: base = 659dc1f10e2a950e95417fd1b5639230f68cbd94 (post-WU-RP-010 round 1 pointer); HEAD = 57a26d19559bc1bf5281cbc57c3c5559809e9097; branch = main.
+- Goal: extend `CorePublishHtmlStepContractSuiteTest` from the Phase-B 11 rows to the full G7 16/17 contract matrix; one test per dimension.
+- Reference implementations: EchoStepContractSuiteTest (CERTIFIED 17 rows, per-row shape) and ShStepContractSuiteTest (CERTIFIED 16 rows, harness pattern: InMemoryEventStore + InMemoryOperationJournal + InMemoryReplayCursorStore + CoreStepRegistryFactory.registry() + CanonicalDurableRunCoordinator with controlDirRoot + ShOptions workspaceRoot).
+- Decision/ADR; routes modified: 0 production files; 1 test file extended (+512/-25 lines); 1 new receipt file. NO ADR required (test-only).
+  - v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/CorePublishHtmlStepContractSuiteTest.kt (+12 G7 rows: 12 capability admission, 13 missing capability, 14 handler success, 14b canonical envelope, 15 typed failure, 16 fresh durable, 17 replay-idempotent, 18 observability, 19 divergence, 20 real DSL scenario).
+  - docs/v2/07-uat/WU_RP_013_RECEIPT.md (new immutable receipt).
+- Tests actually executed (commands, exit, XML, time):
+  - L0 compile: `cd v2 && timeout 600 ./gradlew :pipeline-application:compileTestKotlin --quiet` → exit 0, 7.7 s.
+  - L1 class: `cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'CorePublishHtmlStepContractSuiteTest' --no-daemon --rerun-tasks` → exit 0, 56 s. XML canary `TEST-dev.rubentxu.pipeline.v2.application.CorePublishHtmlStepContractSuiteTest.xml`: tests=23 failures=0 errors=0 skipped=0 time=0.71 s ts=2026-09-22T07:22:35.002Z.
+  - L2 sibling regression: `cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'CorePublishHtmlStepContractSuiteTest' --tests 'CoreStashStepContractSuiteTest' --tests 'PublishHtmlOperationsAdapterUatTest' --tests 'Lpr011r2SecretRedactionAtRestUatTest' --no-daemon` → exit 0, 1 m 6 s. 48 tests / 0 failures / 0 errors / 0 skipped. New suite 0.76 s; zero impact on neighbours.
+  - L5 round gate CI run 35699355394 (push-triggered) → 7/7 SUCCESS in 4 m 54 s on 57a26d19. Jobs: architecture-fitness, compile, application-shard (engine), application-shard (uat-local), domain-unit, application-shard (uat-dsl), application-shard (uat-core). Same pattern as WU-RP-010 round 1.
+- PASS / FAIL / BLOCKED / NOT_RUN: PASS_GREEN_CI.
+- Surprise: the 17-replay row initially asserted event-reuse (`1 → 1 events`), which is the canonical Echo pattern (READ_ONLY). For `publishHTML` with `Effect.WRITES_WORKSPACE + ReplayPolicy.MEMOIZED`, the `DefaultEffectReplayPolicy` routes to `RERUN` (handler always re-runs; event always re-emitted). The row was rewritten to assert the canonical `MEMOIZED+WRITES_WORKSPACE` semantics: archive bytes byte-identical across invocations + event re-emitted exactly once per invocation. The misleading docstring in CorePublishHtmlStep.kt lines 51-53 ("resume/reuse reproduces the persisted observation without re-publishing") is captured as an open follow-up in the receipt — out of scope for this WU (documentation-only).
+- Surprise 2: the docs-only push run 35698207209 failed at the CI `Install just` step (HTTP 403 on `https://just.systems/install.sh`); external CDN/rate-limit flake. The same WU-RP-013 push-triggered run 35699355394 succeeded, confirming the docs run was a transient infra flake.
+- Bloqueos y riesgo residual:
+  - Same residual as WU-RP-010 round 1: UAT-RP-005 invariant 3 (archive MANIFEST.json) FAIL_PROVEN at production level, deferred to operator.
+  - All other WU-RP-01x items (RP-011 HTML injection; RP-012 stash symlink safety; RP-010 round 2 manifest) require explicit operator authorization for production changes (security boundaries per AGENTS.md §5). Test-only headroom in RP-1 is now exhausted.
+- Puntero actualizado: HEAD = 57a26d19, CI verde. NEXT_WU awaits operator decision: (a) WU-RP-011 production escape fix, (b) WU-RP-012 production symlink safety, (c) RP-2 start with operator sign-off, (d) WU-RP-010 round 2 (MANIFEST.json).
+- Primer comando reproducible:
+  ```bash
+  cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+  git add -f .agent/SESSION_POINTER.md .agent/WORK_JOURNAL.md docs/v2/07-uat/WU_RP_013_RECEIPT.md
+  git commit -m "docs(pointer): WU-RP-013 closed (CI 35699355394 7/7 SUCCESS)"
+  git push origin main
+  gh run list --limit 1
+  ```

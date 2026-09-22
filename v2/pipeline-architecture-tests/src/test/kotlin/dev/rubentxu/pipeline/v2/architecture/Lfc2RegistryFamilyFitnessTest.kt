@@ -26,6 +26,10 @@ class Lfc2RegistryFamilyFitnessTest {
         .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalDurableRunCoordinator.kt")
     private val familySource = ScannerSupport.v2Root()
         .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/StructuralStepFamily.kt")
+    // WU-RP-031 E3: family classification + typed admission live in the extracted
+    // collaborator; the fitness follows the seam, not the coordinator file.
+    private val typedPreparationSource = ScannerSupport.v2Root()
+        .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/DurableTypedInputPreparation.kt")
 
     private fun read(path: java.nio.file.Path): String {
         require(Files.exists(path)) { "Expected source not found: $path" }
@@ -35,14 +39,22 @@ class Lfc2RegistryFamilyFitnessTest {
     /** Structural-family routing is the ONLY prepare-selection form in the coordinator. */
     @Test
     fun `coordinator prepares by closed structural family, never by step name`() {
-        val source = read(coordinatorSource)
+        // E3: the coordinator delegates to the preparation collaborator; the closed-family
+        // classification and the family switch now live in DurableTypedInputPreparation.
+        val source = read(typedPreparationSource)
         assertTrue(
             source.contains("StructuralFamilyResolver.classify"),
-            "Coordinator must classify the invocation into a closed StructuralStepFamily before prepare",
+            "Typed preparation must classify the invocation into a closed StructuralStepFamily before prepare",
         )
         assertTrue(
             source.contains("when (family)"),
-            "Coordinator must switch its prepare strategy on the structural family token",
+            "Typed preparation must switch its prepare strategy on the structural family token",
+        )
+        // The coordinator must not inline its own family switch outside the collaborator seam.
+        val coordinator = read(coordinatorSource)
+        assertFalse(
+            coordinator.contains("StructuralFamilyResolver.classify"),
+            "Coordinator must delegate family classification to DurableTypedInputPreparation",
         )
     }
 

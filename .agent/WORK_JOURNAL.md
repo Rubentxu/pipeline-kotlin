@@ -861,3 +861,10 @@
 - runtime EffectReplayPolicy*: 20 mutantes, 50% kill; 10 supervivientes demostrados EQUIVALENTES (guardas con rama RERUN == default fall-through).
 - pitest queda como tarea explícita fuera de `check`. Gate check verde. CI run 35762505892 SUCCESS.
 - WU-RP-040 COMPLETA (R1 cobertura, R2 SHA-pinning, R3 gitleaks+SBOM, R4 mutación). Siguiente: WU-RP-041 aislamiento runner (incluye deuda cancelación de cuerpos externos de RP-3).
+
+## 2026-09-22 WU-RP-041 S1-S3 (aislamiento runner local)
+- Base: 998e8073. Head código: d9e8f44a (S1 7c54ddc1 + S2/S3 d9e8f44a).
+- S1: paridad de cancelación por deadline en hijos de cuerpo externo (deuda #1 RP-3). Test 2/2: TIMEOUT tipado, FAILED_TIMEOUT durable, TimeoutScheduled antes del hijo, sin colgado. Cero cambio de producción.
+- S2/S3: threat model (WU_RP_041_RUNNER_ISOLATION_THREAT_MODEL.md), RunnerTrustProfile ADT (multi-tenant irrepresentable en L3, fail-closed ADR-0016 M5/M9), pins de leyes de proyección dir (3/3) y del ADT (3/3). CPU/mem/egress declarados fuera del perfil no confiable.
+- Verificación: T2 runtime+application BUILD SUCCESSFUL (839s, 0 fallos); L5 gate check incremental BUILD SUCCESSFUL (1m53s). CI del head final: PENDING.
+- Pendiente para cierre WU: CI verde del head final; entonces NEXT_WU pasa a WU-RP-042.

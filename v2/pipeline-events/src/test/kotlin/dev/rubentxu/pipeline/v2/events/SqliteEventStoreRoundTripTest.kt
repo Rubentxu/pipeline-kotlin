@@ -53,7 +53,14 @@ class SqliteEventStoreRoundTripTest {
             diagnostics = emptyList(),
         ))
 
-        // Close and reopen
+        // Close and reopen.
+        // close() flushes the batch queue and joins the single writer thread,
+        // so every appended event is COMMITted before we reopen. Without it,
+        // the reopen/read races the writer thread (appends are async, batched
+        // COMMIT): locally the writer usually wins, on CI it sometimes has not
+        // committed yet and the read sees fewer rows (observed 2x in CI,
+        // 2026-09-22 runs 35781433830/35783311106). Same lesson as 59a576e5.
+        store.close()
         val reopened = SqliteEventStore(dbFile)
         val events = reopened.eventsFor(runId).toList()
 

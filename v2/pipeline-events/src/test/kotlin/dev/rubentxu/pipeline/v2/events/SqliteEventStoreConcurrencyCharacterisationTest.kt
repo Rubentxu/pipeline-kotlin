@@ -130,6 +130,9 @@ class SqliteEventStoreConcurrencyCharacterisationTest {
 
         val second = SqliteEventStore(dbFile)
         val assigned = second.appendAssigned(runStarted("r-6", runId))
+        // The new event is enqueued for the writer thread. flush() is
+        // required before reading from a separate connection.
+        second.flush()
         assertEquals(6L, assigned.sequence, "after restart, sequence must continue from MAX+1, not restart at 1")
 
         val all = second.eventsFor(runId).toList()

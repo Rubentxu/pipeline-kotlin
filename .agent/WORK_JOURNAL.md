@@ -634,3 +634,39 @@
   - XML canary regenerated: `pipeline-application/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest.xml` (timestamp 2026-09-22T07:49:50Z).
 - **CLOSURE_DOCS**: `docs/v2/07-uat/WU_RP_011_RECEIPT.md` (this commit).
 - **PUNtero**: HEAD = `ae6b334e`. NEXT_WU = WU-RP-012 (stash symlink safety) — pending operator sign-off per AGENTS.md §5.
+
+---
+
+## 2026-09-22T08:18Z — WU-RP-011 round 2 CLOSED
+
+- **WHAT**: Paths confinement + symlink filter on `reportDir`. The WU-RP-011 charter (ROADMAP L42) has TWO parts: (1) HTML escape (round 1, closed) and (2) "confinar reportDir por ruta real y no seguir symlinks; pruebas de traversal, symlinks intermedios y directos, Unicode y archivos maliciosos" (this round). Three pre-flight checks added in `publish()`:
+  1. `reportDir.toRealPath()` must start with `workspaceRoot.toRealPath()` (rejects symlinks that escape the workspace).
+  2. `Files.isSymbolicLink(reportDir)` rejected even when the symlink resolves INSIDE the workspace (because `AntStyleGlob.match` calls `Files.walk` without `NOFOLLOW_LINKS`, so a contained symlink would still expose unintended files).
+  3. IOException during `toRealPath()` captured with typed `FailureKind.SCRIPT` (script-author error) or `FailureKind.INFRASTRUCTURE` (workspace unresolvable).
+- **WHY**: Before this fix, the `startsWith(workspaceRoot)` check at L63 used `normalize()`, which does NOT follow symlinks. A symlink at `<ws>/build/reports` → `/tmp/external` would pass the lexical check, and `AntStyleGlob.match` would follow the symlink and walk the external tree, copying its contents into the report archive. CWE-22 (Path Traversal) and CWE-59 (Link Following) mitigation.
+- **WHERE**:
+  - `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapter.kt` — 41 lines added (1 import + 3 pre-flight checks) before the existing `Files.exists(reportDir)` block. All additive, no existing code touched.
+  - `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapterUatTest.kt` — 5 new tests (rp011r2 series) at the end of the class.
+- **DECISIONS**:
+  - Did NOT modify `AntStyleGlob.match` to add a `noFollowLinks` parameter. AntStyleGlob is a tier-1 shared component with 9+ call-sites and many tests; modifying it would touch other adapters (ArchiveArtifactsOperations, StashOperationsAdapter). Keeping the change local to `PublishHtmlOperationsAdapter` is more surgical and limits blast radius.
+  - Used `Files.isSymbolicLink(reportDir)` for the "symlink stays inside the workspace" case. `reportDir != reportDirReal` is not reliable because of macOS `/tmp` → `/private/tmp` canonicalisation, but `isSymbolicLink` is filesystem-truthful.
+  - Used `try/catch IOException` for both `toRealPath()` calls, distinguishing `FailureKind.SCRIPT` (user provided a broken symlink / non-resolvable path) from `FailureKind.INFRASTRUCTURE` (the workspace itself cannot be resolved). Per AGENTS.md: typed failures are values, not exceptions.
+- **CHALLENGES**:
+  - First L1 had two tests failing because I was trying to test cases that the input init-block already rejects (absolute paths, `..` segments). The init block of `PublishHtmlInput` does early defense-in-depth. Fix: replaced those tests with tests that exercise the adapter-level pre-flight (the new defense), not the input-validation layer.
+  - First attempt added a redundant `if (reportDir != reportDirReal && ...)` guard around `isSymbolicLink` — simplified to just `Files.isSymbolicLink(reportDir)`, which is the canonical answer.
+- **LEARNED**:
+  - When a defensive check exists in TWO places (input init-block + adapter pre-flight), the tests should target each layer separately, not duplicate. Each layer's tests should fail when that specific layer is removed.
+  - `Files.isSymbolicLink(p)` does NOT follow the chain. `p.toRealPath()` DOES. The two answers answer different questions; pick the one that matches the policy.
+  - macOS adds a `/private/tmp` ↔ `/tmp` symlink that makes simple path-equality checks unreliable across platforms. Prefer `Files.isSymbolicLink` over string comparisons.
+- **EVIDENCE**:
+  - Commit: `d3e9b9b6`.
+  - Push: `68d4b91b..d3e9b9b6 main -> main`, bypassed rule violations: 7/7 status checks expected.
+  - CI: `35703522593` `LPR-0 CI`, `conclusion: success`, `headSha: d3e9b9b60e6bc420e0434a4ca7aaf0690ab847e2`, duration 5m 52s, jobs 7/7 success.
+  - L0 compile: `:pipeline-application:compileTestKotlin` 13s (incremental from cold).
+  - L1 rp011r2*: 5/5 PASS in 0.128s.
+  - L2 sibling regression: `PublishHtmlOperationsAdapterUatTest` 14/14 PASS in 0.180s.
+  - L4 round gate (compile + SDK + domain + artefacts): 13s BUILD SUCCESSFUL.
+  - XML canary regenerated: `pipeline-application/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest.xml`.
+- **CLOSURE_DOCS**: Updated `docs/v2/07-uat/WU_RP_011_RECEIPT.md` (this commit) — appended round 2 section.
+- **PUNtero**: HEAD = `d3e9b9b6`. NEXT_WU = WU-RP-012 (stash symlink safety) — pending operator sign-off.
+- **WHAT_NEXT**: UAT-RP-006 (HTML injection) and UAT-RP-007 (paths publish) are now COVERED by WU-RP-011 r1+r2. Remaining in RP-1: WU-RP-012 (stash symlink safety — touches production code) and WU-RP-010 r2 (archive MANIFEST.json — touches archive layout, the original invariant 3 of UAT-RP-005). Both still pending operator decision per AGENTS.md §5.

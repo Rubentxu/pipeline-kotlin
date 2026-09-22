@@ -124,3 +124,93 @@ Per AGENTS.md § "REFERENCE IMPLEMENTATION RESEARCH":
 ---
 
 **Receipt SHA:** `ae6b334e` (commit) / `35701628467` (CI run) / `2026-09-22T07:58Z` (closure timestamp).
+
+---
+
+## Round 2 — Paths confinement + symlink filter (commit `d3e9b9b6`)
+
+The WU-RP-011 charter (ROADMAP L42) is two-part. Round 1 covered part 1 (HTML escape). Round 2 covers part 2:
+
+> *confinar reportDir por ruta real y no seguir symlinks; pruebas de traversal, symlinks intermedios y directos, Unicode y archivos maliciosos.*
+
+### R2.1 Threat model
+
+A hostile report author could either:
+- make `reportDir` itself a symlink that resolves outside the workspace (e.g. `<ws>/build/reports` → `/tmp/external`);
+- place a symlink somewhere inside the reportDir tree that points to an external file (e.g. `/etc/passwd`);
+- use `..` segments that bypass `startsWith(workspaceRoot)` only at the lexical level.
+
+publish() must reject all of these before any read or copy happens, with a typed `PublishHtmlFailed(FailureKind.SCRIPT, reason)` (script-level decision, NOT infrastructure).
+
+### R2.2 Pre-flight checks added
+
+Three checks inserted in `publish()` immediately after the existing lexical `startsWith(workspaceRoot)` guard:
+
+```kotlin
+val reportDirReal: Path = try {
+    reportDir.toRealPath()
+} catch (e: IOException) {
+    // typed SCRIPT rejection — script author passed a non-resolvable reportDir
+}
+val workspaceRootReal: Path = try {
+    workspaceRoot.toRealPath()
+} catch (e: IOException) {
+    // typed INFRASTRUCTURE rejection — the workspace itself is unresolvable
+}
+if (!reportDirReal.startsWith(workspaceRootReal)) {
+    // typed SCRIPT rejection — symlink chain escapes the workspace
+}
+if (Files.isSymbolicLink(reportDir)) {
+    // typed SCRIPT rejection — symlink at any level of the reportDir chain
+}
+```
+
+`toRealPath()` resolves the entire symlink chain (not just `normalize()` which only collapses `..` lexically). `Files.isSymbolicLink` answers the definitive question for the "symlink stays inside the workspace" case without following the chain.
+
+### R2.3 Tests added (rp011r2 series, 5 tests)
+
+| # | Test | What it asserts |
+| --- | --- | --- |
+| 1 | `rp011r2 — reportDir that is a symlink resolving outside the workspace is rejected` | A symlink at `<ws>/build/reports` → `/tmp/external` is rejected with `PublishHtmlFailed(FailureKind.SCRIPT, …)` and the message contains "symlink". |
+| 2 | `rp011r2 — symlink in the file tree pointing outside the reportDir is rejected` | A file symlink `<ws>/build/reports/evil.html` → `/tmp/external/passwd.html` is rejected (pre-existing check now has a typed-message contract). |
+| 3 | `rp011r2 — symlink intermediate directory (dir pointing outside) is rejected` | A directory symlink `<ws>/build/reports/evil-dir` → `/tmp/external/nested` does NOT yield published entries from `nested/leak.html`. |
+| 4 | `rp011r2 — happy path (regular files, no symlinks) still publishes successfully` | Regression: the r2 hardening does not break the simple happy path. |
+| 5 | `rp011r2 — Unicode filename is preserved through publish (regression after escape)` | Regression: Unicode filenames survive r2 hardening. |
+
+### R2.4 Verification ladder (real, observed)
+
+| Level | Command | Result |
+| --- | --- | --- |
+| L0 | `./gradlew :pipeline-application:compileTestKotlin` | exit 0 |
+| L1 | `./gradlew :pipeline-application:test --tests '…rp011r2*'` | 5/5 PASS, 0 failures, 0 errors, 0.128s |
+| L2 | `./gradlew :pipeline-application:test --tests '…PublishHtmlOperationsAdapterUatTest'` | 14/14 PASS, 0 failures, 0 errors, 0.180s |
+| L4 | `./gradlew :pipeline-application:compileTestKotlin :pipeline-step-sdk:runtime:test :pipeline-domain:test :pipeline-artefacts-local:test` | exit 0, BUILD SUCCESSFUL in 13s |
+| L5 | CI run `35703522593` (`LPR-0 CI`) | `conclusion: success`, 7/7 jobs success, 5m 52s, head `d3e9b9b60e6bc420e0434a4ca7aaf0690ab847e2` |
+
+XML canary regenerated. All 5 rp011r2 tests have `<testcase …/>` (no `<failure>`/`<error>` children).
+
+### R2.5 Production change scope
+
+- **Diff stat:** `2 files changed, 261 insertions(+), 0 deletions(-)` (r2 alone).
+- **Production code:** `PublishHtmlOperationsAdapter.kt` — 41 lines added (1 import + 3 pre-flight checks) before the existing `Files.exists(reportDir)` block. All additive, no existing code touched.
+- **Test code:** `PublishHtmlOperationsAdapterUatTest.kt` — 5 tests added (~220 lines, all with explanatory comments); 1 helper `publishSingleRegularFile` for setup.
+- **No contract change.** Public API of `PublishHtmlOperationsAdapter` unchanged.
+- **No archive layout change.** Output files unchanged.
+- **No symlink-following anywhere in the publish path.** Even symlinks that resolve INSIDE the workspace are rejected.
+- **No historical receipt edits.** Round 1 receipt preserved verbatim above; round 2 appended below.
+
+### R2.6 UAT coverage unlocked
+
+- **UAT-RP-006 (HTML injection)**: covered by round 1 (5 rp011 tests).
+- **UAT-RP-007 (paths publish)**: covered by round 2 (5 rp011r2 tests).
+
+Both UAT matrix rows now have concrete regression coverage at HEAD `d3e9b9b6`.
+
+### R2.7 Reference implementation consulted
+
+- **Jenkins `archiveArtifacts` step** (jenkinsci/pipeline-utility-steps-plugin master): uses `FilePath` validation upstream and a `FilePathValidator` that calls `FilePath.toURI().normalize()`. Jenkins does NOT explicitly resolve symlinks at the source-tree boundary, instead relying on the agent's user-level access controls. Pipeline-K behaviour adopted: resolve `reportDir` to its real path with `toRealPath()` and verify containment. Intentional deviation: we reject even symlinks that resolve inside the workspace, because Pipeline-K agents run with controlled credentials but the workspace is often writable by the user's scripts (CI plugins, build tools), making in-workspace symlinks a plausible attack vector. Security implications: the pre-flight rejects fail-closed with typed `FailureKind.SCRIPT` rejections that include the real-path diagnostic so script authors can fix the reportDir.
+
+---
+
+**Round 2 closure SHA:** `d3e9b9b6` (commit) / `35703522593` (CI run) / `2026-09-22T08:18Z` (closure timestamp).
+**WU-RP-011 fully CLOSED** — both parts of the charter (HTML escape + paths confinement) are merged to main with green CI.

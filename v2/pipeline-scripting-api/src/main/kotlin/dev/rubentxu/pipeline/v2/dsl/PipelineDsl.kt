@@ -2208,7 +2208,19 @@ class StageScope(
         steps.add(StepSpec.RetryBlock(count = count, conditions = conditions, steps = inner.steps.toList()))
     }
 
-    fun toStageBuilder(): StageBuilder = StageBuilder(stageName, steps.toList(), options, agent, environment?.values)
+    fun toStageBuilder(): StageBuilder {
+        // WU-RP-032 / DSL-008: post conditions are accepted DSL surface whose execution
+        // semantics are NOT implemented in the compiled path. A declared post block that
+        // would silently never run is a fake fallback (forbidden); reject at compile time.
+        post?.let {
+            throw IllegalStateException(
+                "Stage '$stageName': post { } conditions are not supported by the compiled " +
+                    "execution path (WU-RP-032). Move the steps into the stage body or use " +
+                    "catchError/warnError semantics; refusing to silently ignore post.",
+            )
+        }
+        return StageBuilder(stageName, steps.toList(), options, agent, environment?.values)
+    }
 }
 
 /**

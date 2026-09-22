@@ -18,7 +18,7 @@
   - M5 maxRss ~11 GB (transcript en memoria antes de chunking): sin SLO de RSS en RP-2; candidato streaming-chunks en RP-4.
   - Flake M3 SIGPIPE child (exit 141) 1x, no determinista, 2 reruns limpios. Abierto, no bloqueante.
   - UAT-RP-018 PARTIAL: sandbox-profile 'os' requiere RP-4/5 (ADR-0016).
-- LAST_CLOSED_WU: WU-RP-031 E1 (d011b4be) + E2 (88651cc6, CI 7/7 SUCCESS; receipt WU_RP_031_E2_RECEIPT.md). E2 = DurableInvocationResolver extraído (7 métodos de reconciliación/recuperación; ctor público sin cambios; REATTACH_TIMEOUT 60s preservado). Evidencia E2: durable 296/296, arch/fitness 183/183, kill/resume/UAT 148/148.
+- LAST_CLOSED_WU: WU-RP-031 E3 (0ac304d6, CI 7/7 SUCCESS; receipts WU_RP_031_E2/E3). E2 = DurableInvocationResolver (reconciliación/recuperación). E3 = DurableTypedInputPreparation (clasificación familia + admisión tipada, ADT TypedPreparation). Fitness Lfc2RegistryFamilyFitness actualizado al seam (coordinator delega, sin switch inline). Coordinator: 2346 -> 1811 líneas.
 - NEXT_WU: **WU-RP-031 E3** — extraer TypedInputDecode (escalera E1✓ → E2✓ → E3 → E4 StepExecutor), luego WU-RP-032 (semánticas DSL).
 - NEXT_WU: **WU-RP-031** — separar por pequeñas extracciones StructuralPreparation → DurableResolution → TypedInputDecode → StepExecutor; coordinator solo lifecycle/run-stage. Cada extracción pasa golden journal/event/replay y UAT kill/resume ANTES de retirar su predecesor. Después WU-RP-032 (semánticas DSL).
 - BLOCKERS: ninguno.

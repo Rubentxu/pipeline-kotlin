@@ -809,3 +809,9 @@
 - Tests: durable 296/296, arch/fitness 183/183, kill/resume/UAT-local 148/148 (fresh XML, este SHA). NOT RUN: full check (diferido a round gate).
 - CI: 88651cc6 7/7 SUCCESS. Receipt: docs/v2/07-uat/WU_RP_031_E2_RECEIPT.md.
 - Siguiente: E3 TypedInputDecode.
+
+## 2026-09-22 — WU-RP-031 E3 (base 88651cc6 -> head 0ac304d6)
+- DurableTypedInputPreparation: familia LegacyCore/Registry + admisión tipada extraídas verbatim; ADT cerrado TypedPreparation{Ready,Rejected}. Ctor público sin cambios. Coordinator 1811 líneas.
+- Incidencia CI: primer push a0c7a41a rojo por Lfc2RegistryFamilyFitnessTest (escaneaba el archivo del coordinator, no el seam) y dos shards caídos por red del runner (ETIMEDOUT gradle wrapper-validation, re-run limpio). Fix: fitness sigue el seam y añade assertFalse de clasificación inline en el coordinator (0ac304d6, CI 7/7 SUCCESS).
+- Tests: durable+arch/fitness 547/547, kill/resume/UAT-local 148/148 (fresh XML). NOT RUN: full check (diferido).
+- Siguiente: E4 StepExecutor (cierre WU-RP-031) -> WU-RP-032.

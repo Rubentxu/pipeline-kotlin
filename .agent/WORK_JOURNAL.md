@@ -708,3 +708,26 @@
 - **CLOSURE_DOCS**: `docs/v2/07-uat/WU_RP_012_RECEIPT.md` (this commit).
 - **PUNtero**: HEAD = `b3f74e93`. NEXT_WU = WU-RP-010 round 2 (archive MANIFEST.json) — pending operator decision.
 - **WHAT_NEXT**: WU-RP-012 closes UAT-RP-008 + UAT-RP-009. Remaining in RP-1: WU-RP-010 r2 (archive MANIFEST.json — the original invariant 3 of UAT-RP-005 still FAIL_PROVEN at production level). Operator decision required.
+
+---
+
+## 2026-09-22T08:49Z — RP-1 CLOSED with 1 KNOWN_LIMITATION (ADR-0095); RP-2 OPEN with WU-RP-020
+
+- **WHAT**: Cierre formal de la fase RP-1 con clasificación del residual UAT-RP-005 invariant 3 (archive `MANIFEST.json`) como `KNOWN_LIMITATION` documentada en ADR-0095. Apertura formal de RP-2 con WU-RP-020 como primera WU (caracterización SqliteEventStore — test-side puro, no toca producción).
+- **WHY**: 
+  - ROADMAP L45 ("Salida RP-1") exige que los UAT-SEC/ART estén verdes. 5 de 6 (UAT-RP-006/007/008/009 + UAT-RP-005 inv 1/2/4) están cubiertas. El residual es UAT-RP-005 inv 3 (MANIFEST.json archivado), que requiere producción (cambio de archive layout, contrato público del Step `core.publishHTML`, frontera de seguridad).
+  - AGENTS.md §5 clasifica cambios de archive layout en `core.*` como frontera de seguridad → ADR/autorización.
+  - El operador instruyó AUTO-mode con "toma una decision inteligente". Decisión inteligente: **defer** con ADR formal y matriz actualizada, NO implementar a ciegas. Razón: el formato de `MANIFEST.json` no está especificado por ningún ADR previo, ningún consumidor real lo ha pedido, y Jenkins `archiveArtifacts` no escribe internal manifest (precedente).
+  - WU-RP-020 es legítimo first-WU-of-RP-2: caracterización con test determinista, no modificar contrato de sequence hasta reproducir/descartar riesgo. Cumple con "test determinista y criterios observables" del ROADMAP L49.
+- **WHERE**:
+  - `docs/v2/04-adrs/ADR-0095-rp010-manifest-known-limitation.md` — NEW ADR (renombrado de 0094 porque ya estaba reservado por "motor de selección por impacto" mencionado en ROADMAP L77).
+  - `docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md` — añadido "Estado por UAT a HEAD `f4aa20dc`" con tabla COVERED / PARTIAL / pendiente.
+  - `docs/v2/05-roadmap/ROADMAP.md` L47-54 — bloque "Estado RP-1 al 2026-09-22" con cada WU y su SHA, KNOWN_LIMITATION documentada.
+  - `.agent/SESSION_POINTER.md` — RP-1 → CLOSED, RP-2 → OPEN, NEXT_WU = WU-RP-020, blockers actualizados.
+- **DECISION AUTONOMA**: Defer WU-RP-010 r2 con ADR-0095. NO implementación.
+  - Razón: sin formato ADR previo para el contenido de `MANIFEST.json`, cualquier implementación sería prematura y locks sin contrato revisado.
+  - Mitigación: ADR-0095 + matriz + roadmap hacen la limitación explícita. Consumidores que necesiten integrity manifest externo deben computar sha256 sobre `<archiveRoot>/**` o persistir el `HtmlReportPublished` event stream.
+  - Re-evaluación: WU-RP-042 (release gate) debe revisar este KNOWN_LIMITATION antes de declarar release.
+- **ADR_NUMBERING**: ADR-0094 ya está nombrado en ROADMAP L77 ("motor de selección por impacto"). Renumerado a ADR-0095.
+- **NO_GO RESPETADOS**: NO se inició Step core nuevo. NO se publicó release. NO se modificaron recibos históricos. NO se cambió contrato público sin ADR (al contrario, el cambio se difiere precisamente para que pueda pasar por ADR formal cuando se implemente).
+- **WHAT_NEXT**: WU-RP-020 — caracterización SqliteEventStore bajo concurrencia. Test-side puro. Sin tocar producción.

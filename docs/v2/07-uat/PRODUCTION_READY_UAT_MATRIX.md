@@ -1,7 +1,23 @@
 # Matriz de aceptación UAT — Production Ready V2
 
-**Versión:** 2026-09-21. **Baseline:** main a554fd5544f74f580bbd531c9b394cff1e073621.
-**Importante:** esta matriz se creó como DOCUMENTACIÓN; NO se ejecutaron nuevas UAT en esta entrega. Todo resultado de HEAD comienza como NOT_RUN o BLOCKED hasta registrar evidencia del SHA y artefacto exactos. v0.39.0 tiene su receipt histórico separado. Referencia normativa: CERTIFICATION_PROTOCOL.md.
+**Versión:** 2026-09-22. **Baseline:** main `f4aa20dcb709aad3fadb6922f26b4325e49ba61b` (post RP-1 closure).
+**Importante:** esta matriz se creó como DOCUMENTACIÓN; los resultados de las UAT se registran por recibo en `docs/v2/07-uat/`. v0.39.0 tiene su receipt histórico separado. Referencia normativa: CERTIFICATION_PROTOCOL.md.
+
+## Estado por UAT a HEAD `f4aa20dc`
+
+| ID | Estado | Recibo | Notas |
+|---|---|---|---|
+| UAT-RP-001 | COVERED | LPR-0 CI runs 35697487778 / 35705391067 / 35703522593 etc. | 7/7 jobs SUCCESS sostenido. |
+| UAT-RP-002 | COVERED | LPR-0 CI run 35705391067 (artifact-upload correcto) | workflow `lpr0-ci.yml` con `v2/gradlew` y `actions/upload-artifact@v4`. |
+| UAT-RP-003 | COVERED | ADR-0069 / WU-LPR-098 | core + plugin externo misma ruta genérica; missing capability rechazado. |
+| UAT-RP-004 | COVERED | UatDsl001 / UatDsl003 / UatDsl005 / UatDsl006 | DSL scripts válidos compilan; negativos con diagnóstico. |
+| **UAT-RP-005** | **PARTIAL (KNOWN_LIMITATION inv 3)** | WU_RP_010_RECEIPT.md / ADR-0095 | inv 1, 2, 4 cubiertas. inv 3 (MANIFEST.json archivado) **diferida a WU-RP-010 r2** por ADR-0095 (security boundary + contract freeze). |
+| UAT-RP-006 | COVERED | WU_RP_011_RECEIPT.md | r1 commit `ae6b334e`. |
+| UAT-RP-007 | COVERED | WU_RP_011_RECEIPT.md | r2 commit `d3e9b9b6`. |
+| UAT-RP-008 | COVERED | WU_RP_012_RECEIPT.md | commit `b3f74e93`. |
+| UAT-RP-009 | COVERED | WU_RP_012_RECEIPT.md | rp012-roundtrip test (bit-exact stash/unstash). |
+| UAT-RP-010 | COVERED | UatEvt001 / UatEvt002 (replay) + WU-LPR-xxx event codec | roundtrip completo variantes. |
+| UAT-RP-011..018 | (pendiente) | WU-RP-020/021/022 | Cobertura corresponde a RP-2/3. Pendiente de test-side characterisation. |
 
 | ID | Gate / capacidad | Escenario ejecutable y oráculo observable | Evidencia requerida para PASS |
 |---|---|---|---|

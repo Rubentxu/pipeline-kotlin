@@ -44,6 +44,15 @@
 **WU-RP-013:** reconciliar StepContractSuite de publishHTML con sus afirmaciones G7. Añadir pruebas de handler positivo/negativo, missing capability, replay/restart, contenido de eventos y distribución instalada. Regenerar XML/certificación vinculados al SHA. Revisar familias vecinas si comparten el mismo bug de serialización.
 **Salida RP-1:** los escenarios UAT-SEC/ART incluidos en la matriz son verdes, sin escapes de ámbito ni pérdida de contenido; una certificación revisada demuestra cada dimensión obligatoria. No basta que el canario devuelva exit 0.
 
+**Estado RP-1 al 2026-09-22 (HEAD `f4aa20dc`):**
+- WU-RP-101 CLOSED (e95b3d41) — test determinism.
+- WU-RP-010 r1 CLOSED (4b93a1eb) — 4 tests E2E (UAT-RP-005 inv 1, 2, 4).
+- **WU-RP-010 r2 DEFERIDA → KNOWN_LIMITATION** (ADR-0095). UAT-RP-005 inv 3 (MANIFEST.json archivado) se reevaluará en WU-RP-042 antes de release.
+- WU-RP-013 CLOSED (57a26d19) — StepContractSuite 11→23.
+- WU-RP-011 CLOSED (ae6b334e + d3e9b9b6) — UAT-RP-006 + UAT-RP-007.
+- WU-RP-012 CLOSED (b3f74e93) — UAT-RP-008 + UAT-RP-009.
+- RP-1 cerrado con 1 KNOWN_LIMITATION documentada. **RP-2 arranca con WU-RP-020** (caracterización SqliteEventStore, test-side puro).
+
 ## 4. RP-2 — Baseline de arquitectura, determinismo y observación
 
 **WU-RP-020:** caracterizar SqliteEventStore bajo concurrencia: sequence asignada frente a orden de inserción/lectura, flush/close con productores activos, reinicio, gap, error de writer, replay y arrays anidados. No modificar el contrato de secuencia hasta reproducir o descartar el riesgo; usar test determinista y criterios observables.

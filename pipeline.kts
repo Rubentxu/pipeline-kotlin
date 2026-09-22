@@ -34,14 +34,18 @@ pipeline {
             agent("linux")
             options {
                 timeout(1800)
-                retry(2)
             }
             ansiColor("xterm") {
                 timestamps {
                     echo("pipelinek CI/CD root — Validate")
-                    sh("./v2/gradlew -p v2 :pipeline-application:installDist --quiet")
-                    sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek version")
-                    sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek doctor")
+                    // WU-RP-042 S2 (R1): retry lives in the retry Block Step
+                    // (ADR-0075, WU-RP-032 removed it from options). The
+                    // previous options { retry(2) } here did not compile.
+                    retry(2) {
+                        sh("./v2/gradlew -p v2 :pipeline-application:installDist --quiet")
+                        sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek version")
+                        sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek doctor")
+                    }
                 }
             }
         }

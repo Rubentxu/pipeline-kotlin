@@ -887,3 +887,4 @@
 - Gate L5 escalado del head: `./gradlew -p v2 check --rerun-tasks` BUILD SUCCESSFUL 14m32s (135 tareas, 212 XML frescos, 0 fallos; dentro de budget 1270s). Origen del run: kill imposible, canary XML verify OK.
 - Receipt: docs/v2/07-uat/WU_RP_042_S2_SLICE_RECEIPT.md.
 - Pendiente: CI del head final (post-receipt) → cierre formal de WU-RP-042 y NEXT_WU.
+- CI del head final e23c575d: run 35779994231 SUCCESS 9/9. WU-RP-042 CLOSED (S1+S2). SESSION_POINTER actualizado (NEXT_WU: seleccionar siguiente trabajo RP-4 desde ROADMAP; release/NO_GO vigente).

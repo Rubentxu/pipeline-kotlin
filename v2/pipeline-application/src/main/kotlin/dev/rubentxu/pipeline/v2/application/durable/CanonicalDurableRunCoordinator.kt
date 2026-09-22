@@ -18,8 +18,10 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyShape
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
+import dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
@@ -55,6 +57,8 @@ import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
+import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
+import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.StageBody
@@ -163,12 +167,10 @@ class CanonicalDurableRunCoordinator(
     // the bridge stays unwired and both Steps fail closed at runtime.
     private val artifactIndex: dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability? = null,
 
-    // B10/W1c: the body execution policy authority. The production default resolves the
-    // DECLARED policy of a block Step from the descriptor registry, bounded by the shapes
-    // this engine executes; a caller may inject another authority to characterize the
-    // fail-closed laws. Appended last so existing positional call-sites compile unchanged.
-    private val bodyPolicyResolver: BodyPolicyResolver =
-        StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING),
+    // B10/W1c + WU-RP-033: the body execution policy authority. Composed in the class body
+    // (see bodyPolicyResolver below). A caller may inject another authority to characterize
+    // the fail-closed laws. Appended last so existing positional call-sites compile unchanged.
+    private val injectedBodyPolicyResolver: BodyPolicyResolver? = null,
 
     // B11 / W2: the body-reentry adapter bound under BODY_INVOKER_CAPABILITY (ADR-0073 / ADR-0081 D1).
     // Per-run lifetime: a fresh adapter is constructed when no caller injects one; the canonical
@@ -178,8 +180,29 @@ class CanonicalDurableRunCoordinator(
     // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
 ) {
-    // WU-RP-031 E2: durable reconciliation behind a narrow collaborator (internal type
-    // kept out of the public constructor signature via the override param above).
+    // B10/W1c + WU-RP-033: the body execution policy authority. The production default
+    // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
+    //   1. the OPEN StepRegistry (same seam that resolves handlers) — a core or external
+    //      plugin Step whose descriptor declares a body resolves here identically;
+    //   2. the canonical descriptor table (StepDescriptorRegistry.standard()) — the core
+    //      block Steps without a registered handler (dir/withEnv/timeout/retry/...).
+    private val bodyPolicyResolver: BodyPolicyResolver =
+        injectedBodyPolicyResolver ?: run {
+            val canonical = StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING)
+            val fromRegistry = RegistryBodyPolicyResolver(
+                registry = NoopStepRegistry(stepRegistry),
+                support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING,
+            )
+            BodyPolicyResolver { key ->
+                when (val resolved = fromRegistry.resolve(key)) {
+                    is BodyPolicyResolution.Resolved -> resolved
+                    // Unknown in the open registry: fall back to the canonical core table.
+                    is BodyPolicyResolution.Rejected ->
+                        if (resolved.reason is BodyPolicyRejection.UnknownStep) canonical.resolve(key)
+                        else resolved
+                }
+            }
+        }
     private val invocationResolver: DurableInvocationResolver = DurableInvocationResolver(
         divergenceDetector = divergenceDetector as StrictFingerprintDivergenceDetector,
         effectReplayPolicy = effectReplayPolicy,
@@ -1803,4 +1826,31 @@ class CanonicalDurableRunCoordinator(
      * This is the EM-4 canonical body-execution IR replacement for the legacy
      * rewriteWorkflowControl linearization (core.emit.event + shell + core.emit.event).
      */
+}
+
+/**
+ * WU-RP-033: read-only [StepRegistry] view over a nullable registry. Used by the
+ * composed body-policy authority so callers that never wired a registry keep the
+ * historical behaviour (open-registry lookup returns UnknownStep and the canonical
+ * core table answers). Read-only: register/register Throws are impossible here, an
+ * invariant this adapter makes unrepresentable.
+ */
+private class NoopStepRegistry(private val delegate: StepRegistry?) : StepRegistry {
+    override fun register(definition: StepDefinition<*, *>) =
+        throw UnsupportedOperationException("NoopStepRegistry is read-only")
+
+    override fun register(registration: StepRegistration<*, *>) =
+        throw UnsupportedOperationException("NoopStepRegistry is read-only")
+
+    override fun definition(key: dev.rubentxu.pipeline.v2.domain.PluginStepId) =
+        delegate?.definition(key)
+
+    override fun providerOf(key: dev.rubentxu.pipeline.v2.domain.PluginStepId) =
+        delegate?.providerOf(key)
+
+    override fun contains(key: dev.rubentxu.pipeline.v2.domain.PluginStepId): Boolean =
+        delegate?.contains(key) ?: false
+
+    override fun keys(): Set<dev.rubentxu.pipeline.v2.domain.PluginStepId> =
+        delegate?.keys() ?: emptySet()
 }

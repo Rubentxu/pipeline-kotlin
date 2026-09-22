@@ -207,6 +207,10 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
         // NodeNoOp → outer dispatch falls through to `else -> OpaqueStepNode` (agent routing
         // step; body is the node label scope, not a child IR body).
         "NodeNoOp",
+        // RegistryBlockSpec (WU-RP-033) → generic open-registry block form; lowers via its
+        // own RegistryBlockSpec → BlockStepNode case, not the concrete-Step blockStepNode
+        // factory (zero concrete-key knowledge, same structural target).
+        "RegistryBlockSpec",
     )
 
     @Test

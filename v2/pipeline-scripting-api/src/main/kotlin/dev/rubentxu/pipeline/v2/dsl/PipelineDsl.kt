@@ -64,6 +64,35 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val type: String get() = "registry"
     }
 
+    /**
+     * Generic structural form for a body-owning (Block) Step hosted in the open
+     * StepRegistry (WU-RP-033 / RP-3 exit criterion).
+     *
+     * Mirror of [RegistryStepSpec] for Steps whose descriptor declares a body
+     * (`StepBody.Declared`): the plugin owns the StepKey, the encoded input and
+     * the typed DSL facade; the canonical child sequence is structural data the
+     * compiler lowers recursively. The runtime rejects fail-closed via the
+     * declared [BodyExecutionPolicy] resolution when the key's descriptor does
+     * not declare a body, when the declaration is incoherent, or when the engine
+     * does not support the shape.
+     *
+     * It deliberately contains NO StepDefinition, handler, codec object,
+     * capability or registry reference. The compiler lowers it to a
+     * [dev.rubentxu.pipeline.v2.domain.BlockStepNode] without knowing the
+     * concrete StepKey.
+     */
+    data class RegistryBlockSpec(
+        val stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        val schemaVersion: String = "dsl-v1",
+        val encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        val body: List<StepSpec>,
+        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
+        override val timeoutMillis: Long? = null,
+    ) : StepSpec {
+        override val name: String get() = "registryBlock"
+        override val type: String get() = "registry"
+    }
+
     data class Echo(
         val text: String,
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
@@ -1313,6 +1342,7 @@ class StageScope(
             is StepSpec.Echo -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Shell -> currentStep.copy(retry = retryPolicy)
             is StepSpec.RegistryStepSpec -> currentStep.copy(retry = retryPolicy)
+            is StepSpec.RegistryBlockSpec -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Error -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Sleep -> currentStep.copy(retry = retryPolicy)
             is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
@@ -1418,6 +1448,37 @@ class StageScope(
         schemaVersion: String = "dsl-v1",
     ) {
         steps.add(StepSpec.RegistryStepSpec(stepKey = stepKey, schemaVersion = schemaVersion, encodedInput = encodedInput))
+    }
+
+    /**
+     * Low-level generic primitive for a body-owning (Block) Step hosted in the
+     * open StepRegistry (WU-RP-033). Mirror of [registryStep] for Steps whose
+     * descriptor declares a body (`StepBody.Declared`). Plugins SHOULD wrap it
+     * in their own typed Kotlin DSL facade; same `steps { }` scope and
+     * constraints as every normal Block Step.
+     *
+     * The body is captured declaratively from [block] (data construction only)
+     * and lowered recursively by the compiler. Runtime admission resolves the
+     * key's declared [BodyExecutionPolicy] from the open registry and rejects
+     * fail-closed (unknown key, not a body Step, incoherent or unsupported
+     * declaration) BEFORE any child runs.
+     */
+    fun registryBlock(
+        stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
+        encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
+        schemaVersion: String = "dsl-v1",
+        block: StageScope.() -> Unit,
+    ) {
+        val inner = StageScope(stageName, runtimeConfig)
+        inner.block()
+        steps.add(
+            StepSpec.RegistryBlockSpec(
+                stepKey = stepKey,
+                schemaVersion = schemaVersion,
+                encodedInput = encodedInput,
+                body = inner.steps.toList(),
+            ),
+        )
     }
 
     /**

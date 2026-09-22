@@ -99,6 +99,13 @@ object BlockStepFlattener {
         when (step) {
             // Registry step is a leaf: no nested body to flatten (LB-02 / EP-F2).
             is StepSpec.RegistryStepSpec -> {}
+            // WU-RP-033: registry Block form owns a body — flatten children like any block.
+            is StepSpec.RegistryBlockSpec -> {
+                for ((idx, inner) in step.body.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    flattenImpl(inner, depth + 1, childPath, result)
+                }
+            }
             is StepSpec.WithEnv -> {
                 for ((idx, inner) in step.steps.withIndex()) {
                     val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"

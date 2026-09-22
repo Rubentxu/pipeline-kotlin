@@ -154,6 +154,22 @@ object DslCompiledPipelineCompiler {
                     ),
                 ),
             )
+            // WU-RP-033: generic open-registry Block lowering. The plugin StepKey is carried
+            // verbatim into a BlockStepNode; the canonical body children are compiled
+            // recursively (the SAME lowering every core Block Step uses). Runtime admission
+            // resolves the declared BodyExecutionPolicy from the open registry and rejects
+            // fail-closed BEFORE any child runs. The compiler never knows a concrete key.
+            is StepSpec.RegistryBlockSpec -> listOf(
+                BlockStepNode(
+                    id = StepId("$parentToken/${stableToken(step.name)}-body-$occurrence"),
+                    pluginStepId = step.stepKey,
+                    payload = VersionedStepPayload(
+                        step.schemaVersion,
+                        step.encodedInput.value,
+                    ),
+                    body = stepNodes(step.body, "$parentToken/${stableToken(step.name)}-body-$occurrence"),
+                ),
+            )
             is StepSpec.WriteFile -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),

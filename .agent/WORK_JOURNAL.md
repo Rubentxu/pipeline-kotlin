@@ -565,3 +565,11 @@
   git push origin main
   gh run list --limit 1
   ```
+
+## 2026-09-22T07:08Z — WU-RP-010 round 1 CI verification — CI verde 7/7 (PASS_GREEN_CI)
+
+- Base SHA / HEAD SHA / branch: base = e95b3d41b40a665c8815cf0678a9bc79e24912a8 (CI verde pre-RP-010); HEAD = 4b93a1ebf9664d8213e61d647ed2670078dd38ab; branch = main.
+- Push + CI run: `git push origin main` → remote accepted; CI run `35697487778` (workflow_dispatch) 7/7 SUCCESS in 4m 5s. Jobs: architecture-fitness, compile, application-shard (engine), application-shard (uat-local), domain-unit, application-shard (uat-dsl), application-shard (uat-core).
+- Surprise: the first push-triggered run `35697313992` was cancelled by GitHub because the manual `workflow_dispatch` from earlier (`35697316273`) was still in the queue; same race pattern observed in WU-RP-101. Resolved by waiting for the dispatch to clear then re-running dispatch cleanly. Lesson recorded: with `workflow_dispatch` in flight, the push-triggered run is auto-cancelled; for a single CI confirmation per push, prefer waiting for the push-triggered run OR run dispatch alone, not both.
+- Estado anterior NOT_RUN de la entrada 06:58Z queda cerrado: **PASS_GREEN_CI**. Receipt regenerated in receipt file path `docs/v2/07-uat/WU_RP_010_RECEIPT.md` (no SHA change; same evidence as round-1 local).
+- Puntero actualizado: NEXT_WU = WU-RP-013 (test-only G7 reconciliation). Operador debe decidir si abre WU-RP-010 round 2 (MANIFEST.json) o WU-RP-011 (HTML injection, producción con escape fix) antes/después.

@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm")
     application
+    alias(libs.plugins.cyclonedx)
 }
 
 group = "dev.rubentxu.pipeline.v2"

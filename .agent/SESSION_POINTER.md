@@ -1,8 +1,8 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T12:32Z. **Tipo de cambio de esta sesión:** RP-2 CLOSED (gate receipt) y **WU-RP-030 CLOSED** (connascence evento/codecs/sequence + defecto P2: 3 kinds no decodificables en JsonEventLog, fix en producción). Receipts: RP2_GATE_RECEIPT.md, WU_RP_030_RECEIPT.md. HEAD avanza sobre 32fa5924 (CI de 32fa5924: 7/7 SUCCESS; SHA del fix WU-RP-030 pendiente de CI).
+**Actualizado:** 2026-09-22T16:05Z. **Tipo de cambio de esta sesión:** **WU-RP-032 CLOSED** (r1 post{} fail-closed = ad4cd996; r2 superficie options slim = 04180921, CI SUCCESS ambos). Receipts: WU_RP_032_R1_RECEIPT.md, WU_RP_032_R2_RECEIPT.md. HEAD = 04180921 (CI 7/7 SUCCESS).
 
-**Código auditado:** main @ 32fa5924 (post RP-2). WU head = 32fa5924.
+**Código auditado:** main @ 04180921. WU head = 04180921.
 
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
@@ -18,9 +18,10 @@
   - M5 maxRss ~11 GB (transcript en memoria antes de chunking): sin SLO de RSS en RP-2; candidato streaming-chunks en RP-4.
   - Flake M3 SIGPIPE child (exit 141) 1x, no determinista, 2 reruns limpios. Abierto, no bloqueante.
   - UAT-RP-018 PARTIAL: sandbox-profile 'os' requiere RP-4/5 (ADR-0016).
-- LAST_CLOSED_WU: **WU-RP-031 CLOSED** (E4 = a1eeb2f7, CI 7/7 SUCCESS; receipts WU_RP_031_E1..E4). Escalera completa: E1 CanonicalStructuralDecisions -> E2 DurableInvocationResolver -> E3 DurableTypedInputPreparation -> E4 DurableStepExecutor. Coordinator: 2346 -> 1785 líneas, solo lifecycle/run-stage. Ctor público sin cambios en toda la escalera.
-- NEXT_WU: **WU-RP-032** (semánticas DSL) per ROADMAP §5 RP-3.
-- NEXT_WU: **WU-RP-031** — separar por pequeñas extracciones StructuralPreparation → DurableResolution → TypedInputDecode → StepExecutor; coordinator solo lifecycle/run-stage. Cada extracción pasa golden journal/event/replay y UAT kill/resume ANTES de retirar su predecesor. Después WU-RP-032 (semánticas DSL).
+- LAST_CLOSED_WU: **WU-RP-032 CLOSED** (r1 post{} fail-closed = ad4cd996; r2 options surface slim = 04180921; CI SUCCESS ambos). Receipts WU_RP_032_R1/R2_RECEIPT.md.
+  - r1: `post { }` aceptado pero descartado en StageSpec -> fail-closed IllegalStateException + PostDslFailClosedTest.
+  - r2 (decisión operador): options de stage solo parámetros de NUESTRO dominio; superficie muerta `options{retry/skip}` eliminada (timeout-only, RetrySpec borrado); retry vive solo como Block Step durable (ADR-0075). UatDsl008StageOptionsFailClosedTest.
+- NEXT_WU: continuar RP-3: Step externo con/sin cuerpo por registro genérico (DSL-004/005); luego auditoría declaración-vs-ejecución y semánticas de cancelación.
 - BLOCKERS: ninguno.
 - NO_GO: iniciar Step core nuevo o publicar release; no modificar recibos históricos; no cambiar contrato público sin ADR/autorización. Próximo ADR libre: ADR-0096 (ADR-0094 reservado).
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.
@@ -28,7 +29,7 @@
 
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
-1. `git status --short && git rev-parse HEAD && git log -1` — no asumir que HEAD = 32fa5924.
+1. `git status --short && git rev-parse HEAD && git log -1` — no asumir que HEAD = 04180921.
 2. Leer ROADMAP (§5 RP-3), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
 3. Verificar CI del SHA observado antes de dar nada por verde.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.

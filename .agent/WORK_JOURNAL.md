@@ -851,3 +851,6 @@
 - R3 (1afc6e0f): gitleaks v2.3.9 (SHA) full-history en CI; CycloneDX 1.8.2 en pipeline-application; bom.json verificado (spec 1.5, 49 componentes); artefacto sbom-cyclonedx por run.
 - Lección: resolver SHAs de tags con grep exacto de la versión, nunca head -1 de todas las refs.
 - CI R3 verificado: run 35759757372 SUCCESS 9/9 jobs (incluye secret-scan y sbom nuevos). Pointer actualizado a RP-4.
+
+## 2026-09-22 RP-3 EXIT REVIEW — criterio auditado cláusula a cláusula (complemento de entrada anterior)
+- Doc: docs/v2/07-uat/RP3_EXIT_REVIEW.md (5e2587bb). Veredicto: CUMPLIDA con deudas trazadas (cancelación cuerpos externos→WU-RP-041, policies abiertas, barrido declarativa-vs-ejecución, UAT-RP-018/005inv3 diferidas con ADR).

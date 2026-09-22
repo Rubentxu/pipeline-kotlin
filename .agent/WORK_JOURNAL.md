@@ -779,3 +779,11 @@
 - **EVIDENCE**: CI run 35720331038 7/7 SUCCESS (9393e34a). L1 chunking 3/3; L3 Lpr011*/UatLocal008*/UatLocal009* 59/59; events test verde. Receipt: docs/v2/07-uat/WU_RP_022_RECEIPT.md.
 - **RESIDUAL**: flake M3 1x SIGPIPE child (exit 141) no determinista, 2 reruns limpios; M5 maxRss ~10GB (transcript en memoria antes de chunking) — candidatos futuros, no bloqueantes.
 - **WHAT_NEXT**: definir SLOs RP-2 contra esta baseline (ROADMAP: SLOs tras medición); después siguiente WU abierta de RP-2.
+
+## 2026-09-22T12:20Z — WU-RP-023 CLOSED + RP-2 GATE SATISFECHO
+
+- **WU-RP-023**: WURp023ObservationModesUatTest (HF2, binario real) 1/1 verde en 32fa5924; L2 vecinos (WULpr010 11/11, WULpr011 1/1) verdes. Receipt docs/v2/07-uat/WU_RP_023_RECEIPT.md. Commit 32fa5924, CI run 35723296797 7/7 SUCCESS.
+- **Matriz**: UAT-RP-011..018 mapeadas (017 COVERED; 018 PARTIAL -> RP-4/5 por ADR-0016). WU-RP-024/025 absorbidos.
+- **RP-2 GATE**: baseline re-medinida EN el SHA del gate (32fa5924): M1 5.01s, M2 4.86s, M3 30.6s, redactor 23MB/s, M4 3.55s, M5 134.7s integro exit 0, M6 obs. Todos los SLOs PASS. Receipt: docs/v2/07-uat/RP2_GATE_RECEIPT.md. Limitaciones: M5 RSS ~11GB sin SLO; flake M3 SIGPIPE 1x; UAT-RP-005 (ADR-0095) difiere a RP-5.
+- **RP-2 CLOSED. RP-3 OPEN.**
+- **WHAT_NEXT**: WU-RP-030 (fitness hexagonal/connascence; caracterizar consumidores de APIs antes del cambio).

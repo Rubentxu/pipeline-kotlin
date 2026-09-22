@@ -755,3 +755,17 @@
   - L1: 10/10 PASS 0.361s. L2: 188/188 PASS en :pipeline-events.
 - **NO production code change** — cumple charter WU-RP-020.
 - **WHAT_NEXT**: WU-RP-021 (catalogar rutas de ejecución). Después WU-RP-022 (baseline de rendimiento). Salida RP-2 = UAT-OBS/PERF/REC verde.
+
+---
+
+## 2026-09-22T09:36Z — WU-RP-021 CLOSED (Execution paths characterisation)
+
+- **WHAT**: Suite ExecutionPathsCharacterisationTest (8 tests) fija formas IR de las rutas soportadas a HEAD 59a576e5. Test-side puro.
+- **CATALOGO**: P1 lineal / P2 multi-stage / P3 script{} / P4 timeout>retry / P5 dir / P6 parallel / P7 admission fail-closed / P8 stage metadata. Receipt: docs/v2/07-uat/WU_RP_021_RECEIPT.md.
+- **HALLAZGOS**:
+  1. `script {}` baja a UN único `core.sh` con heredoc `set +e` (buildShellScript); pasos internos no proyectan IR tipado. Excepción legacy registrada.
+  2. Step ids usan prefijo del nombre de stage en MINÚSCULAS (`a/echo-0` para stage "A").
+  3. canonicalBodyStepIds deriva de StepDescriptorRegistry (sin lista hardcodeada de StepKeys) — constitución verificada.
+  4. In-memory y durable comparten el mismo spine LF-0208; sólo cambia almacenaje (Main.kt).
+- **EVIDENCE**: L1 8/8 PASS; L4 :pipeline-application:test BUILD SUCCESSFUL 17m19s, 1716 tests 0 fallos. Commit 9deab17f. CI en curso sobre este SHA.
+- **WHAT_NEXT**: WU-RP-022 (baseline de rendimiento). Verificar CI de 9deab17f antes de cerrar.

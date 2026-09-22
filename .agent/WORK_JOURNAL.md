@@ -731,3 +731,27 @@
 - **ADR_NUMBERING**: ADR-0094 ya está nombrado en ROADMAP L77 ("motor de selección por impacto"). Renumerado a ADR-0095.
 - **NO_GO RESPETADOS**: NO se inició Step core nuevo. NO se publicó release. NO se modificaron recibos históricos. NO se cambió contrato público sin ADR (al contrario, el cambio se difiere precisamente para que pueda pasar por ADR formal cuando se implemente).
 - **WHAT_NEXT**: WU-RP-020 — caracterización SqliteEventStore bajo concurrencia. Test-side puro. Sin tocar producción.
+
+---
+
+## 2026-09-22T09:10Z — WU-RP-020 CLOSED (SqliteEventStore characterisation) + RP-2 OPEN
+
+- **WHAT**: Nueva suite de caracterización SqliteEventStoreConcurrencyCharacterisationTest con 10 propiedades observables, test-side puro. CI verde 7/7 en run 35708209584.
+- **PROPERTIES DOCUMENTED**:
+  1. flush es barrier para eventos encolados antes.
+  2. flush espera a productores concurrentes.
+  3. restart continúa sequence desde MAX(sequence) por run (LPR-041).
+  4. sequence explícito mayor avanza el contador.
+  5. sequence explícito menor NO rebobina el contador.
+  6. close es idempotente.
+  7. replay ordena por rowid ASC (orden de COMMIT), no por sequence.
+  8. payload con arrays anidados (StashCreated/List<StashedEntry>) round-trip lossless.
+  9. close drena pendientes vía flush barrier.
+  10. contadores de sequence multi-run independientes.
+- **BUG DE TEST ENCONTRADO EN CI**: Property 3 falló en CI (run 35707382248) y pasó local. Causa: appendAssigned es async (encola para el writer thread); eventsFor lee por conexión separada. Local era suficientemente rápido; el daemon lento de CI amplió la ventana. Fix: second.flush() entre appendAssigned y eventsFor. Enseñanza: flush() es SIEMPRE necesario antes de leer desde otra conexión.
+- **EVIDENCE**:
+  - Commit prod/docs: 06b39148 (tests), 59a576e5 (fix race).
+  - CI: 35707382248 (FAIL, 1 race), 35708209584 (SUCCESS 7/7, 6m 6s).
+  - L1: 10/10 PASS 0.361s. L2: 188/188 PASS en :pipeline-events.
+- **NO production code change** — cumple charter WU-RP-020.
+- **WHAT_NEXT**: WU-RP-021 (catalogar rutas de ejecución). Después WU-RP-022 (baseline de rendimiento). Salida RP-2 = UAT-OBS/PERF/REC verde.

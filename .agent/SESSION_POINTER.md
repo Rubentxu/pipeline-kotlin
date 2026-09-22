@@ -1,8 +1,8 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T08:49Z. **Tipo de cambio de esta sesión:** RP-1 CLOSED con 1 KNOWN_LIMITATION documentada (ADR-0095: WU-RP-010 r2 archive MANIFEST.json deferred). WU-RP-012 cerrado (commit `b3f74e93`, CI run `35705391067` 7/7 SUCCESS). RP-2 abre con WU-RP-020 (caracterización SqliteEventStore — test-side puro, sin tocar producción).
+**Actualizado:** 2026-09-22T09:10Z. **Tipo de cambio de esta sesión:** WU-RP-020 CLOSED — SqliteEventStore concurrency characterisation (10 properties). Commit `59a576e5` (test-side only). CI verde run `35708209584` 7/7 SUCCESS (6m 6s). L1 10/10 PASS, L2 :pipeline-events:test 188/188 PASS. RP-1 cerrado (commit `d81af75a` con ADR-0095 KNOWN_LIMITATION sobre UAT-RP-005 inv 3).
 
-**Código auditado:** main @ f4aa20dc (post RP-1 closure). WU head = f4aa20dc.
+**Código auditado:** main @ 59a576e5 (post RP-020). WU head = 59a576e5.
 
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
@@ -20,8 +20,8 @@
   - WU-RP-012 CLOSED (commit b3f74e93; CI run 35705391067 7/7 SUCCESS 6m 42s). Stash/unstash paths confinement + symlink filter on both stash() and unstash(). 7 tests rp012 series: symfile / symdir / happy / intosym / trav / roundtrip / unstash-happy. **UAT-RP-008 (Stash symlinks) + UAT-RP-009 (Stash roundtrip) covered**.
 - **KNOWED LIMITATIONS**:
   - UAT-RP-005 invariant 3 (archive MANIFEST.json): FAIL_PROVEN at production level. ADR-0095 defers implementation to WU-RP-042 (release gate) — must be re-evaluated before declaring a release.
-- LAST_CLOSED_WU: WU-RP-012 (stash/unstash symlink safety).
-- NEXT_WU: **WU-RP-020** (caracterización SqliteEventStore bajo concurrencia — test-side puro, no toca producción). Charter: sequence asignada vs orden de inserción/lectura, flush/close con productores activos, reinicio, gap, error de writer, replay, arrays anidados. NO modificar contrato de sequence hasta reproducir/descartar riesgo.
+- LAST_CLOSED_WU: WU-RP-020 (SqliteEventStore characterisation, 10 properties).
+- NEXT_WU: **WU-RP-021** (catalogar rutas de ejecución soportadas — declarative/scripted, in-memory/durable, restart, branch, cancellation; pruebas golden de IR/eventos/journal/fingerprint/outcome/recovery). Test-side; registrar excepciones/legacy reales.
 - BLOCKERS: ninguno a nivel código. Residual conocido documentado: UAT-RP-005 invariant 3 (MANIFEST.json archivado) — diferido por ADR-0095 hasta WU-RP-042 (release gate). UAT-RP-006/007/008/009 cubiertas. UAT-RP-005 inv 1/2/4 cubiertas. UAT-RP-010 cubierta (event codec). UAT-RP-011..018 corresponden a RP-2/3.
 - NO_GO: iniciar Step core nuevo o publicar release mientras RP-1 no cierre (Tier A/B); no modificar recibos históricos; no cambiar contrato público sin ADR/autorización.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.

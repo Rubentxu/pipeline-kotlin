@@ -769,3 +769,13 @@
   4. In-memory y durable comparten el mismo spine LF-0208; sólo cambia almacenaje (Main.kt).
 - **EVIDENCE**: L1 8/8 PASS; L4 :pipeline-application:test BUILD SUCCESSFUL 17m19s, 1716 tests 0 fallos. Commit 9deab17f. CI en curso sobre este SHA.
 - **WHAT_NEXT**: WU-RP-022 (baseline de rendimiento). Verificar CI de 9deab17f antes de cerrar.
+
+## 2026-09-22T11:31Z — WU-RP-022 CLOSED (Performance baseline + 2 defectos críticos corregidos)
+
+- **WHAT**: Baseline de rendimiento reproducible (v2/compatibility/rp022_perf_baseline.sh) + 2 fixes de producción descubiertos por las medidas.
+- **P1**: StreamingRedactor O(n²) por byte (ArrayDeque<Byte>, copia completa, escaneo por byte) → ring buffer primitivo + filtro literal + match incremental. 0.1 MB/s → 23 MB/s (~230x). Probe Rp022ThroughputProbe fija floor 20 MB/s. Commit c3faadb2.
+- **P2**: transcript 1 GiB viajaba en UN EchoOutputCaptured → SQLITE_TOOBIG mataba sqlite-event-writer y flush() decía "barrier timed out". Fix: chunking 64 MiB lossless en ShExecution.emitTranscriptChunked (3 tests TranscriptChunkingTest) + flush relanza el error real del writer. Soak 1 GiB end-to-end exit=0, transcript íntegro 1073747116 bytes. Commit 9393e34a.
+- **BASELINE** (SHA 9393e34a): M1 echo 4.93s med; M2 warm 5.01s (cache compile aporta <0.3s — dominado por JVM startup); M3 200MiB 30.7s; M4 slow 3.5s; M5 1GiB 137.1s maxRss ~10GB; M6 wall 4.88s user 12.67s.
+- **EVIDENCE**: CI run 35720331038 7/7 SUCCESS (9393e34a). L1 chunking 3/3; L3 Lpr011*/UatLocal008*/UatLocal009* 59/59; events test verde. Receipt: docs/v2/07-uat/WU_RP_022_RECEIPT.md.
+- **RESIDUAL**: flake M3 1x SIGPIPE child (exit 141) no determinista, 2 reruns limpios; M5 maxRss ~10GB (transcript en memoria antes de chunking) — candidatos futuros, no bloqueantes.
+- **WHAT_NEXT**: definir SLOs RP-2 contra esta baseline (ROADMAP: SLOs tras medición); después siguiente WU abierta de RP-2.

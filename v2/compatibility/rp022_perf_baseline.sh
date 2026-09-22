@@ -75,11 +75,11 @@ echo "  {\"label\":\"200MiB-once\",\"wallMs\":$(( (local_t1-local_t0)/1000000 ))
 echo ']' >> "$OUT.times"
 
 # 4. Slow consumer: stdout pipe read slowly (backpressure via head+sleep)
-cat > "$WORK/slow.pipeline.kts" <<KTS
+cat > "$WORK/slow.pipeline.kts" <<'KTS'
 pipeline {
     stages {
         stage("slow") {
-            sh("for i in \\$(seq 1 20); do echo line-\\$i; sleep 0.2; done")
+            sh("""for i in $(seq 1 20); do echo line-$i; sleep 0.2; done""")
         }
     }
 }
@@ -102,20 +102,20 @@ pipeline {
 }
 KTS
 echo ',"M5_soak_1GiB":[' >> "$OUT.times"
+SOAK_T0=$(date +%s%N)
 "$BIN" run --db "$WORK/m5.db" "$WORK/soak.pipeline.kts" > "$WORK/m5.stdout" 2> "$WORK/m5.stderr" &
 SOAK_PID=$!
 SOAK_MAX_RSS=0
 while kill -0 $SOAK_PID 2>/dev/null; do
-  # max RSS across the process tree's java proc
-  RSS=$(ps -o rss= -p $SOAK_PID 2>/dev/null | head -n1)
-  JRSS=$(pgrep -P $SOAK_PID -d' ' 2>/dev/null | while read p; do ps -o rss= -p $p 2>/dev/null; done | sort -n | tail -n1)
-  for v in "$RSS" "$JRSS"; do
-    [ -n "$v" ] && [ "$v" -gt "$SOAK_MAX_RSS" ] 2>/dev/null && SOAK_MAX_RSS=$v
+  for p in $SOAK_PID $(pgrep -P $SOAK_PID 2>/dev/null); do
+    v=$(ps -o rss= -p "$p" 2>/dev/null | tr -d ' ')
+    if [ -n "$v" ] && [ "$v" -gt "$SOAK_MAX_RSS" ] 2>/dev/null; then SOAK_MAX_RSS=$v; fi
   done
   sleep 0.3
 done
 wait $SOAK_PID || true
-echo "  {\"label\":\"1GiB-once\",\"stdoutBytes\":$(stat -c%s "$WORK/m5.stdout" 2>/dev/null || echo 0),\"maxRssKB\":$SOAK_MAX_RSS}" >> "$OUT.times"
+SOAK_T1=$(date +%s%N)
+echo "  {\"label\":\"1GiB-once\",\"wallMs\":$(( (SOAK_T1-SOAK_T0)/1000000 )),\"stdoutBytes\":$(stat -c%s "$WORK/m5.stdout" 2>/dev/null || echo 0),\"maxRssKB\":$SOAK_MAX_RSS}" >> "$OUT.times"
 echo ']' >> "$OUT.times"
 
 # 6. CPU time of a plain run (from /usr/bin/time)

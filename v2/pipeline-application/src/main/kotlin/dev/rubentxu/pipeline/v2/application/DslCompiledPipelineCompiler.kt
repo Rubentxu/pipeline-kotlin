@@ -697,12 +697,13 @@ object DslCompiledPipelineCompiler {
         return Json.encodeToString(JsonObject.serializer(), payload)
     }
 
+    // WU-RP-032 / DSL-008: stage options surface carries ONLY timeout (the only option
+    // with a runtime interpreter, projected via projectShellOptions). retry/skip were
+    // removed from the DSL surface; unrepresentable instead of accepted-and-dropped.
     private fun dev.rubentxu.pipeline.v2.dsl.OptionsSpec?.toOptions(): List<OptionSpec> {
         if (this == null) return emptyList()
         return buildList {
             timeout?.let { add(OptionSpec("timeout", it.toString())) }
-            retry?.let { add(OptionSpec("retry", it.count.toString())) }
-            if (skip) add(OptionSpec("skip", "true"))
         }
     }
 

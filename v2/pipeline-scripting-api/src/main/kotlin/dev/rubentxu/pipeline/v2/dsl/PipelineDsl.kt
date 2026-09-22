@@ -858,19 +858,15 @@ data class EnvironmentSpec(
 
 /**
  * Options block for stage-level configuration.
+ *
+ * WU-RP-032: only `timeout` is in the surface — it is the only stage option with
+ * a runtime interpreter (projectShellOptions -> ShOptions.timeoutMs). Stage-level
+ * `retry`/`skip` were removed (WU-RP-032): retry semantics live in the retry
+ * Block Step (durable control row, ADR-0075); skip is not a durable-engine concept.
+ * Invalid surface is unrepresentable instead of accepted-and-dropped.
  */
 data class OptionsSpec(
     val timeout: Long? = null,
-    val retry: RetrySpec? = null,
-    val skip: Boolean = false,
-)
-
-/**
- * Retry configuration for a step or stage.
- */
-data class RetrySpec(
-    val count: Int,
-    val delaySeconds: Long? = null,
 )
 
 /**
@@ -2243,22 +2239,12 @@ class EnvironmentScope {
 @StepDslMarker
 class OptionsScope {
     var timeout: Long? = null
-    var retry: RetrySpec? = null
-    var skip: Boolean = false
 
     fun timeout(seconds: Long) {
         timeout = seconds
     }
 
-    fun retry(count: Int, delaySeconds: Long? = null) {
-        retry = RetrySpec(count, delaySeconds)
-    }
-
-    fun skip(value: Boolean = true) {
-        skip = value
-    }
-
-    fun build(): OptionsSpec = OptionsSpec(timeout, retry, skip)
+    fun build(): OptionsSpec = OptionsSpec(timeout)
 }
 
 /**

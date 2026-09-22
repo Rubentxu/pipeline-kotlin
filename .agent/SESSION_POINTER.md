@@ -1,6 +1,6 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T09:36Z. **Tipo de cambio de esta sesión:** WU-RP-021 CLOSED — Execution paths characterisation (8 rutas, IR golden shapes). Commit `9deab17f` (test-side only). L1 8/8 PASS; L4 :pipeline-application:test 1716 tests 0 fallos (17m19s). Hallazgo clave: script{} baja a UN core.sh heredoc (excepción legacy caracterizada). CI en curso.
+**Actualizado:** 2026-09-22T09:36Z. **Tipo de cambio de esta sesión:** WU-RP-021 CLOSED — Execution paths characterisation (8 rutas, IR golden shapes). Commit `9deab17f` (test-side only). L1 8/8 PASS; L4 :pipeline-application:test 1716 tests 0 fallos (17m19s). Hallazgo clave: script{} baja a UN core.sh heredoc (excepción legacy caracterizada). CI run 35711217797 7/7 SUCCESS.
 
 **Código auditado:** main @ 9deab17f (post RP-021). WU head = 9deab17f.
 

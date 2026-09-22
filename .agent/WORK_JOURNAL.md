@@ -795,3 +795,10 @@
 - **EVIDENCE**: L1 4/4; L4 events 188/188; L4 arch-tests 313/313; L3 B11 7/7 + ExecutionPaths 8/8. Receipt docs/v2/07-uat/WU_RP_030_RECEIPT.md.
 - **WHAT_NEXT**: WU-RP-031 (extracciones pequeñas StructuralPreparation→DurableResolution→TypedInputDecode→StepExecutor; cada extracción con golden journal/event/replay y UAT kill/resume).
 - **CI**: run 35727537652 SUCCESS en d7324c05 (HEAD). WU-RP-030 CI-verificado.
+
+## 2026-09-22T12:42Z — WU-RP-031 E1 (CanonicalStructuralDecisions extraction)
+
+- **WHAT**: Extracción mecánica del bloque de decisiones estructurales (ADTs cerrados + funciones puras de preparación, 507 líneas) a CanonicalStructuralDecisions.kt. Coordinator 2346→1943 líneas. private→internal (mismo módulo consumidor).
+- **ORACLE**: L3 27/27 (ExecutionPaths golden, WULpr302Phase1b, B11, WULpr011 kill/resume) + L4 durable package 316/316 GREEN.
+- **EVIDENCE**: docs/v2/07-uat/WU_RP_031_E1_RECEIPT.md. CI sobre este SHA en curso.
+- **WHAT_NEXT**: E2 DurableResolution (reconcileInvocation/deterministicGate/replayResolution/recoverRunningShell), luego E3/E4. Después WU-RP-032.

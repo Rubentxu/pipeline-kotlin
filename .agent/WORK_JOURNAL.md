@@ -815,3 +815,9 @@
 - Incidencia CI: primer push a0c7a41a rojo por Lfc2RegistryFamilyFitnessTest (escaneaba el archivo del coordinator, no el seam) y dos shards caídos por red del runner (ETIMEDOUT gradle wrapper-validation, re-run limpio). Fix: fitness sigue el seam y añade assertFalse de clasificación inline en el coordinator (0ac304d6, CI 7/7 SUCCESS).
 - Tests: durable+arch/fitness 547/547, kill/resume/UAT-local 148/148 (fresh XML). NOT RUN: full check (diferido).
 - Siguiente: E4 StepExecutor (cierre WU-RP-031) -> WU-RP-032.
+
+## 2026-09-22 — WU-RP-031 E4 + CIERRE WU (base 0ac304d6 -> head a1eeb2f7)
+- DurableStepExecutor: Execute-branch (beginOperation, boundary call, journal terminal, cursor advance) extraído verbatim. Único punto que invoca el executor efectivo. Coordinator 1785 líneas.
+- Gotcha: orden de inicialización de propiedades (stepExecutor antes que executionBoundary/factory fallback) -> movido tras ExecutionBoundaryFactory.build.
+- Tests: durable+arch/fitness 547/547, kill/resume/UAT 148/148. CI a1eeb2f7 7/7 SUCCESS.
+- WU-RP-031 CLOSED. Siguiente: WU-RP-032 (semánticas DSL).

@@ -188,6 +188,13 @@ class CanonicalDurableRunCoordinator(
         controlDirRoot = controlDirRoot,
     )
 
+    // WU-RP-031 E3: typed input preparation behind a narrow collaborator.
+    private val typedInputPreparation: DurableTypedInputPreparation = DurableTypedInputPreparation(
+        stepRegistry = stepRegistry,
+        milestoneStateStore = milestoneStateStore,
+        artifactIndex = artifactIndex,
+    )
+
     /** Active context stack for body scope tracking (EM-4). */
 
     /**
@@ -608,39 +615,14 @@ class CanonicalDurableRunCoordinator(
                 // Registry), never by concrete step name. Reuse/divergence/recover never prepare. A
                 // Rejected admission (typed field / unsupported command / missing capability) is a
                 // terminal SCHEMA rejection (journal FAILED, common executor never runs).
-                val family = StructuralFamilyResolver.classify(step.pluginStepId, stepRegistry)
-                val prepared = when (family) {
-                    StructuralStepFamily.LegacyCore -> when (val admission = LegacyExecutionBoundary.prepare(step)) {
-                        is ExecutionPreparation.Rejected -> return Dispatched(rejectSchema(
-                            operationId,
-                            input,
-                            "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
-                        ), contextAfterOverlay)
-                        is ExecutionPreparation.Ready -> admission.prepared
-                    }
-                    StructuralStepFamily.Registry -> {
-                        val registry = stepRegistry ?: throw EngineInvariantViolation(
-                            "registry family step '${step.pluginStepId.value}' reached Execute without a StepRegistry",
-                        )
-                        val admission = RegistryExecutionPreparation.prepare(
-                            registry = registry,
-                            key = step.pluginStepId,
-                            encodedInput = EncodedStepValue(step.payload.encoded),
-                            availableCapabilities = CanonicalRuntimeCapabilityAccess(
-                                runtime,
-                                milestoneStateStore = milestoneStateStore,
-                                artifactIndex = artifactIndex,
-                            ).available(),
-                        )
-                        when (admission) {
-                            is ExecutionPreparation.Rejected -> return Dispatched(rejectSchema(
-                                operationId,
-                                input,
-                                "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${admission.reason}",
-                            ), contextAfterOverlay)
-                            is ExecutionPreparation.Ready -> admission.prepared
-                        }
-                    }
+                // WU-RP-031 E3: extracted to DurableTypedInputPreparation.
+                val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
+                    is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(rejectSchema(
+                        operationId,
+                        input,
+                        "schema mismatch for step '${step.pluginStepId.value}' on '${step.id.value}': ${typed.reason}",
+                    ), contextAfterOverlay)
+                    is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
                 }
 
                 if (journaled == null) {

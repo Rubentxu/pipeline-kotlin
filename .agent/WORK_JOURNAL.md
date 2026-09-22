@@ -870,3 +870,11 @@
 - Pendiente para cierre WU: CI verde del head final; entonces NEXT_WU pasa a WU-RP-042.
 - CI: run 35767151719 (SHA a8068165) SUCCESS 9/9. Primer intento falló por infra (ECONNRESET en wrapper-validation); rerun --failed verde, sin cambios de código.
 - WU-RP-041 S1-S3 CLOSED. NEXT_WU = WU-RP-042 (distZip reproducible + instalación de cero).
+
+
+## 2026-09-22T19:55Z — WU-RP-042 S1 (base 736fb320 → head 76e3015d)
+- Auditoría legal RP-041 cláusula a cláusula: CUMPLE (WU_RP_041_LEGAL_CLOSURE_AUDIT.md); receipt a cierre pleno.
+- RP-042 S1 ejecutado: doble build distZip bit-a-bit (06c88aaf…), zero-install, Gradle/Maven/Node reales green, fallos de compilación (script y proyecto) tipados, --resume replay byte-idéntico, --rerun, --resume sin previo exit 2, events CLI, corpus 31/31 validate.
+- DEFECTO+FIX: `credentials add` roto desde 2f0fe340 (placeholder CredentialsId("") vs init non-blank); fix 7 sitios en MainCredentialsCli.kt; e2e add/list/withCredentials verificado en dist instalada (76e3015d).
+- Hallazgos: R1 root pipeline.kts no ejecutable (retry en options{}), R2 CLI ignora PIPELINE_CREDENTIALS_STORE. Pendiente: regresión JUnit del fix, gate L5, reevaluación ADR-0095, cierre WU.
+- NO ejecutado: L5 gate de este head (queda para cierre WU).

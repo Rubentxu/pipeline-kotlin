@@ -19,7 +19,7 @@
   - M5 maxRss ~11 GB: candidato streaming-chunks RP-4.
   - Flake M3 SIGPIPE child 1x, no determinista.
   - UAT-RP-018 PARTIAL (sandbox-profile 'os' → RP-4/5, ADR-0016).
-- NEXT_WU: **WU-RP-042** (distZip reproducible desde commit inmutable, instalación de cero, CLI validate/run/inspect, publicar sólo el ZIP probado). WU-RP-041 S1-S3 CLOSED.
+- NEXT_WU: **WU-RP-042 S2** (cierre de la WU): regresión JUnit del fix credentials-CLI, gate L5 del head, reevaluación UAT-RP-005 inv 3 / ADR-0095, receipt final. S1 ya ejecutado (76e3015d): reproducibilidad bit-a-bit, zero-install, proyectos reales, credenciales e2e, receipt WU_RP_042_S1_SLICE_RECEIPT.md. Primer comando: cd v2 && ./gradlew :pipeline-credentials-local:test.
 - BLOCKERS: ninguno.
 - NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0096.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.

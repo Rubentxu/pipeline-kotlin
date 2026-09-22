@@ -1,4 +1,4 @@
-# WU-RP-041 — Aislamiento del runner local — RECEIPT (S1-S3, cierre parcial)
+# WU-RP-041 — Aislamiento del runner local — RECEIPT (S1-S3, cierre pleno confirmado por auditoría legal)
 
 **Fecha:** 2026-09-22. **Base:** 998e8073. **Head:** d9e8f44a (código) + estado.
 **Criterio ROADMAP §6:** probar aislamiento del runner local (filesystem, proceso,

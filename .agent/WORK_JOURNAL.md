@@ -602,3 +602,35 @@
   git push origin main
   gh run list --limit 1
   ```
+
+---
+
+## 2026-09-22T07:58Z — WU-RP-011 CLOSED
+
+- **WHAT**: CWE-79 fix in `buildIndexHtml` — context-aware OWASP output encoding of `e.relPath` in BOTH the href attribute and the link text of the generated `index.html`. Two private helpers (`escapeHtmlAttribute` for the 5-char set `& " ' < >`, `escapeHtmlText` for the 3-char set `& < >`). `buildIndexHtml` made `internal` (was `private`) so the test package can drive it directly with synthetic `HtmlReportEntry` payloads — avoids materialising malicious filenames on the real FS (chars like `<` and `>` are valid on ext4 but rejected by some filesystems / CI sandboxes).
+- **WHY**: A hostile report author (or a build artifact with unsanitised filenames) could craft a filename containing HTML-special characters that, when interpolated unescaped into `index.html`, would either (a) close the href attribute and inject `<script>alert(1)</script>` or `<img src=x onerror=…>`, or (b) inject HTML through the link text body. This is exactly the XSS pattern in CWE-79 / OWASP A03:2021.
+- **WHERE**:
+  - `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapter.kt` — 2 helpers + 2 escaped string interpolations in `buildIndexHtml` (~30 lines added).
+  - `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapterUatTest.kt` — 5 new tests (rp011 quote/ampersand/brackets/unicode/multi).
+- **DECISION**: Per operator's "continua a tu criterio priorizando las tareas" + "smallest first" rationale after WU-RP-013 closure exhausted the test-only headroom, chose WU-RP-011 over WU-RP-012 and WU-RP-010 round 2 because:
+  1. Touches the smallest possible surface (1 private function, 4 lines of changed string interpolations).
+  2. Has no contract change, no archive layout change, no symlink traversal — only an output encoding fix.
+  3. The fix is purely additive defence-in-depth: it can never break existing valid filenames (all HTML-special chars still appear correctly via entity decoding in any standards-compliant UA).
+- **CHALLENGES**:
+  - First L1 attempt with E2E tests using `Files.writeString` to filenames like `evil<script>alert(1)</script>.html` failed with `NoSuchFileException` during the publish pipeline (filesystem + Spring `AntStyleGlob.match` rejected the chars). The fix wasn't to debug why — it was to redesign the tests to drive `buildIndexHtml` directly (after making it `internal`), asserting the exact contract the adapter promises without depending on filesystem acceptance of malicious filenames.
+  - First corrected L1 had 2 assertion-logic errors (test 1 over-counted `"` chars because the document also has `<meta charset="utf-8">` and `<title>` adding unrelated quotes; test 2 expected 4 occurrences of `&amp;amp;` when the math was 2). Caught by reading the test failure messages carefully and correcting the expected values.
+- **LEARNED**:
+  - When the failure is in test setup rather than production logic, fix the test surface, not the production logic. Make the function testable.
+  - When asserting escape counts, manually walk through the input/output to compute the exact expected occurrences rather than guessing "2 chars × 2 contexts = 4".
+  - CI re-validated with `XML canary` + `BUILD SUCCESSFUL` from the runner's tail — the in-runner test names are not echoed to stdout, only the JUnit XMLs are authoritative.
+- **EVIDENCE**:
+  - Commit: `ae6b334e`.
+  - Push: `35c98cb5..ae6b334e main -> main`, bypassed rule violations: 7/7 status checks expected.
+  - CI: `35701628467` `LPR-0 CI`, `conclusion: success`, `headSha: ae6b334ee29a9d7078771458282ff68cb077ec80`, duration 6m 49s, jobs 7/7 success (compile, domain-unit, architecture-fitness, application-shard engine/uat-core/uat-dsl/uat-local).
+  - L0 compile: `:pipeline-application:compileTestKotlin` 4.4s.
+  - L1 rp011*: 5/5 PASS in 0.073s (timestamp 2026-09-22T07:49:19Z).
+  - L2 sibling regression: `PublishHtmlOperationsAdapterUatTest` 9/9 PASS in 0.152s.
+  - L4 round gate (compile + SDK + domain): 32s BUILD SUCCESSFUL.
+  - XML canary regenerated: `pipeline-application/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest.xml` (timestamp 2026-09-22T07:49:50Z).
+- **CLOSURE_DOCS**: `docs/v2/07-uat/WU_RP_011_RECEIPT.md` (this commit).
+- **PUNtero**: HEAD = `ae6b334e`. NEXT_WU = WU-RP-012 (stash symlink safety) — pending operator sign-off per AGENTS.md §5.

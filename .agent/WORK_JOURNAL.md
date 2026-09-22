@@ -829,3 +829,12 @@
 - CI: ad4cd996 1 shard failure por infra (wrapper-validation timeout), rerun limpio -> SUCCESS; 04180921 SUCCESS (7/7).
 - Receipts: WU_RP_032_R1_RECEIPT.md, WU_RP_032_R2_RECEIPT.md.
 - Siguiente: RP-3 continúa — Step externo con/sin cuerpo por registro genérico (DSL-004/005); auditoría declaración-vs-ejecución; semánticas de cancelación.
+
+## 2026-09-22 WU-RP-033 CLOSED (código) — external Step con cuerpo por registro genérico
+- Base: 04180921. Head: 554672aa.
+- Cambios: RegistryBlockSpec (DSL IR genérico, pin 30→31) + registryBlock(...) builder; lowering genérico a BlockStepNode; BlockStepFlattener; coordinator compone autoridad de body-policy (registro abierto primero, tabla canónica fallback en UnknownStep; ctor param opcional al final). Cero ramificación por StepKey.
+- Tests nuevos: ExternalStepWithBodyRegistryProofTest 3/3 (with-body CANONICAL_ENGINE/Sequential, fail-closed sin filas de journal, paridad atómica); RegistryBlockDslLoweringTest 3/3.
+- Regresión local (worktree pre-push, SHA-tree de 554672aa): scripting-api 50/50, application 1726/1726, domain 554/554, sdk-api 393/393, arch 313/313 (allow-list fitness extendida con RegistryBlockSpec, en-test), round gate `check` BUILD SUCCESSFUL.
+- Incidencias: echo payload requería kind:'echo'; StepDefinition en domain.step; fitness de exhaustividad block-body detectó la nueva variante → allow-list documentada; pin jerarquía sealed 30→31.
+- Receipt: docs/v2/07-uat/WU_RP_033_RECEIPT.md. CI: PENDING push.
+- Pendiente RP-3: auditoría declaración-vs-ejecución completa; semánticas de cancelación de hijos de cuerpo.

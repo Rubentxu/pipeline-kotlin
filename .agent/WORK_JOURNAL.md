@@ -838,3 +838,9 @@
 - Incidencias: echo payload requería kind:'echo'; StepDefinition en domain.step; fitness de exhaustividad block-body detectó la nueva variante → allow-list documentada; pin jerarquía sealed 30→31.
 - Receipt: docs/v2/07-uat/WU_RP_033_RECEIPT.md. CI: PENDING push.
 - Pendiente RP-3: auditoría declaración-vs-ejecución completa; semánticas de cancelación de hijos de cuerpo.
+
+## 2026-09-22 RP-3 EXIT REVIEW — criterio auditado cláusula a cláusula
+- SHA auditado: 6e1d30f4 (código 554672aa, CI 35756206083 SUCCESS).
+- Veredicto: salida RP-3 CUMPLIDA (con/sin cuerpo por registro genérico, admission/replay/typed errors, cero ramificación concreta, paridad demostrada).
+- Deuda clasificada a RP-4/5: cancelación de hijos de cuerpos externos (→041), espacio de body-policies abierto, barrido declaración-vs-ejecución exhaustivo, UAT-RP-018/UAT-RP-005inv3 (diferidas con ADR).
+- Doc: docs/v2/07-uat/RP3_EXIT_REVIEW.md (5e2587bb). Siguiente WU: WU-RP-040.

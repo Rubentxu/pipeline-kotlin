@@ -37,3 +37,5 @@ bouncycastle-bcutil = { module = "org.bouncycastle:bcutil-jdk18on", version.ref 
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlinxSerialization" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+# WU-RP-040 R1: coverage (Kover). Version must stay compatible with kotlin 2.4.x toolchain.
+kover = { id = "org.jetbrains.kotlinx.kover", version = "0.9.9" }

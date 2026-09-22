@@ -2,6 +2,7 @@ plugins {
     base
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.protobuf) apply false
+    alias(libs.plugins.kover) apply true
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -39,6 +40,55 @@ subprojects {
     pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
         rootProject.tasks.named("check") {
             dependsOn(tasks.named("check"))
+        }
+    }
+}
+
+// WU-RP-040 R1: risk-based coverage verification (Kover).
+// Thresholds are grounded in criticality, not vanity numbers:
+//  - domain / sdk-api / events: pure decision + codec/policy logic -> HIGH bar
+//  - application: coordinator composition mostly exercised by real-process UATs -> MEDIUM bar
+// Exclusions: generated protobuf, scripting test harness bootstrap, example plugins.
+kover {
+    reports {
+        verify {
+            rule("Branch coverage of critical decision modules") {
+                disabled = false
+            }
+        }
+        filters {
+            excludes {
+                packages(
+                    "dev.rubentxu.pipeline.v2.protos",
+                    "dev.rubentxu.pipeline.v2.generated",
+                )
+            }
+        }
+    }
+}
+
+subprojects {
+    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        if (project.name in setOf("pipeline-domain", "pipeline-events")) {
+            pluginManager.apply("org.jetbrains.kotlinx.kover")
+            kover {
+                currentProject {
+                    sources {
+                        excludedSourceSets.addAll(listOf("integrationTest"))
+                    }
+                }
+            }
+            kover {
+                reports {
+                    verify {
+                        rule("Critical module branch coverage") {
+                            bound {
+                                minValue = 55
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

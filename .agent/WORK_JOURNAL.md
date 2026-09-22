@@ -787,3 +787,10 @@
 - **RP-2 GATE**: baseline re-medinida EN el SHA del gate (32fa5924): M1 5.01s, M2 4.86s, M3 30.6s, redactor 23MB/s, M4 3.55s, M5 134.7s integro exit 0, M6 obs. Todos los SLOs PASS. Receipt: docs/v2/07-uat/RP2_GATE_RECEIPT.md. Limitaciones: M5 RSS ~11GB sin SLO; flake M3 SIGPIPE 1x; UAT-RP-005 (ADR-0095) difiere a RP-5.
 - **RP-2 CLOSED. RP-3 OPEN.**
 - **WHAT_NEXT**: WU-RP-030 (fitness hexagonal/connascence; caracterizar consumidores de APIs antes del cambio).
+
+## 2026-09-22T12:32Z — WU-RP-030 CLOSED (connascence evento/codecs/sequence)
+
+- **WHAT**: Fitness mecánico Rp030EventCodecsConnascenceFitnessTest (4 checks: kind==nombre único, decodeEvent total, sin `else` en despachos exhaustivos, subjectOf exhaustivo).
+- **DEFECTO P2**: JsonEventLog.decodeEvent despacha por string `kind` sin protección: TimestampsEntered/TimestampsExited/StepAdmissionObserved se codificaban pero decodeEvent devolvía null → pérdida silenciosa en replay/observación. Fix: 3 ramas de decode (incl. executorCalls). Sin cambio de wire.
+- **EVIDENCE**: L1 4/4; L4 events 188/188; L4 arch-tests 313/313; L3 B11 7/7 + ExecutionPaths 8/8. Receipt docs/v2/07-uat/WU_RP_030_RECEIPT.md.
+- **WHAT_NEXT**: WU-RP-031 (extracciones pequeñas StructuralPreparation→DurableResolution→TypedInputDecode→StepExecutor; cada extracción con golden journal/event/replay y UAT kill/resume).

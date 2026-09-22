@@ -1218,6 +1218,40 @@ object JsonEventLog {
                     durationMs = durationMs,
                 )
             }
+            // WU-RP-030 — connascence fix: these three variants were encodable
+            // but NOT decodable (decodeEvent returned null), silently dropping
+            // them from every replay/observation surface that reads persisted
+            // history through JsonEventLog.
+            "TimestampsEntered" -> TimestampsEntered(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
+            "TimestampsExited" -> TimestampsExited(
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
+            "StepAdmissionObserved" -> {
+                val stageIndex = intField(s, "stageIndex") ?: 0
+                val stepIndex = intField(s, "stepIndex") ?: 0
+                val stepKey = stringField(s, "stepKey") ?: ""
+                val law = stringField(s, "law") ?: ""
+                val executorCalls = intField(s, "executorCalls") ?: 0
+                StepAdmissionObserved(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    stepKey = stepKey,
+                    law = law,
+                    executorCalls = executorCalls,
+                )
+            }
             else -> null
         }
     }

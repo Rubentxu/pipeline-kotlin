@@ -1,6 +1,6 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T12:20Z. **Tipo de cambio de esta sesión:** WU-RP-023 CLOSED y **RP-2 GATE SATISFECHO → RP-2 CLOSED, RP-3 OPEN**. Commit `32fa5924` (test E2E observación + matriz UAT-RP-011..018 + receipts WU_RP_023/RP2_GATE). CI run `35723296797` 7/7 SUCCESS en 32fa5924. Baseline re-medinida en el SHA del gate: todos los SLOs PASS (docs/v2/07-uat/RP2_GATE_RECEIPT.md).
+**Actualizado:** 2026-09-22T12:32Z. **Tipo de cambio de esta sesión:** RP-2 CLOSED (gate receipt) y **WU-RP-030 CLOSED** (connascence evento/codecs/sequence + defecto P2: 3 kinds no decodificables en JsonEventLog, fix en producción). Receipts: RP2_GATE_RECEIPT.md, WU_RP_030_RECEIPT.md. HEAD avanza sobre 32fa5924 (CI de 32fa5924: 7/7 SUCCESS; SHA del fix WU-RP-030 pendiente de CI).
 
 **Código auditado:** main @ 32fa5924 (post RP-2). WU head = 32fa5924.
 
@@ -18,8 +18,8 @@
   - M5 maxRss ~11 GB (transcript en memoria antes de chunking): sin SLO de RSS en RP-2; candidato streaming-chunks en RP-4.
   - Flake M3 SIGPIPE child (exit 141) 1x, no determinista, 2 reruns limpios. Abierto, no bloqueante.
   - UAT-RP-018 PARTIAL: sandbox-profile 'os' requiere RP-4/5 (ADR-0016).
-- LAST_CLOSED_WU: WU-RP-023 (+ gate RP-2).
-- NEXT_WU: **WU-RP-030** — fitness de dependencias hexagonales, cohesión, ownership de I/O, no globals/Any? en fronteras, no when(stepKey), contrato de capacidades y connascence evento/codecs/sequence. Caracterizar consumidores de APIs antes del cambio. Después WU-RP-031 (extracciones pequeñas del coordinator) y WU-RP-032 (semánticas DSL).
+- LAST_CLOSED_WU: WU-RP-030 (connascence; receipt WU_RP_030_RECEIPT.md).
+- NEXT_WU: **WU-RP-031** — separar por pequeñas extracciones StructuralPreparation → DurableResolution → TypedInputDecode → StepExecutor; coordinator solo lifecycle/run-stage. Cada extracción pasa golden journal/event/replay y UAT kill/resume ANTES de retirar su predecesor. Después WU-RP-032 (semánticas DSL).
 - BLOCKERS: ninguno.
 - NO_GO: iniciar Step core nuevo o publicar release; no modificar recibos históricos; no cambiar contrato público sin ADR/autorización. Próximo ADR libre: ADR-0096 (ADR-0094 reservado).
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.

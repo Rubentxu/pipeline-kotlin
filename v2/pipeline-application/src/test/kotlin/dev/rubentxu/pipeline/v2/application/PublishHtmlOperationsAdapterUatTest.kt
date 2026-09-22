@@ -1,8 +1,10 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver
+import dev.rubentxu.pipeline.v2.events.HtmlReportEntry
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -21,6 +23,9 @@ import java.security.MessageDigest
  *   1. user-provided index.html in the workspace reportDir is NOT overwritten
  *   2. archive index.html is deterministic (replay-stable)
  *   3. replay fingerprint matches across two publishes of the same input
+ *   4. (WU-RP-011) relPath containing HTML-special characters is escaped in
+ *      the generated index.html, so a hostile filename cannot break out of
+ *      the href attribute or inject an HTML payload.
  */
 class PublishHtmlOperationsAdapterUatTest {
 
@@ -236,5 +241,221 @@ class PublishHtmlOperationsAdapterUatTest {
         }
         // Sanity: archive has at least 2 entries (a.html, b.html).
         assertNotEquals(0, published.entries.size, "entries must be non-empty")
+    }
+
+    // ============================================================================
+    // WU-RP-011 — HTML escape of relPath in the generated index.html
+    // ============================================================================
+    //
+    // A filename on ext4/NTFS/APFS can contain characters that have meaning in
+    // HTML (notably `"`, `<`, `>`, `&`, `'`). The adapter interpolates
+    // `relPath` twice in the generated `index.html` — inside an `href="…"`
+    // attribute and as the link text — without escaping. A hostile report
+    // author can therefore either (a) close the href attribute and inject a
+    // `<script>` tag, or (b) inject HTML through the link text. WU-RP-011
+    // applies context-aware output encoding (OWASP) to both contexts.
+    //
+    // These tests drive `PublishHtmlOperationsAdapter.buildIndexHtml` directly
+    // with synthetic `HtmlReportEntry` payloads. This avoids having to
+    // materialise malicious filenames on the real filesystem: while ext4 allows
+    // `<` and `>` in filenames, some filesystems (and CI sandbox restrictions)
+    // reject them, which would break the E2E test setup even though the
+    // production code path is correct. Driving the function directly asserts
+    // the exact contract that the adapter promises.
+
+    /** Builds a single HtmlReportEntry for the given relPath, with a stable sha. */
+    private fun entry(relPath: String, sizeBytes: Long = 100L): HtmlReportEntry =
+        HtmlReportEntry(relPath = relPath, sha256 = "deadbeef".repeat(8), sizeBytes = sizeBytes)
+
+    @Test
+    fun `rp011 — filename containing a quote is escaped inside the href attribute`() {
+        // Hostile relPath: tries to close the href attribute and inject an
+        // `onerror` handler via `<img src=x onerror=alert(1)>`.
+        val indexHtml = PublishHtmlOperationsAdapter(
+            runIdString = "rp011-quote",
+            stageIdentity = StageIdentity(name = "rp011", index = 0),
+            controlDirRoot = Files.createTempDirectory("rp011-q-"),
+            eventSink = sink(),
+        ).buildIndexHtml(listOf(entry("ok\"><img src=x onerror=alert(1)>.html")))
+
+        // The raw `"` from the relPath MUST be escaped to `&quot;` inside the
+        // href attribute; otherwise the closing quote lets the rest of the
+        // payload land as raw HTML.
+        assertTrue(
+            indexHtml.contains("&quot;"),
+            "the generated index.html MUST escape the `\"` from relPath as &quot; in the href; got:\n$indexHtml",
+        )
+        // The injected `<img src=x …>` payload MUST NOT appear unescaped.
+        assertFalse(
+            indexHtml.contains("<img src=x"),
+            "the injected <img src=x…> payload MUST NOT appear unescaped; got:\n$indexHtml",
+        )
+        // The escaped form `<img …>` MUST appear as `&lt;img …>` in the link text.
+        assertTrue(
+            indexHtml.contains("&lt;img"),
+            "the injected <img … payload MUST appear escaped as &lt;img … in the link text; got:\n$indexHtml",
+        )
+        // Sanity: exactly one `<a>` element (one per entry), with one closing `</a>` and
+        // one opening `<a href="` — the `<meta charset="utf-8">` and `<title>` add
+        // unrelated quotes that we deliberately do not count. The single hostile
+        // entry must produce a single anchor.
+        val anchorOpens = indexHtml.split("<a href=\"").size - 1
+        val anchorCloses = indexHtml.split("</a>").size - 1
+        assertEquals(
+            1,
+            anchorOpens,
+            "the document MUST contain exactly one <a> opening tag (one per entry); got $anchorOpens; doc:\n$indexHtml",
+        )
+        assertEquals(
+            1,
+            anchorCloses,
+            "the document MUST contain exactly one </a> closing tag; got $anchorCloses; doc:\n$indexHtml",
+        )
+        // Sanity: the hostile relPath's encoded form (with the `"` escaped to `&quot;`)
+        // MUST appear INSIDE the href attribute value (between `<a href="` and the
+        // closing quote of that href).
+        val hrefPrefix = "<a href=\""
+        val hrefStart = indexHtml.indexOf(hrefPrefix) + hrefPrefix.length
+        val hrefEnd = indexHtml.indexOf('"', hrefStart)
+        val hrefValue = indexHtml.substring(hrefStart, hrefEnd)
+        assertTrue(
+            hrefValue.contains("&quot;"),
+            "the href attribute MUST contain the escaped form &quot; (no raw `\"` from the relPath); hrefValue=$hrefValue; doc:\n$indexHtml",
+        )
+    }
+
+    @Test
+    fun `rp011 — filename containing an ampersand is escaped in both contexts`() {
+        // `&` must be escaped to `&amp;`; otherwise a sequence like `&lt;script&gt;`
+        // in the relPath would re-parse as a real `<script>` tag.
+        val indexHtml = PublishHtmlOperationsAdapter(
+            runIdString = "rp011-amp",
+            stageIdentity = StageIdentity(name = "rp011", index = 0),
+            controlDirRoot = Files.createTempDirectory("rp011-a-"),
+            eventSink = sink(),
+        ).buildIndexHtml(listOf(entry("a&b&amp;c.html")))
+
+        // The literal `&amp;` from the relPath MUST be doubly escaped to `&amp;amp;`
+        // (each `&` from the input becomes `&amp;`, and the pre-encoded `&amp;` then
+        // has its `&` re-encoded as `&amp;`). The substring `&amp;amp;` MUST appear
+        // once in the href attribute and once in the link text (2 occurrences total).
+        val expected = "&amp;amp;"
+        val occurrences = indexHtml.split(expected).size - 1
+        assertEquals(
+            2,
+            occurrences,
+            "the literal &amp; in relPath MUST be doubly escaped to &amp;amp; in BOTH contexts " +
+                "(2 occurrences = 1 in href + 1 in link text); found $occurrences; got:\n$indexHtml",
+        )
+        // `<script>` MUST NOT be reconstructed anywhere.
+        assertFalse(
+            indexHtml.contains("<script"),
+            "ampersand-in-relPath MUST NOT enable <script> reconstruction; got:\n$indexHtml",
+        )
+    }
+
+    @Test
+    fun `rp011 — filename containing angle brackets is escaped so no HTML tag is reconstructed`() {
+        val indexHtml = PublishHtmlOperationsAdapter(
+            runIdString = "rp011-bracket",
+            stageIdentity = StageIdentity(name = "rp011", index = 0),
+            controlDirRoot = Files.createTempDirectory("rp011-b-"),
+            eventSink = sink(),
+        ).buildIndexHtml(listOf(entry("evil<script>alert(1)</script>.html")))
+
+        // Real `<script>` tag MUST NOT appear in the generated index.html.
+        assertFalse(
+            indexHtml.contains("<script>"),
+            "the injected <script> tag MUST NOT appear unescaped; got:\n$indexHtml",
+        )
+        // The escaped form `<script>` -> `&lt;script&gt;` MUST appear in BOTH
+        // the href attribute and the link text (2 occurrences total).
+        val escapedCount = indexHtml.split("&lt;script&gt;").size - 1
+        assertEquals(
+            2,
+            escapedCount,
+            "the injected <script> tag MUST appear escaped in BOTH href and text contexts; " +
+                "found $escapedCount occurrences; got:\n$indexHtml",
+        )
+    }
+
+    @Test
+    fun `rp011 — filename with Unicode and whitespace is preserved verbatim (only HTML-special chars escape)`() {
+        // Unicode and whitespace are inert in HTML; they must be preserved verbatim.
+        val indexHtml = PublishHtmlOperationsAdapter(
+            runIdString = "rp011-unicode",
+            stageIdentity = StageIdentity(name = "rp011", index = 0),
+            controlDirRoot = Files.createTempDirectory("rp011-u-"),
+            eventSink = sink(),
+        ).buildIndexHtml(listOf(entry("Año 2026 — café résumé.html")))
+
+        // Unicode characters MUST be preserved verbatim in BOTH contexts (4 occurrences: href+text × 2 phrases).
+        val phrase = "Año 2026 — café résumé.html"
+        val occurrences = indexHtml.split(phrase).size - 1
+        assertEquals(
+            2,
+            occurrences,
+            "Unicode/whitespace MUST be preserved verbatim in BOTH href and link text; " +
+                "found $occurrences occurrences of \"$phrase\"; got:\n$indexHtml",
+        )
+        // Em-dash and accented characters MUST NOT be percent-encoded or escaped.
+        assertFalse(
+            indexHtml.contains("&#"),
+            "Unicode characters MUST NOT be entity-encoded; got:\n$indexHtml",
+        )
+    }
+
+    @Test
+    fun `rp011 — escape survives the deterministic sort (multiple malicious entries do not corrupt the document)`() {
+        // Two malicious relPaths + one benign. After escape, the generated
+        // index.html MUST still be a valid HTML document.
+        val entries = listOf(
+            entry("\"><script>alert(1)</script>.html"),
+            entry("normal.html"),
+            entry("another.html"),
+        )
+        val indexHtml = PublishHtmlOperationsAdapter(
+            runIdString = "rp011-multi",
+            stageIdentity = StageIdentity(name = "rp011", index = 0),
+            controlDirRoot = Files.createTempDirectory("rp011-m-"),
+            eventSink = sink(),
+        ).buildIndexHtml(entries)
+
+        // The injected `<script>` MUST NOT appear unescaped.
+        assertFalse(
+            indexHtml.contains("<script>"),
+            "the injected <script> tag MUST NOT appear unescaped; got:\n$indexHtml",
+        )
+        // The escaped payload `&lt;script&gt;` MUST appear in both contexts of
+        // the malicious entry (2 occurrences total: href + text).
+        val escapedCount = indexHtml.split("&lt;script&gt;").size - 1
+        assertEquals(
+            2,
+            escapedCount,
+            "the injected <script> tag MUST appear escaped in both contexts; " +
+                "found $escapedCount occurrences; got:\n$indexHtml",
+        )
+        // The well-formed HTML container MUST still be intact — escape must
+        // not corrupt the document structure.
+        assertTrue(
+            indexHtml.contains("<!DOCTYPE html>"),
+            "the document preamble MUST remain intact after escape; got:\n$indexHtml",
+        )
+        assertTrue(
+            indexHtml.contains("</ul></body></html>"),
+            "the document close MUST remain intact after escape; got:\n$indexHtml",
+        )
+        // Exactly three <li> elements (one per entry, sorted by relPath).
+        val liCount = indexHtml.split("<li>").size - 1
+        assertEquals(
+            3,
+            liCount,
+            "the document MUST contain exactly three <li> entries (one per HtmlReportEntry); got $liCount; doc:\n$indexHtml",
+        )
+        // The document MUST contain the well-formed opening <ul> and closing </ul>.
+        assertTrue(
+            indexHtml.contains("<ul>") && indexHtml.contains("</ul>"),
+            "the document MUST contain <ul> and </ul>; got:\n$indexHtml",
+        )
     }
 }

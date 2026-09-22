@@ -223,18 +223,73 @@ class PublishHtmlOperationsAdapter(
     /**
      * Generates the index.html wrapper (R8). Sorted by relPath for determinism
      * (replay-stable fingerprint).
+     *
+     * Per WU-RP-011: `e.relPath` is the canonical source of HTML context. On
+     * any filesystem that allows non-slash, non-NUL bytes in filenames (ext4,
+     * NTFS, APFS, …) a hostile report author can craft a filename that, when
+     * interpolated unescaped, breaks out of the href attribute or injects an
+     * HTML payload. `e.sizeBytes` is a Long (not a string), so it does not
+     * need escaping. Both helpers below are context-aware per OWASP "contextual
+     * output encoding" — the href attribute and the element body have distinct
+     * dangerous sets.
+     *
+     * Visible to the test package so WU-RP-011 regression tests can drive the
+     * function directly with synthetic `HtmlReportEntry` payloads, without
+     * having to materialise malicious filenames on the real filesystem (some
+     * names that are valid HTML-injection payloads contain characters that
+     * some filesystems reject, e.g. `<` on Windows-reserved names).
      */
-    private fun buildIndexHtml(entries: List<HtmlReportEntry>): String {
+    internal fun buildIndexHtml(entries: List<HtmlReportEntry>): String {
         val sb = StringBuilder()
         sb.appendLine("<!DOCTYPE html>")
         sb.appendLine("<html><head><meta charset=\"utf-8\"><title>Published Report</title></head><body>")
         sb.appendLine("<ul>")
         for (e in entries.sortedBy { it.relPath }) {
-            sb.append("<li><a href=\"").append(e.relPath).append("\">")
-            sb.append(e.relPath).append("</a> (").append(e.sizeBytes).append(" bytes)</li>")
+            sb.append("<li><a href=\"").append(escapeHtmlAttribute(e.relPath)).append("\">")
+            sb.append(escapeHtmlText(e.relPath)).append("</a> (").append(e.sizeBytes).append(" bytes)</li>")
             sb.appendLine()
         }
         sb.appendLine("</ul></body></html>")
+        return sb.toString()
+    }
+
+    /**
+     * Escapes the five characters that can break out of an HTML attribute
+     * delimited by double quotes (per OWASP "Attribute Encoder"). The minimum
+     * set to defuse injection is `&`, `"`, `<`, `>`; `'` is included for
+     * defensive symmetry (some legacy UAs treat it as an attribute delimiter
+     * in quirks mode).
+     */
+    private fun escapeHtmlAttribute(s: String): String {
+        val sb = StringBuilder(s.length)
+        for (ch in s) {
+            when (ch) {
+                '&' -> sb.append("&amp;")
+                '"' -> sb.append("&quot;")
+                '\'' -> sb.append("&#x27;")
+                '<' -> sb.append("&lt;")
+                '>' -> sb.append("&gt;")
+                else -> sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Escapes the three characters that have special meaning in HTML text
+     * content (per OWASP "HTML Body Encoder"): `&`, `<`, `>`. Quote characters
+     * are NOT escaped here because they are inert inside element text.
+     */
+    private fun escapeHtmlText(s: String): String {
+        val sb = StringBuilder(s.length)
+        for (ch in s) {
+            when (ch) {
+                '&' -> sb.append("&amp;")
+                '<' -> sb.append("&lt;")
+                '>' -> sb.append("&gt;")
+                else -> sb.append(ch)
+            }
+        }
         return sb.toString()
     }
 }

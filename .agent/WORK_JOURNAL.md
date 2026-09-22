@@ -541,3 +541,27 @@
   git push origin main
   gh run list --limit 1
   ```
+
+## 2026-09-22T06:58Z — WU-RP-010 round 1 — PublishHTML E2E coverage of UAT-RP-005 (test-only) (PASS_GREEN_LOCAL, CI verification pending push)
+
+- Base SHA / HEAD SHA / branch: base = e95b3d41b40a665c8815cf0678a9bc79e24912a8 (pre-WU); branch = main; new commit SHA = TBD.
+- Intención, contrato y UAT: ROADMAP.md §3 WU-RP-010 first round (test-only path). Add E2E coverage of `PublishHtmlOperationsAdapter.publish(input)` for UAT-RP-005 invariants 1, 2, 4 (invariant 3 — manifest — deferred pending operator decision). 4 new tests in a new file `PublishHtmlOperationsAdapterUatTest.kt`.
+- Decisión/ADR; rutas modificadas: 0 production files; 1 new test file; 1 new receipt file. NO ADR required (test-only additions; no contract change).
+  - v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapterUatTest.kt (new, 4 tests).
+  - docs/v2/07-uat/WU_RP_010_RECEIPT.md (new immutable receipt per SHA).
+- Tests realmente ejecutados (commands, exit, XML, time):
+  - L0 compile: `cd v2 && timeout 600 ./gradlew :pipeline-application:compileTestKotlin --no-daemon --quiet` → exit 0, 18 s.
+  - L1 new test class: `cd v2 && timeout 300 ./gradlew :pipeline-application:test --tests 'PublishHtmlOperationsAdapterUatTest' --no-daemon` → exit 0; XML `TEST-dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest.xml`: tests=4 failures=0 errors=0 skipped=0 time=0.13 s ts=2026-09-22T06:56:24.579Z. All 4 names PASS.
+  - L2 sibling regression: `cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'PublishHtmlOperationsAdapterUatTest' --tests 'CorePublishHtmlStepContractSuiteTest' --tests 'Lpr011SecretRedactionTranscriptUatTest' --tests 'Lpr011r2SecretRedactionAtRestUatTest' --no-daemon` → exit 0, 1m 6s. 34 tests / 0 failures / 0 errors across 4 suites. New class: 55 ms, zero impact on neighbours.
+- PASS / FAIL / BLOCKED / NOT_RUN y causa: PASS_GREEN_LOCAL (round 1 test-only). **CI gate NOT_RUN — pending `git push origin main` + `gh run list --limit 1`.**
+- Bloqueos y riesgo residual:
+  - Single open residual: UAT-RP-005 invariant 3 (archive MANIFEST.json) is FAIL_PROVEN at production level. The orchestrator's classification is NEEDS_FIX, but the production change touches a security boundary (archive layout) per AGENTS.md §5 and is deferred pending operator decision.
+  - Sub-agent pool (`session_mouse_...`, `session_penguin_...`, `session_sloth_...`, `session_snail_...`) confirmed non-functional in this environment (all returned spawn success yet produced no artifacts). Orchestrator proceeded direct per pre-authorized pattern. Documented in `/tmp/wu-rp-010-report.md`.
+- Puntero actualizado: NEXT_WU after this commit lands → continue orchestrator-direct per RP-1 plan: WU-RP-011 (HTML injection in buildIndexHtml relPath; test-only path unless production escape is needed), WU-RP-012 (stash symlink safety — independent of publishHTML), WU-RP-013 (StepContractSuite G7 reconciliation). WU-RP-010 round 2 (MANIFEST.json) is gated on operator decision. Primer comando reproducible:
+  ```bash
+  cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+  git add v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/PublishHtmlOperationsAdapterUatTest.kt docs/v2/07-uat/WU_RP_010_RECEIPT.md .agent/SESSION_POINTER.md .agent/WORK_JOURNAL.md
+  git commit -m "test(uat-publishhtml): E2E coverage of UAT-RP-005 invariants 1, 2, 4 (round 1, test-only)"
+  git push origin main
+  gh run list --limit 1
+  ```

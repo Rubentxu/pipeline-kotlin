@@ -1,7 +1,9 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T06:38Z. **Tipo de cambio de esta sesión:** WU-RP-101 CLOSED — RP-1 first WU. Test-side determinism fix for `Lpr011r2SecretRedactionAtRestUatTest.console log contains no raw secret while the child is still alive` (kt:211). CI of HEAD 0063ac46 was RED on this test (run 35662787309, application-shard engine failed). Fix: widened test payload 100 → 1000 echo lines and `sleep 2` → `sleep 10` so the executor's BufferedWriter flushes sanitized bytes to console.log during the live observation window; added Files.getLastModifiedTime capture and tightened polling cadence 50 → 20 ms. Zero production-code change. Receipt: docs/v2/07-uat/WU_RP_101_RECEIPT.md.
-**Código auditado:** main @ 0063ac46 (pre-fix HEAD). WU head = this commit (TBD; see git log).
+**Actualizado:** 2026-09-22T06:58Z. **Tipo de cambio de esta sesión:** WU-RP-010 round 1 CLOSED — PublishHTML E2E coverage of UAT-RP-005 invariants 1, 2, 4 (test-only). Receipt: docs/v2/07-uat/WU_RP_010_RECEIPT.md. Sub-agent pool confirmed non-functional in this environment; orchestrator proceeded direct per pre-authorized pattern.
+
+**Código auditado:** main @ e95b3d41 (pre-RP-010). WU head = this commit (TBD; pending push + CI).
+
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
 **Matriz UAT:** docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md.
@@ -10,20 +12,27 @@
 
 ## Estado operativo
 
-- ACTIVE_PHASE: RP-1 OPEN. First WU WU-RP-101 closed (test-only fix, zero production change, 3/3 local runs green, full class green, sibling regression green). CI verification of this commit pending `git push origin main` + `gh run list --limit 1`.
-- LAST_CLOSED_WU: WU-RP-101 — Lpr011r2 DURING-execution determinism closure. Test-side only. NO_GO respected (no Tier A new Step, no release, no SDKMAN, no historical receipt edits).
-- NEXT_WU: WU-RP-010 (publishHTML non-overwrite + index collision; UAT-RP-005), contingent on CI green of WU-RP-101.
-- BLOCKERS: none for WU-RP-101 close-out. CI verification of the new SHA is the only open dependency.
+- ACTIVE_PHASE: RP-1 OPEN.
+  - WU-RP-101 CLOSED (CI verde at e95b3d41; run 35695823142 7/7 SUCCESS). Test-side determinism fix; zero production code.
+  - WU-RP-010 round 1 CLOSED locally (test-only; 4/4 PASS in 0.13 s; L2 sibling regression 34/0/0/0). CI verification pending `git push origin main` + `gh run list --limit 1`.
+  - WU-RP-010 round 2 (archive MANIFEST.json) DEFERRED — production code change touches a security boundary (archive layout) per AGENTS.md §5; awaiting operator decision.
+  - WU-RP-011 (HTML injection in buildIndexHtml relPath) — orchestrator-direct, next.
+  - WU-RP-012 (stash symlink safety) — independent of publishHTML, next.
+  - WU-RP-013 (StepContractSuite G7 reconciliation for core.publishHTML) — last.
+- LAST_CLOSED_WU: WU-RP-010 round 1 (test-only E2E coverage of UAT-RP-005 invariants 1, 2, 4).
+- NEXT_WU: WU-RP-010 round 2 (test-only addition for invariant 3 manifest) OR continue to WU-RP-011; contingent on operator sign-off on production change for invariant 3.
+- BLOCKERS: none.
 - NO_GO: iniciar Step core nuevo o publicar release mientras RP-1 no cierre (Tier A/B); no modificar recibos históricos; no cambiar contrato público sin ADR/autorización.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.
+- OPERATIONAL NOTE: sub-agent swarm pool (`session_mouse_...`, `session_penguin_...`, `session_sloth_...`, `session_snail_...`) returned spawn success yet produced no artifacts. Orchestrator proceeds direct per pre-authorized pattern, with verifiable evidence at every step. Documented in WU-RP-010_RECEIPT.md and /tmp/wu-rp-010-report.md.
 
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
-1. `git status --short; git rev-parse HEAD; git log --oneline -8`.
+1. `git status --short; git rev-parse HEAD; git log --oneline -10`.
 2. Leer AGENTS.md, este puntero, ROADMAP.md (§3 RP-1), WORK_JOURNAL.md último bloque.
-3. Confirmar CI verde del HEAD WU-RP-101: `gh run list --limit 1`.
-4. Si CI verde → abrir WU-RP-010. Si CI rojo → diagnosticar antes de continuar (no acumular regresión).
-5. Cada WU de RP-1 arranca con inventario de matriz UAT-SEC/ART y clasificación de clases timing-sensitive (gate release, nunca debilitar aserciones).
+3. Confirmar CI verde del HEAD WU-RP-010 round 1: `gh run list --limit 1`.
+4. Si CI verde → continuar con WU-RP-011 (HTML injection). Si CI rojo → diagnosticar antes de continuar (no acumular regresión).
+5. Operador debe decidir si abrir WU-RP-010 round 2 (production code change: archive MANIFEST.json) antes o después de WU-RP-011.
 
 ## Handoff transaccional
 

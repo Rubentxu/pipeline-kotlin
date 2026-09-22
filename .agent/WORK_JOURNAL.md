@@ -670,3 +670,41 @@
 - **CLOSURE_DOCS**: Updated `docs/v2/07-uat/WU_RP_011_RECEIPT.md` (this commit) — appended round 2 section.
 - **PUNtero**: HEAD = `d3e9b9b6`. NEXT_WU = WU-RP-012 (stash symlink safety) — pending operator sign-off.
 - **WHAT_NEXT**: UAT-RP-006 (HTML injection) and UAT-RP-007 (paths publish) are now COVERED by WU-RP-011 r1+r2. Remaining in RP-1: WU-RP-012 (stash symlink safety — touches production code) and WU-RP-010 r2 (archive MANIFEST.json — touches archive layout, the original invariant 3 of UAT-RP-005). Both still pending operator decision per AGENTS.md §5.
+
+---
+
+## 2026-09-22T08:39Z — WU-RP-012 CLOSED
+
+- **WHAT**: Stash/unstash paths confinement + symlink filter. Closes UAT-RP-008 (Stash symlinks) and UAT-RP-009 (Stash roundtrip) per ROADMAP L43. Three pre-flight checks added in BOTH `stash()` and `unstash()`:
+  1. `workspaceRoot.toRealPath()` (workspace) + `stashRoot.toRealPath()` (archive) + reject `Files.isSymbolicLink` on each.
+  2. Per-file: reject `Files.isSymbolicLink` AND `file.toRealPath()` must stay inside `workspaceRootReal`.
+  3. Per-target: `target.toRealPath()` must stay inside `stashRootReal` / `restoreRootReal`.
+  4. `unstash` walk materialised to `List<Path>` (no follow-links trickery needed for clean break).
+- **WHY**: Pre-fix, `AntStyleGlob.match` used `Files.walk` with `FOLLOW_LINKS=true`. A workspace with a symlink `src/evil-link.txt` → `/etc/passwd` would copy the external file into the stashRoot. CWE-22 (Path Traversal) and CWE-59 (Link Following) mitigation. Same shape of bug as publishHTML r2, applied here to stash.
+- **WHERE**:
+  - `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/StashOperationsAdapter.kt` — 168 lines added (pre-flight checks + walk materialisation in unstash). All additive, no existing code path removed.
+  - `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/StashOperationsAdapterUatTest.kt` — NEW FILE, 7 tests in the rp012 series.
+- **DECISIONS**:
+  - **Materialised the walk** in unstash (`.toList()`) instead of using a flag + `stream.close()` trick. The flag approach broke the failureKind typing (catch wrapped the close-thrown UncheckedIOException as INFRASTRUCTURE). The list approach is cleaner and short-circuits with a normal `for` loop.
+  - **Both `Files.isSymbolicLink` AND `toRealPath()` containment** checks. The first catches obvious symlinks; the second catches broken symlinks and symlinks that survive `isSymbolicLink` on some platforms (e.g. macOS quirks).
+  - **No modification to `AntStyleGlob`**. Same surgical decision as publishHTML r2: AntStyleGlob is tier-1 shared with 9+ callsites and many tests. The symlink filter lives in the adapter.
+- **CHALLENGES**:
+  - **Failure kind bug**: my first refactor used a `try { ... throw IOException("symlink") } catch (IOException) { return StashFailed(INFRASTRUCTURE) }` pattern. The throw inside `Files.walk(...).use { ... forEach { ... } }` was caught by the OUTER try-catch (the one wrapping the whole unstash body), which always returned `INFRASTRUCTURE`. Fix: use a `var scriptReason` + `return@forEach` early-exit pattern, then check the reason at the end. Even cleaner: materialise the walk to a list and iterate normally.
+  - **Backtick in test name**: `` `unstash rejects an `into` path...` `` — the inner backticks broke Kotlin's named-argument parsing. Renamed to `unstash rejects an into-path...`.
+  - **`r.message` vs `r.message`**: used the wrong field name in initial test (`PublishHtmlFailed` has `message`, not `reason` — same as `StashFailed`, but I made a typo somewhere). Caught by compile.
+- **LEARNED**:
+  - When a typed failure requires the WRONG `failureKind`, the bug is usually in the exception flow control, not in the assertion. Read the failure message carefully before changing the test.
+  - `Files.walk(...).use { stream.forEach { ... throw ... } }` throws do NOT exit cleanly — they get wrapped by the outer scope. For short-circuit semantics, materialise to a List and iterate with `for` + early return.
+  - The "stash→unstash bit-exact" pattern (compute expected sha256 BEFORE stash, then verify AFTER unstash) is the standard way to validate no-regresión contra recibos históricos without needing the receipts themselves.
+- **EVIDENCE**:
+  - Commit: `b3f74e93`.
+  - Push: `f91e9eca..b3f74e93 main -> main`, bypassed rule violations: 7/7 status checks expected.
+  - CI: `35705391067` `LPR-0 CI`, `conclusion: success`, `headSha: b3f74e93d941b45e0da36a667b5f9a3bbee8cc4d`, duration 6m 42s, jobs 7/7 success (compile, domain-unit, architecture-fitness, application-shard engine/uat-core/uat-dsl/uat-local).
+  - L0 compile: `:pipeline-application:compileTestKotlin` 14s (cold).
+  - L1 rp012: 7/7 PASS in 0.187s.
+  - L2 sibling UAT (6 classes): 42/42 PASS, 0 failures, 0 errors.
+  - L4 round gate (compile + SDK + domain + artefacts): 11s BUILD SUCCESSFUL.
+  - XML canary: `TEST-dev.rubentxu.pipeline.v2.application.StashOperationsAdapterUatTest.xml` timestamp 2026-09-22T08:30:05Z, all 7 tests have `<testcase …/>` (no failures).
+- **CLOSURE_DOCS**: `docs/v2/07-uat/WU_RP_012_RECEIPT.md` (this commit).
+- **PUNtero**: HEAD = `b3f74e93`. NEXT_WU = WU-RP-010 round 2 (archive MANIFEST.json) — pending operator decision.
+- **WHAT_NEXT**: WU-RP-012 closes UAT-RP-008 + UAT-RP-009. Remaining in RP-1: WU-RP-010 r2 (archive MANIFEST.json — the original invariant 3 of UAT-RP-005 still FAIL_PROVEN at production level). Operator decision required.

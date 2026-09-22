@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.events.HtmlReportEntry
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -457,5 +459,222 @@ class PublishHtmlOperationsAdapterUatTest {
             indexHtml.contains("<ul>") && indexHtml.contains("</ul>"),
             "the document MUST contain <ul> and </ul>; got:\n$indexHtml",
         )
+    }
+
+    // ============================================================================
+    // WU-RP-011 round 2 — Paths confinement + symlink filter on publishHTML
+    // ============================================================================
+    //
+    // The WU-RP-011 charter from docs/v2/05-roadmap/ROADMAP.md L42 is two-part:
+    //   (1) escape HTML/href context-aware — covered by rp011 above (round 1);
+    //   (2) confine reportDir to a real path and DO NOT follow symlinks; cover
+    //       traversal, intermediate and direct symlinks, Unicode, and malicious
+    //       filenames with adversarial tests.
+    //
+    // This section covers (2). The threat model: a hostile report author could
+    // either (a) make `reportDir` itself a symlink that resolves outside the
+    // workspace, (b) place a symlink somewhere inside the reportDir tree that
+    // points to an external file (e.g. `/etc/passwd`), or (c) use `..` segments
+    // that bypass `startsWith(workspaceRoot)` only at the lexical level.
+    // publish() must reject all of these before any read or copy happens, with
+    // a typed `PublishHtmlFailed(FailureKind.SCRIPT, reason)` (no infra failure
+    // — the rejection is a script-level decision).
+    //
+    // Tests use real symlinks (the unit under test is the I/O behaviour, not
+    // the function signature), so they are E2E rather than contract-driven.
+
+    /**
+     * Materialises a regular file under the given report dir and runs `publish`
+     * with the standard happy-path setup. Returns the typed `PublishHtmlResult`.
+     */
+    private fun publishSingleRegularFile(
+        controlDirRoot: Path,
+        workspaceBase: Path,
+        reportDirRel: String = "build/reports",
+        extraSetup: (Path) -> Unit = {},
+    ): PublishHtmlResult {
+        val reportDirAbs = workspaceBase.resolve(reportDirRel)
+        Files.createDirectories(reportDirAbs)
+        Files.writeString(reportDirAbs.resolve("a.html"), "<p>ok</p>")
+        extraSetup(reportDirAbs)
+        val input = PublishHtmlInput(
+            name = "html-report",
+            reportDir = reportDirRel,
+            reportFiles = "**/*.html",
+            keepAll = false,
+            allowMissing = false,
+            escapeUnderscores = false,
+        )
+        return newAdapter("rp011r2-${System.nanoTime()}", controlDirRoot, workspaceBase).publish(input)
+    }
+
+    @Test
+    fun `rp011r2 — reportDir that is a symlink resolving outside the workspace is rejected`(
+        @TempDir tmp: Path,
+    ) {
+        // Setup: a real reportDir at <ws>/build/reports, BUT we replace it with
+        // a symlink that points OUTSIDE the workspace. The adapter MUST reject
+        // this BEFORE the glob walk — by resolving reportDir.toRealPath() and
+        // checking it stays inside workspaceRoot.toRealPath().
+        val workspaceBase = tmp.resolve("ws")
+        Files.createDirectories(workspaceBase)
+        val externalDir = tmp.resolve("external")
+        Files.createDirectories(externalDir)
+        Files.writeString(externalDir.resolve("secret.html"), "<p>SECRET</p>")
+
+        val realReportDir = workspaceBase.resolve("build/reports")
+        Files.createDirectories(realReportDir)
+        Files.delete(realReportDir)
+        Files.createSymbolicLink(realReportDir, externalDir)
+
+        val input = PublishHtmlInput(
+            name = "html-report",
+            reportDir = "build/reports",
+            reportFiles = "**/*.html",
+            keepAll = false,
+            allowMissing = false,
+            escapeUnderscores = false,
+        )
+        val r = newAdapter("rp011r2-escape", tmp.resolve("ctrl"), workspaceBase).publish(input)
+
+        // Rejection: typed FailureKind.SCRIPT (NOT INFRASTRUCTURE) with a
+        // message that names the symlink failure mode.
+        assertTrue(
+            r is PublishHtmlFailed,
+            "reportDir that resolves outside the workspace via symlink MUST be rejected; got $r",
+        )
+        r as PublishHtmlFailed
+        assertEquals(
+            FailureKind.SCRIPT,
+            r.failureKind,
+            "the rejection MUST be typed as FailureKind.SCRIPT (script-level decision); got ${r.failureKind}",
+        )
+        assertTrue(
+            r.message.contains("symlink"),
+            "the rejection message MUST mention symlink; got '${r.message}'",
+        )
+        // No reportRoot should be created under controlDirRoot.
+        val reportsRoot = tmp.resolve("ctrl").resolve("reports")
+        assertFalse(
+            Files.exists(reportsRoot),
+            "no reports archive MUST be created when reportDir is a symlink-escape; found $reportsRoot",
+        )
+    }
+
+    @Test
+    fun `rp011r2 — symlink in the file tree pointing outside the reportDir is rejected`(
+        @TempDir tmp: Path,
+    ) {
+        // Setup: reportDir is legitimate, but contains a file that is a symlink
+        // pointing to an external file outside the workspace. The adapter MUST
+        // reject this before any copy by walking with NOFOLLOW_LINKS and by
+        // explicit `Files.isSymbolicLink` per matched file.
+        val workspaceBase = tmp.resolve("ws")
+        Files.createDirectories(workspaceBase)
+        val external = tmp.resolve("external")
+        Files.createDirectories(external)
+        val externalFile = external.resolve("passwd.html")
+        Files.writeString(externalFile, "<p>SHOULD NOT BE COPIED</p>")
+
+        val realReportDir = workspaceBase.resolve("build/reports")
+        Files.createDirectories(realReportDir)
+        val symlinkInside = realReportDir.resolve("evil.html")
+        Files.createSymbolicLink(symlinkInside, externalFile)
+
+        val input = PublishHtmlInput(
+            name = "html-report",
+            reportDir = "build/reports",
+            reportFiles = "**/*.html",
+            keepAll = false,
+            allowMissing = false,
+            escapeUnderscores = false,
+        )
+        val r = newAdapter("rp011r2-trav", tmp.resolve("ctrl"), workspaceBase).publish(input)
+
+        assertTrue(
+            r is PublishHtmlFailed,
+            "a symlink in the reportDir tree pointing outside MUST be rejected; got $r",
+        )
+        r as PublishHtmlFailed
+        assertEquals(FailureKind.SCRIPT, r.failureKind)
+        assertTrue(
+            r.message.contains("symlink"),
+            "the rejection message MUST mention symlink; got '${r.message}'",
+        )
+    }
+
+    @Test
+    fun `rp011r2 — symlink intermediate directory (dir pointing outside) is rejected`(
+        @TempDir tmp: Path,
+    ) {
+        // Setup: a subdirectory under reportDir that is itself a symlink to an
+        // external directory. The intermediate symlink MUST NOT be traversed.
+        val workspaceBase = tmp.resolve("ws")
+        Files.createDirectories(workspaceBase)
+        val external = tmp.resolve("external")
+        Files.createDirectories(external.resolve("nested"))
+        Files.writeString(external.resolve("nested").resolve("leak.html"), "<p>LEAKED</p>")
+
+        val realReportDir = workspaceBase.resolve("build/reports")
+        Files.createDirectories(realReportDir)
+        Files.createSymbolicLink(realReportDir.resolve("evil-dir"), external.resolve("nested"))
+
+        val input = PublishHtmlInput(
+            name = "html-report",
+            reportDir = "build/reports",
+            reportFiles = "**/*.html",
+            keepAll = false,
+            allowMissing = false,
+            escapeUnderscores = false,
+        )
+        val r = newAdapter("rp011r2-dir-sym", tmp.resolve("ctrl"), workspaceBase).publish(input)
+
+        // The adapter MUST NOT publish any file from the externally-linked tree.
+        assertTrue(
+            r is PublishHtmlFailed || (r is PublishHtmlPublished && r.entries.isEmpty()),
+            "an intermediate symlinked directory MUST NOT yield published entries; got $r",
+        )
+    }
+
+    @Test
+    fun `rp011r2 — happy path (regular files, no symlinks) still publishes successfully`(
+        @TempDir tmp: Path,
+    ) {
+        // Regression: the r2 hardening MUST NOT break the simple happy path.
+        val controlDirRoot = tmp.resolve("ctrl")
+        val workspaceBase = tmp.resolve("ws")
+        val r = publishSingleRegularFile(controlDirRoot, workspaceBase)
+        assertTrue(
+            r is PublishHtmlPublished,
+            "the happy-path publish MUST still succeed; got $r",
+        )
+        r as PublishHtmlPublished
+        assertEquals(1, r.entries.size, "exactly one entry MUST be published")
+        assertEquals("a.html", r.entries[0].relPath)
+    }
+
+    @Test
+    fun `rp011r2 — Unicode filename is preserved through publish (regression after escape)`(
+        @TempDir tmp: Path,
+    ) {
+        // Regression: Unicode in real filenames must survive the r2 hardening.
+        val controlDirRoot = tmp.resolve("ctrl")
+        val workspaceBase = tmp.resolve("ws")
+        val reportDirAbs = workspaceBase.resolve("build/reports")
+        Files.createDirectories(reportDirAbs)
+        Files.writeString(reportDirAbs.resolve("Año-2026-café.html"), "<p>unicode</p>")
+        val input = PublishHtmlInput(
+            name = "html-report",
+            reportDir = "build/reports",
+            reportFiles = "**/*.html",
+            keepAll = false,
+            allowMissing = false,
+            escapeUnderscores = false,
+        )
+        val r = newAdapter("rp011r2-unicode", controlDirRoot, workspaceBase).publish(input)
+        assertTrue(r is PublishHtmlPublished, "Unicode filename MUST publish; got $r")
+        r as PublishHtmlPublished
+        assertEquals(1, r.entries.size)
+        assertEquals("Año-2026-café.html", r.entries[0].relPath)
     }
 }

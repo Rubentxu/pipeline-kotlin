@@ -8,6 +8,7 @@ import dev.rubentxu.pipeline.v2.events.HtmlReportEntry
 import dev.rubentxu.pipeline.v2.events.HtmlReportFailed as HtmlReportFailedEvent
 import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -62,6 +63,47 @@ class PublishHtmlOperationsAdapter(
         val reportDir = workspaceRoot.resolve(input.reportDir).normalize()
         if (!reportDir.startsWith(workspaceRoot)) {
             val reason = "reportDir '${input.reportDir}' escapes workspace"
+            eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
+            return PublishHtmlFailed(FailureKind.SCRIPT, reason)
+        }
+
+        // WU-RP-011 r2 — paths confinement. Resolves the reportDir's real
+        // (canonical, symlink-following) path and rejects if it escapes the
+        // workspace. `normalize()` alone does NOT follow symlinks, so a
+        // symlinked reportDir pointing outside the workspace would slip past
+        // the lexical check above. `toRealPath()` is the only operation that
+        // resolves the entire symlink chain. We deliberately fail-closed at
+        // this point — any IO failure to resolve becomes a typed SCRIPT-level
+        // rejection (the script author passed a non-resolvable reportDir).
+        val reportDirReal: Path = try {
+            reportDir.toRealPath()
+        } catch (e: IOException) {
+            val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"
+            eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
+            return PublishHtmlFailed(FailureKind.SCRIPT, reason)
+        }
+        val workspaceRootReal: Path = try {
+            workspaceRoot.toRealPath()
+        } catch (e: IOException) {
+            // INFRASTRUCTURE: the workspace itself cannot be resolved — this
+            // is a system-level failure, not a script-author error.
+            val reason = "workspace root cannot be resolved to a real path: ${e.message}"
+            eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.INFRASTRUCTURE))
+            return PublishHtmlFailed(FailureKind.INFRASTRUCTURE, reason)
+        }
+        if (!reportDirReal.startsWith(workspaceRootReal)) {
+            val reason = "reportDir '${input.reportDir}' resolves to '$reportDirReal' which escapes the workspace (real path '$workspaceRootReal'); refusing to follow symlinks"
+            eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
+            return PublishHtmlFailed(FailureKind.SCRIPT, reason)
+        }
+        // Even when reportDirReal stays inside the workspace, the adapter must
+        // NOT follow any symlink in the reportDir path itself: a symlink from
+        // <ws>/a/reports to <ws>/b/reports would still let `AntStyleGlob.match`
+        // (which uses `Files.walk` without NOFOLLOW_LINKS) traverse files that
+        // the script author did not intend to expose. `Files.isSymbolicLink` is
+        // the definitive answer (does not follow the chain).
+        if (Files.isSymbolicLink(reportDir)) {
+            val reason = "reportDir '$reportDir' is a symlink (resolves to '$reportDirReal'); refusing to follow symlinks"
             eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }

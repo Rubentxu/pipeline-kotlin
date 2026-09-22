@@ -19,7 +19,7 @@
   - M5 maxRss ~11 GB: candidato streaming-chunks RP-4.
   - Flake M3 SIGPIPE child 1x, no determinista.
   - UAT-RP-018 PARTIAL (sandbox-profile 'os' → RP-4/5, ADR-0016).
-- NEXT_WU: **WU-RP-040 R4** (mutación selectiva pitest sobre codecs/políticas); luego WU-RP-041 (aislamiento runner, incluye deuda cancelación de cuerpos externos).
+- NEXT_WU: **WU-RP-041** (aislamiento runner local: filesystem, proceso, CPU/mem/tiempo, egress, secretos; threat model; absorbe deuda de cancelación de cuerpos externos). WU-RP-040 CLOSED R1-R4.
 - BLOCKERS: ninguno.
 - NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0096.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.

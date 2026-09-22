@@ -854,3 +854,10 @@
 
 ## 2026-09-22 RP-3 EXIT REVIEW — criterio auditado cláusula a cláusula (complemento de entrada anterior)
 - Doc: docs/v2/07-uat/RP3_EXIT_REVIEW.md (5e2587bb). Veredicto: CUMPLIDA con deudas trazadas (cancelación cuerpos externos→WU-RP-041, policies abiertas, barrido declarativa-vs-ejecución, UAT-RP-018/005inv3 diferidas con ADR).
+
+## 2026-09-22 WU-RP-040 R4 CLOSED — mutación selectiva (pitest)
+- Commit d3b34850. pitest 1.19.0 (1.15 incompatible con bytecode JDK24/major 68 — lección registrada).
+- domain durable.*: 762 mutantes, 42% kill, 322 NO_COVERAGE en data classes (deuda clasificada: tests de igualdad de bajo valor; Reconcilers/Fingerprint = refuerzo futuro real).
+- runtime EffectReplayPolicy*: 20 mutantes, 50% kill; 10 supervivientes demostrados EQUIVALENTES (guardas con rama RERUN == default fall-through).
+- pitest queda como tarea explícita fuera de `check`. Gate check verde. CI run 35762505892 SUCCESS.
+- WU-RP-040 COMPLETA (R1 cobertura, R2 SHA-pinning, R3 gitleaks+SBOM, R4 mutación). Siguiente: WU-RP-041 aislamiento runner (incluye deuda cancelación de cuerpos externos de RP-3).

@@ -878,3 +878,12 @@
 - DEFECTO+FIX: `credentials add` roto desde 2f0fe340 (placeholder CredentialsId("") vs init non-blank); fix 7 sitios en MainCredentialsCli.kt; e2e add/list/withCredentials verificado en dist instalada (76e3015d).
 - Hallazgos: R1 root pipeline.kts no ejecutable (retry en options{}), R2 CLI ignora PIPELINE_CREDENTIALS_STORE. Pendiente: regresión JUnit del fix, gate L5, reevaluación ADR-0095, cierre WU.
 - NO ejecutado: L5 gate de este head (queda para cierre WU).
+
+## 2026-09-22T20:25Z — WU-RP-042 S2 (base caa4ad5d → head 65afc24d+receipt)
+- CI base: run 35776740141 (caa4ad5d) SUCCESS 9/9 — gate L5 del SHA S1 satisfecho.
+- S2 commit 3e4969f9: regresión credentials-add (CredentialsCliAddPlaceholderRegressionTest 4/4) + R2 fix (CLI honra PIPELINE_CREDENTIALS_STORE; resolveStoreFile() autoridad única; e2e PTY dist instalada: add→store env, list lee env). Módulo 56/56.
+- S2 commit 48cd4de3 (R1): root pipeline.kts alineado con DSL soportado (retry Block Step, no options); `pipelinek validate pipeline.kts` → VALIDATION SUCCESSFUL.
+- S2 commit 65afc24d: ADR-0096 — reevaluación ADR-0095 en gate de release: KNOWN_LIMITATION confirmado para 0.39.0; release notes DEBEN divulgarlo; WU-RP-010 r2 sigue siendo el único camino (requiere spec + ADR de formato).
+- Gate L5 escalado del head: `./gradlew -p v2 check --rerun-tasks` BUILD SUCCESSFUL 14m32s (135 tareas, 212 XML frescos, 0 fallos; dentro de budget 1270s). Origen del run: kill imposible, canary XML verify OK.
+- Receipt: docs/v2/07-uat/WU_RP_042_S2_SLICE_RECEIPT.md.
+- Pendiente: CI del head final (post-receipt) → cierre formal de WU-RP-042 y NEXT_WU.

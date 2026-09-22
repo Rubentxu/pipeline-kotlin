@@ -1,6 +1,6 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T16:46Z. **Tipo de cambio de esta sesión:** **WU-RP-033 CLOSED (código)** — external Step con cuerpo por registro genérico. Head = 554672aa. Receipt: WU_RP_033_RECEIPT.md. CI: SUCCESS 7/7 (run 35756206083, SHA 65365fd8).
+**Actualizado:** 2026-09-22T18:40Z. **Tipo de cambio de esta sesión:** **WU-RP-041 S1-S3 CLOSED** — aislamiento runner local (deuda cancelación RP-3 + threat model + ADT confianza). Head = a8068165. Receipt: WU_RP_041_RECEIPT.md. CI: SUCCESS 9/9 (run 35767151719, SHA a8068165; 1er intento infra ECONNRESET, rerun --failed verde).
 
 **Código auditado:** main @ 554672aa. WU head = 554672aa.
 
@@ -12,14 +12,14 @@
 ## Estado operativo
 
 - ACTIVE_PHASE: **RP-4 OPEN** — WU-RP-040 R1-R3 cerradas (kover, SHA-pinning, gitleaks+SBOM). RP-3 EXIT REVIEWED (RP3_EXIT_REVIEW.md).
-- LAST_CLOSED_WU: **WU-RP-033** (554672aa): RegistryBlockSpec DSL genérico + registryBlock(...); lowering genérico RegistryBlockSpec→BlockStepNode; coordinator compone body-policy (registro abierto primero, fallback tabla canónica en UnknownStep); fail-closed probado (typed Failure, 0 filas journal); paridad atómica intacta.
+- LAST_CLOSED_WU: **WU-RP-041 S1-S3** (a8068165): S1 paridad de cancelación por deadline en hijos de cuerpo externo (deuda #1 RP-3 cerrada; cero cambio de producción); S2 threat model runner (WU_RP_041_RUNNER_ISOLATION_THREAT_MODEL.md); S3 RunnerTrustProfile ADT (multi-tenant irrepresentable en L3, fail-closed ADR-0016 M5/M9) + pins de leyes dir. CPU/mem/egress fuera del perfil no confiable.
   - Regresión: scripting-api 50, application 1726, domain 554, sdk-api 393, arch 313 (allow-list +RegistryBlockSpec), gate check green local.
 - KNOWN LIMITATIONS (vigentes):
   - UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a WU-RP-042.
   - M5 maxRss ~11 GB: candidato streaming-chunks RP-4.
   - Flake M3 SIGPIPE child 1x, no determinista.
   - UAT-RP-018 PARTIAL (sandbox-profile 'os' → RP-4/5, ADR-0016).
-- NEXT_WU: **WU-RP-041** (aislamiento runner local: filesystem, proceso, CPU/mem/tiempo, egress, secretos; threat model; absorbe deuda de cancelación de cuerpos externos). WU-RP-040 CLOSED R1-R4.
+- NEXT_WU: **WU-RP-042** (distZip reproducible desde commit inmutable, instalación de cero, CLI validate/run/inspect, publicar sólo el ZIP probado). WU-RP-041 S1-S3 CLOSED.
 - BLOCKERS: ninguno.
 - NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0096.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.

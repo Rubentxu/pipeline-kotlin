@@ -868,3 +868,5 @@
 - S2/S3: threat model (WU_RP_041_RUNNER_ISOLATION_THREAT_MODEL.md), RunnerTrustProfile ADT (multi-tenant irrepresentable en L3, fail-closed ADR-0016 M5/M9), pins de leyes de proyección dir (3/3) y del ADT (3/3). CPU/mem/egress declarados fuera del perfil no confiable.
 - Verificación: T2 runtime+application BUILD SUCCESSFUL (839s, 0 fallos); L5 gate check incremental BUILD SUCCESSFUL (1m53s). CI del head final: PENDING.
 - Pendiente para cierre WU: CI verde del head final; entonces NEXT_WU pasa a WU-RP-042.
+- CI: run 35767151719 (SHA a8068165) SUCCESS 9/9. Primer intento falló por infra (ECONNRESET en wrapper-validation); rerun --failed verde, sin cambios de código.
+- WU-RP-041 S1-S3 CLOSED. NEXT_WU = WU-RP-042 (distZip reproducible + instalación de cero).

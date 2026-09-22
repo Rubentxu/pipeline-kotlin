@@ -1,6 +1,6 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T16:46Z. **Tipo de cambio de esta sesión:** **WU-RP-033 CLOSED (código)** — external Step con cuerpo por registro genérico. Head = 554672aa. Receipt: WU_RP_033_RECEIPT.md. CI: PENDING en este SHA (push inmediato).
+**Actualizado:** 2026-09-22T16:46Z. **Tipo de cambio de esta sesión:** **WU-RP-033 CLOSED (código)** — external Step con cuerpo por registro genérico. Head = 554672aa. Receipt: WU_RP_033_RECEIPT.md. CI: SUCCESS 7/7 (run 35756206083, SHA 65365fd8).
 
 **Código auditado:** main @ 554672aa. WU head = 554672aa.
 
@@ -29,6 +29,6 @@
 
 1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = 554672aa.
 2. Leer ROADMAP (§5 RP-3), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
-3. Verificar CI del SHA observado (push de 554672aa) antes de dar nada por verde.
+3. CI ya verificado para 65365fd8 (run 35756206083 SUCCESS); si HEAD avanzó, verificar el nuevo SHA.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: leer dispatchBody de CanonicalDurableRunCoordinator y caracterizar cómo RegistryBodyPolicyResolver consume StepDescriptor antes de la auditoría declaración-vs-ejecución.

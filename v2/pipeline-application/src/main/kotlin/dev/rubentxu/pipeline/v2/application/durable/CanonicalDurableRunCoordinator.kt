@@ -195,6 +195,7 @@ class CanonicalDurableRunCoordinator(
         artifactIndex = artifactIndex,
     )
 
+
     /** Active context stack for body scope tracking (EM-4). */
 
     /**
@@ -220,6 +221,7 @@ class CanonicalDurableRunCoordinator(
      * forwarder is kept as a source-compatibility shim for any external callers.
      */
     private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
+
         // CDE.3-e4.5 / B1.2c3-S2.5.7 WU-5: structural switch lives in ExecutionBoundaryFactory.build
         // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
         // S2-A9 spike: pass milestoneStateStore so RegistryExecutionBoundary can provide
@@ -233,6 +235,14 @@ class CanonicalDurableRunCoordinator(
             milestoneStateStore = milestoneStateStore,
             artifactIndex = artifactIndex,
         )
+
+    // WU-RP-031 E4: effective execution + durable folding behind a narrow collaborator.
+    private val stepExecutor: DurableStepExecutor = DurableStepExecutor(
+        eventSink = eventSink,
+        executionBoundary = executionBoundary,
+        journal = journal,
+        cursorStore = cursorStore,
+    )
 
     // C3: RunStarted/RunFinished state
     private var currentOutcome: RunOutcome = RunOutcome.Success
@@ -625,33 +635,18 @@ class CanonicalDurableRunCoordinator(
                     is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
                 }
 
-                if (journaled == null) {
-                    journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
-                }
-
-                val executionStartMs = System.currentTimeMillis()
-                val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
-                    executionBoundary.execute(prepared, runtime)
-                }
-                val outcome = executionResult.outcome
-                val executionEndMs = System.currentTimeMillis()
-                journal.append(
-                    RerunOperation(
-                        id = operationId,
-                        fingerprint = fingerprint,
-                        input = input,
-                        output = executionResult.encodedOutput?.let {
-                            OperationOutput(
-                                result = JsonPrimitive(it.value),
-                                durationMs = executionEndMs - executionStartMs,
-                                finishedAt = executionEndMs,
-                            )
-                        },
-                        status = outcome.toOperationStatus(),
-                        attempt = 1,
-                    ),
+                // WU-RP-031 E4: effective execution + durable folding extracted to DurableStepExecutor.
+                val outcome = stepExecutor.executeAndJournal(
+                    operationId = operationId,
+                    fingerprint = fingerprint,
+                    input = input,
+                    journaled = journaled,
+                    prepared = prepared,
+                    runtime = runtime,
+                    lifecycleContext = lifecycleContext,
+                    runIdValue = runId.value,
+                    stageIndex = stageIndex,
                 )
-                if (outcome !is StepOutcome.Failure) cursorStore.advance(runId.value, operationId, stageIndex)
                 return Dispatched(outcome, contextAfterOverlay)
             }
         }

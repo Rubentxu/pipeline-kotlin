@@ -11,7 +11,7 @@
 
 ## Estado operativo
 
-- ACTIVE_PHASE: **RP-3 EXIT REVIEWED (RP3_EXIT_REVIEW.md, 5e2587bb) — criterio cumplido en 6e1d30f4**. RP-2 CLOSED. RP-4 SIGUIENTE.
+- ACTIVE_PHASE: **RP-4 OPEN** — WU-RP-040 R1-R3 cerradas (kover, SHA-pinning, gitleaks+SBOM). RP-3 EXIT REVIEWED (RP3_EXIT_REVIEW.md).
 - LAST_CLOSED_WU: **WU-RP-033** (554672aa): RegistryBlockSpec DSL genérico + registryBlock(...); lowering genérico RegistryBlockSpec→BlockStepNode; coordinator compone body-policy (registro abierto primero, fallback tabla canónica en UnknownStep); fail-closed probado (typed Failure, 0 filas journal); paridad atómica intacta.
   - Regresión: scripting-api 50, application 1726, domain 554, sdk-api 393, arch 313 (allow-list +RegistryBlockSpec), gate check green local.
 - KNOWN LIMITATIONS (vigentes):
@@ -19,7 +19,7 @@
   - M5 maxRss ~11 GB: candidato streaming-chunks RP-4.
   - Flake M3 SIGPIPE child 1x, no determinista.
   - UAT-RP-018 PARTIAL (sandbox-profile 'os' → RP-4/5, ADR-0016).
-- NEXT_WU: **WU-RP-040** (cobertura por módulo + umbrales por riesgo, mutación selectiva, SAST/SBOM/SHA-pinning). Deudas RP-3 registradas en RP3_EXIT_REVIEW.md (cancelación de cuerpos externos → WU-RP-041).
+- NEXT_WU: **WU-RP-040 R4** (mutación selectiva pitest sobre codecs/políticas); luego WU-RP-041 (aislamiento runner, incluye deuda cancelación de cuerpos externos).
 - BLOCKERS: ninguno.
 - NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0096.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.

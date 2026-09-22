@@ -850,3 +850,4 @@
 - R2 (df16726d + fix b8506746): acciones GitHub pinchadas por SHA. PRIMERA INTENTO FALLIDA en CI (run 35758348370): el resolver git ls-remote | head -1 cogió refs de v3 (upload-artifact v3 deprecado). Corregido resolviendo refs/tags/v4 exactos. CI SUCCESS run 35758497440.
 - R3 (1afc6e0f): gitleaks v2.3.9 (SHA) full-history en CI; CycloneDX 1.8.2 en pipeline-application; bom.json verificado (spec 1.5, 49 componentes); artefacto sbom-cyclonedx por run.
 - Lección: resolver SHAs de tags con grep exacto de la versión, nunca head -1 de todas las refs.
+- CI R3 verificado: run 35759757372 SUCCESS 9/9 jobs (incluye secret-scan y sbom nuevos). Pointer actualizado a RP-4.

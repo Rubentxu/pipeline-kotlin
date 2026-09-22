@@ -802,3 +802,10 @@
 - **ORACLE**: L3 27/27 (ExecutionPaths golden, WULpr302Phase1b, B11, WULpr011 kill/resume) + L4 durable package 316/316 GREEN.
 - **EVIDENCE**: docs/v2/07-uat/WU_RP_031_E1_RECEIPT.md. CI sobre este SHA en curso.
 - **WHAT_NEXT**: E2 DurableResolution (reconcileInvocation/deterministicGate/replayResolution/recoverRunningShell), luego E3/E4. Después WU-RP-032.
+
+## 2026-09-22 — WU-RP-031 E2 (base d011b4be -> head 88651cc6)
+- Extracción DurableInvocationResolver: 7 métodos (rejectSchema, reconcileInvocation, deterministicGate, replayResolution, recoverRunningShell, completedShellOutcome, lostShellOutcome) -> internal class, deps estrechas. Ctor público del coordinator SIN override param (exponía tipo internal); propiedad en body.
+- Gotchas: kdoc fragments arrastrados al corte (INC-007/B13) eliminados; DivergenceDetector interfaz de dominio en el seam; REATTACH_TIMEOUT_MS corregido 10s->60s para igualar original.
+- Tests: durable 296/296, arch/fitness 183/183, kill/resume/UAT-local 148/148 (fresh XML, este SHA). NOT RUN: full check (diferido a round gate).
+- CI: 88651cc6 7/7 SUCCESS. Receipt: docs/v2/07-uat/WU_RP_031_E2_RECEIPT.md.
+- Siguiente: E3 TypedInputDecode.

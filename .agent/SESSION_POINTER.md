@@ -18,7 +18,8 @@
   - M5 maxRss ~11 GB (transcript en memoria antes de chunking): sin SLO de RSS en RP-2; candidato streaming-chunks en RP-4.
   - Flake M3 SIGPIPE child (exit 141) 1x, no determinista, 2 reruns limpios. Abierto, no bloqueante.
   - UAT-RP-018 PARTIAL: sandbox-profile 'os' requiere RP-4/5 (ADR-0016).
-- LAST_CLOSED_WU: WU-RP-030 (connascence; receipt WU_RP_030_RECEIPT.md).
+- LAST_CLOSED_WU: WU-RP-031 E1 (d011b4be) + E2 (88651cc6, CI 7/7 SUCCESS; receipt WU_RP_031_E2_RECEIPT.md). E2 = DurableInvocationResolver extraído (7 métodos de reconciliación/recuperación; ctor público sin cambios; REATTACH_TIMEOUT 60s preservado). Evidencia E2: durable 296/296, arch/fitness 183/183, kill/resume/UAT 148/148.
+- NEXT_WU: **WU-RP-031 E3** — extraer TypedInputDecode (escalera E1✓ → E2✓ → E3 → E4 StepExecutor), luego WU-RP-032 (semánticas DSL).
 - NEXT_WU: **WU-RP-031** — separar por pequeñas extracciones StructuralPreparation → DurableResolution → TypedInputDecode → StepExecutor; coordinator solo lifecycle/run-stage. Cada extracción pasa golden journal/event/replay y UAT kill/resume ANTES de retirar su predecesor. Después WU-RP-032 (semánticas DSL).
 - BLOCKERS: ninguno.
 - NO_GO: iniciar Step core nuevo o publicar release; no modificar recibos históricos; no cambiar contrato público sin ADR/autorización. Próximo ADR libre: ADR-0096 (ADR-0094 reservado).

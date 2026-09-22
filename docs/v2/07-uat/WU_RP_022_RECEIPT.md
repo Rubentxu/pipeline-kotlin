@@ -98,3 +98,20 @@ Intentional deviations: chunk 64 MiB por evento (Jenkins no chunking; exigencia 
 Security implications reviewed: chunking no altera redacción (chunks redactados previamente); sin datos nuevos en claro
 Tests demonstrating the contract: TranscriptChunkingTest (3), StreamingRedactor contract tests (23), Rp022ThroughputProbe
 ```
+
+## Anexo — SLOs RP-2 (WU-RP-022b, definidos DESPUÉS de medir, aprobación AUTO preautorizada)
+
+| Métrica | Baseline 9393e34a | SLO | Fundamento |
+| --- | --- | --- | --- |
+| M1 startup+compile+run (echo) | 4.93 s mediana | ≤ 8 s mediana | margen ~1.6x; domina JVM startup |
+| M2 warm-db rerun | 5.01 s mediana | ≤ 8 s mediana | mismo presupuesto que M1 |
+| M3 200 MiB stdout end-to-end | 30.7 s | ≤ 60 s | redactor ≥20 MB/s fijado por probe |
+| Throughput redactor | 23 MB/s | ≥ 20 MB/s | floor del probe Rp022ThroughputProbe |
+| M5 1 GiB soak | 137 s, RSS ~10 GB | exit=0 + bytes íntegros (sin pérdida/duplicación); RSS sin SLO | corrección dura P2 |
+| M4 slow consumer 20x200ms | 3.5 s | ≤ 6 s (overhead ≤ 2.5 s sobre el sleep de 4 s) | backpressure no bloquea |
+| M6 CPU echo-run | user 12.7 s | observacional, sin SLO | presupuesto de CPU se fija en RP-4 |
+
+Decisión explícita de límites (salida RP-2): todas las métricas M1-M6 MEDIDAS
+en el mismo SHA y entorno documentado. RSS del soak de 1 GiB queda sin
+presupuesto (limitación conocida: transcript materializado en memoria) y se
+reesvalúa si un SLO de memoria se define en RP-4.

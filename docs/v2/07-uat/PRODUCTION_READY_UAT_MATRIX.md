@@ -17,7 +17,14 @@
 | UAT-RP-008 | COVERED | WU_RP_012_RECEIPT.md | commit `b3f74e93`. |
 | UAT-RP-009 | COVERED | WU_RP_012_RECEIPT.md | rp012-roundtrip test (bit-exact stash/unstash). |
 | UAT-RP-010 | COVERED | UatEvt001 / UatEvt002 (replay) + WU-LPR-xxx event codec | roundtrip completo variantes. |
-| UAT-RP-011..018 | (pendiente) | WU-RP-020/021/022 | Cobertura corresponde a RP-2/3. Pendiente de test-side characterisation. |
+| UAT-RP-011 | COVERED (RP-2) | SqliteEventStoreConcurrencyCharacterisationTest (10 tests, pipeline-events) | N producers/1 writer, flush barrier, restart MAX(sequence), replay orden rowid, arrays anidados. |
+| UAT-RP-012 | COVERED (RP-1) | WULpr011ResumeLifecycleUatTest + retry control journal (RETRY-D) | kill/resume sin duplicar efecto; terminal resume reuse. |
+| UAT-RP-013 | COVERED (RP-1) | StrictFingerprintDivergenceDetector + coordinator tests | divergence fail-closed antes de efectos. |
+| UAT-RP-014 | COVERED (RP-1/2) | WULpr302RetryEngineTest, timeout/parallel suites, B11ContextBlocks, ExecutionPathsCharacterisationTest P4/P6 | golden IR/eventos/outcomes. |
+| UAT-RP-015 | COVERED (RP-2) | StreamingRedactorTest (23) + Lpr011SecretRedactionTranscriptUatTest + Lpr011r2SecretRedactionAtRestUatTest | secreto dividido entre chunks redactado en transcript/eventos/at-rest. |
+| UAT-RP-016 | COVERED (RP-2) | WU_RP_022_RECEIPT.md + rp022_perf_baseline.sh (SHA 9393e34a) | M1-M6 medidas + SLOs aprobados (anexo del receipt). RSS soak sin SLO: documentado. |
+| UAT-RP-017 | COVERED (RP-2) | WURp023ObservationModesUatTest (HF2, binario real) | run array stdout, events jsonl replay igual al stream del run, cursor reconnect sin re-ejecución, events verify PASS/FAIL/2, unknown run read-only. |
+| UAT-RP-018 | PARTIAL (RP-4) | --sandbox-profile {none,local}; 'os' rechazado (ADR-0016) | límites de recursos OS requieren M5/M9 (RP-4/5); best-effort fuera de perfil no confiable. |
 
 | ID | Gate / capacidad | Escenario ejecutable y oráculo observable | Evidencia requerida para PASS |
 |---|---|---|---|

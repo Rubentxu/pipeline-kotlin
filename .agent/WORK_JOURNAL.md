@@ -844,3 +844,9 @@
 - Veredicto: salida RP-3 CUMPLIDA (con/sin cuerpo por registro genérico, admission/replay/typed errors, cero ramificación concreta, paridad demostrada).
 - Deuda clasificada a RP-4/5: cancelación de hijos de cuerpos externos (→041), espacio de body-policies abierto, barrido declaración-vs-ejecución exhaustivo, UAT-RP-018/UAT-RP-005inv3 (diferidas con ADR).
 - Doc: docs/v2/07-uat/RP3_EXIT_REVIEW.md (5e2587bb). Siguiente WU: WU-RP-040.
+
+## 2026-09-22 WU-RP-040 rondas R1-R3 (calidad transversal)
+- R1 (422b2e87): Kover 0.9.9; verificación LINE>=55 en pipeline-domain (82% real) y pipeline-events (77%); canary de fallo probado (umbral 90 -> BUILD FAILED con violación de regla); exclusiones protobuf generados. Gate check verde.
+- R2 (df16726d + fix b8506746): acciones GitHub pinchadas por SHA. PRIMERA INTENTO FALLIDA en CI (run 35758348370): el resolver git ls-remote | head -1 cogió refs de v3 (upload-artifact v3 deprecado). Corregido resolviendo refs/tags/v4 exactos. CI SUCCESS run 35758497440.
+- R3 (1afc6e0f): gitleaks v2.3.9 (SHA) full-history en CI; CycloneDX 1.8.2 en pipeline-application; bom.json verificado (spec 1.5, 49 componentes); artefacto sbom-cyclonedx por run.
+- Lección: resolver SHAs de tags con grep exacto de la versión, nunca head -1 de todas las refs.

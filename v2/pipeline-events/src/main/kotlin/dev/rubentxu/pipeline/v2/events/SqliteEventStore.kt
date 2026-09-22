@@ -360,7 +360,15 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         val barrier = java.util.concurrent.CountDownLatch(1)
         try {
             appendQueue.put(PendingWrite.FlushBarrier(barrier))
-            check(barrier.await(60, TimeUnit.SECONDS)) { "flush barrier timed out" }
+            val released = barrier.await(60, TimeUnit.SECONDS)
+            if (!released) {
+                // WU-RP-022 (finding P2): a timed-out barrier almost always means
+                // the writer thread DIED on a write error (e.g. SQLITE_TOOBIG for
+                // an oversized event payload). Surface the writer's real failure
+                // instead of the misleading "timed out" message.
+                writerError?.let { throw IllegalStateException("event writer failed during flush", it) }
+                check(false) { "flush barrier timed out" }
+            }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             throw IllegalStateException("interrupted during flush", e)

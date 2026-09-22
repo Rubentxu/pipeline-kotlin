@@ -58,6 +58,38 @@ import java.util.UUID
 object ShExecution {
 
     /**
+     * WU-RP-022 (finding P2): SQLite rejects payloads above SQLITE_MAX_LENGTH
+     * (default 1e9) with SQLITE_TOOBIG, which killed the durable event writer
+     * mid-run. Large transcripts are therefore chunked so no single
+     * [EchoOutputCaptured] event exceeds this bound. Chunks are contiguous,
+     * in order, and lossless: concatenating the chunk contents reproduces the
+     * transcript exactly (the rule forbids silent data loss or duplication).
+     */
+    const val MAX_TRANSCRIPT_CHUNK_CHARS: Int = 64 * 1024 * 1024
+
+    /**
+     * Emits the console transcript as one or more [EchoOutputCaptured] events,
+     * splitting at [MAX_TRANSCRIPT_CHUNK_CHARS] when needed. Single-chunk
+     * transcripts (the overwhelmingly common case) are emitted exactly as
+     * before this mechanism existed.
+     */
+    internal fun emitTranscriptChunked(eventSink: EventSink, runId: String, stepIndex: Int, content: String) {
+        var offset = 0
+        do {
+            val end = minOf(offset + MAX_TRANSCRIPT_CHUNK_CHARS, content.length)
+            eventSink.append(EchoOutputCaptured(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stepIndex = stepIndex,
+                content = content.substring(offset, end),
+            ))
+            offset = end
+        } while (offset < content.length)
+    }
+
+    /**
      * Reads the durable console transcript (console.log, with legacy jenkins-log.txt read-compat)
      * for the observable console output. In capture mode this file holds stderr only; in plain mode
      * it holds the merged stdout+stderr transcript.
@@ -241,14 +273,7 @@ object ShExecution {
                 secretPatternRegistry,
             )
             if (consoleContent.isNotEmpty()) {
-                eventSink.append(EchoOutputCaptured(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    stepIndex = stepIndex,
-                    content = consoleContent,
-                ))
+                emitTranscriptChunked(eventSink, runId, stepIndex, consoleContent)
             }
 
             classifyShellTerminal(terminal, command.returnMode)

@@ -156,7 +156,14 @@ object MainCredentialsCli {
         val secret = System.console()?.readPassword() ?: error("no TTY available")
         if (secret.isEmpty()) error("empty secret not allowed")
         return SecretText(
-            id = CredentialsId(""),
+            // WU-RP-042: the store entry key is the CLI-supplied id passed to
+            // SecretStore.add(id, credential); the embedded credential.id is not
+            // the entry key and MUST NOT be constructed blank (CredentialsId has a
+            // non-blank invariant). The placeholder CredentialsId("") threw on
+            // every `credentials add` invocation (regression found by the
+            // installed-distribution UAT). Use a typed non-blank placeholder that
+            // add() never persists as the entry key.
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             bytes = String(secret).toByteArray()
         )
@@ -170,7 +177,7 @@ object MainCredentialsCli {
         val password = System.console()?.readPassword() ?: error("no TTY available")
         if (password.isEmpty()) error("password cannot be empty")
         return UsernamePassword(
-            id = CredentialsId(""),
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             username = username,
             password = String(password).toByteArray()
@@ -198,7 +205,7 @@ object MainCredentialsCli {
         print("Enter passphrase (leave empty for no passphrase): ")
         val passphraseChars = System.console()?.readPassword() ?: CharArray(0)
         return SshPrivateKey(
-            id = CredentialsId(""),
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             username = username,
             privateKey = privateKey.toByteArray(),
@@ -215,7 +222,7 @@ object MainCredentialsCli {
         val bytes = Files.readAllBytes(file)
         if (bytes.isEmpty()) error("file is empty")
         return SecretFile(
-            id = CredentialsId(""),
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             bytes = bytes,
             originalName = file.fileName.toString()
@@ -241,7 +248,7 @@ object MainCredentialsCli {
         print("Enter key alias (leave empty for default): ")
         val alias = readLine() ?: ""
         return Certificate(
-            id = CredentialsId(""),
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             keystore = keystoreBytes,
             passwordRef = null,
@@ -271,7 +278,7 @@ object MainCredentialsCli {
         }
         if (entries.isEmpty()) error("ZIP archive is empty")
         return Zip(
-            id = CredentialsId(""),
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             entries = entries
         )
@@ -285,7 +292,7 @@ object MainCredentialsCli {
         val password = System.console()?.readPassword() ?: error("no TTY available")
         if (password.isEmpty()) error("password cannot be empty")
         return UsernameColonPassword(
-            id = CredentialsId(""),
+            id = CredentialsId("<pending-store-id>"),
             scope = CredentialScope.GLOBAL,
             user = username,
             pass = String(password).toByteArray()

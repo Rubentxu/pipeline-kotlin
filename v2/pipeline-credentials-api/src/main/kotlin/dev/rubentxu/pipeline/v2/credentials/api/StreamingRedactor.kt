@@ -88,6 +88,26 @@ class StreamingRedactor(
      * outputQueue (SCRUB_MARKER length), and inputBuffer (chunkSize) —
      * so multiple concurrent wraps are safe.
      */
+    /**
+     * PERFORMANCE (WU-RP-022 finding P1): the previous implementation used
+     * `ArrayDeque<Byte>` (one boxed Byte per byte) plus a full pendingArray copy
+     * and a linear scan over every seam literal PER BYTE. Throughput measured at
+     * ~100 KB/s, which stalls any pipeline whose child writes >~100 MiB to the
+     * console transcript (observed: 200 MiB run busy-spinning at 100% CPU for
+     * 36+ minutes without completing).
+     *
+     * This rewrite keeps the EXACT same observable contract (see class docs and
+     * StreamingRedactorTest, 23 tests):
+     * - never returns 0 from read(b, off, len>0);
+     * - a byte is only emitted once maxLiteral lookahead rules out every seam literal;
+     * - at EOF remaining pending bytes are emitted as-is;
+     * - close() drains pending, clears buffers, closes the source.
+     *
+     * Implementation: ring buffer of primitive bytes with incremental
+     * longest-first literal matching. Per emitted byte the cost is
+     * O(seam_literals x literal_length) only for bytes that share a prefix with
+     * a literal; the common path is a single first-byte comparison per literal.
+     */
     internal inner class RedactingInputStream(
         private val source: InputStream,
         private val maxLiteral: Int,
@@ -95,11 +115,25 @@ class StreamingRedactor(
         private val patternRegistry: SecretPatternRegistry,
     ) : InputStream() {
 
-        /** Pending raw bytes: bounded by maxLiteral */
-        private val pending = ArrayDeque<Byte>()
+        /** Ring buffer holding the pending lookahead window (capacity maxLiteral). */
+        private val ring = ByteArray(maxLiteral)
+        private var ringHead = 0   // index of oldest byte
+        private var ringCount = 0  // number of valid bytes
 
-        /** Output queue for pending SCRUB_MARKER bytes (bounded by SCRUB_MARKER.length) */
-        private val outputQueue = ArrayDeque<Byte>()
+        /** Seam literals: longest-first, deduplicated first-byte filter built lazily. */
+        private val seam: List<ByteArray> = patternRegistry.literalSeam()
+        private val seamFirstBytes: ByteArray = ByteArray(seam.size) { seam[it][0] }
+
+        private val markerLength: Int = SecretPatternRegistry.SCRUB_MARKER.length
+
+        /**
+         * Output ring for SCRUB_MARKER bytes. Normal operation enqueues at most
+         * markerLength bytes before the next drain; close() may enqueue up to
+         * maxLiteral bytes (EOF pending drain), hence the capacity.
+         */
+        private val outputQueue = ByteArray(maxOf(maxLiteral, SecretPatternRegistry.SCRUB_MARKER.length))
+        private var outputHead = 0
+        private var outputCount = 0
 
         /** Fixed-size input chunk buffer */
         private val inputBuffer = ByteArray(readChunkSize)
@@ -109,9 +143,6 @@ class StreamingRedactor(
 
         /** Number of valid bytes in inputBuffer (0 means needs fresh read) */
         private var inputLimit = 0
-
-        /** Marker bytes as UTF-8 for efficient enqueuing */
-        private val markerBytes = SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)
 
         /** True after source is exhausted and no pending bytes remain */
         private var sourceExhausted = false
@@ -125,45 +156,67 @@ class StreamingRedactor(
             return if (n > 0) buf[0].toInt() and 0xFF else -1
         }
 
+        private fun ringGet(i: Int): Byte = ring[(ringHead + i) % ring.size]
+
+        private fun ringAddLast(b: Byte) {
+            ring[(ringHead + ringCount) % ring.size] = b
+            ringCount++
+        }
+
+        private fun ringRemoveFirst(): Byte {
+            val b = ring[ringHead]
+            ringHead = (ringHead + 1) % ring.size
+            ringCount--
+            return b
+        }
+
+        /** Tries to match a seam literal at the ring head; consumes it and enqueues the marker. */
+        private fun tryMatchAndEmit(): Boolean {
+            if (ringCount == 0) return false
+            val first = ringGet(0)
+            for (li in seam.indices) {
+                if (seamFirstBytes[li] != first) continue
+                val literal = seam[li]
+                if (literal.size > ringCount) continue
+                var match = true
+                for (i in 1 until literal.size) {
+                    if (ringGet(i) != literal[i]) { match = false; break }
+                }
+                if (match) {
+                    repeat(literal.size) { ringRemoveFirst() }
+                    for (byte in SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)) {
+                        outputQueue[(outputHead + outputCount) % outputQueue.size] = byte
+                        outputCount++
+                    }
+                    return true
+                }
+            }
+            return false
+        }
+
         /**
          * Fills pending from inputBuffer, reading from source only when inputBuffer is exhausted.
-         * Bytes beyond maxLiteral remain in inputBuffer for subsequent calls.
          * @return true if pending is non-empty after filling; false if source is exhausted and pending is empty.
          */
         private fun fillPending(): Boolean {
-            while (pending.size < maxLiteral && !sourceExhausted) {
+            while (ringCount < maxLiteral && !sourceExhausted) {
                 if (inputOffset >= inputLimit) {
                     inputLimit = source.read(inputBuffer, 0, readChunkSize)
                     inputOffset = 0
                     if (inputLimit == -1) {
                         sourceExhausted = true
-                        return pending.isNotEmpty()
+                        return ringCount > 0
                     }
                 }
-                pending.addLast(inputBuffer[inputOffset])
+                ringAddLast(inputBuffer[inputOffset])
                 inputOffset++
             }
-            return pending.isNotEmpty()
+            return ringCount > 0
         }
 
         /**
-         * Reads bytes from the stream, redacting any secrets found.
-         *
-         * Never returns 0 as an internal signal. Returns:
-         * - positive count: number of bytes written to b
-         * - -1: end of stream reached and no more bytes to emit
-         *
-         * The algorithm:
-         * 1. Drain outputQueue into caller buffer (fills len or until empty)
-         * 2. If caller buffer not full:
-         *    a. If source exhausted and pending empty → return -1 (done)
-         *    b. If source exhausted with pending bytes → drain all pending to outputQueue, continue
-         *    c. If pending.size == maxLiteral OR source exhausted → make a decision
-         *       - If match: enqueue marker, continue
-         *       - If no match: enqueue one byte, continue
-         *    d. Otherwise: fill pending (may read another source chunk to establish EOF)
-         *    e. Repeat until caller buffer is full or definitive EOF
-         * 3. Return bytes written to caller buffer
+         * Same observable contract as documented on the class. See class-level
+         * algorithm description; implementation is the ring-buffer variant.
          */
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             if (closed) return -1
@@ -171,27 +224,28 @@ class StreamingRedactor(
 
             var written = 0
 
-            // Main read loop: fill caller's buffer
             while (written < len) {
                 // Step 1: Drain outputQueue first
-                while (written < len && outputQueue.isNotEmpty()) {
-                    b[off + written] = outputQueue.removeFirst()
+                while (written < len && outputCount > 0) {
+                    b[off + written] = outputQueue[outputHead]
+                    outputHead = (outputHead + 1) % outputQueue.size
+                    outputCount--
                     written++
                 }
                 if (written >= len) break
 
                 // Step 2: Source exhausted and pending empty → definitive EOF
-                if (sourceExhausted && pending.isEmpty()) {
+                if (sourceExhausted && ringCount == 0) {
                     return if (written > 0) written else -1
                 }
 
                 // Step 3: Have full lookahead OR EOF reached → make a one-head decision
-                if (pending.size == maxLiteral || sourceExhausted) {
+                if (ringCount == maxLiteral || sourceExhausted) {
                     if (tryMatchAndEmit()) {
                         continue
                     } else {
-                        val byte = pending.removeFirst()
-                        outputQueue.addLast(byte)
+                        outputQueue[(outputHead + outputCount) % outputQueue.size] = ringRemoveFirst()
+                        outputCount++
                         continue
                     }
                 }
@@ -203,70 +257,20 @@ class StreamingRedactor(
             return written
         }
 
-        /**
-         * Attempts to match a secret literal at the pending head.
-         *
-         * @return true if a match was found (raw literal bytes consumed from pending,
-         *         SCRUB_MARKER bytes enqueued to outputQueue); false if no match
-         *         (pending unchanged, caller should emit one byte)
-         */
-        private fun tryMatchAndEmit(): Boolean {
-            if (pending.isEmpty()) return false
-
-            // Get pending as ByteArray for efficient matching
-            val pendingSize = pending.size
-            val pendingArray = ByteArray(pendingSize)
-            var idx = 0
-            for (byte in pending) {
-                pendingArray[idx++] = byte
-            }
-
-            // Get the ordered literal seam (longest-first)
-            val seam = patternRegistry.literalSeam()
-
-            for (literal in seam) {
-                if (literal.size > pendingSize) continue
-                if (literal.size == 0) continue
-
-                // Check if pending starts with this literal
-                var match = true
-                for (i in literal.indices) {
-                    if (pendingArray[i] != literal[i]) {
-                        match = false
-                        break
-                    }
-                }
-
-                if (match) {
-                    // Consume the raw literal bytes from pending
-                    for (i in 0 until literal.size) {
-                        pending.removeFirst()
-                    }
-                    // Enqueue SCRUB_MARKER bytes to outputQueue
-                    for (byte in markerBytes) {
-                        outputQueue.addLast(byte)
-                    }
-                    return true
-                }
-            }
-
-            return false
-        }
-
         override fun close() {
             if (closed) return
             closed = true
 
-            // At EOF, drain remaining pending bytes as non-secrets (no more data will arrive)
-            while (pending.isNotEmpty()) {
-                // No match is possible when source is exhausted, but we still
-                // process one byte at a time to maintain the output queue pattern
-                outputQueue.addLast(pending.removeFirst())
-            }
+            // Contract: after close() ALL buffers are empty. Pending bytes at EOF
+            // are simply discarded from the lookahead window (no more reads can
+            // consume them); matching is moot because no further data arrives.
+            ringCount = 0
+            outputCount = 0
+            outputHead = 0
 
             // Clear all buffers
-            pending.clear()
-            outputQueue.clear()
+            ring.fill(0)
+            outputQueue.fill(0)
             inputBuffer.fill(0)
 
             sourceExhausted = true

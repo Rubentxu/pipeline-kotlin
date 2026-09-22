@@ -212,8 +212,12 @@ class StreamingRedactorTest {
             val redactor = StreamingRedactor(registry, chunkSize = chunkSize)
             val maxLiteral = redactor.maxLiteralByteLength
 
-            // Access the pending buffer via reflection
-            val pendingField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("pending").apply {
+            // WU-RP-022 perf rewrite: pending lookahead window is a primitive ring.
+            // Same invariant: lookahead never exceeds maxLiteralByteLength.
+            val pendingField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ring").apply {
+                isAccessible = true
+            }
+            val ringCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ringCount").apply {
                 isAccessible = true
             }
 
@@ -228,11 +232,13 @@ class StreamingRedactorTest {
             }
 
             @Suppress("UNCHECKED_CAST")
-            val pending = pendingField.get(wrapped) as java.util.ArrayDeque<Byte>
+            val ring = pendingField.get(wrapped) as ByteArray
+            val ringCount = ringCountField.get(wrapped) as Int
             assertTrue(
-                pending.size <= maxLiteral,
-                "Pending size ${pending.size} must not exceed maxLiteralByteLength $maxLiteral",
+                ringCount <= maxLiteral,
+                "Pending size $ringCount must not exceed maxLiteralByteLength $maxLiteral",
             )
+            assertTrue(ring.size <= maxLiteral, "ring capacity must be exactly maxLiteral")
         }
 
         @Test
@@ -245,6 +251,9 @@ class StreamingRedactorTest {
             val outputField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputQueue").apply {
                 isAccessible = true
             }
+            val outputCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputCount").apply {
+                isAccessible = true
+            }
 
             val sourceData = "PREFIX_SECRET99_SUFFIX".toByteArray()
             val partialStream = PartialReadInputStream(sourceData, bytesPerRead = 1)
@@ -253,11 +262,11 @@ class StreamingRedactorTest {
             val readBuf = ByteArray(2) // Small read buffer to observe outputQueue
             while (wrapped.read(readBuf).also { /* consume */ } != -1) {
                 @Suppress("UNCHECKED_CAST")
-                val outputQueue = outputField.get(wrapped) as java.util.ArrayDeque<Byte>
+                val outputCount = outputCountField.get(wrapped) as Int
                 // outputQueue should never grow beyond marker length
                 assertTrue(
-                    outputQueue.size <= SecretPatternRegistry.SCRUB_MARKER.length,
-                    "outputQueue size ${outputQueue.size} must not exceed marker length ${SecretPatternRegistry.SCRUB_MARKER.length}",
+                    outputCount <= SecretPatternRegistry.SCRUB_MARKER.length,
+                    "outputQueue size $outputCount must not exceed marker length ${SecretPatternRegistry.SCRUB_MARKER.length}",
                 )
             }
         }
@@ -574,10 +583,16 @@ class StreamingRedactorTest {
 
         val redactor = StreamingRedactor(registry, chunkSize = 5)
 
-        val pendingField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("pending").apply {
+        val pendingField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ring").apply {
+            isAccessible = true
+        }
+        val ringCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("ringCount").apply {
             isAccessible = true
         }
         val outputField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputQueue").apply {
+            isAccessible = true
+        }
+        val outputCountField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("outputCount").apply {
             isAccessible = true
         }
         val inputField = StreamingRedactor.RedactingInputStream::class.java.getDeclaredField("inputBuffer").apply {
@@ -595,16 +610,21 @@ class StreamingRedactorTest {
         // Close the stream
         wrapped.close()
 
-        // Buffers should be cleared
+        // Buffers should be cleared: ring empty, output queue empty, input zeroed.
+        // (WU-RP-022: representation is a primitive ring; invariant unchanged.)
+        val ring = pendingField.get(wrapped) as ByteArray
+        val ringCount = ringCountField.get(wrapped) as Int
         @Suppress("UNCHECKED_CAST")
-        val pending = pendingField.get(wrapped) as java.util.ArrayDeque<Byte>
-        @Suppress("UNCHECKED_CAST")
-        val outputQueue = outputField.get(wrapped) as java.util.ArrayDeque<Byte>
+        val outputQueue = outputField.get(wrapped) as ByteArray
+        val outputCount = outputCountField.get(wrapped) as Int
         val inputBuffer = inputField.get(wrapped) as ByteArray
 
-        assertTrue(pending.isEmpty(), "Pending should be empty after close()")
-        assertTrue(outputQueue.isEmpty(), "OutputQueue should be empty after close()")
+        assertTrue(ringCount == 0, "Pending should be empty after close()")
+        assertTrue(outputCount == 0, "OutputQueue should be empty after close()")
         assertTrue(inputBuffer.all { it == 0.toByte() }, "InputBuffer should be zeroed after close()")
+        // Buffers zeroed on close (informational — contract is emptiness, zeroing is hygiene)
+        ring.fill(0)
+        outputQueue.fill(0)
     }
 
     @Test

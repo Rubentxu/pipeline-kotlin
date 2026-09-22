@@ -888,3 +888,10 @@
 - Receipt: docs/v2/07-uat/WU_RP_042_S2_SLICE_RECEIPT.md.
 - Pendiente: CI del head final (post-receipt) → cierre formal de WU-RP-042 y NEXT_WU.
 - CI del head final e23c575d: run 35779994231 SUCCESS 9/9. WU-RP-042 CLOSED (S1+S2). SESSION_POINTER actualizado (NEXT_WU: seleccionar siguiente trabajo RP-4 desde ROADMAP; release/NO_GO vigente).
+
+## 2026-09-22T20:55Z — WU-RP-043 (base c29b39a5 → head 74617ff8)
+- Dogfooding CI implementado (job `dogfood` en lpr0-ci.yml): N1 bootstrap autónomo (checkout+JDK+installDist), N2 pipelinek del mismo SHA ejecuta `v2/compatibility/01-basic.pipeline.kts` (exit 0) + fixture de fallo intencional `ci/dogfood-fail.pipeline.kts` (debe salir != 0 o el job falla), N3 verificación externa jq sobre events-jsonl (CompilationStarted/RunFinished outcome/StepFailed tipado) + artefactos publicados con if:always().
+- Criterios (a)-(e) del charter RP-043: CUMPLEN con evidencia OBSERVED. Receipt: WU_RP_043_SLICE_RECEIPT.md.
+- Probes locales antes del push: run éxito exit 0, run fallo exit 1 (StepFailed SCRIPT, RunFinished failure en stream), 5/5 aserciones jq OK.
+- CI 35781433830: 1er intento FAILURE por flake SqliteEventStoreRoundTripTest (5/5 verde local --rerun-tasks, mismo SHA); rerun --failed SUCCESS completo. Flake clasificado, anotado; si recurre → WU de caracterización.
+- Deuda técnica auditada esta sesión: cierres RP-1 (receipt + ADR-0095/0096), RP-2 (gate receipt, métricas y SLOs medidos), RP-3 (exit review con deudas clasificadas 1-4) verificados contra evidencia — sin divergencias nuevas.

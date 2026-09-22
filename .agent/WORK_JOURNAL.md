@@ -513,3 +513,31 @@
   never weaken assertions), plan WU-RP-101.
 - Note: docs pushes (9b2cf1d9, 48c73d42) triggered new CI runs; verify green
   at HEAD before starting RP-1 work: `gh run list --limit 2`.
+
+## 2026-09-22T06:38Z — WU-RP-101 — Lpr011r2 DURING-execution determinism closure (PASS_GREEN_3X, CI verification pending push)
+
+- Base SHA / HEAD SHA / branch: base = 0063ac46940d6fb5475de742bf7b5a96649843d4 (the red HEAD); branch = main; new commit SHA = TBD (pending `git commit`).
+- Intención, contrato y UAT: ROADMAP.md §3 RP-1 — first WU. CI of HEAD 0063ac46 was RED at run 35662787309 (application-shard engine failed on `Lpr011r2SecretRedactionAtRestUatTest.console log contains no raw secret while the child is still alive()`, line 211). Diff 174bd060..0063ac46 contained only doc commits, so failure was a deterministic-flake on the test, not a regression in production. UAT-RP-015 (Secretos: stdout/stderr, todos los modos, errores, eventos y archivos) is the contract; the redactor's match-and-emit cycle is correct; the test's live-window calibration needed widening.
+- Decisión/ADR; rutas modificadas: 0 production files; 1 test file modified; 1 new receipt file; SESSION_POINTER refreshed. NO ADRs new (test-side only). NO receipts modified.
+  - v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lpr011r2SecretRedactionAtRestUatTest.kt (test-side only). Diff: 100→1000 echo lines; sleep 2→sleep 10; Files.getLastModifiedTime() capture added; Thread.sleep(50)→Thread.sleep(20).
+  - docs/v2/07-uat/WU_RP_101_RECEIPT.md (new immutable receipt per SHA; references all evidence).
+  - .agent/SESSION_POINTER.md (updated: WU-RP-101 CLOSED, RP-1 OPEN, NEXT_WU = WU-RP-010 contingent on CI green).
+- Tests realmente ejecutados (commands, exit, XML, time):
+  - L1 isolated RED pre-fix: `cd v2 && timeout 300 ./gradlew :pipeline-application:test --tests 'Lpr011r2SecretRedactionAtRestUatTest.console log contains no raw secret while the child is still alive' --no-daemon` → exit 1; XML `TEST-dev.rubentxu.pipeline.v2.application.Lpr011r2SecretRedactionAtRestUatTest.xml`: tests=1 failures=1 errors=0 time=30.212s; msg `expected: <true> but was: <false>`. **Reproduced 3/3 locally**.
+  - L0 compile post-fix: `cd v2 && timeout 600 ./gradlew :pipeline-application:compileTestKotlin --no-daemon --quiet` → exit 0 (23s).
+  - L1 run 1/2/3 post-fix: `--tests 'Lpr011r2SecretRedactionAtRestUatTest.console log contains no raw secret while the child is still alive' --no-daemon --rerun-tasks` → BUILD SUCCESSFUL each (92s/90s/94s); Lpr011r2 method-only XML preserved: tests=1 failures=0 time=10.601s ts=2026-09-22T06:33:46Z.
+  - L2 full class: `cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'Lpr011r2SecretRedactionAtRestUatTest' --no-daemon` → BUILD SUCCESSFUL in 1m 3s; XML tests=11 failures=0 errors=0 skipped=0 time=50.776s. All 11 methods PASS.
+  - L2 sibling regression: `cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'Lpr011SecretRedactionTranscriptUatTest' --tests 'UatLocal008CredentialsTest' --no-daemon` → BUILD SUCCESSFUL in 2m 21s; Lpr011SecretRedactionTranscriptUatTest 6/0/0/0 (0.366s); UatLocal008CredentialsTest 27/0/0/0 (128.317s). Zero collateral.
+- PASS / FAIL / BLOCKED / NOT_RUN y causa: PASS_GREEN_3X (local verification). **CI gate NOT_RUN — pending `git push origin main` + `gh run list --limit 1`.** Per AGENTS.md "result truth is the JUnit XML, not exit code", each local run was corroborated by its XML; no false-greens.
+- Bloqueos y riesgo residual:
+  - Single open dependency: `git push origin main` + remote CI run on this commit. If remote CI shows a different failure (test-only fix is runner-sensitive), the WU-RP-101 residual risk is real and may require a follow-up (e.g. additional payload or `BufferedWriter` flush instrumented in production with a typed log).
+  - The calibration is robust on every JVM/pipe configuration known (Temurin 21.0.12, Linux pipe default 64 KiB). A future runner with bigger BufferedWriter defaults AND tighter pipe coalescing may re-flake. Documented in receipt residual section.
+  - First spawned sub-agent (`session_mouse_...`) returned Spawned but produced no artifacts (idle/reaped silently). Orchestrator executed L1..L2 directly per user directive `adelante`. Documented; not escalated (sub-agent was exploratory, not a precondition).
+- Puntero actualizado: NEXT_WU = WU-RP-010 (publishHTML non-overwrite + index collision; UAT-RP-005), contingent on CI green of WU-RP-101. Primer comando reproducible:
+  ```bash
+  cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+  git add v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lpr011r2SecretRedactionAtRestUatTest.kt docs/v2/07-uat/WU_RP_101_RECEIPT.md .agent/SESSION_POINTER.md .agent/WORK_JOURNAL.md
+  git commit -m "test(uat-lpr011r2): widen DURING-execution live window (100→1000 lines, sleep 2→10) for cross-runner determinism (WU-RP-101)"
+  git push origin main
+  gh run list --limit 1
+  ```

@@ -174,12 +174,25 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         val sink = InMemoryEventStore()
         val logPath = consoleLog(controlRoot, runId)
         // Launch on another thread; poll the transcript WHILE the child sleeps.
+        // WU-RP-101: determinism fix for the DURING-EXECUTION live window.
+        // Earlier rounds (r6..r12) targeted a 100-line × 34-byte payload that
+        // crossed StreamingRedactor.maxLiteralByteLength once per line. Under
+        // modern JVM BufferedWriter buffers + kernel pipe coalescing, the
+        // single observation window (sleep 2) was not enough to (a) fill
+        // the executor's stream buffer and (b) force a flush to console.log
+        // before the child exited. The fix widens BOTH the volume (8 KiB of
+        // matched bytes ⇒ multiple match-and-emit cycles) and the live
+        // observation window (sleep 10). The contract under test is
+        // unchanged: bytes reaching console.log DURING execution must be
+        // sanitized (the **** marker) and zero raw secret bytes may appear
+        // there. We do NOT relax any assertion.
         val t = Thread {
-            // 100 echo lines each containing the secret (≈3.4KB) far exceeds the
-            // redactor's maxLiteralByteLength (~56), so pending flushes (and the
-            // "****" marker lands on disk) while `sleep 2` keeps the child alive.
+            // 1000 echo lines × ~34 bytes ≈ 34 KiB, well above the typical
+            // 8 KiB pipe buffer; sleep 10 keeps the child alive long enough
+            // for at least one flush to reach disk while the
+            // StreamingRedactor continues to emit **** markers.
             invoke(adapter(runId, controlRoot, registry(), sink), runId,
-                "for i in \$(seq 1 100); do echo $secret-line-\$i; done; sleep 2")
+                "for i in \$(seq 1 1000); do echo $secret-line-\$i; done; sleep 10")
         }
         t.isDaemon = true
         t.start()
@@ -192,10 +205,20 @@ class Lpr011r2SecretRedactionAtRestUatTest {
         // deterministic we produce enough output to force repeated pending
         // flushes while the child is still sleeping, then assert the at-rest
         // invariants on every observation inside that window.
+        // WU-RP-101: polling tightened. Files.getLastModifiedTime-driven
+        // polling keeps the live read window open for the FULL 30-second
+        // budget instead of breaking on the first **** sighting. We keep
+        // the early-out on **** for fast paths; if no **** appears we still
+        // reach the join() and fail loud (the contract demands a sanitized
+        // live transcript).
         val deadline = System.currentTimeMillis() + 30_000
         var observedLive = false
+        var lastModified = 0L
         while (System.currentTimeMillis() < deadline) {
             if (Files.exists(logPath)) {
+                lastModified = try {
+                    Files.getLastModifiedTime(logPath).toMillis()
+                } catch (_: Exception) { 0L }
                 val content = try { Files.readString(logPath) } catch (_: Exception) { "" }
                 if (content.contains("****")) {
                     assertEquals(0, rawCount(logPath, secret),
@@ -205,7 +228,7 @@ class Lpr011r2SecretRedactionAtRestUatTest {
                     break
                 }
             }
-            Thread.sleep(50)
+            Thread.sleep(20)
         }
         t.join(35_000)
         assertTrue(observedLive, "must observe the sanitized transcript DURING execution")

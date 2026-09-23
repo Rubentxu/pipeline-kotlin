@@ -1,6 +1,6 @@
 # WU-RP-046 — Slice receipt (round 1): UAT-RP-019/020/021 ejecutables + matriz actualizada
 
-**CI de este slice:** aún no emitido (L5 full en curso al cierre del receipt).
+**CI de este slice:** **35846205928 SUCCESS 10/10** at HEAD 14c98245 (compile, application-shard × 4, architecture-fitness, dogfood, domain-unit, sbom-cyclonedx, secret-scan-gitleaks). Local L5 application-module full rerun: **216 classes, 1743 tests, 0 failures, 121 skipped (115 históricos + 6 opt-in sin UAT_RP_0NN_RUN=1), 0 errors** en 14m 27s.
 **Tipo de cambio de esta sesión:** **Auditoría honesta + cierre de UAT-RP-019/020/021 ejecutables**. El operador advirtió que el conteo de cierres documentales no equivale a que las condiciones de aceptación del producto estén verificadas. Antes de añadir cierres nuevos, esta sesión **descubrió y reportó** las siguientes brechas en la tabla UAT-MATRIX vigente:
 - La fila UAT-RP-018 seguía marcada PARTIAL desde `f4aa20dc` (2026-09-22) aunque WU-RP-045 mejoró la cobertura con TC-003/004.
 - UAT-RP-019 (Gradle real), UAT-RP-020 (Maven real), UAT-RP-021 (Node real) **NO tenían cobertura visible** en HEAD (auditados por grep). Eran candidatas obligatorias para RP-5 Gate sin test que las ejecutase.

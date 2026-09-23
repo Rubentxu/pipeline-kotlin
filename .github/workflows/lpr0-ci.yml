@@ -177,6 +177,9 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Self-hosted runners share $HOME: give each job a private download
+          # dir so concurrent gitleaks installs don't race on gitleaks.tmp.
+          GITLEAKS_INSTALL_DIR: ${{ runner.temp }}/gitleaks-install
 
 
   # ─────────────────────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     testImplementation(libs.junit.jupiter)
     testImplementation(kotlin("reflect"))
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 tasks.test {

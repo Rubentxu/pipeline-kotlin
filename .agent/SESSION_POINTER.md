@@ -11,7 +11,7 @@
 
 ## Estado operativo
 
-- ACTIVE_PHASE: **RP-5 GATE — preparación honesta, pendiente WU-RP-040 R5 + UAT-RP-024 + UAT-RP-005 inv3 disclosure**. **WU-RP-051 CERRADA** (`1d38d778`): push + CI gate verde run `35865298485` (10/10 success) + verificación final `35866370854` en progreso. LPR-0 gate está verde sobre WU-RP-050 + 2 CI-infra fixes prophylactic (Install just hardened `bd52fa1b` + sbom gradle cache `63220a5c`). Bootstrap pattern (DELETE/PUT protection) verificado 2x. SEMVER: PATCH bump apropiado, NO_RELEASE vigente.
+- ACTIVE_PHASE: **RP-5 GATE — preparación honesta, pendiente WU-RP-040 R5 + UAT-RP-024 + UAT-RP-005 inv3 disclosure**. **WU-RP-051 CERRADA** (`1d38d778`): push + CI gate verde run `35865298485` (10/10 success) + verificación final `35866553565` 10/10 success (3 runs consecutivos verde). LPR-0 gate está verde sobre WU-RP-050 + 2 CI-infra fixes prophylactic (Install just hardened `bd52fa1b` + sbom gradle cache `63220a5c`). Bootstrap pattern (DELETE/PUT protection) verificado 2x. SEMVER: PATCH bump apropiado, NO_RELEASE vigente.
 - LAST_CLOSED_WU: **WU-RP-051** (`1d38d778`, LOCAL=REMOTE, LPR-0 verde `35865298485` 10/10 + final verification `35866370854` pending): bootstrap push + 2 CI-infra fixes. Cubre WU-RP-050 (5 commits consolidación) + push + hardening CI.
 - KNOWN_LIMITATIONS adicional detectada en esta sesión:
   - **WU-RP-050 consolidación parcial:** Las 2 duplicaciones de `LinkedSecretRef` en producción están consolidadas. La única llamada directa restante a `SecretStore.getAsSecretHandle` fuera del adapter es `LocalCredentialProvider.resolve` (legítimo: SPI implementation).
@@ -47,6 +47,6 @@
 
 1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = 1d38d778.
 2. Leer ROADMAP (§6 RP-4, §7 RP-5), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
-3. CI verificado para 1d38d778 (LPR-0 run `35865298485` 10/10 verde). Si verificación final `35866370854` terminó verde, ese es el certificado definitivo. Si terminó rojo, diagnosticar y arreglar antes de proseguir.
+3. CI verificado para 1d38d778 (LPR-0 run `35865298485` 10/10 verde). Si verificación final `35866553565` terminó verde, ese es el certificado definitivo. Si terminó rojo, diagnosticar y arreglar antes de proseguir.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.

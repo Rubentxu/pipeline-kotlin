@@ -174,12 +174,19 @@ jobs:
         with:
           fetch-depth: 0
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Self-hosted runners share $HOME: give each job a private download
-          # dir so concurrent gitleaks installs don't race on gitleaks.tmp.
-          GITLEAKS_INSTALL_DIR: ${{ runner.temp }}/gitleaks-install
+        # Direct invocation instead of gitleaks/gitleaks-action: the action
+        # hardcodes its download dir under $HOME and races between the four
+        # shared-HOME local runners ("gitleaks.tmp already exists", 4/4
+        # failures). Same pinned version (8.24.3), same exit semantics.
+        run: |
+          set -euo pipefail
+          BIN="${GITLEAKS_BIN:-$HOME/.jcode/scratch/gitleaks-8.24.3/gitleaks}"
+          if [ ! -x "$BIN" ]; then
+            TMP=$(mktemp -d)
+            curl -sSfL -o "$TMP/g.tgz" https://github.com/zricethezav/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+            tar -xzf "$TMP/g.tgz" -C "$TMP" gitleaks && BIN="$TMP/gitleaks"
+          fi
+          "$BIN" git --redact -v
 
 
   # ─────────────────────────────────────────────────────────────────────────

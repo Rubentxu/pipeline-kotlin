@@ -269,6 +269,37 @@ jobs:
             /tmp/dogfood-ok.stderr.log
             /tmp/dogfood-fail.stderr.log
 
+  sast:
+    name: sast (detekt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-lpr0-sast-${{ hashFiles('v2/**/build.gradle.kts', 'v2/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-lpr0-sast-
+      # WU-RP-040 R5: SAST gate. detekt runs over the curated rule subset in
+      # v2/config/detekt/detekt.yml with per-module baselines frozen at the
+      # 2026-09-23 debt snapshot (HEAD 6f7c445f). Ratchet semantics: the job
+      # fails on ANY new finding. Reports are uploaded as per-run evidence.
+      - name: detekt (all Kotlin modules, baseline ratchet)
+        run: cd v2 && ./gradlew detekt --no-daemon
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: sast-detekt-reports
+          path: v2/**/build/reports/detekt/
+
   sbom:
     name: sbom (cyclonedx)
     runs-on: ubuntu-latest

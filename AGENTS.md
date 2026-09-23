@@ -1077,9 +1077,11 @@ amended, not overridden.
 3. **Run the smallest sufficient battery first.** Compile / single
    test / owning class / module / project gate. A bare `:test` is
    never a discovery mechanism.
-4. **Treat dogfood as a battery.** Same-SHA N1/N2/N3 (`pipeline-script-cli`
-   driven by the candidate binary) and previous-release dogfood are
-   batteries with a closed outcome taxonomy
+4. **Treat dogfood as a battery.** Same-SHA N1/N2/N3 (the
+   `pipelinek` binary built from that SHA, driven by the real
+   `.pipeline.kts` of the same SHA, currently via the `dogfood`
+   job in `lpr0-ci.yml`) and previous-release dogfood are batteries
+   with a closed outcome taxonomy
    (`DGF_PASS | DGF_REGRESSION | DGF_INTENTIONAL_FAIL | DGF_INFRASTRUCTURE |
    DGF_VENDOR_GAP | DGF_RECOVERY | DGF_VERSION_GAP`). Every run emits a
    report (`base_sha`, `head_sha`, `old_release`, `candidate_release`,
@@ -1157,12 +1159,17 @@ Concrete obligations carried over from the working session on commit
   policy but is **not** in the repository. Its policy must not be
   claimed as implemented or accepted until the ADR exists and is
   accepted.
-- The `HELIX_DESKTOP` helper used by the size-minimal CI matrix assumes
-  a desktop environment. Callers that run on `macos-latest` or
-  `windows-latest` without exporting `HELIX_DESKTOP=unsupported`
-  receive an infrastructure failure, not a dogfood result. Patch the
-  helper or constrain the matrix before any N2 same-SHA dogfood is
-  published.
+- The LPR-0 `secret-scan (gitleaks)` job has had two distinct failure
+  modes observed: (a) Node 20 → Node 24 deprecation with the
+  `gitleaks-action` reporting `rootDirectory: /home/<user> is not a
+  parent directory of the file: /var/home/<user>/.../results.sarif`
+  on self-hosted runners where HOME differs from the runner
+  work-directory; mitigation is to invoke the gitleaks binary
+  directly and isolate the install dir per job, which is what the
+  last three LPR-0 hardening commits (`4641fb55`, `4b254cb7`,
+  `74b40a65`) implement. Do not regress this hardening by
+  reintroducing the action without verifying `HOME` matches the
+  runner work-directory.
 
 ### Validation ladder ( iteration protocol )
 

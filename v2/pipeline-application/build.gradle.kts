@@ -76,7 +76,7 @@ dependencies {
     // Produced by :buildExamplePlugin from THIS revision's SDK; not a committed artifact.
     testImplementation(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 // Lane R: test *compilation* needs the plugin JAR on the test classpath, so the

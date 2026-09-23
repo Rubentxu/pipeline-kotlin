@@ -1,8 +1,9 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
-import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreLinkedSecretResolver
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
+import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import java.nio.file.Files
@@ -43,7 +44,16 @@ class GitCredentialsApplier(
     private val tempDir: Path,
     val credentials: GitCredentials,
     private val secretStore: SecretStore? = null,
+    private val linkedSecretResolver: CredentialLinkedSecretResolver? = null,
 ) : AutoCloseable {
+
+    // WU-RP-050 (ADR-0098): if no explicit resolver was injected, build one from
+    // the SecretStore so all LinkedSecretRef resolution in this class flows
+    // through the canonical CredentialLinkedSecretResolver port. May still be
+    // null if neither was supplied; resolveSecret/resolveAndEncode throw
+    // IllegalStateException with the missing id context in that case.
+    private val effectiveResolver: CredentialLinkedSecretResolver? = linkedSecretResolver
+        ?: secretStore?.let { SecretStoreLinkedSecretResolver(it) }
 
     private val gitCredentialsFile: Path = tempDir.resolve(".git-credentials")
     private val sshKeyFile: Path = tempDir.resolve(".git-ssh-key")
@@ -274,18 +284,21 @@ class GitCredentialsApplier(
     }
 
     private fun resolveSecret(ref: SecretHandleRef): ByteArray {
-        return secretStore?.getAsSecretHandle(ref.id)?.use { it.copyOf() }
-            ?: throw IllegalStateException("SecretStore not available for credential resolution: ${ref.id.value}")
+        val resolver = effectiveResolver
+            ?: throw IllegalStateException("No CredentialLinkedSecretResolver or SecretStore available for credential resolution: ${ref.id.value}")
+        return resolver.resolve(LinkedSecretRef(ref.id)).use { it.copyOf() }
     }
 
     private fun resolveAndEncode(usernameRef: SecretHandleRef, passwordRef: SecretHandleRef): String {
-        return secretStore?.getAsSecretHandle(usernameRef.id)?.use { userBytes ->
-            secretStore?.getAsSecretHandle(passwordRef.id)?.use { passBytes ->
+        val resolver = effectiveResolver
+            ?: throw IllegalStateException("No CredentialLinkedSecretResolver or SecretStore available for credential resolution: ${usernameRef.id.value}")
+        return resolver.resolve(LinkedSecretRef(usernameRef.id)).use { userBytes ->
+            resolver.resolve(LinkedSecretRef(passwordRef.id)).use { passBytes ->
                 val userValue = String(userBytes, Charsets.UTF_8)
                 val passValue = String(passBytes, Charsets.UTF_8)
                 Base64.getEncoder().encodeToString("$userValue:$passValue".toByteArray(Charsets.UTF_8))
-            } ?: throw IllegalStateException("SecretStore not available for credential resolution: ${passwordRef.id.value}")
-        } ?: throw IllegalStateException("SecretStore not available for credential resolution: ${usernameRef.id.value}")
+            }
+        }
     }
 
     // Build script as simple string concatenation to avoid Kotlin string interpolation issues

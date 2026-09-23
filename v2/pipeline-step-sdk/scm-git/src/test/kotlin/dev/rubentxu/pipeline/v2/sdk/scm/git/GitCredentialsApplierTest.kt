@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -221,5 +222,53 @@ class GitCredentialsApplierTest {
             assertEquals("github.com", hostLine,
                 "Host must be derived from repoUrl, not from credential ID. Got: '$hostLine'")
         }
+    }
+
+    /**
+     * WU-RP-050 (ADR-0098): the applier must accept a CredentialLinkedSecretResolver
+     * directly, without requiring a SecretStore. This is the path that the
+     * consolidation mandates for non-SPI consumers: a caller that already has a
+     * resolver wired (e.g. injected from a DI graph) can skip the SecretStore.
+     */
+    @Test
+    fun `WU-RP-050 applier accepts CredentialLinkedSecretResolver directly without SecretStore`() {
+        val tokenHandle = SecretHandleRef(CredentialsId("api-token"), "string")
+        val credentials = GitCredentials(string = tokenHandle)
+        // Spy resolver: counts calls and returns a fixed handle.
+        val calls = mutableListOf<CredentialsId>()
+        val resolver = object : dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver {
+            override fun resolve(ref: dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef) =
+                SecretHandle.secret("injected-token".toByteArray()).also {
+                    calls += ref.credentialsId
+                }
+        }
+
+        // No secretStore passed — resolver-only path.
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore = null, linkedSecretResolver = resolver)
+        applier.apply(tokenHandle, repoUrl = "https://example.com/repo.git")
+
+        assertEquals(listOf(CredentialsId("api-token")), calls,
+            "linked secret resolver must have been called exactly once with the ref id")
+        val answerFile = tempDir.resolve(".git-answer")
+        val answerContent = Files.readString(answerFile)
+        assertTrue(answerContent.contains("injected-token"),
+            "answer file must contain the secret from the injected resolver, not from a store")
+    }
+
+    /**
+     * WU-RP-050 (ADR-0098): when neither SecretStore nor resolver is supplied, the
+     * applier must fail-closed with IllegalStateException naming the missing id,
+     * NOT silently fall back to an empty secret.
+     */
+    @Test
+    fun `WU-RP-050 applier fails closed when no resolver and no SecretStore are supplied`() {
+        val tokenHandle = SecretHandleRef(CredentialsId("missing-cred"), "string")
+        val credentials = GitCredentials(string = tokenHandle)
+        val applier = GitCredentialsApplier(tempDir, credentials, secretStore = null, linkedSecretResolver = null)
+        val ex = assertThrows(IllegalStateException::class.java) {
+            applier.apply(tokenHandle, repoUrl = "https://example.com/repo.git")
+        }
+        assertTrue(ex.message?.contains("missing-cred") == true,
+            "fail-closed error must name the missing credential id, got: ${ex.message}")
     }
 }

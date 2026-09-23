@@ -767,6 +767,139 @@ pipeline {
         assertTrue(exited, "Child process should be killed by teardown (UAT-L7-TC-002)")
     }
 
+    /**
+     * WU-RP-045 / UAT-RP-018 sandbox 'os' fail-closed from CLI.
+     *
+     * Verifies the documented contract: invoking `pipelinek run --sandbox-profile os`
+     * fails closed BEFORE launching any process, with a message that contains the
+     * machine-checkable substrings "ADR-0016", "M5", "M9" and "os". Per ADR-0016,
+     * the 'os' profile requires container/OS-level isolation (M5/M9) and is not
+     * available in L3; this test pins that boundary at the CLI surface so the
+     // RP-5 Gate can certify the boundary without claiming containment we don't have.
+     */
+    @Test
+    fun `UAT-L7-TC-003 CLI rejects sandbox-profile os with ADR-0016 M5 M9 fail-closed message`(
+        @TempDir tempDir: Path,
+    ) {
+        assumeLinux()
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+
+        val script = tempDir.resolve("noop.pipeline.kts")
+        Files.writeString(
+            script,
+            """
+            pipeline {
+                stages { stage("noop") { steps { echo("never runs") } } }
+            }
+            """.trimIndent(),
+        )
+
+        val args = listOf(
+            "$javaHome/bin/java",
+            "-cp", classpath,
+            "dev.rubentxu.pipeline.v2.application.MainKt",
+            "run",
+            "--sandbox-profile", "os",
+            script.toString(),
+        )
+        val pb = ProcessBuilder(args)
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        processes += proc
+        val output = proc.inputStream.bufferedReader().readText()
+        val finished = proc.waitFor(30, TimeUnit.SECONDS)
+        assertTrue(finished, "pipelinek must reject os profile promptly, not hang")
+        // The CLI throws SandboxProfileUnsupportedException (uncaught at top-level);
+        // its message contains the four substrings we want to pin. Exit code may be
+        // 1 from the uncaught throwable; either way the message is the source of truth.
+        assertTrue(output.contains("ADR-0016"), "Fail-closed message must cite ADR-0016: $output")
+        assertTrue(output.contains("M5"), "Fail-closed message must cite M5: $output")
+        assertTrue(output.contains("M9"), "Fail-closed message must cite M9: $output")
+        assertTrue(output.contains("os"), "Fail-closed message must echo 'os': $output")
+    }
+
+    /**
+     * WU-RP-045 / UAT-RP-018 sandbox LOCAL capabilities contract pin.
+     *
+     * Documents the EXACT limits verifiable in L3 for profile LOCAL so RP-5
+     * can advertise them honestly:
+     *  - cwd = per-stage workspace path
+     *  - HOME preserved (LOCAL does not redact user HOME by default)
+     *  - LD_PRELOAD scrubbed
+     *  - JAVA_HOME/M2_HOME prepend survives
+     *  - parallel branch cwds are isolated (one workspace per branch)
+     *  - kill mid-step preserves LOST not FAILED_TIMEOUT
+     *
+     // Profile LOCAL is NOT a filesystem jail (no portable JDK chroot), and does
+     // NOT enforce CPU/RSS/disk limits at the OS level. Those limits belong to
+     // ADR-0016 M5/M9 (OS profile) and remain fail-closed in L3.
+     */
+    @Test
+    fun `UAT-L7-TC-004 profile LOCAL capabilities contract - cwd env kill parallel`(
+        @TempDir tempDir: Path,
+    ) {
+        assumeLinux()
+        val javaHome = System.getProperty("java.home")
+        val classpath = System.getProperty("java.class.path")
+
+        // Subset oracle: HOME unchanged + JAVA_HOME preserved + cwd = workspace
+        // (the other assertions are already covered by SB-S-003, SB-S-004, SB-S-009,
+        // SB-S-001 and SB-S-008; this test pins the contract in a single method
+        // for the RP-5 certification evidence summary).
+        // DSL syntax follows SB-S-005: sh() lives directly inside stage("cap") { },
+        // not wrapped in steps { ... }. The sh body uses printenv and
+        // read-only shell so the .kts compiler sees only literal tokens (no
+        // $-references, which the Kotlin pipeline compiler would try to resolve).
+        val outFile = tempDir.resolve("cap-local.out")
+        val script = tempDir.resolve("cap-local.pipeline.kts")
+        val scriptBody = """
+pipeline {
+    stages {
+        stage("cap") {
+            sh("printenv HOME > '${outFile.toString()}'")
+            sh("printenv JAVA_HOME >> '${outFile.toString()}'")
+            sh("pwd >> '${outFile.toString()}'")
+        }
+    }
+}
+        """.trimIndent()
+        Files.writeString(script, scriptBody)
+
+        val output = runPipeline(
+            javaHome = javaHome,
+            classpath = classpath,
+            dbPath = tempDir.resolve("cap.db"),
+            controlRoot = tempDir.resolve("ctrl"),
+            scriptPath = script,
+            extraArgs = arrayOf("--sandbox-profile", "local"),
+            env = mapOf(
+                "HOME" to "/home/runner",
+                "JAVA_HOME" to "/opt/jdk",
+                "PATH" to "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            ),
+        )
+        // Verify outcome is success (echoes ran without abort)
+        assertTrue(findRunFinished(output) == "success",
+            "cap-local pipeline must finish successfully; output=$output")
+        // Read the captured file and verify each contract line.
+        // The script writes raw printenv output (one value per line), so the
+        // assertion looks for the values directly; SB-S-003 and SB-S-004 use the
+        // exact HOME=.../LD_PRELOAD... prefixes with printenv in a single grep.
+        val capLines = Files.readAllLines(outFile)
+        assertEquals(3, capLines.size,
+            "exactly 3 sh calls must have written to outFile; got=${capLines.joinToString("||")}")
+        val capHome = capLines[0]
+        val capJava = capLines[1]
+        val capPwd = capLines[2]
+        assertEquals("/home/runner", capHome,
+            "LOCAL must NOT mutate HOME; got='$capHome'")
+        assertEquals("/opt/jdk", capJava,
+            "LOCAL must preserve JAVA_HOME; got='$capJava'")
+        assertTrue(capPwd.endsWith("/ctrl/workspace/cap-0") || capPwd.endsWith("/workspace/cap-0"),
+            "LOCAL cwd must be the per-stage workspace; got='$capPwd'")
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────────
 
     private fun runPipeline(

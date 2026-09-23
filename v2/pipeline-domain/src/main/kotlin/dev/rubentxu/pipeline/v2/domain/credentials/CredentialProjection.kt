@@ -109,7 +109,7 @@ fun interface CredentialProjector {
 }
 
 /**
- * LF-0403 — Default implementation of [CredentialProjector].
+ * LF-0403 (ADR-0097) — Default implementation of [CredentialProjector].
  *
  * Per-kind rules:
  *
@@ -126,22 +126,30 @@ fun interface CredentialProjector {
  *    — joined bytes, no envelope.
  *  - [SshUserPrivateKeyBindingSpec]: materializes to file and returns
  *    `{ keyFileVariable -> masked(path),
- *       passphraseVariable -> masked("") (if non-null),
+ *       passphraseVariable -> linkedSecretResolver.resolve(ssh.passphraseRef) (if non-null),
  *       usernameVariable -> masked(username) (if non-null) }`
- *    — THREE different handles. Passphrase content resolution is deferred to a
- *    follow-up slice (see TODO below).
+ *    — THREE different handles. Passphrase content resolved via the
+ *    [linkedSecretResolver] port (LF-0403 follow-up: was placeholder
+ *    `SecretHandle.masked("")` historically).
  *  - [FileBindingSpec]: `{ variable -> masked(materialized.path) }`.
  *  - [CertificateBindingSpec]: `{ keystoreVariable -> masked(path),
  *       aliasVariable -> masked(alias) (if non-null),
- *       passwordVariable -> masked("") (if non-null) }`. Password resolution
- *    is deferred to a follow-up slice (see TODO below).
+ *       passwordVariable -> linkedSecretResolver.resolve(cert.passwordRef) (if non-null) }`.
+ *       Password resolved via the [linkedSecretResolver] port (LF-0403 follow-up).
  *  - [ZipBindingSpec]: `{ variable -> masked(extractedDir) }`.
  *
  * @param materialization The [CredentialMaterializationDomain] port used for
  *   file-based kinds (SSH/FILE/CERT/ZIP).
+ * @param linkedSecretResolver The [CredentialLinkedSecretResolver] port used to
+ *   resolve [LinkedSecretRef] → [SecretHandle] for SSH passphrase / keystore
+ *   password bindings (LF-0403 / ADR-0097). Defaults to
+ *   [ThrowingCredentialLinkedSecretResolver] for fail-closed semantics — any
+ *   unconfigured resolver surfaces as a clear error rather than silently
+ *   injecting empty bytes (the legacy LF-0403 placeholder behaviour).
  */
 class DefaultCredentialProjector(
     private val materialization: CredentialMaterializationDomain,
+    private val linkedSecretResolver: CredentialLinkedSecretResolver = ThrowingCredentialLinkedSecretResolver,
 ) : CredentialProjector {
 
     override fun project(
@@ -186,12 +194,20 @@ class DefaultCredentialProjector(
                     )
                 env[spec.keyFileVariable] = SecretHandle.masked(keyPath.toString())
                 spec.passphraseVariable?.let { varName ->
-                    // TODO LF-0403 follow-up: resolve passphrase via LinkedSecretRef →
-                    // ask the materializer to materialize the referenced SecretText
-                    // credential into a temp file path. For Slice 1 the legacy bug
-                    // carried over as a placeholder so the binding shape remains
-                    // total; passphrase injection will be wired in a follow-up.
-                    env[varName] = SecretHandle.masked("")
+                    // LF-0403 (ADR-0097): resolve the passphrase via the
+                    // linkedSecretResolver port. Pre-fix this was a placeholder
+                    // `SecretHandle.masked("")` that silently broke SSH
+                    // handshakes. The resolver raises a typed error if the
+                    // referenced credential is absent or mis-typed.
+                    //
+                    // Binding shape stays total (see pre-existing test
+                    // "SSH binding injects THREE distinct handles"): the
+                    // variable is ALWAYS present in the result, but its
+                    // content is the resolved bytes only when the credential
+                    // declared a passphraseRef. Otherwise it is empty.
+                    env[varName] = ssh.passphraseRef?.let { ref ->
+                        linkedSecretResolver.resolve(ref)
+                    } ?: SecretHandle.masked("")
                 }
                 spec.usernameVariable?.let { varName ->
                     env[varName] = SecretHandle.masked(ssh.username)
@@ -230,11 +246,18 @@ class DefaultCredentialProjector(
                     cert.alias?.let { alias -> env[varName] = SecretHandle.masked(alias) }
                 }
                 spec.passwordVariable?.let { varName ->
-                    // TODO LF-0403 follow-up: resolve password via LinkedSecretRef →
-                    // ask the materializer to materialize the referenced SecretText
-                    // credential into a temp file path. Slice 1 keeps the variable
-                    // present so the binding shape stays total.
-                    env[varName] = SecretHandle.masked("")
+                    // LF-0403 (ADR-0097): resolve the keystore password via the
+                    // linkedSecretResolver port. Pre-fix this was a placeholder
+                    // `SecretHandle.masked("")` that silently broke keystore
+                    // decryption. The resolver raises a typed error if the
+                    // referenced credential is absent or mis-typed.
+                    //
+                    // Binding shape stays total: the variable is always
+                    // present when declared, but content is the resolved bytes
+                    // only when the credential declared a passwordRef.
+                    env[varName] = cert.passwordRef?.let { ref ->
+                        linkedSecretResolver.resolve(ref)
+                    } ?: SecretHandle.masked("")
                 }
                 // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
                 retainedMaterializations.add(materialized)

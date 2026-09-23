@@ -107,8 +107,23 @@ jobs:
           java-version: '21'
       - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
       - name: "Install just (UatLocal010 SC-010-09 uses `just doctor`)"
+        # WU-RP-051: hardened against transient HTTP 403 from just.systems
+        # (observed 2026-09-23 in CI re-run). Tries up to 3 times with
+        # backoff, then falls back to apt-install (Ubuntu 22.04+ ships it).
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          for i in 1 2 3; do
+            if curl --proto '=https' --tlsv1.2 -sSf -o /tmp/just-install.sh \
+                https://just.systems/install.sh && \
+               bash /tmp/just-install.sh --to /usr/local/bin && \
+               just --version; then
+              echo "just installed via official installer (attempt $i)"
+              exit 0
+            fi
+            echo "just.systems install attempt $i failed; retrying in $((i*5))s"
+            sleep $((i*5))
+          done
+          echo "Falling back to apt-install for just"
+          sudo apt-get update -qq && sudo apt-get install -y -qq just
           just --version
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

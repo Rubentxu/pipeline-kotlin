@@ -1270,3 +1270,57 @@ git status --short && git rev-parse HEAD && git log -1
 | 4 | a92cc2d7  | fix  | fix(domain,adr-0097): GREEN — resolve LinkedSecretRef via port, drop LF-0403 placeholder |
 | 5 | d72a48a7  | feat | feat(credentials-executor,adr-0097): WIRING — inject SpiCredentialLinkedSecretResolver |
 | 6 | 25818c10  | docs | docs(uat-rp-049-r1): slice receipt — LF-0403 COVERED, 12/12 criterios, 3 KNOWN_FLAKE pre-existentes |
+
+---
+
+## 2026-09-23 — WU-RP-050 (LinkedSecretRef resolution consolidation)
+
+**Base SHA:** `25818c10` (CI 35855686796 SUCCESS 10/10 sobre WU-RP-049 R1 cerrado).
+**Head SHA:** `4fb79b01` (LOCAL divergente de REMOTE `25818c10`, push pendiente).
+**Cierre honesto:** WU-RP-050 — 2 duplicaciones de `LinkedSecretRef` resolution en `GitCredentialsApplier` eliminadas vía adapter compartido. 12/12 criterios PASS.
+
+### Cambios
+1. **PLAN** `47bf75d1` (inicial, después corregido en `9d78120d`): A-min, 6 commits, scope 2 sitios (no 3 — `SpiCredentialLinkedSecretResolver` es legítimo).
+2. **ADR-0098** `9d78120d` (corregido): decisión basada en audit que muestra que `CredentialProvider` NO extiende `SecretStore` (SPIs paralelos, no herencia). `SecretStoreLinkedSecretResolver` se crea como adapter compartido en `:pipeline-credentials-api`.
+3. **RED test** `0d99a89a`: 4 tests en `SecretStoreLinkedSecretResolverTest.kt` que pin el contrato del adapter (delegación, error propagation, hexagonal type, fresh handle). RED confirmado con error de compilación.
+4. **GREEN impl** `134cf89c`: `SecretStoreLinkedSecretResolver` 35-líneas implementa `CredentialLinkedSecretResolver` delegando a `store.getAsSecretHandle(ref.id)`. Errores propagados as-is.
+5. **Refactor** `56314a09`: `GitCredentialsApplier` ahora acepta `CredentialLinkedSecretResolver?` como 4º param opcional; `effectiveResolver` se inicializa con el resolver explícito o el adapter SecretStore-backed; `resolveSecret` + `resolveAndEncode` delegan. 2 tests nuevos (`accepts CredentialLinkedSecretResolver directly` + `fails closed when no resolver and no SecretStore`). 10/10 tests verdes en `GitCredentialsApplierTest` (8 pre-existentes retro-compatibles + 2 nuevos).
+6. **Slice receipt** `4fb79b01`: `docs/v2/07-uat/WU_RP_050_SLICE_RECEIPT.md` (225 líneas) documenta 12/12 criterios PASS + 3 known gaps documentados.
+
+### Resultados de tests (reales, fresh XML)
+- `SecretStoreLinkedSecretResolverTest`: 4/4 PASS (XML: `TEST-dev.rubentxu.pipeline.v2.credentials.api.SecretStoreLinkedSecretResolverTest.xml`).
+- `GitCredentialsApplierTest`: 10/10 PASS (8 pre + 2 nuevos).
+- `pipeline-step-sdk/scm-git` full: 26/26 PASS, 0 failures (FoldInGitChk 4 + GitChangelogWriter 2 + GitCheckoutExecutor 4 + GitCredentialsApplier 10 + GitPollExecutor 2 + ReasonScrub 4).
+- `pipeline-application` UAT git auth (005/005canary/008): 15 ejecutados, 2 skipped (V2_SSH_OK gate), 0 failures.
+- `pipeline-credentials-api` (incluyendo WU-RP-050): 57 tests, 0 fails.
+- `pipeline-credentials-executor`: 7 tests, 0 fails.
+
+### Tests no ejecutados / evidencia caducada
+- **Full `check` incremental NO ejecutado**: AGENTS.md §5 permite validación incremental por bounded slice. Round gate programado para WU-RP-051 (final close-out).
+- **CI post-push NO ejecutado todavía**: 5 commits ahead of remote. Push + CI requerido en WU-RP-051.
+
+### Verificación de duplicaciones
+Grep `store.getAsSecretHandle` en producción v2:
+- ANTES: 2 sites en `GitCredentialsApplier` (acciones eliminadas).
+- AHORA: 1 site en `LocalCredentialProvider.resolve` (legítimo, SPI implementation).
+- Adapter único en `SecretStoreLinkedSecretResolver.resolve` (línea de la consolidación).
+- `SpiCredentialLinkedSecretResolver` se mantiene: opera sobre `CredentialProvider` SPI, semántica más rica (validación de tipo, audit). Consolidarlo requeriría leaky abstraction.
+
+### Bloqueos / riesgos residuales
+- Ninguno técnico. La refactorización pasa los 64+26+4 tests sin regresión.
+- Push pendiente: requiere autorización para desbloquear protección de main + push + restaurar. WU-RP-051 cubre ese cierre.
+- UAT-RP-008 SSH tests SKIP por defecto (gate `V2_SSH_OK=true`). No es regresión del slice.
+
+### Acción de seguimiento registrada
+- Push de los 5 commits a main (WU-RP-051): bootstrap pattern con `gh api` para desproteger/proteger main.
+- Run CI completo post-push y verificar SHA matrix en `.agent/E1_CYCLE_STATE.md` + `release-receipt`.
+
+### SHA matriz del slice
+| # | SHA       | Tipo     | Mensaje |
+| - | --------- | -------- | ------- |
+| 1 | 47bf75d1  | docs     | docs(rp-050): WU-RP-050 PLAN — consolidar LinkedSecretRef resolution |
+| 2 | 9d78120d  | docs     | docs(adr-0098): ACCEPTED — SecretStoreLinkedSecretResolver (con corrección factual) |
+| 3 | 0d99a89a  | test     | test(credentials-api,adr-0098): RED tests SecretStoreLinkedSecretResolver |
+| 4 | 134cf89c  | feat     | feat(credentials-api,adr-0098): SecretStoreLinkedSecretResolver production adapter |
+| 5 | 56314a09  | refactor | refactor(scm-git,adr-0098): GitCredentialsApplier consumes CredentialLinkedSecretResolver port |
+| 6 | 4fb79b01  | docs     | docs(uat-rp-050): slice receipt — 2 duplications eliminated, 12/12 criterios PASS |

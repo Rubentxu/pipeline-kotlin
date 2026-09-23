@@ -1127,7 +1127,7 @@ group).
 23. NEVER pipe test output through `| tail` under `timeout`: the output is
     lost when the process is killed. Safe pattern (`<budget>` per rule 4:
     600 targeted, derived for the round gate):
-    `(cd v2 && timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1); rc=$?; tail -n 30 /tmp/gradle-run.log; exit "$rc"`
+    `(cd v2; timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1; rc=$?; tail -n 30 /tmp/gradle-run.log; exit "$rc")`
 24. Long builds run backgrounded with polling:
     `nohup timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1 &` then
     poll `tail -n 20 /tmp/gradle-run.log` — keep editing while it runs.

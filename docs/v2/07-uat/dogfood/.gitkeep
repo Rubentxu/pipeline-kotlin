@@ -1,0 +1,30 @@
+# Dogfood battery receipts
+
+This directory holds the immutable receipts produced by the
+previous-release PipelineK dogfood battery defined in
+`docs/v2/05-roadmap/CI_TEST_RELEASE_WORKFLOW.md` §6.
+
+**Authoritative schema:**
+`docs/v2/05-roadmap/CI_TEST_RELEASE_WORKFLOW.md` §6.4 (mandatory
+report fields) and §6.5 (promotion rules). A run without
+`old_release`, `candidate_release`, every executed
+`scenarios[…].outcome`, and an explicit `next_action` is **NOT a
+report**; it is a log line.
+
+**Filename pattern (per §6.6):**
+`<yyyymm>/<sha>-<old-version>-vs-<candidate-version>.yaml`.
+
+**Current state:**
+
+- This directory exists so that the doc's prescribed path resolves.
+- No receipts have been produced yet. The previous-release dogfood
+  battery is **PLANNED**, not PASS.
+- The v0.39.0 reference evidence lives in
+  `docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md`
+  (and related receipts at `docs/v2/07-uat/lfc-2e2-utilities/`).
+  Those are `HISTORICAL_RELEASED_ARTIFACT`, not dogfood-battery
+  receipts, and they do not satisfy §6 by themselves.
+
+Do not drop raw logs or arbitrary YAML here. A file in this
+directory must conform to §6.4 and §6.5 and must declare the binary
+SHA-256s and the scenario catalogue it claims to cover.

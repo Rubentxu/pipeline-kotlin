@@ -27,10 +27,10 @@ Son **3 sitios** que resuelven `LinkedSecretRef` → bytes, con pequeñas variac
 
 Crear **un único adapter compartido** `SecretStoreLinkedSecretResolver(secretStore)` en `:pipeline-credentials-api` (módulo donde reside `SecretStore`). Este adapter implementa el port domain `CredentialLinkedSecretResolver` delegando a `SecretStore.getAsSecretHandle`.
 
-Las **3 implementaciones actuales** se reducen a **1**:
-- `SpiCredentialLinkedSecretResolver` (en `:pipeline-credentials-executor`) → refactor para delegar a `SecretStoreLinkedSecretResolver(provider)` en lugar de `provider.resolve(ref.credentialsId)`. Esto elimina la doble indirección (provider.resolve → store.getAsSecretHandle) → ahora va directo (resolver → store.getAsSecretHandle).
-- `GitCredentialsApplier.resolveSecret` (en `:pipeline-step-sdk/scm-git`) → refactor para construir el `SecretStoreLinkedSecretResolver` en el `init` y delegar. Firma de retorno cambia de `ByteArray` a `SecretHandle` (consistente con el port).
-- `GitCredentialsApplier.resolveAndEncode` → también usa el adapter (en lugar de `secretStore.getAsSecretHandle` directo).
+Las **3 implementaciones** se reducen a **2** (1 compartido + 1 legítimo):
+- `SpiCredentialLinkedSecretResolver` (en `:pipeline-credentials-executor`): **se mantiene sin cambios**. Sigue delegando a `provider.resolve(ref.credentialsId)`. Es legítimo porque opera sobre el port SPI `CredentialProvider`, no sobre `SecretStore` directamente. (Corrección factual: `CredentialProvider` NO extiende `SecretStore`, son SPIs paralelos.)
+- `GitCredentialsApplier.resolveSecret` (en `:pipeline-step-sdk/scm-git`): refactor para construir el `SecretStoreLinkedSecretResolver` en el `init` y delegar. Firma de retorno cambia de `ByteArray` a `SecretHandle` (consistente con el port).
+- `GitCredentialsApplier.resolveAndEncode`: también usa el adapter (en lugar de `secretStore.getAsSecretHandle` directo).
 
 **Compatibilidad de contrato público**:
 - `GitCredentialsApplier(secretStore: SecretStore? = null)` firma sin cambios (sólo cambia el cuerpo).

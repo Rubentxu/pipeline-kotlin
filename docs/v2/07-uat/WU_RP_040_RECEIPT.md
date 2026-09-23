@@ -164,3 +164,36 @@ grep -E "uses:.*@[a-f0-9]{40}" .github/workflows/*.yml | wc -l # 34
   4. Clasificar manualmente los 128 mutantes sobrevivientes (118 domain + 10 SDK) en triviales/equivalentes/requieren-test-adicional.
 
 **NO_RELEASE** hasta que R3.3 (SAST) y R3.4 (dependency-audit) se hayan implementado, dado que RP-5 Gate exige "seguridad y rendimiento conforme a presupuestos ratificados" y la cobertura SAST/SCA es parte de esa ratificación.
+
+---
+
+## WU-RP-040 R5–R8 (2026-09-23, base 6f7c445f)
+
+Cierre de las 4 rondas restantes del plan RP-040. Un commit atómico por ronda lógica.
+
+### R5 — detekt SAST (commits 4b59bbc8, 0900e34a)
+
+- `./gradlew detekt` → **BUILD SUCCESSFUL** (21 módulos Kotlin, 6s), baseline congelado como snapshot de deuda (fecha + SHA en el propio baseline).
+- Ratchet verificado por **canary**: inyección de `WildcardImport` + `MaxLineLength` en producción → `exit=1` con ambos errores; revert → verde. El ratchet es real, no ceremonial.
+- Job `sast:` añadido a `.github/workflows/lpr0-ci.yml` (`./gradlew detekt --no-daemon` + artifact `sast-detekt-reports`). YAML validado.
+
+### R6 — Dependabot (commit 4663a3eb)
+
+- `.github/dependabot.yml`: gradle en `/v2` (semanal, limit 10, grupos `kotlin-toolchain` + `test-dependencies`) + github-actions en `/` (semanal, limit 5). Caveat documentado: acciones no SHA-pineadas serán actualizadas por Dependabot, alineado con la política R2.
+
+### R7 — Kover-all (commit bc93f319)
+
+- `./gradlew koverXmlReport` en raíz → **BUILD SUCCESSFUL 14m29s**; XML agregado `v2/build/reports/kover/report.xml`: **40 paquetes**, LINE 15735/20212 (**77.9%**), BRANCH 5598/9929 (56.3%), CLASS 1259/1440 (87.4%).
+- Fix #798: plugin kover aplicado a TODOS los subproyectos Kotlin; `repositories { mavenCentral() }` en raíz para el classpath del merge.
+- D-002: `StreamingRedactor*` excluido de instrumentación en `pipeline-credentials-api` (el agente kover tumbaba el floor de 20 MB/s de `Rp022ThroughputProbe`, flake conocido). Justificación inline en `v2/build.gradle.kts`. La cobertura de redacción sigue viniendo de sus tests dedicados.
+
+### R8 — Mutant triage (commit a7a90cc1)
+
+- 128 survivors categorizados A–D en `RP040_R8_MUTATION_SURVIVOR_TRIAGE.md`: A=44 data-class equals/hashCode (deuda aceptada), B=45 reconciler guards cubiertos por UAT R1–R6 de proceso real (no duplicados como unit), C=10 `DefaultEffectReplayPolicy.decide` combinaciones MEMOIZED (**gap real → P2, WU de seguimiento**), D=29 equivalentes/low-value.
+- Cero defectos de producción abiertos.
+
+### Cierre de ronda
+
+- **Reference implementations consultadas:** detekt 2.x docs, kotlinx-kover issues #798/#706, Dependabot docs, pitest report XML. **Behaviour adopted / deviations / security:** en cada commit. **Tests:** canary detekt manual + suite completa vía kover-all (L5 equivalente).
+- Bloqueo levantado: D-002 vs kover resuelto por exclusión de instrumentación (no por weaken del test).
+- Deuda nueva: WU P2 para los 10 survivors categoría C.

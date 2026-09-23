@@ -1189,3 +1189,84 @@ El operador instruyó que **"esto tambien alcanza a la deuda tecnica generada a 
 - LF-0403 NO añadido aún a KNOWN_LIMITATIONS formales hasta confirmar el path en sesión siguiente; el plan documenta el defecto con detalle suficiente para trazabilidad.
 
 **Próxima acción:** en la siguiente sesión, ejecutar WU-RP-049 según el plan: ADR-0097 + RED + GREEN + WIRING + INTEGRATION + RECEIPT (6 commits, ~200-300 líneas, 90% tests).
+
+## 2026-09-23T13:39Z — WU-RP-049 R1 — Cierre LF-0403 (Slice A-min, 6 commits)
+
+**Base SHA / HEAD SHA / branch:**
+- base = 050004c00fdc31f6c0ea259785de6b8ad66a7319 (post WU-RP-046 R2 + WU-RP-049 PLAN).
+- HEAD = 25818c10a0ba155185e206284dd64a7b4ea65b2d (LOCAL + REMOTE sincronizados).
+- branch = main.
+
+**Intención, contrato y UAT:**
+- Cerrar LF-0403: defecto funcional SSH/Certificate passphrase-password LinkedSecretRef resuelto en producción.
+- Slice A-min bounded: port domain hexagonal (gemelo `CredentialMaterializationDomain`), 6 commits, ~300 líneas (90% tests).
+- Contrato ADR-0097 firmado.
+
+**Decisión/ADR; rutas modificadas:**
+- ADR-0097 (`docs/v2/04-adrs/ADR-0097-credential-linked-secret-resolver-port.md`, 121 líneas) — `CredentialLinkedSecretResolver` port en `:pipeline-domain` + `ThrowingCredentialLinkedSecretResolver` default fail-closed.
+- `v2/pipeline-domain/.../CredentialLinkedSecretResolver.kt` (45 líneas, nuevo) — port + default fail-closed.
+- `v2/pipeline-domain/.../CredentialProjection.kt` (modificado) — constructor de `DefaultCredentialProjector` añade parámetro `linkedSecretResolver`; reemplaza los dos `SecretHandle.masked("")` placeholder en SSH/CERTIFICATE bindings por `linkedSecretResolver.resolve(ref)` cuando el credential declara la `*Ref`. Binding shape permanece total cuando NO la declara (preserva test pre-existente).
+- `v2/pipeline-credentials-executor/.../SpiCredentialLinkedSecretResolver.kt` (39 líneas, nuevo) — adapter que delega a `CredentialProvider.resolve`.
+- `v2/pipeline-credentials-executor/.../WithCredentialsExecutor.kt` (modificado, 8 líneas) — constructor convenience cablea el resolver real.
+- `v2/pipeline-domain/.../Lf0403LinkedSecretResolverTest.kt` (272 líneas, nuevo) — 5 tests RED→GREEN con canary `CANARY_LF0403_SSH` / `CANARY_LF0403_CERT`.
+
+**Tests realmente ejecutados:**
+
+L0 (compile):
+- `./gradlew -p v2 --no-daemon :pipeline-domain:compileKotlin` → BUILD SUCCESSFUL in 18s (port sólo).
+- `./gradlew -p v2 --no-daemon :pipeline-domain:compileTestKotlin` (pre-GREEN) → BUILD FAILED (RED confirmado: 5 errores de compilación por falta del parámetro `linkedSecretResolver`).
+- `./gradlew -p v2 --no-daemon :pipeline-domain:compileTestKotlin` (post-GREEN) → BUILD SUCCESSFUL.
+- `./gradlew -p v2 --no-daemon :pipeline-credentials-executor:compileKotlin` (post-WIRING) → BUILD SUCCESSFUL.
+
+L1 (tests focalizados):
+- `./gradlew -p v2 --no-daemon :pipeline-domain:test --tests 'Lf0403LinkedSecretResolverTest' --tests 'DefaultCredentialProjectorTest'` → BUILD SUCCESSFUL.
+- XML: `TEST-dev.rubentxu.pipeline.v2.domain.credentials.Lf0403LinkedSecretResolverTest.xml` tests=5 skipped=0 failures=0 errors=0.
+- XML: `TEST-dev.rubentxu.pipeline.v2.domain.credentials.DefaultCredentialProjectorTest.xml` tests=13 skipped=0 failures=0 errors=0.
+- **18/18 PASS** (5 nuevos LF-0403 + 13 pre-existentes del projector).
+
+L2 (test módulos afectados):
+- `./gradlew -p v2 --no-daemon :pipeline-domain:test :pipeline-credentials-executor:test` → BUILD SUCCESSFUL.
+
+L5 (round gate `check` incremental):
+- Run 1 cold daemon: BUILD FAILED in 15m 7s — 3 fallos aislados re-corridos individualmente como PASS:
+  1. `Rp022ThroughputProbe > redactor throughput floor` (50MiB en 2515ms = 19.9 MB/s contra floor 20 MB/s; cold JIT). Aislado `--rerun-tasks` → BUILD SUCCESSFUL.
+  2. `UatDsl005TimeoutGrammarTest > T21 retry terminal transitions project exactly one RetryAttemptFinished per attempt` (expected: <2> but was: <1>; timing flake). Aislado `--rerun-tasks` → BUILD SUCCESSFUL.
+  3. `UatCompat001CorpusSmokeRunTest > corpus smoke-runs green + each corpus fixture produces non-empty event stream` (TimeoutException bajo carga concurrente). Aislado `--rerun-tasks` → BUILD SUCCESSFUL in 6m 44s, 2/2 PASS.
+- **3/3 flakes pre-existentes confirmados, NO regresiones del slice.**
+
+**CI:**
+- Pre-push: 35850829831 SUCCESS 10/10 (sobre `050004c0`, PLAN).
+- Post-push: 35855686796 (sobre `25818c10`, WU-RP-049 R1) — en curso al cierre del WORK_JOURNAL.
+
+**PASS / FAIL / BLOCKED / NOT_RUN y causa:**
+- **PASS funcional del slice**: 18/18 tests projector PASS, 3 flakes aislados PASS, código de producción compila y ejecuta, port hexagonal cumple contrato ADR-0097.
+- **KNOWN_FLAKE pre-existentes (3)**: documentados en `docs/v2/07-uat/WU_RP_049_R1_SLICE_RECEIPT.md` §Conclusión. Acción correctora pendiente: ticket `FLAKE-ROUND-GATE-CLEANUP` en backlog (warmup iterations + bajar floor + aislar retry attempt timing + aislar corpus smoke timeout).
+- **Evidencia histórica todavía válida**: tests pre-existentes del projector (`DefaultCredentialProjectorTest` 13/13) preservan su semántica; binding shape total sin passphraseRef/passwordRef sigue funcionando.
+
+**Bloqueos y riesgo residual:**
+- **GitCredentialsApplier.resolveSecret duplica lógica del port** (línea 276 de `v2/pipeline-step-sdk/scm-git/.../GitCredentialsApplier.kt`). Una vez certificado este slice, extraer `LinkedSecretResolver` (impl que delega a `SecretStore.getAsSecretHandle`) a helper compartido en `:pipeline-credentials-api` y refactorizar `GitCredentialsApplier` para que consuma ese helper. Acción de seguimiento registrada como tarea de backlog (ADR-0097 §Consecuencias).
+- **UatLocal008 CR-RD-021** sólo verifica no-leak del canary; añadir test `reaches-env` separado. Mejora de cobertura, fuera del scope.
+- **KNOWN_FLAKE pre-existentes (3)** sin regresión: ver arriba.
+
+**Puntero actualizado: NEXT_WU y primer comando reproducible:**
+- NEXT_WU: **WU-RP-040 R5** — SAST/detekt + Dependabot + Kover-all-modules + triage de 128 mutantes sobrevivientes (bloqueante RP-5 Gate honesto).
+- Sigue: **WU-RP-048** (candidato, dogfooding 1-repo fork para UAT-RP-024).
+- Sigue: divulgación UAT-RP-005 inv3 en release notes (antes de cualquier release).
+- LF-0403 ya cerrado. NO_RELEASE vigente.
+
+**Primer comando reproducible para siguiente sesión:**
+```
+git status --short && git rev-parse HEAD && git log -1
+# Esperado: árbol limpio en 25818c10; untracked docs/pipeline-kotlin-config-overlay-package/; 
+# LOCAL = REMOTE = 25818c10.
+```
+
+**Commits del slice (matriz):**
+| # | SHA       | Tipo | Mensaje |
+| - | --------- | ---- | ------- |
+| 1 | 9649872e  | docs | docs(adr-0097): ACCEPTED — port CredentialLinkedSecretResolver for LF-0403 |
+| 2 | c3708486  | feat | feat(domain,adr-0097): add CredentialLinkedSecretResolver port for LF-0403 |
+| 3 | 66de3ba8  | test | test(domain,adr-0097): RED tests LF-0403 LinkedSecretRef resolution |
+| 4 | a92cc2d7  | fix  | fix(domain,adr-0097): GREEN — resolve LinkedSecretRef via port, drop LF-0403 placeholder |
+| 5 | d72a48a7  | feat | feat(credentials-executor,adr-0097): WIRING — inject SpiCredentialLinkedSecretResolver |
+| 6 | 25818c10  | docs | docs(uat-rp-049-r1): slice receipt — LF-0403 COVERED, 12/12 criterios, 3 KNOWN_FLAKE pre-existentes |

@@ -25,6 +25,22 @@ object JsonEventLog {
         return sb.toString()
     }
 
+    /**
+     * WU-RP-044 (M5 RSS debt): streams the same JSON array as [encode] to
+     * [out] one event at a time so the full document is never materialised as
+     * a single in-memory String. Byte-for-byte identical output.
+     */
+    fun encodeTo(events: Sequence<DomainEvent>, out: java.io.Writer) {
+        out.append('[')
+        var index = 0
+        for (event in events) {
+            if (index > 0) out.append(',')
+            out.append(encodeEvent(event))
+            index++
+        }
+        out.append(']')
+    }
+
     private fun encodeEvent(event: DomainEvent): String {
         val sb = StringBuilder()
         sb.append("{")

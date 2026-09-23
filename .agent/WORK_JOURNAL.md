@@ -896,3 +896,28 @@
 - CI 35781433830: 1er intento FAILURE por flake SqliteEventStoreRoundTripTest (5/5 verde local --rerun-tasks, mismo SHA); rerun --failed SUCCESS completo. Flake clasificado, anotado; si recurre → WU de caracterización.
 - Deuda técnica auditada esta sesión: cierres RP-1 (receipt + ADR-0095/0096), RP-2 (gate receipt, métricas y SLOs medidos), RP-3 (exit review con deudas clasificadas 1-4) verificados contra evidencia — sin divergencias nuevas.
 - Post-receipt CI 6e715b59: 1er intento infra (ETIMEDOUT wrapper-validation, todos los jobs) + rerun falló de nuevo en SqliteEventStoreRoundTripTest. Flake repetido = defecto: CAUSA RAÍZ encontrada — el test reabría la DB sin cerrar el primer store; appends son asíncronos (cola+writer thread, COMMIT por batch), por lo que el read competía con el writer. Fix test-side determinista (store.close() antes de reabrir, 5cad90ab), misma lección que 59a576e5. Verificación CI del fix programada.
+
+## 2026-09-22/23 — WU-RP-044 (sesión 2): streaming de transcript completo, gate verde, SIN commitear
+
+**Base:** `888f4b60` (HEAD pushed, CI verde previa). **Estado: cambios SIN commit** — gate L5 verde en el worktree (`/tmp/gradle-check2.log`, BUILD SUCCESSFUL 14m10s, 0 FAILED, 1735 tests).
+
+### Qué se cerró esta sesión
+1. **Bug crítico encontrado y corregido (pérdida silenciosa de transcript):** el primer soak post-streaming (`soak5`) emitió SOLO 8 eventos sin `EchoOutputCaptured`. Causa: `DurableShellExecutor.cleanup()` borra el control dir on-success ANTES de que `ShExecution.emitTranscriptStreaming` lea `console.log` → el streaming caía a fallbacks y el transcript se perdía. Fix:
+   - `DurableShellExecutor.cleanup(controlDir, exitCode, keepTranscriptLog)`: en JENKINS_LOG + exit 0 + sin timeout borra TODO el control dir **excepto `console.log`**; la llamada en `finally` de executeTerminal pasa `keepTranscriptLog` accordingly (línea ~1208). Overload default `keepTranscriptLog=false` preserva interfaz `DurableShellLaunching`.
+   - `ShExecution`: `finally` tras el streaming borra `console.log` retenido + el control dir vacío, **SOLO si `Exited.exitCode==0`**. Primera versión borraba siempre y rompió 2 tests LPR-011r2 (retención de transcript en fallo/timeout — Gate-1 at-rest). Corregido; LPR-011r2 100% verde.
+2. **Soak 1 GiB final con `-Xmx1g`** (`soak6`, dist recién instalada): **EXIT=0, 129s (vs baseline 137s), maxRss ~1,4 GB (vs ~10 GB baseline — mejora ~7x), lossless 1.073.741.824 chars exactos en 16 chunks de 64 MiB, 24 eventos, control dir limpio** (queda solo el puntero `last-run/<hash>` tipo archivo con el opId — comportamiento preexistente). Heap live-set diminuto confirmado: el RSS ya NO escala con el tamaño del transcript.
+3. **Ladder:** L0/L1/L2 verde (TranscriptStreamingEmissionTest 4/4, DurableShellTerminalAdapterTest, EventHistoryContractTest, Lpr011r2*). **L5 `check` completo verde** en el worktree (segunda pasada; la primera falló solo por el bug de retención ya corregido).
+
+### Estado del working tree (SIN commit)
+Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.kt`, `EventHistoryReader.kt`, `DurableShellExecutor.kt`, `DurableTaskTerminalAdapter.kt` (import DurableShellFiles añadido) + nuevo test `TranscriptStreamingEmissionTest.kt`.
+
+### Próximos pasos exactos (mañana)
+1. Re-verificar `git status` + fast-forward gate: el verde es del worktree sobre `888f4b60`; commitear WU-RP-044 y push.
+2. CI del NUEVO SHA (gate: CI verde en el commit, no en el worktree).
+3. Escribir receipt `docs/v2/07-uat/WU_RP_044_SLICE_RECEIPT.md` con: baseline 137s/~10GB vs final 129s/~1,4GB (-Xmx1g), lossless 1073741824, matriz streaming (ShExecution/Main/eventsFor/EventHistoryReader/executor), bug cleanup-race + fix retención condicional.
+4. Actualizar SESSION_POINTER (fase, HEAD nuevo, primer comando) + TESTING-STATE (nada pendiente de módulos events/application/runtime).
+5. Considerar: reducir SLO formal de RSS en M5 (nueva evidencia: RSS ~1,4GB con heap 1g en soak 1GiB).
+
+### Hallazgos operativos (mantener)
+- Procesos stale con `sqlite-event-writer` non-daemon parked en `queue.take()` si `close()` no corre (2 matados en esta sesión, 10GB→450MB tras GC). Vigilar `pgrep -f MainKt` tras soaks.
+- `PIPELINEK_OPTS="-Xmx1g"` falsa el techo de G1 y revela el live-set real: técnica recomendada para medir RSS en soaks.

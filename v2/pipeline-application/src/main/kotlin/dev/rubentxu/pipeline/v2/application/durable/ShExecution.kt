@@ -30,6 +30,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.sdk.runtime.sh as sdkSh
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -87,6 +88,54 @@ object ShExecution {
             ))
             offset = end
         } while (offset < content.length)
+    }
+
+    /**
+     * WU-RP-044 (M5 RSS debt): streaming twin of [emitTranscriptChunked]. Reads
+     * the source incrementally so the full transcript is NEVER materialised as
+     * one in-memory copy: at most one chunk window plus redactor lookahead is
+     * resident at any time. Observable contract identical to the in-memory
+     * emitter: chunks are contiguous, ordered, lossless (concatenating chunk
+     * contents reproduces the transcript exactly) and bounded by
+     * [MAX_TRANSCRIPT_CHUNK_CHARS]. Redaction is chunk-boundary-safe via
+     * [dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor]; when the
+     * registry is null the raw bytes are emitted (same fallback as the
+     * in-memory path).
+     */
+    internal fun emitTranscriptStreaming(
+        eventSink: EventSink,
+        runId: String,
+        stepIndex: Int,
+        source: () -> InputStream?,
+        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
+    ) {
+        val input = source() ?: return
+        val redacted = if (secretPatternRegistry != null) {
+            dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(secretPatternRegistry).wrap(input)
+        } else {
+            input
+        }
+        redacted.use { stream ->
+            while (true) {
+                val buffer = ByteArray(MAX_TRANSCRIPT_CHUNK_CHARS)
+                var offset = 0
+                while (offset < buffer.size) {
+                    val read = stream.read(buffer, offset, buffer.size - offset)
+                    if (read < 0) break
+                    offset += read
+                }
+                if (offset == 0) break
+                eventSink.append(EchoOutputCaptured(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    stepIndex = stepIndex,
+                    content = String(buffer, 0, offset, Charsets.UTF_8),
+                ))
+                if (offset < buffer.size) break // EOF reached inside this window
+            }
+        }
     }
 
     /**
@@ -263,17 +312,41 @@ object ShExecution {
             //     read as terminal.capturedStdout); console.log holds only stderr and is the
             //     observable transcript. The stdout value must NOT be re-emitted as a console event.
             val terminalExited = terminal as? DurableTaskTerminal.Exited
-            // Observable console output comes from the console transcript channel (console.log),
-            // which the durable executor read BEFORE cleanup so success-path observability is
-            // preserved. capturedStdout is the typed value channel (capture mode), NOT console output.
-            val consoleContent: String = redactTranscript(
-                terminalExited?.output?.consoleTranscript
-                    ?: terminalExited?.output?.capturedStdout
-                    ?: readConsoleTranscript(controlDir, secretPatternRegistry),
-                secretPatternRegistry,
-            )
-            if (consoleContent.isNotEmpty()) {
-                emitTranscriptChunked(eventSink, runId, stepIndex, consoleContent)
+            // WU-RP-044 (M5 RSS debt): stream the transcript from console.log
+            // instead of materialising it in memory. Plain mode: console.log
+            // holds stdout+stderr merged (the whole observable transcript).
+            // Capture mode: stdout went to output.txt as the typed VALUE, so
+            // console.log holds only stderr; the captured value is NOT emitted
+            // as a console event (channel separation law). Fallbacks preserve
+            // the previous preference order exactly.
+            val consoleSource: () -> InputStream? = {
+                dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles.resolveConsoleLog(controlDir).takeIf { Files.exists(it) }
+                    ?.let { java.io.BufferedInputStream(java.io.FileInputStream(it.toFile())) }
+                    ?: terminalExited?.output?.consoleTranscript?.byteInputStream()
+                    ?: terminalExited?.output?.capturedStdout?.byteInputStream()
+            }
+            // WU-RP-044 (M5 RSS debt): in plain (JENKINS_LOG) projection the
+            // terminal retains console.log (cleanup deleted the rest of the
+            // control dir). This finally is the single owner of that retained
+            // file's deletion after streaming. Deletion applies ONLY to a
+            // successful exit: LPR-011r2 retention requires the transcript to
+            // survive failed and timeout-killed operations for post-mortem.
+            val deleteRetainedLog = (terminal as? DurableTaskTerminal.Exited)?.exitCode == 0
+            try {
+                emitTranscriptStreaming(eventSink, runId, stepIndex, consoleSource, secretPatternRegistry)
+            } finally {
+                if (deleteRetainedLog) {
+                    kotlin.runCatching {
+                        java.nio.file.Files.deleteIfExists(
+                            dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
+                                .resolveConsoleLog(controlDir)
+                        )
+                    }
+                    kotlin.runCatching {
+                        // remove the emptied control dir (console.log was its last entry)
+                        java.nio.file.Files.deleteIfExists(controlDir)
+                    }
+                }
             }
 
             classifyShellTerminal(terminal, command.returnMode)

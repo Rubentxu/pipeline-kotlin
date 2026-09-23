@@ -1,6 +1,6 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T20:56Z. **Tipo de cambio de esta sesión:** **WU-RP-043 ejecutado (dogfooding CI) + WU-RP-042 CLOSED** — release gate: distZip reproducible, zero-install, proyectos reales, credenciales e2e + defecto CLI corregido. Head = 74617ff8. Receipts: WU_RP_042_S1/S2, WU_RP_043_SLICE_RECEIPT.md. CI: SUCCESS (35781433830, SHA 74617ff8; 1er intento flake SqliteEventStoreRoundTripTest, rerun limpio). L5 escalado local: check --rerun-tasks BUILD SUCCESSFUL 14m32s.
+**Actualizado:** 2026-09-22T23:06Z. **Tipo de cambio de esta sesión:** **WU-RP-044 EN PROGRESO — implementación completa, gate L5 verde en worktree, SIN COMMIT**. Head base = 888f4b60 (CI SUCCESS 35785380826). Streaming de transcript (ShExecution/JsonEventLog/Main/SqliteEventStore/EventHistoryReader/DurableShellExecutor) + fix race cleanup vs streaming (retención condicional de console.log). Soak 1GiB -Xmx1g: 129s / maxRss ~1,4GB (baseline 137s/~10GB), lossless 1073741824 chars. check BUILD SUCCESSFUL 14m10s 0 FAILED (/tmp/gradle-check2.log).
 
 **Código auditado:** main @ 554672aa. WU head = 554672aa.
 
@@ -18,10 +18,10 @@
   - Regresión: scripting-api 50, application 1726, domain 554, sdk-api 393, arch 313 (allow-list +RegistryBlockSpec), gate check green local.
 - KNOWN LIMITATIONS (vigentes):
   - UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a WU-RP-042.
-  - M5 maxRss ~11 GB: candidato streaming-chunks RP-4.
+  - M5 maxRss ~11 GB: **WU-RP-044 resuelto en worktree SIN commit** (streaming; soak 1GiB ~1,4GB con -Xmx1g). Pendiente commit+CI+receipt.
   - Flake M3 SIGPIPE child 1x, no determinista.
   - UAT-RP-018 PARTIAL (sandbox-profile 'os' → RP-4/5, ADR-0016).
-- NEXT_WU: **deuda técnica RP-4: M5 maxRss ~11GB streaming-chunks (SLO RSS pendiente) o UAT-RP-018 sandbox 'os' (ADR-0016)**; alternativa: profundizar dogfood N2 (más scripts per-shard) según ROADMAP RP-5. Elegir leyendo ROADMAP y contraste Git/CI. WU-RP-042 cerrada con release-gate verificado; NO hacer release/publicar ZIP sin autorización expresa (NO_GO vigente) — el ZIP candidato y su sha256 deben regenerarse desde el SHA de release y registrarse frescos.
+- NEXT_WU: **CERRAR WU-RP-044: commit del worktree (cambios listados en WORK_JOURNAL 2026-09-22/23), push, CI del NUEVO SHA, receipt WU_RP_044_SLICE_RECEIPT.md, actualizar este puntero. Después: UAT-RP-018 sandbox 'os' (ADR-0016)**; alternativa: profundizar dogfood N2 (más scripts per-shard) según ROADMAP RP-5. Elegir leyendo ROADMAP y contraste Git/CI. WU-RP-042 cerrada con release-gate verificado; NO hacer release/publicar ZIP sin autorización expresa (NO_GO vigente) — el ZIP candidato y su sha256 deben regenerarse desde el SHA de release y registrarse frescos.
 - BLOCKERS: ninguno.
 - NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0096.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.
@@ -33,4 +33,4 @@
 2. Leer ROADMAP (§5 RP-3), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
 3. CI ya verificado para 65365fd8 (run 35756206083 SUCCESS); si HEAD avanzó, verificar el nuevo SHA.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
-5. Primer comando sugerido: leer dispatchBody de CanonicalDurableRunCoordinator y caracterizar cómo RegistryBodyPolicyResolver consume StepDescriptor antes de la auditoría declaración-vs-ejecución.
+5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar los 7 ficheros modificados + TranscriptStreamingEmissionTest.kt sin commit sobre 888f4b60; verificar que nada más cambió y proseguir con commit + CI.

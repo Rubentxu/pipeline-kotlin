@@ -524,6 +524,16 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     override fun cleanup(controlDir: Path, exitCode: Int) {
+        cleanup(controlDir, exitCode, keepTranscriptLog = false)
+    }
+
+    /**
+     * WU-RP-044 (M5 RSS debt): when [keepTranscriptLog] is set (plain JENKINS_LOG
+     * projection), a successful cleanup deletes everything in the control dir
+     * EXCEPT console.log, which the production consumer streams lazily and then
+     * deletes itself. Capture-mode callers keep the default (full delete).
+     */
+    fun cleanup(controlDir: Path, exitCode: Int, keepTranscriptLog: Boolean) {
         val config = DurableShConfig.fromSystemProperties()
 
         // Retain on failure if configured
@@ -533,7 +543,27 @@ class DurableShellExecutor : DurableShellLaunching {
 
         // Always delete on success
         if (exitCode == 0) {
-            deleteRecursively(controlDir)
+            // WU-RP-044 (M5 RSS debt): in plain (JENKINS_LOG) projection the
+            // terminal does not materialise the transcript, so the production
+            // consumer (ShExecution.emitTranscriptStreaming) streams it from
+            // console.log AFTER this method returns. Deleting console.log here
+            // would race the consumer and silently drop observability. The
+            // consumer deletes it in its finally once streaming completes.
+            if (keepTranscriptLog) {
+                Files.walk(controlDir)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach { p ->
+                        try {
+                            if (p.fileName?.toString() != DurableShellFiles.CONSOLE_LOG) {
+                                Files.deleteIfExists(p)
+                            }
+                        } catch (_: Exception) {
+                            // Ignore
+                        }
+                    }
+            } else {
+                deleteRecursively(controlDir)
+            }
         }
     }
 
@@ -1118,7 +1148,19 @@ class DurableShellExecutor : DurableShellLaunching {
             // WU-LPR-011R2: drain the redaction pump first (bounded join) so the persisted
             // transcript is fully flushed before it is projected.
             transcriptPump?.join(10_000)
-            val consoleTranscript = readConsoleLogText(controlDir)
+            // WU-RP-044 (M5 RSS debt): in plain (JENKINS_LOG) projection the
+            // console transcript is NOT materialised here. console.log on disk is
+            // the durable authority and the production consumer (ShExecution)
+            // streams from it lazily; reading the whole file into the terminal
+            // duplicated GiB-scale transcripts in memory. Capture mode still
+            // reads output.txt because that is the typed VALUE channel.
+            val consoleTranscript: String? = if (
+                request.outputProjection == DurableShellOutputProjection.CAPTURE_FILE
+            ) {
+                readConsoleLogText(controlDir)
+            } else {
+                null
+            }
             val capturedStdout = when (request.outputProjection) {
                 DurableShellOutputProjection.CAPTURE_FILE -> readOutputText(controlDir, config.captureRetainPolicy)
                 DurableShellOutputProjection.JENKINS_LOG -> consoleTranscript
@@ -1173,7 +1215,12 @@ class DurableShellExecutor : DurableShellLaunching {
             // was SIGKILLed (WU-RP-005 r9, CI 35656479415/35657576105), so cleanup
             // MUST NOT read that code as success and delete the control dir (which
             // would erase the authoritative timeout.flag, TMO-S-005).
-            cleanup(controlDir, if (timeoutTriggered.get()) -1 else exitCode)
+            cleanup(
+                controlDir,
+                if (timeoutTriggered.get()) -1 else exitCode,
+                keepTranscriptLog = !timeoutTriggered.get() && exitCode == 0 &&
+                    request.outputProjection == DurableShellOutputProjection.JENKINS_LOG,
+            )
         }
     }
 

@@ -837,10 +837,21 @@ fun main(args: Array<String>) {
     // and releases the persistent connection; the JVM exits cleanly because
     // DestroyJavaVM no longer waits on queue.take().
     rawEventStore.flush()
-    val events = eventStore.eventsFor(runId).toList()
+    // WU-RP-044 (M5 RSS debt): stream the JSON envelope to stdout one event at a
+    // time (identical byte output to JsonEventLog.encode) and track only the last
+    // event for the legacy outcome branch — never materialise the full list or a
+    // single monolithic JSON String (1 GiB transcripts made this multi-GB).
+    val eventSequence = eventStore.eventsFor(runId)
+    var lastEvent: dev.rubentxu.pipeline.v2.events.DomainEvent? = null
+    val stdout = System.out
+    val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(stdout, Charsets.UTF_8), 1 shl 16)
+    val lastEventRef = { event: dev.rubentxu.pipeline.v2.events.DomainEvent -> lastEvent = event }
+    JsonEventLog.encodeTo(eventSequence.map { event ->
+        lastEventRef(event)
+        event
+    }, writer)
+    writer.flush()
     rawEventStore.close()
-    // Jenkins verbatim: print events first, then propagate failure to OS exit code
-    println(JsonEventLog.encode(events))
     // D5: 3-state outcome widening — unstable exits 0 like success, failure exits 1.
     // When the coordinator ran, the typed outcome is the single authority for the
     // exit decision; the legacy event-based branch only covers compile-failure
@@ -861,8 +872,8 @@ fun main(args: Array<String>) {
             }
         }
     } else {
-        val lastEvent = events.lastOrNull()
-        val legacyOutcome = if (lastEvent is RunFinished && lastEvent.outcome == "success") "success" else "failure"
+        val last = lastEvent
+        val legacyOutcome = if (last is RunFinished && last.outcome == "success") "success" else "failure"
         when (legacyOutcome) {
             "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
             "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }

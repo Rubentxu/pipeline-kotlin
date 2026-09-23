@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
 import java.nio.file.Path
 
 /**
@@ -44,12 +45,28 @@ fun StepReconcilerL1.terminalFromReconciliation(
     message = "Legacy durable-shell projection. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.",
 )
 fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResult = when (this) {
-    is DurableTaskTerminal.Exited -> DurableShellResult(
-        state = DurableShellState.COMPLETE,
-        exitCode = exitCode,
-        controlDir = controlDir,
-        capturedStdout = output.capturedStdout,
-    )
+    is DurableTaskTerminal.Exited -> {
+        // WU-RP-044 (M5 RSS debt): the canonical executor no longer
+        // materialises the console transcript in JENKINS_LOG projection; the
+        // legacy projection recovers it lazily from the durable console.log
+        // (jenkins-log.txt) when the terminal carried no typed value. The
+        // typed value channel (output.txt / capturedStdout) is unaffected.
+        val legacyCaptured = output.capturedStdout
+            ?: run {
+                val consoleLog = DurableShellFiles.resolveConsoleLog(controlDir)
+                if (java.nio.file.Files.exists(consoleLog)) {
+                    java.nio.file.Files.readString(consoleLog)
+                } else {
+                    null
+                }
+            }
+        DurableShellResult(
+            state = DurableShellState.COMPLETE,
+            exitCode = exitCode,
+            controlDir = controlDir,
+            capturedStdout = legacyCaptured,
+        )
+    }
 
     is DurableTaskTerminal.LaunchFailed -> DurableShellResult(
         state = DurableShellState.LAUNCH_FAILED,

@@ -49,16 +49,28 @@ class EventHistoryReader(
         val after = cursor?.lastSequence ?: 0L
         // Ordered by store-assigned sequence; cursor continuation is
         // sequence > lastSequence — NEVER occurredAt-based (INC-021d).
-        val ordered = sink.eventsFor(runId)
+        // WU-RP-044: eventsFor is now single-iteration (lazy SQL stream).
+        // Single pass: take limit+1 filtered events — the extra element proves
+        // hasMore (same semantics as the previous full-history maxKnown scan)
+        // without materialising the whole history.
+        val filtered = sink.eventsFor(runId)
             .map { EnvelopeProjector.project(it, providerLookup) }
-            .sortedBy { it.sequence }
-        val page = ordered.filter { it.sequence > after }.take(limit).toList()
+            .filter { it.sequence > after }
+        val pageIterator = filtered.iterator()
+        val page = ArrayList<PipelineEventEnvelope>(limit)
+        var hasMore = false
+        while (pageIterator.hasNext()) {
+            if (page.size == limit) {
+                hasMore = true // an element beyond the page exists (peeked)
+                break
+            }
+            page.add(pageIterator.next())
+        }
         val last = page.lastOrNull()?.sequence ?: after
-        val maxKnown = ordered.lastOrNull()?.sequence ?: after
         return EventPage(
             envelopes = page,
             nextCursor = EventCursor(runId, last),
-            hasMore = maxKnown > last,
+            hasMore = hasMore,
         )
     }
 

@@ -1,0 +1,45 @@
+# .gitleaks.toml — política del proyecto
+# Política de gitleaks para el repositorio pipeline-kotlin.
+#
+# Este archivo es detectado automáticamente por gitleaks/gitleaks-action
+# y por la CLI gitleaks 8.x. La sección [allowlist] lista paths que NO
+# deben escanearse (falsos positivos estructurales: fixtures intencionales
+# del sistema de credenciales/redacción, documentación que reproduce
+# canaries, recursos de tests legacy).
+#
+# Ningún path listado aquí contiene credenciales reales. La política es:
+# los fixtures imprimen strings de ALTA ENTROPÍA o PEM-like con propósito
+# explícito de verificar el redactor y el ciclo de credenciales.
+# Si se añade por error una credencial real al repo, debe salir de la
+# lista y rotarse de inmediato.
+
+[allowlist]
+paths = [
+  # WU-RP-011/LPR-011 — Gate-1 redaction at rest + transcript redaction.
+  # Líneas afectadas: 38 (Lpr011r2), 37 (Lpr011). Strings: canarios GHS6_*
+  # impresos por el child para verificar que el redactor los enmascara.
+  '''v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lpr011r2SecretRedactionAtRestUatTest\.kt''',
+  '''v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/Lpr011SecretRedactionTranscriptUatTest\.kt''',
+
+  # UatLocal008 — round-trip SSH private key + credentials CLI regression.
+  # Líneas: 286 (UatLocal008SshPrivateKeyRoundGateTest), 338 (UatLocal008CredentialsTest).
+  # Pem keys de prueba; claves reales nunca se almacenan en fixtures.
+  '''v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal008SshPrivateKeyRoundGateTest\.kt''',
+  '''v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal008CredentialsTest\.kt''',
+
+  # Local + multipart credential stores — round-trip tests con PEM fixtures.
+  '''v2/pipeline-credentials-local/src/test/kotlin/dev/rubentxu/pipeline/v2/credentials/local/LocalSecretStoreMultipartTest\.kt''',
+  '''v2/pipeline-credentials-multipart/src/test/kotlin/dev/rubentxu/pipeline/v2/credentials/multipart/CredentialMaterializerTest\.kt''',
+
+  # SecretPatternRegistry + RedactingEventSink — pattern matching + event redaction.
+  '''v2/pipeline-credentials-api/src/test/kotlin/dev/rubentxu/pipeline/v2/credentials/api/SecretPatternRegistryTest\.kt''',
+  '''v2/pipeline-credentials-api/src/test/kotlin/dev/rubentxu/pipeline/v2/credentials/api/RedactingEventSinkTest\.kt''',
+
+  # Legacy V1 secret resolver fixture (V1 deprecada, mantenida para
+  # backward-compat de tests externos).
+  '''core/src/test/resources/secretResolver/secret\.key''',
+
+  # Documentación que cita los canarios de LPR-011 como evidencia del
+  # gate (audit pre-S1 del LFC-2E0).
+  '''docs/v2/07-uat/LFC2E0_PRE_S1_EVIDENCE_AUDIT\.md''',
+]

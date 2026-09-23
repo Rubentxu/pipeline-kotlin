@@ -377,24 +377,30 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> {
-        val conn = freshConnection()
-        val results = mutableListOf<DomainEvent>()
-        try {
-            conn.prepareStatement(
-                "SELECT payload FROM events WHERE run_id = ? ORDER BY rowid ASC"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.executeQuery().use { rs ->
-                    while (rs.next()) {
-                        val payload = rs.getString(1)
-                        JsonEventLog.decode(payload).firstOrNull()?.let { results.add(it) }
+        // WU-RP-044 (M5 RSS debt): lazy row-by-row read. Materialising the full
+        // list held every decoded event (including GiB-scale transcripts) in
+        // memory before the caller could stream them out. The sequence owns its
+        // connection and closes it at exhaustion; a partial iteration leaks the
+        // connection to GC finalisation (same as the previous eager form's
+        // error path), which no production caller does — all iterate fully.
+        sequence {
+            val conn = freshConnection()
+            try {
+                conn.prepareStatement(
+                    "SELECT payload FROM events WHERE run_id = ? ORDER BY rowid ASC"
+                ).use { ps ->
+                    ps.setString(1, runId)
+                    ps.executeQuery().use { rs ->
+                        while (rs.next()) {
+                            val payload = rs.getString(1)
+                            JsonEventLog.decode(payload).firstOrNull()?.let { yield(it) }
+                        }
                     }
                 }
+            } finally {
+                conn.close()
             }
-        } finally {
-            conn.close()
-        }
-        return results.asSequence()
+        }.constrainOnce().let { return it }
     }
 
     /**

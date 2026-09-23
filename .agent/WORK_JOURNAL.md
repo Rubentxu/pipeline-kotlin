@@ -921,3 +921,52 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
 ### Hallazgos operativos (mantener)
 - Procesos stale con `sqlite-event-writer` non-daemon parked en `queue.take()` si `close()` no corre (2 matados en esta sesión, 10GB→450MB tras GC). Vigilar `pgrep -f MainKt` tras soaks.
 - `PIPELINEK_OPTS="-Xmx1g"` falsa el techo de G1 y revela el live-set real: técnica recomendada para medir RSS en soaks.
+
+## 2026-09-23T09:34Z — WU-RP-044 CERRADA (base 888f4b60 → head 7c8d6e52, push forzado)
+
+- **WHAT**: M5 RSS debt cerrada por construcción. Streaming coherente end-to-end del transcript sin alterar el contrato observable:
+  - `ShExecution.emitTranscriptStreaming`: lee InputStream en ventanas de 64 MiB, wrap con `StreamingRedactor`, emite `EchoOutputCaptured` por ventana. Lossless, ordenado, bounded, byte-idéntico observable contract.
+  - `DurableShellExecutor.executeTerminal`: en `JENKINS_LOG` projection NO materializa `consoleTranscript` (devuelve `null`); el adapter recupera `console.log` lazy.
+  - `DurableShellExecutor.cleanup(controlDir, exitCode, keepTranscriptLog)`: overload que en JENKINS_LOG + exit 0 retiene `console.log` para que `ShExecution` lo streame post-cleanup; default `false` preserva `DurableShellLaunching`.
+  - `ShExecution`: usa el nuevo emitter; finally borra `console.log` retenido SOLO si exit==0 (LPR-011r2 at-rest retention).
+  - `SqliteEventStore.eventsFor`: lazy `sequence {}` (`constrainOnce`).
+  - `EventHistoryReader.nextPage`: single-pass con peeked hasMore; drop redundant `sortedBy { it.sequence }`.
+  - `JsonEventLog.encodeTo(events, writer)`: streaming twin byte-idéntico.
+  - `Main.events-jsonl`: streama vía `JsonEventLog.encodeTo`, trackea `lastEvent` sin materializar lista ni String monolítico.
+  - `DurableTaskTerminalAdapter.toLegacyShellResult`: legacy shim recupera `console.log` lazy.
+  - Test: `TranscriptStreamingEmissionTest` 4/4 (small, missing source, empty stream, oversized lossless+ordered+bounded).
+
+- **WHY**: M5 (soak 1 GiB) medía `maxRss ~10 GB` por triple materialización (terminal → ShExecution → Main.toList+encode). Con `-Xmx1g` OOM-killed.
+
+- **WHERE**:
+  - 7 archivos modificados (Main, ShExecution, DurableShellExecutor, DurableTaskTerminalAdapter, SqliteEventStore, EventHistoryReader, JsonEventLog)
+  - 1 nuevo test (TranscriptStreamingEmissionTest)
+  - 1 nuevo `.gitleaks.toml` (allowlist de 10 fixtures intencionales pre-existentes)
+  - 1 nuevo receipt (`docs/v2/07-uat/WU_RP_044_SLICE_RECEIPT.md`)
+
+- **DECISIONES**:
+  - `keepTranscriptLog` solo `exit==0 && !timeoutTriggered`. Default `false` preserva `DurableShellLaunching`.
+  - `StreamingRedactor.wrap(InputStream)` reutilizado (introducido en WU-RP-022 P1).
+  - `Main.events-jsonl` byte-idéntico al output legacy (verificado en soak).
+  - `EventHistoryReader` pierde `sortedBy { it.sequence }` redundante.
+  - `.gitleaks.toml` en lugar de `.gitleaksignore` (formato oficial reconocido por la acción; `.gitleaksignore` no es leído por `gitleaks-action@v2.3.9`).
+
+- **CHALLENGES**:
+  - **Cleanup race**: primera versión borraba `console.log` SIEMPRE en el finally de ShExecution → rompió 2 tests LPR-011r2 (at-rest retention en fallo/timeout). Fix: `deleteRetainedLog = (terminal as? DurableTaskTerminal.Exited)?.exitCode == 0`.
+  - **gitleaks no determinista**: primer push (197907d7) FALLÓ con 12 hits en fixtures pre-existentes (LPR-011/11r2 canarios PEM-like, fixtures intencionales). Run previo 35785380826 sobre 888f4b60 SUCCESS con los mismos archivos — upstream gitleaks o reglas cambiaron entre runs. Resolución: `.gitleaks.toml` allowlist (no `.gitleaksignore`, que la acción no lee). 3er push forzado (5c683bf8) verde 10/10.
+  - **L1/L2/L3/L4/L5**: L4 application+sdk-runtime `--rerun-tasks` = 15m37s (63 tasks, no cache). L5 incremental check = 13s up-to-date tras rerun. Sin cambios desde L4 rerun → esperado.
+
+- **EVIDENCE**:
+  - Commits: 197907d7 (inicial, CI failure), 2ba0ec67 (amend .gitleaksignore, CI failure), 5c683bf8 (amend .gitleaks.toml, CI SUCCESS), 7c8d6e52 (docs receipt, CI SUCCESS).
+  - CI: 35831083258 SUCCESS 10/10 (5c683bf8), 35831695924 SUCCESS 10/10 (7c8d6e52).
+  - L1: TranscriptStreamingEmissionTest 4/4 (timestamp 2026-09-23T06:36:55.726Z, time=0.551s).
+  - L2: Lpr011r2 11/11 + Lpr011 6/6 + streaming 4/4.
+  - L3 events: 188/188 (--rerun-tasks).
+  - L4 application: 1735/0/0 + sdk-runtime: 190/0/0 (--rerun-tasks).
+  - L5: check BUILD SUCCESSFUL.
+  - Soak 1GiB -Xmx1g (sesión anterior): 129s, maxRss ~1,4GB (vs ~10GB baseline), lossless 1073741824 chars en 16 chunks de 64 MiB.
+
+- **CLOSURE_DOCS**: `docs/v2/07-uat/WU_RP_044_SLICE_RECEIPT.md` (140+ líneas).
+- **PUNTERO**: HEAD = 7c8d6e52 local+remote. NEXT_WU = UAT-RP-018 sandbox 'os' (ADR-0016) o WU-RP-045 dogfooding N2 ampliado.
+
+- **WHAT_NEXT**: UAT-RP-018 sandbox 'os' (ADR-0016, RunnerTrustProfile) — última deuda UAT PARTIAL de RP-2 antes de RP-5 Gate. Decisión inteligente: priorizar UAT-RP-018. WU-RP-042 cerrada con release-gate verificado; NO_GO release vigente hasta autorización expresa.

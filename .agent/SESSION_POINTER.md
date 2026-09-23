@@ -1,8 +1,8 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-22T23:06Z. **Tipo de cambio de esta sesión:** **WU-RP-044 EN PROGRESO — implementación completa, gate L5 verde en worktree, SIN COMMIT**. Head base = 888f4b60 (CI SUCCESS 35785380826). Streaming de transcript (ShExecution/JsonEventLog/Main/SqliteEventStore/EventHistoryReader/DurableShellExecutor) + fix race cleanup vs streaming (retención condicional de console.log). Soak 1GiB -Xmx1g: 129s / maxRss ~1,4GB (baseline 137s/~10GB), lossless 1073741824 chars. check BUILD SUCCESSFUL 14m10s 0 FAILED (/tmp/gradle-check2.log).
+**Actualizado:** 2026-09-23T09:34Z. **Tipo de cambio de esta sesión:** **WU-RP-044 CERRADA (CI 35831083258 + 35831695924 SUCCESS 10/10 ambos)**. HEAD = 7c8d6e52. Streaming de transcript end-to-end (Main/ShExecution/JsonEventLog/SqliteEventStore/EventHistoryReader/DurableShellExecutor/DurableTaskTerminalAdapter) + cleanup race fix (retención condicional de console.log) + TranscriptStreamingEmissionTest 4/4 + .gitleaks.toml allowlist para fixtures intencionales (gitleaks no determinista full-history). Soak 1GiB -Xmx1g: 129s / maxRss ~1,4GB (baseline 137s/~10GB), lossless 1073741824 chars. M5 RSS debt cerrada por construcción.
 
-**Código auditado:** main @ 554672aa. WU head = 554672aa.
+**Código auditado:** main @ 7c8d6e52 (WIP local+remote, push limpio 5c683bf8..7c8d6e52). WU head = 7c8d6e52.
 
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
@@ -11,26 +11,26 @@
 
 ## Estado operativo
 
-- ACTIVE_PHASE: **RP-4 OPEN** — WU-RP-040 R1-R3 cerradas (kover, SHA-pinning, gitleaks+SBOM). RP-3 EXIT REVIEWED (RP3_EXIT_REVIEW.md).
-- LAST_CLOSED_WU: **WU-RP-043** (74617ff8): job dogfood CI (N1 bootstrap autónomo, N2 pipelinek ejecuta .pipeline.kts del mismo SHA éxito+fallo intencional, N3 verificación externa jq + artefactos). Criterios (a)-(e) CUMPLEN.
-  - Histórico RP-042 (e23c575d): S1 reproducibilidad bit-a-bit distZip, zero-install, Gradle/Maven/Node reales, fallos tipados, --resume byte-idéntico, credenciales e2e; defecto real `credentials add` (placeholder CredentialsId("") vs invariante non-blank) corregido (76e3015d). S2: regresión JUnit 4/4 + R2 fix (CLI honra PIPELINE_CREDENTIALS_STORE) + R1 fix (root pipeline.kts retry Block Step, validate OK) + ADR-0096 (MANIFEST.json KNOWN_LIMITATION confirmado, release notes deben divulgar). Módulo credentials 56/56; L5 escalado green; CI 35779994231 SUCCESS 9/9.
-  - Histórico RP-041 (a8068165): S1 paridad de cancelación por deadline en hijos de cuerpo externo (deuda #1 RP-3 cerrada; cero cambio de producción); S2 threat model runner (WU_RP_041_RUNNER_ISOLATION_THREAT_MODEL.md); S3 RunnerTrustProfile ADT (multi-tenant irrepresentable en L3, fail-closed ADR-0016 M5/M9) + pins de leyes dir. CPU/mem/egress fuera del perfil no confiable.
-  - Regresión: scripting-api 50, application 1726, domain 554, sdk-api 393, arch 313 (allow-list +RegistryBlockSpec), gate check green local.
+- ACTIVE_PHASE: **RP-4 OPEN** — WU-RP-040 R1-R4 cerradas. WU-RP-041 S1-S3 cerradas. WU-RP-042 S1+S2 cerradas. WU-RP-043 cerrada. **WU-RP-044 CERRADA (7c8d6e52, CI 35831695924 SUCCESS 10/10)**.
+- LAST_CLOSED_WU: **WU-RP-044** (7c8d6e52): M5 RSS debt cerrada por streaming end-to-end (maxRss ~10GB → ~1,4GB con -Xmx1g en soak 1GiB, lossless 1073741824 chars). Sub-corrección: `.gitleaks.toml` allowlist (12 fixtures intencionales pre-existentes, 0 hits introducidos por WU). L1 4/4 + L2 21/21 (Lpr011/11r2 + streaming) + L3 events 188/188 + L4 application 1735/0 + sdk-runtime 190/0 + L5 incremental check BUILD SUCCESSFUL. CI 35831083258 SUCCESS 10/10 + docs commit 35831695924 SUCCESS 10/10.
+  - Histórico RP-043 (74617ff8): dogfood CI (N1 bootstrap, N2 pipelinek ejecuta .pipeline.kts del mismo SHA, N3 verificación externa).
+  - Histórico RP-042 (e23c575d): S1 reproducibilidad bit-a-bit distZip, S2 credentials CLI regression + ADR-0096.
+  - Histórico RP-041 (a8068165): S1 paridad cancelación deadline, S2/S3 threat model + RunnerTrustProfile ADR-0016.
+  - Histórico RP-040 (R1-R4): Kover, SHA-pinning, gitleaks+SBOM, pitest mutation.
 - KNOWN LIMITATIONS (vigentes):
-  - UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a WU-RP-042.
-  - M5 maxRss ~11 GB: **WU-RP-044 resuelto en worktree SIN commit** (streaming; soak 1GiB ~1,4GB con -Xmx1g). Pendiente commit+CI+receipt.
+  - UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a RP-5 (WU-RP-042 cerró con KNOWN_LIMITATION mantenida).
   - Flake M3 SIGPIPE child 1x, no determinista.
   - UAT-RP-018 PARTIAL (sandbox-profile 'os' → RP-4/5, ADR-0016).
-- NEXT_WU: **CERRAR WU-RP-044: commit del worktree (cambios listados en WORK_JOURNAL 2026-09-22/23), push, CI del NUEVO SHA, receipt WU_RP_044_SLICE_RECEIPT.md, actualizar este puntero. Después: UAT-RP-018 sandbox 'os' (ADR-0016)**; alternativa: profundizar dogfood N2 (más scripts per-shard) según ROADMAP RP-5. Elegir leyendo ROADMAP y contraste Git/CI. WU-RP-042 cerrada con release-gate verificado; NO hacer release/publicar ZIP sin autorización expresa (NO_GO vigente) — el ZIP candidato y su sha256 deben regenerarse desde el SHA de release y registrarse frescos.
+- NEXT_WU: **UAT-RP-018 sandbox 'os' (ADR-0016, RunnerTrustProfile)** — cierra el último UAT PARTIAL de RP-2. Alternativa: WU-RP-045 dogfooding N2 ampliado. Decisión inteligente: priorizar UAT-RP-018 por ser la última deuda UAT de RP-2 antes de RP-5 Gate. WU-RP-042 cerrada con release-gate verificado; NO hacer release/publicar ZIP sin autorización expresa (NO_GO vigente).
 - BLOCKERS: ninguno.
-- NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0096.
+- NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR. Próximo ADR libre: ADR-0097.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5.
 - OPERATIONAL NOTE: sub-agent swarm pool no funcional; orchestrator-direct con evidencia verificable (patrón preautorizado).
 
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
-1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = e23c575d.
-2. Leer ROADMAP (§5 RP-3), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
-3. CI ya verificado para 65365fd8 (run 35756206083 SUCCESS); si HEAD avanzó, verificar el nuevo SHA.
+1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = 7c8d6e52.
+2. Leer ROADMAP (§5 RP-3, §6 RP-4), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
+3. CI verificado para 7c8d6e52 (run 35831695924 SUCCESS); si HEAD avanzó, verificar el nuevo SHA.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
-5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar los 7 ficheros modificados + TranscriptStreamingEmissionTest.kt sin commit sobre 888f4b60; verificar que nada más cambió y proseguir con commit + CI.
+5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 7c8d6e52; verificar que nada más cambió y proseguir con la WU elegida (UAT-RP-018 sandbox 'os' o WU-RP-045 dogfooding).

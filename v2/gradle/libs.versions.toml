@@ -11,7 +11,7 @@ cyclonedx = "1.8.2"
 # BouncyCastle (credentials-local module only - ADR-0049 D2)
 # NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
 bouncycastle = "1.80.2"
-snakeyaml = "2.3"
+snakeyaml = "2.7"
 
 [libraries]
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }

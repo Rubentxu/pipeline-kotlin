@@ -1157,3 +1157,35 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
 - WU-RP-040 R5 — cerrar R3.3 (detekt) + R3.4 (Dependabot) + extender Kover + triage de 128 mutantes sobrevivientes.
 - WU-RP-048 — dogfooding 1-repo fork para evidencia parcial de UAT-RP-024.
 - Disclosures de release notes — UAT-RP-005 inv3 + UAT-RP-024 KNOWN_LIMITATION antes de cualquier release.
+
+---
+
+## 2026-09-23T12:45Z — Auditoría de deuda técnica abierta: WU-RP-049 LF-0403 detectado
+
+**Hallazgo de auditoría (post-WU-RP-046 R2):**
+
+El operador instruyó que **"esto tambien alcanza a la deuda tecnica generada a lo largo de los ciclos de implementacion"**. Esta sesión hizo una auditoría honesta de TODO/FIXME en código de producción y descubrió:
+
+1. **`v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/credentials/CredentialProjection.kt:189`** — `// TODO LF-0403 follow-up: resolve passphrase via LinkedSecretRef → ask the materializer to materialize the referenced SecretText credential into a temp file path. For Slice 1 the legacy bug carried over as a placeholder so the binding shape remains total; passphrase injection will be wired in a follow-up.` → El TODO inyecta `env[varName] = SecretHandle.masked("")` (placeholder vacío) en lugar del contenido real del credential referenciado por `LinkedSecretRef`. **Defecto funcional reproducible**: si un usuario define SSH key con passphrase vía `passphraseVariable`, el env se inyecta con string vacío y SSH falla por passphrase incorrecta.
+
+2. **`v2/pipeline-domain/src/main/kotlin/dev/rubentxu/pipeline/v2/domain/credentials/CredentialProjection.kt:233`** — `// TODO LF-0403 follow-up: resolve password via LinkedSecretRef → ask the materializer to materialize the referenced SecretText credential into a temp file path. Slice 1 keeps the variable present so the binding shape stays total.` → Mismo patrón para `Certificate.passwordRef` (variables `passwordVariable` y `aliasVariable`).
+
+**Análisis de causa raíz (preliminar):**
+- `CredentialProjection.kt` NO depende de `pipeline-credentials-api` (hexagonalismo correcto).
+- La API `SecretStore.getAsSecretHandle(id)` ya existe en `pipeline-credentials-api/SecretStore.kt:72` y se usa en `GitCredentialsApplier.kt:277,282` (mismo patrón, distinto módulo).
+- El patrón arquitectónico correcto ya está documentado en `CredentialMaterialization.kt:6-26`: **port domain** que abstrae la dependencia externa. El fix correcto es crear un port gemelo `CredentialLinkedSecretResolver` (análogo a `CredentialMaterializationDomain`) y consumirlo vía DI en `DefaultCredentialProjector`.
+
+**Tests pre-existentes que verifican este flujo:**
+- `UatLocal008SshPrivateKeyRoundGateTest.CR-RD-021 SSH canary zero occurrences in event surfaces after SSH channel path` (línea 99) — verifica que el canary NO aparezca en eventos. **No verifica que el canary SÍ aparezca en el env de SSH** (que es lo que está roto).
+- Los tests pasan verdes en HEAD actual **porque verifican no-leak, no funcionalidad**.
+
+**No documentado previamente:** LF-0403 NO tiene ADR formal, NO tiene RECEIPT, NO tiene issue en GitHub. Es deuda técnica huérfana introducida en algún ciclo (probablemente WU-RP-040/041 cuando se implementó la materialización de credenciales) y nunca cerrada.
+
+**Acción tomada:**
+- Creado `docs/v2/07-uat/WU_RP_049_LF0403_PLAN.md` con análisis completo (forma del slice en 6 commits, riesgos, criterios de aceptación, slip-guard).
+- Próximo ADR libre: ADR-0097.
+- Tipo de slice: A-min (cambio bounded, una sola capacidad nueva, port hexagonal, test-first).
+- NO tocado código de producción en este paso (sólo documentación).
+- LF-0403 NO añadido aún a KNOWN_LIMITATIONS formales hasta confirmar el path en sesión siguiente; el plan documenta el defecto con detalle suficiente para trazabilidad.
+
+**Próxima acción:** en la siguiente sesión, ejecutar WU-RP-049 según el plan: ADR-0097 + RED + GREEN + WIRING + INTEGRATION + RECEIPT (6 commits, ~200-300 líneas, 90% tests).

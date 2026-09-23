@@ -1,8 +1,8 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-23T11:18Z. **Tipo de cambio de esta sesión:** **Honestidad documental** — el operador advirtió que el conteo de cierres no equivale a que las condiciones de aceptación del producto estén verificadas. Se inicia auditoría de deuda real (UAT-RP-019..021 sin cobertura, UAT-RP-024 sin dogfooding real, UAT-RP-018 row obsoleta en matriz). HEAD = 87d7f2ef (LOCAL + REMOTE sincronizados; CI run 35841650754 en push doc, en progreso). WU-RP-045 commits: tests f1ea0cf7 (CI 35839625273 S10/10) + receipt 57833497 (CI 35840575377 S10/10) + state 87d7f2ef (en curso). **NO_GO estricto**: NO_RELEASE, no tocar Step core, no Step framework OS-level, no overlay package.
+**Actualizado:** 2026-09-23T12:12Z. **Tipo de cambio de esta sesión:** **WU-RP-046 R1 cerrada** — auditoría honesta tras advertencia del operador + UAT-RP-019/020/021 ejecutables (opt-in, 6/6 PASS) + UAT-MATRIX baseline freshened a 87d7f2ef + filas 018 COVERED, 019/020/021 COVERED opt-in, 022/023 PARTIAL, 024 KNOWN_LIMITATION, 025 NO_APLICA. HEAD = e5465ddb (LOCAL + REMOTE sincronizados, CI 35846205928 SUCCESS 10/10). WU-RP-045 cerrada en sesión anterior (no re-trabajar). **NO_GO estricto**: NO_RELEASE, no tocar Step core, no Step framework OS-level, no overlay package.
 
-**Código auditado:** main @ 87d7f2ef. WU head = 87d7f2ef.
+**Código auditado:** main @ e5465ddb. WU head = e5465ddb.
 
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
@@ -11,32 +11,25 @@
 
 ## Estado operativo
 
-- ACTIVE_PHASE: **RP-5 GATE — preparación honesta**. WU-RP-040..045 cerradas individualmente (cada WU tiene su propio recibo), pero la **tabla UAT-MATRIX sigue sin reflejar la realidad**: UAT-RP-018 sigue marcada PARTIAL (no actualizada con la mejora de WU-RP-045), UAT-RP-019/020/021/024 NO tienen cobertura visible (ausencia de tests Gradle/Maven/Node reales + dogfooding en dos repos), UAT-MATRIX baseline sigue en f4aa20dc. La auditoría de esta sesión descubrió esto antes de añadir más cierres ceremoniales.
-- LAST_CLOSED_WU: **WU-RP-045** (57833497, CI 35840575377 SUCCESS; tests commit f1ea0cf7 CI 35839625273 SUCCESS 10/10): LOCAL sandbox certificable a los límites verificables (cwd HOME JAVA_HOME LD_PRELOAD PATH rogues write-outside-workspace kill-mid-step resume parallel cwds) + `pipelinek --sandbox-profile os` fail-closed pin con ADR-0016 M5/M9. L1 14/14 PASS + L2 vecinos (Lpr011 6/11/12/1; TranscriptStreamingEmissionTest 4/4) + L3 SandboxProfileTest 11/11 + RunnerTrustProfileTest 3/3 + L4 application 1737/0 + L5 incremental check BUILD SUCCESSFUL 13s no-op. Slip-guard restaurado: el framework OS-level / `EffectiveRunPlan` / `JobDefinition` / parser YAML / nuevas APIs públicas permanecen EXCLUIDOS del scope (RP-7+).
+- ACTIVE_PHASE: **RP-5 GATE — preparación honesta, pendiente recertificación 022/023 + flake**. WU-RP-040..045 cerradas individualmente; WU-RP-046 R1 cerrada en e5465ddb (auditoría honesta + UAT-RP-019/020/021 ejecutables opt-in + matriz baseline 87d7f2ef + filas actualizadas). Cierre de RP-5 sigue bloqueado por: (a) recertificación UAT-RP-022 release byte-idéntico en HEAD actual, (b) receipt consolidado UAT-RP-023 cadena suministro, (c) caracterización o quarantined honesto de M3 SIGPIPE flake, (d) divulgación obligatoria de UAT-RP-005 inv3 en release notes.
+- LAST_CLOSED_WU: **WU-RP-046 R1** (e5465ddb, CI 35846205928 SUCCESS 10/10): auditoría honesta descubrió 4 brechas no documentadas en matriz (UAT-RP-018 obsoleto, UAT-RP-019/020/021 sin cobertura, UAT-RP-024 sin dogfooding). Esta WU cierra las dos primeras (matriz freshened + 6/6 PASS opt-in Gradle/Maven/Node reales) y reporta honestamente las otras. L1 14/14 PASS (UatLocal007 + WURp019/020/021) + L2 UatLocal007 vecinos + L3 WURp019/020/021 opt-in + L5 application-module 1743/0 (216c, 121s) + L5 incremental check 13s no-op. Slip-guard: cero código de producción tocado.
   - Histórico WU-RP-044 (f7ee7e8f): M5 RSS debt cerrada por streaming end-to-end (maxRss ~10GB → ~1,4GB con -Xmx1g en soak 1GiB, lossless 1073741824 chars). Sub-corrección: `.gitleaks.toml` allowlist (12 fixtures intencionales pre-existentes, 0 hits introducidos por WU). L1 4/4 + L2 21/21 (Lpr011/11r2 + streaming) + L3 events 188/188 + L4 application 1735/0 + sdk-runtime 190/0 + L5 incremental check BUILD SUCCESSFUL.
   - Histórico RP-043 (74617ff8): dogfood CI (N1 bootstrap, N2 pipelinek ejecuta .pipeline.kts del mismo SHA, N3 verificación externa).
   - Histórico RP-042 (e23c575d): S1 reproducibilidad bit-a-bit distZip, S2 credentials CLI regression + ADR-0096.
   - Histórico RP-041 (a8068165): S1 paridad cancelación deadline, S2/S3 threat model + RunnerTrustProfile ADR-0016.
   - Histórico RP-040 (R1-R4): Kover, SHA-pinning, gitleaks+SBOM, pitest mutation.
-- KNOWN LIMITATIONS (vigentes, sin suavizar):
-  - **UAT-RP-005 invariant 3 (MANIFEST.json archivado):** FAIL_PROVEN, ADR-0095, deferida a RP-5 Gate con divulgación obligatoria en release notes (NO se reabre).
-  - **UAT-RP-019 (Gradle real):** SIN cobertura visible en HEAD; WU-RP-042 S1 menciona "tres runs de proyectos reales" pero los logs no están archivados en este working tree. RECEIPT_REQUIRED en WU-RP-046.
-  - **UAT-RP-020 (Maven real):** SIN cobertura visible. RECEIPT_REQUIRED.
-  - **UAT-RP-021 (Node real):** SIN cobertura visible. RECEIPT_REQUIRED.
-  - **UAT-RP-022 (Release byte-idéntico):** parcialmente cubierta por WU-RP-042 S1; falta ejecutarla de nuevo en HEAD actual. RECEIPT_REQUIRED.
-  - **UAT-RP-023 (Cadena suministro):** cobertura parcial via CI (sbom + secret-scan jobs), falta receipt consolidado. RECEIPT_REQUIRED.
-  - **UAT-RP-024 (Dogfooding en dos repos):** SIN cobertura. Imposible de cumplir en sesión autónoma porque requiere dos repos ajenos. KNOWN_LIMITATION explícito en release notes.
-  - **Flake M3 SIGPIPE child 1x, no determinista (WU-RP-046 candidata para caracterizar).**
-  - **UAT-RP-018 PARTIAL:** sandbox-profile 'os' no instanciable en L3 (ADR-0016 M5/M9). La matriz dice PARTIAL desde f4aa20dc; esta sesión NO actualizó la fila aunque la cobertura mejoró (TC-003 + TC-004). RECEIPT_REQUIRED: matrix row update.
+- KNOWN LIMITATIONS (vigentes, sin suavizar — actualizadas tras WU-RP-046 R1):
+  - **UAT-RP-005 invariant 3 (MANIFEST.json archivado):** FAIL_PROVEN, ADR-0095, deferida a RP-5 con divulgación obligatoria en release notes (NO se reabre).
+  - **UAT-RP-019/020/021 (Gradle/Maven/Node real):** COVERED en opt-in (`UAT_RP_019_RUN=1`, etc.); 6/6 PASS verificados en HEAD 87d7f2ef (CI run 35846205928). Por defecto los tests SKIP en CI por su coste.
+  - **UAT-RP-022 (Release byte-idéntico):** PARTIAL. Receipt histórico en `WU_RP_042_S1_SLICE_RECEIPT.md`. **PENDIENTE recertificar en HEAD actual** (bloqueante RP-5 Gate honesto).
+  - **UAT-RP-023 (Cadena suministro):** PARTIAL. CI jobs `sbom-cyclonedx` y `secret-scan-gitleaks` verdes en runs recientes; **PENDIENTE receipt consolidado único** que reúna SBOM + SCA + secret-scan + fechas y decisiones.
+  - **UAT-RP-024 (Dogfooding en dos repos):** KNOWN_LIMITATION. Imposible de cumplir en sesión autónoma (no hay 2 repos ajenos); el roadmap exige uso en ≥2 repos.
+  - **Flake M3 SIGPIPE child 1x, no determinista.** Candidato WU-RP-046 R2 / WU-RP-047.
+  - **CLI exit-code-0-on-typed-exception defect (detectado durante WU-RP-046 R1).** Cuando un step invoca una herramienta externa que falla, la pipelinek returna exit 0 en lugar de exit !=0. Documentado en `WU_RP_046_R1_SLICE_RECEIPT.md` y `WU_RP_045_SLICE_RECEIPT.md`. **Requiere ADR/RECETA separados**.
+  - **UAT-RP-018 PARTIAL→COVERED en matriz (actualizado en WU-RP-046 R1).** LOCAL certificada a 12 caps; `os` sigue fail-closed con ADR-0016 M5/M9 (RP-7+ scope, no se construye aquí).
   - **Paquete externo** `docs/pipeline-kotlin-config-overlay-package/`: depositado pero NO integrado (colisión de identificadores con ADRs/WUs vigentes). Decisión: incorporar como propuesta tras RP-5 con identificadores libres.
-- NEXT_WU: **WU-RP-046** — auditoría de deuda UAT-MATRIX + cierre honesto (no ceremonial). Precedencia:
-  1. Actualizar `PRODUCTION_READY_UAT_MATRIX.md` baseline a 87d7f2ef + fila UAT-RP-018 a COVERED.
-  2. Implementar UAT-RP-019/020/021 (Gradle/Maven/Node real desde `install/pipelinek`) — bloqueantes RP-5 Gate.
-  3. Caracterizar flake M3 SIGPIPE (deuda activa; bloqueante RP-5 si determinista).
-  4. Recertificar UAT-RP-022 release byte-idéntico en HEAD actual.
-  5. Emitir `docs/v2/07-uat/CERTIFICATIONS.md` que diga QUÉ se cumple vs QUÉ queda como KNOWN_LIMITATION (UAT-RP-024) o NO_APLICA (025/026/027 por scope).
-  6. **NO** cerrar RP-5 Gate hasta que los 5 puntos anteriores estén verdes y la release-artifact reproducible esté en `build/distributions/pipelinek-<next>.zip`.
-- BLOCKERS: ninguno técnico. **Bloqueante de política: NO_RELEASE hasta que UAT-RP-019/020/021 tengan recibo real ejecutable en HEAD actual** (RP-5 Gate honesto no se cierra sin esa evidencia).
+- NEXT_WU: **WU-RP-046 R2** — recertificación UAT-RP-022 release byte-idéntico en HEAD actual (bloqueante RP-5 Gate honesto). Sigue WU-RP-047: caracterización M3 SIGPIPE flake + receipt consolidado UAT-RP-023 cadena suministro. **NO_RELEASE** hasta: (a) UAT-RP-022 verde, (b) divulgación UAT-RP-005 inv3 en release notes, (c) decisión sobre el defecto CLI exit-code-0-on-typed-exception, (d) [opcional] dogfooding en 1 repo para evidencia parcial de UAT-RP-024.
+- BLOCKERS: ninguno técnico. Pendiente de recertificación: UAT-RP-022 release byte-idéntico en HEAD actual (WU-RP-046 R2), UAT-RP-023 receipt consolidado cadena suministro (WU-RP-047), caracterización M3 SIGPIPE flake (WU-RP-047).
 - NO_GO: Step core nuevo o release; no editar recibos históricos; no cambiar contrato público sin ADR; **NO empezar el framework de agentes/contenedores (eso es RP-7+); NO integrar el paquete overlay antes de cerrar RP-5**. Próximo ADR libre: ADR-0097.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5. **Prerrequisito irreducible:** UAT-RP-019/020/021 ejecutables en HEAD + reproducibilidad UAT-RP-022 + UAT-RP-018 matriz actualizada a COVERED + M3 SIGPIPE caracterizado (resuelto o quarantined honesto).
 - OPERATIONAL NOTE: sub-agent swarm pool no funcional; orchestrator-direct con evidencia verificable (patrón preautorizado).

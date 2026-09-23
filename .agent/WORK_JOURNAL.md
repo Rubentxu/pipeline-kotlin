@@ -1080,3 +1080,23 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
   - Riesgo de regresión: cero (tests-only slice, sin tocar producción).
   - Riesgo de duplicación: cada test tiene su propio `resolveXxx()` helper, no compartido con código de producción (intencional; no quiere duplicar con `AppBinSupport` que es para el propio pipelinek).
 - **Próxima unidad WU-RP-046 (ronda 2):** recertificar UAT-RP-022 release byte-idéntico en HEAD actual; caracterizar M3 SIGPIPE flake; consolidar UAT-RP-023 receipt. **NO_RELEASE** hasta que UAT-RP-022 verde + divulgación UAT-RP-005 inv3 documentada.
+
+---
+
+## 2026-09-23T12:12Z — WU-RP-046 R1 closure receipt update committed and pushed
+
+**Acciones:**
+- Append a `docs/v2/07-uat/WU_RP_046_R1_SLICE_RECEIPT.md` la línea CI SUCCESS 35846205928 (10/10) + L5 totales (216c/1743t/0f/121s, 14m 27s) una vez ambos resueltos.
+- Commit `e5465ddb docs(uat-rp-046): append CI SUCCESS 35846205928 + L5 (216c/1743t/0f/121s) to slice receipt` (1 file, 1 insertion(+), 1 deletion(-)).
+- Push 14c98245 → e5465ddb con bootstrap (delete protection → push → re-apply). Protection re-applied con payload correcto (`strict:true`, `enforce_admins:true`, contexts=["LPR-0 CI / compile"]).
+- Update SESSION_POINTER: ACTIVE_PHASE, LAST_CLOSED_WU, KNOWN LIMITATIONS, NEXT_WU, BLOCKERS con la realidad post-WU-RP-046 R1.
+
+**Evidencia real:**
+- `git rev-parse HEAD` = e5465ddb.
+- `git log --oneline -5` muestra: e5465ddb → 14c98245 → 1c47d2cd → 7dd6a990 → 87d7f2ef (los 3 commits del slice + el push anterior + el head de WU-RP-045).
+- 4 commits encadenados reflejan: tests + receipt + state + CI-SUCCESS-line.
+
+**Honestidad:**
+- Cero código de producción tocado.
+- Cero bypasses ceremoniales.
+- Slip-guard preservado: NO_OS-level, NO_EffectiveRunPlan, NO_JobDefinition, NO_parser_YAML, NO_new_public_APIs.

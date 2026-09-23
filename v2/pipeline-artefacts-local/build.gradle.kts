@@ -19,7 +19,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
 
     // Spring AntPathMatcher for Ant-style glob matching
-    implementation("org.springframework:spring-core:6.2.4")
+    implementation("org.springframework:spring-core:7.0.9")
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

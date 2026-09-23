@@ -7,6 +7,13 @@ plugins {
 }
 
 group = "dev.rubentxu.pipeline.v2"
+// WU-RP-040 R7: root-level repositories are required because the kover merge
+// configuration (kover(project(...))) resolves external deps of merged modules
+// in the ROOT project (Gradle resolves configurations in the consuming
+// project). dependencyResolutionManagement covers subprojects only.
+repositories {
+    mavenCentral()
+}
 version = "0.39.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
@@ -70,8 +77,30 @@ kover {
 
 subprojects {
     pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        // WU-RP-040 R7: kover must be applied to EVERY Kotlin module. Root-level
+        // `kover(project(...))` against a module WITHOUT the plugin treats it as
+        // an external artifact and resolves its runtime classpath with
+        // usage=kover attributes, which external modules (kotlin-stdlib) do not
+        // publish — known upstream bug Kotlin/kotlinx-kover#798. With the plugin
+        // applied everywhere, the merge consumes only in-project variants.
+        pluginManager.apply("org.jetbrains.kotlinx.kover")
+        // D-002: Rp022ThroughputProbe pins a 20 MB/s perf floor. Kover agent
+        // instrumentation adds per-read overhead to StreamingRedactor and pushes
+        // the probe below the floor on loaded machines. Coverage collected by
+        // the probe has zero value; exclude the redactor classes from
+        // instrumentation in this module so kover-all runs the full suite
+        // without tripping the known flake (their coverage still comes from
+        // the dedicated redaction tests, which stay instrumented).
+        if (project.name == "pipeline-credentials-api") {
+            kover {
+                currentProject {
+                    instrumentation {
+                        excludedClasses.add("dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor*")
+                    }
+                }
+            }
+        }
         if (project.name in setOf("pipeline-domain", "pipeline-events")) {
-            pluginManager.apply("org.jetbrains.kotlinx.kover")
             kover {
                 currentProject {
                     sources {
@@ -127,6 +156,33 @@ subprojects {
             }
         }
     }
+}
+
+// WU-RP-040 R7: Kover-all. Root is the merging module: `./gradlew koverXmlReport`
+// at the root now aggregates classes + coverage from every Kotlin module that
+// has tests (the full per-module test suite runs first). Modules without test
+// sources are omitted from the merge (Kover issue #706: empty kover deps fail).
+dependencies {
+    listOf(
+        ":pipeline-domain",
+        ":pipeline-application",
+        ":pipeline-events",
+        ":pipeline-event-harness",
+        ":pipeline-scripting-api",
+        ":pipeline-scripting-kotlin24",
+        ":pipeline-step-sdk:api",
+        ":pipeline-step-sdk:runtime",
+        ":pipeline-step-sdk:scm-git",
+        ":pipeline-step-sdk:files",
+        ":pipeline-step-sdk:utilities",
+        ":pipeline-step-sdk:workflow-control",
+        ":pipeline-credentials-api",
+        ":pipeline-credentials-local",
+        ":pipeline-credentials-multipart",
+        ":pipeline-credentials-executor",
+        ":pipeline-binding-factory",
+        ":pipeline-artefacts-local",
+    ).forEach { kover(project(it)) }
 }
 
 // Lane R: expose the repository root to tests. Tests that must read files from the

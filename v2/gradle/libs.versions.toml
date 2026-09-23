@@ -30,7 +30,7 @@ protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", ve
 protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 # BouncyCastle (credentials-local module only - ADR-0049 D2)
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.86" }
 bouncycastle-bcutil = { module = "org.bouncycastle:bcutil-jdk18on", version.ref = "bouncycastle" }
 
 [bundles]

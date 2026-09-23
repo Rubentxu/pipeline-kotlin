@@ -135,8 +135,14 @@ class SecretStoreLinkedSecretResolverTest {
     @Test
     fun `adapter is-a CredentialLinkedSecretResolver port (hexagonal contract)`() {
         val store = InMemorySecretStore(emptyMap())
-        val resolver: CredentialLinkedSecretResolver = SecretStoreLinkedSecretResolver(store)
-        assertEquals(true, resolver is CredentialLinkedSecretResolver)
+        // Compile-time: assignment to the port type proves IS-A. resolve() is NOT
+        // called here because the store is empty; this test only pins the contract.
+        val port: CredentialLinkedSecretResolver = SecretStoreLinkedSecretResolver(store)
+        // Reflection metadata verifies the interface is implemented, not inherited by accident.
+        val interfaces = SecretStoreLinkedSecretResolver::class.java.interfaces
+        val implementsPort = interfaces.any { it == CredentialLinkedSecretResolver::class.java }
+        assertEquals(true, implementsPort)
+        assertNotNull(port)
     }
 
     @Test

@@ -4,7 +4,7 @@ kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 junit = "5.11.4"
 junitLauncher = "1.11.4"
-protobuf = "3.25.5"
+protobuf = "4.36.2"
 protobufPlugin = "0.9.4"
 cyclonedx = "1.8.2"
 

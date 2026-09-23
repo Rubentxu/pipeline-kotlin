@@ -279,6 +279,18 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      # WU-RP-051-bis: sbom job was missing the gradle cache step that all
+      # other jobs use, so on 2026-09-23 it hit Maven Central cold and was
+      # rejected with HTTP 403 (rate-limit / anti-bot). Add the same cache
+      # step the application-shards use to avoid cold downloads.
+      - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-lpr0-sbom-${{ hashFiles('v2/**/build.gradle.kts', 'v2/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-lpr0-sbom-
       - name: Generate CycloneDX SBOM
         run: cd v2 && ./gradlew -q :pipeline-application:cyclonedxBom
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

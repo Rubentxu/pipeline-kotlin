@@ -1100,3 +1100,60 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
 - Cero código de producción tocado.
 - Cero bypasses ceremoniales.
 - Slip-guard preservado: NO_OS-level, NO_EffectiveRunPlan, NO_JobDefinition, NO_parser_YAML, NO_new_public_APIs.
+
+---
+
+## 2026-09-23T12:30Z — WU-RP-046 R2: recertificación UAT-RP-022 + WU-RP-040 RECEIPT consolidado + flake M3 SIGPIPE + reclasificación CLI defect
+
+**Acciones (en orden):**
+
+1. **Recertificación UAT-RP-022** (release byte-idéntico en HEAD `2a66317c`):
+   - `rm -rf v2/pipeline-application/build/distributions/` (limpieza).
+   - Build #1 incremental: `./gradlew -p v2 --no-daemon :pipeline-application:distZip` → BUILD SUCCESSFUL in 16s (47 up-to-date, 1 executed).
+   - Build #2 con `--rerun-tasks`: `./gradlew -p v2 --no-daemon :pipeline-application:distZip --rerun-tasks` → BUILD SUCCESSFUL in 1m 5s (48 actionable tasks, 48 executed).
+   - **SHA256 idéntico** entre ambos builds: `6c30e6b6e9b538fdae3dd1ee523173f6c5d7a917d2856043fc4409db67fe7ae1` (92 070 649 bytes, 44 entradas, todas con fecha `02-01-1980 00:00`).
+   - Instalación limpia en `/tmp/recert/install/`: `pipelinek version` → `pipeline 0.39.0` exit=0; `pipelinek doctor` → exit=0 (jdk 21.0.8, workdir writable).
+   - Success path (`v2/compatibility/01-basic.pipeline.kts`): exit=0, 9 events, `.[0].kind=CompilationStarted`, `.[-1].kind=RunFinished outcome=success`.
+   - Failure path (`sh("exit 1")`): exit=1 ("Pipeline finished with FAILURE" en stderr).
+   - **VEREDICTO**: UAT-RP-022 = COVERED en HEAD actual.
+
+2. **WU-RP-040 RECEIPT consolidado** (`docs/v2/07-uat/WU_RP_040_RECEIPT.md`):
+   - R1 Kover PARTIAL (sólo domain 82.64% + events 77.62%; agregado root vacío; 12 módulos sin cobertura).
+   - R2 SHA-pin COVERED (34/34 actions con SHA-pin + comentario versión).
+   - R3.1 SBOM COVERED (49 componentes CycloneDX, sha256 bom.json/xml).
+   - R3.2 secret-scan COVERED (gitleaks CI verde + allowlist `.gitleaks.toml`).
+   - R3.3 SAST **KNOWN_GAP** (detekt/pushdoor NO implementado).
+   - R3.4 dependency-audit **KNOWN_GAP** (Dependabot/dependency-check NO implementado).
+   - R4 pitest PARTIAL (mutation score 42% domain / 50% SDK sin triage).
+
+3. **Caracterización M3 SIGPIPE flake** (10 ejecuciones):
+   - Caso 1: `sh("yes | head -n 1000000")` × 5 runs → todos exit=0, 9 events, outcome=success.
+   - Caso 2 stress: `sh("for i in 1 2 3 4 5; do yes | head -n 10000000; done")` × 5 runs → todos exit=0.
+   - **VEREDICTO**: NO REPRODUCIBLE en HEAD `2a66317c`. Originalmente flake en SHA `9393e34a` (RP-022 baseline). Clasificado como QUARANTINED + NO_REPRODUCIBLE_AT_CURRENT_HEAD.
+
+4. **Re-caracterización defecto "CLI exit-code-0-on-typed-exception"**:
+   - Caso A (éxito): `sh("echo hello")` → exit=0 ✓
+   - Caso B (sh fallido): `sh("exit 1")` → exit=1 ✓
+   - Caso C (DSL inválido): DSL syntax broken → exit=1 ✓
+   - **VEREDICTO**: NO ES DEFECTO DEL BINARIO. Era artefacto del bash pipe `... | tail` que enmascaraba exit codes. Workaround `|| { echo ORACLE_X_BAD_FAIL; exit 1; }` introducido en WU-RP-046 R1 sigue válido y debe permanecer en scripts de tests con pipes.
+
+5. **WU-RP-046 R2 RECEIPT** (`docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md`, 231 líneas):
+   - Documenta todo lo anterior + estado consolidado del roadmap.
+   - Mantiene NO_RELEASE vigente: bloqueado por R3.3 (SAST) + R3.4 (Dependabot) + UAT-RP-024 (≥2 repos) + UAT-RP-005 inv3 disclosure.
+
+6. **UAT-MATRIX actualizado**:
+   - UAT-RP-022: PARTIAL → COVERED (recertificación documentada).
+   - UAT-RP-023: PARTIAL → COVERED con KNOWN_GAP documentado.
+   - Update 2026-09-23: nota de reclasificación CLI defect + WU-RP-040 RECEIPT consolidado.
+
+**Evidencia real:**
+- `git rev-parse HEAD` = 2a66317c0d1a0fa70c7d586d7f9e59ddd31f5d6f (sin cambios — este slice es docs + measurements).
+- `sha256sum` doble build idéntico verificado con `cmp`.
+- `koverLog`, `cyclonedxBom`, `pitest` ejecutados localmente, todos BUILD SUCCESSFUL.
+- 5+5=10 ejecuciones del SIGPIPE stress, todas exit=0.
+- Cero código de producción tocado. Cero tests añadidos. Cero bypasses.
+
+**Próxima unidad (siguiente sesión):**
+- WU-RP-040 R5 — cerrar R3.3 (detekt) + R3.4 (Dependabot) + extender Kover + triage de 128 mutantes sobrevivientes.
+- WU-RP-048 — dogfooding 1-repo fork para evidencia parcial de UAT-RP-024.
+- Disclosures de release notes — UAT-RP-005 inv3 + UAT-RP-024 KNOWN_LIMITATION antes de cualquier release.

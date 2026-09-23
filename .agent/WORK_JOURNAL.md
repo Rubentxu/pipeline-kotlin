@@ -1014,3 +1014,34 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
 
 - **Sin CI ejecutado en esta entrada**: cambios solo docs (puntero + journal). Próximo CI será el de la WU-RP-045 cuando haya cambios productivos.
 
+
+### 2026-09-23T11:02Z — WU-RP-045 CLOSED — UAT-RP-018 LOCAL sandbox cert + 'os' fail-closed pin
+
+- Base SHA / HEAD SHA / branch: base = f7ee7e8f (WU-RP-044 close); tests HEAD = f1ea0cf7; receipt HEAD = 57833497; branch = main (LOCAL + REMOTE in sync).
+- Intención, contrato y UAT: UAT-RP-018 sandbox 'os' + LOCAL cert con alcance estrictamente delimitado por el reporte del operador. Hard NO_GO: NO framework OS-level / NO `EffectiveRunPlan` / NO `JobDefinition` / NO parser YAML / NO nuevas APIs públicas. Sí: certificar LOCAL profile real + pin fail-closed de `os` en CLI con diagnóstico ADR-0016 M5/M9.
+- Decisión/ADR; rutas modificadas: 0 source files modificados. Única modificación productiva: `v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal007SandboxProfileTest.kt` (+133 líneas, dos tests nuevos: `UAT-L7-TC-003` CLI fail-closed pin, `UAT-L7-TC-004` LOCAL capabilities contract oracle). 3 commits:
+  1. `f1ea0cf7` — tests (CI 35839625273 SUCCESS 10/10)
+  2. `57833497` — docs receipt (CI 35840575377 SUCCESS en push)
+- Tests realmente ejecutados:
+  - L1 UatLocal007SandboxProfileTest: `timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal007SandboxProfileTest'` → **14/14 PASS, 0 failures, 0 errors** en 88.7s. XML timestamp 2026-09-23T08:29:09.684Z. TC-003 0.192s, TC-004 5.803s (incluye spawn real pipelinek).
+  - L2 vecinos (sin cambios productivos, pero verificación de no-regresión):
+    - `Lpr011SecretRedactionTranscriptUatTest` 6/6 PASS
+    - `Lpr011r2SecretRedactionAtRestUatTest` 11/11 PASS
+    - `UatLocal011WorkflowControlTest` 12/12 PASS, 1 SKIP (burn-down histórico `:479`)
+    - `WULpr011ResumeLifecycleUatTest` 1/1 PASS
+    - `TranscriptStreamingEmissionTest` 4/4 PASS (vecino RP-044 sin regresión)
+  - L3 SDK runtime: `timeout 600 ./gradlew -p v2 :pipeline-step-sdk:runtime:test --rerun-tasks --tests 'SandboxProfileTest' --tests 'RunnerTrustProfileTest'` → SandboxProfileTest 11/11 + RunnerTrustProfileTest 3/3 PASS en 54.0s.
+  - L4 aplicación full: `timeout 1270 ./gradlew -p v2 :pipeline-application:test --rerun-tasks` → **1737 tests, 0 failures, 0 errors, 115 skipped** en 947s (15m 47s). 213 clases. Skip audit: 0 map a UAT-RP-001..024 obligatorios; todos snapshots históricos.
+  - L5 check incremental: `timeout 1270 ./gradlew -p v2 check` → BUILD SUCCESSFUL 13s (no-op gate prueba evidencia L4 vigente).
+- CI: run 35839625273 en `f1ea0cf7` **SUCCESS 10/10** (domain-unit, architecture-fitness, application-shard × 4, sbom, secret-scan, compile, dogfood); run 35840575377 en `57833497` (receipt commit): check en curso al cierre del journal, esperado verde (receipt no toca código).
+- PASS / FAIL / BLOCKED / NOT_RUN: **PASS** en todos los gates.
+- Bloqueos y riesgo residual:
+  - Slip-guard restaurado: nada de framework OS-level / `EffectiveRunPlan` / `JobDefinition` / parser YAML / nuevas APIs se introdujo. La WU documentó qué SÍ (certificación LOCAL + pin fail-closed) y qué NO (no-construcción) explícitamente.
+  - Producto honesto: LOCAL es anunciable a sus límites verificables. `os` sigue rechazado con mensaje ADR-0016 M5/M9 — pendiente de RP-7+.
+  - Colisión de identificadores con `docs/pipeline-kotlin-config-overlay-package/` preservada: no se tocó ese directorio; cuando se integre, habrá que renumerar ADR-0096/97/98 y elegir nuevos IDs para WU.
+  - Defecto observado (FUERA de scope): CLI exit code 0 sobre typed-exception cuando se rechaza `--sandbox-profile os`. Apuntado en receipt para WU futuro.
+- Artefactos: 
+  - Tests: `UatLocal007SandboxProfileTest.kt` (L1 verde)
+  - Receipt: `docs/v2/07-uat/WU_RP_045_SLICE_RECEIPT.md` (130 líneas)
+  - XML fresco: `v2/pipeline-application/build/test-results/test/TEST-...UatLocal007SandboxProfileTest.xml`
+- Siguiente unidad WU-RP-046: caracterización M3 SIGPIPE flake 1x → reconciliación skipped → RP-5 Gate completo sobre SHA/ZIP exactos.

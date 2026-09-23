@@ -1,0 +1,41 @@
+# WU-RP-040 R6: automated dependency updates (Dependabot).
+#
+# Scope decisions (honest, not ceremonial):
+# - gradle (v2/): version-catalog + buildscript updates. Grouped to keep PRs
+#   reviewable; security updates are always ungrouped by Dependabot itself.
+# - github-actions: pins the actions used by lpr0-ci/release workflows.
+#   NOTE: all action refs in this repo are SHA-pinned; a Dependabot bump
+#   rewrites the SHA AND the trailing # comment tag. Reviewers must verify
+#   the new SHA against the upstream tag before merge.
+# - No pip/npm/etc ecosystems: none exist at the repo root or in CI.
+#
+# cadence: weekly keeps PR noise low; the LPR-0 CI gate validates every
+# opened/updated PR, so each bump gets full-shard verification evidence.
+
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/v2"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      kotlin-toolchain:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "dev.detekt"
+      test-dependencies:
+        patterns:
+          - "org.junit*"
+          - "io.mockk"
+          - "org.assertj"
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci-deps)"

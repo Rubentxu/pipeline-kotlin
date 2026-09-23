@@ -96,6 +96,26 @@ RP-4 describes N1, N2, and N3 as the same-SHA self-hosting progression:
 
 Current same-SHA N1/N2/N3 implementation status is determined by fresh CI evidence for the candidate. Historical RP-4 dogfood receipts may establish precedent, but do not certify a later SHA without rerunning the required checks.
 
+**Where N1/N2/N3 evidence lands today (as observed in `.github/workflows/lpr0-ci.yml`, job `dogfood`, run on fresh SHAs):**
+
+- The job publishes the events jsonl and stderr logs of the
+  N2 success path and N2 failure path as a single artifact named
+  `dogfood-events` (via `actions/upload-artifact@v4`). Those
+  artifacts live on the GitHub Actions run page, not in the
+  repository tree.
+- The repo-side receipt path declared in §6.6
+  (`docs/v2/07-uat/dogfood/<yyyymm>/<sha>-...yaml`) is for the
+  synthetic report an authorised agent authors **after** a
+  successful run, citing the artifact URL, job ID, and binary
+  SHAs. The two channels are distinct: GitHub Actions artifact
+  storage is the raw evidence of record; the repo receipt is the
+  agent-curated, immutable claim.
+- Therefore, `DGF_PASS` of any flavour still requires a receipt
+  authored into `docs/v2/07-uat/dogfood/<yyyymm>/...`. The
+  existence of the `dogfood-events` artifact on GitHub Actions
+  is raw material, not a receipt. Do not promote raw artifacts
+  to `DGF_PASS` in any matrix, board, or status report.
+
 ## 6. Previous-release PipelineK dogfood
 
 The prior-release battery is a **test battery**, not a ceremony. It is

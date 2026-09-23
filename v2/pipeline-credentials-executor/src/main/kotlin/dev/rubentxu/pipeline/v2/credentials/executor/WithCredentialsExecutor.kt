@@ -60,12 +60,14 @@ class WithCredentialsExecutor(
 
     /**
      * Convenience constructor: wires a [DefaultCredentialProjector] from the
-     * existing [CredentialMaterialization] SPI port.
+     * existing [CredentialMaterialization] SPI port AND the LF-0403
+     * [dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver]
+     * port (ADR-0097).
      *
      * Existing call sites (composition root in `Main.kt`) construct
      * `WithCredentialsExecutor(provider, materialization, clock)`. We keep
-     * that signature working by adapting the SPI port to the new domain port
-     * via a thin adapter that satisfies [CredentialMaterializationDomain].
+     * that signature working by adapting the SPI ports to the domain ports
+     * via thin adapters.
      */
     constructor(
         provider: CredentialProvider,
@@ -73,7 +75,10 @@ class WithCredentialsExecutor(
         clock: Clock,
     ) : this(
         provider = provider,
-        projector = DefaultCredentialProjector(SpiMaterializationAdapter(materialization)),
+        projector = DefaultCredentialProjector(
+            materialization = SpiMaterializationAdapter(materialization),
+            linkedSecretResolver = SpiCredentialLinkedSecretResolver(provider),
+        ),
         clock = clock,
     )
 

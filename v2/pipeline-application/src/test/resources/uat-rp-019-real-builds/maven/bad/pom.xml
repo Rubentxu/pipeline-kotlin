@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>dev.rubentxu.uat-rp-020</groupId>
+    <artifactId>uat-rp-020-bad</artifactId>
+    <version>0.1.0</version>
+    <packaging>pom</packaging>
+    <!-- intentionally unsupported packaging: mvn validate must reject it. -->
+    <packagings>
+        <packaging>not-a-real-packaging</packaging>
+    </packagings>
+</project>

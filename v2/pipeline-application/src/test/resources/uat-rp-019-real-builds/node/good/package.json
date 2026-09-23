@@ -1,0 +1,10 @@
+{
+  "name": "uat-rp-021-node-good",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal real Node project for UAT-RP-021 happy-path oracle (writes dist/output.txt).",
+  "scripts": {
+    "build": "mkdir -p dist && node ./build.js"
+  },
+  "lockfileVersion": 3
+}

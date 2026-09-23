@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>FunctionOnlyReturningConstant:EventHarnessContractTest.kt:EventHarnessContractTest$private fun runId</ID>
+    <ID>MaxLineLength:EventHarnessContractTest.kt:EventHarnessContractTest$YamlEventContractCodec.decode(yaml.replace("- exactly:", "- magic:").replace("{ event: CatchErrorTriggered, where: { buildResult: FAILURE }, count: 1 }", "{ event: X }"))</ID>
+    <ID>MaxLineLength:YamlEventContractCodec.kt:YamlEventContractCodec$else -&gt; throw ContractDecodeException("constraint#$index: unknown where field '$key' (valid: buildResult, retryOutcome, outcome, attempt, branch, messageContains, stage, step)")</ID>
+    <ID>TooManyFunctions:EventHarness.kt:EventHarness</ID>
+    <ID>UnusedParameter:EventHarnessContractTest.kt:EventHarnessContractTest$o: String = "success"</ID>
+    <ID>WildcardImport:EventHarness.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
+    <ID>WildcardImport:EventHarnessContractTest.kt:import dev.rubentxu.pipeline.v2.events.*</ID>
+    <ID>WildcardImport:EventHarnessContractTest.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
+    <ID>WildcardImport:RealHistoryParityTest.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
+    <ID>WildcardImport:YamlEventContractCodec.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

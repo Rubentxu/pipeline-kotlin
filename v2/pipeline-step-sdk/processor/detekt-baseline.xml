@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MaxLineLength:StepDescriptorGenerator.kt:StepDescriptorGenerator$logger.info("Processed @Step function: $name (id=$id, execution=$execution, effects=$effectsList, replay=$replay, jenkinsSurface=$jenkinsSurfaceTriple)")</ID>
+  </CurrentIssues>
+</SmellBaseline>

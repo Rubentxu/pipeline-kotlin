@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ScriptTextEscaper.kt:ScriptTextEscaper$private fun isInsideString: Boolean</ID>
+    <ID>EmptyElseBlock:EnvVarNameExtractor.kt:EnvVarNameExtractor$if (depth == 0) return Pair(envVars, i + 1)</ID>
+    <ID>FunctionOnlyReturningConstant:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$private fun bsl</ID>
+    <ID>FunctionOnlyReturningConstant:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$private fun dollar</ID>
+    <ID>FunctionOnlyReturningConstant:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$private fun dq</ID>
+    <ID>FunctionOnlyReturningConstant:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$private fun lc</ID>
+    <ID>FunctionOnlyReturningConstant:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$private fun rc</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap02Test.kt:ShVarScopeGap02Test$private fun bsl</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap02Test.kt:ShVarScopeGap02Test$private fun dollar</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap02Test.kt:ShVarScopeGap02Test$private fun lc</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap02Test.kt:ShVarScopeGap02Test$private fun rc</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap03Test.kt:ShVarScopeGap03Test$private fun bsl</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap03Test.kt:ShVarScopeGap03Test$private fun dollar</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap03Test.kt:ShVarScopeGap03Test$private fun lc</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap03Test.kt:ShVarScopeGap03Test$private fun rc</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun bsl</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun dollar</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun dq</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun lc</ID>
+    <ID>FunctionOnlyReturningConstant:ShVarScopeGap04FormFProbeTest.kt:ShVarScopeGap04FormFProbeTest$private fun rc</ID>
+    <ID>MaxLineLength:EnvVarNameExtractorTest.kt:EnvVarNameExtractorTest$val s = makeScript("""withCredentials(StepSpec.CredentialsBinding.usernamePassword("c1", "U1", "P1"), StepSpec.CredentialsBinding.usernameColonPassword("c2", "UP2"), StepSpec.CredentialsBinding.file("c3", "FP3")) { sh("echo inside") }""")</ID>
+    <ID>MaxLineLength:EnvVarNameExtractorTest.kt:EnvVarNameExtractorTest$val s = makeScript("""withCredentials(StepSpec.CredentialsBinding.usernamePassword("c1", "USR", "PWD"), StepSpec.CredentialsBinding.usernameColonPassword("c2", "USR")) { sh("echo inside") }""")</ID>
+    <ID>MaxLineLength:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$val fE = "pipeline { stages { stage(\"s\") { withCredentials(StepSpec.CredentialsBinding.string(\"id\", \"USER\")) { sh(\"echo user=" + dollar() + "USER\") } } } }"</ID>
+    <ID>MaxLineLength:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$val fF1 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + bsl() + dollar() + lc() + "USER" + rc() + dq() + dq() + dq() + ") } } }"</ID>
+    <ID>MaxLineLength:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$val fF2 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + dollar() + lc() + "'" + dollar() + "'" + rc() + "USER" + dq() + dq() + dq() + ") } } }"</ID>
+    <ID>MaxLineLength:WithCredentialsCompileIntegrationTest.kt:WithCredentialsCompileIntegrationTest$sb.append("{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(\"test-creds\", \"USER_PASS\")) { sh(\"echo credentials_username_colon_password=")</ID>
+    <ID>TooManyFunctions:EnvVarNameExtractor.kt:EnvVarNameExtractor</ID>
+    <ID>UnusedParameter:S2ThreePhaseProbeTest.kt:S2ThreePhaseProbeTest$name: String</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,85 @@
+# WU-RP-040 R5: SAST configuration (detekt 2.0.0-alpha.6, Kotlin 2.4.10).
+# Policy: report-first honest inventory; the CI job gates on failOnSeverity=error
+# with rules that are pure noise disabled below — each with a stated reason.
+# No rule is disabled to hide a reviewed finding.
+
+complexity:
+  LongMethod:
+    allowedLines: 120
+  LongParameterList:
+    allowedFunctionParameters: 8
+    allowedConstructorParameters: 10
+  TooManyFunctions:
+    allowedFunctionsPerFile: 25
+    allowedFunctionsPerClass: 25
+  LargeClass:
+    allowedLines: 1200
+  ComplexCondition:
+    allowedConditions: 6
+  CyclomaticComplexMethod:
+    allowedComplexity: 25
+  NestedBlockDepth:
+    allowedDepth: 6
+
+coroutines:
+  # Durable replay treats cancellation as an execution mechanism by design
+  # (ADR-0076/PAR-D); blanket rule fires on intentional control flow.
+  SuspendFunSwallowedCancellation:
+    active: false
+  GlobalCoroutineUsage:
+    # Reviewed per-site in process/runner adapters (legitimate daemon lifetimes).
+    active: false
+  RedundantSuspendModifier:
+    active: true
+
+empty-blocks:
+  # Empty catch at process teardown boundaries is deliberate policy
+  # (destroyForcibly cleanup); per-site review, not blanket failure.
+  EmptyCatchBlock:
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    # Adapter/process seams: catching Throwable at boundaries is policy.
+    active: false
+  TooGenericExceptionThrown:
+    active: true
+  SwallowedException:
+    # Teardown paths log-and-continue by design; per-site review.
+    active: false
+
+naming:
+  FunctionNaming:
+    # DSL builders intentionally read like keywords (echo, sh, stage...).
+    active: false
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: true
+
+style:
+  MaxLineLength:
+    maxLineLength: 160
+  MagicNumber:
+    # Domain is full of intentional policy constants (timeouts, budgets).
+    active: false
+  ReturnCount:
+    # Guard-clause-heavy pure decision functions are house style (rule 7).
+    active: false
+  ThrowsCount:
+    # Validation aggregators legitimately throw per-field at adapter seams.
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+  DestructuringDeclarationWithTooManyEntries:
+    active: false
+  UnusedPrivateFunction:
+    active: true
+  UnusedPrivateProperty:
+    active: true
+  UnusedVariable:
+    active: true
+  UnusedImport:
+    active: true
+  WildcardImport:
+    active: true

@@ -1,0 +1,27 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:CredentialProjection.kt:DefaultCredentialProjector$override fun project: ProjectionResult</ID>
+    <ID>CyclomaticComplexMethod:ParallelReconciler.kt:ParallelReconciler$fun reconcile: ParallelDecision</ID>
+    <ID>CyclomaticComplexMethod:RetryReconciler.kt:RetryReconciler$fun reconcile: RetryReconciliationDecision</ID>
+    <ID>LongMethod:StepDescriptorRegistry.kt:StepDescriptorRegistry.Companion$fun standard: StepDescriptorRegistry</ID>
+    <ID>MaxLineLength:StepDescriptorRegistryTest.kt:StepDescriptorRegistryTest$"Seven core rows are executed by the canonical body engine (core.dir, core.timestamps, core.withEnv, core.timeout, core.withCredentials, core.retry, core.waitUntil)"</ID>
+    <ID>TooGenericExceptionThrown:DefaultCredentialProjectorTest.kt:DefaultCredentialProjectorTest.&lt;no name provided&gt;$throw RuntimeException("Simulated wipe failure")</ID>
+    <ID>UnusedParameter:BodyExecutionPolicy.kt:key: PluginStepId</ID>
+    <ID>UnusedParameter:CompiledPipelineValidator.kt:CompiledPipelineValidator$intraBlockIds: MutableSet&lt;StepId&gt;</ID>
+    <ID>UnusedParameter:DefaultCredentialProjectorTest.kt:DefaultCredentialProjectorTest$@TempDir tempDir: Path</ID>
+    <ID>WildcardImport:BoundPurposeTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:CredentialsIdTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:CredentialsRefTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:DivergenceDetectorContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:DivergenceDetectorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:DurableOperationTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EnvValueTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:FingerprintTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:MismatchedSecretExceptionTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:OperationInputCredentialsIdAllowlistTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:OperationStatusTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:SecretHandleContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

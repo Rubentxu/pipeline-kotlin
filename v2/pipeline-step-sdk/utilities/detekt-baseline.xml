@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>LargeClass:CoreUtilsStepContractSuiteTest.kt:CoreUtilsStepContractSuiteTest</ID>
+    <ID>MaxLineLength:CoreUtilsReadYamlStepDefinition.kt:CoreUtilsReadYamlStepDefinition$*</ID>
+    <ID>MaxLineLength:CoreUtilsStepDefinitionContributor.kt:CoreUtilsStepDefinitionContributor$?:</ID>
+    <ID>MaxLineLength:CoreUtilsWriteYamlStepDefinition.kt:CoreUtilsWriteYamlStepDefinition$*</ID>
+    <ID>MaxLineLength:ReadYamlOutput.kt:YamlDocument$*</ID>
+    <ID>MaxLineLength:SnakeYamlAdapter.kt:SnakeYamlAdapter$message = "core-utils.readYaml: safe constructor returned a non-string map key (${k!!::class}); this should not happen with SafeConstructor + tag allow-list"</ID>
+    <ID>MaxLineLength:SnakeYamlAdapter.kt:SnakeYamlAdapter$message = "core-utils.readYaml: safe constructor returned an unsupported value type (${value!!::class.qualifiedName}); this should not happen with SafeConstructor + tag allow-list"</ID>
+  </CurrentIssues>
+</SmellBaseline>

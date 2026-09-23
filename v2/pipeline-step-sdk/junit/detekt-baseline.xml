@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MaxLineLength:JUnitResultsStepDefinition.kt:JUnitResultsStepDefinition$"junit.results: report file is ${sizeBytes} bytes (maxReportBytes=${input.maxReportBytes}); refusing to parse. Raise maxReportBytes in the input if this is intentional."</ID>
+  </CurrentIssues>
+</SmellBaseline>

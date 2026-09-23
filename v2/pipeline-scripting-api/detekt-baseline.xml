@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:PipelineDsl.kt:StageScope$fun retry</ID>
+    <ID>TooManyFunctions:PipelineDsl.kt:StageScope</ID>
+    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$hostVersion: String</ID>
+    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$kotlinVersion: String</ID>
+    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$scriptText: String</ID>
+    <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$sortedClasspath: String</ID>
+    <ID>WildcardImport:PipelineDslSealedHierarchyTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:PipelineDslTopStepsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:PipelineDslWithCredentialsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

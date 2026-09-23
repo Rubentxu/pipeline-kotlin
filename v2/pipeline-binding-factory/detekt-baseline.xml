@@ -1,0 +1,14 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>TooGenericExceptionThrown:ContributedBindingFactoryTest.kt:ContributedBindingFactoryTest$throw RuntimeException("Credential not found")</ID>
+    <ID>TooGenericExceptionThrown:ContributedBindingFactoryTest.kt:ContributedBindingFactoryTest$throw RuntimeException("Should not be called")</ID>
+    <ID>TooGenericExceptionThrown:ContributedBindingFactoryTest.kt:ContributedBindingFactoryTest$throw RuntimeException("Unknown id: ${id.value}")</ID>
+    <ID>TooGenericExceptionThrown:MultiBindingCoverageTest.kt:MultiBindingCoverageTest$throw RuntimeException("Credential not found")</ID>
+    <ID>TooGenericExceptionThrown:MultiBindingCoverageTest.kt:MultiBindingCoverageTest$throw RuntimeException("Should not be called")</ID>
+    <ID>TooGenericExceptionThrown:MultiBindingCoverageTest.kt:MultiBindingCoverageTest$throw RuntimeException("Unknown id: ${id.value}")</ID>
+    <ID>TooGenericExceptionThrown:MultiBindingCoverageTest.kt:MultiBindingCoverageTest$throw RuntimeException("Unknown: ${id.value}")</ID>
+    <ID>WildcardImport:ContributedBindingFactoryTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>WildcardImport:AhoCorasickSwitchTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:RedactingEventSinkTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:SecretPatternRegistryTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:StreamingRedactorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

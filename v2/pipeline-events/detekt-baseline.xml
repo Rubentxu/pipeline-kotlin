@@ -1,0 +1,33 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:InMemoryEventStore.kt:InMemoryEventStore$override fun appendAssigned: DomainEvent</ID>
+    <ID>CyclomaticComplexMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: DomainEvent?</ID>
+    <ID>CyclomaticComplexMethod:JsonEventLog.kt:JsonEventLog$private fun encodeEvent: String</ID>
+    <ID>CyclomaticComplexMethod:SequenceAssigner.kt:SequenceAssigner$fun withSequence: DomainEvent</ID>
+    <ID>CyclomaticComplexMethod:SqliteEventStore.kt:SqliteEventStore$override fun appendAssigned: DomainEvent</ID>
+    <ID>EmptyElseBlock:JsonEventLog.kt:JsonEventLog$if (depth == 0) break</ID>
+    <ID>EmptyElseBlock:JsonEventLog.kt:JsonEventLog$if (depth &gt; 0) current.append(ch)</ID>
+    <ID>LargeClass:JsonEventLog.kt:JsonEventLog</ID>
+    <ID>LongMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: DomainEvent?</ID>
+    <ID>LongMethod:JsonEventLog.kt:JsonEventLog$private fun encodeEvent: String</ID>
+    <ID>MaxLineLength:DomainEventRoundTripTest.kt:DomainEventRoundTripTest$"DomainEvent sealed hierarchy must have exactly 51 variants (48 + 3 added in WU-LPR-090: HtmlReportPublished/HtmlReportSkipped/HtmlReportFailed). Found: ${sealedSubclasses.map { it.simpleName }}"</ID>
+    <ID>MaxLineLength:InMemoryOperationJournalContractTest.kt:InMemoryOperationJournalContractTest$journal.beginOperation("op-b", 1, fingerprint = "b".repeat(64), inputJson = "{\"stepId\":\"sh\",\"params\":{},\"runId\":\"run-1\",\"attempt\":1}", deadlineMs = 5000L)</ID>
+    <ID>MaxLineLength:InMemoryOperationJournalContractTest.kt:InMemoryOperationJournalContractTest$journal.beginOperation("op-b", 1, fingerprint = "b".repeat(64), inputJson = "{\"stepId\":\"sh\",\"params\":{},\"runId\":\"run-1\",\"attempt\":1}", deadlineMs = null)</ID>
+    <ID>MaxLineLength:JsonEventLogRoundTripTest.kt:JsonEventLogRoundTripTest$val encoded = """[{"eventId":"e1","runId":"r1","sequence":1,"kind":"CredentialBound","occurredAt":"2026-08-27T10:00:00Z","credentialsId":"github","purpose":"ENV"},{"eventId":"e2","runId":"r1","sequence":2,"kind":"FutureEventKind","occurredAt":"2026-08-27T10:00:00Z","extra":"data"}]"""</ID>
+    <ID>MaxLineLength:OperationJournalContractTest.kt:OperationJournalContractTest$return SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, eventStore.databasePath())</ID>
+    <ID>MayBeConstant:EventHistoryContractTest.kt:EventHistoryContractTest.Companion$private val runId = "01987654-3210-fedc-ba98-76543210fedc"</ID>
+    <ID>NewLineAtEndOfFile:Lpr000EventAppendBaselineTest.kt:dev.rubentxu.pipeline.v2.events.Lpr000EventAppendBaselineTest.kt</ID>
+    <ID>NewLineAtEndOfFile:Lpr000SqliteSequenceDurabilityTest.kt:dev.rubentxu.pipeline.v2.events.Lpr000SqliteSequenceDurabilityTest.kt</ID>
+    <ID>TooManyFunctions:JsonEventLog.kt:JsonEventLog</ID>
+    <ID>WildcardImport:BoundPurposeEnumTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:DbLockContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EventSchemaNoMapStringStringTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:OperationJournalContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:OperationJournalRunIdContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:OperationJournalTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:ReplayCursorStoreContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:ReplayCursorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

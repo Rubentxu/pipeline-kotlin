@@ -8,6 +8,8 @@ pluginManagement {
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
         // WU-RP-040 R4: selective mutation testing (codecs/policies only).
         id("info.solidsoft.pitest") version "1.19.0"
+        // WU-RP-040 R5: SAST. detekt 2.0.0-alpha.6 = Kotlin 2.4.10 compatible.
+        id("dev.detekt") version "2.0.0-alpha.6"
     }
 }
 

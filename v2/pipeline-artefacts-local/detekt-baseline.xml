@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>TooGenericExceptionThrown:TarWriter.kt:TarWriter$throw RuntimeException("tar cf failed (exit ${result.exitCode}${if (result.timedOut) " timed-out" else ""}): $err")</ID>
+    <ID>TooGenericExceptionThrown:TarWriterTest.kt:TarWriterTest$throw RuntimeException("Command ${cmd.joinToString(" ")} failed with exit $exitCode: $output")</ID>
+  </CurrentIssues>
+</SmellBaseline>

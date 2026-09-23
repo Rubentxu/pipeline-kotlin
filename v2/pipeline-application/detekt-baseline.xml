@@ -1,0 +1,211 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ClassNaming:A4_1DescriptorRecoveryCharacterizationTest.kt:A4_1DescriptorRecoveryCharacterizationTest</ID>
+    <ID>ClassNaming:A4_2ShellOperationsCapabilityTest.kt:A4_2ShellOperationsCapabilityTest</ID>
+    <ID>ClassNaming:A4_3TypedShellOutputIntegrationTest.kt:A4_3TypedShellOutputIntegrationTest</ID>
+    <ID>ClassNaming:A4_8LegacyRegistrySemanticParityTest.kt:A4_8LegacyRegistrySemanticParityTest</ID>
+    <ID>ClassNaming:A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test.kt:A4_REGISTRY_PRIMARY_Core_Sh_Proof_Test</ID>
+    <ID>ClassNaming:A5_CoreShLegacyUnreachableProofTest.kt:A5_CoreShLegacyUnreachableProofTest</ID>
+    <ID>ClassNaming:EP_F26_GenericProductionPathProofTest.kt:EP_F26_GenericProductionPathProofTest</ID>
+    <ID>ClassNaming:F5_1_ScmGitNegativePathsTest.kt:F5_1_ScmGitNegativePathsTest</ID>
+    <ID>ClassNaming:F5_1_ScmGitProviderProvenanceTest.kt:F5_1_ScmGitProviderProvenanceTest</ID>
+    <ID>ClassNaming:F5_1_ScmGitStepContractTest.kt:F5_1_ScmGitStepContractTest</ID>
+    <ID>ClassNaming:F5_2_JUnitStepContractTest.kt:F5_2_JUnitStepContractTest</ID>
+    <ID>ClassNaming:G7_CoreShellOutputCodecRoundTripTest.kt:G7_CoreShellOutputCodecRoundTripTest</ID>
+    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun dispatchBody: StepOutcome</ID>
+    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun runParallelStage: StepOutcome</ID>
+    <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
+    <ID>CyclomaticComplexMethod:Main.kt:fun parseCliArgs: PipelineCliConfig?</ID>
+    <ID>CyclomaticComplexMethod:MainEventsCli.kt:MainEventsCli$fun main: Int</ID>
+    <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
+    <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Children$if(p.isAlive)ProcessBuilder("kill","-KILL","-${p.pid()}").start().waitFor(1,TimeUnit.SECONDS)</ID>
+    <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(cut==Cut.AFTER_TERMINAL||cut==Cut.AFTER_RETURN){executor.ready(checkNotNull(e.task));executor.allowFinish()}</ID>
+    <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(cut==Cut.WHILE_RUNNING)executor.ready(checkNotNull(e.task))</ID>
+    <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(old!=null){if(old.input!=input)throw Compatibility();return resume(old,id)}</ID>
+    <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(old.input!=input)throw Compatibility()</ID>
+    <ID>EmptyElseBlock:Spike016DurableScriptedReplayTest.kt:Runtime$if(replay)replayed+=id</ID>
+    <ID>EmptyIfBlock:UatCompat001CorpusSmokeRunTest.kt:UatCompat001CorpusSmokeRunTest${ }</ID>
+    <ID>InvalidPackageDeclaration:FileBasedWaitUntilControlJournalTest.kt:package dev.rubentxu.pipeline.v2.application.durable</ID>
+    <ID>LargeClass:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator</ID>
+    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun dispatch: Dispatched</ID>
+    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun dispatchBody: StepOutcome</ID>
+    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private suspend fun runParallelStage: StepOutcome</ID>
+    <ID>LongMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
+    <ID>LongMethod:Main.kt:fun main</ID>
+    <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
+    <ID>LongMethod:UatLocal002ResumeAfterKillTest.kt:UatLocal002ResumeAfterKillTest$@Test fun `resume after kill reads result txt no reexec`</ID>
+    <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
+    <ID>MaxLineLength:CanonicalCoordinatorScopeStackTest.kt:CanonicalCoordinatorScopeStackTest$"""{"kind":"CatchErrorEntered","buildResult":"UNSTABLE","stageResult":"UNSTABLE","enteredAt":"${System.currentTimeMillis()}"}"""</ID>
+    <ID>MaxLineLength:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.USER, (decision.outcome as BranchTerminal.Failed).message ?: "parallel branch failed")</ID>
+    <ID>MaxLineLength:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, BranchTerminal.Failed(decision.reason), OperationStatus.ABORTED))</ID>
+    <ID>MaxLineLength:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$journal.append(aggregateTerminalRow(aggregateOpId, aggregateId, aggregateFingerprint, aggregateInput, BranchTerminal.Failed(decision.reason), OperationStatus.DIVERGENT))</ID>
+    <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$assertEquals(0, exitCode) { "Fixture $name exited with code $exitCode. stderr: ${process.errorStream.bufferedReader().readText()} stdout tail: ${stdout.takeLast(1200)}" }</ID>
+    <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (S2 added 25..29; E1.1 / T8 added 30..30; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")</ID>
+    <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$println("DEBUG-LPR103 store=$storePath exists=${storePath.toFile().exists()} size=${if (storePath.toFile().exists()) java.nio.file.Files.size(storePath) else -1}")</ID>
+    <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$store.add(CredentialsId("file-creds"), SecretFile(CredentialsId("file-creds"), CredentialScope.GLOBAL, "file-secret-content".toByteArray(), "secret.txt"))</ID>
+    <ID>MaxLineLength:CompatibilityCorpusTest.kt:CompatibilityCorpusTest$store.add(CredentialsId("userpass-creds"), UsernamePassword(CredentialsId("userpass-creds"), CredentialScope.GLOBAL, "dbuser", "dbpass".toByteArray()))</ID>
+    <ID>MaxLineLength:CoreCleanWsStepContractSuiteTest.kt:CoreCleanWsStepContractSuiteTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3/3/3 counter is superseded by `G5 LEGACY_REMOVED invariant post-S2-B10-G5 — core dot cleanWs physical forms destroyed and counters are 2 2 2` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$@Disabled("Historical S2-A10/G4 snapshot: S2-A10/G5 (2026-09-13) physically destroyed the core.cleanWs metadata row (LEGACY_REMOVED); the 3/4/4 transitional state is superseded by `counters - post-S2-A10-G5 LEGACY_REMOVED 3-3-3 converged` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-3-3 converged counter is superseded by `counters - post-S2-B10-G5 LEGACY_REMOVED 2-2-2 converged` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-id count is superseded by `counters - post-S2-A10-G4 transitional 3-4-4 registry primary flipped` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$@Disabled("Historical S2-B10/G5 snapshot: WU-LPR-301/G5 (2026-09-18) retired core.load and core.waitUntil too; the 2-2-2 counter is superseded by `counters - post-WU-LPR-301-G5 0-0-0 converged` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreEmitEventRegistryPrimaryFitnessTest.kt:CoreEmitEventRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreEmitEventRegistryPrimaryFitnessTest.kt:CoreEmitEventRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 — 2 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreEmitEventRegistryPrimaryFitnessTest.kt:CoreEmitEventRegistryPrimaryFitnessTest$@Disabled("Historical S2-A4/G4 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; the 8-key count is superseded by `core isUnix registry flip — 7 residual keys remain post-S2-A5-G4` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CoreEmitEventRegistryPrimaryFitnessTest.kt:CoreEmitEventRegistryPrimaryFitnessTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `core pwd registry flip — 6 residual keys remain post-S2-A6-G4` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CoreEmitEventRegistryPrimaryFitnessTest.kt:CoreEmitEventRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `core milestone G5 — 4 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreEmitEventRegistryPrimaryFitnessTest.kt:CoreEmitEventRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `G4 flip post-S2-A10-G4 — 3 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A1/G5 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; the 8-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A5-G4 — 7 residual keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A1/G6 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; LEGACY_PLUGIN_IDS went from 8 to 7. The new G6 counter snapshot is asserted in `LEGACY_PLUGIN_IDS post-S2-A5-G4 — 7 residual keys remain`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-B10-G5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A6-G4 — 6 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone (LEGACY_REMOVED); the 6-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A9-G5 — 4 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreErrorRegistryPrimaryFitnessTest.kt:CoreErrorRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `LEGACY_PLUGIN_IDS post-S2-A10-G4 — 3 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixRegistryPrimaryFitnessTest.kt:CoreIsUnixRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot isUnix stays absent`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixRegistryPrimaryFitnessTest.kt:CoreIsUnixRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot isUnix stays absent`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixRegistryPrimaryFitnessTest.kt:CoreIsUnixRegistryPrimaryFitnessTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `G4 flip - core dot pwd counter check` in CorePwdRegistryPrimaryFitnessTest. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CoreIsUnixRegistryPrimaryFitnessTest.kt:CoreIsUnixRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `G5 milestone - core dot isUnix stays absent post-S2-A9-G5` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixRegistryPrimaryFitnessTest.kt:CoreIsUnixRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `G4 flip - core dot isUnix stays absent post-S2-A10-G4` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixStepUnitTest.kt:CoreIsUnixStepUnitTest$@Disabled("Historical S2-A5/G5 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key counter is superseded by `counters drop to 6-6-7 post-S2-A6-G4` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixStepUnitTest.kt:CoreIsUnixStepUnitTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A6/G5 (2026-09-12) flipped core.pwd to LEGACY_REMOVED; the 6-6-7 counter is superseded by `counters drop to 6-6-6 post-S2-A6-G5` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixStepUnitTest.kt:CoreIsUnixStepUnitTest$@Disabled("Historical S2-A6/G5 snapshot: later lanes (S2-A7/A9/A10/B10 G4+G5) retired core.deleteDir, core.milestone, core.cleanWs and core.archiveArtifacts, so the 6-6-6 counter is superseded by `counters are 2-2-2 post-S2-B10-G5 and legacy dispatcher sources are physically removed` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreIsUnixStepUnitTest.kt:CoreIsUnixStepUnitTest$@Disabled("Historical S2-B10/G5 snapshot: WU-LPR-301/G5 (2026-09-18) retired core.load and core.waitUntil too; the 2-2-2 counter is superseded by `counters are 0-0-0 post-WU-LPR-301-G5 and legacy dispatcher sources are physically removed` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreLegacyStepMetadataResolverTest.kt:CoreLegacyStepMetadataResolverTest$@Disabled("S2-A6 / G5 (2026-09-12): CanonicalCoreStepCommand.Pwd subtype physically deleted (LEGACY_REMOVED). This test compared the legacy Pwd default metadata to the resolver — preserved verbatim for traceability; superseded by S3PwdLegacyRemovedFitnessTest asserting descriptor metadata against the same effect+replayPolicy invariants.")</ID>
+    <ID>MaxLineLength:CorePwdRegistryPrimaryFitnessTest.kt:CorePwdRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot pwd stays absent`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CorePwdRegistryPrimaryFitnessTest.kt:CorePwdRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot pwd stays absent`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CorePwdRegistryPrimaryFitnessTest.kt:CorePwdRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A6/G5 (2026-09-12) removed the legacy metadata row from CanonicalCoreStepMetadata (LEGACY_REMOVED). This test compared the registry descriptor metadata to the legacy row — preserved verbatim for traceability; the byte-equivalence invariants are now asserted in S3PwdLegacyRemovedFitnessTest against the registry descriptor directly.")</ID>
+    <ID>MaxLineLength:CorePwdRegistryPrimaryFitnessTest.kt:CorePwdRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `G5 milestone - core dot pwd counter check` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CorePwdRegistryPrimaryFitnessTest.kt:CorePwdRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY-PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `G4 flip - core dot pwd stays absent post-S2-A10-G4` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$@Disabled("Historical S2-A6/G1 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key LegacyCore counter is superseded by `core pwd registry flip — 6 residual keys remain post-S2-A6-G4` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$@Disabled("Historical S2-A6/G1 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the LegacyCore assertion is superseded by `core pwd registry flip — structural family resolves to Registry post-flip` below. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A6/G5 (2026-09-12) removed the legacy metadata row from CanonicalCoreStepMetadata (LEGACY_REMOVED). This test queried the legacy row for byte-equivalence with the registry descriptor — preserved verbatim for traceability; superseded by S3PwdLegacyRemovedFitnessTest asserting the registry descriptor directly.")</ID>
+    <ID>MaxLineLength:CorePwdTmpStepUnitTest.kt:CorePwdTmpStepUnitTest$@Disabled("Historical S2-A6/G3T snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key LegacyCore counter is superseded by `core pwd flip — 6 residual keys remain post-S2-A6-G4` in CorePwdStepUnitTest. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CorePwdTmpStepUnitTest.kt:CorePwdTmpStepUnitTest$@Disabled("Historical S2-A6/G3T snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the LegacyCore assertion is superseded by `core pwd flip — structural family resolves to Registry post-flip` in CorePwdStepUnitTest. Preserved verbatim for traceability; will be deleted when the legacy narrative ends.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G1 snapshot: S2-B10/G1..G3 (2026-09-13) registered CoreArchiveArtifactsStep, so the 13-key registry shape is superseded by `production registry contains exactly the registered core steps (post-S2-B10-G3)` below. This row was ALREADY red at the S2-B10/G4 base (fresh base evidence: 435f5f8b), i.e. it was stale from S2-B10/G3, not broken by G5. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `registry post-S2-B10-g5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `registry post-S2-B10-g5 — 2 residual legacy keys remain`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A2/G4 snapshot: S2-A5/G4 (2026-09-12) flipped core.isUnix too; the 8-key count is superseded by `registry post-S2-A5-G4 — 7 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key count is superseded by `registry post-S2-A6-G4 — 6 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) registered core.pwd (G1 candidate since S2-A6/G1) and core.pwd.tmp; the 7-key registry shape is superseded by `production registry contains exactly the registered core steps (post-S2-A6-G4)` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) added core.waitUntil, core.deleteDir and core.milestone registrations; the 9-key shape is superseded by `production registry contains exactly the registered core steps (post-S2-A9-G5)` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone (LEGACY_REMOVED); the 6-key count is superseded by `registry post-S2-A9-G5 — 4 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G1 (2026-09-13) registered CoreCleanWsStep as a candidate-only registry entry; the 12-key shape is superseded by `production registry contains exactly the registered core steps (post-S2-A10-G1)` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreSleepRegistryPrimaryFitnessTest.kt:CoreSleepRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `registry post-S2-A10-G4 — 3 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreWriteFileRegistryPrimaryFitnessTest.kt:CoreWriteFileRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G4 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot writeFile stays absent`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreWriteFileRegistryPrimaryFitnessTest.kt:CoreWriteFileRegistryPrimaryFitnessTest$@Disabled("Historical S2-A10/G5 snapshot: S2-B10/G5 (2026-09-13) physically removed core.archiveArtifacts; the 3-key count is superseded by `G5 LEGACY_REMOVED post-S2-B10-G5 - core dot writeFile stays absent`. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreWriteFileRegistryPrimaryFitnessTest.kt:CoreWriteFileRegistryPrimaryFitnessTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd too; the 7-key counter is superseded by `G4 flip post-S2-A6-G4 - 6 residual legacy keys remain` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreWriteFileRegistryPrimaryFitnessTest.kt:CoreWriteFileRegistryPrimaryFitnessTest$@Disabled("Historical S2-A6/G4 snapshot: S2-A9/G5 (2026-09-13) physically removed core.milestone; the 6-key count is superseded by `G5 milestone - core dot writeFile counter post-S2-A9-G5` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:CoreWriteFileRegistryPrimaryFitnessTest.kt:CoreWriteFileRegistryPrimaryFitnessTest$@Disabled("Historical S2-A9/G5 snapshot: S2-A10/G4 (2026-09-13) REGISTRY_PRIMARY-flipped core.cleanWs; the 4-key count is superseded by `G4 flip - core dot writeFile stays absent post-S2-A10-G4` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:EmitEventStepContractSuiteTest.kt:EmitEventStepContractSuiteTest$"counters stay 6/6/6 (post-S2-A4/G5 + S2-A5/G4 + S2-A6/G4: isUnix + pwd physically removed in code; counter 7 -&gt; 6) — a contract-suite fix must not resurrect legacy"</ID>
+    <ID>MaxLineLength:EmitEventStepContractSuiteTest.kt:EmitEventStepContractSuiteTest$@Disabled("Historical S2-A5/G4 snapshot: S2-A6/G4 (2026-09-12) flipped core.pwd to REGISTRY_PRIMARY; the 7-key count is superseded by `no legacy resurrection — irreversible G5 state holds post-S2-A6-G4` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:EmitEventStepContractSuiteTest.kt:EmitEventStepContractSuiteTest$@Disabled("Historical S2-A6/G4 snapshot: later lanes (S2-A7/A9/A10/B10 G4+G5) retired core.deleteDir, core.milestone, core.cleanWs and core.archiveArtifacts, so the 6/6/6 counter is superseded by `no legacy resurrection — irreversible G5 state holds post-S2-B10-G5` below. Preserved verbatim for traceability.")</ID>
+    <ID>MaxLineLength:Main.kt:val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }</ID>
+    <ID>MaxLineLength:MainEventsCli.kt:MainEventsCli$System.err.println("Usage: pipeline events --db &lt;path&gt; &lt;runId&gt; [--kind K] [--subject v1:run:ID|v1:stage:ID:N|...] [--limit N] [--after-cursor TOKEN]")</ID>
+    <ID>MaxLineLength:MainEventsVerifyCli.kt:MainEventsVerifyCli$System.err.println("Usage: pipeline events verify --db &lt;path&gt; --run &lt;runId&gt; --contract &lt;events.yaml&gt; [--from-sequence N] [--after-last-run-started]")</ID>
+    <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"</ID>
+    <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' resolves to '$reportDirReal' which escapes the workspace (real path '$workspaceRootReal'); refusing to follow symlinks"</ID>
+    <ID>MaxLineLength:ScmGitWorkspaceIsolationTest.kt:ScmGitWorkspaceIsolationTest$"Typed workspace must be on disk for the canonical branch; the developer-escape hatch is only for direct unit-test construction outside the canonical bridge"</ID>
+    <ID>MaxLineLength:ShExecution.kt:ShExecution$return executeNonDurableInvocation(command, EnvModel.apply(shOptions.env), eventSink, stepIndex, runId, opId.format(), controlDirRoot, secretPatternRegistry)</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Children</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Codec$fun decode</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Codec$fun encode</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Codec$private fun DataOutputStream.t</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Crash : RuntimeException</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Cut</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Entry</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Executor$fun ready</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Executor$init{Files.createDirectories(root.resolve("launches"))}</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Executor$private fun await:Path</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Journal$Companion</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Journal$fun finish</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Journal$fun interrupt</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Journal$fun snapshot</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Runtime$fun afterReturn</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Runtime$private</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Runtime$suspend fun invoke:String</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Runtime$val replayed=mutableListOf&lt;String&gt;();</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Scope</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Session$fun executor</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Session$fun journal:Journal</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$assertEquals(1, s.launches("v1|entry|x|scope:a[0]/scope:b|0"), "aliased id must not launch twice; equal-input aliasing is an ADR-0066 production requirement")</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$assertEquals(listOf(State.SCHEDULED, State.RUNNING, State.RECONCILING, State.SUCCEEDED), after.transitions, "$diagnostic persisted RUNNING -&gt; RECONCILING -&gt; terminal")</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$assertTrue(it.type == String::class.java || it.type == java.lang.Long::class.java || it.type == java.util.List::class.java, "wire field ${it.name} is ${it.type}")</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$assertTrue(runCatching { Runtime("v1", s.journal(), s.executor()).run { scoped("a[0]") { scoped("b") { sh("x", "p2") } } } }.exceptionOrNull() is Compatibility)</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$val after = s.journal()[id]!!</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$val before = Journal.decode(s.bytes())[id]</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$val err = runCatching { Runtime("v1", s.journal(), s.executor(), recovery = Recovery.CANCELLED).run { sh("a", "one"); sh("b", "two"); sh("c", "three") } }.exceptionOrNull() as RecordedFailure</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$val err = runCatching { Runtime("v1", s.journal(), s.executor(), recovery = Recovery.TIMEOUT).run { sh("step", "step") } }.exceptionOrNull() as RecordedFailure</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:Spike016DurableScriptedReplayTest$val first = runCatching { Runtime("v1", s.journal(), s.executor(), recovery = Recovery.CANCELLED).run { sh("step", "step") } }.exceptionOrNull() as RecordedFailure</ID>
+    <ID>MaxLineLength:Spike016DurableScriptedReplayTest.kt:WireOperation</ID>
+    <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "stash '${input.name}' matched path '$file' (real '$fileReal') which escapes the workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
+    <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "unstash '${input.name}' 'into' path '$target' (real '$targetReal') escapes workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
+    <ID>MaxLineLength:TrapFormNegativeFixtureTest.kt:TrapFormNegativeFixtureTest$"trap form fixture must compile cleanly (Kotlin accepts it); ERROR diagnostics would mean the trap is now a Kotlin error. diagnostics=${compileFinished.diagnostics}"</ID>
+    <ID>MaxLineLength:UatCompat001CorpusSmokeRunTest.kt:UatCompat001CorpusSmokeRunTest$assertEquals(31, fixtures.size, "Corpus must have 31 valid fixtures (WU-LPR-076 keeps the count in lock-step with CompatibilityCorpusTest; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html)")</ID>
+    <ID>MaxLineLength:UatLocal002ResumeAfterKillTest.kt:UatLocal002ResumeAfterKillTest$val scriptContent = "pipeline {\n stages {\n stage(\"TestStage\") {\n sh(\"echo started &gt;&gt; '$markerPathStr'; sleep 8; echo done &gt;&gt; '$markerPathStr'; exit 0\")\n }\n }\n}\n"</ID>
+    <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$"Corpus must have exactly 31 valid pipeline fixtures (WU-LPR-077 keeps the count in lock-step with CompatibilityCorpusTest; S2 added 25..29; ML-R7 byte-identity frozen in CP-001; WU-LPR-089 added 31-stash-unstash; WU-LPR-090 added 32-publish-html). Found: "</ID>
+    <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$// Verify the valid new fixtures exist (ML-R7: 3, ML-R9: 3, ML-R10: 2; v0.33.1 P2 corpus-closure: 4 new E2E; S2-A5/G8: 1 isunix; S2-A6/G3R: 1 pwd-tmp; WU-G5R6: 1 wait-until; WU-LPR-089: 1 stash-unstash; WU-LPR-090: 1 publish-html)</ID>
+    <ID>MaxLineLength:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$fun</ID>
+    <ID>MaxLineLength:UatLocal011WorkflowControlTest.kt:UatLocal011WorkflowControlTest$@org.junit.jupiter.api.Disabled("INC-024: load step produces child steps; coordinator does not yet inject loaded pipeline into execution flow. Pre-existing on c88d5c88 (v0.32.2). See comment block above.")</ID>
+    <ID>MaxLineLength:WURp020MavenRealUatTest.kt:WURp020MavenRealUatTest$Files.writeString(badPom, "&lt;?xml version=\"1.0\"?&gt;&lt;project xmlns=\"http://maven.apache.org/POM/4.0.0\"&gt;&lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;&lt;groupId&gt;x&lt;/groupId&gt;&lt;artifactId&gt;y&lt;/artifactId&gt;&lt;version&gt;1&lt;/version&gt;&lt;packaging&gt;not-a-real-packaging&lt;/packaging&gt;&lt;/project&gt;")</ID>
+    <ID>MayBeConstant:DurableInvocationResolver.kt:DurableInvocationResolver.Companion$// Preserved from CanonicalDurableRunCoordinator companion (behavior-equivalence law). private val REATTACH_TIMEOUT_MS = 60_000L</ID>
+    <ID>NewLineAtEndOfFile:CanonicalCoordinatorScopeStackTest.kt:dev.rubentxu.pipeline.v2.application.durable.CanonicalCoordinatorScopeStackTest.kt</ID>
+    <ID>NewLineAtEndOfFile:DurableProtocolInvocationCharacterizationTest.kt:dev.rubentxu.pipeline.v2.application.durable.DurableProtocolInvocationCharacterizationTest.kt</ID>
+    <ID>NewLineAtEndOfFile:ExecutionBoundaryFactoryTest.kt:dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest.kt</ID>
+    <ID>NewLineAtEndOfFile:Lpr011r2SecretRedactionAtRestUatTest.kt:dev.rubentxu.pipeline.v2.application.Lpr011r2SecretRedactionAtRestUatTest.kt</ID>
+    <ID>NewLineAtEndOfFile:PublishHtmlOperationsAdapterUatTest.kt:dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest.kt</ID>
+    <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
+    <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$id: ParallelAggregateId</ID>
+    <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$stageIndex: Int</ID>
+    <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
+    <ID>UnusedParameter:CoreArtifactQueryStepContractTest.kt:CoreArtifactQueryStepContractTest$missing: StepCapability</ID>
+    <ID>UnusedParameter:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$runId: String</ID>
+    <ID>UnusedParameter:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$workspace: Path</ID>
+    <ID>UnusedParameter:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$runId: String</ID>
+    <ID>UnusedParameter:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$workspace: Path</ID>
+    <ID>UnusedParameter:CtxPConcurrencyOwnershipTest.kt:CtxPConcurrencyOwnershipTest$branchIndex: Int</ID>
+    <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$effects: Set&lt;Effect&gt;</ID>
+    <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$replayPolicy: ReplayPolicy</ID>
+    <ID>UnusedParameter:FamilyRouter.kt:FamilyRouter$dispatcher: CanonicalNodeDispatcher</ID>
+    <ID>UnusedParameter:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$currentFingerprint: Fingerprint</ID>
+    <ID>UnusedParameter:GitCheckoutExecutorAdversarialTest.kt:GitCheckoutExecutorAdversarialTest$@TempDir tempDir: Path</ID>
+    <ID>UnusedParameter:RetryAcceptanceMatrixTest.kt:RetryAcceptanceMatrixTest$controlOpId: String</ID>
+    <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStatus: ReturnStatus</ID>
+    <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStdout: ReturnStdout</ID>
+    <ID>UnusedParameter:ShExecution.kt:ShExecution$stageIndex: Int</ID>
+    <ID>UnusedParameter:UatLocal005BannedImportsTest.kt:UatLocal005BannedImportsTest$@TempDir tempDir: Path</ID>
+    <ID>UnusedParameter:UatLocal005ClassTimeoutAndTeardownTest.kt:UatLocal005ClassTimeoutAndTeardownTest$@TempDir tempDir: Path</ID>
+    <ID>UnusedParameter:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$@TempDir tempDir: Path</ID>
+    <ID>UnusedParameter:UatLocal005GitAuthCanaryRoundGateTest.kt:UatLocal005GitAuthCanaryRoundGateTest$tempDir: Path</ID>
+    <ID>UnusedParameter:UatLocal007SandboxProfileTest.kt:UatLocal007SandboxProfileTest$@TempDir tempDir: Path</ID>
+    <ID>UnusedParameter:WULpr302RetryEngineTest.kt:WULpr302RetryEngineTest$bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef</ID>
+    <ID>UnusedParameter:WULpr302WaitUntilEngineTest.kt:WULpr302WaitUntilEngineTest$bodyRef: BodyRef</ID>
+    <ID>UnusedParameter:WorkspaceResolver.kt:WorkspaceResolver$path: Path</ID>
+    <ID>VariableNaming:EchoDurableSpineTest.kt:EchoDurableSpineTest$private val ECHO_KEY = PluginStepId("core.echo")</ID>
+    <ID>VariableNaming:FileBasedWaitUntilControlJournalTest.kt:FileBasedWaitUntilControlJournalTest$private val CONTROL_OP_ID = "run-x/stage-0/step-2/waitUntil/0/0"</ID>
+    <ID>VariableNaming:Lfc2PolicyReadinessFitnessTest.kt:Lfc2PolicyReadinessFitnessTest$private val SCOPE_FS = StepCapability("filesystem.read")</ID>
+    <ID>VariableNaming:Lfc2PolicyReadinessFitnessTest.kt:Lfc2PolicyReadinessFitnessTest$val reg_step = StepRegistration(definition = def, provider = provider)</ID>
+    <ID>VariableNaming:RegistryDurableInputEnvelopeTest.kt:RegistryDurableInputEnvelopeTest$private val PING_KEY = PluginStepId("plugin.ping")</ID>
+    <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val IDENTITY_KEY = PluginStepId("test.identity")</ID>
+    <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val NEEDS_KEY = PluginStepId("test.needs-unavailable")</ID>
+    <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val UNAVAILABLE = StepCapability("not.supplied.by.runtime")</ID>
+    <ID>VariableNaming:ScriptedPwdRuntimeTest.kt:ScriptedPwdRuntimeTest$@Suppress("UNUSED_VARIABLE") val _doc = expected</ID>
+    <ID>WildcardImport:ClockContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:OpIdContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:ReconciliationStatusOnlyTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:Spike016DurableScriptedReplayTest.kt:import java.io.*</ID>
+    <ID>WildcardImport:Spike016DurableScriptedReplayTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal001KillDuringShTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal002ResumeAfterKillTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal003ReturnStdoutTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal004TimeoutTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal005EnvSpecialCharsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal006LostHeartbeatTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal007SandboxProfileTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal008CredentialsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:UatLocal009TopStepsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:WorkspaceResolverTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,30 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:FArchL6DeclaredKindTest.kt:FArchL6DeclaredKindTest$@Test fun `kind_declared_in_resolveGitCredentials`</ID>
+    <ID>CyclomaticComplexMethod:FArchLfc1CanonicalBridgeTest.kt:FArchLfc1CanonicalBridgeTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchLfc1LegacyDslRemovedTest.kt:FArchLfc1LegacyDslRemovedTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM1CanonicalClockTest.kt:FArchM1CanonicalClockTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM1CanonicalEffectsTest.kt:FArchM1CanonicalEffectsTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM1CanonicalIdsTest.kt:FArchM1CanonicalIdsTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM1CanonicalOutcomesTest.kt:FArchM1CanonicalOutcomesTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM1CanonicalRuntimeConfigTest.kt:FArchM1CanonicalRuntimeConfigTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM2CanonicalParallelTest.kt:FArchM2CanonicalParallelTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM2CanonicalPipelineCompilerTest.kt:FArchM2CanonicalPipelineCompilerTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM2CanonicalRunCoordinatorTest.kt:FArchM2CanonicalRunCoordinatorTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM3CanonicalTaskRuntimeTest.kt:FArchM3CanonicalTaskRuntimeTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM4CanonicalCredentialBindingTest.kt:FArchM4CanonicalCredentialBindingTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:FArchM4EnvironmentComposerTest.kt:FArchM4EnvironmentComposerTest$private fun sanitizedSource: String</ID>
+    <ID>CyclomaticComplexMethod:WULpr402RuntimeHonestDslFitnessTest.kt:WULpr402RuntimeHonestDslFitnessTest$private fun extractFunctionBody: String</ID>
+    <ID>MaxLineLength:S3EmitEventLegacyRemovedFitnessTest.kt:S3EmitEventLegacyRemovedFitnessTest$private val emitEventDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalEmitEventNodeDispatcher.kt")</ID>
+    <ID>MaxLineLength:S3IsUnixLegacyRemovedFitnessTest.kt:S3IsUnixLegacyRemovedFitnessTest$private val isUnixDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalIsUnixNodeDispatcher.kt")</ID>
+    <ID>MaxLineLength:S3IsUnixLegacyRemovedFitnessTest.kt:S3IsUnixLegacyRemovedFitnessTest$private val platformAccess = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalRuntimeCapabilityAccess.kt")</ID>
+    <ID>MaxLineLength:S3SleepLegacyRemovedFitnessTest.kt:S3SleepLegacyRemovedFitnessTest$private val sleepDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalSleepNodeDispatcher.kt")</ID>
+    <ID>MaxLineLength:S3WriteFileLegacyRemovedFitnessTest.kt:S3WriteFileLegacyRemovedFitnessTest$private val writeFileDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalWriteFileNodeDispatcher.kt")</ID>
+    <ID>MayBeConstant:LegacyResidualSnapshot.kt:LegacyResidualSnapshot$private val decoderPath = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt"</ID>
+    <ID>MayBeConstant:LegacyResidualSnapshot.kt:LegacyResidualSnapshot$private val durableDir = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable"</ID>
+    <ID>MayBeConstant:LegacyResidualSnapshot.kt:LegacyResidualSnapshot$private val metadataPath = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepMetadata.kt"</ID>
+    <ID>WildcardImport:FArchM4EnvironmentComposerTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

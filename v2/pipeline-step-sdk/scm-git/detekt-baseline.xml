@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>EmptyFunctionBlock:GitCredentialsApplierTest.kt:MockSecretStore${}</ID>
+    <ID>LongMethod:GitCheckoutExecutor.kt:GitCheckoutExecutor$private fun executeInternal: Result&lt;GitCheckoutResult&gt;</ID>
+    <ID>MaxLineLength:FoldInGitChkTest.kt:FoldInGitChkTest$private</ID>
+    <ID>MaxLineLength:ScmGitStepDefinitionContributor.kt:ScmGitStepDefinitionContributor$?:</ID>
+    <ID>TooGenericExceptionThrown:GitCredentialsApplierTest.kt:GitCredentialsApplierTest$throw RuntimeException("boom")</ID>
+    <ID>VariableNaming:GitCredentialsApplier.kt:GitCredentialsApplier$val dollarSHELL_KEY = "\$SSH_KEY"</ID>
+  </CurrentIssues>
+</SmellBaseline>

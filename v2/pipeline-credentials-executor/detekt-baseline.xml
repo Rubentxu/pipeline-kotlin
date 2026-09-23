@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>EmptyFunctionBlock:WithCredentialsExecutorPortDrivenTest.kt:MockCredentialMaterialization${}</ID>
+    <ID>EmptyFunctionBlock:WithCredentialsExecutorPortDrivenTest.kt:MockCredentialProvider${}</ID>
+    <ID>EmptyFunctionBlock:WithCredentialsExecutorTestSmoke.kt:NullCredentialMaterialization${}</ID>
+    <ID>EmptyFunctionBlock:WithCredentialsExecutorTestSmoke.kt:NullCredentialProvider${}</ID>
+    <ID>TooGenericExceptionThrown:WithCredentialsExecutorPortDrivenTest.kt:MockCredentialProvider$throw Exception("Credential not found: ${id.value}")</ID>
+    <ID>WildcardImport:WithCredentialsExecutorPortDrivenTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

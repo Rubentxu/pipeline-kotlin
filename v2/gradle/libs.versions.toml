@@ -41,4 +41,7 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 # WU-RP-040 R1: coverage (Kover). Version must stay compatible with kotlin 2.4.x toolchain.
 kover = { id = "org.jetbrains.kotlinx.kover", version = "0.9.9" }
+# WU-RP-040 R5: SAST (detekt). 2.0.0-alpha.6 is built against Kotlin 2.4.10 (same as this
+# toolchain); 1.23.x cannot parse class-file major 68 (JDK24) — precedent: pitest 1.15 -> 1.19.
+detekt = { id = "dev.detekt", version = "2.0.0-alpha.6" }
 cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }

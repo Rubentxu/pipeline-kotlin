@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:DurableShellExecutor.kt:DurableShellExecutor$internal fun killWithCookieScan: Boolean</ID>
+    <ID>CyclomaticComplexMethod:DurableShellExecutor.kt:DurableShellExecutor$private fun executeCore: DurableTaskTerminal</ID>
+    <ID>CyclomaticComplexMethod:DurableShellExecutor.kt:DurableShellExecutor$private fun findCookieProcesses: List&lt;Long&gt;</ID>
+    <ID>LongMethod:DurableShellExecutor.kt:DurableShellExecutor$private fun executeCore: DurableTaskTerminal</ID>
+    <ID>MaxLineLength:DurableShellExecutor.kt:"DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))"</ID>
+    <ID>MaxLineLength:DurableShellExecutor.kt:message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; removal is scheduled for EM-10."</ID>
+    <ID>MaxLineLength:LspMetadataJsonSerializationTest.kt:LspMetadataJsonSerializationTest$val json = """{"schema":"pipeline.dev/lsp/v1","stepId":"core.sh","name":"sh","parameters":[],"location":"WORKER","replayPolicy":"RERUN","failureKindBridge":"PROCESS","jenkinsSurface":"sh|workflow-durable-task-step|F3"}"""</ID>
+    <ID>ThrowingExceptionFromFinally:DurableShellExecutorWipeTest.kt:DurableShellExecutorWipeTest$throw RuntimeException("Wipe failed")</ID>
+    <ID>TooGenericExceptionThrown:DurableShellExecutorWipeTest.kt:DurableShellExecutorWipeTest$throw RuntimeException("Step failed")</ID>
+    <ID>TooGenericExceptionThrown:DurableShellExecutorWipeTest.kt:DurableShellExecutorWipeTest$throw RuntimeException("Wipe failed")</ID>
+    <ID>TooManyFunctions:DurableShellExecutor.kt:DurableShellExecutor : DurableShellLaunching</ID>
+    <ID>UnusedParameter:DurableShellExecutor.kt:DurableShellExecutor$process: ProcessHandle</ID>
+    <ID>UnusedParameter:StepExecutors.kt:context: StepContext</ID>
+    <ID>UnusedParameter:StepExecutors.kt:sink: EventSink</ID>
+    <ID>UnusedParameter:StepExecutors.kt:stepIndex: Int</ID>
+    <ID>VariableNaming:DurableShellExecutor.kt:DurableShellExecutor$/** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery. */ private val SENTINEL_COOKIE = "__pipeline_protected__"</ID>
+    <ID>WildcardImport:DurableShConfigTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:DurableShellExecutorAdversarialTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:DurableShellExecutorWipeTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EffectReplayPolicyContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EffectReplayPolicyTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EnvModelMaskedEntryPropagationTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EnvModelPathPlusTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EnvModelTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:EnvironmentComposerTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:ShOptionsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:ShOptionsTypedEnvTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:StepReconcilerL1Test.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

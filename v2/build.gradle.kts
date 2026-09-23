@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.protobuf) apply false
     alias(libs.plugins.kover) apply true
+    alias(libs.plugins.detekt) apply false
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -88,6 +89,41 @@ subprojects {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// WU-RP-040 R5: SAST (detekt). Applied to every Kotlin subproject with a single
+// shared config; NOT wired into `check` (the gate runs it as an explicit CI job
+// over a curated security/correctness subset — see lpr0-ci.yml). This keeps the
+// incremental round gate cheap while the SAST report stays per-run evidence.
+subprojects {
+    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        pluginManager.apply("dev.detekt")
+        extensions.configure<dev.detekt.gradle.extensions.DetektExtension> {
+            config.setFrom(rootProject.files("config/detekt/detekt.yml"))
+            buildUponDefaultConfig.set(true)
+            parallel.set(true)
+            source.setFrom(
+                files(
+                    "src/main/kotlin",
+                    "src/test/kotlin",
+                ),
+            )
+            // WU-RP-040 R5: initial honest debt snapshot (2026-09-23, HEAD 6f7c445f).
+            // Baseline freezes pre-existing findings; the gate fails on ANY new
+            // issue. Debt burn-down tracked in the slice receipt.
+            val moduleBaseline = layout.projectDirectory.file("detekt-baseline.xml")
+            if (moduleBaseline.asFile.exists()) {
+                baseline.set(moduleBaseline)
+            }
+        }
+        // detekt 2.x: report toggles live on the task, not the extension.
+        tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+            reports {
+                html.required.set(true)
+                checkstyle.required.set(true)
             }
         }
     }

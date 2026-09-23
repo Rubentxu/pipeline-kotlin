@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>TooGenericExceptionThrown:LocalFileMaterializationGoldenTest.kt:InMemorySecretStore$throw Exception("Not found")</ID>
+    <ID>UnusedParameter:CredentialMaterializerTest.kt:CredentialMaterializerTest$@TempDir tempDir: Path</ID>
+    <ID>WildcardImport:CredentialDomainTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:CredentialMaterializerTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+    <ID>WildcardImport:LocalFileMaterializationGoldenTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

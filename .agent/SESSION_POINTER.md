@@ -1,8 +1,8 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-23T13:50Z. **Tipo de cambio de esta sesión:** **CIERRE WU-RP-050 — consolidación `LinkedSecretRef` resolution**. WU-RP-049 R1 cerrada en `25818c10` (CI 35855686796 SUCCESS 10/10). Sesión actual implementó el slice WU-RP-050 con 5 commits (PLAN + ADR + RED + GREEN + REFACTOR + RECEIPT) cerrando las 2 duplicaciones auditadas en WU-RP-049 R1 dentro de `GitCredentialsApplier`. **HEAD = 4fb79b01** (LOCAL divergente de REMOTE `25818c10` — push pendiente). **NO_GO estricto**: NO_RELEASE, no tocar Step core, no Step framework OS-level, no overlay package.
+**Actualizado:** 2026-09-23T13:50Z. **Tipo de cambio de esta sesión:** **CIERRE WU-RP-051 — push + CI verificación + 2 CI-infra fixes**. WU-RP-050 cerrada en `36f240fb` (slice receipt `4fb79b01`). WU-RP-051 extendió con bootstrap push + 2 fixes (Install just hardened `bd52fa1b` + sbom cache `63220a5c`) + slice receipt `70cde8e6`. **HEAD = 1d38d778** (LOCAL + REMOTE sincronizados, push final). LPR-0 CI verde run `35865298485` (10/10 success) + verificación final run `35866370854` pending. **NO_GO estricto**: NO_RELEASE, no tocar Step core, no Step framework OS-level, no overlay package.
 
-**Código auditado:** main @ 4fb79b01. WU head = 4fb79b01.
+**Código auditado:** main @ 1d38d778. WU head = 1d38d778.
 
 **Documento de prioridad:** docs/v2/05-roadmap/ROADMAP.md.
 **Certificación:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md.
@@ -11,10 +11,11 @@
 
 ## Estado operativo
 
-- ACTIVE_PHASE: **RP-5 GATE — preparación honesta, pendiente WU-RP-040 R5 + UAT-RP-024 + UAT-RP-005 inv3 disclosure**. **WU-RP-050 CERRADA** (`4fb79b01`): 2 duplicaciones de `LinkedSecretRef` resolution eliminadas vía nuevo adapter `SecretStoreLinkedSecretResolver` en `:pipeline-credentials-api` + refactor `GitCredentialsApplier` para consumirlo. ADR-0098 firmado + 5 commits (47bf75d1..4fb79b01). 12/12 criterios PASS. 0 regresiones en scm-git (26/26), UAT git auth (15 ejecutados / 2 skipped / 0 fails), credentials modules (64 tests / 0 fails).
-- LAST_CLOSED_WU: **WU-RP-050** (`4fb79b01`, local divergente de remote `25818c10` — push pendiente): 2 duplicaciones eliminadas en `GitCredentialsApplier.resolveSecret` + `resolveAndEncode` → ahora delegan al adapter compartido. `SpiCredentialLinkedSecretResolver` se mantiene (legítimo: opera sobre el SPI port `CredentialProvider`, no sobre `SecretStore`).
-- KNOWN_LIMITATIONS adicional detectada en esta sesión (cerrada en WU-RP-050 — no requiere divulgación nueva):
-  - **WU-RP-050 consolidación parcial:** Las 2 duplicaciones de `LinkedSecretRef` en producción están consolidadas. La única llamada directa restante a `SecretStore.getAsSecretHandle` fuera del adapter es `LocalCredentialProvider.resolve` (legítimo: SPI implementation). `SpiCredentialLinkedSecretResolver` permanece como adapter sobre `CredentialProvider` SPI con semántica más rica (validación de tipo, audit); colapsarlo con el nuevo adapter requeriría leaky abstraction.
+- ACTIVE_PHASE: **RP-5 GATE — preparación honesta, pendiente WU-RP-040 R5 + UAT-RP-024 + UAT-RP-005 inv3 disclosure**. **WU-RP-051 CERRADA** (`1d38d778`): push + CI gate verde run `35865298485` (10/10 success) + verificación final `35866370854` en progreso. LPR-0 gate está verde sobre WU-RP-050 + 2 CI-infra fixes prophylactic (Install just hardened `bd52fa1b` + sbom gradle cache `63220a5c`). Bootstrap pattern (DELETE/PUT protection) verificado 2x. SEMVER: PATCH bump apropiado, NO_RELEASE vigente.
+- LAST_CLOSED_WU: **WU-RP-051** (`1d38d778`, LOCAL=REMOTE, LPR-0 verde `35865298485` 10/10 + final verification `35866370854` pending): bootstrap push + 2 CI-infra fixes. Cubre WU-RP-050 (5 commits consolidación) + push + hardening CI.
+- KNOWN_LIMITATIONS adicional detectada en esta sesión:
+  - **WU-RP-050 consolidación parcial:** Las 2 duplicaciones de `LinkedSecretRef` en producción están consolidadas. La única llamada directa restante a `SecretStore.getAsSecretHandle` fuera del adapter es `LocalCredentialProvider.resolve` (legítimo: SPI implementation).
+  - **CI-infra dependencies (D-003/D-004 RESUELTOS):** HTTP 403 transitorios de just.systems y Maven Central — ahora manejados con retry + fallback (just) y gradle cache (sbom). Sin recurrencia en run `35865298485`.
 - WUs previas cerradas (histórico, sin suavizar):
   - **WU-RP-049 R1** (25818c10, CI 35855686796 SUCCESS 10/10): LF-0403 cerrado vía port domain hexagonal. ADR-0097 firmado + 6 commits (9649872e..25818c10). 18/18 tests projector PASS. 3 KNOWN_FLAKE pre-existentes documentados en `WU_RP_049_R1_SLICE_RECEIPT.md` como no-regresiones.
   - **LF-0403 SSH/cert passphrase-password LinkedSecretRef (defecto funcional):** CERRADO en WU-RP-049 R1 (25818c10). Port `CredentialLinkedSecretResolver` + adapter `SpiCredentialLinkedSecretResolver` resuelven `LinkedSecretRef` → `SecretHandle` real. SSH keystore handshakes ahora funcionan. Tests: 18/18 PASS (5 nuevos en `Lf0403LinkedSecretResolverTest` + 13 pre-existentes en `DefaultCredentialProjectorTest`).
@@ -36,15 +37,16 @@
   - **Paquete externo** `docs/pipeline-kotlin-config-overlay-package/`: depositado NO integrado (colisión identificadores con ADRs/WUs vigentes); incorporar tras RP-5.
   - **WU-RP-040 R1 Kover PARTIAL:** domain (82.64%) + events (77.62%); 12 módulos sin cobertura.
   - **WU-RP-040 R4 pitest PARTIAL:** mutation 42% domain / 50% SDK; 128 mutantes sobrevivientes.
-- NEXT_WU: **WU-RP-040 R5** (SAST/detekt + Dependabot + Kover-all + triage mutantes). Sigue **WU-RP-048** (dogfooding 1-repo fork para UAT-RP-024). **NO_RELEASE** hasta: (a) WU-RP-040 R5 verde, (b) UAT-RP-024 evidencia 1-repo dogfooding, (c) divulgación UAT-RP-005 inv3 release notes. LF-0403 cerrado. WU-RP-050 cerrado.
+- NEXT_WU: **WU-RP-040 R5** (SAST/detekt + Dependabot + Kover-all + triage mutantes). Sigue **WU-RP-048** (dogfooding 1-repo fork para UAT-RP-024). **NO_RELEASE** hasta: (a) WU-RP-040 R5 verde, (b) UAT-RP-024 evidencia 1-repo dogfooding, (c) divulgación UAT-RP-005 inv3 release notes. LF-0403 cerrado. WU-RP-050 cerrado. WU-RP-051 cerrado.
+- Próximo WU técnicamente: D-002 (Rp022ThroughputProbe warmup, P2) si se desea cerrar flake pre-existente ANTES de WU-RP-040 R5. Bajo riesgo, 1 línea.
 - BLOCKERS: ninguno técnico. Política RP-5 Gate: SAST + Dependabot pendientes; dogfooding ≥2 repos estructuralmente imposible; divulgación UAT-RP-005 inv3 pendiente.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5. **Prerrequisito irreducible:** UAT-RP-019/020/021 ejecutables en HEAD + UAT-RP-022 reproducibilidad + UAT-RP-018 matriz COVERED + M3 SIGPIPE caracterizado.
 - OPERATIONAL NOTE: sub-agent swarm pool no funcional; orchestrator-direct con evidencia verificable (patrón preautorizado).
 
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
-1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = 4fb79b01.
+1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = 1d38d778.
 2. Leer ROADMAP (§6 RP-4, §7 RP-5), CERTIFICATION_PROTOCOL, UAT_MATRIX, este puntero y la última entrada de WORK_JOURNAL.
-3. CI verificado para 25818c10 (run 35855686796 al cierre WU-RP-049 R1). HEAD local actual = 4fb79b01 (5 commits ahead of remote, push pendiente). Verificar el SHA que toque antes de actuar.
+3. CI verificado para 1d38d778 (LPR-0 run `35865298485` 10/10 verde). Si verificación final `35866370854` terminó verde, ese es el certificado definitivo. Si terminó rojo, diagnosticar y arreglar antes de proseguir.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
-5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 4fb79b01 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP.
+5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.

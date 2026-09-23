@@ -1045,3 +1045,38 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
   - Receipt: `docs/v2/07-uat/WU_RP_045_SLICE_RECEIPT.md` (130 líneas)
   - XML fresco: `v2/pipeline-application/build/test-results/test/TEST-...UatLocal007SandboxProfileTest.xml`
 - Siguiente unidad WU-RP-046: caracterización M3 SIGPIPE flake 1x → reconciliación skipped → RP-5 Gate completo sobre SHA/ZIP exactos.
+
+### 2026-09-23T11:50Z — WU-RP-046 (round 1): auditoría honesta + UAT-RP-019/020/021 ejecutables + matriz actualizada
+
+- **Base SHA / HEAD SHA / branch:** base = 87d7f2ef (HEAD real); branch = main; LOCAL + REMOTE sincronizados (push pendiente al cierre de la sesión).
+- **Motivación:** el operador advirtió que el conteo de cierres documentales no equivale a condiciones de aceptación del producto verificadas. La auditoría de esta sesión descubrió:
+  - UAT-MATRIX seguía declarando baseline `f4aa20dc` (2026-09-22) sin reflejar los ~30+ commits posteriores.
+  - Fila UAT-RP-018 = PARTIAL aunque WU-RP-045 (TC-003/004) mejoró cobertura.
+  - UAT-RP-019/020/021 sin cobertura visible en HEAD (auditados por grep).
+  - UAT-RP-024 imposible en sesión autónoma.
+  - SESSION_POINTER declaraba HEAD=57833497 mientras HEAD real es 87d7f2ef.
+- **Decisión/ADR; rutas modificadas:** sin ADRs nuevos. Rutas:
+  - `v2/pipeline-application/src/test/kotlin/.../cli/WURp019GradleRealUatTest.kt` (nuevo, +176 líneas)
+  - `v2/pipeline-application/src/test/kotlin/.../cli/WURp020MavenRealUatTest.kt` (nuevo, +147 líneas)
+  - `v2/pipeline-application/src/test/kotlin/.../cli/WURp021NodeRealUatTest.kt` (nuevo, +131 líneas)
+  - `v2/pipeline-application/src/test/resources/uat-rp-019-real-builds/{gradle,maven,node}/` (fixtures nuevos)
+  - `docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md` (baseline → 87d7f2ef; UAT-RP-018 COVERED; 019-021 COVERED opt-in; 022-023 PARTIAL; 024 KNOWN_LIMITATION; 025 NO_APLICA)
+  - `docs/v2/07-uat/WU_RP_046_R1_SLICE_RECEIPT.md` (nuevo, 136 líneas, slice receipt)
+  - `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md` (esta entrada)
+- **Tests realmente ejecutados:**
+  - `timeout 300 ./gradlew -p v2 :pipeline-application:compileTestKotlin --no-daemon` → BUILD SUCCESSFUL 22s (tras correcciones de escape `*/` en comentarios multilínea + import GradleException).
+  - `UAT_RP_021_RUN=1 timeout 600 ./gradlew -p v2 :pipeline-application:test --tests "WURp021*"` → 2/2 PASS, 0 failures, 10.5s.
+  - `UAT_RP_019_RUN=1 UAT_RP_020_RUN=1 UAT_RP_021_RUN=1 timeout 900 ./gradlew -p v2 :pipeline-application:test --tests "WURp019*" --tests "WURp020*" --tests "WURp021*" --rerun-tasks` → 6/6 PASS, 0 failures, ~50s. XML timestamp 2026-09-23T09:45:50..09:46:28Z.
+  - L5 incremental (background): BUILD SUCCESSFUL; exit 0.
+  - L4 application full rerun pendiente por background.
+- **Decisiones técnicas relevantes:**
+  - **asdf y subshells:** el CLI pipelinek spawna subshells sin heredar `.tool-versions` del dir actual. Los tests resuelven binarios vía `asdfRoot.listFiles()` fallback chain (env var → $HOME/.asdf/.../bin → /usr/local/bin → /usr/bin), portable a CI.
+  - **`*/` en comentarios multilínea:** Kotlin trata `*/` como cierre de comentario, por lo que `*/bin/gradle` dentro de un `/** ... */` cierra prematuramente el bloque. Los fixtures documentan paths como `/usr/local/bin/gradle` sin `*/bin/gradle`.
+  - **`tail` enmascara exit codes:** `cmd | tail || exit 1` no falla porque `tail` exit 0. Por eso las failure paths usan `|| { echo ORACLE_X_BAD_FAIL; exit 1; }` para asegurar propagación observable.
+  - **CLI exit-code-0-on-typed-exception defect:** detectado durante integración, no es regresión de esta sesión. Documentado en KNOWN_LIMITATIONS. Requiere ADR/RECETA separados para corrección (afecta toda la familia).
+- **PASS / FAIL / BLOCKED / NOT_RUN:** **PASS** para los 6 tests nuevos (3 UAT). UAT-MATRIX actualizada. Quedan `KNOWN_LIMITATION` por UAT-RP-005/024, `PARTIAL` por 022/023, caracterización pendiente para M3 SIGPIPE flake.
+- **Bloqueos y riesgo residual:**
+  - L5 full rerun pendiente en background al cierre del journal.
+  - Riesgo de regresión: cero (tests-only slice, sin tocar producción).
+  - Riesgo de duplicación: cada test tiene su propio `resolveXxx()` helper, no compartido con código de producción (intencional; no quiere duplicar con `AppBinSupport` que es para el propio pipelinek).
+- **Próxima unidad WU-RP-046 (ronda 2):** recertificar UAT-RP-022 release byte-idéntico en HEAD actual; caracterizar M3 SIGPIPE flake; consolidar UAT-RP-023 receipt. **NO_RELEASE** hasta que UAT-RP-022 verde + divulgación UAT-RP-005 inv3 documentada.

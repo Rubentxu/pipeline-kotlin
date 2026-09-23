@@ -112,3 +112,14 @@ Allowed after LPR and only from canonical ZIP/version metadata:
 - jlink/native binary if benchmarks justify.
 
 These do not become new build authorities.
+
+## 9. Proposed multichannel distribution addendum (RP-6, post RP-5)
+
+The existing canonical GitHub Release ZIP and SHA-256 are the **only** release bytes. A stable, previously certified, installed `pipelinek` runner orchestrates the tag candidate's CI/release behavior; it is not the same binary as the target distribution under test. GitHub Actions bootstraps and verifies the runner independently of the Kotlin DSL and gates release publication independently of `pipeline.kts`. The target artifact is smoke-tested as a separate executable. No consumer reconstructs the ZIP.
+
+- **GitHub Releases:** tag `vX.Y.Z` is an evaluation trigger, not release authorization. Verify protected/ref SHA, full test/certification tuple, reproducible ZIP/digest/SBOM, then publish. Never change a published tag or rebuild in another channel.
+- **mise:** direct GitHub Releases backend with an explicitly matched ZIP asset, Java 21 prerequisite and clean-install UAT. A central mise alias/registry registration is optional and is not implied by GitHub publishing.
+- **asdf:** independent plugin repository (installable by URL) that lists versions and verifies/downloads/installs the canonical release ZIP. Central plugin-index acceptance is optional and separate from installer functionality.
+- **SDKMAN:** use existing Vendor API scripts after onboarding and fixes; publish → clean official-catalog install UAT → default promotion. Missing vendor credentials/candidate produces BLOCKED_EXTERNAL, not a false PASS and not a block on other channels.
+
+The driver/orchestrator may live in a separate `ci/release.pipeline.kts` and `ci/distribution.pipeline.kts`, both behavior-only Kotlin scripts compatible with the pinned runner. External shell/CLI adapters may handle installer protocols. No new core Step, no YAML stages or Steps, no remote worker/controller work. Secrets are available only to an authorized publish environment after the external gate, never to untrusted PR code. Verify public artifact provenance and channel status outside the runner. See `../05-roadmap/MULTICHANNEL_RELEASE_DOGFOOD_PLAN.md` and `../07-uat/UAT_RELEASE_CHANNELS.md`.

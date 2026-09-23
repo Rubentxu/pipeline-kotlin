@@ -970,3 +970,47 @@ Modificados: `Main.kt`, `ShExecution.kt`, `JsonEventLog.kt`, `SqliteEventStore.k
 - **PUNTERO**: HEAD = 7c8d6e52 local+remote. NEXT_WU = UAT-RP-018 sandbox 'os' (ADR-0016) o WU-RP-045 dogfooding N2 ampliado.
 
 - **WHAT_NEXT**: UAT-RP-018 sandbox 'os' (ADR-0016, RunnerTrustProfile) — última deuda UAT PARTIAL de RP-2 antes de RP-5 Gate. Decisión inteligente: priorizar UAT-RP-018. WU-RP-042 cerrada con release-gate verificado; NO_GO release vigente hasta autorización expresa.
+
+## 2026-09-23T10:11Z — Reconciliación de estado + auditoría skipped + arranque WU-RP-045 (UAT-RP-018)
+
+- **Base / HEAD / branch:** base = `f7ee7e8f` (HEAD actual, CI 35832498398 SUCCESS 10/10 reportado por el operador posterior al JOURNAL local). Branch = main. Local + remote sincronizados. El puntero anterior indicaba `7c8d6e52` (obsoleto, previo al commit docs-only del state-update).
+
+- **Intención**: responder al reporte del operador. Tres correcciones y un arranque:
+  1. **Corregir desfase del puntero** (HEAD: 7c8d6e52 → f7ee7e8f, CI del HEAD correcto).
+  2. **Auditar los 115 tests skipped** del L4 application y verificar si pertenecen al conjunto UAT-RP obligatorio (001..024). Resultado: **0 skipped obligatorios**. Los 115 son snapshots históricos preservados verbatim para trazabilidad de burn-down lanes (G0..G6), todos con comentario explícito tipo "Historical S2-... snapshot, preserved verbatim for traceability, will be deleted when the legacy narrative ends" o "Quarantine with @Disabled until coordinator supports step-yielding". Tres disabled relevantes para análisis posterior: `UatLocal011WorkflowControlTest:479` (coordinator step-yielding), `WULpr010CliCharacterizationTest:267` (WONTFIX, run() helper cuelga — WU-RP-004), `UatLocal008CredentialsTest:1150` (DSL classpath). Ninguno es UAT-RP-001..024.
+  3. **Delimitar alcance estricto de WU-RP-045 (UAT-RP-018)**: según el reporte del operador, NO es el comienzo del framework OS-level/contenedores (eso es RP-7+), NO introduce `JobDefinition`, parser YAML ni nuevas APIs públicas. Es: certificar el perfil LOCAL real de RP-5 (límites verificables: cwd, env deny-list, PATH normalise, cancelación de hijos, procesos descendientes, cleanup) + pruebas negative fail-closed para `os` (rechazo con mensaje ADR-0016 M5/M9).
+
+- **Colisión de identificadores con paquete overlay**:
+  - `docs/pipeline-kotlin-config-overlay-package/` está depositado en el árbol (no tracked) como propuesta, NO implementación.
+  - Identificadores del paquete que chocan con los vigentes: `ADR-0096-local-first-configuration-behavior-boundary.md` vs `ADR-0096-rp042-manifest-limitation-reevaluation.md` (publicado). `ADR-0097-legacy-dsl-as-compatibility-overlay.md` vs ADR-0097 libre en el puntero. `WU-RP-045` en el puntero como UAT-RP-018.
+  - **Decisión**: NO integrar el paquete antes de cerrar RP-5. Al integrar (post-RP-5), renumerar a ADR-0097/0098/0099/0100 según disponibilidad real; WU-RP-045 ya está usada para UAT-RP-018.
+
+- **Auditoría de skipped — detalle**:
+  - `CorePwdRegistryPrimaryFitnessTest`, `CoreIsUnixRegistryPrimaryFitnessTest`, `CoreErrorRegistryPrimaryFitnessTest`, `CoreEmitEventRegistryPrimaryFitnessTest`: snapshots G4/G5 de evolución counter de `LEGACY_PLUGIN_IDS` (8 → 7 → 6 → 4 → 3 → 2 → 0).
+  - `CorePwdStepUnitTest`, `CorePwdTmpStepUnitTest`, `CoreIsUnixStepUnitTest`, `CoreArchiveArtifactsStepUnitTest`, `CoreCleanWsStepContractSuiteTest`, `CoreDeleteDirStepUnitTest`, `EmitEventStepContractSuiteTest`: snapshots de transición a REGISTRY_PRIMARY/LEGACY_REMOVED.
+  - `CoreLegacyStepMetadataResolverTest`: G5 legacy metadata row deleted.
+  - `CoreSleepCoordinatorCharacterizationTest`, `CoreSleepG3DifferentialParityTest`: pre-flip legacy-authority snapshot.
+  - `CoreErrorMigrationReadinessFitnessTest`, `CoreErrorStepG2RegistryAdmissionTest`, `CoreEmitEventMigrationReadinessFitnessTest`: G3/G4 superseded by G5.
+  - `UatLocal011WorkflowControlTest:479`: quarantine until coordinator supports step-yielding (RT-2 debt).
+  - `WULpr010CliCharacterizationTest:267`: WONTFIX run() helper hangs (WU-RP-004 fixed).
+  - `UatLocal008CredentialsTest:1150`: DSL classpath — CredentialsId not accessible in `.pipeline.kts`.
+  - **Conclusión**: ningún skipped impacta UAT-RP-001..024. Política: preservar snapshots como evidencia histórica del burn-down (deuda declarada), no cuentan para PASS de RP-5.
+
+- **Decisión sobre UAT-RP-018**:
+  - Certificar perfil LOCAL: cwd=workspace, env deny-list, PATH normalise, cancelación de hijos (ya cerrado en WU-RP-041 S1), procesos descendientes + cleanup.
+  - Pruebas negative: `--sandbox-profile os` rechazado con mensaje que contiene "ADR-0016" + "M5" + "M9" (machine-checkable substrings ya en código).
+  - Compatibilidad: con profile=none/local, sin cambios de contrato. Con profile=os, fail-closed con mensaje diagnóstico.
+  - **NO** añadir: provider de contenedor, gVisor/Kata/microVM, `JobDefinition`, parser YAML, nuevas APIs públicas, ni variables de pipeline para capacidades OS.
+
+- **Próximo paso operacional**: ejecutar WU-RP-045 en dos rondas:
+  - **r1**: caracterización test-side — enumerar pruebas existentes en `UatLocal007SandboxProfileTest`, `SandboxProfileTest`, `RunnerTrustProfileTest`; ver cuáles faltan para certificar LOCAL al 100%; añadir tests solo en el set obligatorio.
+  - **r2** (si r1 revela necesidad): producción mínima para fill gaps (puede ser un nuevo método en `SandboxConfig` o `EnvModel` que aplique límite concreto medible). Cambios contractuales solo si pasan por ADR.
+
+- **Decisiones de proceso**:
+  - El operador preautorizó gates y decisiones en su mensaje de las 06:36Z, pero explícitamente aclaró la colisión de identificadores y pidió NO convertir UAT-RP-018 en el framework general. Esa instrucción se aplica como NO_GO explícito.
+  - Sin release / publicación de ZIP hasta cerrar RP-5 Gate.
+  - Sin tocar Step core nuevo.
+  - Sin re-trabajar WU-RP-044 (cerrada con CI verde).
+
+- **Sin CI ejecutado en esta entrada**: cambios solo docs (puntero + journal). Próximo CI será el de la WU-RP-045 cuando haya cambios productivos.
+

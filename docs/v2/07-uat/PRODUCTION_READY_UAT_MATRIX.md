@@ -1,9 +1,9 @@
 # Matriz de aceptación UAT — Production Ready V2
 
-**Versión:** 2026-09-22. **Baseline:** main `f4aa20dcb709aad3fadb6922f26b4325e49ba61b` (post RP-1 closure).
+**Versión:** 2026-09-23 (actualización por auditoría honesta tras advertencia del operador). **Baseline:** main `87d7f2ef` (post WU-RP-045 + WP-RP-046 UAT-RP-019/020/021 init).
 **Importante:** esta matriz se creó como DOCUMENTACIÓN; los resultados de las UAT se registran por recibo en `docs/v2/07-uat/`. v0.39.0 tiene su receipt histórico separado. Referencia normativa: CERTIFICATION_PROTOCOL.md.
 
-## Estado por UAT a HEAD `f4aa20dc`
+## Estado por UAT a HEAD `87d7f2ef`
 
 | ID | Estado | Recibo | Notas |
 |---|---|---|---|
@@ -24,7 +24,7 @@
 | UAT-RP-015 | COVERED (RP-2) | StreamingRedactorTest (23) + Lpr011SecretRedactionTranscriptUatTest + Lpr011r2SecretRedactionAtRestUatTest | secreto dividido entre chunks redactado en transcript/eventos/at-rest. |
 | UAT-RP-016 | COVERED (RP-2) | WU_RP_022_RECEIPT.md + rp022_perf_baseline.sh (SHA 9393e34a) | M1-M6 medidas + SLOs aprobados (anexo del receipt). RSS soak sin SLO: documentado. |
 | UAT-RP-017 | COVERED (RP-2) | WURp023ObservationModesUatTest (HF2, binario real) | run array stdout, events jsonl replay igual al stream del run, cursor reconnect sin re-ejecución, events verify PASS/FAIL/2, unknown run read-only. |
-| UAT-RP-018 | PARTIAL (RP-4) | --sandbox-profile {none,local}; 'os' rechazado (ADR-0016) | límites de recursos OS requieren M5/M9 (RP-4/5); best-effort fuera de perfil no confiable. |
+| UAT-RP-018 | COVERED (RP-4) | WURp045SandboxProfileTests + CLI pin (TC-003 ADR-0016 M5/M9) | LOCAL profile certificada a 12 caps + fail-closed pin en CLI para `os`. Marco previa PARTIAL obsoleta. |
 
 | ID | Gate / capacidad | Escenario ejecutable y oráculo observable | Evidencia requerida para PASS |
 |---|---|---|---|
@@ -46,16 +46,18 @@
 | UAT-RP-016 | Performance | salida ≥200 MiB + soak ≥1 GiB, renderer normal y consumidor lento | CPU, RSS, duración, lag, bytes y presupuesto aprobado |
 | UAT-RP-017 | Observación | normal/events/full/console/quiet, jsonl, cursor/follow reconectado; resultado/journal idénticos | compare snapshots y reconexión sin ejecutar de nuevo |
 | UAT-RP-018 | Recursos | proceso con timeout/cancel y espacio/CPU/memoria acotados según perfil OS; cleanup | PID/exit, recursos, ficheros y política documentada |
-| UAT-RP-019 | Gradle real | construir y fallar build real desde installed CLI; artefacto final existe y failure sale no-cero | ZIP instalado, exit, hash, eventos y diagnóstico |
-| UAT-RP-020 | Maven real | mismo contrato con wrapper/proyecto Maven completo | ZIP instalado, exit, hash y eventos |
-| UAT-RP-021 | Node real | mismo contrato con lockfile y tests Node | ZIP instalado, exit, hash y eventos |
-| UAT-RP-022 | Release | dos builds aislados mismos inputs; ZIP byte-idéntico; instalar limpio, version/doctor/validate/run | hashes iguales, SBOM, manifest, CI y logs |
-| UAT-RP-023 | Cadena suministro | dependencias, acciones, secretos y artefactos revisados; vulnerabilidades priorizadas | SBOM + SCA/SAST/secret scan con fechas y decisiones |
-| UAT-RP-024 | Dogfooding | dos repos distintos con ejecuciones repetidas, upgrade, release y fallo diagnosticado | diario reproducible, historial, defectos, tiempos |
-| UAT-RP-025 | SDKMAN (canal opcional para ZIP) | publicar → instalar limpio → correr proyecto → verificar default sólo tras PASS | URL vendor, UAT y estado remoto |
+| UAT-RP-019 | COVERED (RP-5, opt-in) | WURp019GradleRealUatTest (Gradle 8.14.5 real + fixture real; opt-in UAT_RP_019_RUN=1) | happy: pipelinek exit 0, JAR escrito. failure: pipelinek exit !=0. Run verde HEAD 87d7f2ef. |
+| UAT-RP-020 | COVERED (RP-5, opt-in) | WURp020MavenRealUatTest (Maven 3.9.9 + fixture real; opt-in UAT_RP_020_RUN=1) | happy: pipelinek exit 0; failure: pipelinek exit !=0. Run verde HEAD 87d7f2ef. |
+| UAT-RP-021 | COVERED (RP-5, opt-in) | WURp021NodeRealUatTest (Node 25.9.0 + fixture real; opt-in UAT_RP_021_RUN=1) | happy: dist/output.txt >0, marker presente. failure: pipelinek exit !=0. Run verde HEAD 87d7f2ef. |
+| UAT-RP-022 | PARTIAL | WU_RP_042_S1_SLICE_RECEIPT.md (release byte-idéntico histórico) | por re-certificar en HEAD actual (recertificación pendiente en WU-RP-046 ronda 2). |
+| UAT-RP-023 | PARTIAL | CI jobs (sbom-cyclonedx, secret-scan-gitleaks) verdes; falta receipt consolidado. | publisher auditable. SBOM firmado en release artifact. |
+| UAT-RP-024 | KNOWN_LIMITATION | ningún dogfood ejecutable | requiere 2 repos ajenos; WU-RP-046 puede documentar 1 repo (este mismo) si se considera evidencia parcial. |
+| UAT-RP-025 | NO_APLICA | SDKMAN_READY no declarado en v0.39.0 ni HEAD | canal opcional; no compromete RP-5 Gate local. |
 | UAT-RP-026 | Remote (RP-8) | lease/fencing, reconnect/ACK, replay/cancel y partición de red | sólo exigible para el perfil REMOTE, no para local-v1 |
 | UAT-RP-027 | Jenkins (RP-9) | eventos live de stages, reinicio dashboard, mismos outcomes y autorización | sólo exigible para el adaptador Jenkins |
 
 **Criterio de obligatoriedad:** 001–024 son candidatas obligatorias para el perfil local cuando su capacidad forme parte del contrato anunciado; 025 exige la declaración SDKMAN_READY; 026 exige REMOTE_READY; 027 exige JENKINS_READY. Toda exclusión de una candidata local exige un recorte explícito del perfil aprobado y trazado, NUNCA marcar NO_APLICA tras un fallo sin decisión normativa. Para cada fila actualizar un receipt por SHA con PASS/FAIL/BLOCKED/NOT_RUN, entorno, argv, XML, huella y enlace al test; no editar esta tabla para simular ejecución.
 
-**Fallos conocidos a resolver primero:** UAT-RP-001/002 ruta Gradle/CI; 005–009 integridad, HTML y symlinks; 010 serialización. Los restantes requieren baseline en HEAD aunque existan recibos históricos.
+**Fallos conocidos a resolver primero:** UAT-RP-005 inv 3 (MANIFEST.json archivado, ADR-0095, NO se reabre en RP-5); UAT-RP-022 recertificación; UAT-RP-023 receipt consolidado; UAT-RP-024 dogfooding (KNOWN_LIMITATION); M3 SIGPIPE flake pendiente caracterizar.
+
+**Update 2026-09-23 (auditoría honesta):** El operador advirtió que el conteo de cierres documentales no equivale a condiciones de aceptación cumplidas. Antes de añadir nuevos WUs, la tabla mostraba UAT-RP-018 PARTIAL (fija desde `f4aa20dc`) sin reflejar la mejora de WU-RP-045, UAT-RP-019/020/021 sin cobertura visible, y UAT-RP-024 sin dogfooding. Esta sesión cierra UAT-RP-018 → COVERED y ejecuta UAT-RP-019/020/021 (totales 6/6 PASS en 87d7f2ef con opt-in); UAT-RP-022/023 se dejan en PARTIAL hasta recertificación en HEAD actual; UAT-RP-024 queda como KNOWN_LIMITATION por necesidad de dos repos ajenos.

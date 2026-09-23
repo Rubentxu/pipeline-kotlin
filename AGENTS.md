@@ -989,16 +989,19 @@ message   == the Step's configured message  (not "Replay aborted")
 
 1. Inner loop: targeted runs only (`--tests 'UatLocal004*'`), warm daemon,
    NO `--rerun-tasks` while iterating.
- 2. Full round gate = `./gradlew -p v2 check` (incremental) runs ONCE per
-    apply/verify round, as the final gate. Never per-iteration. Gradle's
-    content-hash up-to-date checks are the freshness oracle: a no-op
-    `check` returning BUILD SUCCESSFUL with all tasks UP-TO-DATE is a
-    VALID green — it proves nothing changed since the last green
-    (measured 2026-08-30: forced gate 977s vs 1s incremental no-op).
-    Escalate to `check --rerun-tasks` ONLY after (a) a run killed
-    mid-flight, (b) suspected stale green, or (c) hidden-state suspicion;
-    then reconcile ONCE with the rule-4 budget before trusting
-    incremental again (reconciliation measured 948s).
+ 2. Full `check` is a boundary gate, NOT an iteration or automatic
+    end-of-WU obligation: run it for changes whose impact cannot be safely
+    bounded, and at integration/certification/release boundaries whenever
+    the governing profile requires it. From repository root invoke
+    `(cd v2 && ./gradlew check)`. Gradle UP-TO-DATE/FROM-CACHE means
+    **reused evidence**, not a fresh test execution: it may count only
+    when the gate permits reuse, relevant inputs and environment are
+    declared/unchanged, and the prior result is traceable. Fresh installed
+    UAT, process/recovery and artifact-certification checks MUST really
+    execute when the gate requires them. Never report a no-op as freshly
+    executed PASS. Escalate to `check --rerun-tasks` only for a justified
+    stale/corrupt-cache or hidden-state suspicion, and rerun only the
+    mandatory fresh checks when a full forced rerun is unnecessary.
 3. Never `--no-daemon` for repeated runs; the daemon JVM stays warm.
 4. Wrap every Gradle invocation in `timeout` — silent hangs are defects
    of the harness, not the code under test. Two regimes:
@@ -1020,8 +1023,8 @@ Canonical inner loop (TDD red-green, seconds — measured 2s no-op / 22-40s
 with incremental compile):
 
 ```bash
-timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal004*'
-timeout 600 ./gradlew -p v2 :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest'
+(cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'UatLocal004*')
+(cd v2 && timeout 600 ./gradlew :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest')
 ```
 
 Round gate (once per apply/verify round, not per iteration). Incremental
@@ -1029,8 +1032,8 @@ by default — the escalated budget (rule 4) applies to the escalation form
 only; current escalated baseline 977s → budget 1270:
 
 ```bash
-./gradlew -p v2 check                              # incremental (default)
-timeout 1270 ./gradlew -p v2 check --rerun-tasks   # escalation only
+(cd v2 && ./gradlew check)                         # only at the applicable gate
+(cd v2 && timeout 1270 ./gradlew check --rerun-tasks) # justified escalation only
 ```
 
 Quick interface: `just gate` / `just gate-escalate` / `just t '<pattern>'` /
@@ -1115,20 +1118,26 @@ group).
 21. TDD discipline: RED must fail for the EXPECTED reason (read the
     assertion message, not just the failure). A timeout or compile error
     is NOT a valid RED. GREEN = minimal implementation, validated at L1.
-22. Use `--fail-fast` when running more than one test in iteration.
+22. Use `--fail-fast` for focused development feedback when helpful;
+    do not use it for a release/integration gate that requires collecting
+    and reporting every mandatory test failure.
 
 ### Output capture and result truth
 
 23. NEVER pipe test output through `| tail` under `timeout`: the output is
     lost when the process is killed. Safe pattern (`<budget>` per rule 4:
     600 targeted, derived for the round gate):
-    `timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1; tail -n 30 /tmp/gradle-run.log`
+    `(cd v2 && timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1); rc=$?; tail -n 30 /tmp/gradle-run.log; exit "$rc"`
 24. Long builds run backgrounded with polling:
     `nohup timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1 &` then
     poll `tail -n 20 /tmp/gradle-run.log` — keep editing while it runs.
-25. Result truth is the JUnit XML in `build/test-results/test/`, NOT the
-    console or the Gradle exit code. When a run MUST have executed, use
-    the canary: delete `TEST-<Class>.xml` first, run, verify it regenerated.
+25. Result truth is the combination of process/Gradle exit status,
+    fresh JUnit XML (including tests/failures/errors/skipped counts),
+    selected-test identity and relevant side-effect assertions. XML alone
+    misses compilation/runner failures before reports exist; exit 0 alone
+    misses a zero-test or skipped-only run. For a mandatory freshly
+    executed test, verify a newly generated report or an equivalent
+    trustworthy task/test execution record; stale XML is not PASS.
 26. XML `timestamp` is UTC while `ls` shows local time (10:27Z == 12:27
     local). Convert before concluding a result is stale.
 27. After a build killed by timeout, distrust `BUILD SUCCESSFUL` /

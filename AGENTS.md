@@ -1057,6 +1057,113 @@ group).
     evidence (worktree method) — the cycle base SHA is the comparison
     point, not a mid-cycle commit.
 
+### Testing, release, publication, and previous-release dogfood
+
+**MUST read before any release preparation, certification, or publication:**
+[CI_TEST_RELEASE_WORKFLOW.md](docs/v2/05-roadmap/CI_TEST_RELEASE_WORKFLOW.md).
+That document is the operative translation of this section; where they
+disagree, this section is the binding rule and the operative doc is
+amended, not overridden.
+
+#### Workflow in one screen
+
+1. **Scope the work.** Doc edit, code change, integration gate, RP
+   gate, release, or channel publication. Each lives at a different
+   layer (`D0`..`D5` development, `T0`..`T5` certification, then
+   release `R0`..`R5`). Mixing layers is a defect.
+2. **Freeze the candidate.** Source SHA, build inputs, JDK/OS,
+   dependency locks, artifact name, output directory, and the intended
+   SHA-256. No freeze, no build.
+3. **Run the smallest sufficient battery first.** Compile / single
+   test / owning class / module / project gate. A bare `:test` is
+   never a discovery mechanism.
+4. **Treat dogfood as a battery.** Same-SHA N1/N2/N3 (`pipeline-script-cli`
+   driven by the candidate binary) and previous-release dogfood are
+   batteries with a closed outcome taxonomy
+   (`DGF_PASS | DGF_REGRESSION | DGF_INTENTIONAL_FAIL | DGF_INFRASTRUCTURE |
+   DGF_VENDOR_GAP | DGF_RECOVERY | DGF_VERSION_GAP`). Every run emits a
+   report (`base_sha`, `head_sha`, `old_release`, `candidate_release`,
+   `runner`, `scenarios[…].outcome`, `diff_summary`, `raw_evidence`,
+   `next_action`). Without that, the run is a log line, not a report.
+5. **Promote only on fresh, complete evidence.** Same SHA + exact
+   bytes + current report + mandatory gates. Historical receipts
+   (`HISTORICAL_RELEASED_ARTIFACT`, old UAT, v0.39.0 evidence) never
+   certify a later SHA. A receipt with one or more `BLOCKED` /
+   `NOT_RUN` is `PARTIAL_DOGFOOD_EVIDENCE`, not `PRODUCTION_READY`.
+6. **Certification then publication, in that order.** `T0`..`T5`
+   passes against the frozen candidate. Publication happens only after
+   the certification receipt is signed for the exact bytes that will
+   ship; SDKMAN_READY, GitHub Release, and Maven Central are three
+   separate channel gates, each with its own evidence.
+7. **Record the next action.** Every report, every receipt, every
+   close-out states the next authorised WorkItem or declares the gate
+   open. Closing without a `next_action` is bookkeeping, not
+   verification.
+
+The previous-release PipelineK dogfood battery is a regression
+detector, not a release gate. `DGF_PASS` of any flavour does not, on
+its own, certify the candidate; it stops regressions that no other
+battery can see.
+
+Concrete obligations carried over from the working session on commit
+74b40a65 (RP-4 closure cycle, 2026-09-23):
+
+- Keep change-scoped development testing (`D0`..`D5`), integration gates
+  (`T0`..`T4`), release certification (`T5`), and channel publication
+  (GitHub Release, SDKMAN, Maven Central) in distinct phases. A narrow
+  green test is never a release gate.
+- The `D0`..`D5` ladder in `CI_TEST_RELEASE_WORKFLOW.md` is local
+  change-scoped development only. It is **not** a substitute for the
+  `T0`..`T5` certification ladder in
+  `docs/v2/07-uat/CERTIFICATION_PROTOCOL.md` (`T0` API/type safety,
+  `T1` Step/domain behaviour, `T2` architecture and compatibility,
+  `T3` installed distribution, `T4` durability/failure, `T5`
+  release/resistance). Neither ladder replaces the other.
+- Same SHA, exact bytes, current evidence, and mandatory gates are
+  required. Historical receipts (including the v0.39.0 release
+  evidence and the SHA-pinned local summaries) never certify a later
+  SHA. Receipts are immutable; corrections are new receipts that
+  reference the original.
+- Every report must carry `base_sha`, `head_sha`, `source_tree_sha`,
+  `baseline_artifact`, `tested_artifact`, `artifact_sha256`, `profile`,
+  `argv`, `environment`, `exit_code`, `xml`, `raw_evidence`,
+  `missing_or_skipped`, `comparison`, `known_failures`, `security`,
+  `performance`, and a concrete `next_action`. Status taxonomy is
+  closed: `PASS | FAIL | BLOCKED | NOT_RUN | SKIPPED |
+  CANDIDATE_VERIFIED | CERTIFIED_AT_SHA | RELEASED_ARTIFACT | NOT_APPLICABLE`.
+  None may be silently promoted to `PASS`.
+- CI evidence must be the jobs that ran on the candidate SHA with URLs,
+  XML, log paths, and artifact SHA-256 captured under
+  `.agent/ci/<sha>/`. A local-summary receipt that names `ci 1 / 1` is
+  not yet an auditable paper trail.
+- Release-candidate certification freezes the exact source SHA, version,
+  build inputs, JDK/OS, dependency locks, and distribution bytes and
+  re-runs the reproducibility contract before publication. Publication
+  is blocked when any mandatory gate is failed, missing, blocked, or
+  tied to a different SHA.
+- Same-SHA N1/N2/N3 dogfood (RP-4) is implemented only when fresh
+  candidate evidence proves it on `.pipeline.kts` execution that the
+  PipelineK built from that SHA actually drives. The previous-release
+  PipelineK dogfood battery remains **PLANNED**; `not_run` evidence is
+  not promoted to green by the existence of the helper.
+- v0.39.0 validate/basic/release evidence is historical and labelled
+  `HISTORICAL_RELEASED_ARTIFACT`. It does not prove the current `main`
+  SHA, a full root pipeline on `main`, or RP-5 / UAT-RP-024.
+- RP-5 / UAT-RP-024 still lacks proof from two distinct external
+  repositories. SDKMAN_READY requires real vendor publication plus
+  clean-runner installation UAT. Missing work is `NOT_RUN` or
+  `BLOCKED` with a reason, never inferred green.
+- ADR-0094 is referenced by RP-4 as the intended common impact-selection
+  policy but is **not** in the repository. Its policy must not be
+  claimed as implemented or accepted until the ADR exists and is
+  accepted.
+- The `HELIX_DESKTOP` helper used by the size-minimal CI matrix assumes
+  a desktop environment. Callers that run on `macos-latest` or
+  `windows-latest` without exporting `HELIX_DESKTOP=unsupported`
+  receive an infrastructure failure, not a dogfood result. Patch the
+  helper or constrain the matrix before any N2 same-SHA dogfood is
+  published.
+
 ### Validation ladder ( iteration protocol )
 
 17. Always validate at the MINIMUM sufficient level; escalate ONLY on

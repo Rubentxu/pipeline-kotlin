@@ -10,7 +10,8 @@
 4. .agent/TESTING-STATE.md — topología/comandos conocidos, reutilizar sólo cuando siguen siendo válidos para el SHA actual.
 5. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
 6. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el puntero antes de ejecutar cualquier WU.
-7. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md, ADR-0070..0093 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar.
+7. [docs/v2/05-roadmap/CI_TEST_RELEASE_WORKFLOW.md](../05-roadmap/CI_TEST_RELEASE_WORKFLOW.md) — guía operativa derivada para testing, CI, dogfood y release; no sustituye los gates ni la autoridad de ADRs.
+8. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md, ADR-0070..0093 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar.
 
 ## Precedencia y resolución de conflictos
 

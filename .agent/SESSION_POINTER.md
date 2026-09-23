@@ -1,6 +1,6 @@
 # SESSION_POINTER — ÚNICO puntero de reanudación
 
-**Actualizado:** 2026-09-23T13:50Z. **Tipo de cambio de esta sesión:** **CIERRE WU-RP-051 — push + CI verificación + 2 CI-infra fixes**. WU-RP-050 cerrada en `36f240fb` (slice receipt `4fb79b01`). WU-RP-051 extendió con bootstrap push + 2 fixes (Install just hardened `bd52fa1b` + sbom cache `63220a5c`) + slice receipt `70cde8e6`. **HEAD = 1d38d778** (LOCAL + REMOTE sincronizados, push final). LPR-0 CI verde run `35865298485` (10/10 success) + verificación final run `35866370854` pending. **NO_GO estricto**: NO_RELEASE, no tocar Step core, no Step framework OS-level, no overlay package.
+**Actualizado:** 2026-09-23T14:50Z. **Tipo de cambio de esta sesión:** **CIERRE WU-RP-040 R5–R8 (detekt SAST, Dependabot, kover-all, mutant triage)**. Commits: `4b59bbc8` (detekt+baseline), `0900e34a` (sast job), `4663a3eb` (Dependabot), `a7a90cc1` (mutant triage), `bc93f319` (kover-all), `9804e882` (receipt). **HEAD local = 9804e882**; push directo a main RECHAZADO (branch protection exige check "LPR-0 CI / compile" que no existe en push directo) → **PR #57** (branch `ci/rp040-r5-r8`) con CI en curso. **NO_GO estricto**: NO_RELEASE, no tocar Step core, no overlay package.
 
 **Código auditado:** main @ 1d38d778. WU head = 1d38d778.
 
@@ -37,7 +37,7 @@
   - **Paquete externo** `docs/pipeline-kotlin-config-overlay-package/`: depositado NO integrado (colisión identificadores con ADRs/WUs vigentes); incorporar tras RP-5.
   - **WU-RP-040 R1 Kover PARTIAL:** domain (82.64%) + events (77.62%); 12 módulos sin cobertura.
   - **WU-RP-040 R4 pitest PARTIAL:** mutation 42% domain / 50% SDK; 128 mutantes sobrevivientes.
-- NEXT_WU: **WU-RP-040 R5** (SAST/detekt + Dependabot + Kover-all + triage mutantes). Sigue **WU-RP-048** (dogfooding 1-repo fork para UAT-RP-024). **NO_RELEASE** hasta: (a) WU-RP-040 R5 verde, (b) UAT-RP-024 evidencia 1-repo dogfooding, (c) divulgación UAT-RP-005 inv3 release notes. LF-0403 cerrado. WU-RP-050 cerrado. WU-RP-051 cerrado.
+- NEXT_WU: **merge PR #57 tras CI verde**, luego **WU-RP-048** (dogfooding 1-repo fork para UAT-RP-024). WU-RP-040 R5–R8 CERRADAS localmente. Sigue **WU-RP-048** (dogfooding 1-repo fork para UAT-RP-024). **NO_RELEASE** hasta: (a) WU-RP-040 R5 verde, (b) UAT-RP-024 evidencia 1-repo dogfooding, (c) divulgación UAT-RP-005 inv3 release notes. LF-0403 cerrado. WU-RP-050 cerrado. WU-RP-051 cerrado.
 - Próximo WU técnicamente: D-002 (Rp022ThroughputProbe warmup, P2) si se desea cerrar flake pre-existente ANTES de WU-RP-040 R5. Bajo riesgo, 1 línea.
 - BLOCKERS: ninguno técnico. Política RP-5 Gate: SAST + Dependabot pendientes; dogfooding ≥2 repos estructuralmente imposible; divulgación UAT-RP-005 inv3 pendiente.
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5. **Prerrequisito irreducible:** UAT-RP-019/020/021 ejecutables en HEAD + UAT-RP-022 reproducibilidad + UAT-RP-018 matriz COVERED + M3 SIGPIPE caracterizado.

@@ -1375,3 +1375,10 @@ Grep `store.getAsSecretHandle` en producción v2:
 ### Próximo
 - WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes).
 - Alternativa: D-002 (Rp022 warmup flake fix) — 1 línea.
+
+## 2026-09-23T14:50Z — WU-RP-040 R5–R8 cierre
+
+- Base 6f7c445f → HEAD local 9804e882 (6 commits atómicos): 4b59bbc8 detekt SAST + baseline congelado; 0900e34a job sast CI; 4663a3eb Dependabot; a7a90cc1 mutant triage (128 survivors A–D, C=10 → P2 WU); bc93f319 kover-all (40 paquetes, LINE 77.9%, fix #798 + exclusión D-002 StreamingRedactor instrumentación); 9804e882 receipt R5–R8.
+- kover-all: BUILD SUCCESSFUL 14m29s, XML 2.2MB en v2/build/reports/kover/report.xml. Flake D-002 resuelto por exclusión de instrumentación (no weaken del test).
+- Push directo a main rechazado (GH006: required check "LPR-0 CI / compile" en push directo). Workaround: branch ci/rp040-r5-r8 + PR #57. CI en curso al cerrar esta entrada (gitleaks/sbom ya pass).
+- Pendiente: verificar PR #57 verde → merge → SESSION_POINTER update. Deuda nueva: P2 WU categoría C (DefaultEffectReplayPolicy.decide MEMOIZED).

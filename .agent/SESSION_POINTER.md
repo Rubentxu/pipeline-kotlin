@@ -1,3 +1,14 @@
+## Reconciliación 2026-09-24T16:40Z — WU-RP-040 R5 (coverage-all) + CI en cola (autoridad operativa vigente)
+
+- **WU-RP-040 R5 KNOWN_GAP cerrado en source:** job `coverage-all` añadido a `lpr0-ci.yml` (commit `21b89514`), invoca `koverXmlReport` root y sube `report.xml` como artefacto. NO required-status-check hasta medir runtime.
+- **Evidencia local:** koverXmlReport exit 0 en 899s, report.xml 2.2MB/1440 clases regenerado fresco (16:38). Recibo `WU_RP_040_R5_COVERAGE_ALL_CI_RECEIPT.md` (commit `ab879002`). Clasificación honesta: NOT_RUN en CI hasta que corra el job.
+- **CI main:** run `35998997962` (0a62cb82) cancelado por cancel-in-progress al llegar `21b89514`; run `36012246997` (21b89514) queued, 12 jobs. Runner self-hosted en cola (capacidad conocida).
+- **M3 SIGPIPE:** ya caracterizado en WU-RP-046 R2 (NO_REPRODUCIBLE_AT_CURRENT_HEAD, QUARANTINED) — no es pendiente real.
+- **SDKMAN rc2:** run `36010228999` falló por `SDKMAN_CONSUMER_KEY/TOKEN` no configurados en secrets del repo (esperado para candidatas: canal separado; sólo SDKMAN_READY tras publicación real + UAT + promoción). NO es defecto de la candidata; rc2 ZIP intacto.
+- **Siguiente:** monitorizar run `36012246997`; consumir veredicto harness de rc2; luego WU-RP-049 (LinkedSecretRef passphrase/password closure) o R3.4 dependency-audit si CI se alarga.
+
+## Reconciliación 2026-09-24T16:06Z — CANDIDATA v0.39.1-rc2 PUBLICADA (WU-RP-053 consolidada) — ver rama wu/rp-053-rc2-build, commits dd1d37f9/c831a16f; candidata en GitHub Releases v0.39.1-rc2, ZIP f60ea732…, veredicto harness PENDIENTE.
+
 ## Reconciliación 2026-09-24T10:09Z — CONSIGNA ARQUITECTÓNICA CROSS-REPO: pipeline-kotlin ↔ pipelinek-release-harness (autoridad operativa vigente)
 
 - **Decisión del operador:** el desarrollo de PipelineK (pipeline-kotlin) se separa de la certificación externa (repositorio independiente `Rubentxu/pipelinek-release-harness`). Cada uno con su `AGENTS.md`, su identidad material y su round gate independiente. Comunicación vía manifiesto inmutable + resultado estructurado + issues en GitHub (huella estable por contrato+escenario+causa, sin SHA de candidata). **NO** por comentarios libres.

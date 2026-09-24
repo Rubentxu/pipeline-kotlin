@@ -2040,3 +2040,17 @@ Identidad material preservada:
 - Binario estable NO modificado.
 
 Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventStore sobre `origin/main` 74b40a65, rama nueva `wu/rp-020-sqlite-event-store-characterization`. Per ROADMAP §3 RP-2 arranca con WU-RP-020. Sin tocar la candidata 262cc11e.
+
+## 2026-09-24T16:40Z — WU-RP-040 R5: coverage-all CI instrumentation (main @ 21b89514)
+
+- Base/head: base `0a62cb82` (main); head `ab879002`. Commits: `21b89514` (ci: job coverage-all) + `ab879002` (docs: receipt).
+- Cambios: `.github/workflows/lpr0-ci.yml` nuevo job `coverage-all` que ejecuta `koverXmlReport` root (merge de todos los módulos Kotlin con tests) y sube `v2/build/reports/kover/report.xml` como artefacto. NO required-status-check hasta medir runtime en CI.
+- Resultados reales:
+  - Local: `cd v2 && timeout 1500 ./gradlew koverXmlReport` → exit 0, 899s wall clock; `report.xml` 2 248 363 bytes, 1440 clases, mtime 16:38 (fresco).
+  - YAML del workflow validado con `yaml.safe_load`.
+  - CI: run `36012246997` (LPR-0, 12 jobs incl. coverage) queued sobre `21b89514`; el run previo `35998997962` (0a62cb82) cancelado por cancel-in-progress.
+  - SDKMAN rc2 run `36010228999` FAILURE por secrets SDKMAN_CONSUMER_KEY/TOKEN ausentes (canal separado; no defecto de candidata).
+- Tests NO ejecutados: ninguno de producto (cambio CI-only); el propio koverXmlReport ES la verificación del cambio, ejecutada localmente y pendiente de réplica CI (NOT_RUN honesto en el recibo).
+- Evidencia: `docs/v2/07-uat/WU_RP_040_R5_COVERAGE_ALL_CI_RECEIPT.md`.
+- Nota: M3 SIGPIPE estaba ya caracterizado (WU-RP-046 R2: NO_REPRODUCIBLE_AT_CURRENT_HEAD); no reabierto.
+- Siguiente: monitor `36012246997`; consumir veredicto harness rc2; después WU-RP-049 (LinkedSecretRef) o R3.4 dependency-audit.

@@ -1882,3 +1882,82 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 - Preserved PAR-D law: the execution context is not durable truth;
   fingerprint, journal identity, and replay semantics are independent of
   context threading.
+
+---
+
+## RELEASE CERTIFIER HANDOFF (MANDATORY)
+
+**Scope:** agreement between pipeline-kotlin and the independent
+**release certifier** (`pipelinek-release-harness`, repo
+`Rubentxu/pipelinek-release-harness`). The Step-level test harness
+(`PIPELINE_TEST_HARNESS`) and the release certifier are separate systems;
+this section refers only to the release certifier. Do not conflate them.
+
+**Authority boundary:** pipeline-kotlin owns contracts, ADRs, Step semantics,
+replay/par-d/fitness rules, and the user-facing release decision. The
+release certifier owns reproducible execution, real-integration evidence
+collection, and issue automation on **its own repo** (`Rubentxu/pipelinek-release-harness`).
+Protocols (issue schemas, dedup keys, state machines, Oracle contracts) are
+defined in `docs/protocols/` of the release certifier and referenced, not
+re-defined here.
+
+When the release certifier reports a defect or asks a question to pipeline-kotlin
+it does so **exclusively via a GitHub Issue in `Rubentxu/pipelinek-release-harness`
+that references pipeline-kotlin**. Pipeline-kotlin treats such an issue as
+authoritative intake. Its own repo issues are used only for work tracked
+inside pipeline-kotlin.
+
+**Normative rules.**
+
+R1. **Single intake channel for cross-repo defects.** A defect
+   surfaced by the release certifier arrives only as a GitHub Issue in
+   `Rubentxu/pipelinek-release-harness` with a stable dedup identity
+   `(contract, scenario, failure_type, signature)` documented in
+   `release-certifier/docs/protocols/issue-identity.md`. Pipeline-kotlin
+   does not ask for the defect to be re-reported in its own issue
+   tracker; doing so duplicates and splits the conversation.
+
+R2. **Pipeline-kotlin attribution is structural, not textual.** If a release
+   certifier bug report names a pipeline-kotlin SHA, an arbitrary commit
+   string or a release tag without a contract/scenario reference, do NOT
+   treat the SHA as authoritative. Re-classify the report using its
+   `(contract, scenario, failure_type, signature)` and query whether the
+   referenced contract still exists at HEAD before reproducing.
+
+R3. **Ignore cross-repo reports that ask for new pipeline-kotlin behavior
+   outside an accepted ADR.** Release certifier issues may surface defects;
+   they MUST NOT request new features or relax existing acceptance
+   criteria. New behavior goes through the normal milestone/backlog
+   pipeline.
+
+R4. **Coordinate before redesigning shared contracts.** The release
+   certifier consumes pipeline-kotlin contracts (Oracle schemas, CERT
+   handshake, execution protocol). If a pipeline-kotlin ADR proposes to
+   change any of them, the release certifier must be informed as
+   stakeholder, not silently broken by a rename or field deletion. The
+   release certifier's published protocol files take precedence over
+   ad-hoc behavior at the boundary; if both move, update both.
+
+R5. **Failure classification is the certifier's, behavior classification
+   is pipeline-kotlin's.** The release certifier categorizes a failure as
+   `EXPECTED`, `INFRASTRUCTURE`, `REPRODUCIBLE_DEFECT` or `UNEXPECTED`
+   using its evidence contract. Pipeline-kotlin does not edit those
+   labels back to `EXPECTED` to clear a gate. A reproducible defect stays
+   a reproducible defect until the underlying behavior is changed and
+   observed to clear at HEAD under the same `(contract, scenario)` pair.
+
+R6. **Reverification is on the certifier's clock, not ours.** When
+   pipeline-kotlin ships a fix, it states the expected revert by
+   `(contract, scenario, signature)` rather than by issue number or
+   commit. The release certifier runs the reverification on its own
+   schedule (poll-then-webhook, in that order) and updates the issue
+   state when the evidence agrees. Pipeline-kotlin does not self-close a
+   release-certifier issue, even when a PR that "looks like the fix" is
+   merged.
+
+R7. **No silent coupling.** Pipeline-kotlin does not import, depend on,
+   or read from `pipelinek-release-harness`. It does not subscribe to
+   release-certifier events. Interaction is one-directional: the release
+   certifier observes pipeline-kotlin; pipeline-kotlin does not observe
+   the release certifier. Breaking this rule implicitly couples the two
+   projects and is rejected.

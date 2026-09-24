@@ -250,6 +250,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                effectiveWorkingDirectory = context.shOptions.workingDirectory,
             )
             builder[STASH_OPERATIONS_CAPABILITY] = stashOps
         }

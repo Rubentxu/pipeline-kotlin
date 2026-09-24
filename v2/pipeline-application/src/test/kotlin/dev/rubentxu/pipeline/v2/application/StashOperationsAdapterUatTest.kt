@@ -41,6 +41,7 @@ class StashOperationsAdapterUatTest {
         runId: String,
         controlDirRoot: Path,
         workspaceBase: Path,
+        effectiveWorkingDirectory: Path? = null,
         eventSink: InMemoryEventStore = sink(),
     ): StashOperationsAdapter {
         Files.createDirectories(workspaceBase)
@@ -50,6 +51,7 @@ class StashOperationsAdapterUatTest {
             controlDirRoot = controlDirRoot,
             eventSink = eventSink,
             workspaceBase = workspaceBase,
+            effectiveWorkingDirectory = effectiveWorkingDirectory,
         )
     }
 
@@ -64,6 +66,38 @@ class StashOperationsAdapterUatTest {
             }
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * WU-RP-053 cut 5 RED: stash and unstash inherit the immutable cwd of
+     * `dir(...)`. A stash in `dir("nested")` must neither capture files from
+     * the enclosing workspace nor restore them there.
+     */
+    @Test
+    fun `stash and unstash inside dir use effective cwd as their base`(
+        @TempDir tmp: Path,
+    ) {
+        val checkout = Files.createDirectories(tmp.resolve("checkout"))
+        val nested = Files.createDirectories(checkout.resolve("nested"))
+        val rootFile = Files.writeString(checkout.resolve("keep-root.txt"), "root")
+        val nestedFile = Files.writeString(nested.resolve("roundtrip.txt"), "nested")
+        val adapter = newAdapter(
+            runId = "rp053-stash-cwd",
+            controlDirRoot = tmp.resolve("control"),
+            workspaceBase = checkout,
+            effectiveWorkingDirectory = nested,
+        )
+
+        val stashed = adapter.stash(StashInput(name = "nested", includes = "**/*.txt"))
+        assertTrue(stashed is StashSuccess, "expected stash success, got $stashed")
+        stashed as StashSuccess
+        assertEquals(listOf("roundtrip.txt"), stashed.entries.map { it.relPath })
+
+        Files.delete(nestedFile)
+        val restored = adapter.unstash(UnstashInput(name = "nested"))
+        assertTrue(restored is StashRestoredResult, "expected unstash success, got $restored")
+        assertEquals("nested", Files.readString(nestedFile))
+        assertEquals("root", Files.readString(rootFile))
     }
 
     // ============================================================================

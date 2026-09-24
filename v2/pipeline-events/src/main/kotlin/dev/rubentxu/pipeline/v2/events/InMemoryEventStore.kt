@@ -69,6 +69,8 @@ class InMemoryEventStore : EventSink {
             // ML-R9 workflow-control events
             is DirEntered -> event.copy(sequence = assignedSequence)
             is DirExited -> event.copy(sequence = assignedSequence)
+            // WU-RP-053-DIR-FAILURE-MODE — typed event for dir(..) Contained failure
+            is BlockFailureContained -> event.copy(sequence = assignedSequence)
             // ML-R9 workspace-cleanup events (T-05)
             is DirDeleted -> event.copy(sequence = assignedSequence)
             is WsCleaned -> event.copy(sequence = assignedSequence)

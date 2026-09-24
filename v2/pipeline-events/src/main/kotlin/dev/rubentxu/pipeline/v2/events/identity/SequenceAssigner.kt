@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactEntry
+import dev.rubentxu.pipeline.v2.events.BlockFailureContained
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
@@ -64,6 +65,7 @@ internal object SequenceAssigner {
         is AgentResolved -> event.copy(sequence = sequence)
         is ArtifactArchived -> event.copy(sequence = sequence)
         is ArtifactArchiveFailed -> event.copy(sequence = sequence)
+        is BlockFailureContained -> event.copy(sequence = sequence)
         is CatchErrorTriggered -> event.copy(sequence = sequence)
         is CompilationFinished -> event.copy(sequence = sequence)
         is CompilationStarted -> event.copy(sequence = sequence)

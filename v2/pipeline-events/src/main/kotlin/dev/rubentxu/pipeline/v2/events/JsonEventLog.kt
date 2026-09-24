@@ -385,6 +385,18 @@ object JsonEventLog {
                 sb.append(",\"restoredTo\":")
                 sb.append(jsonString(event.restoredTo))
             }
+            is BlockFailureContained -> {
+                sb.append(",\"path\":")
+                sb.append(jsonString(event.path))
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex)
+                sb.append(",\"stepName\":")
+                sb.append(jsonString(event.stepName))
+                sb.append(",\"failureKind\":")
+                sb.append(jsonString(event.failureKind.name))
+                sb.append(",\"message\":")
+                sb.append(jsonString(event.message))
+            }
             is DirDeleted -> {
                 sb.append(",\"path\":")
                 sb.append(jsonString(event.path))
@@ -1066,6 +1078,29 @@ object JsonEventLog {
                     occurredAt = occurredAt,
                     path = path,
                     restoredTo = restoredTo,
+                )
+            }
+            "BlockFailureContained" -> {
+                val path = stringField(s, "path") ?: ""
+                val stageIndex = intField(s, "stageIndex") ?: 0
+                val stepName = stringField(s, "stepName") ?: ""
+                val failureKindStr = stringField(s, "failureKind") ?: "UNKNOWN"
+                val failureKind = try {
+                    FailureKind.valueOf(failureKindStr)
+                } catch (_: Exception) {
+                    FailureKind.UNKNOWN
+                }
+                val message = stringField(s, "message") ?: ""
+                BlockFailureContained(
+                    eventId = eventId,
+                    runId = runId,
+                    sequence = sequence,
+                    occurredAt = occurredAt,
+                    path = path,
+                    stageIndex = stageIndex,
+                    stepName = stepName,
+                    failureKind = failureKind,
+                    message = message,
                 )
             }
             "DirDeleted" -> {

@@ -283,7 +283,18 @@ internal sealed interface InvocationReconciliation {
 
 internal sealed interface BlockShellScope {
     data object None : BlockShellScope
-    data class Directory(val target: Path, val previous: Path) : BlockShellScope
+    /**
+     * WU-RP-053-DIR-FAILURE-MODE: a `dir(...)` block. The [failureMode] decides
+     * whether a StepFailed inside the block aborts the stage ([AbortStage]) or
+     * is contained so the pipeline continues with the next sibling
+     * ([Contained], the Jenkins default).
+     */
+    data class Directory(
+        val target: Path,
+        val previous: Path,
+        val failureMode: dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode =
+            dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode.Contained,
+    ) : BlockShellScope
     data class TimestampsScope(val runId: String) : BlockShellScope
     data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
 
@@ -411,6 +422,23 @@ internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExec
         ?: return BodyExecutionProjection.InvalidInput("requires a path")
     if (path.isBlank()) return BodyExecutionProjection.InvalidInput("path must not be blank")
 
+    // WU-RP-053-DIR-FAILURE-MODE: read the optional `failureMode` field from the
+    // payload. The DSL surface may carry `mode = AbortStage` (legacy opt-in).
+    // Default is Contained (Jenkins-faithful); unknown values are rejected as a
+    // typed schema rejection BEFORE any effect, in line with the rest of the
+    // fail-closed projection family.
+    val failureMode: dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode =
+        when (val rawMode = payload["failureMode"]?.jsonPrimitive?.contentOrNull) {
+            null, "Contained" ->
+                dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode.Contained
+            "AbortStage" ->
+                dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode.AbortStage
+            else ->
+                return BodyExecutionProjection.InvalidInput(
+                    "unknown failureMode='$rawMode' (expected Contained | AbortStage)",
+                )
+        }
+
     val previous = options.workingDirectory ?: options.workspaceRoot
     val target = Path.of(path).let { candidate ->
         if (candidate.isAbsolute) candidate else previous.resolve(candidate)
@@ -418,7 +446,7 @@ internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExec
     if (!Path.of(path).isAbsolute && !target.startsWith(previous)) {
         return BodyExecutionProjection.InvalidInput("path escapes the workspace: $path")
     }
-    return BodyExecutionProjection.Scope(BlockShellScope.Directory(target, previous))
+    return BodyExecutionProjection.Scope(BlockShellScope.Directory(target, previous, failureMode))
 }
 
 internal fun BlockStepNode.projectEnvironment(options: ShOptions): BodyExecutionProjection {

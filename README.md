@@ -74,6 +74,37 @@ or needing `sudo`).
 > install from GitHub Releases as shown above. See
 > [Distribution channels](#distribution-channels) for the full picture.
 
+### 1.1 Install with the script (multi-version manager)
+
+If you want multiple versions side-by-side and easy rollback, fetch
+and run the in-tree installer. It downloads the same canonical ZIP,
+verifies its SHA-256 against the `.sha256` published next to the
+release, and unpacks under `~/.local/share/pipelinek/versions/`:
+
+```bash
+VERSION=0.39.0
+
+curl -fL -o "install-pipelinek.sh" \
+  "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
+
+chmod +x install-pipelinek.sh
+./install-pipelinek.sh install "${VERSION}"   # download + verify + install
+./install-pipelinek.sh use "${VERSION}"       # switch the active version
+./install-pipelinek.sh list                  # installed versions + active
+./install-pipelinek.sh doctor                # run pipelinek doctor (active)
+
+# Activate in your shell:
+export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
+pipelinek version                            # → pipeline 0.39.0
+```
+
+Available subcommands: `install`, `use`, `list`, `uninstall`, `doctor`,
+`help`. The script has a fail-closed URL allowlist
+(`github.com`, `objects.githubusercontent.com`) and refuses to install
+if the SHA-256 of the downloaded ZIP does not match the published
+digest. It never uses `sudo` and never spawns a daemon. Source:
+[`scripts/install-pipelinek.sh`](scripts/install-pipelinek.sh).
+
 ### 2. Write a pipeline
 
 Create `pipeline.kts`:
@@ -204,6 +235,7 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 | Channel | Status (2026-09-24) | Notes |
 |---|---|---|
 | **GitHub Releases ZIP** | **Available** | Canonical artifact. ZIP + SHA-256 + CycloneDX SBOM + release manifest. |
+| **Multi-version installer** (`scripts/install-pipelinek.sh`) | **Available** | Bash installer in this repo: `install <v>` / `use <v>` / `list` / `uninstall <v>` / `doctor`. URL allowlist fail-closed; SHA-256-verified; no `sudo`. See [§1.1](#11-install-with-the-script-multi-version-manager). |
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
 | **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. Track [WU-LPR-080](docs/v2/05-roadmap/LPR_WORK_UNITS.md). See [ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md). |
 | **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. Listed as LFC9-004 in the historical distribution backlog (`docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG.md`). |

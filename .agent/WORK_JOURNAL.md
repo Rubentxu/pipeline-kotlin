@@ -2117,3 +2117,19 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
   - `CompatibilityCorpusTest` (30 fixtures): 33 fixtures estaban borrados en working tree (WIP del operador). Restaurados vía `git checkout HEAD -- v2/compatibility/`. Tras restore, sólo fixture10 sigue roja — defecto conocido pre-existente (`S2_B10_ARCHIVEARTIFACTS_G2`: legacy glob engine incompatible con LF-0208 single-spine).
   - `UatLocal007SandboxProfileTest` (4), `UatLocal008CredentialsTest` (1), `UatLocal011WorkflowControlTest` (1), `UatCompat001CorpusSmokeRunTest` (2), `UatLocal005CorpusUntouchedTest` (2), `Lfc2WaitUntilCanonicalReentryFitnessTest` (1): todas dependencias del fixture10 + pre-existentes sin relación con cortes.
 - L5 con cortes aplicados (cut5-stash-cwd-rebase) NO ejecutado en este turno porque: (i) las pruebas quirúrgicas cut5 (58/58 + 4 skipped) son más discriminantes que L5 completo; (ii) regla 4b prohíbe L5 como gate de candidato. Si el operador quiere L5 sobre cut5 antes de promover, el comando es `cd v2 && timeout 1270 ./gradlew check` desde la rama.
+
+## 2026-09-24T21:13Z — WU-RP-040-R3.4 dependency-audit CI job (CLOSED)
+- Evaluación de opciones para dependency-audit:
+  - OWASP `dependency-check` plugin: descartado (HTTP 403 risk cold-cache, ~400MB NVD feed).
+  - trivy/grype: descartado (binarios externos nuevos en self-hosted).
+  - **Elegido** `gradle/actions/dependency-submission@v3` (oficial GH, zero NVD download).
+- Decisión registrada en receipt: este approach "alimenta" Dependabot (somete el grafo resuelto), no evalúa CVEs directamente. La CVE eval la hace Dependabot contra el grafo submitted.
+- Implementación: nuevo job `dependency-audit` en `.github/workflows/lpr0-ci.yml` siguiendo patrón `sbom` (self-hosted, temurin-21, warm-cache con key `lpr0-deps-`). Step core: `gradle/actions/dependency-submission@v3` con `gradle-project-root-path: v2`. Step preliminar: `./gradlew help` para resolver plugin classpath (1.6s en local).
+- Verificación local: YAML parse OK; actionlint pre-existing SC2086 línea 142 (no introducido por este WU); `./gradlew -q help` exit 0 en 1.6s.
+- Verificación CI: NOT_RUN (rule 6, blocked sin operator gate sobre exact bytes). Recibo honesto.
+- Cambios: +53 líneas workflow + 196 líneas docs (PLAN + RECEIPT). Cero producción. Cero nuevos plugins/SHA pins.
+- Side-finding: R3 secret-scan (gitleaks) sigue KNOWN_GAP; recomiendo WU-RP-040-R3-SC futuro.
+- 2 commits atómicos:
+  - `5039e43a ci(r3.4): add dependency-audit job using gradle/actions/dependency-submission@v3`
+  - `5bbade85 docs(r3.4): WU-RP-040-R3.4 PLAN + RECEIPT for dependency-audit CI job`
+- Branch `wu/rp-053-followup-workspace-mode` ahora en `5bbade85`, contiene WU-RP-053-FOLLOWUP + R3.4. Working tree limpio. Merge a `wu/rp-053-merge` operator-gated.

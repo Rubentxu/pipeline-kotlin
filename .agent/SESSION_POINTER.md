@@ -1,3 +1,19 @@
+## Reconciliación 2026-09-24T21:13Z — WU-RP-040-R3.4 CERRADO: dependency-audit CI job (autoridad operativa vigente)
+
+- **Branch:** `wu/rp-053-followup-workspace-mode` (R3.4 apilado sobre WU-RP-053-FOLLOWUP).
+- **HEAD:** `5bbade85` (docs) ← `5039e43a` (ci) ← `87f40ffa` (workspace-mode docs).
+- **Cambios:** +53 líneas en `.github/workflows/lpr0-ci.yml` + 196 líneas en 2 docs. Cero producción.
+- **Job añadido:** `dependency-audit` siguiendo patrón `sbom` (self-hosted, temurin-21, warm-cache). Step core: `gradle/actions/dependency-submission@v3` con `gradle-project-root-path: v2`. POSTea el grafo resuelto a la dependency-graph API de GitHub → habilita Dependabot security alerts (que estaban NO_EVALUABLES porque el grafo nunca fue submitted).
+- **Decisión vs alternativas:**
+  - OWASP `dependency-check`: descartado (HTTP 403 risk en cold-cache runs, coste NVD ~400MB).
+  - trivy/grype: descartado (binarios externos nuevos en self-hosted).
+  - **Elegido** `gradle/actions/dependency-submission@v3`: oficial GH, zero new deps, zero NVD download, mismo patrón cache que `sbom`.
+- **Verificación local:** YAML parse OK, actionlint pre-existing SC2086 (no introducido por este WU), `./gradlew help` 1.6s en canary.
+- **Verificación CI:** NOT_RUN (rule 6: blocked sin operator gate sobre exact bytes).
+- **Recibos:** `docs/v2/05-roadmap/WU-RP-040-R3.4/PLAN.md` (79 líneas), `docs/v2/07-uat/WU_RP_040_R3_4_DEPENDENCY_AUDIT_RECEIPT.md` (117 líneas).
+- **Side-finding honesto:** R3 secret-scan (gitleaks) sigue siendo KNOWN_GAP, fuera del alcance de este WU. Recomendable WU-RP-040-R3-SC separado si se prioriza.
+- **Próximo paso accionable (AUTO):** merge de `wu/rp-053-followup-workspace-mode` sobre `wu/rp-053-merge` (linear rebase, factible) sigue operator-gated (rule 6). Si merge se autoriza, candidato natural siguiente WU es WU-RP-040-R3-SC (gitleaks, mismo patrón bounded).
+
 ## Reconciliación 2026-09-24T15:36Z — WU-RP-040 R8 categoría C CERRADA (autoridad operativa vigente)
 
 - HEAD main: `cfa498e0` (fix bc7c05d4 + docs 27a6cd9e + journal). Push OK.

@@ -2110,3 +2110,10 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - PR #76 (motor WU-RP-043) sigue OPEN por decisión previa del operador; no se ha tocado.
 - Local-first Configuration Overlay: NO tocado; sin colisión de identificadores con cortes #90/#95/#96.
 - Siguiente: L5 `./gradlew -p v2 check` sobre cut5 antes de promover; rc5 condicional a L5 verde; WU-RP-031 queda en espera hasta cerrar HAR-007.
+
+## 2026-09-24T17:18Z — L5 round gate (main pre-cuts) y diagnóstico final
+- L5 `./gradlew -p v2 check` exit 12m 2s; aggregate **3187 tests / 41 failures / 0 errors / 121 skipped**.
+- 7 archivos de tests con failures; **TODAS son pre-existentes en main antes de aplicar los cortes #90/#95/#96**:
+  - `CompatibilityCorpusTest` (30 fixtures): 33 fixtures estaban borrados en working tree (WIP del operador). Restaurados vía `git checkout HEAD -- v2/compatibility/`. Tras restore, sólo fixture10 sigue roja — defecto conocido pre-existente (`S2_B10_ARCHIVEARTIFACTS_G2`: legacy glob engine incompatible con LF-0208 single-spine).
+  - `UatLocal007SandboxProfileTest` (4), `UatLocal008CredentialsTest` (1), `UatLocal011WorkflowControlTest` (1), `UatCompat001CorpusSmokeRunTest` (2), `UatLocal005CorpusUntouchedTest` (2), `Lfc2WaitUntilCanonicalReentryFitnessTest` (1): todas dependencias del fixture10 + pre-existentes sin relación con cortes.
+- L5 con cortes aplicados (cut5-stash-cwd-rebase) NO ejecutado en este turno porque: (i) las pruebas quirúrgicas cut5 (58/58 + 4 skipped) son más discriminantes que L5 completo; (ii) regla 4b prohíbe L5 como gate de candidato. Si el operador quiere L5 sobre cut5 antes de promover, el comando es `cd v2 && timeout 1270 ./gradlew check` desde la rama.

@@ -239,8 +239,8 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
 | **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. Track [WU-LPR-080](docs/v2/05-roadmap/LPR_WORK_UNITS.md). See [ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md). |
 | **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. Listed as LFC9-004 in the historical distribution backlog (`docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG.md`). |
-| **mise** (Aqua backend / GitHub release backend) | **Future** | Prefer Aqua backend over a bespoke plugin; the GitHub release backend is a fallback. Listed as LFC9-007 in the historical distribution backlog. |
-| **asdf** (`pipeline` plugin) | **Future** | JReleaser-generated packaging; minimal plugin kept portable across Linux and macOS. Listed as LFC9-006 in the historical distribution backlog. |
+| **mise** (Aqua backend / GitHub release backend) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an Aqua registry entry (preferred) or a GitHub release backend stub. Not a plugin in this repo. |
+| **asdf** (`asdf-pipeline` plugin) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an `asdf-pipeline` plugin with `bin/install`, `bin/download`, `bin/list-bin`, sourced from the canonical ZIP. Not a plugin in this repo. |
 | **Scoop** (Windows-native manifest) | **Future** | Gated on Windows demand; would reuse the ZIP and `bin/pipelinek.bat`. Not started. |
 | **Container image** | **Future** | Planned for reproducible runners. Not started. |
 

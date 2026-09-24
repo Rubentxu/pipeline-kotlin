@@ -385,3 +385,56 @@ jobs:
           path: |
             v2/pipeline-application/build/reports/bom.json
             v2/pipeline-application/build/reports/bom.xml
+
+  # WU-RP-040 R3.4: dependency audit job. Closes the R3.4 KNOWN_GAP from
+  # docs/v2/07-uat/WU_RP_040_RECEIPT.md: no job that submits the resolved
+  # dependency snapshot to GitHub's Dependabot graph existed.
+  #
+  # Strategy: `gradle/actions/dependency-submission@v3` is the official GitHub
+  # action that drives `gradle dependencies`, parses the resolved graph per
+  # project, and POSTs it to the dependency-graph API. The graph then powers
+  # Dependabot alerts (security advisories) and PRs (version updates) for the
+  # exact build of the SHA that ran. No CVEs are evaluated here directly; this
+  # job is the SOURCE for Dependabot. CVE evaluation lives in
+  # .github/dependabot.yml (already shipped in WU-RP-040 R6).
+  #
+  # Ratchet: dependency-submission is non-failing by design (it just submits a
+  # snapshot). A separate `dependency-audit-known-vulnerable` job can be added
+  # later if an offline CVE check is needed; the OWASP `dependency-check` plugin
+  # requires a fresh NVD feed download per run (HTTP 403 risk, observed in
+  # 2026-09-23 cold-cache runs).
+  dependency-audit:
+    name: dependency-audit (gradle dependency-submission)
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
+      # Same cache pattern as sbom/compile: warm caches avoid HTTP 403 from
+      # Maven Central cold downloads (lesson from WU-RP-051-bis).
+      - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-lpr0-deps-${{ hashFiles('v2/**/build.gradle.kts', 'v2/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-lpr0-deps-
+      # Resolve configurations so dependency-submission has a graph to inspect.
+      # `./gradlew help` is intentionally cheap (no compile, no test) — it
+      # triggers plugin classpath resolution without warming the full build.
+      # The action itself re-runs `./gradlew :app:dependencies` per project.
+      - name: Gradle help (triggers plugin classpath resolution)
+        run: cd v2 && ./gradlew -q help
+      # Official GitHub action: drives `gradle dependencies` for each project,
+      # POSTs the resolved graph to the dependency-graph API for this SHA.
+      # Authorization: requires `contents: write` on the workflow token; this
+      # is the default for jobs on `main` and self-hosted runners.
+      - name: Submit dependency graph to GitHub
+        uses: gradle/actions/dependency-submission@v3
+        with:
+          gradle-project-root-path: v2

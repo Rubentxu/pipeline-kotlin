@@ -1886,12 +1886,16 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 
 ## Release candidates
 
-1. **Responsabilidad:** este repositorio produce candidatas inmutables de PipelineK. Cada candidata es un ZIP reproducible con su digest SHA-256 registrado y un manifiesto listo para su examen por `Rubentxu/pipelinek-release-harness`, que es quien la certifica externamente y la promociona.
+1. **Responsabilidad:** este repositorio produce candidatas inmutables de PipelineK. Cada candidata es un ZIP reproducible con su digest SHA-256 registrado y un manifiesto listo para su examen por `Rubentxu/pipelinek-release-harness`, que la somete a proyectos reales y, si supera el gate, la promociona a release estable. La promoción sube los mismos bytes del ZIP: nunca una reconstrucción.
 
-2. **Tests del cambio:** ejecutar únicamente los tests directamente afectados por el cambio y sus dependencias inmediatas. No correr matrices externas, benchmarks prolongados ni la batería completa en cada iteración.
+2. **Tests del cambio:** ejecutar únicamente los tests directamente afectados por el cambio y sus dependencias inmediatas. La matriz completa de proyectos externos NO se corre aquí; esa verificación vive en el harness y se ejecuta contra la candidata ya construida.
 
 3. **Defectos:** corregir la causa raíz, añadir test de regresión y entregarlos como parte de la siguiente candidata. Describir en el commit los contratos afectados, los tests ejecutados y el SHA del fix.
 
-4. **Candidata:** una vez cumplido el lote correspondiente, construir el ZIP de distribución, calcular su SHA-256 y emitir su manifiesto. La candidata es inmutable: una vez enviada, sus bytes no se vuelven a modificar.
+4. **Candidata:** una vez cumplido el lote, construir el ZIP de distribución, calcular su SHA-256 y emitir un manifiesto de candidata con esquemas verificables y trazabilidad a los commits que contiene. La candidata es inmutable: sus bytes no se modifican después de enviada. El manifiesto debe permitir auditar la decisión de certificación sin confiar en comentarios sueltos.
 
-5. **Continuidad:** mientras el harness examina una candidata, este repositorio continúa con la siguiente WU independiente. Un bloqueo del harness afecta solo al artefacto certificado, no al roadmap.
+5. **Verificación externa honesta:** el harness publica resultados estructurados (recibos, NDJSON, evidencia persistente) en su propio almacén. Los check runs y commit statuses sirven como vista y como mecanismo de protección de PR, pero el resultado completo y su evidencia NO viven en comentarios libres de GitHub. La decisión de promoción es del harness sobre su recibo, no sobre reacciones en una PR.
+
+6. **Bloqueo del harness afecta sólo al artefacto:** un fallo detectado por el harness (por ejemplo, una regresión contra PetClinic) impide promocionar esa candidata, pero NO paraliza el desarrollo de la siguiente WU en este repositorio. Aquí no hay una promoción implícita ligada al estado de la certificación externa.
+
+7. **Continuidad:** mientras el harness examina una candidata, este repositorio continúa con la siguiente WU independiente. Las correcciones siguientes producen candidatas nuevas; la anterior queda bloqueada como evidencia hasta que suelte o se reincorpore.

@@ -14,7 +14,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.39.0"
+version = "0.39.1-rc1"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

@@ -788,7 +788,15 @@ fun main(args: Array<String>) {
     if (contributedPlugins.isNotEmpty()) {
         System.err.println("Discovered external Step plugins: " + contributedPlugins.joinToString(", "))
     }
-    val runOutcome: RunOutcome? = when {
+    // UAT-RP-024 collateral finding fix (shutdown race 1/3): the sqlite
+    // single-writer thread is NON-daemon. If any exception escapes the run
+    // or the stdout envelope streaming below, rawEventStore.close() is
+    // skipped, the writer keeps blocking on queue.take(), and
+    // DestroyJavaVM hangs forever (observed: first replay of the dogfood
+    // receipt hung until manual kill). Compute the outcome and the last
+    // event inside the try; guarantee the close in finally on every path.
+    val runOutcomeAndLastEvent: Pair<RunOutcome?, dev.rubentxu.pipeline.v2.events.DomainEvent?> = try {
+    val outcome: RunOutcome? = when {
         // LFC-2R / R4B: the scripted FRONTEND form runs against the SAME durable
         // authority (journal, registry, event sink, control root) composed for the
         // canonical path. This is a frontend selection, never a second runner: the
@@ -842,17 +850,22 @@ fun main(args: Array<String>) {
     // event for the legacy outcome branch — never materialise the full list or a
     // single monolithic JSON String (1 GiB transcripts made this multi-GB).
     val eventSequence = eventStore.eventsFor(runId)
-    var lastEvent: dev.rubentxu.pipeline.v2.events.DomainEvent? = null
+    var lastEventCaptured: dev.rubentxu.pipeline.v2.events.DomainEvent? = null
     val stdout = System.out
     val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(stdout, Charsets.UTF_8), 1 shl 16)
-    val lastEventRef = { event: dev.rubentxu.pipeline.v2.events.DomainEvent -> lastEvent = event }
+    val lastEventRef = { event: dev.rubentxu.pipeline.v2.events.DomainEvent -> lastEventCaptured = event }
     JsonEventLog.encodeTo(eventSequence.map { event ->
         lastEventRef(event)
         event
     }, writer)
     writer.flush()
     rawEventStore.close()
-    // D5: 3-state outcome widening — unstable exits 0 like success, failure exits 1.
+    Pair(outcome, lastEventCaptured)
+    } finally {
+        runCatching { rawEventStore.close() }
+    }
+    val runOutcome = runOutcomeAndLastEvent.first
+    val lastEvent = runOutcomeAndLastEvent.second
     // When the coordinator ran, the typed outcome is the single authority for the
     // exit decision; the legacy event-based branch only covers compile-failure
     // paths where no definition was produced.

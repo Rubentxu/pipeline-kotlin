@@ -12,7 +12,7 @@
     <ID>LargeClass:JsonEventLog.kt:JsonEventLog</ID>
     <ID>LongMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: DomainEvent?</ID>
     <ID>LongMethod:JsonEventLog.kt:JsonEventLog$private fun encodeEvent: String</ID>
-    <ID>MaxLineLength:DomainEventRoundTripTest.kt:DomainEventRoundTripTest$"DomainEvent sealed hierarchy must have exactly 51 variants (48 + 3 added in WU-LPR-090: HtmlReportPublished/HtmlReportSkipped/HtmlReportFailed). Found: ${sealedSubclasses.map { it.simpleName }}"</ID>
+    <ID>MaxLineLength:DomainEventRoundTripTest.kt:DomainEventRoundTripTest$"DomainEvent sealed hierarchy must have exactly 52 variants (51 prior + 1 added in WU-RP-053-DIR-FAILURE-MODE: BlockFailureContained). Found: ${sealedSubclasses.map { it.simpleName }}"</ID>
     <ID>MaxLineLength:InMemoryOperationJournalContractTest.kt:InMemoryOperationJournalContractTest$journal.beginOperation("op-b", 1, fingerprint = "b".repeat(64), inputJson = "{\"stepId\":\"sh\",\"params\":{},\"runId\":\"run-1\",\"attempt\":1}", deadlineMs = 5000L)</ID>
     <ID>MaxLineLength:InMemoryOperationJournalContractTest.kt:InMemoryOperationJournalContractTest$journal.beginOperation("op-b", 1, fingerprint = "b".repeat(64), inputJson = "{\"stepId\":\"sh\",\"params\":{},\"runId\":\"run-1\",\"attempt\":1}", deadlineMs = null)</ID>
     <ID>MaxLineLength:JsonEventLogRoundTripTest.kt:JsonEventLogRoundTripTest$val encoded = """[{"eventId":"e1","runId":"r1","sequence":1,"kind":"CredentialBound","occurredAt":"2026-08-27T10:00:00Z","credentialsId":"github","purpose":"ENV"},{"eventId":"e2","runId":"r1","sequence":2,"kind":"FutureEventKind","occurredAt":"2026-08-27T10:00:00Z","extra":"data"}]"""</ID>

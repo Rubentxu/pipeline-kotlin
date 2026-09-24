@@ -11,7 +11,7 @@ import kotlin.reflect.full.memberProperties
  *
  * Architecture test that enforces DomainEvent sealed hierarchy is complete.
  *
- * The sealed hierarchy must contain exactly 44 variants:
+ * The sealed hierarchy must contain exactly 52 variants:
  * - 23 existing (ML-R1 through ML-R6)
  * - 4 new for ML-R7 (FileWritten, FileRead, ArtifactArchived, ArtifactArchiveFailed)
  * - 6 new for ML-R9 T-06 (DirEntered, DirExited, DirDeleted, WsCleaned, CatchErrorTriggered, StageMarkedUnstable)
@@ -20,17 +20,21 @@ import kotlin.reflect.full.memberProperties
  * - 2 new for ML-R9 T-09 (MilestoneReached, MilestoneAborted)
  * - 1 new for ML-R9 T-10 (TimeoutTriggered)
  * - 1 new for S2.5.7 / B1.2c3 (StepAdmissionObserved) — LB-01 spine consolidation, WU-1
+ * - 1 new for WU-RP-053-DIR-FAILURE-MODE (BlockFailureContained) — typed event for the
+ *   Jenkins-faithful `dir(...) { ... }` Contained failure-mode semantics. The variant
+ *   carries the captured failure of a child step inside a dir(...) block while the
+ *   cwd is still restored and the pipeline continues with the next sibling statement.
  * NOTE: ArtifactEntry is a nested data class, not a standalone DomainEvent
  *
  * This CLOSES the DomainEvent exhaustivity invariant from ADR-0046 §D2.
  *
- * RED: AssertionError (hierarchy count != 44)
- * GREEN: After S2.5.7 WU-1 addition, hierarchy count == 44
+ * RED: AssertionError (hierarchy count != 52)
+ * GREEN: After WU-RP-053-DIR-FAILURE-MODE addition, hierarchy count == 52
  */
 class FArchL7DomainEventExhaustivityTest {
 
     /**
-     * Verifies DomainEvent sealed hierarchy contains exactly 51 variants.
+     * Verifies DomainEvent sealed hierarchy contains exactly 52 variants.
      *
      * Expected variants (23 existing + 4 ML-R7 + 6 ML-R9 T-06 + 3 ML-R9 T-07 + 2 ML-R9 T-07 + 2 ML-R9 T-09 + 1 ML-R9 T-10 + 2 ML-R9 T-08):
      * 1. RunStarted
@@ -84,13 +88,14 @@ class FArchL7DomainEventExhaustivityTest {
      * 49. HtmlReportPublished (WU-LPR-090 phase-a — core.publishHtml observability)
      * 50. HtmlReportSkipped (WU-LPR-090 phase-a — core.publishHtml observability)
      * 51. HtmlReportFailed (WU-LPR-090 phase-a — core.publishHtml typed failure observability)
+     * 52. BlockFailureContained (WU-RP-053-DIR-FAILURE-MODE — typed dir(...) contained-failure event)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_51_variants`() {
+    fun `domain_event_sealed_hierarchy_has_52_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 51 // 48 + HtmlReport{Published,Skipped,Failed} (WU-LPR-090 phase-a)
+        val expectedCount = 52 // 51 + BlockFailureContained (WU-RP-053-DIR-FAILURE-MODE)
 
         assertEquals(
             expectedCount,

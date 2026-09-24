@@ -1882,3 +1882,20 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 - Preserved PAR-D law: the execution context is not durable truth;
   fingerprint, journal identity, and replay semantics are independent of
   context threading.
+
+
+## Coordinación con Release Harness — desarrollo y correcciones
+
+1. **Responsabilidad:** este repositorio desarrolla PipelineK, conserva los tests rápidos de sus contratos internos y produce candidatas inmutables. `Rubentxu/pipelinek-release-harness` ejecuta la certificación externa y promociona las candidatas aprobadas a releases estables.
+
+2. **Trabajo diario:** ejecutar tests quirúrgicos según impacto. No repetir matrices externas, benchmarks prolongados ni suites completas en cada iteración. No retirar pruebas existentes hasta que su sustitución en el harness haya demostrado equivalencia.
+
+3. **Defectos recibidos:** consultar las issues abiertas creadas por el harness y priorizar las que bloquean una candidata. Reproducir el defecto, identificar la causa, añadir su test de regresión y aplicar una corrección atómica.
+
+4. **Trazabilidad:** enlazar la issue en el commit o PR corrector. Indicar contratos afectados, tests ejecutados y SHA de la corrección. No cerrar una issue de certificación únicamente porque los tests locales estén verdes.
+
+5. **Nueva candidata:** cuando la corrección y el lote correspondiente cumplan sus criterios, construir un nuevo ZIP reproducible, registrar su digest y enviar su manifiesto al harness. Nunca modificar los bytes de una candidata anterior.
+
+6. **Cierre del defecto:** corresponde al harness verificar la corrección en una distribución instalada y cerrar la issue con su recibo. Un test local verde no sustituye esa verificación externa.
+
+7. **Continuidad:** mientras el harness certifica una candidata, continuar desarrollando la siguiente WU independiente. La certificación bloquea la promoción del artefacto afectado, no todo el roadmap.

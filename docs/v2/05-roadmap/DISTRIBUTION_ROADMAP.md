@@ -35,18 +35,21 @@ pipelinek-release-harness (externo)
                 mise  Homebrew SDKMAN
 ```
 
-## 1. Estado al 2026-09-24
+## 1. Estado al 2026-09-24 (post-merge PR #73, #74, #75, #77, #78)
 
 | Canal | Estado | Detalle |
 |---|---|---|
 | **GitHub Releases ZIP** | **Available** | `pipelinek-0.39.0.zip` (91.4 MB, SHA-256 `385b140c…cbb8`). Install path oficial hoy. |
 | **Direct download** | **Available** | Mismo ZIP sin caché de red intermedio. |
-| **OCI image** | **In progress** | El harness ya tiene `pipelinek:0.39.0` con mise; falta separar la imagen producto (mínima) de la imagen del harness (con toolchains de 5 lenguajes) y publicar la primera en Docker Hub con digest. |
-| **Instalador autónomo** (bash) | **Not started** | DIST-2: `pipeline-install.sh` versionado, con checksum, rollback, doctor. |
-| **mise Aqua backend / GitHub release backend** | **Not started** | DIST-4: registrar `pipelinek` como herramienta instalable desde Aqua o GitHub release backend. |
-| **Homebrew tap** (`rubentxu/tap/pipeline`) | **Not started** | DIST-5. Histórico LFC9-004 archivado. |
-| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding. 3 pasos pendientes: publish, install UAT, promote to default. No bloquea otras releases. |
+| **Instalador autónomo** (bash) | **Available** | DIST-2 cerrado: `scripts/install-pipelinek.sh` versionado en main (commit `9a4a09a3`, SHA-256 `f86d1d2f…`). URL allowlist fail-closed, SHA-256 verificado, no sudo, no daemon. |
+| **OCI image** | **In progress (harness)** | DIST-3: el harness ya tiene `pipelinek:0.39.0` con mise; falta separar la imagen producto (mínima) de la imagen del harness (con toolchains de 5 lenguajes) y publicar la primera en Docker Hub con digest. Vive en el harness. |
+| **mise Aqua backend / GitHub release backend** | **Not started (harness)** | DIST-4: registrar `pipelinek` como herramienta instalable desde Aqua o GitHub release backend. **Vive en el harness** (registry externo a este repo). |
+| **Homebrew tap** (`rubentxu/tap/pipeline`) | **Not started (harness)** | DIST-5: tap externo. Histórico LFC9-004 archivado. **Vive en el harness.** |
+| **SDKMAN** (`pipelinek` candidate) | **Pending (harness)** | DIST-6: vendor onboarding. 3 pasos pendientes: publish, install UAT, promote to default. **No bloquea otras releases**; el operador confirmó 2026-09-24T11:20Z que SDKMAN no es necesario para distribuir v0.39.0 hoy. |
+| **asdf-vm** (`asdf-pipeline` plugin) | **Not started (harness)** | DIST-7: plugin externo con `bin/install`, `bin/download`, `bin/list-bin`. **Vive en el harness.** |
 | **Scoop** | **Future** | Condicionado a demanda Windows. |
+
+**Resumen v0.39.0:** los usuarios pueden instalar la versión pública YA, por dos canales oficiales (ZIP + instalador bash). Ningún otro canal es necesario para usar el producto hoy.
 | **Jlink / native image** | **Future** | Optimización; gated por benchmarks. |
 
 ## 2. Hoja de ruta DIST-1..DIST-6

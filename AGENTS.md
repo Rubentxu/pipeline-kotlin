@@ -1882,3 +1882,46 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 - Preserved PAR-D law: the execution context is not durable truth;
   fingerprint, journal identity, and replay semantics are independent of
   context threading.
+
+
+## Release candidates
+
+1. **Responsabilidad:** este repositorio produce candidatas inmutables de PipelineK. Cada candidata es un ZIP reproducible con su digest SHA-256 registrado y un manifiesto listo para su examen por `Rubentxu/pipelinek-release-harness`, que la somete a proyectos reales y, si supera el gate, la promociona a release estable. La promoción sube los mismos bytes del ZIP: nunca una reconstrucción.
+
+2. **Tests del cambio:** ejecutar únicamente los tests directamente afectados por el cambio y sus dependencias inmediatas. La matriz completa de proyectos externos NO se corre aquí; esa verificación vive en el harness y se ejecuta contra la candidata ya construida.
+
+3. **Defectos:** corregir la causa raíz, añadir test de regresión y entregarlos como parte de la siguiente candidata. Describir en el commit los contratos afectados, los tests ejecutados y el SHA del fix.
+
+4. **Candidata:** una vez cumplido el lote, construir el ZIP de distribución, calcular su SHA-256 y emitir un manifiesto de candidata con esquemas verificables y trazabilidad a los commits que contiene. La candidata es inmutable: sus bytes no se modifican después de enviada. El manifiesto debe permitir auditar la decisión de certificación sin confiar en comentarios sueltos.
+
+5. **Verificación externa honesta:** el harness publica resultados estructurados (recibos, NDJSON, evidencia persistente) en su propio almacén. Los check runs y commit statuses sirven como vista y como mecanismo de protección de PR, pero el resultado completo y su evidencia NO viven en comentarios libres de GitHub. La decisión de promoción es del harness sobre su recibo, no sobre reacciones en una PR.
+
+6. **Bloqueo del harness afecta sólo al artefacto:** un fallo detectado por el harness (por ejemplo, una regresión contra PetClinic) impide promocionar esa candidata, pero NO paraliza el desarrollo de la siguiente WU en este repositorio. Aquí no hay una promoción implícita ligada al estado de la certificación externa.
+
+7. **Continuidad:** mientras el harness examina una candidata, este repositorio continúa con la siguiente WU independiente. Las correcciones siguientes producen candidatas nuevas; la anterior queda bloqueada como evidencia hasta que suelte o se reincorpore.
+
+## Frontera de responsabilidad — pipeline-kotlin vs pipelinek-release-harness
+
+La frontera entre desarrollo y certificación es una propiedad arquitectónica, no una decisión coyuntural. Estas reglas son vinculantes para cualquier trabajo en este repositorio:
+
+1. **Este repo NO mantiene** tests que dependan del binario instalado, del corpus externo o de proyectos reales. Su rol termina cuando la candidata se entrega al harness. Las UATs `UatLocal*`, `UatCompat*`, `UatDsl*`, `UatStep*`, `UatEvt*`, `UatDurable*`, `Lpr011*`, `PublishHtml*`, `StashOps*` que aún vivan aquí son **legado**: pertenecen al harness y migran en cuanto exista el destino.
+
+2. **Marcado de una UAT migrada**: `@Disabled("migrated to harness; see pipelinek-release-harness#<issue>")` es la única transformación válida. **Borrar** una UAT antes de la migración es prohibido: debe quedar deshabilitada con enlace a la issue del harness. La reactivación de una UAT migrada requiere reabrir la issue primero.
+
+3. **Tests que se quedan siempre**: `StepContractSuite*`, `Core*StepUnitTest`, `*FitnessTest`, `*Architectur*`, `CompatCorpusTest*` (parte estructural, no ejecución), y los tests de `pipeline-domain`, `pipeline-events`, `pipeline-step-sdk`, etc. Viven con el código.
+
+4. **Catálogo y fases de migración**: 46 UATs detectadas en `v2/pipeline-application/src/test/` y módulos adyacentes; 45/46 migran. Calendario por fases (M0 bootstrap, M1 sin sandbox, M2 sandbox, M3 cierre) en `docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md` §5.
+
+5. **Criterio de cierre de cada movimiento** (todo debe pasar):
+   - (a) El sustituto del harness corre el mismo escenario sobre la misma candidata `262cc11e` y produce un resultado comparable por huella `input + síntoma + tipo + causa`.
+   - (b) La UAT de pipeline-kotlin queda `@Disabled(...)` con enlace a la issue del harness.
+   - (c) La issue del harness cierra con recibo + digest.
+   - (d) No existe UAT migrada con sustituto no verificado.
+
+6. **No se ejecuta la batería UAT completa del repo como gate**. La batería UAT es del harness. El L5 aquí verifica contratos internos y regresiones del codebase. La candidata se entrega al harness con esos tests internos en verde; el resto lo verifica el harness.
+
+7. **No borrar UATs para ahorrar tiempo**. El round gate verde del repo NO depende de la batería UAT externa: ignorar las UATs rojas pre-existentes a esta separación es una opción válida mientras no se hayan migrado al harness, pero NO se simula un verde borrando tests. El estado de cada UAT roja se documenta como `@Disabled(migrated-pending)` con issue del harness abierta.
+
+8. **No abrir issues contra el harness desde aquí**. PipelineK sólo entrega candidatas; el harness abre las issues que necesite a partir de evidencia propia. Si una UAT de pipeline-kotlin rompe de manera nueva (no pre-existente), abrir issue del propio producto y entregar la corrección como parte de la siguiente candidata.
+
+9. **Coordinación con el operador**: el catálogo concreto de movimientos y los `@Disabled(...)` con su huella estable están en `RESPONSIBILITY_MIGRATION_ROADMAP.md`. El operador lo confirma antes de la primera migración real (no antes del `@Disabled(...)`: eso es decisión técnica local).

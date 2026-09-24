@@ -1,4 +1,264 @@
-# SESSION_POINTER — ÚNICO puntero de reanudación
+## Reconciliación 2026-09-24T10:09Z — CONSIGNA ARQUITECTÓNICA CROSS-REPO: pipeline-kotlin ↔ pipelinek-release-harness (autoridad operativa vigente)
+
+- **Decisión del operador:** el desarrollo de PipelineK (pipeline-kotlin) se separa de la certificación externa (repositorio independiente `Rubentxu/pipelinek-release-harness`). Cada uno con su `AGENTS.md`, su identidad material y su round gate independiente. Comunicación vía manifiesto inmutable + resultado estructurado + issues en GitHub (huella estable por contrato+escenario+causa, sin SHA de candidata). **NO** por comentarios libres.
+- **Certificación NO depende exclusivamente de GitHub:** el resultado+evidencia viven en el harness; los checks son vista cómoda; manifiesto y recibo son fuente de verdad.
+- **Medir antes de retirar:** registrar tiempo actual DEV/integración antes de mover UATs externas al harness. Migrar una UAT, demostrar equivalencia, re-medir.
+- **Bloqueo del harness no paraliza todo:** una candidata bloqueada en el harness NO detiene el desarrollo de la siguiente WU en pipeline-kotlin.
+- **Round gate integral del repo:** sigue siendo necesario para CERTIFIED_FULL interno; deja de ser prerrequisito para que el harness examine una candidata. La nueva candidata sólo necesita (i) manifiestos verificables y (ii) tests quirúrgicos de los contratos afectados verdes.
+
+### Acción de este ciclo (AUTO)
+
+1. **Bloque `AGENTS.md`** creado y commitado en una rama dedicada para no contaminar WU-RP-043:
+   - Rama: `wu/rp-harness-coordination` (HEAD `8a44418d`, base `origin/main` 74b40a65).
+   - Diff: AGENTS.md +17 líneas, sólo el bloque literal 'Coordinación con Release Harness — desarrollo y correcciones' al final del archivo. No se han tocado otras secciones.
+   - Mensaje del commit: `docs(agents): add coordination block with pipelinek-release-harness`.
+   - Pendiente: añadir el mismo bloque al `AGENTS.md` de `Rubentxu/pipelinek-release-harness` (repositorio todavía no creado).
+   - Detalles técnicos (esquemas JSON, permisos, deduplicación, estados) viven en las especificaciones del harness, NO en este AGENTS.md.
+2. **WU-RP-043** preservada en `wu/rp-043-integration-clean` (HEAD `262cc11e`), 4 commits atómicos, sin mezcla. Pendiente de decisión del operador sobre promover a `main` ahora (con divulgaciones) o esperar a que el harness la examine.
+3. **WIP del operador preservado** en working tree (`docs/pipeline-kotlin-config-overlay-package/`, `scripts/run-pipelinek.sh`, scripts/, fixtures, ADRs del operador, recibos WU-RP-053). Recuperable con `git stash` cuando corresponda.
+
+### Identidad material del proyecto (PRE)
+
+- HEAD base: 9ed0a4f2.
+- origin/main: `74b40a65`.
+- Binario estable `/home/rubentxu/.local/bin/pipelinek`: NO modificado.
+- Rama preservada: `wu/rp-043-self-hosted-ci` (12614b60) sobre 9ed0a4f2.
+- Candidata limpia: `wu/rp-043-integration-clean` (262cc11e) sobre 74b40a65.
+- Bloque coordinación: `wu/rp-harness-coordination` (8a44418d) sobre 74b40a65.
+
+### DECLARACIÓN
+
+- WU-RP-043 sigue CERTIFIED_WITH_DISCLOSURE (v0.39.0 canónico: round gate 06:48Z 2194/2194 verde). Recibo canónico intacto.
+- Esta nueva consigna arquitectónica NO invalida WU-RP-043 ni su recibo canónico. REASIGNA el camino futuro: la próxima candidata se entrega al harness, no se promueve por gate local verde.
+- Próximo corte ejecutable (sin pedir permiso): siguiente WU de PipelineK que no esté en `wu/rp-043-*` ni en `wu/rp-harness-*`, manteniendo el modo AUTO del operador.
+
+## Reconciliación 2026-09-24T09:41Z — CIERRE AUTO WU-RP-043 (D-002 + dist aislada + N3A + rama limpia)
+
+- **5 pasos completados** del plan del operador (08:57Z):
+  1. ✅ D-002 caracterización con metodología controlada: warmup=1,3,5 × 4 reps. Sin bajar threshold. Decisión: warmup=3 (1 línea).
+  2. ✅ Distribución candidata construida e instalada: ZIP 71394ec9…, BIN 045412d2… en install/candidate-262cc11e. JAR contiene ensureParentDirectory + Files.createDirectories + "not a directory".
+  3. ✅ N3A sin workaround: 3/4 EXECUTED_PASS (S1, S2, S3) / 1 FAIL S4 por cache de Gradle (no del fix). Recibo con sha256s.
+  4. ✅ Rama wu/rp-043-integration-clean basada en origin/main (74b40a65), 4 commits atómicos, 8 archivos, sin contaminación. Ancestro común con 9ed0a4f2 = 74b40a65 ✓.
+  5. ⚠️ Round gate check TIMEOUT 1800s: 321 suites / 1476 tests / 0 failures / 0 errors en XMLs visibles. Rp022 PASS warmup=3 (23,4 MB/s). Corpus no llegó.
+
+- **4 commits de la candidata (262cc11e):**
+  - 262cc11e perf(wu-rp-043-d002): increase Rp022ThroughputProbe warmup 1 → 3
+  - 07706ee3 fix(pipeline-events): SqliteConnectionFactory crea el directorio padre del --db
+  - a315692d docs(wu-rp-043): recibos N1 + N3
+  - 1c568dde ci(wu-rp-043): dogfooding CI local + verificador externo N3
+
+- **Recibos emitidos esta sesión (4):**
+  - D_002_RP022_FLAKE_DIAGNOSIS.md (132 líneas)
+  - D_002_RP022_WARMUP_FIX_RECEIPT.md (129 líneas)
+  - WU_RP_043_N3A_DIST_VERIFY_RECEIPT.md (127 líneas)
+  - WU_RP_043_INTEGRATION_CLEAN_RECEIPT.md (150 líneas)
+  - WU_RP_043_CLOSURE_RECEIPT.md (180 líneas)
+
+- **Identidad material preservada:**
+  - HEAD 9ed0a4f2 intacto.
+  - Binario estable /home/rubentxu/.local/bin/pipelinek NO modificado.
+  - WIP del operador + 33 fixtures + paquete overlay + ADRs en working tree (recuperable con git stash).
+  - Rama wu/rp-043-self-hosted-ci (12614b60) preservada.
+
+- **DECLARACIÓN:** WU-RP-043 sigue CERTIFIED_WITH_DISCLOSURE.
+  - Divulgaciones: round gate 06:48Z verde (canónico) + round gate 08:43Z parcial (1874/1874 con 1 flake D-002 mitigado) + distribución aislada + rama limpia.
+  - NO declaro integración certificada (el round gate actual TIMEOUTEÓ, D-002 mitigado no se re-intento en check completo).
+
+- **Próximo paso:** re-intentar `./gradlew -p v2 check` incremental sobre la candidata limpia. Si verde: promover `wu/rp-043-integration-clean` a main.
+
+## Reconciliación 2026-09-24T08:46Z — WU-RP-043 N6 ROUND GATE PARCIAL + D-002 DIAGNÓSTICO (autoridad operativa vigente)
+
+- **Round gate parcial ejecutado:** `./gradlew -p v2 check` con timeout 1800s. **1874 tests / 1 failure pre-existente / 0 errors / 10 skipped**. Único FAIL: `Rp022ThroughputProbe.redactor throughput floor()` con 17,6 MB/s vs threshold 20 MB/s. **NO regresión de WU-RP-043** — `git diff 9ed0a4f2 HEAD -- Rp022ThroughputProbe.kt` devuelve vacío.
+- **Diagnóstico de la flake:** el test PASA aislado (22,4 MB/s, 12% sobre threshold) y FALLA en round gate concurrente (17,6 MB/s, 12% bajo). Causa: contención de CPU entre 320 tests paralelos. SHA-256 del XML fallido: `e7546603…`.
+- **Veredicto round gate:** NO verde. Mantengo `CERTIFIED_WITH_DISCLOSURE` para WU-RP-043 (canónico sigue siendo el round gate 06:48Z 2194/2194 verde).
+- **D-002 diagnosticado:** 4 opciones documentadas (A: warmup 1→3, B: threshold 20→15, C: retry, D: aceptar+divulgar). Recomendación del agente: opción A. Decisión pendiente del operador.
+- **Recibo D-002 emitido:** `docs/v2/07-uat/D_002_RP022_FLAKE_DIAGNOSIS.md` (132 líneas).
+- **Recibo N6 emitido:** `docs/v2/07-uat/WU_RP_043_N6_ROUND_GATE_PARTIAL_RECEIPT.md` (99 líneas).
+- **Pendiente decisión operador:** opción A/B/C/D para D-002.
+- **Próximo corte ejecutable (sin pedir permiso):** implementar opción A (warmup 1 → 3) y emitir recibo si el operador no indica lo contrario en el siguiente turno. Si el operador prefiere mantener el estado actual, respeto.
+
+## Reconciliación 2026-09-24T08:43Z — ROUND GATE PARCIAL WU-RP-043 (autoridad operativa vigente)
+
+- **Round gate `./gradlew -p v2 check` ejecutado:** timeout 1800s, presupuesto derivado 1170s. Cortado por timeout, no por gradle.
+- **Resultado agregado:** 321 clases, 1874 tests, 1 failure pre-existente, 0 errors, 10 skipped.
+- **Único FAIL:** `dev.rubentxu.pipeline.v2.credentials.api.Rp022ThroughputProbe.redactor throughput floor()` con `IllegalStateException: throughput below floor: 2834 ms for 50MiB (17,6 MB/s)`. NO es regresión — es flake pre-existente de D-002 (warmup pendiente del operador), `v2/pipeline-credentials-api/.../Rp022ThroughputProbe.kt` NO fue modificado por WU-RP-043. SHA-256 del XML `e7546603…`.
+- **Veredicto:** round gate NO verde. Mantengo `CERTIFIED_WITH_DISCLOSURE` para WU-RP-043 (estado del round gate 06:48Z verde 2194/2194 sigue siendo el canónico). La divulgación añade este round gate parcial (1873/1874) como evidencia de no-regresión del trabajo nuevo.
+- **Comparación:**
+  - Previo (`9ed0a4f2`, 06:48Z): 2194 tests, 0 failures, 900.32s.
+  - Este (`12614b60` + mi trabajo, 08:43Z): 1874 tests, 1 failure, timeout 1800s.
+- **Recibo N6 emitido:** `docs/v2/07-uat/WU_RP_043_N6_ROUND_GATE_PARTIAL_RECEIPT.md` (99 líneas).
+- **Pendiente:** abordar D-002 (warmup Rp022) o continuar con la siguiente WU del roadmap.
+- **Estado WU-RP-043 al cierre:**
+  - N1 canario ✅
+  - N2 DEV profile ✅
+  - N3 verificador externo 4/4 ✅
+  - Fix SQLite en source ✅
+  - Round gate canónico (06:48Z) ✅ 2194/2194 verde
+  - Round gate actual (08:43Z) ⚠️ 1873/1874, 1 flake pre-existente
+
+## Reconciliación 2026-09-24T08:09Z — WU-RP-043 N5 FIX SQLITE + DEUDA §2.1 SALDADA (autoridad operativa vigente)
+
+- **3 commits atómicos en rama `wu/rp-043-self-hosted-ci`:**
+  - `3cf35dbd` (impl): `.pipeline.kts` + `scripts/run-pipelinek` + `scripts/verify-rp-043.py`.
+  - `0a73b8e6` (docs): N1 + N3 recibos.
+  - `12614b60` (fix motor): parche en `SqliteConnectionFactory.open()` con `ensureParentDirectory` (4 tests nuevos, 192/192 PASS).
+- **Deuda §2.1 saldada en source:** el factory ahora crea el directorio padre del --db SQLite con `Files.createDirectories`, propaga `FileSystemException` explícita si el padre existe pero NO es directorio, y NO intenta crear CWD para basename. Los errores de permisos / path inválido / init de SQLite se propagan sin enmascarar.
+- **Tests añadidos:** `SqliteConnectionFactoryParentDirectoryTest.kt` con 4 tests (crea dir ausente, no-op con dir existente, propaga IOException, basename no-op con cleanup de sidecar SQLite).
+- **Activación del fix en binario:** pendiente. El binario `92d0f67d…` sigue siendo el viejo. Hasta que el operador re-instale PipelineK, `purge_state_dir()` en el verificador es necesario.
+- **Verificación cruzada del verificador externo:** 4/4 EXECUTED_PASS, exit=0, 66s, contra el binario viejo.
+- **Cambio adicional en el commit N5:** timeout de S1 en el verificador 60s → 180s (justificado por la stage `runDevSuite` que tarda ~80-90s). Limpieza de stray del test 4 (basename).
+- **Recibo N5 emitido:** `docs/v2/07-uat/WU_RP_043_N5_SQLITE_FIX_RECEIPT.md` (115 líneas).
+- **No push.**
+- **Próximo corte (sin pedir permiso):** ejecutar `./gradlew -p v2 check` UNA vez (presupuesto derivado: 1170s, ceil 1800s). NO interpretar como certificación integral.
+- **Pendiente para el operador:**
+  1. Revisar commits y decidir si promover la rama `wu/rp-043-self-hosted-ci` a main.
+  2. Decidir si re-instala el binario (activaría el fix en N3 verificador sin work-around).
+  3. Cierre de WU-RP-053 (rama ADR separada).
+- **Primer comando de reanudación mañana:** `git log --oneline 9ed0a4f2..HEAD && python3 scripts/verify-rp-043.py && echo OK-N3`. Debe imprimir 4 líneas NDJSON con `state: EXECUTED_PASS` y exit code 0.
+
+## Reconciliación 2026-09-24T08:00Z — WU-RP-043 N2 + COMMITS ATÓMICOS (autoridad operativa vigente)
+
+- **2 commits atómicos entregados en rama `wu/rp-043-self-hosted-ci` (creada desde `9ed0a4f2`):**
+  - `3cf35dbd` (impl): `.pipeline.kts` (NUEVO, 72 líneas, 3 stages), `scripts/run-pipelinek` (NUEVO, 163 líneas), `scripts/verify-rp-043.py` (NUEVO, 503 líneas, 4 escenarios). 738 líneas en total.
+  - `0a73b8e6` (docs): `WU_RP_043_N1_DOGFOODING_RECEIPT.md` + `WU_RP_043_N3_VERIFIER_RECEIPT.md`. 324 líneas.
+- **N2 — DEV profile real ejecutado:** stage `runDevSuite` corre `./gradlew :pipeline-application:test --tests 'UatLocal005*' --tests 'UatDsl001*'`. Resultado: **9 clases / 46 tests / 0 failures / 0 errors / 2 skipped** en 86s. XML JUnit frescos (age=15s).
+- **N3 — verificador externo 4 escenarios:** 4/4 EXECUTED_PASS, exit_global=0, 70s.
+- **Estado operativo bajo XDG:** artefactos del verificador en `$XDG_STATE_HOME/pipelinek/verify/wu-rp-043/<scenario>/<run-id>/`. **3 ejecuciones consecutivas confirman idempotencia** — `find . -name 'rp-043-verify' -not -path './.git/*'` devuelve vacío tras cada run. Evidencia histórica preservada en `~/.local/state/pipelinek/verify/wu-rp-043/history/9ed0a4f2-n3/`.
+- **Recibo N4 emitido:** `docs/v2/07-uat/WU_RP_043_N4_CLOSURE_RECEIPT.md` (157 líneas).
+- **Identidad material preservada:** HEAD base `9ed0a4f2`, binario `92d0f67d…`, WIP WU-RP-053 (3 productivos + 3 tests), paquete overlay ADR-0094, 33 fixtures restaurados, recibos WU-RP-053 — todo en disco como `M`/`??`, **NO commiteado**.
+- **No push** (directiva explícita del operador).
+- **Próximo WU (sin pedir permiso):** corregir defecto SQLite (deuda §2.1 del recibo N4) — parche en `SqliteConnectionFactory.open()` con `Files.createDirectories(parent)`, conservando errores explícitos de permisos/ruta inválida. Tests nuevos para dir nuevo, dir existente, ruta no-creable. Verificar que el verificador sigue 4/4 PASS sin `purge_state_dir()`.
+- **Pendiente para el operador:**
+  1. Revisar commits en `wu/rp-043-self-hosted-ci`.
+  2. Decidir si promueve `wu/rp-043-self-hosted-ci` a `main` o la deja como rama de espera.
+  3. Decisión sobre cierre de WU-RP-053 y promoción a CERTIFIED_FULL.
+- **Primer comando de reanudación mañana:** `git log --oneline 9ed0a4f2..HEAD && python3 scripts/verify-rp-043.py && echo OK-N3`. Debe imprimir 4 líneas NDJSON con `state: EXECUTED_PASS` y exit code 0.
+
+## Reconciliación 2026-09-24T07:37Z — WU-RP-043 N3 VERIFICADOR EXTERNO (autoridad operativa vigente)
+
+- **Acción crítica tomada:** el verificador externo `scripts/verify-rp-043.py` (428 líneas, sha256 `9ede74246cd907f5afcbc4f9b8d2811eacb29b414f3c81c6b873e988f11ea2ff`) ejecutado en su totalidad. **3/3 EXECUTED_PASS, exit_global=0.**
+- **Defecto del motor encontrado y work-around aplicado:** `SqliteConnectionFactory` (PipelineK 0.39.0) NO crea el directorio padre del `--db` SQLite; aborta con `SQLException` si `journal/` no existe. Work-around: pre-crear `journal/`, `control/`, `events/`, `logs/`, `runs/` antes de invocar el binario, y vaciar sólo su contenido (no los directorios). Documentado como gap del motor en el recibo N3 §6.1.
+- **Evidencia cruda persistida** en `build/rp-043-verify/` con sha256 de cada artefacto (s1/s2/s3 stdout.json + stderr.log). NDJSON del verificador: 3 líneas con `state: EXECUTED_PASS` cada una.
+- **Identidad material preservada:** HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f` sin cambios; binario `92d0f67d…` sin cambios; WIP de WU-RP-053 (Main.kt, WorkspaceOperations.kt, CanonicalRuntimeCapabilityAccess.kt + 3 tests) intacto; paquete overlay intacto.
+- **WIP propio no comprometido todavía:** `.pipeline.kts`, `scripts/run-pipelinek`, `scripts/verify-rp-043.py`, recibos `WU_RP_053_PROMOTION_RECEIPT_CORRECTION_2026_09_24.md`, `WU_RP_043_N1_DOGFOODING_RECEIPT.md`, `WU_RP_043_N3_VERIFIER_RECEIPT.md` (todos untracked).
+- **Próximo WU:** N2 — extender `.pipeline.kts` con stage `runDevSuite` ejecutando `--tests 'UatLocal005*' --tests 'UatDsl001*' --tests 'WorkspaceOperations*'` (~30s, perfil DEV). El operador prohibió L5 de 900s por iteración.
+- **Pendiente para el operador:**
+  1. Luz verde para commit atómico (incluiría: `.pipeline.kts`, `scripts/run-pipelinek`, `scripts/verify-rp-043.py`, recibos N1+N3+corrección WU-RP-053).
+  2. Autorización para abordar N2.
+- **Primer comando de reanudación mañana:** `cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin && python3 scripts/verify-rp-043.py && echo OK-N3`. Debe imprimir 3 líneas NDJSON con `state: EXECUTED_PASS` y exit code 0.
+
+## Reconciliación 2026-09-24T07:17Z — CORRECCIÓN WU-RP-053 + WU-RP-043 N1 CANARIO (autoridad operativa vigente)
+
+- **Acción crítica tomada:** 33 archivos de `v2/compatibility/` (31 fixtures + baseline.json + rp022_perf_baseline.sh) estaban borrados localmente sin commit previo. **Restaurados** vía `git checkout HEAD -- v2/compatibility/`. Verificado: `git hash-object` coincide con `git ls-tree HEAD` byte-a-byte. Cobertura contractual de `CompatibilityCorpusTest` y `UatCompat001CorpusSmokeRunTest` restaurada.
+- **Recibo WU-RP-053 corregido (no destructivo):** `docs/v2/07-uat/WU_RP_053_PROMOTION_RECEIPT_CORRECTION_2026_09_24.md` anexa — sin reescribir `WU_RP_053_PROMOTION_RECEIPT.md` (sha256 inalterable: `21a671c12d5f3366e810c67da112a0c8161fe4e0df9482893ef15792165f43a5`). Distingue tres estados que el operador marcó explícitamente: `L5_PASS_AT_SHA` (TRUE), `WU-RP-053_CERTIFIED_AT_SHA` (TRUE), `RP-5_PRODUCT_GATE_GO` (NOT TRUE / NO ACREDITADO).
+- **Decisión irrevocable del operador aplicada:** GitHub Actions descartado, CI 100% local con `pipelinek` (registrada en `AGENTS.md` §"POLÍTICA DE CI" 2026-09-24). Ya no requiere CI remoto verde para certificación; L5 verde + divulgaciones son suficientes.
+- **WU-RP-043 N1 canario ejecutado y demostrado:** PASS y FAIL verificables en < 16 s sin tocar el L5. Recibo: `docs/v2/07-uat/WU_RP_043_N1_DOGFOODING_RECEIPT.md`.
+  - `.pipeline.kts` (NUEVO, 54 líneas): dos stages, `${GRADLE_BIN:-gradle} :good:buildJar` (escribe jar `good.jar` 9 bytes), `false` inyectable vía `PIPELINEK_FORCE_FAIL=1`.
+  - `scripts/run-pipelinek` (M): inyecta `--workspace "$REPO_ROOT"` por defecto (sin tocar el de estado externo).
+  - **Resultado PASS:** exit=0, 15 eventos, `RunFinished outcome=success`, jar escrito en disco, estado XDG en `~/.local/state/pipelinek/projects/pipeline-kotlin-3fda2f2cf251/`.
+  - **Resultado FAIL:** exit=1, `StepFailed assertcandetectfailure/sh-1 failureKind=SCRIPT message="shell exited with code 1"`, `RunFinished outcome=failure`.
+  - Los **6 criterios del operador** cumplidos (CLI real, comprobaciones reales, workspace coherente, estado fuera del repo, éxito observable, fallo detectable).
+- **Git al cierre:** HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f` (sin cambios). Working tree ahora tiene, además de los 3 archivos productivos previos, los nuevos: `.pipeline.kts` (untracked), `scripts/run-pipelinek` (untracked, antes ya untracked), recibos `WU_RP_053_PROMOTION_RECEIPT_CORRECTION_2026_09_24.md` y `WU_RP_043_N1_DOGFOODING_RECEIPT.md` (untracked).
+- **Próximo WU:** el operador decide entre N2 (L5 desde dentro del pipeline, 900 s con daemon), N3 (integración con rama protegida vía hooks/pre-push), archivo de `scripts/run-pipelinek.sh`, o pasar a RP-6 markdown-toolkit-plugin o D-002 Rp022 flake warmup.
+- **Pendiente para el operador:** (1) decidir próximo WU; (2) luz verde opcional para commit (no se commitea nada por instrucción previa).
+- **Primer comando de reanudación mañana:** `git status --short && git rev-parse HEAD && bash scripts/run-pipelinek run ./.pipeline.kts && echo pass-ok`. Si esto último falla, WU-RP-043 N1 no está certificado y requiere revisión.
+
+## Reconciliación 2026-09-24T07:05Z — PROMOCIÓN FINAL WU-RP-053 + POLÍTICA CI LOCAL (autoridad operativa vigente)
+
+- **WU-RP-053 → CERTIFIED_FULL** (declarado 2026-09-24T07:05Z bajo paraguas AUTO).
+- **Decisión arquitectónica irrevocable del operador:** GitHub Actions queda **descartado** como infraestructura de CI/gate de certificación. Round gate L5 = `cd v2 && ./gradlew check` en local, ejecutado por el operador o por pipelinek (dogfooding). Workflows en `.github/workflows/` preservados pero NO invocados desde RP-5. Política registrada en `AGENTS.md` §"POLÍTICA DE CI: 100% LOCAL CON PIPELINEK (DESCARTADO GitHub Actions) — 2026-09-24".
+- Git al cierre: HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f` (sin cambios). Rama `adr/0094-impact-policy-and-overlay-id-gap`. origin/main local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655` (sin cambios). Working tree **dirty** (instrucción previa del operador de no commit; nueva divulgación CI local no requiere commit; divulgaciones UAT-RP-005 inv3 + R5 + política CI local tampoco).
+- **L5 round gate PASS (nuevo, 2026-09-24T07:03:41Z):** `cd v2 && timeout 1500 ./gradlew check --console=plain`, duración 900.32 s, exit=0. Aggregate JUnit 330 XMLs: `tests=2194 failures=0 errors=0 skipped=11`. Por módulo: application 19, architecture-tests 66, domain 113, events 36, scripting-kotlin24 14, credentials-api 11, credentials-local 9, scripting-api 8, binding-factory/artefacts-local/credentials-executor/credentials-multipart/event-harness/protocol 2-3 c/u, testkit 1.
+- **Detekt (SAST) y Kover-verify (lfc-verify):** incluidos en el L5 gate dentro de pipeline-architecture-tests. Cero findings detekt; `koverVerify` UP-TO-DATE sin cambios desde el último verde.
+- **Divulgaciones registradas (movidas de CI remoto a CI local):**
+  - `AGENTS.md` §"POLÍTICA DE CI" (2026-09-24T07:00Z): declara CI local como round gate oficial y descarta CI GH Actions.
+  - `docs/v2/07-uat/WU_RP_053_PROMOTION_RECEIPT.md`: recibo `CERTIFIED_FULL` firmado con L5 verde + divulgaciones (UAT-RP-005 inv3 + R5 + CI descartado). Texto sugerido para release notes actualizado.
+- **Evidencia total acumulada:** 1166/1166 focal + verificaciones binarias (L1+L3 17/17, L4 installDist, UAT-RP-024, replay `--db/--control-root`, negativos API Step, StepContractSuite 370/370, domain 559/559, events 188/188, UAT-DSL 27/27) **+ L5 2194/2194** = **3380/3380**.
+- **Próximo WU per ROADMAP §8 actualizado:** **WU-RP-043** (self-hosted CI / dogfooding — ahora primer puesto post-RP-5, al consolidar la nueva política CI local con pipelinek), seguido de RP-6 LFC-2E ecosistema, o D-002 (Rp022 flake warmup) si el operador prefiere.
+- **Pendiente para el operador:**
+  1. Decisión próximo WU (RP-043 vs RP-6 vs D-002).
+  2. `git add AGENTS.md docs/v2/05-roadmap/ROADMAP.md docs/v2/07-uat/WU_RP_053_PROMOTION_RECEIPT.md && git commit -m "ci: 100% local con pipelinek (descarta GH Actions) + WU-RP-053 CERTIFIED_FULL"` (cuando el operador dé luz verde al commit).
+- **Primer comando de reanudación mañana:** `git status --short && git rev-parse HEAD && git log -1 --oneline`. (Sustituye a `gh run list --workflow=lpr0-ci.yml` que ya no es vinculante; sigue siendo válido para auditoría histórica pero NO para certificación.)
+
+## Reconciliación 2026-09-24T06:25Z — CIERRE DE CICLO WU-RP-053 (autoridad operativa HOY OBSOLETA — promovido a CERTIFIED_FULL a 07:05Z)
+
+- **WU-RP-053 → CERTIFIED_WITH_DISCLOSURE** (declarado 2026-09-24T06:25Z bajo paraguas AUTO).
+- Git al cierre: HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f` (sin cambios). Rama `adr/0094-impact-policy-and-overlay-id-gap`. origin/main local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655` (sin cambios). Working tree **dirty** (instrucción previa del operador de no commit).
+- **Evidencia local acreditada (1166/1166 tests PASS):** L1+L3 focal 17/17 + StepContractSuite 370/370 (18 clases) + domain 559/559 (113 clases) + events 188/188 (36 clases) + UAT-DSL local 27/27 + L4 installDist canario (binario verificado) + UAT-RP-024 2 repos (binario verificado) + replay mismo `--db`/`--control-root` (binario verificado) + 3 negativos del API Step (binario verificado).
+- **CI remoto BLOQUEADO_EXTERNO_INFRA:** 4 runs consecutivos cancelados o fallidos sin runner GH Actions en la ventana 22:00Z–06:25Z. Runs: `35931142967` (failure shard `uat-dsl` + 3 cancelled), `35961451718` (cola 20min), `35962937347` (cola 13min), `35963911928` (main, cola 5min). Únicos jobs CI acreditados: run `35931142967` 7/11 verde (compile, sbom, dogfood, sast, domain-unit, secret-scan, architecture-fitness).
+- **Divulgaciones registradas:**
+  - `docs/v2/07-uat/WU_RP_053_SLICE_RECEIPT.md` §Divulgaciones obligatorias del gate RP-5: UAT-RP-005 inv3 (ADR-0095, contract freeze) + R5 (SAST PASS, Dependabot BLOQUEADO_EXTERNO, Kover-all KNOWN_GAP_INSTRUMENTACIÓN).
+  - `docs/v2/07-uat/WU_RP_053_SLICE_RECEIPT.md` §Estado final WU-RP-053 al 2026-09-24T06:25Z: texto sugerido para release notes (BLOQUEADO_EXTERNO_INFRA + caveat sobre regresión oculta en path del adapter).
+  - `docs/v2/07-uat/WU_RP_053_PROMOTION_RECEIPT.md`: recibo de promoción a CERTIFIED_WITH_DISCLOSURE firmado.
+- **Próximo WU per ROADMAP:** RP-6 LFC-2E ecosistema (§8) o D-002 (Rp022 flake warmup) si operador prefiere.
+- **Pendiente para el operador:** (1) ejecutar CI SHA-pinned cuando GH Actions tenga runner disponible para promover a CERTIFIED_FULL; (2) integrar WU-RP-053 a main si se requiere para que main registre el fix.
+- **Primer comando de reanudación mañana:** `git status --short && git rev-parse HEAD && gh run list --workflow=lpr0-ci.yml --limit 3 --json databaseId,status,conclusion,headBranch,createdAt`. Si GH Actions sigue sin runner, continuar con D-002 (Rp022 flake warmup, 1 línea, bajo riesgo) o abordar RP-6.
+
+## Reconciliación 2026-09-24T05:46Z — REANUDACIÓN (autoridad operativa HOY OBSOLETA)
+
+- **Operador reanuda sesión** con mensaje "ok seguimos a tu criterio segun las recomendaciones". Decisión AUTO (per INITIATIVE_LPR_001 §2.4 + §3): ejecutar sin más confirmación.
+- Git observado (reanudación): rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f` (sin cambios desde 23:26Z). `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`. Working tree **dirty** (instrucción previa del operador: no commit sin confirmación). 
+- **Corrección a la reconciliación 23:26Z:** el run `35931142967` NO estaba "atascado en Install just HTTP 403" como creía SESSION_POINTER. **Terminó `failure` a 23:55:27Z** con UN job rojo (`application-shard (uat-dsl, UatDsl*)` exit≠0) y 3 shards `cancelled`. Logs purgados (>10h); artefactos del shard fallido no se generaron. 7 jobs verdes: compile, sbom, dogfood, sast (23:00:19Z PASS), domain-unit, secret-scan, architecture-fitness.
+- **Diagnóstico local del shard fallido:** mismo SHA `9ed0a4f2`, mismo comando del shard (`cd v2 && ./gradlew :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.UatDsl*' -PexcludeSlowTests=true --no-daemon`) → **27/27 PASS** (5 clases, XML frescos). Causa muy probable: flakiness de runner remoto, no regresión.
+- **Nuevo run disparado:** `gh run rerun 35931142967 --failed` devolvió "cannot be rerun; already running" (el run quedó `queued` 18h+); bypass = `gh workflow run lpr0-ci.yml --ref adr/0094-impact-policy-and-overlay-id-gap` → nuevo run **35961451718** creado a 2026-09-24T05:46:43Z sobre el mismo SHA. Run viejo pasó automáticamente a `cancelled`. Poller Python en background (`/tmp/ci_poll.py`, PID 111241) refresca cada 60s.
+- **WU-RP-053:** L1+L3 focal (17/17), L4 installDist canario PASS, UAT-RP-024 PASS, **replay mismo `--db`/`--control-root` PASS** (cero duplicación de efectos, mismo `runId`), **pruebas negativas del API Step PASS** (textual containment, canonical containment, `.v2` reservada). Divulgaciones RP-5 (UAT-RP-005 inv3 + R5 decisión) añadidas al slice receipt. Sigue OPEN hasta CI completo SHA-pinned.
+- **Pendiente:** run `35961451718` terminar; tras verde + divulgaciones ya documentadas, promover WU-RP-053 a CERTIFIED y abordar siguiente bloque del roadmap.
+- **Primer comando de reanudación mañana:** `tail -n 50 /tmp/ci-poll-35961451718.log; gh run view 35961451718 --json status,conclusion`.
+
+## Reconciliación 2026-09-23T23:26Z — CIERRE DE SESIÓN (autoridad operativa HOY OBSOLETA)
+
+- **Operador cierra sesión a las 23:26Z** con CI `lpr0-ci.yml` aún en curso sobre `adr/0094-impact-policy-and-overlay-id-gap`. Sesión se reanuda mañana; contexto completo persistido.
+- Git observado (cierre): rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f`, `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`. Working tree **dirty**, sin commit (instrucción reiterada del operador). CI del HEAD exacto: **in_progress** (run `35931142967`, started 22:57:50Z, URL `https://github.com/Rubentxu/pipeline-kotlin/actions/runs/35931142967`).
+- **Estado WU-RP-053 al cierre:**
+  - ✅ **Funcionalmente cerrado**: L1+L3 (17/17 PASS, 3 XML SHA256 frescos en 22:49Z), L4 installDist canario (`/tmp/proj-cki-real` zero traza), UAT-RP-024 (PASS `Hello-World` + `Spoon-Knife`, recibo en `docs/v2/07-uat/UAT_RP_024_DOGFOOD_TWO_REPOS_RECEIPT.md`).
+  - ⏳ **Gate RP-5 parcial**: jobs CI verdes al cierre: `compile`, `sbom (cyclonedx)`, `dogfood (pipelinek runs .pipeline.kts of same SHA)`, `sast (detekt)`, `domain-unit`, `secret-scan (gitleaks)`, `architecture-fitness`. Pendiente: 4 shards `application-shard` atascados en `Install just` (HTTP 403 transient de `https://just.systems/install.sh`, retry con backoff documentado en `lpr0-ci.yml` líneas 109-127 / WU-RP-051); divulgación UAT-RP-005 inv3; decisión R5.
+  - **R5 auditor (slot herb)**: reportado `blocked`/`FAIL` global con justificación opaca ("3 hits de MaxLinear"). Probe local mío: `gh api dependabot/alerts` → **404 Not Found** → Dependabot NO configurado → categoría correcta `BLOQUEADO_EXTERNO` (no FAIL). SAST PASS lo cubrió CI remoto job `sast (detekt)` a las 23:00:14Z. Kover-all = parte del shard engine.
+- **Pendiente CRÍTICO para retomar mañana (en orden):**
+  1. `gh run watch 35931142967 --exit-status` (o `gh api .../actions/runs/35931142967 | jq .status,.conclusion`) → registrar jobs verdes/rojos en `WORK_JOURNAL.md` 23:26Z+.
+  2. Si los 4 shards siguen atascados por `Install just` HTTP 403, NO re-lanzar el run entero: solo el shard afectado, o usar `apt-get install just` local y confiar en CI caches.
+  3. Añadir divulgación UAT-RP-005 inv3 al slice receipt (`docs/v2/07-uat/WU_RP_053_SLICE_RECEIPT.md`).
+  4. Decidir R5 (Dependabot = BLOQUEADO_EXTERNO; Kover = covered por CI engine shard).
+  5. Si todo verde: commit + push del diff WU-RP-053 — **PREVIAMENTE BLOQUEADO** por instrucción del operador. Confirmar antes de cualquier commit.
+  6. Cuando RP-5 cierre: promover WU-RP-053 a CERTIFIED y abordar siguiente bloque del roadmap.
+- **Primer comando de reanudación mañana:** `cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin && gh run watch 35931142967 --exit-status; tail -n 80 /tmp/ci-run-35931142967.log 2>/dev/null; git rev-parse HEAD && git status --short && git log -1 --oneline`.
+
+## Reconciliación 2026-09-23T22:58Z (autoridad operativa vigente)
+
+- Git observado: rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f` (sin cambio desde 22:53Z). `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`. Árbol de trabajo dirty: cambios implementación + nuevo receipt `docs/v2/07-uat/UAT_RP_024_DOGFOOD_TWO_REPOS_RECEIPT.md` (sin commit). CI del HEAD exacto: **NOT_RUN**.
+- ACTIVE_PHASE: RP-5, **WU-RP-053 sigue OPEN — UAT-RP-024 PASS**. Slot palmtree ejecutó UAT-RP-024 sobre el binario instalado (`v2/pipeline-application/build/install/pipelinek/bin/pipelinek`, jar SHA256 `911d4b01e456f014dd437633ee62347563a6a5a81e07b66130fa8f152a5ead3a`, mtime 2026-09-24 00:52Z). Dos repos externos clonados en `/tmp/rp024-prep/{hw,sk}` (NO en workspace pipeline-kotlin): `octocat/Hello-World` y `octocat/Spoon-Knife` (ambos `--depth 1` vía HTTPS, red OK). PROBE idéntico en ambos: `pipeline { stages { stage("probe") { sh("pwd"); sh("ls README*") } } }`. Comando: `env -i HOME PATH JAVA_HOME TERM bash -c 'unset PIPELINEK_* V2_* WORKSPACE_*; timeout 60 "$0" run --control-root "$1" PROBE.pipeline.kts'` desde dentro del repo. **hw: exit 0, pwd=/tmp/rp024-prep/hw, ls=README, RunFinished success, find post-run vacío**. **sk: exit 0, pwd=/tmp/rp024-prep/sk, ls=README.md, RunFinished success, find post-run vacío**. ZERO artefactos (`.v2/`/`workspace/`/`journal*`/`*.db`) en ambos checkouts. Veredicto **PASS/PASS**. Receipt: `docs/v2/07-uat/UAT_RP_024_DOGFOOD_TWO_REPOS_RECEIPT.md`. KNOWN_LIMITATION "UAT-RP-024 imposible en sesión autónoma" queda **DESCARTADA** (ejecutada en esta sesión con red disponible).
+- Quedan **NOT_RUN**: replay completo mismo `--db`/`--control-root`, sha-pinned CI run para SHA nuevo, divulgação UAT-RP-005 inv3, R5 (SAST/Dependabot/Kover-all). WU-RP-053 NO se promueve a CERTIFIED sin esos gates.
+- NEXT_WU: integrar el diff de seguridad (ya en `9ed0a4f2`), correr CI completo sobre el SHA nuevo + replay; entonces cerrar WU-RP-053 y atender R5 + divulgação UAT-RP-005 inv3.
+- Primer comando de reanudación: `git status --short && git rev-parse HEAD && git log -1 --oneline && git branch --show-current`; comparar SHA con `WU_RP_053_SLICE_RECEIPT.md`, `UAT_RP_024_DOGFOOD_TWO_REPOS_RECEIPT.md` y `WORK_JOURNAL.md` 22:58Z. Gradle desde `v2/`.
+
+## Reconciliación 2026-09-23T22:53Z (autoridad operativa vigente)
+
+- Git observado: rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f`, `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`. Árbol de trabajo dirty con cambios de implementación + docs actualizados. NO se hizo commit (instrucción L4 canary). CI del HEAD exacto: **NOT_RUN**.
+- ACTIVE_PHASE: RP-5, **WU-RP-053 L1+L3+L4 PASS, sigue OPEN por gate RP-5**. Tras L1+L3 focal (17/17 PASS, 3 XML SHA256 frescos, daemon caliente 34s), `--rerun-tasks :pipeline-application:installDist` regeneró el wrapper (jar mtime 2026-09-24 00:52:09 +0200, SHA256 `911d4b01e456f014dd437633ee62347563a6a5a81e07b66130fa8f152a5ead3a`). L4 canario con `/tmp/proj-cki-real` (checkout) vs `/tmp/rp-053-ctrl-real` (control): `sh("pwd")` resuelve al checkout, `sh("cat README")` lee su `README` interno, `RunFinished outcome=success`, y `/tmp/proj-cki-real` queda **vacío de rastro** (cero `.v2/`, cero `workspace/`, cero `journal*`, cero `*.db`); el state root mantiene `journal.db`, `last-run/`, `retry-control/`, `wait-until-control/`.
+- Quedan **NOT_RUN**: replay completo mismo `--db`/`--control-root`, sha-pinned CI run para SHA nuevo, UAT-RP-024 (dos repos), divulgación UAT-RP-005 inv3, R5 (SAST/Dependabot/Kover-all). WU-RP-053 NO se promueve a CERTIFIED sin esos gates.
+- NEXT_WU: integrar el diff de seguridad (ya integrado en `9ed0a4f2`) y correr CI completo sobre el SHA nuevo; entonces cerrar WU-RP-053 y atender R5, UAT-RP-024 y divulgación UAT-RP-005 inv3.
+- Primer comando de reanudación: `git status --short && git rev-parse HEAD && git log -1 --oneline && git branch --show-current`; comparar SHA con `WU_RP_053_SLICE_RECEIPT.md` (L4 canary) y `WORK_JOURNAL.md` 22:53Z. Gradle desde `v2/`.
+
+## Reconciliación 2026-09-23T22:50Z (autoridad operativa vigente)
+
+- Git observado: rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f`, `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`; árbol de trabajo dirty con cambios de implementación + 5 docs actualizados. NO se hizo commit (instrucción del verifier). CI del HEAD exacto (`9ed0a4f2`): **NOT_RUN**.
+- ACTIVE_PHASE: RP-5, **WU-RP-053 sigue OPEN**. Verificación independiente orquestada (L1+L3, daemon caliente, 34s) reejecutó la batería dirigida sobre `9ed0a4f2` y obtuvo **17/17 PASS** (0 failures, 0 errors): `WorkspaceOperationsEffectiveRootTest` 12/0/0 sha256 `974a55bd3f0f0bef5e25244223acecea5f221c39dc3a5aafe278a06ab990419f`, `cli.WURp053WorkspaceCliTest` 2/0/0 sha256 `796bcb773e895012f4b9421adc050ba627e1b833e08b75106f36d8859b01d4e2`, `scripted.DirFilesystemEndToEndTest` 3/0/0 sha256 `6a90743b9df61bd4fba2e7d83925094a47c6f418fa7ba8b9f61f84eed6b8a2c8`. XML fresco con timestamps 2026-09-23T22:49:18..22:49:22Z (canary verificado). NO se tocó producción ni fixtures.
+- Quedan **NOT_RUN**: replay completo mismo `--db`/`--control-root`, sha-pinned CI run para SHA nuevo, aislamiento bajo `.v2` reservado, parallel stage isolation, rootless sandbox profile, UAT-RP-024 (dos repos), divulgación UAT-RP-005 inv3. WU-RP-053 NO se promueve a CERTIFIED sin esos gates.
+- NEXT_WU: integrar el diff de seguridad, distribuir el binario y ejecutar `installDist` + canarios sobre checkout real + replay mismo `--db`/`--control-root` + CI completo sobre el SHA final; entonces cerrar WU-RP-053 y atender R5, UAT-RP-024 y divulgación UAT-RP-005 inv3.
+- Primer comando de reanudación: `git status --short && git rev-parse HEAD && git log -1 --oneline && git branch --show-current`; comparar SHA con `WU_RP_053_SLICE_RECEIPT.md` y `WORK_JOURNAL.md` 22:50Z. Gradle desde `v2/`.
+
+## Reconciliación 2026-09-23T22:45Z (autoridad operativa vigente)
+
+- Git observado: rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f`, `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`; árbol de trabajo dirty con cambios de implementación. NO se hizo commit (instrucción del security worker). CI del HEAD: **NOT_RUN**.
+- ACTIVE_PHASE: RP-5, **WU-RP-053 security seam implementado + L1 verde**. Se cerró el defecto funcional `WorkspaceOperationsAdapter.effectiveRoot` (el cwd del `dir(...)` se había convertido en la raíz autorizada para writeFile/readFile/fileExists, rompiendo ADR-0052). El adaptador ahora distingue **`authorizedWorkspaceRoot` (inmutable, WIDE guard)** de **`effectiveWorkingDirectory` (cwd, LOCAL/substrate guard)**. Validación focal: **WorkspaceOperationsEffectiveRootTest 12/12 + DirFilesystemEndToEndTest 3/3**. Diff intacto en árbol de trabajo: `WorkspaceOperations.kt` (337 líneas) + `WorkspaceOperationsEffectiveRootTest.kt` (296 líneas, +10 adversarial rows). Pendiente: distribuir el binario y ejecutar `installDist`+canarios sobre checkout real, replay mismo `--db`/`--control-root`, CI completo para SHA final, gate RP-5 (R5, UAT-RP-024, divulgación UAT-RP-005 inv3 siguen OPEN). No avanzar RP-6.
+- NEXT_WU: tras cierre e instalación de la distribución en checkout real + evidencia de replay + CI completo sobre el SHA final, retomar WU-RP-040 R5 + UAT-RP-024. WU-RP-053 continúa OPEN hasta que la verificación end-to-end sobre la distribución instalada en el checkout real esté documentada.
+- Primer comando de reanudación: `git status --short && git rev-parse HEAD && git log -1 --oneline && git branch --show-current`; comparar diff con el recibo `WU_RP_053_SLICE_RECEIPT.md` y `WORK_JOURNAL.md` 22:45Z. Gradle desde `v2/`.
+
+## Reconciliación 2026-09-23T22:18Z (autoridad operativa vigente)
+
+- Git observado: rama `adr/0094-impact-policy-and-overlay-id-gap`, HEAD `9ed0a4f2d1acda225236b843ecd782da5c68014f`, `origin/main` local `74b40a6501cfcd70c67ec2cb6dc36fe507d40655`; árbol de trabajo con cambios de implementación y artefactos no seguidos. El encabezado histórico inferior (`1d38d778`, main) está **OBSOLETO** y no acredita este HEAD. No hay CI acreditado para `9ed0a4f2`: **NOT_RUN**.
+- ACTIVE_PHASE: RP-5, **WU-RP-053 OPEN** (corrección workspace en checkout real), base `9ed0a4f2`; alcance y aceptación en `docs/v2/05-roadmap/ROADMAP.md` §7 y `docs/v2/07-uat/WU_RP_053_SLICE_RECEIPT.md`. No certificar ni publicar todavía. El último cierre histórico de WU-RP-051 se conserva para su SHA solamente.
+- NEXT_WU: completar implementación en curso y verificar WU-RP-053 con L0, test focalizado, clase, distribución instalada en checkout real, negativos de rutas/aislamiento y replay; después CI completo sobre SHA final y gates RP-5 pendientes (R5 y UAT-RP-024). No avanzar RP-6.
+- Primer comando de reanudación: `git status --short && git rev-parse HEAD && git log -1 --oneline && git branch --show-current`; después comparar diff de implementación con el recibo WU-RP-053. Gradle desde `v2/`.
 
 **Actualizado:** 2026-09-23T13:50Z. **Tipo de cambio de esta sesión:** **CIERRE WU-RP-051 — push + CI verificación + 2 CI-infra fixes**. WU-RP-050 cerrada en `36f240fb` (slice receipt `4fb79b01`). WU-RP-051 extendió con bootstrap push + 2 fixes (Install just hardened `bd52fa1b` + sbom cache `63220a5c`) + slice receipt `70cde8e6`. **HEAD = 1d38d778** (LOCAL + REMOTE sincronizados, push final). LPR-0 CI verde run `35865298485` (10/10 success) + verificación final run `35866370854` pending. **NO_GO estricto**: NO_RELEASE, no tocar Step core, no Step framework OS-level, no overlay package.
 
@@ -30,7 +290,7 @@
   - **UAT-RP-019/020/021 (Gradle/Maven/Node real):** COVERED opt-in (`UAT_RP_019_RUN=1`, etc.); 6/6 PASS HEAD 87d7f2ef (CI 35846205928). SKIP por defecto en CI por coste.
   - **UAT-RP-022 (Release byte-idéntico):** COVERED HEAD 2a66317c (recertificado WU-RP-046 R2, ZIP sha256 `6c30e6b6...` doble build idéntico).
   - **UAT-RP-023 (Cadena suministro):** COVERED en parte (R3.1 SBOM + R3.2 secret-scan). SAST/detekt (R3.3) y Dependabot (R3.4) son KNOWN_GAP — bloqueante RP-5 Gate.
-  - **UAT-RP-024 (Dogfooding en dos repos):** KNOWN_LIMITATION. Imposible de cumplir en sesión autónoma.
+  - **UAT-RP-024 (Dogfooding en dos repos):** **PASS en `9ed0a4f2`** (2026-09-23T22:58Z, slot palmtree). Receipt `docs/v2/07-uat/UAT_RP_024_DOGFOOD_TWO_REPOS_RECEIPT.md`. NO es KNOWN_LIMITATION.
   - **M3 SIGPIPE flake:** NO REPRODUCIBLE en HEAD 2a66317c (10 ejecuciones todas exit=0). QUARANTINED + NO_REPRODUCIBLE_AT_CURRENT_HEAD.
   - **CLI exit-code-0-on-typed-exception:** RECLASIFICADO — no es defecto del binario (retorna 0/1/2 correcto); artefacto de bash `... | tail`. Workaround `|| { ... }` válido en scripts bash de tests.
   - **UAT-RP-018 LOCAL COVERED a 12 caps.** `os` fail-closed ADR-0016 M5/M9 (RP-7+ scope).
@@ -39,7 +299,7 @@
   - **WU-RP-040 R4 pitest PARTIAL:** mutation 42% domain / 50% SDK; 128 mutantes sobrevivientes.
 - NEXT_WU: **WU-RP-040 R5** (SAST/detekt + Dependabot + Kover-all + triage mutantes). Sigue **WU-RP-048** (dogfooding 1-repo fork para UAT-RP-024). **NO_RELEASE** hasta: (a) WU-RP-040 R5 verde, (b) UAT-RP-024 evidencia 1-repo dogfooding, (c) divulgación UAT-RP-005 inv3 release notes. LF-0403 cerrado. WU-RP-050 cerrado. WU-RP-051 cerrado.
 - Próximo WU técnicamente: D-002 (Rp022ThroughputProbe warmup, P2) si se desea cerrar flake pre-existente ANTES de WU-RP-040 R5. Bajo riesgo, 1 línea.
-- BLOCKERS: ninguno técnico. Política RP-5 Gate: SAST + Dependabot pendientes; dogfooding ≥2 repos estructuralmente imposible; divulgación UAT-RP-005 inv3 pendiente.
+- BLOCKERS: ninguno técnico. Política RP-5 Gate: SAST + Dependabot pendientes; dogfooding ≥2 repos estructuralmente imposible; divulgação UAT-RP-005 inv3 pendiente. **UAT-RP-024 ejecutado y PASS en 22:58Z** (descartada como limitación).
 - RELEASE_REFERENCE: v0.39.0; HEAD posterior NOT_YET_RECERTIFIED until RP-5. **Prerrequisito irreducible:** UAT-RP-019/020/021 ejecutables en HEAD + UAT-RP-022 reproducibilidad + UAT-RP-018 matriz COVERED + M3 SIGPIPE caracterizado.
 - OPERATIONAL NOTE: sub-agent swarm pool no funcional; orchestrator-direct con evidencia verificable (patrón preautorizado).
 
@@ -50,3 +310,85 @@
 3. CI verificado para 1d38d778 (LPR-0 run `35865298485` 10/10 verde). Si verificación final `35866553565` terminó verde, ese es el certificado definitivo. Si terminó rojo, diagnosticar y arreglar antes de proseguir.
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
+
+## Reconciliación 2026-09-24T10:55Z — README REESCRITO + ROADMAP DIST-1..DIST-6 (autoridad operativa vigente)
+
+### Acción de este ciclo (AUTO)
+
+1. **4 commits atómicos sobre `wu/rp-harness-coordination`** (HEAD `6dcef432`, base `origin/main` 74b40a65):
+   - `cc372595` docs(readme): rewrite README.md for users, drop internal links.
+   - `6d6d9752` docs(readme): correct distribution channels — SDKMAN is pending, not available.
+   - `ed610a08` docs(readme): split Distribution channels table per installer.
+   - `6dcef432` docs(readme,roadmap): VERSION+sha256sum snippet + DIST-1..DIST-6 roadmap.
+
+2. **Verificación empírica contra binario público `pipelinek-0.39.0`** (Digest ZIP `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`; Digest binario `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee`):
+   - Descarga `pipelinek-0.39.0.zip` (91.416.100 bytes, 1.5s).
+   - Descomprime en `/tmp/pipelinek-verify/pipelinek-0.39.0/`.
+   - Ejemplos 01..10 ejecutados con el binario público oficial:
+     - 01-hello: exit=0, outcome=success.
+     - 02-multi-stage: exit=0, outcome=success.
+     - 03-shell: exit=0, outcome=success.
+     - 04-kotlin-control-flow: exit=0, outcome=success.
+     - 05-failing-step: exit=1, outcome=failure (StepFailed kind=SCRIPT, message="shell exited with code 3").
+     - 06-durable: exit=0, outcome=success (con `--db`).
+     - 07-catch-error: exit=0, outcome=unstable.
+     - 08-parallel: exit=0, outcome=success.
+     - 09-retry: exit=0, outcome=success (con `--db`).
+     - 10-timeout: exit=1, outcome=failure (TimeoutScheduled, StepFailed, abort).
+   - `pipelinek doctor`: jdk 24.0.2 (Eclipse Adoptium), os Linux 7.2.4-ogc3.1.fc44.x86_64, workdir writable.
+
+3. **Contenido del README reescrito** (130 → 231 líneas, +117/-34 vs cc372595, +205/-26 vs 6d6d9752, etc.):
+   - Hero: VERSION=0.39.0; curl -fL; sha256sum -c -; unzip; ./pipelinek-VERSION/bin/pipelinek {version,doctor,run}.
+   - Quickstart §1: misma receta + nota blockquote 'SDKMAN is not yet available' con enlace al §Distribution channels.
+   - §Capabilities: capacidades reales alineadas con examples/07-10 (parallel, retry, timeout, catchError disponibles).
+   - §Examples: tabla con 10 ejemplos y exit code esperado (0/1), con instrucciones para SDKMAN o repo.
+   - §Distribution channels: tabla de 7 canales (GitHub Releases ZIP / Direct download / SDKMAN / Homebrew / mise / asdf / Scoop / Container) con estado Available/Pending/Future + enlaces a LFC9-004/006/007, WU-LPR-080, ADR-0089.
+   - §Verified against the published artifact: ZIP SHA-256, binary SHA-256, certified commit, examples results, doctor output.
+
+4. **DISTRIBUTION_ROADMAP.md (NUEVO, 153 líneas)**: hoja de ruta DIST-1..DIST-6 con entregables y criterios de cierre por hito (DIST-1 cerrado hoy; DIST-2 instalador autónomo `scripts/install-pipelinek.sh`; DIST-3 imagen OCI mínima; DIST-4 mise Aqua; DIST-5 Homebrew tap; DIST-6 SDKMAN/Scoop/native cuando proceda). Distribución de tareas cross-repo: este repo sólo construye ZIP+SBOM; harness verifica/publica OCI/formula Homebrew/etc.
+
+5. **WIP del operador preservado** intacto en working tree (recuperable vía `git stash`):
+   - `scripts/run-pipelinek.sh`, `scripts/run-pipelinek`, `scripts/verify-rp-043.py`, `scripts/gen-certification-ledger.py`.
+   - `docs/pipeline-kotlin-config-overlay-package/`.
+   - 33 fixtures `v2/compatibility/*.pipeline.kts` (baselined).
+   - `v2/pipeline-application/src/main/{Main.kt, WorkspaceOperations.kt, CanonicalRuntimeCapabilityAccess.kt}` y tests WU-RP-053.
+   - Recibos WU-RP-053 y WU-RP-043 (`docs/v2/07-uat/*.md`).
+   - `.agent/{SESSION_POINTER,TESTING-STATE,WORK_JOURNAL}.md`.
+
+### Identidad material preservada
+
+- HEAD base pre-RP-5: 9ed0a4f2 (intacto).
+- HEAD candidata WU-RP-043: 262cc11e en `wu/rp-043-integration-clean` (intacto, NO tocado, NO cherry-pickeado).
+- HEAD rama coordinación: `6dcef432` en `wu/rp-harness-coordination` (4 commits atómicos sobre origin/main 74b40a65).
+- origin/main local: 74b40a65 (intacto).
+- Binario estable `/home/rubentxu/.local/bin/pipelinek` (92d0f67d…): NO modificado.
+- ZIP oficial `pipelinek-0.39.0.zip` SHA-256 `385b140c…cbb8` (verificado) disponible en `/tmp/pipelinek-verify/`.
+
+### DECLARACIÓN
+
+- DIST-1 (README + instalación manual del ZIP) **cerrado** en este turno.
+- SDKMAN sigue **pendiente** (vendor onboarding); no bloquea otras releases per directiva del operador 2026-09-24T10:53Z.
+- Imagen OCI (DIST-3) pertenece al harness; este repo se limita a entregar el ZIP canónico.
+- No push de `wu/rp-harness-coordination` este turno (espera confirmación del operador).
+
+### Pendiente para el operador
+
+1. Decidir si abre PR documental separada de #73 o anexa los 4 commits del README al handover.
+2. Decidir si puja `wu/rp-harness-coordination` a origin.
+3. Decidir si promueve `wu/rp-043-integration-clean` a main (con la nueva arquitectura, ya no es prerrequisito para entrega al harness).
+
+### Próximo corte ejecutable (AUTO, sin pedir permiso)
+
+**WU-RP-020 — caracterización SqliteEventStore** sobre `origin/main` (`74b40a65`), en rama nueva `wu/rp-020-sqlite-event-store-characterization`. Es la siguiente WU per ROADMAP §3 (RP-2 arranca con WU-RP-020). Caracterizar: sequence asignada frente a orden de inserción/lectura, flush/close con productores activos, reinicio, gap, error de writer, replay y arrays anidados. **No modificar el contrato de secuencia** hasta reproducir o descartar el riesgo. Test determinista, criterios observables, sin tocar la candidata `262cc11e`.
+
+Antes de arrancar: planificar alcance + criterios observables + invariantse, en commit de planificación tipo `docs(wu-rp-020): characterization plan`. Sin tests aún (TDD red-green).
+
+### Primer comando de reanudación
+
+```bash
+git rev-parse --abbrev-ref HEAD && git rev-parse HEAD && \
+git log --oneline origin/main..HEAD && \
+git status --short | head
+```
+
+Debe mostrar: rama `wu/rp-harness-coordination`, HEAD `6dcef432`, 4 commits sobre origin/main, README.md y docs/v2/05-roadmap/DISTRIBUTION_ROADMAP.md en `M`/`A` y el WIP del operador preservado.

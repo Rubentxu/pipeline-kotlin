@@ -24,7 +24,7 @@ class Rp022ThroughputProbe {
         "supersecretvalue01".toByteArray().copyInto(big, 1024)
         "supersecretvalue01".toByteArray().copyInto(big, big.size - 2048)
 
-        repeat(1) { redactor.wrap(ByteArrayInputStream(big)).use { it.readBytes().toString(Charsets.UTF_8) } } // warmup
+        repeat(3) { redactor.wrap(ByteArrayInputStream(big)).use { it.readBytes().toString(Charsets.UTF_8) } } // warmup
         val t0 = System.nanoTime()
         val out = redactor.wrap(ByteArrayInputStream(big)).use { it.readBytes().toString(Charsets.UTF_8) }
         val ms = (System.nanoTime() - t0) / 1_000_000

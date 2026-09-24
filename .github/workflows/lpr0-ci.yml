@@ -126,7 +126,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq just
           just --version
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -291,7 +291,7 @@ jobs:
           java-version: 21
       - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -329,7 +329,7 @@ jobs:
           java-version: 21
       - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -359,7 +359,7 @@ jobs:
       # rejected with HTTP 403 (rate-limit / anti-bot). Add the same cache
       # step the application-shards use to avoid cold downloads.
       - name: "Gradle cache (WU-RP-005 - warm scripting/compile cache)"
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches

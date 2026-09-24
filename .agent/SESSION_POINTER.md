@@ -311,6 +311,40 @@
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
 
+## Reconciliación 2026-09-24T11:46Z — SHA DEL HARNESS CONFIRMADO: ca2a91c0 + PR #76 sigue esperando motor (autoridad operativa vigente)
+
+- **Estado verificado por el operador 2026-09-24T11:46Z sobre GitHub**:
+  - `pipeline-kotlin/main` = `2ba36069` (pre-#84/#85; estado al cierre del operador de la sesión de consolidación 4-PRs). Después de la sesión: `d5eb9781` (post-#84 #85).
+  - **`pipelinek-release-harness/main` = `ca2a91c0`** (dato nuevo; el operador confirma que el harness YA está inicializado y tiene SHA concreto).
+  - **PR #76 de pipeline-kotlin** sigue ABIERTA. El operador **NO fusionaría** #76 sólo porque los prompts estén terminados: es un cambio del motor que debe superar sus propios gates.
+
+- **Implicación para los prompts**: el agente del harness debe **referenciar su propio SHA** (`ca2a91c0` o el que tenga HEAD cuando arranque) en todos los artefactos publicados, NO un SHA genérico. Actualizado en `HARNESS_PROMPTS_2026_09_24.md`.
+
+- **Posición actual de pipeline-kotlin (AUTO)**:
+  - main: `d5eb9781` (12 commits squash sobre línea base `74b40a65`).
+  - PR #76 OPEN: candidata WU-RP-043 rebased; NO la auto-mergeo per directiva 11:46Z.
+  - WIP del operador: 30 archivos intactos.
+  - Distribución v0.39.0: ZIP + instalador bash en main (DIST-1, DIST-2 cerrados).
+
+- **Próximos cortes (AUTO, sin pedir permiso adicional)**:
+  1. Operador arranca H0.3 (o el siguiente requisito si H0.3 ya está cerrado) en el harness con Prompt A.
+  2. Si el operador quiere más prompts o quiere que ajuste la trazabilidad del SHA, los entrego en este repo.
+  3. PR #76 sigue en espera hasta que el operador decida por motivos del motor, no del circuito.
+
+- **Estado material**:
+  - pipeline-kotlin/main: `d5eb9781`.
+  - pipelinek-release-harness/main: `ca2a91c0` (referencia; el agente del harness conoce el SHA actualizado).
+  - wu/rp-043-integration-clean: `d8145632` (PR #76 OPEN).
+
+### Primer comando de reanudación
+
+```bash
+git checkout main && git pull origin main && \
+git rev-parse HEAD && git log --oneline -5
+```
+
+Debe mostrar: HEAD `d5eb9781 docs(agent): record CLI real args + Spring REST prompt directive (#85)`. Log anterior: `2c077409 docs(uat): harness prompts with real CLI args + Spring REST prompt (#84)`.
+
 ## Reconciliación 2026-09-24T11:36Z — PROMPTS DEL HARNESS CON ARGUMENTOS REALES + SPRING REST (autoridad operativa vigente)
 
 - **Directiva del operador 2026-09-24T11:34Z sobre el circuito cross-repo** (refinamiento):

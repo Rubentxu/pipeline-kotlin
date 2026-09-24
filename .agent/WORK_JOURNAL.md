@@ -2136,3 +2136,22 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - CLI smoke (local): el binario `wu/rp-053-dir-failure-mode` ejecuta el escenario HAR-007 con `dir("errdir"){sh("false")}` → `dir("chk"){sh("touch marker.txt")}` → outcome=success, marker escrito, DirExited(restoTo=ws), DirEntered(chk) emite, BlockFailureContained en sequence 9.
 - Recibo: `docs/v2/07-uat/WU_RP_053_DIR_FAILURE_MODE_RECEIPT.md`. Branch pushed.
 - Próximo: PR cut, revisión del operador, rc5 con bytes del merge (no se hace desde aquí), veredicto harness externo.
+
+## 2026-09-24T18:05Z — WU-RP-053 architecture regression cerrada (FArchL7 51→52)
+
+- Base: `wu/rp-053-dir-failure-mode` @ `9462a319` (HEAD anterior).
+- Hallazgo durante survey de WU-RP-030: corriendo `:pipeline-architecture-tests:test` sobre el branch WU-RP-053 para validar el contexto hexagonal, sale **1 FAIL** en `FArchL7DomainEventExhaustivityTest.domain_event_sealed_hierarchy_has_51_variants` (esperado 51, actual 52). El commit `9462a319` (WU-RP-053-DIR-FAILURE-MODE) había agregado `BlockFailureContained` al sealed hierarchy y actualizado el round-trip test pero NO el fitness del L7. Falso verde que el L5 round-gate habría cazado.
+- Cambios:
+  - `v2/pipeline-architecture-tests/.../FArchL7DomainEventExhaustivityTest.kt`: rename `has_51_variants` → `has_52_variants`, expectedCount 51 → 52, docstring + entry #52 añadido (con referencia a WU-RP-053-DIR-FAILURE-MODE).
+  - `v2/pipeline-events/detekt-baseline.xml`: sincronizar el `MaxLineLength` suprimido al nuevo texto de aserción de `DomainEventRoundTripTest` (51 → 52). El warning sigue aplicando (mensaje >120 chars), solo cambia el texto.
+- Validación:
+  - `:pipeline-architecture-tests:test` → **313/313 PASS** (pre-fix: 313/1 FAIL).
+  - `:pipeline-architecture-tests:detekt` → PASS.
+  - `:pipeline-events:detekt` → PASS.
+  - `:pipeline-events:test` → 188/188 PASS (UP-TO-DATE).
+- Commit: `595537ef` (`test(arch): update DomainEvent exhaustivity fitness 51 -> 52 for BlockFailureContained`).
+- Push: `wu/rp-053-dir-failure-mode` @ `595537ef` (2 commits sobre main).
+- Encadenamiento: WU-RP-053-DIR-FAILURE-MODE queda **LOCAL GREEN + arch fitness PASS** — listo para rc5 (gate del operador). PR URL sigue siendo https://github.com/Rubentxu/pipeline-kotlin/pull/new/wu/rp-053-dir-failure-mode (incluye ahora ambos commits).
+- Survey WU-RP-030 (hexagonal fitness): los tests ya existentes (`Lfc0GlobalStateFitnessTest`, `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest`, `Lfc2B11ExternalScopedRoutingDefenseFitnessTest`, `Lfc2BodyExecutionPolicyFitnessTest`, `Lfc2ConcreteBodyRoutingDebtFitnessTest`, `Lfc2DurableAggregateIdentityFitnessTest`, `Lfc2DurableCoordinatorScopeFitnessTest`, `Lfc2RegistryFamilyFitnessTest`, `Lfc2WULpr302BodyControlSeamFitnessTest`, `FArch00x` family, `Rp030EventCodecsConnascenceFitnessTest`) cubren los invariants enumerados en AGENTS.md (hexagonal dep direction, no globals, closed ADTs, capability-routed handlers, no `Any?` at boundaries). **No residual gap detectable**. WU-RP-030 se considera COMPLETED por infraestructura existente; el siguiente ciclo debe atacar WUs con deuda material pendiente (p.ej. WU-RP-040 R9 si aplica, o el siguiente WU del backlog del roadmap).
+- Lección (CIERRE REAL): antes de mergear cualquier cambio a un sealed hierarchy, hacer grep en el módulo del sealed type Y en `pipeline-architecture-tests` para localizar TODOS los conteos dependientes y baselines detekt.
+

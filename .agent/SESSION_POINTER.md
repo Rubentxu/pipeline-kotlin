@@ -832,3 +832,35 @@ git checkout wu/rp-053-dir-failure-mode
 - Operador ejecuta harness sobre rc5; veredicto se ingiere por el consumer del harness.
 - Si veredicto GREEN → WU-RP-053 coherence contract puede cerrar (R3.4 dependency-audit, WU-RP-031 extracciones verticales, etc.). Si NEGATIVE/BLOCKED → iterar sobre esta rama hasta verde.
 - Mientras tanto: monitorizar CI en `main`; otras WUs pendientes en ROADMAP pueden progresar en paralelo sin acoplarse a esta rama.
+
+## Reconciliación 2026-09-24T18:05Z — REGRESIÓN ARQUITECTÓNICA CERRADA (FArchL7 51→52)
+
+- HEAD main: `9673c3d6` (sin cambio).
+- HEAD work: `wu/rp-053-dir-failure-mode` @ `595537ef` (2 commits sobre main: feature `9462a319` + regresión fix `595537ef`).
+- Hallazgo: el commit WU-RP-053-DIR-FAILURE-MODE añadió `BlockFailureContained` al sealed hierarchy de `DomainEvent` (51→52) pero **NO actualizó** `FArchL7DomainEventExhaustivityTest` que cuenta variantes. El L5 round-gate lo habría cazado como falso verde.
+- Fix: `FArchL7DomainEventExhaustivityTest` 51→52 + docstring + entry 52; `pipeline-events/detekt-baseline.xml` sincronizado al nuevo texto de aserción (MaxLineLength suprimido sigue aplicando).
+- Validación:
+  - `:pipeline-architecture-tests:test` → **313/313 PASS** (pre-fix: 313/1 FAIL).
+  - `:pipeline-architecture-tests:detekt` → PASS.
+  - `:pipeline-events:detekt` → PASS.
+  - `:pipeline-events:test` → 188/188 PASS (UP-TO-DATE).
+- Branch pushed a `wu/rp-053-dir-failure-mode` @ `595537ef`.
+- **Lección (CIERRE REAL)**: agregar una variante a un sealed hierarchy exige barrer TODOS los lugares que dependen del conteo (fitness, round-trip, baselines). Próxima vez: grep `sealed hierarchy.*has_\\d\\+_variants\\|expectedCount = \\d\\+` en módulo de fitness Y en módulo del sealed type antes de mergear.
+- Estado WU-RP-053-DIR-FAILURE-MODE: **LOCAL GREEN + arch fitness PASS**; rc5 promotion sigue siendo gate del operador (veredicto harness externo sobre bytes exactos).
+
+### Acción de este ciclo (AUTO)
+
+```bash
+cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+git checkout wu/rp-053-dir-failure-mode
+git rev-parse HEAD   # debe ser 595537ef
+git status --short   # sin WIP
+```
+
+### Siguiente
+
+- Operador revisa PR (URL: https://github.com/Rubentxu/pipeline-kotlin/pull/new/wu/rp-053-dir-failure-mode).
+- Operador corta rc5 con bytes del merge si aprueba.
+- Operador ejecuta harness sobre rc5 → veredicto se ingiere por consumer externo.
+- Mientras tanto: monitor CI en `main`; WU-RP-030 (hexagonal fitness) ya está prácticamente cerrado por los Lfc0-Lfc2 existentes — survey en pausa, sin gap residual identificable.
+

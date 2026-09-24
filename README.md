@@ -6,18 +6,24 @@ events, and structured failures — without a controller, agent, or
 remote state.
 
 ```bash
-# Install (from GitHub Releases — see "Distribution channels" below)
-curl -sL -o /tmp/pipelinek-0.39.0.zip \
-  https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.39.0/pipelinek-0.39.0.zip
-unzip -q /tmp/pipelinek-0.39.0.zip -d /opt
-export PATH="/opt/pipelinek-0.39.0/bin:$PATH"
+VERSION=0.39.0
 
-# Verify the install
-pipelinek version          # → pipeline 0.39.0
-pipelinek doctor           # jdk / os / workdir / writable
+curl -fL -o "pipelinek-${VERSION}.zip" \
+  "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 
-# Run your first pipeline
-pipelinek run examples/01-hello.pipeline.kts
+echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-${VERSION}.zip" \
+  | sha256sum -c -
+
+unzip "pipelinek-${VERSION}.zip"
+
+./pipelinek-${VERSION}/bin/pipelinek version          # → pipeline 0.39.0
+./pipelinek-${VERSION}/bin/pipelinek doctor           # jdk / os / workdir / writable
+```
+
+Then run your first pipeline:
+
+```bash
+./pipelinek-${VERSION}/bin/pipelinek run examples/01-hello.pipeline.kts
 ```
 
 ## What is PipelineK
@@ -37,22 +43,36 @@ schedule remotely, and does not need a controller.
 ### 1. Install
 
 Download the canonical ZIP from
-[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0)
-and put the unpacked `bin/pipelinek` on your `PATH`:
+[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0),
+verify its SHA-256, and unzip it:
 
 ```bash
-curl -sL -o /tmp/pipelinek-0.39.0.zip \
-  https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.39.0/pipelinek-0.39.0.zip
-unzip -q /tmp/pipelinek-0.39.0.zip -d /opt
-export PATH="/opt/pipelinek-0.39.0/bin:$PATH"
+VERSION=0.39.0
 
-pipelinek version          # → pipeline 0.39.0
-pipelinek doctor           # jdk / os / workdir / writable
+curl -fL -o "pipelinek-${VERSION}.zip" \
+  "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
+
+echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-${VERSION}.zip" \
+  | sha256sum -c -
+
+unzip "pipelinek-${VERSION}.zip"
+
+./pipelinek-${VERSION}/bin/pipelinek version
+./pipelinek-${VERSION}/bin/pipelinek doctor
 ```
 
 Linux, macOS and Windows (WSL) are supported. The ZIP ships both
 `bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows). Java 21 or
-newer is required on the `PATH`.
+newer is required on the `PATH`. The snippet above assumes you run it
+from a directory where you want `pipelinek-${VERSION}/` to live
+(`./pipelinek-0.39.0/bin/pipelinek` works without touching your `PATH`
+or needing `sudo`).
+
+> **SDKMAN is not yet available.** `sdk install pipelinek 0.39.0` is the
+> canonical long-term install command but the candidate is still in
+> vendor onboarding; running it today may fail. Until SDKMAN goes live,
+> install from GitHub Releases as shown above. See
+> [Distribution channels](#distribution-channels) for the full picture.
 
 ### 2. Write a pipeline
 
@@ -223,9 +243,15 @@ Every claim in the README above has been verified against the official
 Reproduce locally:
 
 ```bash
-curl -sL -o /tmp/pipelinek-0.39.0.zip \
-  https://github.com/Rubentxu/pipeline-kotlin/releases/download/v0.39.0/pipelinek-0.39.0.zip
-sha256sum /tmp/pipelinek-0.39.0.zip   # should print 385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8
-unzip -q /tmp/pipelinek-0.39.0.zip -d /tmp/pipelinek-0.39.0
-/tmp/pipelinek-0.39.0/pipelinek-0.39.0/bin/pipelinek doctor
+VERSION=0.39.0
+
+curl -fL -o "pipelinek-${VERSION}.zip" \
+  "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
+
+echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-${VERSION}.zip" \
+  | sha256sum -c -
+
+unzip "pipelinek-${VERSION}.zip"
+
+./pipelinek-${VERSION}/bin/pipelinek doctor
 ```

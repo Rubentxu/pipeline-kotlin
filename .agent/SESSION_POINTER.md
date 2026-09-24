@@ -311,6 +311,64 @@
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
 
+## Reconciliación 2026-09-24T11:15Z — CONSOLIDADO POST-4-PRs: DIST-3-docs + rebase WU-RP-043 + state update (autoridad operativa vigente)
+
+- **4 PRs mergeadas en este turno** (consolidado 2026-09-24T11:02Z..11:15Z):
+  - **PR #73** → commit `12371ca0` (10 commits squash, 8 files, +1765/-86). Trae bloque AGENTS.md cross-repo + README reescrito + 3 docs roadmap + HARNESS_INVENTORY_HANDOVER.
+  - **PR #74** → commit `9a4a09a3` (2 commits squash, 3 files, +693). Trae `scripts/install-pipelinek.sh` (DIST-2, SHA-256 `f86d1d2f3edcf22a9c568c0f303e59074eb389591e37c3710cc60346d8d983f7`) + plan + recibo. 22/22 tests manuales verdes.
+  - **PR #75** → commit `aa2bad28` (1 commit squash, 1 file, +101/-1). State update de SESSION_POINTER.
+  - **PR #77** → commit `fa08829f` (1 commit squash, 1 file, +32). README §1.1 'Install with the script (multi-version manager)' + fila en §Distribution channels.
+
+- **Rebase de `wu/rp-043-integration-clean`** sobre nuevo main:
+  - Operador autorizó "hazlo tu". Verificado cero solapamiento (`comm -12` vacío).
+  - Stash WIP operador → rebase → stash pop → push forzado con `--force-with-lease`.
+  - HEAD nuevo: `d8145632 perf(wu-rp-043-d002): increase Rp022ThroughputProbe warmup 1 → 3`.
+  - **PR #76 abierta** (https://github.com/Rubentxu/pipeline-kotlin/pull/76). **NO mergeada automáticamente** porque es código de producto (4 commits byte-a-byte sobre 8 archivos del motor).
+  - 4 commits: `d324a6ab`, `e14c0423`, `29b1f90a`, `d8145632`.
+
+- **WIP del operador intacto** (30 archivos: 6 modified + 24 untracked) tras cada checkout de rama. Stash aplicado y restaurado sin pérdida.
+
+- **Estado consolidado de main (`fa08829f`)**:
+  - origin/main = `fa08829f docs(readme): add installer section §1.1 + Distribution channels row (#77)`.
+  - 5 commits squash consecutivos sobre la línea base `74b40a65`.
+  - Distribución: scripts/install-pipelinek.sh versionado + 3 docs nuevos (DISTRIBUTION_ROADMAP, RESPONSIBILITY_MIGRATION_ROADMAP, HARNESS_AGENTS_TEMPLATE) + HARNESS_INVENTORY_HANDOVER.
+  - README: 4 secciones nuevas (Quickstart §1.1, fila Dist channels, §Verified, etc.).
+  - AGENTS.md: 2 bloques nuevos (coordinación cross-repo, frontera de responsabilidad).
+  - .agent/: SESSION_POINTER actualizado.
+
+- **Estado del roadmap de PipelineK**:
+  - RP-0..RP-5 cerrados (WU-RP-053 declarado CERTIFIED_FULL).
+  - DIST-1 (README + manual): cerrado.
+  - DIST-2 (instalador bash): cerrado.
+  - DIST-3-docs (README §1.1): cerrado.
+  - DIST-3 OCI, DIST-4 mise, DIST-5 Homebrew, DIST-6 SDKMAN: **pendientes en el harness**.
+  - WU-RP-020..023 ya cerradas (RP-2); mi propuesta inicial era errónea, corregida por inspección de `RP2_GATE_RECEIPT.md`.
+
+- **Identidad material preservada**:
+  - origin/main: `fa08829f` (intacto, sólo documental + 1 script).
+  - wu/rp-043-integration-clean: `d8145632` (rebased, byte-a-byte sobre los 4 commits originales).
+  - wu/dist-002-installer: `0ab5eebb` (intacta, ya mergeada).
+  - wu/rp-harness-coordination: `596f57eb` (intacta, ya mergeada).
+  - wu/dist-003-readme-install-section: `3fc42706` (intacta, ya mergeada).
+  - Binario estable: NO modificado.
+  - WIP del operador: NO modificado.
+
+### Próximos cortes (AUTO, sin pedir permiso adicional)
+
+1. **PR #76 (candidata WU-RP-043 rebased)** — el operador decide si mergea a main. No la auto-mergeo porque es código de motor; el operador debe validar la integración.
+2. **Inicializar `pipelinek-release-harness`** pegando `HARNESS_AGENTS_TEMPLATE.md` (55 líneas) como AGENTS.md raíz. Trabajo del operador en el otro repo.
+3. **Migrar DIST-3 OCI, DIST-4 mise, DIST-5 Homebrew, DIST-6 SDKMAN al harness** una vez inicializado. Distribución cross-repo formalizada en DISTRIBUTION_ROADMAP §8.
+4. **Sin más trabajo en este repo** mientras PR #76 espera decisión. Si el operador autoriza merge de PR #76, proseguir con WU-RP-006 / WU-RP-007 (UP_FRESHNESS_CHECK_*_RACE / TWO_PHASE_INVALIDATION) per ROADMAP §8 backlog post-RP-5.
+
+### Primer comando de reanudación
+
+```bash
+git checkout main && git pull origin main && \
+git rev-parse HEAD && git log --oneline -5
+```
+
+Debe mostrar: HEAD `fa08829f` con mensaje `docs(readme): add installer section §1.1 + Distribution channels row (#77)`. Próximo log `aa2bad28 docs(agent): update SESSION_POINTER for WU-DIST-2 closure (#75)`.
+
 ## Reconciliación 2026-09-24T11:09Z — WU-DIST-2 CERRADA: instalador bash + PR #74 MERGED (autoridad operativa vigente)
 
 - **Ciclo 7 cerrado — WU-DIST-2 instalador bash versionado**.

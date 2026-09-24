@@ -1,69 +1,52 @@
 # PipelineK
 
-**PipelineK** is a local-first CI/CD engine with a Jenkins-familiar Kotlin
-DSL. V2 is the active product line. The first LPR-GATE-1 release
-(`pipelinek 0.39.0`) is **published** on GitHub Releases; SDKMAN
-registration is in progress.
+A local-first CI/CD engine with a Jenkins-familiar Kotlin DSL.
+PipelineK runs pipelines locally with durable execution, real typed
+events, and structured failures — without a controller, agent, or
+remote state.
 
 ```bash
-# Install (SDKMAN, once the candidate is live)
+# Install
 sdk install pipelinek 0.39.0
 
-# Verify
-pipelinek version   # → pipeline 0.39.0
-pipelinek doctor    # jdk / os / workdir / writable
+# Verify the install
+pipelinek version          # → pipeline 0.39.0
+pipelinek doctor           # jdk / os / workdir / writable
 
 # Run your first pipeline
-pipelinek run --workspace . pipeline.kts
+pipelinek run examples/01-hello.pipeline.kts
 ```
 
-## What is in v0.39.0
+## What is PipelineK
 
-- Compiling, validating, and inspecting `.pipeline.kts` pipelines.
-- Durable local execution with a SQLite journal and a control-root.
-- Typed event stream (`CompilationStarted`, `RunStarted`, `StageStarted`,
-  `StepStarted`, `StepFinished`, `StepFailed`, `RunFinished`,
-  `EchoOutputCaptured`).
-- Jenkins-familiar `pipeline { stages { stage { ... } } }` shape.
-- Typed plugin and capability contracts.
-- Local output, artifacts, events, credentials (with redaction at the
-  durable shell seam), and run inspection.
+PipelineK is a single-binary pipeline runner. You write `.pipeline.kts`
+files in a typed Kotlin DSL that resembles Jenkins' Groovy syntax, and
+PipelineK compiles, validates, and executes them locally. Every step
+emits a typed event; every shell process is journaled with a SHA-256
+fingerprint of its inputs; every run produces a durable record that you
+can resume after a crash.
 
-## What is NOT in v0.39.0
+You keep your data local. PipelineK does not phone home, does not
+schedule remotely, and does not need a controller.
 
-- Remote controllers, network protocols, Jenkins runtime integration,
-  remote scheduling, SaaS control plane.
-- Plugin marketplace, hot reload, dependency resolution.
-- Block steps (`retry`, `timeout`, `parallel`, `script`).
-- `agent { ... }`, `when { ... }`, `options { ... }`, `parameters { ... }`,
-  `post { ... }`.
-- `~/.pipelinekrc` or other global config files.
+## Quickstart
 
-These are deliberate v1 absences, not unfinished work. See the project
-roadmap for the planned v2 evolution.
+### 1. Install
 
-## Supported capabilities and v1 limits
+Recommended: SDKMAN.
 
-- **Java**: 21 or newer (certified on Temurin 21.0.8 and 24.0.2).
-- **OS**: Linux, macOS, Windows via WSL. The distribution is
-  `UNIVERSAL` per SDKMAN; it ships both `bin/pipelinek` (UNIX) and
-  `bin/pipelinek.bat` (Windows).
-- **Disk**: ~200 MB for the distribution plus per-run control data.
-- **Concurrency**: one pipeline run per CLI invocation. No daemon mode.
-- **Known defects in `0.39.0`**: see the exit-code table in
-  [`docs/user/cheat-sheet.md`](docs/user/cheat-sheet.md#exit-codes).
-  Shell scripts must gate on the `RunFinished.outcome` event, not on `$?`,
-  until the defect is fixed.
+```bash
+curl -s "https://get.sdkman.io" | bash
+sdk install pipelinek 0.39.0
+```
 
-## Installation
+Fallback: download the ZIP from
+[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0)
+and put the unpacked `bin/pipelinek` on your `PATH`.
 
-- Recommended: SDKMAN (see [installation guide](docs/user/installation.md)).
-- Fallback: download the ZIP from
-  [GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0).
+### 2. Write a pipeline
 
-## Your first pipeline
-
-Create `pipeline.kts` next to any Gradle JVM project:
+Create `pipeline.kts`:
 
 ```kotlin
 pipeline {
@@ -77,54 +60,104 @@ pipeline {
 }
 ```
 
-Then:
+### 3. Validate and run
 
 ```bash
 pipelinek validate pipeline.kts
 pipelinek run --workspace . pipeline.kts
 ```
 
-See [quickstart](docs/user/quickstart.md) for the full walk-through.
+The full walk-through (workspaces, `--db`, secret redaction, run
+inspection) is in
+[`docs/user/quickstart.md`](docs/user/quickstart.md).
+
+## Examples
+
+The [`examples/`](examples/) directory contains ten runnable
+pipelines you can execute against the installed binary. Run them
+through the harness script:
+
+```bash
+# Build the binary once (or let examples/run.sh do it on demand)
+./gradlew -p v2 :pipeline-application:installDist
+
+# Run a single example
+examples/run.sh 03-shell.pipeline.kts
+
+# Run all ten with assertions on exit code and event contracts
+examples/run.sh
+```
+
+| Example | What it shows |
+|---|---|
+| `01-hello.pipeline.kts` | Minimal pipeline: one stage, one `echo` |
+| `02-multi-stage.pipeline.kts` | Stages execute in declaration order |
+| `03-shell.pipeline.kts` | Real OS processes via `sh`, including a shell `for` loop |
+| `04-kotlin-control-flow.pipeline.kts` | Kotlin control flow inside `script {}` blocks |
+| `05-failing-step.pipeline.kts` | Typed failure: `sh` exits 3 → `StepFailed(kind=SCRIPT)`, exit code 1 |
+| `06-durable.pipeline.kts` | Durable execution with `--db`: journal, fingerprints, crash resume |
+| `07-catch-error.pipeline.kts` | Nested `catchError`: inner `FAILURE` → outer `UNSTABLE`, pipeline continues |
+| `08-parallel.pipeline.kts` | Two concurrent branches with their own durable identity |
+| `09-retry.pipeline.kts` | `retry`: first attempt fails, second succeeds |
+| `10-timeout.pipeline.kts` | `timeout` deadline aborts an over-running `sh` |
+
+See [`examples/README.md`](examples/README.md) for the durable-execution
+demo, the event-contract details, and the known limitations of each
+example.
+
+## Capabilities
+
+PipelineK `0.39.0` ships with:
+
+- Compile, validate, and inspect `.pipeline.kts` pipelines.
+- Durable local execution with a SQLite journal (`--db`) and a
+  control-root for state isolation.
+- Typed event stream: `CompilationStarted`, `RunStarted`,
+  `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`,
+  `RunFinished`, `EchoOutputCaptured`.
+- Jenkins-familiar `pipeline { stages { stage { ... } } }` shape.
+- Block steps: `parallel`, `retry`, `timeout`, `catchError`.
+- Kotlin `script {}` blocks with real Kotlin control flow.
+- Typed plugin and capability contracts (`StepContract`,
+  `requiredCapabilities`, registry-based discovery).
+- Local credentials, with secret redaction at the durable shell seam.
+- Local `artifacts`, `stash`, `unstash`, `archiveArtifacts`,
+  `publishHTML`, `writeFile`, `pwd`, `isUnix`, `load`, `milestone`,
+  `cleanWs`, `deleteDir`, `waitUntil`, `unstable`, `warnError`.
+
+### System requirements
+
+- **Java**: 21 or newer (certified on Temurin 21.0.8 and 24.0.2).
+- **OS**: Linux, macOS, Windows via WSL. The distribution is
+  `UNIVERSAL` per SDKMAN; it ships both `bin/pipelinek` (UNIX) and
+  `bin/pipelinek.bat` (Windows).
+- **Disk**: ~200 MB for the distribution plus per-run control data.
+- **Concurrency**: one pipeline run per CLI invocation. No daemon mode.
 
 ## Documentation
 
 The full user documentation lives in [`docs/user/`](docs/user/):
 
-- [`installation.md`](docs/user/installation.md) — install on Linux/macOS/Windows (WSL)
-- [`quickstart.md`](docs/user/quickstart.md) — your first pipeline, end to end
-- [`cli-reference.md`](docs/user/cli-reference.md) — every CLI flag and exit code
-- [`pipeline-dsl.md`](docs/user/pipeline-dsl.md) — the certified DSL surface
-- [`configuration-and-workspace.md`](docs/user/configuration-and-workspace.md) — `--workspace`, `--db`, `--control-root`
-- [`credentials-and-security.md`](docs/user/credentials-and-security.md) — secret redaction
-- [`events-and-troubleshooting.md`](docs/user/events-and-troubleshooting.md) — typed events, transcripts, recovery
-- [`upgrading.md`](docs/user/upgrading.md) — SDKMAN upgrade, rollback
-- [`cheat-sheet.md`](docs/user/cheat-sheet.md) — short, copyable, UAT-tested
+- [`installation.md`](docs/user/installation.md) — install on
+  Linux/macOS/Windows (WSL).
+- [`quickstart.md`](docs/user/quickstart.md) — your first pipeline,
+  end to end.
+- [`cli-reference.md`](docs/user/cli-reference.md) — every CLI flag
+  and exit code.
+- [`pipeline-dsl.md`](docs/user/pipeline-dsl.md) — the certified DSL
+  surface.
+- [`configuration-and-workspace.md`](docs/user/configuration-and-workspace.md) —
+  `--workspace`, `--db`, `--control-root`.
+- [`credentials-and-security.md`](docs/user/credentials-and-security.md) —
+  secret redaction.
+- [`events-and-troubleshooting.md`](docs/user/events-and-troubleshooting.md) —
+  typed events, transcripts, recovery.
+- [`upgrading.md`](docs/user/upgrading.md) — SDKMAN upgrade, rollback.
+- [`cheat-sheet.md`](docs/user/cheat-sheet.md) — short, copyable,
+  exit-code table.
 
-## Release receipts
+## Releases
 
-- [`docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md`](docs/v2/07-uat/LPR_GATE_1_LOCAL_PRODUCTION_READY_0.39.0.md)
-  — LPR-GATE-1 closure (GitHub channel closed; SDKMAN pending).
-- [`docs/v2/05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md`](docs/v2/05-roadmap/LOCAL_FOUNDATION_CONSOLIDATION.md)
-  — LFC (Local Foundation Consolidation) roadmap — the architectural
-  foundation that backs the LPR milestones.
-- [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md)
-  — SDKMAN publication status and known defects in `0.39.0`.
-- [`docs/v2/07-uat/WU_LPR_071_SDKMAN_RESUME_PROTOCOL.md`](docs/v2/07-uat/WU_LPR_071_SDKMAN_RESUME_PROTOCOL.md)
-  — handoff for closing the SDKMAN channel.
-
-## Contributing
-
-```bash
-# Inspect the active V2 build
-./gradlew -p v2 tasks
-
-# Run a focused V2 test while iterating
-just t 'FullyQualifiedTestName'
-
-# Run the repository-level V2 gate at an apply/verify boundary
-./gradlew check
-```
-
-`./gradlew check` forwards to the active V2 composite build. During
-normal development, prefer the narrowest relevant V2 test; use the
-full gate only at a milestone or verification boundary.
+The current published release is
+[`pipelinek 0.39.0`](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.0).
+SDKMAN registration is in progress.

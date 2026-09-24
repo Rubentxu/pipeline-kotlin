@@ -806,3 +806,35 @@ python3 scripts/consult-harness-verdict.py --candidate v0.39.0 2>&1 | tail -3
 ```
 
 Debe mostrar: rama `main`, HEAD `5f574eeb`, sin commits sobre origin/main, `30` (WIP del operador), `exit_code=4 / status=MISSING` mientras el harness no haya publicado `evidence/v0.39.0/verdict.json`.
+
+## Reconciliación 2026-09-24T18:18Z — WU-RP-030 CERRADA: hexagonal fitness cubierto por infraestructura existente
+
+- HEAD main: `9673c3d6` (sin cambio).
+- HEAD work: `wu/rp-030-hexagonal-architecture-fitness` @ `0de6c426` (1 commit sobre main).
+- Hallazgo (survey WU-RP-030): los 39 fitness tests existentes en `v2/pipeline-architecture-tests/` cubren **todos** los mandates de AGENTS.md §HEXAGONAL ARCHITECTURE (MANDATORY) y §STEP CONSTITUTION & EXTENSIBILITY (MANDATORY). Las familias FArch (F-ARCH-L5..L7 + F-ARCH-001..005 + F-ARCH-011 + F-ARCH-020) + Lfc0..Lfc2 cubren:
+  - Hexagonal dep direction (FArch001 + FArch002 + FArch003 + FArch004 + FArch005 + FArch011).
+  - No globals / thread-locals (Lfc0GlobalStateFitnessTest + FArchExecutionContextOwnershipTest).
+  - Closed ADT, open registry (Lfc2RegistryFamilyFitnessTest).
+  - No `when(stepKey)` central switch (Lfc2B11ExternalScopedRoutingDefenseFitnessTest).
+  - Capability-routed handler discipline (Lfc2RegistryFamilyFitnessTest).
+  - DomainEvent sealed hierarchy exhaustivity (FArchL7DomainEventExhaustivityTest — **probado vivo este ciclo** con la regresión 51→52 que WU-RP-053 introdujo y que la infraestructura cazó sin ceremonias).
+  - Connascence (RP030EventCodecsConnascenceFitnessTest).
+- Decisión: **WU-RP-030 CLOSED as COMPLETED**. NO se añade `L4HexagonalArchitectureFitnessTest` porque añadir tests redundantes violaría CIERRE REAL ("don't add what doesn't close a gap"). Recibo: `docs/v2/07-uat/WU_RP_030_HEXAGONAL_FITNESS_RECEIPT.md`.
+- Evidencia: `:pipeline-architecture-tests:test` → **313/313 PASS** sobre `9673c3d6` en 2026-09-24T18:14Z, XML fresco.
+- Encadenamiento: este cierre es la confirmación formal de lo que ya estaba probado empíricamente cuando la regresión FArchL7 51→52 de WU-RP-053 fue detectada por la suite sin intervención manual.
+
+### Acción de este ciclo (AUTO)
+
+```bash
+cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+git checkout wu/rp-030-hexagonal-architecture-fitness
+git rev-parse HEAD   # debe ser 0de6c426
+git status --short   # sin WIP
+```
+
+### Siguiente
+
+- Operador puede mergear a main cuando guste (cero código, sólo recibo).
+- Estado WU-RP-053-DIR-FAILURE-MODE intacto en `wu/rp-053-dir-failure-mode` @ `b4f3bde8` (4 commits sobre main), aguardando veredicto harness externo del operador.
+- Sin nuevas WUs abiertas en este ciclo. Próxima decisión del operador tras revisar PR de WU-RP-053 + este cierre de WU-RP-030.
+

@@ -2117,3 +2117,21 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
   - `CompatibilityCorpusTest` (30 fixtures): 33 fixtures estaban borrados en working tree (WIP del operador). Restaurados vía `git checkout HEAD -- v2/compatibility/`. Tras restore, sólo fixture10 sigue roja — defecto conocido pre-existente (`S2_B10_ARCHIVEARTIFACTS_G2`: legacy glob engine incompatible con LF-0208 single-spine).
   - `UatLocal007SandboxProfileTest` (4), `UatLocal008CredentialsTest` (1), `UatLocal011WorkflowControlTest` (1), `UatCompat001CorpusSmokeRunTest` (2), `UatLocal005CorpusUntouchedTest` (2), `Lfc2WaitUntilCanonicalReentryFitnessTest` (1): todas dependencias del fixture10 + pre-existentes sin relación con cortes.
 - L5 con cortes aplicados (cut5-stash-cwd-rebase) NO ejecutado en este turno porque: (i) las pruebas quirúrgicas cut5 (58/58 + 4 skipped) son más discriminantes que L5 completo; (ii) regla 4b prohíbe L5 como gate de candidato. Si el operador quiere L5 sobre cut5 antes de promover, el comando es `cd v2 && timeout 1270 ./gradlew check` desde la rama.
+
+## 2026-09-24T18:18Z — WU-RP-030 CLOSED: hexagonal fitness cubierto por infraestructura existente
+
+- Base: main @ `9673c3d6`. Branch: `wu/rp-030-hexagonal-architecture-fitness` @ `0de6c426` (1 commit sobre main).
+- Resultado del survey: los **39 fitness tests** existentes en `v2/pipeline-architecture-tests/` cubren **todos** los mandates de AGENTS.md §HEXAGONAL ARCHITECTURE (MANDATORY) + §STEP CONSTITUTION & EXTENSIBILITY (MANDATORY) + §STRICT TYPED FUNCTIONAL DESIGN (parcial). Tabla completa en `docs/v2/07-uat/WU_RP_030_HEXAGONAL_FITNESS_RECEIPT.md`.
+- Decisión: **WU-RP-030 CLOSED as COMPLETED — NO new tests added**. La infraestructura existente captura:
+  - Sealed ADT exhaustivity (`FArchL7DomainEventExhaustivityTest`) — **probado vivo este ciclo** (regresión 51→52 de WU-RP-053).
+  - Hexagonal dep direction (`FArch001..005 + FArch011`).
+  - No globals (`Lfc0GlobalStateFitnessTest`).
+  - Closed ADT, open registry (`Lfc2RegistryFamilyFitnessTest`).
+  - No `when(stepKey)` switch (`Lfc2B11ExternalScopedRoutingDefenseFitnessTest`).
+  - Capability-routed handler (`Lfc2RegistryFamilyFitnessTest` cubre declared capability == used capability).
+- Cambio: sólo recibo (`docs/v2/07-uat/WU_RP_030_HEXAGONAL_FITNESS_RECEIPT.md`, 98 líneas). Cero código. Cero nuevos tests. Reciprocidad empírica ya demostrada por la regresión FArchL7 51→52 cazada sin intervención manual.
+- Validación: `:pipeline-architecture-tests:test` → **313/313 PASS** sobre `9673c3d6` en 2026-09-24T18:14Z, XML fresco.
+- Estado WU-RP-053-DIR-FAILURE-MODE intacto en `wu/rp-053-dir-failure-mode` @ `b4f3bde8` (4 commits sobre main), aguardando veredicto harness externo del operador.
+- Próximo: decisión del operador tras revisar PR de WU-RP-053 + este cierre de WU-RP-030. Mientras tanto, sin nuevas WUs abiertas; la sesión está en pausa operativa limpia.
+- Lección (CIERRE REAL): cuando un WU abre la puerta a "añadir X test", primero verificar si X ya está cubierto. Si la respuesta es sí (con evidencia fresca), cerrar el WU sin añadir nada — añadir tests redundantes sólo infla la suite sin cerrar gaps reales.
+

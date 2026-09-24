@@ -1,0 +1,9 @@
+{
+  "candidate": "v0.39.0",
+  "consumer": "scripts/consult-harness-verdict.py",
+  "detail": "verdict.json not found at Rubentxu/pipelinek-release-harness/evidence/v0.39.0/",
+  "harness_repo": "Rubentxu/pipelinek-release-harness",
+  "product_repo": "Rubentxu/pipeline-kotlin",
+  "status": "MISSING",
+  "timestamp": "2026-09-24T11:50:51Z"
+}

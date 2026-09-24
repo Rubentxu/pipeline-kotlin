@@ -13,6 +13,7 @@ Al INICIO de CADA sesión, antes de editar código:
 4. Verificar qué evidencia pertenece al SHA exacto. Certificaciones/recibos de v0.39.0 o de commits anteriores NO hacen verde main. Si falta verificación, escribir NOT_RUN/BLOCKED; jamás PASS por mera presencia de tests, tag, log o recibo antiguo.
 5. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan ./gradlew -p v2 desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
 6. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere CI completo, lanzar CI para el NUEVO SHA y registrar jobs realmente ejecutados.
+7. **Candidatas (release candidates):** una candidata NO se gatea con GitHub Actions (checks = vista cómoda) ni con la batería UAT del repo (esa es del harness). El flujo obligatorio M1..M8 (verde local → rama RC con bump → build ZIP+SBOM+SHA256 → smoke → tag → publicar via agente independiente → anunciar en la issue de coordinación única del harness → continuar siguiente WU) está en la sección "Release candidates" al final de este archivo. Léela ANTES de construir, publicar o mergear cualquier candidata. Auto-merge de PRs de motor NO autorizado: espera decisión del operador.
 
 Al FINAL de cada WU/sesión: actualizar EN EL MISMO CAMBIO SESSION_POINTER (fase, próxima WU, HEAD observado, bloqueos, primer comando), añadir entrada nueva a WORK_JOURNAL (base/head, cambios, resultados reales, tests no ejecutados, evidencia caducada), mantener TESTING-STATE únicamente donde cambie la topología/impacto, y emitir receipt inmutable nuevo por SHA cuando haya pruebas. No cerrar WU hasta satisfacer UAT/gates; una interrupción preserva el estado OPEN. Si Git/CI contradice el puntero, registrar la divergencia y tomar Git/CI como realidad observada.
 
@@ -1885,6 +1886,65 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 
 
 ## Release candidates
+
+### Flujo operativo de candidata (meridiano vinculante)
+
+Este meridiano existe porque la separación desarrollo/certificación produce
+errores operativos si se improvisa. Cualquier agente que construya o entregue
+una candidata sigue ESTOS pasos, en ESTE orden:
+
+```text
+M1  VERDE LOCAL: el fix/corte pasa sus tests de contrato y regresiones
+    focalizadas (escalera T0..T4 por impacto). El L5 local NO incluye la
+    batería UAT externa (regla 6 de la Frontera). Sin verde local NO hay
+    candidata.
+M2  RAMA RC limpia: rama nueva desde el HEAD del fix (p.ej.
+    wu/rp-053-rc1-build). El bump de version en v2/build.gradle.kts
+    (SEMVER: fix→PATCH, feat→MINOR, breaking→MAJOR; sufijo -rcN) vive SOLO
+    en esta rama. NO se bupea main: el bump entra a main únicamente con la
+    promoción a estable.
+M3  CONSTRUIR: cd v2 && ./gradlew -p v2 :pipeline-application:distZip
+    :pipeline-application:cyclonedxBom. Artefactos: ZIP en
+    v2/pipeline-application/build/distributions/pipelinek-<version>.zip,
+    SBOM en v2/pipeline-application/build/reports/bom.{json,xml} (copiar
+    con nombre de versión). Generar SHA256SUMS con trazabilidad (source_sha,
+    base_main, round gate local, alcance).
+M4  SMOKE del binario: extraer el ZIP y verificar (a) `pipelinek version`
+    reporta la versión de la candidata, (b) `pipelinek doctor` OK, (c) un
+    .pipeline.kts del alcance del fix ejecuta SUCCESS con sus eventos
+    canónicos. Sin smoke NO se publica.
+M5  TAG + PUSH: tag anotado v<version> sobre el HEAD de la rama RC; push
+    de rama y tag. El tag es la identidad inmutable de la candidata.
+M6  PUBLICAR (agente INDEPENDIENTE, no el agente del fix): GitHub Release
+    prerelease con ZIP + 2 SBOMs + SHA256SUMS como assets. La release es
+    el único canal de distribución; el harness descarga con
+    scripts/install-pipelinek.sh (URL allowlist + SHA-256) o descarga
+    directa verificada.
+M7  ANUNCIAR: UN comentario en la issue de coordinación única del harness
+    (hoy #2), NO issues nuevas (regla 8 de la Frontera). La huella del
+    anuncio: candidate tag, source_sha, ZIP sha256, enlace a la release,
+    alcance (WU), estado del round gate local. Comunicación por ZIP+
+    SHA-256+SBOM; el veredicto del harness vuelve por su propio almacén
+    e issues propias.
+M8  CONTINUAR: este repo sigue la siguiente WU inmediatamente (regla 7).
+    El veredicto llega como issue/comentario del harness; se revisa en el
+    ciclo siguiente, no bloquea.
+```
+
+Antierrores explícitos (cada uno ocurrió realmente):
+
+- **GitHub Actions NO es el gate de una candidata.** El workflow LPR-0 no
+  tiene trigger de `pull_request`; los check runs son vista cómoda (regla 5
+  de abajo). Esperar CI de Actions antes de mergear una candidata es un
+  error de modelo.
+- **La publicación no la hace el agente que implementó el fix**: se delega
+  en un agente independiente (M6) para que la entrega sea verificable por
+  terceros.
+- **NO se reconstruye el ZIP para promocionar**: los bytes promocionados
+  son los bytes de la release candidata (regla 1 de abajo).
+- **NO se abre issue nueva en el harness para anunciar candidatas**: la
+  issue de coordinación única es el canal (regla 8 de la Frontera).
+- **El bump de versión NO toca main**: vive sólo en la rama RC (M2).
 
 1. **Responsabilidad:** este repositorio produce candidatas inmutables de PipelineK. Cada candidata es un ZIP reproducible con su digest SHA-256 registrado y un manifiesto listo para su examen por `Rubentxu/pipelinek-release-harness`, que la somete a proyectos reales y, si supera el gate, la promociona a release estable. La promoción sube los mismos bytes del ZIP: nunca una reconstrucción.
 

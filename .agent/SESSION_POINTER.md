@@ -311,7 +311,107 @@
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
 
-## Reconciliación 2026-09-24T10:55Z — README REESCRITO + ROADMAP DIST-1..DIST-6 (autoridad operativa vigente)
+## Reconciliación 2026-09-24T11:09Z — WU-DIST-2 CERRADA: instalador bash + PR #74 MERGED (autoridad operativa vigente)
+
+- **Ciclo 7 cerrado — WU-DIST-2 instalador bash versionado**.
+  - Rama: `wu/dist-002-installer` (HEAD `0ab5eebb feat(dist): add install-pipelinek.sh autonomous installer (DIST-2)`).
+  - 2 commits sobre el nuevo main `12371ca0`: plan (`1c6772c9`) + impl+recibo (`0ab5eebb`).
+  - Script: `scripts/install-pipelinek.sh` (390 líneas, ejecutable, `set -Eeuo pipefail`, shellcheck limpio, bash -n OK).
+  - SHA-256 del script: `f86d1d2f3edcf22a9c568c0f303e59074eb389591e37c3710cc60346d8d983f7`.
+  - Subcomandos: install, use, list, uninstall, doctor, help.
+  - URL allowlist fail-closed (github.com, objects.githubusercontent.com).
+  - SHA-256 via `sha256sum -c -`; reescribe path del `.sha256` para apuntar al basename local.
+  - Idempotente (install/uninstall/use).
+  - Sin sudo, sin daemon, sin package manager.
+  - Probado contra el binario público oficial v0.39.0 (descargado de GitHub Releases, NO de installDist local): 22/22 tests manuales verdes.
+
+- **PR #74 mergeada** a `2026-09-24T11:08:57Z`.
+  - `gh pr merge 74 --squash --delete-branch=false` ejecutado.
+  - Merge commit: pendiente confirmar post-fetch (squash de los 2 commits en 1).
+  - URL: https://github.com/Rubentxu/pipeline-kotlin/pull/74 (CLOSED).
+
+- **Identidad material post-WU-DIST-2**:
+  - origin/main: pasa de `12371ca0` a `12371ca0`+1 squash (pendiente fetch).
+  - wu/dist-002-installer: `0ab5eebb` (conservada).
+  - WIP del operador: preservado en working tree.
+  - Binario estable: NO modificado.
+
+- **Próximo corte ejecutable (AUTO)**:
+  - Confirmar el merge con `git fetch origin main && git checkout main && git pull origin main`.
+  - Si el operador quiere anexar el instalador al README (`§Verified` o nueva sección §Install), abrir WU-DIST-3-docs.
+  - Si no, WU-RP-020 caracterización SqliteEventStore per ROADMAP §3 RP-2 (siguiente WU en el roadmap del motor, no de la frontera de distribución).
+
+### Primer comando de reanudación (WU-DIST-2 cerrada)
+
+```bash
+git fetch origin main && git checkout main && git pull origin main && \
+git rev-parse HEAD && git log --oneline -3
+```
+
+Debe mostrar: HEAD = squash de `feat(dist): add install-pipelinek.sh autonomous installer (DIST-2)`, main en `12371ca0` + 1.
+
+## Reconciliación 2026-09-24T11:03Z — INTEGRACIÓN A MAIN: PR #73 MERGED (autoridad operativa vigente)
+
+- **Merge exitoso de PR #73 a main**: `gh pr merge 73 --squash --delete-branch=false` ejecutado a 2026-09-24T11:02:57Z.
+  - Merge commit: `12371ca0dd40f6ba7eafa50604ee4c117a5b5e8d`.
+  - origin/main pasa de `74b40a65` a `12371ca0`.
+  - Squash de los 10 commits documentales en 1 solo commit limpio.
+  - PR accesible: https://github.com/Rubentxu/pipeline-kotlin/pull/73 (CLOSED).
+
+- **Cambios en main** (8 files, +1765/-86):
+  - `AGENTS.md` (+43): bloques 'Release candidates' + 'Frontera de responsabilidad'.
+  - `README.md` (+210/-83): reescrito para el usuario, VERSION+sha256sum, sin SDKMAN en el primer bloque.
+  - `docs/v2/05-roadmap/RESPONSIBILITY_MIGRATION_ROADMAP.md` (NUEVO, 163): tabla con 46 UATs a migrar al harness.
+  - `docs/v2/05-roadmap/HARNESS_AGENTS_TEMPLATE.md` (NUEVO, 55): plantilla AGENTS.md del harness.
+  - `docs/v2/05-roadmap/DISTRIBUTION_ROADMAP.md` (NUEVO, 153): DIST-1..DIST-6 con criterios de cierre.
+  - `docs/v2/07-uat/HARNESS_INVENTORY_HANDOVER.md` (NUEVO, 131): material movible verbatim al harness.
+  - `.agent/SESSION_POINTER.md` (+345/-3): reconciliación 2026-09-24T10:55Z.
+  - `.agent/WORK_JOURNAL.md` (+665): entrada 2026-09-24T10:55Z del ciclo README+ROADMAP.
+
+- **Verificación empírica contra binario público oficial v0.39.0** (en el ciclo anterior, sigue válida):
+  - ZIP SHA-256 `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`.
+  - Binary SHA-256 `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee`.
+  - Ejemplos 01–10 ejecutados, exit codes y outcomes documentados en el README.
+  - `pipelinek doctor`: jdk 24.0.2 (Eclipse Adoptium), os Linux, workdir writable.
+
+- **Repuesta a las 5 preguntas del operador antes de la integración:**
+  1. Distribuibles resueltos: **parcialmente**. DIST-1 cerrado; DIST-2..DIST-6 planeados con tabla cross-repo. SDKMAN pendiente de vendor onboarding.
+  2. Delegado al harness: **DIST-3 OCI, DIST-5 Homebrew, DIST-6 SDKMAN**. Este repo se limita al ZIP+SBOM+manifest.
+  3. Separación de responsabilidades: AGENTS.md + 4 docs nuevos, 10 commits documentales, 0 código tocado.
+  4. Traspaso entre repos: ZIP+SHA-256+manifest; issue con huella estable (contrato+escenario+tipo+causa, NO SHA candidata); resultado estructurado en el harness; PR comments NO son fuente de verdad; identidades GH separadas (Checks:write vs Contents:write).
+  5. Reglas en AGENTS.md de cada proyecto: **asimétrico**. pipeline-kotlin AGENTS.md SÍ tiene los 2 bloques. pipelinek-release-harness AGENTS.md NO existe todavía; HARNESS_AGENTS_TEMPLATE.md está como propuesta en este repo.
+
+- **Pendiente para el operador (decisión):**
+  1. **Rebase de wu/rp-043-integration-clean sobre el nuevo main** (HEAD 12371ca0). Verificado: cero solapamiento entre los archivos de la candidata (8) y los de la rama coord (8). El rebase es trivial; cambia el SHA del commit de la candidata pero conserva los archivos byte-a-byte. Si se rebasea, hay que re-apuntar el recibo `WU_RP_043_INTEGRATION_CLEAN_RECEIPT.md` a la candidata rebased.
+  2. **Inicializar pipelinek-release-harness con su AGENTS.md** pegando HARNESS_AGENTS_TEMPLATE.md. Trabajo del operador en el otro repo; necesario para tener contrato simétrico.
+  3. **Cerrar la issue #2 del harness** si se considera entregada la documentación.
+
+- **Próximo corte ejecutable (AUTO):**
+  **WU-DIST-2** — `scripts/install-pipelinek.sh` (instalador bash versionado) sobre el nuevo main (`12371ca0`), en rama nueva `wu/dist-002-installer`. Siguiente hongo tangible de la frontera pipeline-kotlin per DISTRIBUTION_ROADMAP §2. Distribución cross-repo:
+    - DIST-2 (instalador bash): pipeline-kotlin.
+    - DIST-3 (OCI), DIST-5 (Homebrew tap), DIST-6 (SDKMAN): pipelinek-release-harness.
+  Antes de codificar: commit de planificación tipo `docs(wu-dist-002): installer design + subcommands contract`. Plan: install <v>, use <v>, list, uninstall <v>, doctor. Fail-closed ante digest mismatch. URL allowlist (github.com/Rubentxu/pipeline-kotlin/releases/download/v$VERSION/...) para evitar ZIP hostil.
+
+### Identidad material post-integración
+
+- origin/main: `12371ca0` (squash de los 10 commits).
+- HEAD actual (working): `12371ca0` en `main`.
+- wu/rp-043-integration-clean: `262cc11e` (intacto, basado en `74b40a65`).
+- wu/rp-harness-coordination: `596f57eb` (conservada, ya mergeada).
+- wu/rp-043-self-hosted-ci: `12614b60` (intacto).
+- HEAD base pre-RP-5: `9ed0a4f2` (intacto).
+- Binario estable: NO modificado.
+- WIP del operador: preservado en working tree (Main.kt, WorkspaceOperations.kt, CanonicalRuntimeCapabilityAccess.kt, scripts/, fixtures, recibos WU-RP-053, paquete overlay, .agent/TESTING-STATE.md).
+
+### Primer comando de reanudación
+
+```bash
+git checkout main && git pull origin main && \
+git rev-parse HEAD && \
+git log --oneline -1
+```
+
+Debe mostrar: main en `12371ca0`, mensaje `docs(agents,uat,readme,roadmap): cross-repo coordination + user README + DIST-1..DIST-6 (#73)`.
 
 ### Acción de este ciclo (AUTO)
 

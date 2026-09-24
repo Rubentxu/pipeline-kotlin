@@ -185,9 +185,21 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 |---|---|---|
 | **GitHub Releases ZIP** | **Available** | Canonical artifact. ZIP + SHA-256 + CycloneDX SBOM + release manifest. |
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
-| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. See [ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md). |
-| **Homebrew / mise / asdf / Scoop** | **Future** | Planned; will reuse the same ZIP and metadata. Not started. |
+| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. Track [WU-LPR-080](docs/v2/05-roadmap/LPR_WORK_UNITS.md). See [ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md). |
+| **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. Listed as LFC9-004 in the historical distribution backlog (`docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG.md`). |
+| **mise** (Aqua backend / GitHub release backend) | **Future** | Prefer Aqua backend over a bespoke plugin; the GitHub release backend is a fallback. Listed as LFC9-007 in the historical distribution backlog. |
+| **asdf** (`pipeline` plugin) | **Future** | JReleaser-generated packaging; minimal plugin kept portable across Linux and macOS. Listed as LFC9-006 in the historical distribution backlog. |
+| **Scoop** (Windows-native manifest) | **Future** | Gated on Windows demand; would reuse the ZIP and `bin/pipelinek.bat`. Not started. |
 | **Container image** | **Future** | Planned for reproducible runners. Not started. |
+
+No channel is going to bypass the GitHub Release ZIP: every installer
+above (when implemented) will download or reference the same canonical
+artifact and verify its SHA-256. The full distribution strategy lives
+in
+[`docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/07-distribution/DISTRIBUTION_STRATEGY.md`](docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/07-distribution/DISTRIBUTION_STRATEGY.md)
+(historical) and is referenced by
+[ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md)
+(active).
 
 The `v0.39.0` ZIP is the public artifact authority today. SDKMAN will
 become the recommended channel only after the install UAT

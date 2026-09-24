@@ -311,6 +311,63 @@
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
 
+## Reconciliación 2026-09-24T11:22Z — DISTRIBUCIÓN v0.39.0 CERRADA EN ESTE REPO: ZIP + BASH. HARNESS ABSORBE EL RESTO (autoridad operativa vigente)
+
+- **Cierre explícito del flujo de distribución** para v0.39.0 en este repo:
+  - **GitHub Releases ZIP** — canal primario; ZIP SHA-256 `385b140c…cbb8`.
+  - **Multi-version installer** — `scripts/install-pipelinek.sh` (DIST-2) en main (commit `9a4a09a3`). SHA-256 del script: `f86d1d2f3edcf22a9c568c0f303e59074eb389591e37c3710cc60346d8d983f7`. 22/22 tests manuales verdes.
+  - **SDKMAN, mise, asdf-vm, Homebrew, OCI, Scoop** — todos viven en el harness `pipelinek-release-harness`, no en este repo. Marcados como `Future (harness)` o `Pending (harness)` en `DISTRIBUTION_ROADMAP.md` §1 y en `README.md` §Distribution channels.
+
+- **Directiva del operador 2026-09-24T11:20Z** que confirma el modelo:
+  - SDKMAN no es necesario para distribuir PipelineK ahora mismo.
+  - El roadmap contempla varios canales y ya tenemos dos opciones utilizables.
+  - Ambos consumen el mismo artefacto; SDKMAN sigue siendo un canal pendiente, no un requisito para utilizar el producto.
+  - Conviene separar distribución (cerrada en main) de PR #76 (candidata WU-RP-043, código del motor, OPEN).
+  - La siguiente release pasará por el nuevo harness y su proceso de promoción antes de anunciarse como estable.
+
+- **PRs mergeadas en este turno (6 totales, 11:02Z..11:22Z)**:
+  - PR #73 → `12371ca0` (coordinación cross-repo + README + 3 docs roadmap + handover).
+  - PR #74 → `9a4a09a3` (DIST-2 instalador bash + plan + recibo).
+  - PR #75 → `aa2bad28` (state update post-DIST-2).
+  - PR #77 → `fa08829f` (README §1.1 + Dist channels row).
+  - PR #78 → `8b583983` (state update consolidado 4-PRs).
+  - PR #79 → `a4a7370d` (DISTRIBUTION_ROADMAP §1 refresh + harness split).
+  - PR #80 → `79a6e2fb` (README mise/asdf marcadas como `Future (harness)`).
+
+- **main final del turno**: `79a6e2fb docs(readme): mark mise/asdf as 'Future (harness)' in §Distribution channels (#80)`.
+
+- **Rebase de WU-RP-043** sobre nuevo main (HEAD nuevo `d8145632`, PR #76 OPEN, NO auto-mergeada por ser código de motor).
+
+- **Estado consolidado**:
+  - main: `79a6e2fb` (7 commits squash sobre línea base `74b40a65`).
+  - DIST-1 (README manual): ✅ cerrado.
+  - DIST-2 (instalador bash): ✅ cerrado.
+  - DIST-3-docs (README §1.1): ✅ cerrado.
+  - DIST-3 (OCI), DIST-4 (mise), DIST-5 (Homebrew), DIST-6 (SDKMAN), DIST-7 (asdf): ⏸ pendientes en el harness.
+  - WIP del operador: 30 archivos intactos.
+  - Binario estable: NO modificado.
+
+- **Identidad material preservada**:
+  - origin/main: `79a6e2fb`.
+  - wu/rp-043-integration-clean: `d8145632` (rebased, PR #76 OPEN).
+  - Ramas archivadas (mergeadas): `wu/dist-002-installer`, `wu/dist-003-readme-install-section`, `wu/dist-roadmap-refresh-2026-09-24`, `wu/readme-harness-split-mise-asdf`, `wu/state-2026-09-24-dist-2-merge`, `wu/rp-harness-coordination`.
+
+### Próximos cortes (AUTO, sin pedir permiso adicional)
+
+1. **PR #76 (candidata WU-RP-043 rebased)** — operador decide si mergea a main. **No la auto-mergeo** porque es código de motor; el operador debe validar la integración. Una vez mergeada, WU-RP-043 (self-hosted CI) entra al roadmap como completado; siguientes WUs en este repo: WU-RP-006 / WU-RP-007 (defensivas UP_FRESHNESS_CHECK_*) per ROADMAP §8 backlog post-RP-5.
+2. **Inicializar `pipelinek-release-harness`** con `HARNESS_AGENTS_TEMPLATE.md` (55 líneas) como AGENTS.md raíz. Trabajo del operador en el otro repo.
+3. **Migrar DIST-3 OCI / DIST-4 mise / DIST-5 Homebrew / DIST-6 SDKMAN / DIST-7 asdf** al harness una vez inicializado.
+4. **No más trabajo en este repo** mientras PR #76 espera decisión.
+
+### Primer comando de reanudación
+
+```bash
+git checkout main && git pull origin main && \
+git rev-parse HEAD && git log --oneline -5
+```
+
+Debe mostrar: HEAD `79a6e2fb docs(readme): mark mise/asdf as 'Future (harness)' in §Distribution channels (#80)`. Log anterior: `a4a7370d docs(dist): refresh §1 with v0.39.0 reality + harness split (#79)`.
+
 ## Reconciliación 2026-09-24T11:15Z — CONSOLIDADO POST-4-PRs: DIST-3-docs + rebase WU-RP-043 + state update (autoridad operativa vigente)
 
 - **4 PRs mergeadas en este turno** (consolidado 2026-09-24T11:02Z..11:15Z):

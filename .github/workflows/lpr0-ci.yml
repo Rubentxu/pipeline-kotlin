@@ -31,7 +31,7 @@ jobs:
       - name: L0 — compile main + test sources
         run: cd v2 && ./gradlew compileKotlin compileTestKotlin --no-daemon
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lpr0-compile-logs
           path: v2/**/build/reports/problems/
@@ -51,7 +51,7 @@ jobs:
       - name: L1 — events tests
         run: cd v2 && ./gradlew :pipeline-events:test --no-daemon
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lpr0-domain-test-reports
           path: v2/**/build/test-results/test/
@@ -69,7 +69,7 @@ jobs:
       - name: L2 — architecture fitness tests
         run: cd v2 && ./gradlew :pipeline-architecture-tests:test --no-daemon
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lpr0-arch-test-reports
           path: v2/**/build/test-results/test/
@@ -152,7 +152,7 @@ jobs:
           fi
           eval ./gradlew :pipeline-application:test -PexcludeSlowTests=true $ARGS --no-daemon
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lpr0-app-shard-${{ matrix.shard.name }}-reports
           path: v2/**/build/test-results/test/
@@ -270,7 +270,7 @@ jobs:
           echo "N3 external verification PASS (success + failure streams well-formed)"
       - name: N3 — publish events as CI artifacts (external inspection)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dogfood-events
           path: |
@@ -304,7 +304,7 @@ jobs:
       # fails on ANY new finding. Reports are uploaded as per-run evidence.
       - name: detekt (all Kotlin modules, baseline ratchet)
         run: cd v2 && ./gradlew detekt --no-daemon
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: sast-detekt-reports
@@ -338,7 +338,7 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-lpr0-kover-
       - name: Aggregate Kover XML report (all modules)
         run: cd v2 && ./gradlew -q koverXmlReport
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: kover-all-xml
@@ -368,7 +368,7 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-lpr0-sbom-
       - name: Generate CycloneDX SBOM
         run: cd v2 && ./gradlew -q :pipeline-application:cyclonedxBom
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom-cyclonedx
           path: |

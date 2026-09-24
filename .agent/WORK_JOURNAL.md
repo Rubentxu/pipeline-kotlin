@@ -2091,3 +2091,10 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Dogfood real con binario rc3 sobre src de este repo: exit 0, 453 archivos Kotlin, DOGFOOD-REPORT.txt producido, replay memoized mismo --db/--control-root exit 0, sandbox rechazó escape `../` (aislamiento verificado). Recibo UAT_RP_024_PARTIAL_DOGFOOD_RECEIPT.md; matriz actualizada; sigue PARCIAL.
 - Hallazgo colateral: 1 de 3 replays colgó en shutdown JVM (DestroyJavaVM esperando a sqlite-event-writer no-daemon). NOT_REPRODUCIBLE (2/3 siguientes exit 0 en 5-10s). Orphan pid 3423809 terminado. Familia de flakes de shutdown conocida; deuda nueva: leak de hilo no-daemon en apagado, prioridad baja. NO incluido en rc3 (ya publicada) → candidata siguiente si se corrige.
 - HEAD main 74a72de7. Siguiente: segundo repo dogfood (requiere repo externo, candidato fork) o cierre UAT-RP-005 inv3 disclosure en release notes v0.39.0.
+
+## 2026-09-24 — Shutdown race fix + v0.39.1-rc4
+- base 211469d6 (main) → head d7fddf31 (main), rc branch wu/rc4-build @ 995b174a, tag v0.39.1-rc4.
+- fix(cli) d7fddf31: try/finally garantiza rawEventStore.close() en toda ruta del durable-run (Main.kt). Causa raíz del hang 1/3 del dogfood (writer sqlite no-daemon sin close en excepciones).
+- Evidencia: compileKotlin 0; tests quirúrgicos 8/8; detekt 0; binario fresh 0 (13s) + replay 0 (5s), 0 JVMs huérfanos; smoke ZIP publicado version/e2e sh/e2e dir exit 0.
+- Release: v0.39.1-rc4 pre-release publicada, zip sha256 7f056a0d...5c22, digest verificado contra GitHub API. rc3 clasificado REEMPLAZADO (contenía el defecto).
+- Nota: fixture e2e con `steps { ... }` da error de compilación ("Too many arguments for fun steps()") — la sintaxis válida usa steps directamente bajo stage; puede merecer fix de mensaje de error en el futuro (NOT_RUN, deuda menor observada).

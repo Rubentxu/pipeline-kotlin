@@ -1884,18 +1884,14 @@ linearized scope:   Context_n + structural transition --> Context_n+1
   context threading.
 
 
-## Coordinación con Release Harness — desarrollo y correcciones
+## Release candidates
 
-1. **Responsabilidad:** este repositorio desarrolla PipelineK, conserva los tests rápidos de sus contratos internos y produce candidatas inmutables. `Rubentxu/pipelinek-release-harness` ejecuta la certificación externa y promociona las candidatas aprobadas a releases estables.
+1. **Responsabilidad:** este repositorio produce candidatas inmutables de PipelineK. Cada candidata es un ZIP reproducible con su digest SHA-256 registrado y un manifiesto listo para su examen por `Rubentxu/pipelinek-release-harness`, que es quien la certifica externamente y la promociona.
 
-2. **Trabajo diario:** ejecutar tests quirúrgicos según impacto. No repetir matrices externas, benchmarks prolongados ni suites completas en cada iteración. No retirar pruebas existentes hasta que su sustitución en el harness haya demostrado equivalencia.
+2. **Tests del cambio:** ejecutar únicamente los tests directamente afectados por el cambio y sus dependencias inmediatas. No correr matrices externas, benchmarks prolongados ni la batería completa en cada iteración.
 
-3. **Defectos recibidos:** consultar las issues abiertas creadas por el harness y priorizar las que bloquean una candidata. Reproducir el defecto, identificar la causa, añadir su test de regresión y aplicar una corrección atómica.
+3. **Defectos:** corregir la causa raíz, añadir test de regresión y entregarlos como parte de la siguiente candidata. Describir en el commit los contratos afectados, los tests ejecutados y el SHA del fix.
 
-4. **Trazabilidad:** enlazar la issue en el commit o PR corrector. Indicar contratos afectados, tests ejecutados y SHA de la corrección. No cerrar una issue de certificación únicamente porque los tests locales estén verdes.
+4. **Candidata:** una vez cumplido el lote correspondiente, construir el ZIP de distribución, calcular su SHA-256 y emitir su manifiesto. La candidata es inmutable: una vez enviada, sus bytes no se vuelven a modificar.
 
-5. **Nueva candidata:** cuando la corrección y el lote correspondiente cumplan sus criterios, construir un nuevo ZIP reproducible, registrar su digest y enviar su manifiesto al harness. Nunca modificar los bytes de una candidata anterior.
-
-6. **Cierre del defecto:** corresponde al harness verificar la corrección en una distribución instalada y cerrar la issue con su recibo. Un test local verde no sustituye esa verificación externa.
-
-7. **Continuidad:** mientras el harness certifica una candidata, continuar desarrollando la siguiente WU independiente. La certificación bloquea la promoción del artefacto afectado, no todo el roadmap.
+5. **Continuidad:** mientras el harness examina una candidata, este repositorio continúa con la siguiente WU independiente. Un bloqueo del harness afecta solo al artefacto certificado, no al roadmap.

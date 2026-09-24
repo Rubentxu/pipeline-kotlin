@@ -870,3 +870,93 @@ effective cwd` which is now PASS). The CLI default change is a follow-up WU that
 
 **Branch state:** `wu/rp-053-merge @ 9023e8ff`, 5 commits, +1937/-30. LOCAL GREEN, ZERO
 regressions. Receipt: `docs/v2/07-uat/WU_RP_053_MERGE_RECEIPT.md`.
+
+### UPDATE 2026-09-24T20:11Z — FASE 4-BIS LAUNCHED
+
+Per the receipt's recommended next step, the full round gate incremental is running:
+`./gradlew -p v2 check` (no --rerun-tasks) on `wu/rp-053-merge @ dd25508e`.
+Budget: 1270s (escalated baseline 977s × 1.3 per AGENTS.md rule 4).
+Output: `/tmp/fase4-bis-check.log` (PID in `/tmp/fase4-bis.pid`).
+
+While waiting, delegating parallel work to other actionable WUs.
+
+### UPDATE 2026-09-24T20:27Z — FASE 4-BIS PASS + DETEKT FIX
+
+**Resultado:** `./gradlew -p v2 check` → **BUILD SUCCESSFUL in 14m 48s** sobre `wu/rp-053-merge`.
+Aggregate: 3196 tests / 3072 PASS / 124 SKIP (intentional @Disabled) / **0 FAIL / 0 ERROR**.
+Pipeline-architecture-tests 313/313 PASS (FArchL7 51→52 verified). Detekt + kover verdes en todos los módulos.
+
+**Prerrequisito:** el primer intento falló en 7s con `MaxLineLength` violation en
+`DomainEventRoundTripTest.kt:334` (línea de 156 chars introducida en `104be0da`).
+Fix atómico `4deb28c8` — refactor de 3 líneas preservando semántica. Regla 4 (CALIDAD):
+deuda técnica introducida por el branch, limpiada en el branch.
+
+**Commits del branch sobre main (10):**
+```
+fceff9f6 docs(uat): WU-RP-053-MERGE Fase 4-bis receipt — full round gate PASS
+4deb28c8 style(events): fix detekt MaxLineLength in DomainEventRoundTripTest
+dd25508e docs(uat): WU-RP-053-MERGE final receipt + @Disabled WURp053 CLI test
+9023e8ff Revert "docs(uat): WU-RP-053-MERGE receipt — M1 follow-up (Main.kt fix) + WURp053 CLI test status"
+e08b063e Revert "fix(workspace): WU-RP-053-MERGE M1 follow-up — Main.kt resolveCliWorkspace"
+ca954467 docs(uat): WU-RP-053-MERGE receipt — M1 follow-up (Main.kt fix) + WURp053 CLI test status
+3e9fc4aa fix(workspace): WU-RP-053-MERGE M1 follow-up — Main.kt resolveCliWorkspace
+104be0da test(arch): FArchL7 DomainEvent sealed hierarchy 51 -> 52 for BlockFailureContained
+cb962c5e feat(dir): WU-RP-053-MERGE M2 — port dir-failure-mode (typed Contained default)
+f7545a53 feat(workspace): forward-port cut5 (authorized cwd seam) to WU-RP-053-MERGE
+```
+
+Estado: **branch GATE-GREEN, release-ready**, pendiente Fase 5 (push + close PRs originales)
+bajo operator gate (rule 6: no release promotion sin gate sobre exact bytes).
+
+Recibos: `docs/v2/07-uat/WU_RP_053_MERGE_RECEIPT.md` + `docs/v2/07-uat/WU_RP_053_FASE_4_BIS_RECEIPT.md`.
+Log check: `/tmp/fase4-bis-check2.log` (14m 48s).
+
+### UPDATE 2026-09-24T20:40Z — WU-RP-053-MERGE Fase 5 (cierre documental + supersesión)
+
+**wu/rp-053-merge SUPERSEDE a wu/rp-053-dir-failure-mode.** El branch integrado contiene
+todos los commits M2 de dir-failure-mode (6ffdc8f4, 595537ef, 9462a319, a96d2339,
+b4f3bde8, 356cc5df — los 6 commits DIR-FAILURE son ancestros de MERGE vía `cb962c5e`)
+MÁS los commits M1 cut5 + los reverts + los receipts de cierre.
+
+**Estado de los branches paralelos WU-RP-053:**
+
+| Branch | Estado | Decisión |
+|---|---|---|
+| `wu/rp-053-merge @ fceff9f6` | GATE-GREEN, release-ready | **CANÓNICO** — pendiente push con operator gate |
+| `wu/rp-053-dir-failure-mode @ 356cc5df` | M2 LOCAL GREEN pre-M1, NO M1 | **SUPERSEDED** — cerrará vía PR con link al branch integrado |
+| `wu/rp-053-cut5-stash-cwd-rebase @ ad1f9c5b` | M1 cut5 standalone | **SUPERSEDED** — cerrará vía PR con link al branch integrado |
+| `wu/rp-053-coherence-contract @ 9c4ea736` | Análisis de coherencia | HISTÓRICO — preservado por trazabilidad |
+| `wu/rp-053-coherence-characterization @ 9673c3d6` | Caracterización L5 pre-cuts | HISTÓRICO — preservado por trazabilidad |
+
+**Próximo paso:** Fase 5 (push + cerrar PRs originales) queda **bloqueado por rule 6**.
+Mientras tanto, identifico el próximo WU del roadmap y deuda técnica (ver §Roadmap próximo).
+
+### §Roadmap próximo (AUTO, sin gate)
+
+**Estado de gates RP / LFC-2E:**
+- RP-0 ✅ CLOSED (WU-RP-000/001/002)
+- RP-1 ✅ CLOSED (1 KNOWN_LIMITATION documentada en ADR-0095)
+- RP-2 ✅ GATE SATISFECHO (WU-RP-020/021/022/023 cerrados en main)
+- RP-3 ✅ GATE SATISFECHO (RP3_EXIT_REVIEW 6e1d30f4, WU-RP-033 cierra external-with-body)
+- RP-4 🟡 IN PROGRESS (WU-RP-040 R5/R6 CI-pendiente, R8 C closed, R3.3/R3.4 KNOWN_GAP)
+- RP-5 ⏸ PENDING gate release (depende de RP-4 + harness externo)
+
+**Estado LFC-2E1 (universal core completion):** ✅ CLOSED, 20 Core Steps certificados.
+**Estado LFC-2E2 (utilities plugin):** ✅ CERTIFIED (32/32 contract tests).
+
+**Tier B (INITIATIVE_LPR_001 §next gate — genéricos universales, 7 Steps):**
+```
+5. junit.results (full burn-down)
+6. stash + 7. unstash       ← ya integrados en WU-LPR-089
+8. publishHTML              ← ya integrado en WU-LPR-090
+9. lock
+10. input
+```
+
+**Identificación del próximo WU accionable:**
+- Tier B restantes (lock + input) —> depende de PRODUCT decision sobre su superficie
+- Tier C (readTOML/writeTOML, tar/untar) —> ya clasificadas como out-of-scope LFC-2E0+
+- RP-4 cierre: WU-RP-046 R2 cerrado, WU-RP-040 R3.3 (SAST) y R3.4 (dependency-audit) son KNOWN_GAP
+- **Próximo accionable sin gate:** explorar si hay deuda técnica concreta clasificable
+  (detekt warnings, @Disabled tests con motivo resuelto, code coverage gaps).
+

@@ -1,3 +1,12 @@
+## Reconciliación 2026-09-24T15:36Z — WU-RP-040 R8 categoría C CERRADA (autoridad operativa vigente)
+
+- HEAD main: `cfa498e0` (fix bc7c05d4 + docs 27a6cd9e + journal). Push OK.
+- Categoría C (10 mutantes replay) cerrada; el RED destapó defecto latente real: MEMOIZED SKIP con set mixto [READ_ONLY, WRITES_WORKSPACE]. Fix: SKIP exige efectos puramente READ_ONLY. Sin impacto en Steps certificados (todos single-effect, auditado).
+- Evidencia: 23/23 + 9/9 XML fresco 15:33Z; consumidores pipeline-application exit 0; detekt exit 0. Apéndice en RP040_R8_MUTATION_SURVIVOR_TRIAGE.md.
+- WU-RP-049 ya estaba cerrada en main (recibo R1, 12/12) — NO rehacer.
+- Pendiente: CI de 27a6cd9e/cfa498e0 en cola (self-hosted); veredicto harness rc2 MISSING (esperado); UAT-RP-005 inv3 siguiente candidata; stash del operador intacto.
+- Primer comando: `git rev-parse HEAD && gh run list --limit 2 && python3 scripts/consult-harness-verdict.py --candidate v0.39.1-rc2 2>&1 | tail -1`
+
 ## Reconciliación 2026-09-24T16:40Z — WU-RP-040 R5 (coverage-all) + CI en cola (autoridad operativa vigente)
 
 - **WU-RP-040 R5 KNOWN_GAP cerrado en source:** job `coverage-all` añadido a `lpr0-ci.yml` (commit `21b89514`), invoca `koverXmlReport` root y sube `report.xml` como artefacto. NO required-status-check hasta medir runtime.

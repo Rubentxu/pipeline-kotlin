@@ -1,3 +1,21 @@
+## Reconciliación 2026-09-24T22:42Z — CIERRE DE SESIÓN, persistencia de contexto para próxima sesión (autoridad operativa vigente)
+
+- **Estado al cerrar:** WU-RP-058 spike stage-scoped CERRADA. Rama `wu/rp-058-spike-stage-scoped @ a74dbb1f` publicada en `origin` (SHA local = remoto). Recibo firmado en `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md`. **19/19 tests verdes** (HF0 + HF1 + L4-isolation + replay-determinism). Cero production changes fuera del spike; cero regresión en `:pipeline-domain` / `:pipeline-scripting-api`. **No requiere §2.4 INITIATIVE_LPR_001** — el spike es referencia aislada y congelada.
+- **Próximo paso legítimo (no autónomo):** Cualquier wiring a producción del spike es **otra** WU, bloqueada hasta que (a) RP-5 (CI verde sobre `wu/rp-053-merge`) se cierre, (b) §2.4 INITIATIVE_LPR_001 se conceda, y (c) haya un ADR-0093 firme. Sin bounded WU accionable en el radio actual; la iniciativa queda en pausa.
+- **Contexto para retomar mañana:**
+  1. `git rev-parse HEAD && git status --short` (debe mostrar tree limpio en `wu/rp-058-spike-stage-scoped @ a74dbb1f`).
+  2. `git log wu/rp-053-merge..HEAD --oneline` (los 8 commits del spike sobre `64865c9c`).
+  3. `gh pr list --head wu/rp-058-spike-stage-scoped` (no hay PR abierto — solo rama publicada para revisión).
+  4. Revisar `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md` si necesitas el cuerpo de evidencia.
+  5. Si el operador da bounded WU nueva: retomar el workflow del agente principal desde el primer paso (reconciliación Git/CI + lectura de este puntero).
+- **Puntos no cerrados:**
+  - RP-5 (release-publication exception) sobre `wu/rp-053-merge @ 85a4075c` sigue NOT_RUN.
+  - §2.4 INITIATIVE_LPR_001 sigue sin concederse.
+  - ADR-0093 sigue siendo **borrador** (la nota `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md` es NO normativa).
+- **Lecciones aprendidas en esta sesión:**
+  - `git commit --quiet` con archivos en `.agent/` puede no progresar sin error visible; preferir `git commit` (verboso) sin pipear output.
+  - El spike demuestra que ADR-0093 B (suspend structured DSL) es arquitectónicamente viable sin tocar contratos públicos, pero la decisión final depende de RP-5 + §2.4.
+
 ## Reconciliación 2026-09-25T22:19Z — Investigación opciones ADR-0093 structured runtime returns (autoridad operativa vigente)
 
 - **HEAD observado al investigar:** `839fe63f1cc39f7c036938dd09f26384492f4bec` (`wu/rp-053-merge`), tree limpio. Tras el cierre docs-only el HEAD cambia; el SHA de partida es el inmutable que ancla la evidencia.
@@ -14,7 +32,7 @@
   - Cambio de semántica pública (misma firma Jenkins con comportamiento distinto según frontend) → gate humano INITIATIVE_LPR_001 §2.4.
   - RP-5 sigue bloqueado por push/CI sobre bytes exactos.
 - **Recomendación cerrada:** ADR-0093 B (suspend structured DSL) ejecutado como **integración stage-scoped suspend** en spike acotado. Sin tocar `script {}`, sin `StepSpec` externa, sin switches por StepKey, sin I/O ambiental en construcción, sin modificar contratos públicos. `registryStep` (eager) y `script {}` (cuerpo) se conservan como están.
-- **Rama del spike:** `wu/rp-058-spike-stage-scoped @ feb99190` (módulo aislado `v2/pipeline-spike-stage-scoped/`, depende solo de `:pipeline-domain` + `:pipeline-scripting-api`, NO de `:pipeline-application` ni `:pipeline-scripting-kotlin24`). **WU-RP-058 CERRADA** con 7 commits sobre `64865c9c` y 19/19 tests verdes (HF0 + HF1 + L4-isolation + replay-determinism). Recibo en `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md`. Cero production changes fuera del módulo spike; cero regresión en `:pipeline-domain` / `:pipeline-scripting-api`. **NO requiere §2.4 INITIATIVE_LPR_001** — el spike es referencia aislada y congelada. Producir un adaptador para integrarlo en la spine es **otra** WU, bloqueada hasta que RP-5 + §2.4 se cierren y haya un ADR-0093 firme. **Push al origin** `2026-09-24T22:41Z`: rama publicada en `Rubentxu/pipeline-kotlin` (SHA `fec78e11`), sin tocar `main` ni `wu/rp-053-merge`. Esperando revisión externa o bounded WU para el siguiente ciclo.
+- **Rama del spike:** `wu/rp-058-spike-stage-scoped @ a74dbb1f` (módulo aislado `v2/pipeline-spike-stage-scoped/`, depende solo de `:pipeline-domain` + `:pipeline-scripting-api`, NO de `:pipeline-application` ni `:pipeline-scripting-kotlin24`). **WU-RP-058 CERRADA** con 8 commits sobre `64865c9c` y 19/19 tests verdes (HF0 + HF1 + L4-isolation + replay-determinism). Recibo en `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md`. Cero production changes fuera del módulo spike; cero regresión en `:pipeline-domain` / `:pipeline-scripting-api`. **NO requiere §2.4 INITIATIVE_LPR_001** — el spike es referencia aislada y congelada. Producir un adaptador para integrarlo en la spine es **otra** WU, bloqueada hasta que RP-5 + §2.4 se cierren y haya un ADR-0093 firme. **Push al origin** `2026-09-24T22:41Z`: rama publicada en `Rubentxu/pipeline-kotlin` (SHA `a74dbb1f`, SHA local y remoto coinciden), sin tocar `main` ni `wu/rp-053-merge`. Sesión cerrada en quiescencia: no hay bounded WU accionable sin firma del operador.
 - **Primer comando:** `git rev-parse HEAD && gh run list --commit $(git rev-parse HEAD) --limit 3`
 
 - **Survey exhaustivo de WUs restantes tras WU-RP-040-R3.4 + corrección R3:**

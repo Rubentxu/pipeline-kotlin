@@ -2117,3 +2117,22 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
   - `CompatibilityCorpusTest` (30 fixtures): 33 fixtures estaban borrados en working tree (WIP del operador). Restaurados vía `git checkout HEAD -- v2/compatibility/`. Tras restore, sólo fixture10 sigue roja — defecto conocido pre-existente (`S2_B10_ARCHIVEARTIFACTS_G2`: legacy glob engine incompatible con LF-0208 single-spine).
   - `UatLocal007SandboxProfileTest` (4), `UatLocal008CredentialsTest` (1), `UatLocal011WorkflowControlTest` (1), `UatCompat001CorpusSmokeRunTest` (2), `UatLocal005CorpusUntouchedTest` (2), `Lfc2WaitUntilCanonicalReentryFitnessTest` (1): todas dependencias del fixture10 + pre-existentes sin relación con cortes.
 - L5 con cortes aplicados (cut5-stash-cwd-rebase) NO ejecutado en este turno porque: (i) las pruebas quirúrgicas cut5 (58/58 + 4 skipped) son más discriminantes que L5 completo; (ii) regla 4b prohíbe L5 como gate de candidato. Si el operador quiere L5 sobre cut5 antes de promover, el comando es `cd v2 && timeout 1270 ./gradlew check` desde la rama.
+
+## 2026-09-24T18:00Z — WU-RP-053-DIR-FAILURE-MODE LOCAL GREEN
+
+- Base: main @ `9673c3d6`. Branch: `wu/rp-053-dir-failure-mode` @ `6ffdc8f4`.
+- Cambios:
+  - `DirFailureMode` ADT nuevo (`Contained` default + `AbortStage` opt-in).
+  - `BlockShellScope.Directory` carga el ADT (default en data class).
+  - `BlockStepNode.projectWorkingDirectory` lee `"failureMode"` del payload (fail-closed en valores desconocidos).
+  - `CanonicalDurableRunCoordinator.dispatchBody` bodyLoop: nueva rama que captura `StepOutcome.Failure` cuando `scope` es `Directory + Contained + attempts exhausted`; emite `BlockFailureContained`; outcome = Success.
+  - `BlockFailureContained` event nuevo; 5 exhaustive `when` sitios sobre DomainEvent actualizados; round-trip test 51 → 52.
+  - `JsonEventLog` decoder para el nuevo evento (necesario para que aparezca en stdout envelope).
+- Tests nuevos:
+  - `DirFailureModeTest` (5/5 PASS): default, identity, sealed-2, predicates.
+  - `DirFailureContainedRuntimeTest` (2/2 PASS): GREEN Contained + AbortStage legacy invariant.
+  - `DirRestoreAfterErrorCharacterizationTest`: el LOCAL-guard `@Disabled` (depende de PR #96 cut5); WIDE-GAP `@Disabled` reason apunta al nuevo GREEN.
+- Related tests: 16/14 PASS, 2 SKIPPED (`@Disabled` documentados). 0 failures.
+- CLI smoke (local): el binario `wu/rp-053-dir-failure-mode` ejecuta el escenario HAR-007 con `dir("errdir"){sh("false")}` → `dir("chk"){sh("touch marker.txt")}` → outcome=success, marker escrito, DirExited(restoTo=ws), DirEntered(chk) emite, BlockFailureContained en sequence 9.
+- Recibo: `docs/v2/07-uat/WU_RP_053_DIR_FAILURE_MODE_RECEIPT.md`. Branch pushed.
+- Próximo: PR cut, revisión del operador, rc5 con bytes del merge (no se hace desde aquí), veredicto harness externo.

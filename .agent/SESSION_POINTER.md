@@ -806,3 +806,29 @@ python3 scripts/consult-harness-verdict.py --candidate v0.39.0 2>&1 | tail -3
 ```
 
 Debe mostrar: rama `main`, HEAD `5f574eeb`, sin commits sobre origin/main, `30` (WIP del operador), `exit_code=4 / status=MISSING` mientras el harness no haya publicado `evidence/v0.39.0/verdict.json`.
+
+## Reconciliación 2026-09-24T18:00Z — WU-RP-053-DIR-FAILURE-MODE LOCAL GREEN (autoridad operativa vigente)
+
+- HEAD main: `9673c3d6` (sin cambio).
+- HEAD work: `wu/rp-053-dir-failure-mode` @ `6ffdc8f4` (1 commit sobre main).
+- HAR-007 WIDE-GAP cerrado en source: `DirFailureMode` ADT (`Contained` default + `AbortStage` opt-in) + `BlockFailureContained` event + bodyLoop branch en `CanonicalDurableRunCoordinator`. Jenkins parity confirmada en CLI smoke local (`marker.txt` escrito, outcome=success, `DirExited` restauró cwd, evento BlockFailureContained en stdout).
+- Tests: 31/31 PASS en suites afectadas (`DirFailureModeTest` 5, `DirFailureContainedRuntimeTest` 2, `B11ContextBlocksRuntimeTest` 7, `RunnerIsolationProjectionLawTest` 3, `DomainEventRoundTripTest` 14). 2 `@Disabled` documentados (uno depende de PR #96 cut5; el otro es placeholder con referencia al GREEN).
+- Recibo: `docs/v2/07-uat/WU_RP_053_DIR_FAILURE_MODE_RECEIPT.md`. Branch pushed.
+- **Veredicto harness externo sobre bytes exactos: PENDIENTE (gate del operador). NO rc5 promotion.**
+
+### Acción de este ciclo (AUTO)
+
+```bash
+cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+git checkout wu/rp-053-dir-failure-mode
+# PR cut pendiente para revisión del operador
+# (URL: https://github.com/Rubentxu/pipeline-kotlin/pull/new/wu/rp-053-dir-failure-mode)
+```
+
+### Siguiente
+
+- Operador revisa PR; merge a main si procede.
+- Operador corta rc5 (no se hace desde aquí — preautorización explícita) con bytes del merge.
+- Operador ejecuta harness sobre rc5; veredicto se ingiere por el consumer del harness.
+- Si veredicto GREEN → WU-RP-053 coherence contract puede cerrar (R3.4 dependency-audit, WU-RP-031 extracciones verticales, etc.). Si NEGATIVE/BLOCKED → iterar sobre esta rama hasta verde.
+- Mientras tanto: monitorizar CI en `main`; otras WUs pendientes en ROADMAP pueden progresar en paralelo sin acoplarse a esta rama.

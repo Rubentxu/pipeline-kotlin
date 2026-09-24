@@ -1894,6 +1894,15 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 
 4. **Candidata:** una vez cumplido el lote, construir el ZIP de distribución, calcular su SHA-256 y emitir un manifiesto de candidata con esquemas verificables y trazabilidad a los commits que contiene. La candidata es inmutable: sus bytes no se modifican después de enviada. El manifiesto debe permitir auditar la decisión de certificación sin confiar en comentarios sueltos.
 
+4b. **Batería pre-candidata (tests ligeros con validez de release, NO batería pesada):** antes de emitir una candidata, este repositorio ejecuta SÓLO este conjunto acotado — es un mínimo de calidad de release, no un redescubrimiento de la batería completa:
+
+   - **Tests del cambio** (regla 2): clases directamente afectadas + sus consumidores directos, con `--tests` obligatorio y XML fresco como oracle.
+   - **SAST del módulo cambiado:** `./gradlew -p v2 <module>:detekt` (segundos; el agregado completo vive en CI `workflow_dispatch`).
+   - **Smoke de la candidata** (obligatorio, sobre el ZIP real): (a) `pipelinek version` → versión esperada, exit 0; (b) `pipelinek doctor` → exit 0; (c) UN escenario e2e `.pipeline.kts` canario con `dir { sh }` verificando `RunFinished success` y cwd efectivo correcto.
+   - **Artifacts de candidata:** ZIP reproducible + SHA-256 + SBOM CycloneDX (`cyclonedxBom`) + `SHA256SUMS` + manifiesto JSON con trazabilidad a commits.
+
+   PROHIBIDO como gate de candidata: batería UAT completa (es del harness, frontera §6), coverage-all agregado (sólo `workflow_dispatch` manual), re-ejecución de suites verdes sin cambio en su código bajo test. Si un gate exige más que este mínimo, se registra NOT_RUN/BLOCKED honesto, nunca se ensancha por defecto.
+
 5. **Verificación externa honesta:** el harness publica resultados estructurados (recibos, NDJSON, evidencia persistente) en su propio almacén. Los check runs y commit statuses sirven como vista y como mecanismo de protección de PR, pero el resultado completo y su evidencia NO viven en comentarios libres de GitHub. La decisión de promoción es del harness sobre su recibo, no sobre reacciones en una PR.
 
 6. **Bloqueo del harness afecta sólo al artefacto:** un fallo detectado por el harness (por ejemplo, una regresión contra PetClinic) impide promocionar esa candidata, pero NO paraliza el desarrollo de la siguiente WU en este repositorio. Aquí no hay una promoción implícita ligada al estado de la certificación externa.

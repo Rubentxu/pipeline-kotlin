@@ -2152,3 +2152,42 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - **Error en mi R3.4 receipt anterior:** declaré secret-scan como KNOWN_GAP. Es **incorrecto**: el job `secret-scan (gitleaks)` ya existe en `.github/workflows/lpr0-ci.yml` (invocación directa de gitleaks 8.24.3, mismo patrón que `dependency-audit`). El `.gitleaks.toml` (44 líneas, allowlist de fixtures WU-RP-011) evita falsos positivos.
 - **R3 entero cerrado:** SBOM (sbom) + secret-scan (secret-scan) + SAST (sast) + dependency-audit (dependency-audit) = 4 jobs CI cubren todo R3.
 - **Próxima WU autónoma reconsiderada:** WU-RP-040-R3-SC NO procede. Las WUs pendientes en RP-4 son R4 (pitest mutation) y R5 (coverage-all), ambas ya iniciadas y/o con deuda legítima.
+
+## 2026-09-24T21:38Z — Survey de WUs bounded restantes: RP-4 entero cerrado
+
+Survey sistemático del estado actual de WUs pendientes tras WU-RP-040-R3.4:
+
+**R3 entero cerrado** (corrección honesta tras R3.4 receipt error):
+- R3.1 SBOM (CycloneDX) → job `sbom` (existente, ejecuta cyclonedxBom).
+- R3.2 secret-scan (gitleaks) → job `secret-scan` (existente, exit 0 local).
+- R3.3 SAST (detekt) → job `sast` (existente, 0 findings).
+- R3.4 dependency-audit → job `dependency-audit` (WU-RP-040-R3.4 cerrado este turno).
+
+**R4 cerrado (categorizado)**:
+- 118 surviving mutants en 4 categorías (A=44 data-class equals, B=45 reconcilers, C=10 fix bc7c05d4, D=29 fingerprinting/serializers).
+- Cat C: 10 mutants CERRADOS con fix `bc7c05d4` que destapó defecto latente real (MEMOIZED SKIP con set mixto).
+- Cat A/B/D: survivientes legítimos por diseño (estructurales/hashing/serialización).
+
+**R5 cerrado**: job `coverage-all` (workflow_dispatch on-demand) ejecuta `koverXmlReport` root y sube `v2/build/reports/kover/report.xml`. COVERED-instrumentation / RUN_ON_DEMAND.
+
+**Otros surveys**:
+- ADR-0051 decía "CredentialBound/Unbound TODO" → CÓDIGO YA LOS EMITE (lines 92, 132 of CredentialScope.kt). ADR side-finding obsoleto.
+- ADR-0097 mencionaba TODO LF-0403 follow-up → LF-0403 CERRADO en WU-RP-049 R1 (25818c10).
+- PR #93 (drop pull_request trigger) → cambio YA en main (commit cbf41118). PR obsoleto.
+- PRs #94-#97 (cortes WU-RP-053) → código de motor, NOT_MERGED en wu/rp-053-merge, decisión del operador.
+- Detekt en cero (todos los 22 reportes XML sin findings).
+- 130 tests `@Disabled` = 100% snapshots históricos (S2-A10/G5 transitions) preservados por trazabilidad, no deuda accionable.
+- gitleaks local: exit 0, "no leaks found" sobre 1829 commits.
+
+**WUs NO autonomous-doable (razones)**:
+- LFC-2R2 (WU-LPR-087): requiere cambios en compilador/runtime (ADR-0093 ACCEPTED).
+- Tier B (lock + input): requiere decisión de PRODUCT sobre superficie.
+- Tier C (readTOML/writeTOML, tar/untar): out-of-scope LFC-2E0+.
+- RP-5 release gate: bloqueado por rule 6 (operator gate sobre exact bytes).
+
+**Estado final del branch**: `wu/rp-053-merge @ 85a4075c` (22 commits sobre main), GATE-GREEN con round gate incremental 3616 tests / 0 failures.
+
+**Próximo corte del operador (sin pedir permiso autónomo)**:
+- Push a main sigue operator-gated (rule 6).
+- Si autoriza push: RP-5 release gate (decisión de release).
+- Si NO autoriza push y prefiere otra WU bounded: no queda ninguna autónoma identificable en RP-4. Candidatos posibles requieren decisión de PRODUCT (Tier B) o trabajo de compilador (LFC-2R2).

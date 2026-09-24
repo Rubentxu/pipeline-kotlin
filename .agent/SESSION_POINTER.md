@@ -1,3 +1,26 @@
+## Reconciliación 2026-09-24T21:40Z — Survey final RP-4: no quedan WUs bounded (autoridad operativa vigente)
+
+- **Survey exhaustivo de WUs restantes tras WU-RP-040-R3.4 + corrección R3:**
+  - **R3 entero cerrado:** SBOM + secret-scan + SAST + dependency-audit (4 jobs CI).
+  - **R4 cerrado (categorizado):** 118 surviving mutants en 4 categorías (A/B/D legítimos, C fixed en bc7c05d4).
+  - **R5 cerrado:** `coverage-all` job on-demand ejecuta koverXmlReport root.
+  - **ADRs con side-findings obsoletos** identificados: ADR-0051 ("CredentialBound TODO" → código ya emite), ADR-0097 ("TODO LF-0403" → LF-0403 cerrado en WU-RP-049 R1).
+  - **PR #93 obsoleto:** cambio ya en main (commit cbf41118).
+  - **PRs #94-97 (cortes WU-RP-053):** código de motor NOT_MERGED en wu/rp-053-merge, decisión del operador.
+  - **Detekt:** 0 findings en 22 reportes.
+  - **130 @Disabled:** 100% snapshots históricos S2-A10/G5 (preservados por trazabilidad).
+  - **gitleaks local:** exit 0, "no leaks found" sobre 1829 commits.
+- **WUs NO autonomous-doable (razones técnicas):**
+  - LFC-2R2 (WU-LPR-087): cambios compilador/runtime, NO bounded.
+  - Tier B (lock + input): decisión PRODUCT sobre superficie.
+  - Tier C (readTOML/writeTOML): out-of-scope LFC-2E0+.
+  - RP-5 release gate: rule 6 (operator-gated sobre exact bytes).
+- **Branch state:** `wu/rp-053-merge @ 85a4075c` (22 commits sobre main), GATE-GREEN, 3616/0/0/130.
+- **Próximo corte (operator-gated):**
+  1. Push a main (rule 6) → RP-5 release gate.
+  2. Si NO push: esperar a que el operador identifique bounded WU fuera de RP-4.
+  3. Sin acción autónoma: no hay bounded WU pendiente en RP-4 que no requiera decisión de PRODUCT/compiler.
+
 ## Reconciliación 2026-09-24T21:38Z — CORRECCIÓN HONESTA: R3 entero cerrado (autoridad operativa vigente)
 
 - **Error en mi R3.4 receipt (corregido):** declaré secret-scan (gitleaks) como KNOWN_GAP. Era **incorrecto**.

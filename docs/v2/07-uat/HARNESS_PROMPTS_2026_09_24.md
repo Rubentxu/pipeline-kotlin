@@ -1,8 +1,9 @@
 # HARNESS PROMPTS — Para enviar al agente del operador en `pipelinek-release-harness`
 
-> **Estado:** REESCRITOS (2026-09-24T11:34Z) tras directiva del operador con argumentos reales de la CLI del harness.
+> **Estado:** REESCRITOS (2026-09-24T11:46Z) tras directiva del operador que confirma el SHA actual del harness y la posición de pipeline-kotlin.
 > **Generados por:** sesión AUTO de pipeline-kotlin.
-> **Cambio importante vs versión previa:** el operador aporta la interfaz REAL de la CLI (`run --image ... --project ... --scenario ...`, `publish-issue`, `reverify-cycle`, `candidates`, `certify`). Los prompts anteriores especulaban; estos usan los argumentos que el agente del operador reconoce.
+> **SHA actual del harness (verificado por el operador)**: `ca2a91c0` en `Rubentxu/pipelinek-release-harness/main`. El agente del harness debe referenciar su SHA real en cada artefacto publicado, NO un genérico.
+> **SHA actual de pipeline-kotlin (post-#85)**: `d5eb9781`. PR #76 sigue ABIERTA por motivos del motor, no del circuito.
 > **Uso:** el operador pega cada bloque a su agente del harness. NO se ejecutan desde aquí.
 
 ---
@@ -17,8 +18,8 @@
 Trabajo: cerrar H0.3 — demostrar el circuito ejecutable end-to-end entre
 pipeline-kotlin y este repositorio.
 
-Estado actual del harness (confirmado por el operador 2026-09-24T11:26Z y
-actualizado 11:34Z):
+Estado actual del harness (verificado por el operador 2026-09-24T11:46Z):
+- **HEAD actual**: `ca2a91c0` en `Rubentxu/pipelinek-release-harness/main`.
 - CLI con subcomandos: `run`, `publish-issue`, `reverify-cycle`,
   `candidates`, `certify`.
 - Interfaz REAL de `run`: `run --image ... --project ... --scenario ...`
@@ -27,6 +28,7 @@ actualizado 11:34Z):
 - Publicación / actualización de issues: IMPLEMENTADA.
 - Deduplicación por huella estable: IMPLEMENTADA.
 - Registro local de reverificación: IMPLEMENTADO.
+- Cola persistente de reverificación: IMPLEMENTADA.
 - Perfil Base: CERTIFICADO.
 - Perfil Real ampliada: NO cerrado.
 - Perfil Certificación completa: NO cerrado.
@@ -62,7 +64,9 @@ Tareas concretas:
 5. COMPROBACIÓN DESDE FUERA: el exit code, el resultado tipado y los efectos
    reales deben ser consultables desde FUERA de este repo. El recibo vive
    en este repo (evidence/<candidate>/), pero la consulta debe poder hacerse
-   vía GitHub sin acceso al filesystem del harness.
+   vía GitHub sin acceso al filesystem del harness. Cada artefacto debe
+   referenciar el SHA del harness con el que se ejecutó (`ca2a91c0` o el
+   HEAD actualizado cuando se arranque).
 
 6. FILTRO DE ISSUES: los errores de contenedor, de la CLI o del propio
    harness NO deben generar issues de producto en Rubentxu/pipeline-kotlin.
@@ -122,6 +126,8 @@ Tareas concretas:
 3. DEDUPLICACIÓN: ejecuta el mismo `publish-issue` dos veces seguidas con la
    misma huella. La segunda llamada debe ser idempotente (no crea issue
    duplicada, actualiza la existente o sale con código "ya creada").
+   El SHA del harness que publica debe quedar registrado en el cuerpo de
+   la issue (no en el SHA de la candidata, per contrato cross-repo).
 
 4. COMPORTAMIENTO SIN CREDENCIALES DE ESCRITURA: ejecuta
    `pipelinek-harness publish-issue` con credenciales revocadas o en modo
@@ -187,6 +193,8 @@ Tareas concretas:
      y --control-root idénticos.
    - Clasificar el resultado: PASS si el defecto ya no se reproduce,
      FAIL con huella si persiste.
+   - Registrar el SHA del harness que ejecuta la reverificación en el
+     nuevo recibo (no reutilizar SHA de la candidata original).
 
 5. EVIDENCIA FRESCA: el recibo de reverificación debe generarse en esta
    ejecución. NO reutilizar el recibo de la candidata original. Cada

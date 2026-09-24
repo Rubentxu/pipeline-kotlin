@@ -2085,3 +2085,9 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - **CI run 36018084522 (57d78dbe): CANCELLED** (cancel-in-progress por pushes posteriores; NO fue fallo de código). Sin evidencia CI nueva para ese SHA; el CI vigente es el del push actual (en cola, runner compartido). Registrado como CANCELLED, no como PASS.
 - **Veredicto harness rc2:** sigue MISSING (exit 4) — el harness no ha publicado evidence/v0.39.1-rc2/verdict.json. rc3 ahora es la candidata vigente.
 - Siguiente: continuar roadmap (UAT-RP-024 dogfooding evidencia parcial) mientras el harness examina rc3 (regla 7 de continuidad).
+
+## 2026-09-24T16:04Z — UAT-RP-024 evidencia parcial 1-repo + shutdown race caracterizado
+
+- Dogfood real con binario rc3 sobre src de este repo: exit 0, 453 archivos Kotlin, DOGFOOD-REPORT.txt producido, replay memoized mismo --db/--control-root exit 0, sandbox rechazó escape `../` (aislamiento verificado). Recibo UAT_RP_024_PARTIAL_DOGFOOD_RECEIPT.md; matriz actualizada; sigue PARCIAL.
+- Hallazgo colateral: 1 de 3 replays colgó en shutdown JVM (DestroyJavaVM esperando a sqlite-event-writer no-daemon). NOT_REPRODUCIBLE (2/3 siguientes exit 0 en 5-10s). Orphan pid 3423809 terminado. Familia de flakes de shutdown conocida; deuda nueva: leak de hilo no-daemon en apagado, prioridad baja. NO incluido en rc3 (ya publicada) → candidata siguiente si se corrige.
+- HEAD main 74a72de7. Siguiente: segundo repo dogfood (requiere repo externo, candidato fork) o cierre UAT-RP-005 inv3 disclosure en release notes v0.39.0.

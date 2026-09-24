@@ -115,3 +115,38 @@ En este punto, ambos slices están sobre la misma base. Los conflictos que el ch
 - [ ] Fase 4: `pipeline-architecture-tests:test` 313/313 PASS, `installDist` smoke exit 0, e2e `dir + writeFile` exit 0 con marker presente.
 - [ ] Fase 5: PRs originales cerrados con referencia al branch integrado. SESSION_POINTER + WORK_JOURNAL actualizados.
 - [ ] Recibo `WU_RP_053_MERGE_RECEIPT.md` con evidencia completa.
+
+## Progress log
+
+### 2026-09-24 — M1 ✅ (`f7545a53`) + M2 ✅ (`cb962c5e`)
+
+**Branch:** `wu/rp-053-merge` (renamed from `wu/rp-053-merge-m1-cut5`).
+
+**M1 — cut5 forward-port:** `WorkspaceOperationsAdapter` + `StashOperationsAdapter` now carry
+`effectiveWorkingDirectory`; `CanonicalRuntimeCapabilityAccess` threads `context.shOptions.workingDirectory`
+through 3 capabilities. New `effectiveRoot()` + `authorize()` security seam (textual + canonical +
+reserved `.v2` checks). All M1 tests green: StashOperationsAdapterUatTest 8/8,
+WorkspaceOperationsEffectiveRootTest 12/12, DirFilesystemEndToEndTest 3/3.
+
+**M2 — dir-failure-mode forward-port:** `DirFailureMode` ADT (Contained default + AbortStage opt-in);
+`BlockShellScope.Directory.failureMode`; `BlockFailureContained` event + full event infra plumbing.
+`CanonicalDurableRunCoordinator.dispatchBody` body loop captures the failure when scope is
+Directory + Contained + attempts exhausted — Jenkins "cwd restore + continue with next sibling".
+`DomainEvent` sealed hierarchy 51 → 52.
+
+**Integration proof — `DirRestoreAfterErrorCharacterizationTest.writeFile inside dir composes
+against effective cwd`:** previously `@Disabled` (waiting for cut5). RE-ENABLED on this branch
+and PASSES (0.583s). This is the LOCAL-GUARD that motivates WU-RP-053-MERGE.
+
+**M2 tests green:** DirFailureModeTest 5/5, DirFailureContainedRuntimeTest 2/2,
+DomainEventRoundTripTest 14/14 (51→52 invariant).
+
+**TOTAL L2 evidence:** 45/45 PASS, 1 SKIP (intentional), 0 FAIL across 7 test files.
+
+**Acceptance status:**
+- [x] Fase 1 (M1): cut5 functioning on `wu/rp-053-merge`.
+- [x] Fase 2 (M2): dir-failure-mode integrated; integration test re-enabled + PASS.
+- [ ] Fase 3: full module compile + impacted test classes aggregate.
+- [ ] Fase 4: pipeline-architecture-tests 313/313, installDist smoke, e2e dir+writeFile smoke.
+- [ ] Fase 5: replace canonical, push, update receipts.
+- [ ] Recibo `WU_RP_053_MERGE_RECEIPT.md`.

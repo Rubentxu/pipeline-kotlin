@@ -4,13 +4,32 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
+/**
+ * WU-RP-053 cut5 CLI integration tests. Disabled in WU-RP-053-MERGE because
+ * the cut5 model + PROJECT mode default (workspace = script's parent) breaks
+ * 7 existing UAT tests (SB-S-001/SB-006/SB-008/SC-011-04/UAT-L7-TC-004/fixture10/
+ * corpus) which assume the legacy per-stage workspace layout.
+ *
+ * The cut5 model IS integrated (M1: WorkspaceOperationsAdapter /
+ * StashOperationsAdapter carry effectiveWorkingDirectory) but the CLI
+ * default behaviour change (resolveCliWorkspace → scriptPath.parent) is
+ * NOT adopted in this WU. The Main.kt change was attempted (commit 3e9fc4aa)
+ * and reverted (commit e08b063e) once the regression surface was measured.
+ *
+ * These CLI tests are kept here as the canonical proof of the cut5 CLI
+ * behaviour. Re-enable when cut5's PROJECT mode default is promoted behind
+ * an opt-in flag (e.g. `--workspace-mode=project`) so existing UATs can
+ * pass --workspace explicitly to maintain the legacy layout.
+ */
 @Timeout(10, unit = TimeUnit.MINUTES)
+@Disabled("Disabled in WU-RP-053-MERGE — see class-level docs. Re-enable when cut5 PROJECT mode default is promoted behind --workspace-mode opt-in flag.")
 class WURp053WorkspaceCliTest {
     private val binary = AppBinSupport.discover().toAbsolutePath().toString()
 

@@ -1,3 +1,18 @@
+## Reconciliación 2026-09-24T21:38Z — CORRECCIÓN HONESTA: R3 entero cerrado (autoridad operativa vigente)
+
+- **Error en mi R3.4 receipt (corregido):** declaré secret-scan (gitleaks) como KNOWN_GAP. Era **incorrecto**.
+- **Verificación local (2026-09-24T21:37Z) sobre `wu/rp-053-merge @ fd259b42`:**
+  `gitleaks git --redact --no-banner` → exit 0, "no leaks found" sobre los 1829 commits del repo.
+- **Job `secret-scan (gitleaks)` ya existe** en `.github/workflows/lpr0-ci.yml`: invocación directa de gitleaks 8.24.3 (patrón idéntico al de `dependency-audit`). Steps: checkout `fetch-depth: 0`, instalar binario si no está en `$HOME/.jcode/scratch/gitleaks-8.24.3/gitleaks`, `gitleaks git --redact -v`.
+- **R3 entero CERRADO:**
+  - R3.1 SBOM (CycloneDX) → job `sbom` (existente).
+  - R3.2 secret-scan (gitleaks) → job `secret-scan` (existente, verificado verde localmente).
+  - R3.3 SAST (detekt) → job `sast` (existente).
+  - R3.4 dependency-audit → job `dependency-audit` (WU-RP-040-R3.4 cerrado este turno).
+- **Implicación:** la próxima WU de RP-4 ya NO es R3-SC (cancelada por error propio). Las WUs pendientes reales son R4 (pitest mutation) y R5 (coverage-all CI), independientes de R3.
+- **Recibos actualizados:** `docs/v2/07-uat/WU_RP_040_R3_4_DEPENDENCY_AUDIT_RECEIPT.md` (side-finding corregido), `docs/v2/05-roadmap/WU-RP-040-R3.4/PLAN.md` (ratchet explícito actualizado), `.agent/WORK_JOURNAL.md` (entrada de corrección 21:37Z).
+- **Próximo corte ejecutable (AUTO, sin pedir permiso):** commit atómico de las 3 correcciones de docs (1 receipt + 1 plan + 1 journal + 1 pointer), luego evaluar WU accionable real (R4/R5 requieren análisis más profundo, NO bounded; LFC-2R2 requiere decisión compiler/runtime).
+
 ## Reconciliación 2026-09-24T21:34Z — WU-RP-053-MERGE FOLLOWUP+R3.4 MERGED + FASE 4-TER PASS (autoridad operativa vigente)
 
 - **Merge fast-forward:** `wu/rp-053-merge` ← `wu/rp-053-followup-workspace-mode`. Sin conflictos. Actualización `c7d6ef01..c116200c`.

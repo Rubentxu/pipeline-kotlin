@@ -2128,8 +2128,27 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Verificación local: YAML parse OK; actionlint pre-existing SC2086 línea 142 (no introducido por este WU); `./gradlew -q help` exit 0 en 1.6s.
 - Verificación CI: NOT_RUN (rule 6, blocked sin operator gate sobre exact bytes). Recibo honesto.
 - Cambios: +53 líneas workflow + 196 líneas docs (PLAN + RECEIPT). Cero producción. Cero nuevos plugins/SHA pins.
-- Side-finding: R3 secret-scan (gitleaks) sigue KNOWN_GAP; recomiendo WU-RP-040-R3-SC futuro.
+- Side-finding: R3 secret-scan (gitleaks) sigue KNOWN_GAP; recomiendo WU-RP-040-R3-SC futuro. **CORRECCIÓN 2026-09-24T21:37Z:** el job `secret-scan (gitleaks)` YA existe en `lpr0-ci.yml` y `gitleaks git --redact --no-banner` local exit 0 sobre 1829 commits. NO es WU pendiente. R3 entero está cerrado.
 - 2 commits atómicos:
   - `5039e43a ci(r3.4): add dependency-audit job using gradle/actions/dependency-submission@v3`
   - `5bbade85 docs(r3.4): WU-RP-040-R3.4 PLAN + RECEIPT for dependency-audit CI job`
 - Branch `wu/rp-053-followup-workspace-mode` ahora en `5bbade85`, contiene WU-RP-053-FOLLOWUP + R3.4. Working tree limpio. Merge a `wu/rp-053-merge` operator-gated.
+
+## 2026-09-24T21:34Z — WU-RP-053-FOLLOWUP + R3.4 MERGED + FASE 4-TER PASS (CLOSE)
+
+- **Merge fast-forward:** `wu/rp-053-merge ← wu/rp-053-followup-workspace-mode`. Sin conflictos. `c7d6ef01..c116200c` absorbido linealmente.
+- **Round gate incremental:** `./gradlew -p v2 check` → BUILD SUCCESSFUL en 14m 42s (882s, presupuesto 1200s).
+- **Aggregate:** 3616 tests / 0 failures / 0 errors / 130 skipped (intentional @Disabled). 534 XML files parsed across 23 modules.
+- **Architecture fitness:** 313/313 PASS (FArchL7 51→52 verified).
+- **Detekt:** 0 findings.
+- **Delta vs Fase 4-bis:** +420 tests (+420 = 11 nuevos WorkspaceModeCliTest + 2 re-enabled WURp053 + downstream), +6 skipped (pre-existing), -6s duration.
+- **Receipt:** `docs/v2/07-uat/WU_RP_053_FOLLOWUP_FASE_4_TER_RECEIPT.md` (117 líneas, commit `1fb61bdd`).
+- **Branch state:** `wu/rp-053-merge @ fd259b42` (10 commits sobre pre-merge + 2 docs = 12 commits). GATE-GREEN.
+- **Rule 6 status:** push + promoción operator-gated.
+
+## 2026-09-24T21:37Z — CORRECCIÓN HONESTA: R3 secret-scan YA cubierto (gitleaks)
+
+- Verificación: `gitleaks git --redact --no-banner` local sobre `wu/rp-053-merge @ fd259b42` exit 0, "no leaks found" sobre 1829 commits.
+- **Error en mi R3.4 receipt anterior:** declaré secret-scan como KNOWN_GAP. Es **incorrecto**: el job `secret-scan (gitleaks)` ya existe en `.github/workflows/lpr0-ci.yml` (invocación directa de gitleaks 8.24.3, mismo patrón que `dependency-audit`). El `.gitleaks.toml` (44 líneas, allowlist de fixtures WU-RP-011) evita falsos positivos.
+- **R3 entero cerrado:** SBOM (sbom) + secret-scan (secret-scan) + SAST (sast) + dependency-audit (dependency-audit) = 4 jobs CI cubren todo R3.
+- **Próxima WU autónoma reconsiderada:** WU-RP-040-R3-SC NO procede. Las WUs pendientes en RP-4 son R4 (pitest mutation) y R5 (coverage-all), ambas ya iniciadas y/o con deuda legítima.

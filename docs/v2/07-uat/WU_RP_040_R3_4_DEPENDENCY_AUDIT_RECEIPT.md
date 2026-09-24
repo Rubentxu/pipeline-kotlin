@@ -95,19 +95,51 @@ Total: +53 líneas en un solo archivo. Cero cambios en producción.
       haya corrido al menos una vez sobre `main` con la action correctamente
       autorizada. Eso requiere push + CI verde, lo cual es gate de release.
 
-## Próximo paso R3
+## Próximo paso R3 (cerrado)
 
-- R3.3 SAST (detekt) — ya cubierto (workflow actual ejecuta detekt).
-- R3.4 dependency audit — **cubierto por este WU** (submission API).
-- R3 secret scan (gitleaks) — pendiente, NO cubierto. Ver análisis abajo.
+- R3.1 SBOM (CycloneDX) — cubierto (job `sbom`).
+- R3.2 secret-scan (gitleaks) — cubierto (job `secret-scan`, ver sección "Side-finding").
+- R3.3 SAST (detekt) — cubierto (job `sast`).
+- R3.4 dependency-audit — **cubierto por este WU** (job `dependency-audit`).
 
-## Side-finding: R3 secret-scan todavía sin cubrir
+**R3 entero cerrado.** Las próximas WUs de RP-4 son R4 (pitest mutation) y R5
+(coverage-all CI), independientes de R3.
 
-`gitleaks` no está en `.github/workflows/lpr0-ci.yml`. Es un gap separado,
-**fuera del alcance de este WU** (este WU cierra R3.4, no R3 completo).
-Para cerrar R3 completo necesitaría un WU específico (`WU-RP-040-R3-SC`)
-con su propio plan y recibos. El operador puede decidir priorizarlo
-después del merge de este WU.
+## Side-finding: R3 secret-scan — YA cubierto (corrección honesta)
+
+**Error en la versión anterior del receipt (corregido 2026-09-24T21:37Z):**
+declaré secret-scan (gitleaks) como KNOWN_GAP. Esto es **incorrecto**.
+
+Verificación local sobre `wu/rp-053-merge @ fd259b42`:
+
+```text
+$ gitleaks git --redact --no-banner
+11:37PM INF 1829 commits scanned.
+11:37PM INF scanned ~28540730 bytes (28.54 MB) in 1.68s
+11:37PM INF no leaks found
+```
+
+El job `secret-scan (gitleaks)` ya existe en `.github/workflows/lpr0-ci.yml`
+(invocación directa de gitleaks 8.24.3, mismo patrón que `dependency-audit`).
+Pasos: checkout `fetch-depth: 0`, instalar binario si no está en
+`$HOME/.jcode/scratch/gitleaks-8.24.3/gitleaks`, `gitleaks git --redact -v`.
+
+El `.gitleaks.toml` (44 líneas, allowlist de fixtures intencionales
+documentados en WU-RP-011 / LPR-011) evita los falsos positivos del sistema
+de credenciales/redacción.
+
+**Conclusión:** R3 secret-scan está **cubierto**. No es WU nuevo pendiente.
+Solo hay que actualizar este receipt para que la próxima lectura del plan
+no confunda el estado real.
+
+## Estado real de R3 después de R3.4 + esta corrección
+
+- R3.1 SBOM (CycloneDX) — cubierto (job `sbom`).
+- R3.2 secret-scan (gitleaks) — **cubierto** (job `secret-scan`).
+- R3.3 SAST (detekt) — cubierto (job `sast`).
+- R3.4 dependency-audit — **cubierto por WU-RP-040-R3.4** (job `dependency-audit`).
+
+**R3 cerrado.**
 
 ## Refs
 

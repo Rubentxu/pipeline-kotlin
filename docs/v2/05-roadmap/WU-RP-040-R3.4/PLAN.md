@@ -73,7 +73,8 @@ plugins. Cero nuevos SHA pins (la action es el tag oficial `v3`).
 
 - [ ] CVE evaluation offline (OWASP dependency-check) — WU futuro cuando se
       resuelva feed-cache de NVD. Marcar como WU-RP-040-R3.4b si se prioriza.
-- [ ] Secret scan (gitleaks) — R3 del plan sigue abierto; no en alcance de
-      este WU. WU-RP-040-R3-SC recomendado.
+- [x] Secret scan (gitleaks) — YA cubierto por el job `secret-scan` existente
+      en `lpr0-ci.yml` (verificado 2026-09-24T21:37Z, exit 0, "no leaks found"
+      sobre los 1829 commits del repo). **No es WU pendiente.**
 - [ ] Alertas Dependabot en `Security` tab — requiere push + CI verde con
       la action autorizada, lo cual es gate de release.

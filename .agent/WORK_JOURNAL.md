@@ -2098,3 +2098,15 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Evidencia: compileKotlin 0; tests quirúrgicos 8/8; detekt 0; binario fresh 0 (13s) + replay 0 (5s), 0 JVMs huérfanos; smoke ZIP publicado version/e2e sh/e2e dir exit 0.
 - Release: v0.39.1-rc4 pre-release publicada, zip sha256 7f056a0d...5c22, digest verificado contra GitHub API. rc3 clasificado REEMPLAZADO (contenía el defecto).
 - Nota: fixture e2e con `steps { ... }` da error de compilación ("Too many arguments for fun steps()") — la sintaxis válida usa steps directamente bajo stage; puede merecer fix de mensaje de error en el futuro (NOT_RUN, deuda menor observada).
+
+## 2026-09-24T16:55Z — WU-RP-053 coherence contract: rebased PRs + characterization
+- Operative state recovered: origin/main = `70e3d55e` (journal commit from rc4 session); local had stale branch tips. Re-pushed journal commit.
+- PRs del operador examinados: #90 (cut1 split authorizedWorkspaceRoot/effective cwd), #95 (cut4 deleteDir cwd), #96 (cut5 stash cwd). Branch bases están en `0a62cb82` (pre-rc4) — rebased sobre `70e3d55e` sin conflictos.
+- Ramas rebased: `wu/rp-053-cut1-base-rebase` = `75633b80`; `wu/rp-053-cut4-deletedir-cwd-rebase` = `aebd6207`; `wu/rp-053-cut5-stash-cwd-rebase` = `ad1f9c5b`. Empujadas a origin.
+- Verificación cut5: compileKotlin exit 0; tests quirúrgicos 58/58 (4 skipped pre-existentes); HAR-006 PASS contra binario; HAR-007 FAIL (gap pre-existente NO abordado por los PRs).
+- Causa raíz HAR-007: `CanonicalDurableRunCoordinator` no aísla `StepFailed` dentro del cuerpo de `dir(...)` — el cwd se restaura (`DirExited.restoredTo` correcto) pero el stage aborta. Jenkins `dir()` documenta "including on exception" → requiere `dir.failureMode` ADT o try/finally isolation. Recibo en `docs/v2/07-uat/HAR_007_DIR_RESTORE_CHARACTERIZATION.md`.
+- Caracterización nueva: `DirRestoreAfterErrorCharacterizationTest` (LOCAL guard PASS, WIDE guard SKIPPED honestamente) en rama `wu/rp-053-coherence-characterization` = `fb24bff1`. Recibo canónico en `docs/v2/07-uat/WU_RP_053_COHERENCE_CONTRACT_RECEIPT.md`.
+- Smoke binario cut5: version exit 0; doctor jdk 24.0.2 / os Linux / workdir writable; e2e `dir("sub") { sh }` → RunFinished success, 0 huérfanos. SHA-256 binary `045412d24022aff5090507b4340a2b327041c05ddc1736028e0d28209985acd8`.
+- PR #76 (motor WU-RP-043) sigue OPEN por decisión previa del operador; no se ha tocado.
+- Local-first Configuration Overlay: NO tocado; sin colisión de identificadores con cortes #90/#95/#96.
+- Siguiente: L5 `./gradlew -p v2 check` sobre cut5 antes de promover; rc5 condicional a L5 verde; WU-RP-031 queda en espera hasta cerrar HAR-007.

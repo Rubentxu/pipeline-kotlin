@@ -13,7 +13,7 @@ Al INICIO de CADA sesión, antes de editar código:
 4. Verificar qué evidencia pertenece al SHA exacto. Certificaciones/recibos de v0.39.0 o de commits anteriores NO hacen verde main. Si falta verificación, escribir NOT_RUN/BLOCKED; jamás PASS por mera presencia de tests, tag, log o recibo antiguo.
 5. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan ./gradlew -p v2 desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
 6. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere CI completo, lanzar CI para el NUEVO SHA y registrar jobs realmente ejecutados.
-7. **Candidatas (release candidates):** una candidata NO se gatea con GitHub Actions (checks = vista cómoda) ni con la batería UAT del repo (esa es del harness). El flujo obligatorio M1..M8 (verde local → rama RC con bump → build ZIP+SBOM+SHA256 → smoke → tag → publicar via agente independiente → anunciar en la issue de coordinación única del harness → continuar siguiente WU) está en la sección "Release candidates" al final de este archivo. Léela ANTES de construir, publicar o mergear cualquier candidata. Auto-merge de PRs de motor NO autorizado: espera decisión del operador.
+7. **Frontera de entrega:** `pipeline-kotlin` entrega valor y calidad local, NO certifica releases ni ejecuta pruebas de release/distribución. Aquí sólo: tests focalizados del cambio/contrato, commit, ZIP+SHA-256+SBOM y handoff de candidata. `pipelinek-release-harness` es el único owner de instalación limpia, smoke de distribución, mise/asdf/SDKMAN, dogfood, UAT, compatibilidad, veredicto y promoción final. Los detalles están en "Release candidates" al final de este archivo. Auto-merge de PRs de motor NO autorizado: espera decisión del operador.
 
 Al FINAL de cada WU/sesión: actualizar EN EL MISMO CAMBIO SESSION_POINTER (fase, próxima WU, HEAD observado, bloqueos, primer comando), añadir entrada nueva a WORK_JOURNAL (base/head, cambios, resultados reales, tests no ejecutados, evidencia caducada), mantener TESTING-STATE únicamente donde cambie la topología/impacto, y emitir receipt inmutable nuevo por SHA cuando haya pruebas. No cerrar WU hasta satisfacer UAT/gates; una interrupción preserva el estado OPEN. Si Git/CI contradice el puntero, registrar la divergencia y tomar Git/CI como realidad observada.
 
@@ -1894,41 +1894,43 @@ errores operativos si se improvisa. Cualquier agente que construya o entregue
 una candidata sigue ESTOS pasos, en ESTE orden:
 
 ```text
-M1  VERDE LOCAL: el fix/corte pasa sus tests de contrato y regresiones
-    focalizadas (escalera T0..T4 por impacto). El L5 local NO incluye la
-    batería UAT externa (regla 6 de la Frontera). Sin verde local NO hay
-    candidata.
+M1  CALIDAD LOCAL: el fix/corte pasa sólo sus tests focalizados de contrato
+    y regresión por impacto. Esto demuestra calidad del cambio, NO certifica
+    una release. No ejecutar aquí instalación limpia, UAT de distribución,
+    dogfood, mise/asdf/SDKMAN ni una batería de release.
 M2  RAMA RC limpia: rama nueva desde el HEAD del fix (p.ej.
     wu/rp-053-rc1-build). El bump de version en v2/build.gradle.kts
     (SEMVER: fix→PATCH, feat→MINOR, breaking→MAJOR; sufijo -rcN) vive SOLO
     en esta rama. NO se bupea main: el bump entra a main únicamente con la
     promoción a estable.
-M3  CONSTRUIR: cd v2 && ./gradlew -p v2 :pipeline-application:distZip
-    :pipeline-application:cyclonedxBom. Artefactos: ZIP en
+M3  EMPAQUETAR PARA HANDOFF: cd v2 && ./gradlew -p v2
+    :pipeline-application:distZip :pipeline-application:cyclonedxBom.
+    Esto construye un artefacto de entrega, no una prueba de release.
+    Artefactos: ZIP en
     v2/pipeline-application/build/distributions/pipelinek-<version>.zip,
     SBOM en v2/pipeline-application/build/reports/bom.{json,xml} (copiar
     con nombre de versión). Generar SHA256SUMS con trazabilidad (source_sha,
     base_main, round gate local, alcance).
-M4  SMOKE del binario: extraer el ZIP y verificar (a) `pipelinek version`
-    reporta la versión de la candidata, (b) `pipelinek doctor` OK, (c) un
-    .pipeline.kts del alcance del fix ejecuta SUCCESS con sus eventos
-    canónicos. Sin smoke NO se publica.
-M5  TAG + PUSH: tag anotado v<version> sobre el HEAD de la rama RC; push
+M4  TAG + PUSH: tag anotado v<version> sobre el HEAD de la rama RC; push
     de rama y tag. El tag es la identidad inmutable de la candidata.
-M6  PUBLICAR (agente INDEPENDIENTE, no el agente del fix): GitHub Release
+M5  PUBLICAR (agente INDEPENDIENTE, no el agente del fix): GitHub Release
     prerelease con ZIP + 2 SBOMs + SHA256SUMS como assets. La release es
     el único canal de distribución; el harness descarga con
     scripts/install-pipelinek.sh (URL allowlist + SHA-256) o descarga
     directa verificada.
-M7  ANUNCIAR: UN comentario en la issue de coordinación única del harness
+M6  ANUNCIAR: UN comentario en la issue de coordinación única del harness
     (hoy #2), NO issues nuevas (regla 8 de la Frontera). La huella del
     anuncio: candidate tag, source_sha, ZIP sha256, enlace a la release,
     alcance (WU), estado del round gate local. Comunicación por ZIP+
     SHA-256+SBOM; el veredicto del harness vuelve por su propio almacén
     e issues propias.
-M8  CONTINUAR: este repo sigue la siguiente WU inmediatamente (regla 7).
+M7  CONTINUAR: este repo sigue la siguiente WU inmediatamente (regla 7).
     El veredicto llega como issue/comentario del harness; se revisa en el
     ciclo siguiente, no bloquea.
+
+M8  EXCLUSIVO DEL HARNESS: la instalación limpia, smoke del binario,
+    mise/asdf/SDKMAN, dogfood de una versión estable, UAT, compatibilidad,
+    veredicto y promoción de RC a release final se ejecutan sólo allí.
 ```
 
 Antierrores explícitos (cada uno ocurrió realmente):

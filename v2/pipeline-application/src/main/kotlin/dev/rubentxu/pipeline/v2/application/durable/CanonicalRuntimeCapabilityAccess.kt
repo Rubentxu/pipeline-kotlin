@@ -186,6 +186,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                effectiveWorkingDirectory = context.shOptions.workingDirectory,
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         }

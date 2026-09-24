@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -348,6 +350,47 @@ class CoreDeleteDirStepUnitTest {
         val event = events.single()
         assertEquals(workspace.resolve("workspace/test-0").toString(), event.path)
         assertEquals(64, event.sha256.length)
+    }
+
+    /**
+     * WU-RP-053 cut 4 RED: Jenkins `deleteDir()` deletes the current directory,
+     * not the enclosing project workspace. The current directory is explicit
+     * immutable runtime data (`ShOptions.workingDirectory`) derived by `dir`.
+     *
+     * This goes through the production capability bridge rather than a direct
+     * adapter fixture: `CanonicalRuntimeCapabilityAccess` must thread the
+     * effective cwd into the narrow delete capability before the handler runs.
+     */
+    @Test
+    fun `deleteDir inside dir deletes effective cwd and preserves enclosing workspace`(
+        @TempDir checkout: Path,
+    ) {
+        val nested = Files.createDirectories(checkout.resolve("nested"))
+        val rootFile = Files.writeString(checkout.resolve("keep-at-root.txt"), "root")
+        val nestedFile = Files.writeString(nested.resolve("delete-me.txt"), "nested")
+        val sink = InMemoryEventStore()
+        val context = CanonicalRuntimeContext(
+            opId = OpId("rp053-delete-cwd", 0, 0),
+            runId = "rp053-delete-cwd",
+            stageName = "stage",
+            stageIndex = 0,
+            stepIndex = 0,
+            shOptions = ShOptions.EMPTY.copy(
+                workspaceRoot = checkout,
+                workingDirectory = nested,
+            ),
+            controlDirRoot = checkout.resolve(".control"),
+            eventSink = sink,
+            workspaceBase = checkout,
+        )
+
+        val operations: DeleteDirOperations = CanonicalRuntimeCapabilityAccess(context)
+            .get(DELETE_DIR_OPERATIONS_CAPABILITY)
+        val result = operations.delete(DeleteDirInput())
+
+        assertEquals(nested.toString(), result.path)
+        assertTrue(Files.exists(rootFile), "deleteDir in dir(nested) must preserve the enclosing workspace")
+        assertFalse(Files.exists(nestedFile), "deleteDir in dir(nested) must delete nested contents")
     }
 
     // ------------------------------------------------------------------

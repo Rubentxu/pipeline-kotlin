@@ -311,6 +311,59 @@
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
 
+## Reconciliación 2026-09-24T11:28Z — HARNESS H0.3 + REVERIFY EN MARCHA: prompts operativos listos (autoridad operativa vigente)
+
+- **Directiva del operador 2026-09-24T11:26Z sobre el harness** (cambio material de modelo):
+  - El harness YA TIENE: clasificación de fallos, publicación/actualización de issues, deduplicación, registro local de reverificación, CLI con `run` / `publish-issue` / `reverify-cycle` / `certify`.
+  - **Perfiles**: Base certificado. Real ampliada NO cerrado. Certificación completa NO cerrado.
+  - **Siguiente paso del harness = H0.3**: demostrar circuito ejecutable con la candidata v0.39.0 ya publicada. NO empezar con 5 lenguajes, benchmarks, ni release publication.
+  - **PR #76** de pipeline-kotlin sigue abierta; el harness puede continuar con v0.39.0 sin esperarla.
+  - **Tabla explícita de comunicación cross-repo** (GitHub como canal compartido):
+    - Candidata + ZIP → pipeline-kotlin produce; harness consulta artefacto + manifiesto + commit.
+    - Resultado de certificación → harness produce; pipeline-kotlin consulta recibo + estado + commit/PR.
+    - Defecto reproducible → harness produce issue en pipeline-kotlin.
+    - Corrección → pipeline-kotlin produce commit/PR + nueva candidata.
+    - Reverificación → harness produce recibo + actualiza issue.
+    - Release estable → harness produce (flujo promoción autorizado).
+  - **Distinción crítica**: commits, PR y recibos de pipeline-kotlin ofrecen trazabilidad, pero NO debemos dar por hecho que existe un servicio que detecta candidatas, crea issues y promociona releases hasta que sus pruebas de extremo a extremo lo demuestren. H0.3 ES esa prueba.
+
+- **acción inmediata en este repo**: reescritura de `docs/v2/07-uat/HARNESS_PROMPTS_2026_09_24.md` (PR #82 mergeada, commit `6c1cdb9f`). Los prompts ya no son de inicialización, sino de activación del circuito sobre lo que existe:
+  - **Prompt A**: cerrar H0.3 ejecutando `pipelinek-harness run v0.39.0` con la CLI existente.
+  - **Prompt B**: reverify-cycle cuando pipeline-kotlin publique una candidata correctiva.
+  - **Prompt C**: política autónoma del harness (ledger append-only, dedupe por huella, issues en pipeline-kotlin, sin PR cross-repo).
+
+- **Limpieza de ramas remotas obsoletas** (todas ya mergeadas):
+  - Borradas: `wu/dist-002-installer`, `wu/dist-003-readme-install-section`, `wu/dist-roadmap-refresh-2026-09-24`, `wu/readme-harness-split-mise-asdf`, `wu/state-2026-09-24-dist-2-merge`, `wu/state-2026-09-24-distribution-closure`, `wu/rp-harness-coordination`.
+  - Conservadas: `wu/rp-043-integration-clean` (PR #76 OPEN, candidata del motor), `wu/harness-prompts-h03-reverify` (mergeada en PR #82; borrar opcionalmente).
+
+- **main final del turno**: `6c1cdb9f docs(uat): rewrite HARNESS_PROMPTS for H0.3 + reverify cycle (#82)`.
+
+- **Estado consolidado**:
+  - origin/main: `6c1cdb9f` (9 commits squash sobre línea base `74b40a65`).
+  - PR #76 (candidata WU-RP-043 rebased): sigue OPEN, código de motor, decisión del operador.
+  - WIP del operador: 30 archivos intactos.
+  - Binario estable: NO modificado.
+  - Distribución v0.39.0 en main: ZIP + instalador bash (DIST-1, DIST-2 cerrados). Resto (DIST-3/4/5/6/7) en el harness.
+
+- **Identidad material**:
+  - origin/main: `6c1cdb9f`.
+  - wu/rp-043-integration-clean: `d8145632` (PR #76 OPEN).
+
+### Próximos cortes (AUTO, sin pedir permiso adicional)
+
+1. **PR #76 (candidata WU-RP-043 rebased)** — operador decide merge a main. **No la auto-mergeo**.
+2. **El operador arranca H0.3** en el harness con Prompt A. Yo entrego el material que necesita pero no toco el harness.
+3. **Si el operador quiere otra ronda de prompts** (más detallados, con escenarios concretos, etc.), los entrego en este repo como docs sin tocar código.
+
+### Primer comando de reanudación
+
+```bash
+git checkout main && git pull origin main && \
+git rev-parse HEAD && git log --oneline -5
+```
+
+Debe mostrar: HEAD `6c1cdb9f docs(uat): rewrite HARNESS_PROMPTS for H0.3 + reverify cycle (#82)`. Log anterior: `95039aec docs(agent): distribution closure — ZIP + bash ready, harness absorbs rest (#81)`.
+
 ## Reconciliación 2026-09-24T11:22Z — DISTRIBUCIÓN v0.39.0 CERRADA EN ESTE REPO: ZIP + BASH. HARNESS ABSORBE EL RESTO (autoridad operativa vigente)
 
 - **Cierre explícito del flujo de distribución** para v0.39.0 en este repo:

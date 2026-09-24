@@ -2202,6 +2202,7 @@ Survey sistemático del estado actual de WUs pendientes tras WU-RP-040-R3.4:
 - Recomendación cerrada: ADR-0093 B (suspend structured DSL) ejecutado como **integración stage-scoped suspend** en spike acotado. Sin tocar `script {}`, sin `StepSpec` externa, sin switches por StepKey, sin I/O ambiental en construcción, sin modificar contratos públicos. `registryStep` (eager) y `script {}` (cuerpo) se conservan como están.
 - Próximo paso legítimo (no autónomo): WU-RP-058 (spike stage-scoped) **solo después** de RP-5 + gate humano INITIATIVE_LPR_001 §2.4. Hasta entonces, sin implementación y sin tocar el camino canónico.
 - Spike acotado: ejecutar los tres patrones Groovy (a/b/c) sobre `pipeline { ... }` con `pwd()`, `readFile`, `fileExists`, `sh(returnStdout=true)`. Comparar fingerprint/journal/replay contra el camino scripted generator-level. Aislar en módulo spike propio con recibo G0..G8 antes de tocar el camino canónico. Sin mover el corpus existente.
+- Avance del spike: rama `wu/rp-058-spike-stage-scoped @ 9e81b226` abierta. Esqueleto Gradle + `settings.gradle.kts` + PLAN reescrito en estilo Haskell (ADTs `StageOp`/`SuspendCall`/`SuspendOutcome`/`Executed`/`RejectReason`, funciones puras, intérprete explícito). Cero código Kotlin; implementación queda pendiente de firma del operador.
 - Artefactos:
   - `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md` (nuevo).
   - `.agent/SESSION_POINTER.md` (encabezado actualizado a esta reconciliación; SHA de partida inmutable `839fe63f`).

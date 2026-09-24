@@ -14,7 +14,7 @@
   - Cambio de semántica pública (misma firma Jenkins con comportamiento distinto según frontend) → gate humano INITIATIVE_LPR_001 §2.4.
   - RP-5 sigue bloqueado por push/CI sobre bytes exactos.
 - **Recomendación cerrada:** ADR-0093 B (suspend structured DSL) ejecutado como **integración stage-scoped suspend** en spike acotado. Sin tocar `script {}`, sin `StepSpec` externa, sin switches por StepKey, sin I/O ambiental en construcción, sin modificar contratos públicos. `registryStep` (eager) y `script {}` (cuerpo) se conservan como están.
-- **Próximo paso legítimo (no autónomo):** WU-RP-058 (spike stage-scoped) **solo después** de RP-5 + gate humano INITIATIVE_LPR_001 §2.4. Hasta entonces, sin implementación y sin tocar el camino canónico.
+- **Rama del spike abierta:** `wu/rp-058-spike-stage-scoped @ 9e81b226` (módulo aislado `v2/pipeline-spike-stage-scoped/`, depende solo de `:pipeline-domain` + `:pipeline-scripting-api`, NO de `:pipeline-application` ni `:pipeline-scripting-kotlin24`). Commit `9e81b226` solo trae esqueleto + PLAN; cero código Kotlin. El PLAN está reescrito en estilo Haskell: ADTs sellados (`StageOp`, `SuspendCall`, `SuspendOutcome`, `Executed`, `RejectReason`), funciones puras (`LexicalOrderSpec.check`, `SuspendCall.expectedOutcome()`), intérprete explícito (`StageScopedFrontend.execute`), cero `Any?`/flag bags. Sin implementación ni tests hasta firma del operador.
 - **Primer comando:** `git rev-parse HEAD && gh run list --commit $(git rev-parse HEAD) --limit 3`
 
 - **Survey exhaustivo de WUs restantes tras WU-RP-040-R3.4 + corrección R3:**

@@ -1,4 +1,21 @@
-## Reconciliación 2026-09-24T21:40Z — Survey final RP-4: no quedan WUs bounded (autoridad operativa vigente)
+## Reconciliación 2026-09-25T22:19Z — Investigación opciones ADR-0093 structured runtime returns (autoridad operativa vigente)
+
+- **HEAD observado al investigar:** `839fe63f1cc39f7c036938dd09f26384492f4bec` (`wu/rp-053-merge`), tree limpio. Tras el cierre docs-only el HEAD cambia; el SHA de partida es el inmutable que ancla la evidencia.
+- **CI exacto:** `gh run list --commit 839fe63f...` → `[]` (NOT_RUN sobre el SHA actual). No se puede afirmar RP-4/RP-5 verde para este HEAD.
+- **Nota de investigación creada (NO normativa):** `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md`. Contrasta A CPS, B StepValue, C eager-first/direct I/O, D scripted standalone y E suspend stage-scoped compatible. Concluye B (ADR-0093) con acotación stage-scoped suspend. Cero cambios sobre ADR/ROADMAP/código/contratos.
+- **Hechos observados referenciados con líneas exactas:**
+  - `StageScope.steps(block)` NO existe; `PipelineDsl.kt:1413` expone solo `steps(): List<StepSpec>`.
+  - `script {}` actual reune comandos en `ScriptScope` y los baja a un único `Shell(..., isScriptBlock = true)` (`PipelineDsl.kt:1398-1407`), ruta Shell, no integración estructurada.
+  - `Main` solo elige scripted si la fuente NO contiene `pipeline {}` (`Main.kt:699-735`); ejecución posterior mantiene autoridad durable pero sigue siendo generator-level (`Main.kt:875-916`).
+  - `ScriptedSourceLowering` produce entry point top-level (`ScriptedSourceLowering.kt:154-169`) y reescribe `readFile/fileExists/sh(returnStdout=true)` a formas generadas (`ScriptedSourceLowering.kt:83-125`), no integración stage-scoped.
+  - `pwd()`/`isUnix()` siguen devolviendo `RUNTIME_VALUE_PLACEHOLDER` (`PipelineDsl.kt:1826-1860`, `1893-1902`), contradicción documentada con promesa typed runtime return.
+- **Riesgos pendientes sin resolver:**
+  - Mezcla eager/suspend con orden léxico no definido (ADR-0093 §9): alterar ordinales/fingerprint/replay si no se fija antes.
+  - Cambio de semántica pública (misma firma Jenkins con comportamiento distinto según frontend) → gate humano INITIATIVE_LPR_001 §2.4.
+  - RP-5 sigue bloqueado por push/CI sobre bytes exactos.
+- **Recomendación cerrada:** ADR-0093 B (suspend structured DSL) ejecutado como **integración stage-scoped suspend** en spike acotado. Sin tocar `script {}`, sin `StepSpec` externa, sin switches por StepKey, sin I/O ambiental en construcción, sin modificar contratos públicos. `registryStep` (eager) y `script {}` (cuerpo) se conservan como están.
+- **Próximo paso legítimo (no autónomo):** WU-RP-058 (spike stage-scoped) **solo después** de RP-5 + gate humano INITIATIVE_LPR_001 §2.4. Hasta entonces, sin implementación y sin tocar el camino canónico.
+- **Primer comando:** `git rev-parse HEAD && gh run list --commit $(git rev-parse HEAD) --limit 3`
 
 - **Survey exhaustivo de WUs restantes tras WU-RP-040-R3.4 + corrección R3:**
   - **R3 entero cerrado:** SBOM + secret-scan + SAST + dependency-audit (4 jobs CI).

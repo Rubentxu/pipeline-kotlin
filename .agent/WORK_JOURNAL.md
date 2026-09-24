@@ -2187,7 +2187,23 @@ Survey sistemático del estado actual de WUs pendientes tras WU-RP-040-R3.4:
 
 **Estado final del branch**: `wu/rp-053-merge @ 85a4075c` (22 commits sobre main), GATE-GREEN con round gate incremental 3616 tests / 0 failures.
 
-**Próximo corte del operador (sin pedir permiso autónomo)**:
-- Push a main sigue operator-gated (rule 6).
-- Si autoriza push: RP-5 release gate (decisión de release).
-- Si NO autoriza push y prefiere otra WU bounded: no queda ninguna autónoma identificable en RP-4. Candidatos posibles requieren decisión de PRODUCT (Tier B) o trabajo de compilador (LFC-2R2).
+## 2026-09-25T22:19Z — Investigación opciones ADR-0093 structured runtime returns (NOT_RUN implementación)
+
+- HEAD observado al investigar: `839fe63f1cc39f7c036938dd09f26384492f4bec` (`wu/rp-053-merge`), tree limpio. HEAD posterior docs-only distinto (commit atómico docs-only no afecta a la evidencia).
+- CI exacto: `gh run list --commit 839fe63f...` → `[]` (NOT_RUN). Sin PASS de RP-4/RP-5 para este SHA; conservar bloqueo.
+- Decisión de fondo: ADR-0093 mantiene B (suspend structured DSL) como dirección, acotada a integración stage-scoped suspend. NO se altera ADR ni ROADMAP; nota puramente documental bajo `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md`.
+- Hechos verificados en código (con líneas exactas):
+  - `StageScope.steps(block)` NO existe; solo `fun steps(): List<StepSpec>` en `PipelineDsl.kt:1413`. Cualquier propuesta que asuma `steps(block)` está descalificada por la implementación.
+  - `script {}` actual reune comandos en `ScriptScope` y emite un único `Shell(..., isScriptBlock = true)` (`PipelineDsl.kt:1398-1407`), no integración stage-scoped.
+  - `Main` activa scripted SOLO si la fuente no contiene `pipeline {}` (`Main.kt:699-735`). Selección excluyente; ejecución posterior (`Main.kt:875-916`) sigue siendo generator-level.
+  - `ScriptedSourceLowering` produce entry point top-level (`ScriptedSourceLowering.kt:154-169`) y reescribe `readFile/fileExists/sh(returnStdout=true)` a formas generadas (`ScriptedSourceLowering.kt:83-125`).
+  - `pwd()`/`isUnix()` siguen devolviendo `RUNTIME_VALUE_PLACEHOLDER` (`PipelineDsl.kt:1826-1860`, `1893-1902`), contradice la promesa typed.
+- Opciones evaluadas: A CPS (rechazar, reabre ADR-0006), B StepValue (insuficiente para control flow), C eager-first/direct I/O (rompe durabilidad, rechazado), D scripted standalone (baseline, no expansión), E suspend stage-scoped compatible (elegida con acotaciones).
+- Recomendación cerrada: ADR-0093 B (suspend structured DSL) ejecutado como **integración stage-scoped suspend** en spike acotado. Sin tocar `script {}`, sin `StepSpec` externa, sin switches por StepKey, sin I/O ambiental en construcción, sin modificar contratos públicos. `registryStep` (eager) y `script {}` (cuerpo) se conservan como están.
+- Próximo paso legítimo (no autónomo): WU-RP-058 (spike stage-scoped) **solo después** de RP-5 + gate humano INITIATIVE_LPR_001 §2.4. Hasta entonces, sin implementación y sin tocar el camino canónico.
+- Spike acotado: ejecutar los tres patrones Groovy (a/b/c) sobre `pipeline { ... }` con `pwd()`, `readFile`, `fileExists`, `sh(returnStdout=true)`. Comparar fingerprint/journal/replay contra el camino scripted generator-level. Aislar en módulo spike propio con recibo G0..G8 antes de tocar el camino canónico. Sin mover el corpus existente.
+- Artefactos:
+  - `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md` (nuevo).
+  - `.agent/SESSION_POINTER.md` (encabezado actualizado a esta reconciliación; SHA de partida inmutable `839fe63f`).
+  - Este diario (append-only).
+- Tests no ejecutados: ninguno (decisión consciente de no tocar batería durante investigación).

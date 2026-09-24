@@ -140,17 +140,6 @@ const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
         "core.deleteDir/core.cleanWs/core.load/core.pwd/core.waitUntil."
 
 /**
- * WU-RP-053 cut5 forward-port (M1 follow-up): Resolve the workspace directory
- * the CLI will use. When --workspace is NOT passed, default to the script's
- * parent directory (the invoking directory), NOT the state directory. This
- * implements the operator's PROJECT mode default — the project's own checkout
- * is the workspace, no absolute REPO_ROOT dance required in scripts.
- */
-internal fun resolveCliWorkspace(explicitWorkspace: String?, scriptPath: Path): Path =
-    explicitWorkspace?.let { Path.of(it).toAbsolutePath().normalize() }
-        ?: requireNotNull(scriptPath.toAbsolutePath().normalize().parent)
-
-/**
  * Parses CLI arguments for the pipeline runner.
  *
  * @param args The command-line arguments.
@@ -356,12 +345,6 @@ fun main(args: Array<String>) {
 
     val scriptPath = Paths.get(config.scriptPath!!)
 
-    // WU-RP-053 cut5 forward-port (M1 follow-up): default workspaceBase to the
-    // script's parent directory (the invoking directory) when --workspace is
-    // not passed, NOT to the state directory. This implements the operator's
-    // PROJECT mode default — bare scripts get their own directory as workspace.
-    val workspaceBase = resolveCliWorkspace(config.workspace, scriptPath)
-
     if (command == "validate") {
         // M2-002: validate NEVER starts processes. It compiles the script
         // and reports diagnostics — nothing else.
@@ -509,7 +492,7 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
-                workspaceBase = workspaceBase,
+                workspaceBase = config.workspace?.let { Path.of(it) },
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
@@ -839,7 +822,7 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
-            workspaceBase = workspaceBase,
+            workspaceBase = config.workspace?.let { Path.of(it) },
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,

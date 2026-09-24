@@ -88,6 +88,29 @@ fun validateControlRoot(path: String): Path {
 }
 
 /**
+ * WU-RP-053-FOLLOWUP: pure resolver for the canonical durable workspace base.
+ *
+ * Decides which directory the durable runner should treat as `workspaceBase` based on:
+ *   - `explicitWorkspace` (--workspace <dir>): wins if non-null, regardless of mode.
+ *   - `scriptPath`: the pipeline script path. In [WorkspaceMode.Project] (opt-in) this
+ *     directory becomes the workspace root — Jenkins-parity semantics.
+ *   - `mode`: opt-in flag selecting between Project (Jenkins-parity) and Legacy (per-stage).
+ *   - Returns null when neither --workspace nor Project mode applies: the caller
+ *     (`runCanonicalPipeline`) then defaults to `<controlDirRoot>/workspace`.
+ *
+ * Pure function: no I/O, no state, fully testable.
+ */
+fun resolveCliWorkspaceBase(
+    explicitWorkspace: String?,
+    scriptPath: Path,
+    mode: WorkspaceMode,
+): Path? = when {
+    explicitWorkspace != null -> Path.of(explicitWorkspace).toAbsolutePath()
+    mode is WorkspaceMode.Project -> scriptPath.toAbsolutePath().parent
+    else -> null
+}
+
+/**
  * CLI entry point for the V2 pipeline runner.
  *
  * Usage:
@@ -115,12 +138,41 @@ data class PipelineCliConfig(
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /** External plugin JARs: same list feeds script-compile classpath and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
+    /** WU-RP-053-FOLLOWUP: workspace layout mode (--workspace-mode). Default = [WorkspaceMode.Legacy]. */
+    val workspaceMode: WorkspaceMode = WorkspaceMode.Legacy,
 )
 
 sealed interface DurableRunPolicy {
     data object ReusePriorRun : DurableRunPolicy
     data object ResumePriorRun : DurableRunPolicy
     data object StartFreshRun : DurableRunPolicy
+}
+
+/**
+ * WU-RP-053-FOLLOWUP: typed CLI workspace layout mode.
+ *
+ * - [Legacy]: per-stage workspace rooted at `<control-root>/workspace` (current default).
+ * - [Project]: workspace = script's parent directory (Jenkins-parity, cut5 PROJECT mode).
+ *
+ * Opt-in via `--workspace-mode=project|legacy`. Default = [Legacy] to preserve the
+ * 7 UATs that assume the legacy per-stage layout (SB-S-001/SB-006/SB-008/UAT-L7-TC-004/
+ * SC-011-04/fixture10/corpus).
+ */
+sealed interface WorkspaceMode {
+    data object Legacy : WorkspaceMode
+    data object Project : WorkspaceMode
+
+    companion object {
+        /**
+         * Fail-closed parse: rejects anything that is not exactly `project` or `legacy`.
+         * Returns null on unknown values so the CLI parser surfaces the diagnostic.
+         */
+        fun parse(value: String): WorkspaceMode? = when (value) {
+            "legacy" -> Legacy
+            "project" -> Project
+            else -> null
+        }
+    }
 }
 
 sealed interface DurableRunSelection {
@@ -162,6 +214,8 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     var controlRoot: String? = null
     var workspace: String? = null
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE
+    // WU-RP-053-FOLLOWUP: --workspace-mode flag (default = Legacy).
+    var workspaceMode: WorkspaceMode = WorkspaceMode.Legacy
     val pluginJars = mutableListOf<String>()
     var scriptArgIndex = 1
     var i = 1
@@ -196,6 +250,17 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
                     return null
                 }
                 workspace = args[i + 1]
+                i += 2
+            }
+            "--workspace-mode" -> {
+                // WU-RP-053-FOLLOWUP: opt-in flag, fail-closed on unknown values.
+                if (i + 1 >= args.size) {
+                    return null
+                }
+                workspaceMode = WorkspaceMode.parse(args[i + 1])
+                    ?: throw WorkspaceModeUnsupportedException(
+                        "workspace-mode '${args[i + 1]}' invalid. Accepted: {legacy, project}."
+                    )
                 i += 2
             }
             "--sandbox-profile" -> {
@@ -245,8 +310,15 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
         workspace = workspace,
         sandboxProfile = sandboxProfile,
         pluginJars = pluginJars.toList(),
+        workspaceMode = workspaceMode,
     )
 }
+
+/**
+ * WU-RP-053-FOLLOWUP: typed failure for invalid --workspace-mode values. Mirrors the
+ * [SandboxProfileUnsupportedException] pattern (fail-closed, typed exception, no silent default).
+ */
+class WorkspaceModeUnsupportedException(message: String) : IllegalArgumentException(message)
 
 fun main(args: Array<String>) {
     // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version
@@ -492,7 +564,11 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
-                workspaceBase = config.workspace?.let { Path.of(it) },
+                workspaceBase = resolveCliWorkspaceBase(
+                    explicitWorkspace = config.workspace,
+                    scriptPath = scriptPath,
+                    mode = config.workspaceMode,
+                ),
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
@@ -822,7 +898,11 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
-            workspaceBase = config.workspace?.let { Path.of(it) },
+            workspaceBase = resolveCliWorkspaceBase(
+                explicitWorkspace = config.workspace,
+                scriptPath = scriptPath,
+                mode = config.workspaceMode,
+            ),
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,

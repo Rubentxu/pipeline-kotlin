@@ -2054,3 +2054,14 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Evidencia: `docs/v2/07-uat/WU_RP_040_R5_COVERAGE_ALL_CI_RECEIPT.md`.
 - Nota: M3 SIGPIPE estaba ya caracterizado (WU-RP-046 R2: NO_REPRODUCIBLE_AT_CURRENT_HEAD); no reabierto.
 - Siguiente: monitor `36012246997`; consumir veredicto harness rc2; después WU-RP-049 (LinkedSecretRef) o R3.4 dependency-audit.
+
+## 2026-09-24T16:46Z — Ajuste de alcance CI (directiva operador): NO GitHub Actions como verificador
+
+- Base/head: base `ab879002`; head `e3f18fc0` (main).
+- Directiva operador 2026-09-24: este repo es de entrega frecuente con calidad, NO pasar todos los tests posibles; NO se usa GitHub Actions nunca (sólo bootstrap push).
+- Cambios (`e3f18fc0`, 1 commit):
+  1. `lpr0-ci.yml`: eliminado trigger `pull_request`. Las ramas wu/* ya no disparan CI aquí; su verificación es tests quirúrgicos locales + harness externo sobre candidatas.
+  2. Job `coverage-all` re-scoped a `workflow_dispatch` ONLY (`if: github.event_name == 'workflow_dispatch'`): el agregado kover re-ejecuta la suite completa (899s medidos) y NO puede correr por push según las reglas de economía de ejecución de AGENTS.md. Queda como baseline on-demand en fronteras de integración/release.
+- Contención resuelta: 4 runs PR en cola (36012517175/36012511683/36012507716/36012498051) + run push 36014347565 cancelados manualmente; el nuevo push 36015222565 (e3f18fc0) quedó en cola, coverage skipped por diseño (esperado, verify=skipped en push).
+- Corrección al recibo anterior (`WU_RP_040_R5_COVERAGE_ALL_CI_RECEIPT.md`): el job existe y cierra el gap de instrumentación en source, pero su ejecución CI es ON-DEMAND, no por push. Clasificación: COVERED-instrumentation / RUN_ON_DEMAND.
+- Siguiente: watcher en /tmp/ci-watch.log sobre run 36015222565; veredicto harness rc2 sigue PENDIENTE; siguiente WU candidata: WU-RP-049.

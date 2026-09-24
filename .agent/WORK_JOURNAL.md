@@ -2209,6 +2209,7 @@ Survey sistemático del estado actual de WUs pendientes tras WU-RP-040-R3.4:
   - `35dd5abd` test(spike): 17/17 verdes (LexicalOrderSpec 8 + StageScopedFrontend 7 + SpikeIsolation 2).
   - `feb99190` test(spike): replay determinism (2 tests) + RecordingFacade compartida + RECEIPT. **19/19 verdes** total.
   - Recibo: `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md`. Frozen-by-design; producción debe añadir adaptador en módulo NUEVO sin mutar spike. Cero production changes fuera del módulo spike; cero regresión en `:pipeline-domain` / `:pipeline-scripting-api`; classpath resuelve solo a los dos módulos permitidos. **No requiere §2.4 INITIATIVE_LPR_001**.
+  - **Push al origin** `2026-09-24T22:41Z`: rama `wu/rp-058-spike-stage-scoped` publicada en `Rubentxu/pipeline-kotlin` (SHA `fec78e11`); SHA local y remoto coinciden. Sin tocar `main` ni `wu/rp-053-merge`; sin PR abierto. Sin bounded WU legítima posterior: la iniciativa queda en pausa hasta bounded WU real o firma del operador.
 - Artefactos:
   - `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md` (nuevo).
   - `.agent/SESSION_POINTER.md` (encabezado actualizado a esta reconciliación; SHA de partida inmutable `839fe63f`).

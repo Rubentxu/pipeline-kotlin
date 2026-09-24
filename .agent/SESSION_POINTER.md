@@ -311,6 +311,54 @@
 4. Gradle SIEMPRE desde v2: `cd v2 && ./gradlew <tasks>`.
 5. Primer comando sugerido: `git status --short && git log -1` — debe mostrar árbol limpio en 1d38d778 + `docs/pipeline-kotlin-config-overlay-package/` como untracked; verificar que nada más cambió y proseguir con WU-RP-040 R5 (SAST + Dependabot + Kover-all + triage mutantes) — próximo WU per ROADMAP. Alternativa: D-002 (Rp022 flake warmup) si se prefiere cerrar flake pre-existente primero.
 
+## Reconciliación 2026-09-24T11:36Z — PROMPTS DEL HARNESS CON ARGUMENTOS REALES + SPRING REST (autoridad operativa vigente)
+
+- **Directiva del operador 2026-09-24T11:34Z sobre el circuito cross-repo** (refinamiento):
+  - CLI REAL del harness: `run --image ... --project ... --scenario ...` (NO `run v0.39.0`).
+  - CLI adicional: `candidates` (lista candidatas nuevas de pipeline-kotlin).
+  - Si H0.3 ya está cerrado con ejecución real válida, NO repetirlo por ceremonia; continuar con el siguiente requisito pendiente.
+  - **publish-issue**: usar incidencia de ensayo o adaptador de pruebas; NO abrir incidencia real inventando defecto.
+  - **Sin credenciales de escritura**: resultado = `ISSUE_PENDING`, NO stack trace.
+  - **Errores del harness NO generan issues de producto** (sólo defectos reproducibles del motor).
+  - **reverify-cycle**: ejecutar la candidata correctiva realmente, NO reutilizar recibo anterior.
+  - **No crear ledger paralelo**: reutilizar estado y contratos existentes.
+  - **No reenviar handoffs manualmente** entre repositorios: candidatas, recibos e issues accesibles vía GitHub.
+  - **Después del circuito**: incorporar primer proyecto externo pequeño (Spring REST) con compilación, tests y fallo intencionado en Podman. Añadir Docker y demás lenguajes progresivamente, sin bloquear la entrega vertical.
+
+- **acción inmediata en este repo**: reescritura de `HARNESS_PROMPTS_2026_09_24.md` (PR #84 mergeada, commit `2c077409`):
+  - **Prompt A**: cerrar H0.3 sin ceremonia. Usar CLI REAL (`run --image ... --project ... --scenario ...`). Si ya está cerrado, continuar con el siguiente requisito.
+  - **Prompt B**: publish-issue controlado con huella de ensayo; verificación de deduplicación y de comportamiento `ISSUE_PENDING` sin credenciales.
+  - **Prompt C**: reverify-cycle con candidata correctora real o controlada; ejecutar la distribución nueva, no reusar recibos.
+  - **Prompt D (nuevo)**: primer proyecto externo pequeño — Spring REST en Podman, con escenarios de éxito y fallo intencionado; sin abrir issues de producto por fallos del proyecto.
+
+- **main final del turno**: `2c077409 docs(uat): harness prompts with real CLI args + Spring REST prompt (#84)`.
+
+- **Estado consolidado**:
+  - origin/main: `2c077409` (11 commits squash sobre línea base `74b40a65`).
+  - PR #76 (candidata WU-RP-043 rebased): sigue OPEN, código de motor, decisión del operador.
+  - WIP del operador: 30 archivos intactos.
+  - Binario estable: NO modificado.
+  - Distribución v0.39.0 en main: ZIP + instalador bash. Resto en el harness.
+
+- **Identidad material**:
+  - origin/main: `2c077409`.
+  - wu/rp-043-integration-clean: `d8145632` (PR #76 OPEN).
+
+### Próximos cortes (AUTO, sin pedir permiso adicional)
+
+1. **PR #76 (candidata WU-RP-043 rebased)** — operador decide merge a main. **No la auto-mergeo**.
+2. **El operador arranca H0.3** en el harness con Prompt A. Yo entrego prompts ajustados y no toco el harness.
+3. **Si el operador quiere prompts adicionales** (más detallados o nuevas WUs), los entrego en este repo como docs sin tocar código.
+
+### Primer comando de reanudación
+
+```bash
+git checkout main && git pull origin main && \
+git rev-parse HEAD && git log --oneline -5
+```
+
+Debe mostrar: HEAD `2c077409 docs(uat): harness prompts with real CLI args + Spring REST prompt (#84)`. Log anterior: `2ba36069 docs(agent): record H0.3 + reverify-cycle prompts directive (#83)`.
+
 ## Reconciliación 2026-09-24T11:28Z — HARNESS H0.3 + REVERIFY EN MARCHA: prompts operativos listos (autoridad operativa vigente)
 
 - **Directiva del operador 2026-09-24T11:26Z sobre el harness** (cambio material de modelo):

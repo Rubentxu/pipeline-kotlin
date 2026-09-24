@@ -177,6 +177,39 @@ does carry that fix.
 The WIDE-GAP `@Disabled` reason was rewritten to point at the new GREEN-phase
 test that proves the fix.
 
+## Post-receipt regression closure (FArchL7 51 → 52)
+
+While surveying the next WU (WU-RP-030 hexagonal architecture fitness), the
+full `:pipeline-architecture-tests:test` suite revealed a regression I had
+introduced on this branch: `FArchL7DomainEventExhaustivityTest` counts the
+`DomainEvent` sealed-hierarchy variants and was stuck at 51. Adding
+`BlockFailureContained` brought the actual count to 52, but the L7 fitness
+test was not updated, so it would have failed any L5 round-gate.
+
+Closed in commit `595537ef` (`test(arch): update DomainEvent exhaustivity
+fitness 51 -> 52 for BlockFailureContained`):
+
+- `FArchL7DomainEventExhaustivityTest`: `has_51_variants` → `has_52_variants`,
+  docstring + entry #52 with WU-RP-053-DIR-FAILURE-MODE reference.
+- `v2/pipeline-events/detekt-baseline.xml`: `MaxLineLength` suppression for
+  `DomainEventRoundTripTest` re-synced to the new assertion text (51 → 52).
+
+Evidence (post-fix):
+
+- `:pipeline-architecture-tests:test` → **313/313 PASS** (was 313/1 FAIL pre-fix).
+- `:pipeline-architecture-tests:detekt` → PASS.
+- `:pipeline-events:detekt` → PASS.
+- `:pipeline-events:test` → 188/188 PASS (UP-TO-DATE).
+
+Branch state at this point: `wu/rp-053-dir-failure-mode` @ `a96d2339` (3 commits
+on top of `main @ 9673c3d6`). The PR URL is unchanged:
+<https://github.com/Rubentxu/pipeline-kotlin/pull/new/wu/rp-053-dir-failure-mode>.
+
+Lesson (CIERRE REAL): any addition to a sealed ADT must be propagated to all
+fitness tests that enumerate the variants. Before merging, grep both the
+owning module and the arch-fitness module for dependent counts and detekt
+baselines.
+
 ## Reference implementation research
 
 Jenkins `dir()` reference: <https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/#code-class-code-dir-code-change-current-directory>:

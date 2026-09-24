@@ -44,4 +44,8 @@ include(
     ":pipeline-credentials-executor",
     ":pipeline-binding-factory",
     ":pipeline-artefacts-local",
+    // WU-RP-058: stage-scoped runtime-return spike. Aislado: NO depende de
+    // :pipeline-application ni :pipeline-scripting-kotlin24. Vive solo en el
+    // seam :pipeline-scripting-api. Ver docs/v2/05-roadmap/WU-RP-058/PLAN.md.
+    ":pipeline-spike-stage-scoped",
 )

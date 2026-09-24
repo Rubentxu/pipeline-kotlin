@@ -742,3 +742,47 @@ git status --short | head
 ```
 
 Debe mostrar: rama `wu/rp-harness-coordination`, HEAD `6dcef432`, 4 commits sobre origin/main, README.md y docs/v2/05-roadmap/DISTRIBUTION_ROADMAP.md en `M`/`A` y el WIP del operador preservado.
+
+## Reconciliación 2026-09-24T11:50Z — CONSUMIDOR MÍNIMO DEL CIRCUITO CROSS-REPO (PR #87)
+
+- **Directiva del operador (11:48Z)**: "Implementa en PipelineK únicamente el consumidor mínimo necesario mediante su flujo de coordinación autorizado; no crees otro ledger". "No termines proponiendo otra ronda de prompts".
+- **Implementación entregada (PR #87 → `5f574eeb`)**:
+  - `scripts/consult-harness-verdict.py` (412 líneas): consumidor mínimo del veredicto del harness desde GitHub API. Clasifica tipadamente PASS / FAIL_REPRODUCIBLE / FAIL_NON_REPRODUCIBLE / INVALID / MISSING. Cruza ZIP SHA-256 del veredicto con GitHub Releases de pipeline-kotlin. Verifica publisher allowlist (`pipelinek-harness[bot]` por defecto). Si FAIL_REPRODUCIBLE con `--open-issue`, abre issue con huella estable; sin credenciales imprime `ISSUE_PENDING` con exit 75 sin stack trace. Recibo inmutable en `docs/v2/07-uat/RECEIPTS/consult/<candidate>-<ts>/verdict.json`.
+  - `scripts/test_consult_harness_verdict.py` (9 tests): MISSING / INVALID ZIP / INVALID publisher / PASS / FAIL_REPRODUCIBLE sin/con issue / FAIL non-repro / idempotency / JSON output. **9/9 verdes.**
+  - Recibo real MISSING contra `v0.39.0` commiteado: el harness NO tiene `evidence/v0.39.0/verdict.json` aún (esperado, H0.3 sin cerrar).
+
+### DECLARACIÓN
+
+- **NO se crea ledger paralelo**. El recibo vive en `docs/v2/07-uat/RECEIPTS/consult/`, convención existente del proyecto.
+- **NO se toca el harness**. Toda interacción es read-only vía GitHub API sobre el repo del harness.
+- **NO se auto-mergea PR #76** (motor, no circuito). El operador lo confirma a las 11:46Z y 11:48Z.
+- **NO se reabre una ronda de prompts**. Los prompts del harness siguen anclados al SHA `ca2a91c0` (PR #86).
+- **Estado del circuito desde mi lado**: consumidor mínimo entregable. El agente del harness ahora puede publicar veredictos con huella estable, y el consumidor los ingestará sin necesidad de tocar este repo.
+
+### Identidad material del proyecto (POST #87)
+
+- HEAD `pipeline-kotlin/main`: `5f574eeb` (PR #87 mergeada).
+- HEAD `pipelinek-release-harness/main` (verificado por el operador 11:46Z): `ca2a91c0`.
+- PR #76 (motor): sigue OPEN por decisión del operador (no circuito).
+- Binario estable: sin modificar.
+- WIP del operador: 30 archivos intactos (stash + restore limpio).
+
+### Pendiente (responsabilidad del agente del harness, no de pipeline-kotlin)
+
+1. Publicar `evidence/v0.39.0/verdict.json` desde el harness (cuando arranque H0.3 / próximo requisito con Podman real).
+2. Verificar identidad del productor (permisos Checks + Contents, separación verificador/publicador per HARNESS_INVENTORY §5.4).
+3. Cerrar el ciclo de la issue de ensayo: defecto reproducible → issue → candidata correctora → reverify-cycle → cierre.
+4. Demostrar casos negativos (INVALID ZIP, publisher NO allowlisted, MISSING) contra el consumidor; mis tests ya cubren esos casos negativos del lado consumidor.
+5. Ejecutar Spring REST en Podman (build/test real + fallo intencionado).
+
+### Primer comando de reanudación
+
+```bash
+cd /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin
+git rev-parse --abbrev-ref HEAD && git rev-parse HEAD && \
+git log --oneline origin/main..HEAD && \
+git status --short | wc -l && \
+python3 scripts/consult-harness-verdict.py --candidate v0.39.0 2>&1 | tail -3
+```
+
+Debe mostrar: rama `main`, HEAD `5f574eeb`, sin commits sobre origin/main, `30` (WIP del operador), `exit_code=4 / status=MISSING` mientras el harness no haya publicado `evidence/v0.39.0/verdict.json`.

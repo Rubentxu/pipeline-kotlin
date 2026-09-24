@@ -2203,6 +2203,12 @@ Survey sistemático del estado actual de WUs pendientes tras WU-RP-040-R3.4:
 - Próximo paso legítimo (no autónomo): WU-RP-058 (spike stage-scoped) **solo después** de RP-5 + gate humano INITIATIVE_LPR_001 §2.4. Hasta entonces, sin implementación y sin tocar el camino canónico.
 - Spike acotado: ejecutar los tres patrones Groovy (a/b/c) sobre `pipeline { ... }` con `pwd()`, `readFile`, `fileExists`, `sh(returnStdout=true)`. Comparar fingerprint/journal/replay contra el camino scripted generator-level. Aislar en módulo spike propio con recibo G0..G8 antes de tocar el camino canónico. Sin mover el corpus existente.
 - Avance del spike: rama `wu/rp-058-spike-stage-scoped @ 9e81b226` abierta. Esqueleto Gradle + `settings.gradle.kts` + PLAN reescrito en estilo Haskell (ADTs `StageOp`/`SuspendCall`/`SuspendOutcome`/`Executed`/`RejectReason`, funciones puras, intérprete explícito). Cero código Kotlin; implementación queda pendiente de firma del operador.
+- **CIERRE WU-RP-058** (`wu/rp-058-spike-stage-scoped @ feb99190`, 7 commits sobre `64865c9c`, merge-base con `wu/rp-053-merge`):
+  - `7a97a0d1` feat(spike): pure ADTs (StageOp, SuspendCall, LexicalOrderSpec, StagePlan). Compila contra `:pipeline-domain` + `:pipeline-scripting-api`.
+  - `3bd45df5` feat(spike): pure builder + SuspendRuntimeFacade + interpreter (boundary). Eager ops NO re-ejecutadas; suspend va al puerto y produce `Executed.WithSuspend`.
+  - `35dd5abd` test(spike): 17/17 verdes (LexicalOrderSpec 8 + StageScopedFrontend 7 + SpikeIsolation 2).
+  - `feb99190` test(spike): replay determinism (2 tests) + RecordingFacade compartida + RECEIPT. **19/19 verdes** total.
+  - Recibo: `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md`. Frozen-by-design; producción debe añadir adaptador en módulo NUEVO sin mutar spike. Cero production changes fuera del módulo spike; cero regresión en `:pipeline-domain` / `:pipeline-scripting-api`; classpath resuelve solo a los dos módulos permitidos. **No requiere §2.4 INITIATIVE_LPR_001**.
 - Artefactos:
   - `docs/v2/05-roadmap/ADR-0093_RUNTIME_RETURNS_RESEARCH.md` (nuevo).
   - `.agent/SESSION_POINTER.md` (encabezado actualizado a esta reconciliación; SHA de partida inmutable `839fe63f`).

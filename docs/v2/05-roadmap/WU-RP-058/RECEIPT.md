@@ -5,8 +5,8 @@
 **Immutable starting SHA**: `839fe63f` (HEAD of `wu/rp-053-merge` at the moment
 the ADR-0093 investigation opened; preserved in `.agent/SESSION_POINTER.md`)
 **Merge-base of this branch with `wu/rp-053-merge`**: `64865c9c`
-**HEAD of this branch**: to be filled after `commit 5` lands (see the commit
-table below — the SHA is the one immediately above `9e81b226` in `git log`)
+**HEAD of this branch**: `feb99190` (recorded after-the-fact in commit 6; the
+commit that landed this RECEIPT was `feb99190`, see commit log)
 
 ## What this spike proves
 
@@ -54,6 +54,7 @@ The spike is an **isolated module** that defines:
 | `3bd45df5` | feat(spike): pure builder + SuspendRuntimeFacade + interpreter (boundary) |
 | `35dd5abd` | test(spike): pure + interpreter + isolation suites (17/17 green) |
 | `<commit-5>` | test(spike): replay determinism + shared facade + RECEIPT (this commit) |
+| `<commit-5-SHA>` | actually `feb99190` — see commit log: `git log wu/rp-053-merge..wu/rp-058-spike-stage-scoped` |
 
 ## Test evidence (fresh run)
 

@@ -331,7 +331,9 @@ class DomainEventRoundTripTest {
         assertEquals(
             52,
             count,
-            "DomainEvent sealed hierarchy must have exactly 52 variants (51 prior + 1 added in WU-RP-053-DIR-FAILURE-MODE: BlockFailureContained). Found: ${sealedSubclasses.map { it.simpleName }}"
+            "DomainEvent sealed hierarchy must have exactly 52 variants " +
+                "(51 prior + 1 added in WU-RP-053-DIR-FAILURE-MODE: BlockFailureContained). " +
+                "Found: ${sealedSubclasses.map { it.simpleName }}"
         )
     }
 }

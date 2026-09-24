@@ -100,8 +100,15 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
 
         // If MEMOIZED policy with journal entry.
         if (replayPolicy == ReplayPolicy.MEMOIZED && hasJournalEntry) {
-            // READ_ONLY + SUCCEEDED → SKIP.
-            if (Effect.READ_ONLY in effects && effects.none { it == Effect.EXECUTES_SUBPROCESS }) {
+            // READ_ONLY-only + SUCCEEDED → SKIP. The effect set must be PURELY
+            // read-only (WU-RP-040 R8 category C fix): a mixed set containing
+            // WRITES_WORKSPACE or EXECUTES_SUBPROCESS must NOT memoize, even
+            // when READ_ONLY is also declared, otherwise the durable engine
+            // would skip re-writing workspace state. The descriptor's
+            // `effects: List<Effect>` makes mixed sets representable, and the
+            // decision matrix rows for EXECUTES_SUBPROCESS / WRITES_WORKSPACE
+            // say RERUN for any journal state.
+            if (effects.isNotEmpty() && effects.all { it == Effect.READ_ONLY }) {
                 if (journaledOutcome == dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED) {
                     return ReplayDecision.SKIP
                 }

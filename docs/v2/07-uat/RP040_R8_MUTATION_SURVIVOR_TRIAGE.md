@@ -53,6 +53,30 @@ ejercitadas (p. ej. MEMOIZED con journal entry NO_SUCCEEDED y effects mixtos). C
 `DefaultEffectReplayPolicy` con las combinaciones MEMOIZED restantes. Prioridad P2. Se deja
 como WU de seguimiento (no bloquea R5/R6/R7).
 
+#### Cierre de categoría C (2026-09-24, commit bc7c05d4, base 57d78dbe)
+
+Estado: **CERRADA — y el gap destapó un defecto latente real.** Al escribir
+las combinaciones MEMOIZED restantes, la fila `MEMOIZED × [READ_ONLY,
+WRITES_WORKSPACE] × SUCCEEDED` falló en RED (SKIP en vez de RERUN): la
+implementación sólo excluía `EXECUTES_SUBPROCESS` de la rama SKIP, no
+`WRITES_WORKSPACE`. `StepDescriptor.effects` es `List<Effect>` (sets mixtos
+representables), así que la violación de la matriz de decisión era real.
+Ningún Step de producción declara efectos mixtos hoy (auditado: todos los
+`@Step(effects=...)` y descriptores declaran un único efecto), por lo que el
+defecto no alteró el comportamiento de ningún Step certificado.
+
+Fix: la rama SKIP exige set de efectos puramente READ_ONLY (no vacío).
+
+- Tests: 11 filas nuevas en `EffectReplayPolicyTest` (todos los
+  OperationStatus no-SUCCEEDED, sets mixtos, set vacío, precedencia de
+  ABORTS_PIPELINE). RED verificado antes del fix; GREEN después.
+- Evidencia: 23/23 `EffectReplayPolicyTest` + 9/9 `ContractTest` (exit 0,
+  XML fresco 15:33Z); consumidores `pipeline-application`
+  (DurableInvocation*/Replay*/FamilyRouter*/Reconcil*) exit 0.
+- Los 10 mutantes de categoría C quedan cubiertos por filas de tabla
+  explícitas (mataron las mutaciones RemoveConditionalMutator al pasar las
+  filas RED→GREEN).
+
 ### Categoría D — serialización/fingerprint/helpers: 29 (pipeline-domain)
 
 `Fingerprint$Companion.compute` (5, incl. VoidMethodCall sobre orden de feeds del digest),

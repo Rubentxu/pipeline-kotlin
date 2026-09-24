@@ -3,9 +3,14 @@ name: LPR-0 CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+
+# Operador (2026-09-24): NO se usa GitHub Actions como verificador.
+# GitHub Actions queda SOLO como lanzador del bootstrap push a main
+# (WU-RP-051). No hay trigger pull_request: las ramas wu/* no disparan
+# CI aquí; su verificación es tests quirúrgicos locales + el harness
+# externo sobre la candidata. Evita la contención de runner self-hosted
+# observada el 2026-09-24 (4 runs PR en cola bloqueando el push de main).
 
 concurrency:
   group: lpr0-ci-${{ github.ref }}
@@ -313,13 +318,19 @@ jobs:
   # WU-RP-040 R5: coverage-all. The root `koverXmlReport` merges every Kotlin
   # module that has tests into ONE aggregated XML (see v2/build.gradle.kts
   # "WU-RP-040 R7: Kover-all"). Closes the KNOWN_GAP of WU_RP_053_SLICE_RECEIPT
-  # ("koverXmlReport definido pero NO invocado por ningún workflow"). The
-  # aggregate depends on every module's test task, so this job re-runs the
-  # full suite once on a dedicated shard; it is verification evidence, not a
-  # required-status-check (it must not gate merges until its runtime is known).
+  # ("koverXmlReport definido pero NO invocado por ningún workflow").
+  #
+  # SCOPE (operador 2026-09-24): workflow_dispatch ONLY. The aggregate re-runs
+  # the FULL test suite (~15 min local, measured 899s). Per AGENTS.md
+  # execution-economics rules, full-suite runs do NOT belong on every push;
+  # per-change verification is surgical local tests. This job exists to
+  # (a) produce the periodic coverage baseline artifact and (b) measure its
+  # CI runtime before any promotion to required-status-check. Run it on
+  # demand at integration/release boundaries, not per-push.
   coverage-all:
-    name: coverage (kover-all)
+    name: coverage (kover-all, on-demand)
     runs-on: self-hosted
+    if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

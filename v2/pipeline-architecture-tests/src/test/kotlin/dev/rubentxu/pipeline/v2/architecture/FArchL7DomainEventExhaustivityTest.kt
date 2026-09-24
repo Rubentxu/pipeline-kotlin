@@ -82,15 +82,16 @@ class FArchL7DomainEventExhaustivityTest {
      * 47. StashRestored (WU-LPR-089 — core.unstash durable cross-stage data movement)
      * 48. StashFailed (WU-LPR-089 — core.stash/core.unstash typed failure observability)
      * 49. HtmlReportPublished (WU-LPR-090 phase-a — core.publishHtml observability)
-     * 50. HtmlReportSkipped (WU-LPR-090 phase-a — core.publishHtml observability)
-     * 51. HtmlReportFailed (WU-LPR-090 phase-a — core.publishHtml typed failure observability)
+     * 50. HtmlReportSkipped (WU-LPR-090 phase-a — core.publishHTML observability)
+     * 51. HtmlReportFailed (WU-LPR-090 phase-a — core.publishHTML typed failure observability)
+     * 52. BlockFailureContained (WU-RP-053-DIR-FAILURE-MODE — dir(..) Contained failure event)
      */
     @Test
-    fun `domain_event_sealed_hierarchy_has_51_variants`() {
+    fun `domain_event_sealed_hierarchy_has_52_variants`() {
         val sealedSubclasses = DomainEvent::class.sealedSubclasses
 
         val actualCount = sealedSubclasses.size
-        val expectedCount = 51 // 48 + HtmlReport{Published,Skipped,Failed} (WU-LPR-090 phase-a)
+        val expectedCount = 52 // 51 prior + BlockFailureContained (WU-RP-053-DIR-FAILURE-MODE)
 
         assertEquals(
             expectedCount,

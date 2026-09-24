@@ -2076,3 +2076,12 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - CI: run 36018084522 (57d78dbe) cancelado por cancel-in-progress del push nuevo; CI de 27a6cd9e en cola (runner self-hosted, capacidad conocida). Registro del resultado pendiente.
 - Veredicto harness rc2: sigue MISSING (exit 4), esperado — el harness no ha publicado evidence/v0.39.1-rc2/verdict.json.
 - Siguiente: monitorizar CI de 27a6cd9e; luego UAT-RP-005 inv3 (MANIFEST.json archivado, post-ADR-0095) o R3.3-R3.4 consolidation check en receipts; stash del operador sin tocar.
+
+## 2026-09-24T15:45Z — CANDIDATA v0.39.1-rc3 PUBLICADA + regla 4b en AGENTS.md + cierre tarea programada CI
+
+- **rc3 publicada** (tag v0.39.1-rc3 → 2a2f2eba, rama wu/rc3-build; ZIP sha256 5235ae5a…, 5 assets: ZIP + SBOM cdx.json/cdx.xml + SHA256SUMS + manifest.json con evolutivo completo). Pre-release, verificación externa = harness. Smoke: version/doctor exit 0; e2e dir+sh success con cwd efectivo <ws>/sub.
+- **Lote rc3:** fix binario bc7c05d4 (MEMOIZED SKIP defecto latente, WU-RP-040 R8 cat C) + docs triage/matriz + regla 4b AGENTS.md (batería pre-candidata ligera explícita; baterías pesadas PROHIBIDAS como gate de candidata).
+- **Regla del operador integrada:** tests básicos sí (validez de release), tests pesados no. Nota de release debe listar y explicar TODO lo hecho en el evolutivo — aplicado en rc3 (sección "Qué contiene este evolutivo").
+- **CI run 36018084522 (57d78dbe): CANCELLED** (cancel-in-progress por pushes posteriores; NO fue fallo de código). Sin evidencia CI nueva para ese SHA; el CI vigente es el del push actual (en cola, runner compartido). Registrado como CANCELLED, no como PASS.
+- **Veredicto harness rc2:** sigue MISSING (exit 4) — el harness no ha publicado evidence/v0.39.1-rc2/verdict.json. rc3 ahora es la candidata vigente.
+- Siguiente: continuar roadmap (UAT-RP-024 dogfooding evidencia parcial) mientras el harness examina rc3 (regla 7 de continuidad).

@@ -248,6 +248,11 @@ fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
     )
 }
 
+/** Resolve relative script names against the invoking directory, not the state directory. */
+internal fun resolveCliWorkspace(explicitWorkspace: String?, scriptPath: Path): Path =
+    explicitWorkspace?.let { Path.of(it).toAbsolutePath().normalize() }
+        ?: requireNotNull(scriptPath.toAbsolutePath().normalize().parent)
+
 fun main(args: Array<String>) {
     // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version
     // from the jar manifest (authoritative source = the build artifact) and exits 0.
@@ -344,6 +349,8 @@ fun main(args: Array<String>) {
     secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
 
     val scriptPath = Paths.get(config.scriptPath!!)
+
+    val workspaceBase = resolveCliWorkspace(config.workspace, scriptPath)
 
     if (command == "validate") {
         // M2-002: validate NEVER starts processes. It compiles the script
@@ -492,7 +499,7 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
-                workspaceBase = config.workspace?.let { Path.of(it) },
+                workspaceBase = workspaceBase,
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
@@ -803,6 +810,7 @@ fun main(args: Array<String>) {
             clock = clock,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
+            workspaceBase = workspaceBase,
         )
         compiledPipeline?.supportsCanonicalDurableExecution(composedStepRegistry) == true -> runCanonicalPipeline(
             pipeline = compiledPipeline,
@@ -814,7 +822,7 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
-            workspaceBase = config.workspace?.let { Path.of(it) },
+            workspaceBase = workspaceBase,
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,
@@ -973,6 +981,7 @@ private fun runScriptedFrontend(
     clock: Clock,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
+    workspaceBase: Path,
 ): RunOutcome? {
     // Frontend runs on the SAME durable authority: identical journal instance,
     // identical composed registry, identical event sink and control root.
@@ -986,7 +995,7 @@ private fun runScriptedFrontend(
             eventSink = eventSink,
             clock = clock,
             shOptions = ShOptions(
-                workspaceRoot = controlDirRoot.resolve("workspace"),
+                workspaceRoot = workspaceBase,
                 captureStdout = false,
                 timeoutMs = null,
                 env = emptyMap(),
@@ -1083,7 +1092,7 @@ private fun runCanonicalPipeline(
     eventSink: EventSink,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
-    workspaceBase: Path? = null,
+    workspaceBase: Path,
     withCredentialsExecutor: WithCredentialsExecutor? = null,
     // LB-02 / EP-6: caller-composed registry (core + discovered external contributions).
     // Composition happens ONCE in the composition root, BEFORE the canonical-eligibility
@@ -1102,13 +1111,7 @@ private fun runCanonicalPipeline(
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
         shOptions = ShOptions(
-            // WU-LPR-071: with --workspace <dir>, the project's own directory IS the
-            // workspace — stages share it (Jenkins-familiar semantics). Adding
-            // .resolve("workspace") would point to a subdirectory of the project root
-            // (typically nonexistent), and every `sh` step would fail with
-            // "No such file or directory" because gradlew/mvn/node live in the project
-            // root itself. Without --workspace we keep the legacy per-stage layout.
-            workspaceRoot = workspaceBase ?: controlDirRoot.resolve("workspace"),
+            workspaceRoot = workspaceBase,
             captureStdout = false,
             timeoutMs = null,
             env = emptyMap(),

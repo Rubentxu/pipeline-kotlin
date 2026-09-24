@@ -21,12 +21,12 @@ jobs:
       - uses: gradle/wrapper-validation-action@ebf3e6cb8f1ba19fc037a72116fe64f24046d72c # v3
       - run: cd v2 && ./gradlew check
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: v2-test-reports
           path: v2/**/build/reports/tests/test/
       - if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: v2-test-results
           path: v2/**/build/test-results/test/

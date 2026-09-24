@@ -1,3 +1,11 @@
+## Reconciliación 2026-09-24T14:00Z — WU-RP-053 workspace/cwd: cortes consolidados en rama candidata (autoridad operativa vigente)
+
+- **Estado observado (Git es realidad):** main (0a62cb82) contiene SOLO el diagnóstico del defecto workspace-assignment vs effective-cwd. Los arreglos estaban dispersos en ramas separadas sobre el tronco común d44579b5: cut4 (deleteDir, 082a4e93) y cut5 (stash/unstash, 9bfa4e28).
+- **Acción de este ciclo (AUTO):** creada `wu/rp-053-consolidated` = cadena d44579b5 → 9bfa4e28 → 33786e11 (cherry-pick de cut4 sobre cut5, auto-merge limpio en CanonicalRuntimeCapabilityAccess.kt).
+- **Verificación quirúrgica (SHA 33786e11, XMLs frescos 13:57:29-30Z):** WorkspaceOperationsEffectiveRootTest 12/0/0/0 · StashOperationsAdapterUatTest 8/0/0/0 · WURp053WorkspaceCliTest 2/0/0/0 · DirFilesystemEndToEndTest 3/0/0/0. Total 25/25 verde. L0 compileTestKotlin verde (5.1s).
+- **NO ejecutado:** round gate L5 completo (la candidata va al harness según la consigna cross-repo; el gate integral sólo para CERTIFIED_FULL interno). UAT-RP-024 y UAT-RP-005 inv3 siguen pendientes de harness.
+- **Siguiente:** push de `wu/rp-053-consolidated` y decisión de promoción a main (o entrega al harness) — promote-operator-wip tiene stash pendiente de reconciliar (stash@{0}).
+
 ## Reconciliación 2026-09-24T10:09Z — CONSIGNA ARQUITECTÓNICA CROSS-REPO: pipeline-kotlin ↔ pipelinek-release-harness (autoridad operativa vigente)
 
 - **Decisión del operador:** el desarrollo de PipelineK (pipeline-kotlin) se separa de la certificación externa (repositorio independiente `Rubentxu/pipelinek-release-harness`). Cada uno con su `AGENTS.md`, su identidad material y su round gate independiente. Comunicación vía manifiesto inmutable + resultado estructurado + issues en GitHub (huella estable por contrato+escenario+causa, sin SHA de candidata). **NO** por comentarios libres.
@@ -786,3 +794,25 @@ python3 scripts/consult-harness-verdict.py --candidate v0.39.0 2>&1 | tail -3
 ```
 
 Debe mostrar: rama `main`, HEAD `5f574eeb`, sin commits sobre origin/main, `30` (WIP del operador), `exit_code=4 / status=MISSING` mientras el harness no haya publicado `evidence/v0.39.0/verdict.json`.
+## Reconciliación 2026-09-24T13:54Z — documentación de distribución mise-default (LOCAL_VERIFIED; PR pendiente)
+
+- **Rama / base observadas:** `docs/mise-default-distribution` desde
+  `origin/main` `0a62cb82241ed827a4fb60ce736684e63dea586c`.
+- **Commit documental:** `043c9b3744cda8e670fd230c8efd408efbb2f938`
+  (`docs(distribution): make mise the certified operational default`).
+- **Hecho observado:** receipt local accesible del harness
+  `DIST4_DIST7_MISE_ASDF_RECEIPT.md` declara mise GitHub backend Available en
+  Linux x86_64 para `v0.39.1-rc1`; Aqua sigue `PENDING_EXTERNAL`. asdf es
+  Available-conditional con publicación pública pendiente. SDKMAN sigue
+  pendiente de onboarding/vendor y clean-install UAT. La RC `v0.39.1-rc1` y
+  sus ZIP, SHA256SUMS y SBOMs existen en GitHub Releases.
+- **Verificación local realizada:** `git diff --check`; HTTP 200 para las
+  release pages `v0.39.0`/`v0.39.1-rc1` y el instalador Bash; comprobación de
+  nombres de assets y formato de `SHA256SUMS`. No se ejecutaron UAT, Gradle,
+  instalación ni pruebas de release por ser una WU documental.
+- **Pendiente / PENDING:** Aqua short name, repo público asdf, macOS para
+  mise/asdf, uninstall mise/asdf, SDKMAN onboarding/publicación/UAT/default y
+  URL web pública del operador del harness. Ninguno se presenta como PASS.
+- **Siguiente acción:** push de `docs/mise-default-distribution` y creación de
+  PR. Mantener sin stage los recibos
+  `docs/v2/07-uat/RECEIPTS/consult/...` preexistentes.

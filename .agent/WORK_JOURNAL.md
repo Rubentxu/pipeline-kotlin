@@ -2040,3 +2040,34 @@ Identidad material preservada:
 - Binario estable NO modificado.
 
 Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventStore sobre `origin/main` 74b40a65, rama nueva `wu/rp-020-sqlite-event-store-characterization`. Per ROADMAP §3 RP-2 arranca con WU-RP-020. Sin tocar la candidata 262cc11e.
+
+## 2026-09-24T13:54Z — WU documentación: mise default operativo / SDKMAN target (LOCAL_VERIFIED; PR pendiente)
+
+- Base observada: `origin/main` `0a62cb82241ed827a4fb60ce736684e63dea586c`.
+  Rama: `docs/mise-default-distribution`.
+- Cambios documentales: README, `docs/user/{README,installation,upgrading,
+  quickstart,cheat-sheet}.md`, `DISTRIBUTION_ROADMAP`, distribution release
+  spec y ADR-0089. Establecen: SDKMAN target oficial pendiente; mise GitHub
+  backend default operativo donde exista receipt; asdf alternativa compatible;
+  ZIP/manual e instalador Bash fallback; RC explícita y promoción final con los
+  mismos bytes ZIP/SHA-256/SBOM.
+- Hechos externos inspeccionados: GitHub API confirmó RC `v0.39.1-rc1` y sus
+  assets. El receipt local accesible del harness confirmó mise Available Linux
+  x86_64 para la RC, Aqua `PENDING_EXTERNAL`, asdf Available-conditional y
+  publicación pública asdf `PENDING_EXTERNAL`. SDKMAN sigue sin onboarding.
+- Validación hecha: `git diff --check`; respuesta HTTP 200 para release pages
+  y script Bash; contenido de `SHA256SUMS` comprobado contra el comando RC.
+  **NOT_RUN deliberado:** UAT, Gradle, instalación/distribución y release test,
+  porque la WU es sólo documentación y el harness posee esas pruebas.
+- Commit documental: `043c9b3744cda8e670fd230c8efd408efbb2f938`.
+- Estado: documentación local verificada; pendiente push y PR. Los dos directorios
+  consult untracked preexistentes no se incluyen.
+
+## 2026-09-24T14:00Z — WU-RP-053: consolidación de cortes workspace/cwd en rama candidata
+
+- Base/head: base `0a62cb82` (main) + tronco `d44579b5`; head `33786e11` en rama `wu/rp-053-consolidated`.
+- Cambios: cadena consolidada split authorizedWorkspaceRoot/effective-cwd (`d44579b5`) → stash/unstash effective cwd (`9bfa4e28`) → cherry-pick deleteDir effective cwd (`33786e11`, auto-merge limpio).
+- Resultados reales: L0 compileTestKotlin exit 0 (5.1s). Tests quirúrgicos XML frescos (13:57Z): WorkspaceOperationsEffectiveRootTest 12/0/0/0, StashOperationsAdapterUatTest 8/0/0/0, WURp053WorkspaceCliTest 2/0/0/0, DirFilesystemEndToEndTest 3/0/0/0 — 25/25 verde.
+- Tests NO ejecutados: round gate L5 `check` completo (candidata destino: harness externo; gate integral reservado a CERTIFIED_FULL). UAT-RP-024 y UAT-RP-005 inv3 pendientes de harness.
+- Evidencia caducada: recibos de cut4/cut5 aislados siguen válidos para sus SHAs originales; no cubren la cadena consolidada.
+- Siguiente: push de la rama, reconciliar stash@{0} (operator-wip), decidir promoción a main o entrega al harness.

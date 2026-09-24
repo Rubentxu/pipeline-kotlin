@@ -2071,3 +2071,16 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Tests NO ejecutados: round gate L5 `check` completo (candidata destino: harness externo; gate integral reservado a CERTIFIED_FULL). UAT-RP-024 y UAT-RP-005 inv3 pendientes de harness.
 - Evidencia caducada: recibos de cut4/cut5 aislados siguen válidos para sus SHAs originales; no cubren la cadena consolidada.
 - Siguiente: push de la rama, reconciliar stash@{0} (operator-wip), decidir promoción a main o entrega al harness.
+
+## 2026-09-24T16:06Z — WU-RP-053: candidata v0.39.1-rc2 publicada
+
+- Base/head: base `33786e11` (cadena consolidada); head `dd1d37f9` (bump 0.39.1-rc2, rama `wu/rp-053-rc2-build`); tag `v0.39.1-rc2` pusheado.
+- Cambios: bump de versión en `v2/build.gradle.kts` (solo rama RC), build `distZip`, SBOM cdx.json + cdx.xml, SHA256SUMS, release pre-release GitHub con 4 assets.
+- Resultados reales:
+  - ZIP SHA-256 `f60ea7324fe518aea187cd1aa31aa442c1d0c27d7ad7e144733f314b28efccd8`, verificado contra asset digest de la API de GitHub tras publicar.
+  - Smoke instalada: `pipelinek version` → `pipeline 0.39.1-rc2`; `doctor` OK (jdk 24.0.2, workdir writable).
+  - E2E: `dir("sub") { sh("pwd > where-am-i.txt") }` → SUCCESS; `where-am-i.txt` en `<ws>/sub` (cwd efectivo correcto); workspace queda limpio (cero .v2/journal).
+  - `consult-harness-verdict.py --candidate v0.39.1-rc2` → status=MISSING exit 4 (veredicto aún no publicado por el harness; recibo en RECEIPTS/consult/).
+- Tests NO ejecutados: round gate L5 completo sobre la cadena RC (regla: tests del cambio + smoke; la batería externa es del harness).
+- Nota proceso: rc1 (tag 35f71f24) solo contenía el corte split; rc2 consolida además deleteDir y stash/unstash.
+- Siguiente: esperar veredicto del harness; consumirlo con el script; promoción a estable subiendo los mismos bytes si PASS, o candidata correctora si FAIL reproducible.

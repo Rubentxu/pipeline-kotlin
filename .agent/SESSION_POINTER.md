@@ -1,3 +1,14 @@
+## Reconciliación 2026-09-24T16:06Z — CANDIDATA v0.39.1-rc2 PUBLICADA (WU-RP-053 consolidada)
+
+- **Candidata inmutable publicada:** https://github.com/Rubentxu/pipelinek-release-harness → no; https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.39.1-rc2 (pre-release).
+  - ZIP SHA-256 `f60ea7324fe518aea187cd1aa31aa442c1d0c27d7ad7e144733f314b28efccd8` (verificado contra asset digest de GitHub API).
+  - Assets: zip + cdx.json + cdx.xml + SHA256SUMS. Tag `v0.39.1-rc2` = `dd1d37f9` (rama RC `wu/rp-053-rc2-build`, base cadena consolidada `33786e11`).
+- **Cadena de la candidata:** d44579b5 (split root/cwd) → 9bfa4e28 (stash/unstash cwd) → 33786e11 (deleteDir cwd) → dd1d37f9 (bump versión). El bump vive SOLO en la rama RC.
+- **Verificación previa a publicación:** 25/25 tests quirúrgicos verde (13:57Z); smoke instalada `pipelinek version` → 0.39.1-rc2 + doctor OK; e2e `dir("sub"){sh("pwd > ...")}` SUCCESS con cwd efectivo `<ws>/sub` y checkout limpio.
+- **Veredicto del harness:** PENDIENTE (`consult-harness-verdict.py` → status=MISSING, exit 4, recibo en docs/v2/07-uat/RECEIPTS/consult/). El harness (o su operador) debe recoger la candidata y emitir verdict.json.
+- **Continuidad (AGENTS.md §Release candidates.7):** mientras el harness examina, este repo continúa con la siguiente WU independiente. rc1 queda bloqueada como evidencia.
+- **Siguiente:** consumir veredicto con `scripts/consult-harness-verdict.py --candidate v0.39.1-rc2`; si FAIL reproducible → causa raíz + candidata correctora; si PASS con gate completo → promoción a estable subiendo los mismos bytes.
+
 ## Reconciliación 2026-09-24T14:00Z — WU-RP-053 workspace/cwd: cortes consolidados en rama candidata (autoridad operativa vigente)
 
 - **Estado observado (Git es realidad):** main (0a62cb82) contiene SOLO el diagnóstico del defecto workspace-assignment vs effective-cwd. Los arreglos estaban dispersos en ramas separadas sobre el tronco común d44579b5: cut4 (deleteDir, 082a4e93) y cut5 (stash/unstash, 9bfa4e28).

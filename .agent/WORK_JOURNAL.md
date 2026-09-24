@@ -2065,3 +2065,14 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Contención resuelta: 4 runs PR en cola (36012517175/36012511683/36012507716/36012498051) + run push 36014347565 cancelados manualmente; el nuevo push 36015222565 (e3f18fc0) quedó en cola, coverage skipped por diseño (esperado, verify=skipped en push).
 - Corrección al recibo anterior (`WU_RP_040_R5_COVERAGE_ALL_CI_RECEIPT.md`): el job existe y cierra el gap de instrumentación en source, pero su ejecución CI es ON-DEMAND, no por push. Clasificación: COVERED-instrumentation / RUN_ON_DEMAND.
 - Siguiente: watcher en /tmp/ci-watch.log sobre run 36015222565; veredicto harness rc2 sigue PENDIENTE; siguiente WU candidata: WU-RP-049.
+
+## 2026-09-24T15:36Z — WU-RP-040 R8 categoría C CERRADA (defecto latente MEMOIZED SKIP encontrado y corregido)
+
+- Base 57d78dbe → head 27a6cd9e (2 commits: bc7c05d4 fix + 27a6cd9e docs). Push a main OK (1 reintento por 500 transitorio de GitHub).
+- Verificación previa: WU-RP-049 ya estaba CERRADA en main (recibo WU_RP_049_R1_SLICE_RECEIPT.md, 12/12 criterios, COVERED; commits c3708486..629cabbf). No se rehízo.
+- R8 categoría C (10 mutantes DefaultEffectReplayPolicy.decide): al escribir la tabla exhaustiva MEMOIZED, RED honesto destapó defecto latente real: la rama SKIP sólo excluía EXECUTES_SUBPROCESS; un set mixto [READ_ONLY, WRITES_WORKSPACE] con journal SUCCEEDED devolvía SKIP en vez de RERUN (viola la matriz KDoc). Ningún Step certificado declara efectos mixtos (auditado) → cero cambio de comportamiento en producción actual.
+- Fix: SKIP exige effects no vacío y todos READ_ONLY. 11 tests nuevos (RED→GREEN). Evidencia: EffectReplayPolicyTest 23/23, ContractTest 9/9 (XML fresco 15:33Z); consumidores pipeline-application DurableInvocation*/Replay*/FamilyRouter*/Reconcil* exit 0; detekt módulo exit 0.
+- Cierre documentado en RP040_R8_MUTATION_SURVIVOR_TRIAGE.md (apéndice).
+- CI: run 36018084522 (57d78dbe) cancelado por cancel-in-progress del push nuevo; CI de 27a6cd9e en cola (runner self-hosted, capacidad conocida). Registro del resultado pendiente.
+- Veredicto harness rc2: sigue MISSING (exit 4), esperado — el harness no ha publicado evidence/v0.39.1-rc2/verdict.json.
+- Siguiente: monitorizar CI de 27a6cd9e; luego UAT-RP-005 inv3 (MANIFEST.json archivado, post-ADR-0095) o R3.3-R3.4 consolidation check en receipts; stash del operador sin tocar.

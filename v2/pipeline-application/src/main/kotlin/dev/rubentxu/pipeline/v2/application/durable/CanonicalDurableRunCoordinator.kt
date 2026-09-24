@@ -1371,6 +1371,36 @@ class CanonicalDurableRunCoordinator(
                 )
                 when (attemptOutcome) {
                     is StepOutcome.Failure -> {
+                        // WU-RP-053-DIR-FAILURE-MODE: when the block is a `dir(...)` with
+                        // [DirFailureMode.Contained] (the Jenkins default), the failure
+                        // is captured instead of aborting the stage. The cwd is still
+                        // restored (the bracketed finally emits DirExited below); a typed
+                        // [BlockFailureContained] event is published for observability
+                        // and the loop proceeds to the next sibling statement. The same
+                        // retry-attempt math is preserved when the dir block is wrapped
+                        // in a `retry(...)` — attempts are exhausted first, only then is
+                        // the captured failure emitted.
+                        if (scope is BlockShellScope.Directory &&
+                            scope.failureMode ==
+                            dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode.Contained &&
+                            attempt >= attemptCount
+                        ) {
+                            eventSink.append(
+                                dev.rubentxu.pipeline.v2.events.BlockFailureContained(
+                                    eventId = UUID.randomUUID().toString(),
+                                    runId = runId.value,
+                                    sequence = 0L,
+                                    occurredAt = clock.now(),
+                                    path = scope.target.toString(),
+                                    stageIndex = stageIndex,
+                                    stepName = block.id.value,
+                                    failureKind = attemptOutcome.failure.kind,
+                                    message = attemptOutcome.failure.message,
+                                ),
+                            )
+                            outcome = StepOutcome.Success
+                            break@bodyLoop
+                        }
                         outcome = attemptOutcome
                         if (attempt < attemptCount) {
                             attempt++

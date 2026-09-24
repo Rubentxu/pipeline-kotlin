@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
+import dev.rubentxu.pipeline.v2.events.BlockFailureContained
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
@@ -159,6 +160,10 @@ object EnvelopeProjector {
         is StageFinished -> ResourceRefs.stage(event.runId, event.stageIndex)
         is ParallelBranchStarted -> ResourceRefs.stage(event.runId, event.parentStageIndex)
         is ParallelBranchFinished -> ResourceRefs.stage(event.runId, event.parentStageIndex)
+        // WU-RP-053-DIR-FAILURE-MODE: a contained block failure belongs to the
+        // enclosing stage; there is no finer step identity (the block scope
+        // is the lexical container of an arbitrary number of children).
+        is BlockFailureContained -> ResourceRefs.stage(event.runId, event.stageIndex)
         // RUN subject: stepIndex exists but no stage identity (frozen EVT-1 law)
         is StepFailed -> runRef
         is EchoOutputCaptured -> runRef

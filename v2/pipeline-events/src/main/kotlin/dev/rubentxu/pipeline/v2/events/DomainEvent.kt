@@ -605,6 +605,36 @@ data class DirExited(
     override val kind: String get() = "DirExited"
 }
 
+/**
+ * WU-RP-053-DIR-FAILURE-MODE: emitted when a `dir(...)` block with
+ * [dev.rubentxu.pipeline.v2.domain.durable.DirFailureMode.Contained] captures a
+ * StepFailed inside its body. The cwd is still restored (a paired `DirExited`
+ * follows in the journal); the failure is contained so the stage loop can
+ * continue with the next sibling statement.
+ *
+ * Observability-only: this event is NOT a durable terminal — the durable
+ * contract for the contained failure is the captured `PipelineFailure`
+ * attached to [stepName]. Replay reconstructs the event deterministically.
+ *
+ * @param path The `dir(...)` target path (the cwd at the time of the failure)
+ * @param stepName The StepKey / step name that failed inside the block
+ * @param failureKind The typed `FailureKind` carried by the StepFailed event
+ * @param message The original failure message
+ */
+data class BlockFailureContained(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val path: String,
+    val stageIndex: Int,
+    val stepName: String,
+    val failureKind: FailureKind,
+    val message: String,
+) : DomainEvent {
+    override val kind: String get() = "BlockFailureContained"
+}
+
 // =============================================================================
 // ML-R9 workspace-cleanup events (T-05)
 // =============================================================================

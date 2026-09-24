@@ -262,6 +262,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is HtmlReportFailed -> event.copy(sequence = assignedSequence)
                 is DirEntered -> event.copy(sequence = assignedSequence)
                 is DirExited -> event.copy(sequence = assignedSequence)
+                is BlockFailureContained -> event.copy(sequence = assignedSequence)
                 is DirDeleted -> event.copy(sequence = assignedSequence)
                 is WsCleaned -> event.copy(sequence = assignedSequence)
                 is CatchErrorTriggered -> event.copy(sequence = assignedSequence)

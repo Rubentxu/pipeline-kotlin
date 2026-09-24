@@ -51,15 +51,27 @@ class DeleteDirOperationsAdapter(
     private val eventSink: EventSink,
     /** WU-LPR-062: optional project-workspace override (--workspace). */
     private val workspaceBase: java.nio.file.Path? = null,
+    /**
+     * WU-RP-053 cut 4: explicit per-invocation cwd derived by `dir(...)`.
+     * When absent, deletion preserves the historical stage/project workspace
+     * resolution. When present, Jenkins-compatible `deleteDir()` removes the
+     * contents of this directory, never those of the enclosing workspace.
+     */
+    private val effectiveWorkingDirectory: java.nio.file.Path? = null,
 ) : DeleteDirOperations {
 
     override fun delete(input: DeleteDirInput): DeleteDirResult {
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val workspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
+        val workspace = effectiveWorkingDirectory
+            ?: resolver.resolve(stageIdentity.name, stageIdentity.index)
         resolver.ensureCreated(workspace)
 
         val executor = DeleteDirExecutor(
-            workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            // DeleteDirExecutor asks the resolver again. Return the immutable
+            // invocation cwd, not the enclosing stage workspace, so its own
+            // path-escape guard is rooted at the same Jenkins-compatible
+            // directory selected above.
+            workspaceResolver = { _, _ -> workspace },
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

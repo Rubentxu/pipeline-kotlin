@@ -960,3 +960,30 @@ Mientras tanto, identifico el próximo WU del roadmap y deuda técnica (ver §Ro
 - **Próximo accionable sin gate:** explorar si hay deuda técnica concreta clasificable
   (detekt warnings, @Disabled tests con motivo resuelto, code coverage gaps).
 
+### UPDATE 2026-09-24T20:58Z — WU-RP-053-FOLLOWUP cerrado: --workspace-mode opt-in flag
+
+**Branch:** `wu/rp-053-followup-workspace-mode @ a0f18742` (base `wu/rp-053-merge @ c7d6ef01`).
+**Commits:** 4 atómicos (`eac074b1` feat, `9bc154db` test, `c0d799d8` docs plan, `a0f18742` docs receipt).
+**Cambios:** +329/-22 líneas en 4 archivos.
+
+**Implementación:**
+- `WorkspaceMode` sealed ADT (Legacy + Project) + `WorkspaceMode.parse(value: String)` fail-closed
+- `PipelineCliConfig.workspaceMode: WorkspaceMode = Legacy` (default preserved)
+- `--workspace-mode {project|legacy}` parser flag (estilo `--sandbox-profile`)
+- `resolveCliWorkspaceBase()` pure resolver: explicit wins over mode, project mode uses script.parent
+- 2 call sites de `runCanonicalPipeline` actualizados con el resolver
+
+**Resultados:**
+- `WorkspaceModeCliTest` (NEW) 11/11 PASS
+- `WURp053WorkspaceCliTest` (RE-ENABLED con `--workspace-mode project`) 2/2 PASS
+- 7 UATs pre-existentes: **cero regresión** (58/58 PASS, 1 SKIP intentional)
+- `pipeline-architecture-tests:test` 313/313 PASS
+- Detekt verde
+
+**Lección integrada:** el commit cut5 `3e9fc4aa` mezcló model change (correcto) con CLI
+default change (rompía 7 UATs). La separación correcta es model = integrable, CLI default =
+opt-in. Este WU corrige esa lección entregando el cambio CLI detrás de `--workspace-mode project`.
+
+**Bloqueo:** push + merge pendientes operator gate (rule 6: no release promotion sin gate sobre
+exact bytes). Branch GATE-GREEN localmente; merge sobre `wu/rp-053-merge` factible (linear rebase).
+

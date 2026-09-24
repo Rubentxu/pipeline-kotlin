@@ -864,3 +864,24 @@ git status --short   # sin WIP
 - Operador ejecuta harness sobre rc5 → veredicto se ingiere por consumer externo.
 - Mientras tanto: monitor CI en `main`; WU-RP-030 (hexagonal fitness) ya está prácticamente cerrado por los Lfc0-Lfc2 existentes — survey en pausa, sin gap residual identificable.
 
+## Reconciliación 2026-09-24T18:39Z — EXPERIMENTO CHERRY-PICK cut5: REVERTIDO sin daño
+
+- HEAD main: `9673c3d6` (sin cambio).
+- HEAD work: `wu/rp-053-dir-failure-mode` @ `b4f3bde8` (idéntico al estado anterior; **0 commits añadidos**).
+- Motivación: el `@Disabled` de `DirRestoreAfterErrorCharacterizationTest.writeFile inside dir composes against effective cwd` apunta explícitamente a la rama `wu/rp-053-cut5-stash-cwd-rebase` (commits `95f36e34` + `ad1f9c5b`) como upstream pendiente de merge. Parecía bounded y útil.
+- Acción: `git cherry-pick 95f36e34` + `git cherry-pick ad1f9c5b` sobre mi rama. Ambos cherry-picks aplicaron limpios (no hubo conflicto textual); `compileKotlin` exit 0; `compileTestKotlin` exit 0; el test `writeFile inside dir composes against effective cwd` (re-habilitado tras quitar `@Disabled`) **PASA en 0.593s**.
+- Pero al correr la suite completa de `pipeline-application`: **2 regresiones**:
+  1. `UatLocal007SandboxProfileTest.SB-S-008 parallel branches have isolated cwds` — FAIL: el cwd de los branches parallel se quedó en `/tmp/junit-XXX` (la raíz del tempDir), ya no contiene `b0`/`b1`/`stage-0-0`. La split `authorizedWorkspaceRoot`/`effectiveWorkingDirectory` de cut5 no encaja con la composición de workspaces paralelos que esta prueba asume.
+  2. `UatLocal011WorkflowControlTest.SC-011-04 deleteDir emits DirDeleted with sha256` — FAIL: `[SQLITE_ERROR] no such table: events` en `SqliteEventStore.eventsFor`. Probable interacción entre la nueva ruta de autorización de workspace y la inicialización de la DB en `MainKt.main`.
+- Decisión: `git reset --hard b4f3bde8` para revertir. **Sin commits añadidos al histórico, sin push, sin daño al branch canonical**.
+- Validación post-reset: SB-S-008 + SC-011-04 vuelven a PASS en `b4f3bde8`. Branch idéntico a como estaba.
+- Lección (CIERRE REAL): el cherry-pick textual limpio NO equivale a cherry-pick semánticamente limpio. cut5 introduce cambios de modelo (split authorizedWorkspaceRoot vs effectiveWorkingDirectory) que interactúan con rutas de código NO testeadas por el surface de cut5 (parallel branches, Main startup). Para fusionar cut5 con `wu/rp-053-dir-failure-mode` hace falta un WU dedicado con su propio plan, evidencia baseline vs head, suite de regresión y rc propio — NO un cherry-pick de 2 commits.
+- Estado del branch: WU-RP-053-DIR-FAILURE-MODE sigue exactamente en `b4f3bde8` (5 commits sobre main), LOCAL GREEN + arch fitness PASS. El test `writeFile inside dir composes against effective cwd` sigue `@Disabled` con la misma nota; PR #96 sigue siendo la ruta correcta para incorporar cut5.
+- Acción de este ciclo (AUTO): revertido a estado conocido-bueno. Sin push. Sin cambios al branch canonical.
+
+### Siguiente
+
+- Operador sigue revisando PR WU-RP-053-DIR-FAILURE-MODE + WU-RP-030 (en sus respectivas ramas).
+- Sesión queda en pausa operativa limpia. No hay más WUs AUTO bounded sin acoplarse a gates del operador (rc5 de WU-RP-053, PR #96 para cut5).
+
+

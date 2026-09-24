@@ -2155,3 +2155,26 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Survey WU-RP-030 (hexagonal fitness): los tests ya existentes (`Lfc0GlobalStateFitnessTest`, `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest`, `Lfc2B11ExternalScopedRoutingDefenseFitnessTest`, `Lfc2BodyExecutionPolicyFitnessTest`, `Lfc2ConcreteBodyRoutingDebtFitnessTest`, `Lfc2DurableAggregateIdentityFitnessTest`, `Lfc2DurableCoordinatorScopeFitnessTest`, `Lfc2RegistryFamilyFitnessTest`, `Lfc2WULpr302BodyControlSeamFitnessTest`, `FArch00x` family, `Rp030EventCodecsConnascenceFitnessTest`) cubren los invariants enumerados en AGENTS.md (hexagonal dep direction, no globals, closed ADTs, capability-routed handlers, no `Any?` at boundaries). **No residual gap detectable**. WU-RP-030 se considera COMPLETED por infraestructura existente; el siguiente ciclo debe atacar WUs con deuda material pendiente (p.ej. WU-RP-040 R9 si aplica, o el siguiente WU del backlog del roadmap).
 - Lección (CIERRE REAL): antes de mergear cualquier cambio a un sealed hierarchy, hacer grep en el módulo del sealed type Y en `pipeline-architecture-tests` para localizar TODOS los conteos dependientes y baselines detekt.
 
+## 2026-09-24T18:39Z — EXPERIMENTO cherry-pick cut5: REVERTIDO sin daño al branch canonical
+
+- Base: `wu/rp-053-dir-failure-mode` @ `b4f3bde8` (HEAD anterior a este ciclo).
+- Motivación: el `@Disabled` en `DirRestoreAfterErrorCharacterizationTest.writeFile inside dir composes against effective cwd` apunta explícitamente a la rama `wu/rp-053-cut5-stash-cwd-rebase` (commits `95f36e34` + `ad1f9c5b`) como upstream pendiente de merge. El test se re-habilitaría “al fusionar” las dos ramas.
+- Acción ejecutada:
+  - `git cherry-pick 95f36e34` — aplicó limpio (sin conflicto). Cambios: 11 archivos, +1709 líneas. Entre ellos, `WorkspaceOperations.kt` (split authorizedWorkspaceRoot/effectiveWorkingDirectory), `StashOperationsAdapter.kt`, `Main.kt`, `CanonicalRuntimeCapabilityAccess.kt`, y los tests nuevos `WorkspaceOperationsEffectiveRootTest`, `StashOperationsAdapterUatTest`, `DirFilesystemEndToEndTest`, `WURp053WorkspaceCliTest`.
+  - `git cherry-pick ad1f9c5b` — aplicó limpio. Cambios: 3 archivos, +41 líneas. Ajustes sobre el split para stash/unstash en cwd efectivo.
+  - Quité `@Disabled` del test `writeFile inside dir composes against effective cwd` y re-compilé.
+  - `:pipeline-application:compileKotlin` exit 0. `:pipeline-application:compileTestKotlin` exit 0.
+  - Test aislado `writeFile inside dir composes against effective cwd` → **PASS en 0.593s**.
+- Pero `:pipeline-application:test` (sin filtro, suite completa): **2 regresiones detectadas**:
+  - `UatLocal007SandboxProfileTest.SB-S-008 parallel branches have isolated cwds` — FAIL. El cwd de los branches parallel se quedó en `/tmp/junit-XXX` (la raíz del tempDir), sin el marcador `b0`/`b1`/`stage-0-0`. La nueva composición del workspace paralela no encaja con el split `authorizedWorkspaceRoot`/`effectiveWorkingDirectory` introducido por cut5.
+  - `UatLocal011WorkflowControlTest.SC-011-04 deleteDir emits DirDeleted with sha256` — FAIL. `[SQLITE_ERROR] no such table: events` en `SqliteEventStore.eventsFor` durante `MainKt.main:865`. Interacción no trivial entre la nueva ruta de autorización de workspace y la inicialización de la DB.
+- Decisión: `git reset --hard b4f3bde8` para volver al estado conocido-bueno. **Cero commits añadidos al histórico git, cero pushes, cero daño al branch canonical**.
+- Validación post-reset:
+  - SB-S-008 + SC-011-04 PASS sobre `b4f3bde8` (XML fresco).
+  - Branch idéntico a `origin/wu/rp-053-dir-failure-mode` @ `b4f3bde8` (0 commits sobre).
+- Lección (CIERRE REAL): un cherry-pick textual limpio NO equivale a un cherry-pick semánticamente limpio. cut5 introduce cambios de **modelo** (split authorizedWorkspaceRoot vs effectiveWorkingDirectory) que interactúan con rutas de código NO cubiertas por el surface de pruebas de cut5 (parallel branches, Main startup). Para fusionar cut5 con `wu/rp-053-dir-failure-mode` se necesita un WU dedicado, con plan, evidencia baseline-vs-head, suite de regresión y rc propio. NO un cherry-pick de 2 commits.
+- Decisión estratégica: NO añadir el merge de cut5 como tarea AUTO. El operador (o un ciclo posterior con contexto de release) debe decidir si cut5 absorbe a dir-failure-mode o viceversa. PR #96 sigue siendo la ruta correcta.
+- Estado final del branch canonical: `wu/rp-053-dir-failure-mode` @ `b4f3bde8` (5 commits sobre main `9673c3d6`), LOCAL GREEN + arch fitness PASS. El test `writeFile inside dir composes against effective cwd` sigue `@Disabled` con la misma nota original.
+- Estado de la sesión: pausa operativa limpia. No hay más WUs AUTO bounded sin acoplarse a gates del operador (rc5 de WU-RP-053, decisión sobre cut5+dir-failure-mode merge, PR #96).
+
+

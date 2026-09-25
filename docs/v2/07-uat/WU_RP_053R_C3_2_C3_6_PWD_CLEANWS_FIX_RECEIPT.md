@@ -185,25 +185,47 @@ nohup timeout 1700 v2/gradlew -p v2 :pipeline-application:check --rerun-tasks &
 [await completion]
 ```
 
-Result captured in the round receipt (see TOP block). Pending when
-this slice-receipt was written; verified by checking the aggregate
-counters from the L3 results dir before packaging this receipt.
+CAPTURED GREEN: 2026-09-25T13:28Z
+
+```
+timeout 1700 ./gradlew -p v2 :pipeline-application:check --rerun-tasks
+
+(launched 13:07:34Z, finished 13:23:13Z)
+BUILD SUCCESSFUL in 15m 39s
+
+Aggregate across all TEST-*.xml produced by this L4 run:
+  tests = 1748
+  failures = 0
+  errors = 0
+  skipped = 121 (pre-existing; includes uats, blocks, RedFilter classifier skips)
+```
+
+Per-test failure scan: zero failing files, zero failing cases.
+L4 = `:check` (compileTestKotlin + test + check-tasks). PASS.
+
+**C3 ROUND-GATE CLOSED GREEN.** The structural defect class
+(encodePayload missing branches for deleteDir/pwd/cleanWs) is closed
+at the compiler level; regressions: zero (1748/0/0 unchanged
+between L3 and L4 runs).
 
 ## 5. Acceptance criteria
 
-| | Criterion | Verification |
-|---|---|---|
-| 1 | L0 green | compile success 1s |
-| 2 | L1 green (5 REDs remain PASS) | sha256 evidence |
-| 3 | L2 green (Pwd contract + CleanWs contract + Pwd unit) | sha256 evidence |
-| 4 | L3 green (1748 tests, 0 failures, 0 errors) | XML aggregate |
-| 5 | No regressions outside the touched branches | L3 |
-| 6 | No new skips introduced | L2 XML counts |
-| 7 | Atomic commit single subject | git format fixes |
-| 8 | Trazabilidad: tiap branch doc cites WU/C3 subphase | code comments |
-| 9 | Existing canonical envelope contracts (codec tests) unchanged | L2 |
+| # | Criterion | Status | Verification |
+|---|---|---|---|
+| 1 | L0 compile green | ✅ | BUILD SUCCESSFUL in 1s |
+| 2 | L1 green (5 REDs remain PASS) | ✅ | sha256 `aa202def…` (5/5/0/0) |
+| 3 | L2 green (Pwd + CleanWs + Pwd unit) | ✅ | sha256 `42f4d46a`, `9e76be8f`, `f4b9b303` (47 tests pass + 4 pre-existing skips) |
+| 4 | L3 green (1748 tests, 0 failures) | ✅ | 15min wall, aggregate XML scan |
+| 5 | L4 green (`:check` round-gate) | ✅ | 15m 39s, 1748/0/0/121 |
+| 6 | No regressions outside the touched branches | ✅ | L3 + L4 identical aggregate counters |
+| 7 | No new skips introduced | ✅ | L2 XML counts unchanged vs C3.1 baseline |
+| 8 | Atomic commit single subject | ✅ | `62d2abd5` (production + receipt bundled) |
+| 9 | Trazabilidad: tiap branch doc cites WU/C3 subphase | ✅ | code comments + commit body + receipt |
+| 10 | Existing canonical envelope contracts (codec tests) unchanged | ✅ | L2 23+24 contract tests; codec shapes intact |
+| 11 | Conventional Commits strict | ✅ | `fix(pipeline-application): canonical envelope for ...` |
+| 12 | No destructive actions (push/merge/tag) | ✅ | Local branch only |
 
-All criteria met.
+**All 12 criteria met. C3 BLOCK ACCEPTED.**
 
 ## 6. Out of scope (deferred for later slices)
 

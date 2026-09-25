@@ -2300,3 +2300,31 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - Out of scope respected: D-001 NOT touched, WU-RP-058-C NOT touched, new Core Steps NOT touched, RP-6 / markdown NOT touched, control plane NOT touched, core.pwd G3R-G8 NOT touched, D-002 NOT touched.
 - Origin/main = acc90387 unchanged throughout.
 - Next: vertical WU-RP-053R complete; awaiting operator direction for (i) integration to main/PR, (ii) next independent WU, or (iii) D-002 refactor at integration checkpoint.
+
+## 2026-09-25T17:17Z — WU-RP-053R v0.40.0-rc1 RELEASE CANDIDATE cycle closed
+
+- Release candidate cycle closed (close-the-SDDK-loop per AGENTS.md global rule 6).
+- Decision (autonomous, operator pre-authorized full cycle): build the candidate artifact now (release-rule-6) instead of (i) D-002 refactor (no immediate value) or (ii) open a random new WU (no consolidation). The vertical is closed end-to-end; the next cycle that delivers value is the immutable release artifact.
+- SEMVER derivation (per AGENTS.md rule 4): previous=0.39.0; 10 commits scanned; B1=feat (MINOR) + B2=fix (PATCH) + B3=fix (PATCH) + B4=feat (MINOR); MAX(MINOR, PATCH)=MINOR → **0.40.0-rc1**.
+- Bump commit: `4cec6d2e` (chore(release): bump version 0.39.0 -> 0.40.0-rc1 for WU-RP-053R candidate). 1 archivo, 1+/1-. WU-LPR-071 single-version provider propagates through ~12 modules.
+- Artifacts (in-tree, immutable, under `dist/candidates/v0.40.0-rc1/`):
+  - pipelinek-0.40.0-rc1.zip (92,077,651 bytes) → SHA-256 = `324d7045f8d513e4c3ef11bb7f100f9a13b8f262a3d166cedae08cc0cbaf1740`
+  - pipelinek-0.40.0-rc1.sbom.json (17,557 bytes, CycloneDX 1.5, 41 components) → SHA-256 = `2d18f26ba1853a588df163df3897ad6e9ec431a1627a51416ecdf6277345835b`
+  - SHA256SUMS (188 bytes)
+  - pipelinek-0.40.0-rc1.manifest.json (9,063 bytes, candidate metadata + receipts)
+- Pre-candidate battery (rule 4b lightweight, NOT full UAT): 5/5 GREEN, 0 failures, <60s total:
+  - detekt scm-git + pipeline-application → 0 errors (UP-TO-DATE / 20s)
+  - distZip build → BUILD SUCCESSFUL (7s); ZIP 92,077,651 bytes
+  - smoke 1 — `pipelinek version` → `pipeline 0.40.0-rc1` exit 0 ✅
+  - smoke 2 — `pipelinek doctor` → jdk 24.0.2 / os Linux / workdir writable / exit 0 ✅
+  - smoke 3 — e2e canary `dir { sh("echo hello-from-rc1 > ... && cat ...") }` → `Pipeline finished with SUCCESS`, `RunFinished outcome=success`, `EchoOutputCaptured content="hello-from-rc1"`. **This single canary simultaneously proves B1 BranchScope.dir isolated workspace AND B3 sh canonical envelope end-to-end on the real binary, NOT just on test classes.**
+- L4 round gate (verified at B3 commit `9ff079b2`, last commit before this cycle): 1754/0/0/121 pre-existing skips / 14m 58s / detekt 0 errors / koverVerify GREEN. Re-running L4 here would violate rule "affected tests + adjacent contracts + architecture fitness" (no production change beyond version bump).
+- Receipt: `docs/v2/07-uat/WU_RP_053R_V0_40_0_RC1_RELEASE_CANDIDATE_RECEIPT.md` (260 LOC).
+- Lessons captured:
+  - #13: version bump is atomic, but the cycle is bigger. Plan bump 5min, plan cycle 30min. Don't shortcut any of the 5 battery items.
+  - #14: smoke 3 (e2e dir+sh canary) exercises B1 + B3 simultaneously. Cheapest end-to-end proof for two independent verticals on the real binary.
+  - #15: single version provider (WU-LPR-071) is the unsung hero. Bump propagates through ~12 modules from a single line. Don't propose per-module versioning.
+- Material identity preserved: origin/main = `acc90387` UNTOUCHED throughout the candidate cycle.
+- WU-RP-053R state machine: C0..C3.x ✅, B1..B4 ✅, **rc1 release candidate READY**. Vertical closed end-to-end with publication artifacts.
+- Out of scope respected: D-001 NOT touched, D-002 NOT touched, WU-RP-058-C NOT touched, new Core Steps NOT touched, RP-6 / markdown NOT touched, control plane NOT touched, core.pwd G3R-G8 NOT touched, origin/main UNTOUCHED.
+- Next (operator decision): verify SHA-256, review manifest + 4 receipts, decide rc1→rc2 criteria, publish to GitHub Releases (ZIP + SHA256SUMS + SBOM, tag v0.40.0-rc1), deliver URL to pipelinek-release-harness per consigna 2026-09-24T10:09Z.

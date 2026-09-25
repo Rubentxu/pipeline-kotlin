@@ -105,6 +105,14 @@ open class CanonicalRuntimeCapabilityAccess(
         )
         builder[SHELL_OPERATIONS_CAPABILITY] = shellOps
         // S2-A3 / G1: workspace file operations bound to the current stage identity.
+        // WU-RP-053: the adapter ALSO receives the effective cwd derived from
+        // `context.shOptions.workingDirectory` (the SAME value `core.sh` consumes in
+        // `ShExecution.effectiveOptions`); when present it is composed with the
+        // stage workspace via the adapter's single `effectiveRoot()` seam so
+        // `dir(...) { writeFile / readFile / fileExists }` resolves paths against
+        // the block cwd. When null the adapter falls back to the per-stage
+        // workspace or the project-workspace override, preserving byte-equivalent
+        // behaviour for stages that never enter a `dir(...)` block.
         val workspaceOps: WorkspaceOperations = WorkspaceOperationsAdapter(
             stageName = context.stageName,
             stageIndex = context.stageIndex,
@@ -112,6 +120,7 @@ open class CanonicalRuntimeCapabilityAccess(
             eventSink = context.eventSink,
             runId = context.runId,
             workspaceBase = context.workspaceBase,
+            effectiveWorkingDirectory = context.shOptions.workingDirectory,
         )
         builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOps
         // S2-A4 / G1: narrow stage identity (name + index) for handlers needing the current
@@ -133,13 +142,16 @@ open class CanonicalRuntimeCapabilityAccess(
         // bridge derives workspaceRoot from context.shOptions.workspaceRoot — the
         // SAME source the legacy `pwdContext()` consumed (PATH_B byte-equivalence).
         //
-        // NOTE: `WorkspaceIdentity` is a low-level observation capability. The
-        // `core.pwd.tmp` Step does NOT use it directly — it goes through the
-        // dedicated `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` port below, which
-        // composes workspaceRoot + canonical OpId into the deterministic
-        // `tmp-pwd-<sha256(opId)>` resource path (D5–D12, S2-A6 / G3T).
+        // WU-RP-053: when the runtime context carries an effective cwd
+        // (`context.shOptions.workingDirectory` — set by the body loop on
+        // `dir(...)`/`withEnv`/etc.), it wins over the bare workspace root so
+        // `pwd()` inside `dir("subdir") { ... }` returns the BLOCK cwd, mirroring
+        // Jenkins `pwd()` semantics and matching what `core.sh` already observes
+        // through `ShExecution.effectiveOptions`. Outside a `dir(...)` block the
+        // workingDirectory is null and the observation falls back to the stage
+        // workspace root, preserving the certified PATH_B byte-equivalence.
         builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
-            workspaceRoot = context.shOptions.workspaceRoot,
+            workspaceRoot = context.shOptions.workingDirectory ?: context.shOptions.workspaceRoot,
         )
         // S2-A6 / G3T (post-correction): the ONLY capability consumed by
         // CorePwdTmpStep.handler. The adapter binds the runtime's
@@ -238,6 +250,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
+                effectiveWorkingDirectory = context.shOptions.workingDirectory,
             )
             builder[STASH_OPERATIONS_CAPABILITY] = stashOps
         }

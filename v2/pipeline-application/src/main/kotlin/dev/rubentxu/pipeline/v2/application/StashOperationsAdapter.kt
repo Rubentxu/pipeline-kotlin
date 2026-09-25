@@ -40,12 +40,15 @@ class StashOperationsAdapter(
     private val eventSink: EventSink,
     /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
+    /** WU-RP-053 cut 5: per-invocation cwd supplied by the capability bridge. */
+    private val effectiveWorkingDirectory: Path? = null,
 ) : StashOperations {
 
     override fun stash(input: StashInput): StashResult {
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspaceRoot = resolver.ensureCreated(
-            resolver.resolve(stageIdentity.name, stageIdentity.index),
+            effectiveWorkingDirectory
+                ?: resolver.resolve(stageIdentity.name, stageIdentity.index),
         )
 
         // WU-RP-012 — paths confinement for stash.
@@ -184,7 +187,8 @@ class StashOperationsAdapter(
     override fun unstash(input: UnstashInput): StashResult {
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspaceRoot = resolver.ensureCreated(
-            resolver.resolve(stageIdentity.name, stageIdentity.index),
+            effectiveWorkingDirectory
+                ?: resolver.resolve(stageIdentity.name, stageIdentity.index),
         )
 
         val stashRoot = stashRoot(runIdString, input.name)

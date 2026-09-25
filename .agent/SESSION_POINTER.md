@@ -1,3 +1,28 @@
+# .agent/SESSION_POINTER — ÚNICO puntero de reanudación
+
+## Reconciliación 2026-09-25T06:55Z — WU-RP-058 CONCLUSIÓN ANEXA: preguntas abiertas cerradas + spike congelado (autoridad operativa vigente)
+
+- **HEAD observado al concluir:** `dd76d0bc953fecefbe37ad5d1feb2043a2284e8d` (`wu/rp-058-spike-stage-scoped`, local = remoto, árbol limpio).
+- **SHA inmutable del cierre original:** `feb99190` (ver RECEIPT.md).
+- **Acción de esta sesión:** la sesión anterior dejó el spike WU-RP-058 cerrado con 19/19 verde pero con 3 preguntas abiertas en el RECEIPT y desviaciones plan↔implementación no documentadas. El operador pidió "investigar las conclusiones o completar si no lo terminamos".
+- **Trabajo realizado (docs-only sobre la rama del spike):**
+  1. **Re-ejecución del spike con evidencia fresca.** `:pipeline-spike-stage-scoped:test --rerun-tasks` → BUILD SUCCESSFUL in 31s. 19/19 PASS, 0 failures, 0 errors, 0 skipped. XML regenerados 2026-09-25T06:55:11Z con SHA-256 distintos al cierre original. 4 clases verificadas: `LexicalOrderSpecTest` (8), `StageScopedFrontendTest` (7), `SpikeIsolationTest` (2), `ReplayDeterminismTest` (2).
+  2. **No-regresión en módulos dependientes.** `:pipeline-domain:test :pipeline-scripting-api:test` → BUILD SUCCESSFUL in 2s, 12 tasks UP-TO-DATE, 122 XMLs verdes preservados.
+  3. **Aislamiento verificado.** `grep` sobre imports prohibidos en src/ → vacío. `build.gradle.kts` declara solo `:pipeline-domain` + `:pipeline-scripting-api`. `settings.gradle.kts` incluye el módulo con comentario explícito.
+  4. **Pure core verificado.** `grep` sobre `java.io|java.nio|java.lang.Process|currentTimeMillis|measureTimeMillis|kotlin.time` en main/ → vacío. Regla 9 AGENTS.md cumplida por inspección.
+  5. **Anexo CONCLUSION.md emitido.** `docs/v2/05-roadmap/WU-RP-058/CONCLUSION.md` (379 líneas). Anexa al RECEIPT original sin modificarlo. Contiene: (a) reconciliación plan↔implementación (qué archivos se fusionaron/renombraron/sustituyeron y por qué), (b) cierre de las 3 preguntas abiertas con recomendación fundada: adapter en módulo nuevo `:pipeline-spike-adapter`, integración con StageScope vía `tryStageScopedBlock` interno, sin coroutines; (c) caracterización del coste (~7 commits) de una hipotética WU de integración; (d) política de congelación formal; (e) resumen ejecutivo para el operador.
+- **Hechos verificados con líneas exactas:**
+  - Las 3 preguntas del RECEIPT están cerradas con argumento técnico, no opinión.
+  - Las desviaciones entre PLAN.md y la implementación (SuspendKind fusionado en SuspendCall+SuspendOutcome, SuspendSegmentSpec renombrado a LexicalOrderSpec, FingerprintReplayTest sustituido por ReplayDeterminismTest) están justificadas y NO son defectos: cada fusión MEJORA la exhaustividad de tipos (el compilador rompe si añades un caso sin actualizar todos los `when`).
+  - El módulo del spike es **aún más pequeño de lo prometido**: 887 líneas total (406 main + 481 test) vs. 259 líneas del PLAN original. La reducción es por eliminación de código ceremonial, no por pérdida de cobertura.
+- **Decisiones irrevocables:**
+  1. **El spike queda CONGELADO.** No más commits de feature en `v2/pipeline-spike-stage-scoped/`. Solo commits de housekeeping (docs, refactors de clarity sin cambio semántico). El SHA del cierre original `feb99190` y el SHA actual `dd76d0bc` son las dos referencias inmutables.
+  2. **La rama `wu/rp-058-spike-stage-scoped` NO se fusiona a main.** Permanece como rama de referencia accesible desde origin. La integración production-grade, si llega, vive en un módulo nuevo (`v2/pipeline-spike-adapter`) que importa del spike pero nunca al revés (regla hexagonal).
+  3. **La WU de integración sigue bloqueada** por las tres precondiciones de antes: (a) RP-5 verde sobre candidata de integración, (b) §2.4 INITIATIVE_LPR_001 concedida (cambio de semántica pública), (c) ADR-0093 firme con acotación stage-scoped. CONCLUSION.md es INPUT para ADR-0093, no la decisión.
+- **Estado al cerrar este turno:** rama limpia, 19/19 verde, 3 preguntas cerradas, spike congelado. No hay bounded WU accionable adicional sobre esta rama. La iniciativa queda en pausa estructural hasta que cambien las precondiciones.
+- **Lección integrada:** un spike bien diseñado cierra su valor cuando produce (1) evidencia ejecutable, (2) respuestas a las preguntas abiertas, (3) política de congelación explícita. Los 3 elementos juntos permiten que un spike sea realmente una **referencia arquitectónica**, no un experimento abandonado.
+- **Primer comando de reanudación:** `git rev-parse HEAD && git status --short && python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('v2/pipeline-spike-stage-scoped/build/test-results/test/TEST-dev.rubentxu.pipeline.v2.spike.stagescoped.LexicalOrderSpecTest.xml').getroot(); print(f'L1: tests={r.get(\"tests\")} fail={r.get(\"failures\")} err={r.get(\"errors\")} skip={r.get(\"skipped\")}')"`. Debe imprimir HEAD `dd76d0bc`, status vacío, y `L1: tests=8 fail=0 err=0 skip=0`.
+
 ## Reconciliación 2026-09-24T22:42Z — CIERRE DE SESIÓN, persistencia de contexto para próxima sesión (autoridad operativa vigente)
 
 - **Estado al cerrar:** WU-RP-058 spike stage-scoped CERRADA. Rama `wu/rp-058-spike-stage-scoped @ a74dbb1f` publicada en `origin` (SHA local = remoto). Recibo firmado en `docs/v2/05-roadmap/WU-RP-058/RECEIPT.md`. **19/19 tests verdes** (HF0 + HF1 + L4-isolation + replay-determinism). Cero production changes fuera del spike; cero regresión en `:pipeline-domain` / `:pipeline-scripting-api`. **No requiere §2.4 INITIATIVE_LPR_001** — el spike es referencia aislada y congelada.

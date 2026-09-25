@@ -2216,3 +2216,34 @@ Survey sistemático del estado actual de WUs pendientes tras WU-RP-040-R3.4:
   - `.agent/SESSION_POINTER.md` (encabezado actualizado a esta reconciliación; SHA de partida inmutable `839fe63f`).
   - Este diario (append-only).
 - Tests no ejecutados: ninguno (decisión consciente de no tocar batería durante investigación).
+
+### 2026-09-25T06:55Z — WU-RP-058 CONCLUSIÓN ANEXA — preguntas cerradas, spike congelado
+
+- Base SHA / HEAD SHA / branch: HEAD = `dd76d0bc953fecefbe37ad5d1feb2043a2284e8d` (`wu/rp-058-spike-stage-scoped`, local = remoto, árbol limpio). SHA inmutable del cierre original = `feb99190`.
+- Intención: el operador pidió "investigar las conclusiones o completar si no lo terminamos". El spike ya estaba cerrado con 19/19 verde pero con 3 preguntas abiertas en RECEIPT.md y desviaciones plan↔implementación no documentadas. Esta sesión anexiona una conclusión, NO reabre el spike.
+- Decisión/ADR; rutas modificadas:
+  - `docs/v2/05-roadmap/WU-RP-058/CONCLUSION.md` (NUEVO, 379 líneas): anexo al RECEIPT original. Cubre (a) reconciliación plan↔implementación (qué archivos se fusionaron/renombraron y por qué cada desviación MEJORA la exhaustividad de tipos), (b) cierre de las 3 preguntas abiertas con recomendación fundada, (c) coste estimado de la WU de integración (~7 commits), (d) política de congelación formal, (e) resumen ejecutivo.
+  - `.agent/SESSION_POINTER.md` (NUEVA entrada de reconciliación 2026-09-25T06:55Z al inicio): ancla el estado al SHA real `dd76d0bc` y referencia el CONCLUSION.md.
+  - `.agent/WORK_JOURNAL.md` (ESTA entrada append-only).
+- Tests realmente ejecutados:
+  - `timeout 600 ./gradlew -p v2 :pipeline-spike-stage-scoped:test --rerun-tasks --console=plain` → BUILD SUCCESSFUL in 31s. 4 XMLs regenerados 2026-09-25T06:55:11Z con SHA-256 nuevos:
+    - `LexicalOrderSpecTest.xml` 8/0/0/0 sha256 `5106979a6f0d7cec...`
+    - `StageScopedFrontendTest.xml` 7/0/0/0 sha256 `1230cbb20af6139d...`
+    - `SpikeIsolationTest.xml` 2/0/0/0 sha256 `644bb4238be0d754...`
+    - `ReplayDeterminismTest.xml` 2/0/0/0 sha256 `f7bae25b7c540b57...`
+    - **Total: 19/19 verde**, 0 failures, 0 errors, 0 skipped.
+  - `timeout 600 ./gradlew -p v2 :pipeline-domain:test :pipeline-scripting-api:test --console=plain` → BUILD SUCCESSFUL in 2s, 12 tasks UP-TO-DATE. 122 XMLs existentes verdes preservados.
+  - `grep -rE "import dev\.rubentxu\.pipeline\.v2\.application\.|import dev\.rubentxu\.pipeline\.v2\.scripting\.kotlin24" v2/pipeline-spike-stage-scoped/src/` → vacío.
+  - `grep -rE "java\.io|java\.nio|java\.lang\.Process|currentTimeMillis|measureTimeMillis|kotlin\.time" v2/pipeline-spike-stage-scoped/src/main/kotlin/` → vacío.
+- PASS / FAIL / BLOCKED / NOT_RUN: **PASS**. Spike sigue funcionando; aislamiento y pure-core verificados; preguntas abiertas cerradas con argumento técnico.
+- Decisiones irrevocables tomadas en esta sesión:
+  1. Spike CONGELADO. No más commits de feature en `v2/pipeline-spike-stage-scoped/`. Solo housekeeping.
+  2. La rama NO se fusiona a main. Permanece como referencia arquitectónica accesible desde origin.
+  3. La WU de integración (cuando proceda) vive en un módulo nuevo `:pipeline-spike-adapter` que importa del spike pero nunca al revés.
+- Bloqueos y riesgo residual:
+  - RP-5 sigue bloqueado por push/CI sobre bytes exactos.
+  - §2.4 INITIATIVE_LPR_001 sigue sin concederse.
+  - ADR-0093 sigue como borrador; CONCLUSION.md es INPUT para ADR-0093, no la decisión.
+  - Sin bounded WU accionable sobre esta rama. La iniciativa queda en pausa estructural.
+- Lección integrada: un spike bien diseñado cierra su valor cuando produce (1) evidencia ejecutable, (2) respuestas a preguntas abiertas, (3) política de congelación explícita. CONCLUSION.md es la materialización de (2)+(3) sobre el spike ya existente (1).
+- Primer comando de reanudación: `git rev-parse HEAD && git status --short`. Debe imprimir HEAD `dd76d0bc` y status vacío.

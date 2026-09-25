@@ -2400,6 +2400,20 @@ class BranchScope {
     fun sleep(seconds: Long) {
         steps.add(StepSpec.Sleep(seconds))
     }
+
+    /**
+     * Changes the current working directory for the duration of the nested
+     * block within this branch (B1 / WU-RP-053R; the operator's composed
+     * property test for parallel { left -> dir("a") -> effect; right -> ... }
+     * requires [dir] to be available on [BranchScope], not only on
+     * [StageScope]). The nested [block] is itself a [BranchScope] body, so the
+     * user may write `branch("left") { dir("a") { sh("...") } }`.
+     */
+    fun dir(path: String, block: BranchScope.() -> Unit) {
+        val inner = BranchScope()
+        inner.block()
+        steps.add(StepSpec.Dir(path = path, steps = inner.steps.toList()))
+    }
 }
 
 /**

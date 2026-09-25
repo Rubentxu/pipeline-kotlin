@@ -52,7 +52,7 @@ import java.util.concurrent.TimeUnit
  * @param secretStore SecretStore for credential resolution (may be null in test paths)
  * @param secretPatternRegistry SecretPatternRegistry for scrubbing GitCheckoutFailed.reason (INV-L6-CR-013)
  */
-class GitCheckoutExecutor(
+open class GitCheckoutExecutor(
     private val poll: GitPollExecutor,
     private val changelog: GitChangelogWriter,
     private val credentialsApplier: GitCredentialsApplier,
@@ -104,7 +104,7 @@ class GitCheckoutExecutor(
     /**
      * Execute checkout for the given request.
      */
-    fun execute(req: GitCheckoutRequest): Result<GitCheckoutResult> {
+    open fun execute(req: GitCheckoutRequest): Result<GitCheckoutResult> {
         val spec = req.spec.scm as dev.rubentxu.pipeline.v2.domain.scm.GitScm
         val workspace = req.workspaceRoot.resolve(spec.relativeTargetDir)
         val gitDir = workspace.resolve(".git")

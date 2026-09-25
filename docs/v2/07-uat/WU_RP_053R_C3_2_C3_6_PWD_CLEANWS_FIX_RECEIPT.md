@@ -259,3 +259,45 @@ C4 (workspace-identity resolution under typed input from
 CanonicalWorkspaceContextProvider) — the moment C3 is closed the
 C4 contract suite for the workspace-identity seam becomes runnable.
 Operator pre-approved continuous GO through C3→C6.
+
+**C3 ROUND-GATE STATE (final, 2026-09-25T13:28Z):**
+
+- L0 compile: GREEN in 1s.
+- L1 WURp053rExecutionContextCharacterizationTest: 5/5/0/0, sha256
+  `aa202defcb05c775a14d2e7cec872c8b45e0bfc3781bc66836e6884a8c26aaa3`.
+- L2 Pwd + CleanWs + Pwd contract: 23+24+24 tests PASS, sha256
+  `42f4d46a…`, `9e76be8f…`, `f4b9b303…` (4 pre-existing skips).
+- L3 `:pipeline-application:test --rerun-tasks`: BUILD SUCCESSFUL in
+  15min, aggregate 1748/0/0/121.
+- L4 `:pipeline-application:check --rerun-tasks`: BUILD SUCCESSFUL in
+  15m 39s (13:07:34Z → 13:23:13Z), aggregate 1748/0/0/121
+  (unchanged from L3 — zero regressions).
+- Defect class (encodePayload missing-branches + default-tolerance)
+  closed structurally for deleteDir, pwd, cleanWs (3 StepSpec
+  subtypes).
+- Receipt follow-up docs commit: `ff9603bf` (no code/test changes,
+  L4 pin only).
+
+**Defects deferred with documented shape (C3.7+):**
+
+- **C3.7 StepSpec.Checkout**: requires `Scm -> GitCheckoutInput`
+  projection AND change of emission path from `OpaqueStepNode` to
+  `RegistryStepSpec` (plugin step id `scm-git.checkout`). Larger
+  architectural commitment than the drop-in branches above. Will
+  land as a dedicated slice with its own characterization.
+- **C3.8+ StepSpec.WithEnv / AnsiColor / NodeNoOp / etc**: block-form
+  Steps that go through `blockPayload`, not encodePayload;
+  structurally distinct from the C3.1/C3.2/C3.6 class.
+- **C3.9 StepSpec.Load**: registry step `core.load` is
+  LEGACY_REMOVED at WU-LPR-301/G5; the DSL surface remains for
+  forward-compat but no runtime execution.
+
+**Next slice candidates (operator pre-approved priority list):**
+
+1. **C4 (workspace-identity contract)** — isolated, small surface,
+   no architectural commitment beyond typed decode. Highest value
+   per LOC.
+2. **C3.7 (Checkout RegistryStepSpec emission)** — bigger change
+   touching the `compile()` flow. Requires diagnostics first.
+3. **C6 (resume / replay finalisation)** — pre-approved by mandate;
+   orthogonal to C3.x Class-of-defect.

@@ -20,6 +20,21 @@ Al FINAL de cada WU/sesión: actualizar EN EL MISMO CAMBIO SESSION_POINTER (fase
 
 ---
 
+## PROTOCOLO INMEDIATO DE TESTING EFICIENTE (2026-09-21; aplicar ya, sin esperar a ITO)
+
+**Alcance y precedencia:** este bloque concreta la elección de pruebas en el bucle de desarrollo y prevalece sobre las recomendaciones de ejecutar L4/L5 *en cada ronda* que aparecen más abajo en V2 TESTING RULES. NO anula ningún test/UAT/gate obligatorio de CERTIFICATION_PROTOCOL, ROADMAP, contrato de Step, integración o release. "Fin de lote de edición", "cierre de WU", "merge" y "release" son fronteras diferentes. El full gate sigue siendo necesario cuando un cambio transversal no permite acotar impacto y en toda certificación/integración/release que lo exija; no por cada microedición ni por cerrar una WU localizada.
+
+1. **Antes de ejecutar:** identificar base SHA de la WU y todos los cambios hasta el momento (committed desde la base + staged + unstaged + untracked). Enunciar SUT, comportamiento modificado, test(s) directo(s), consumidores/contratos afectados, UAT relevante y el motivo de cualquier ampliación. git diff --name-only HEAD o just changed son pistas incompletas: no detectan toda la WU ni garantizan selección a nivel de test. No usar la cola histórica de .agent/TESTING-STATE.md como autoridad.
+2. **Iteración mínima:** para una modificación pequeña, editar un lote coherente, compilar *solo el módulo/test afectado si hace falta* y ejecutar método/clase directamente vinculados mediante un --tests inclusivo; no ejecutar :pipeline-application:test, check, just app-fast ni just gate por reflejo. Si el método ha demostrado la propiedad, continuar editando sin repetirlo cuando código/test/inputs cubiertos no cambien. Ejecutar tests cercanos/contratos únicamente al final del lote o ante riesgo documentado; tests instalados/kill/restart solo si ese efecto es la propiedad que se está verificando.
+3. **Ejemplo de comando válido desde raíz:** (cd v2 && ./gradlew :pipeline-application:test --tests 'dev.rubentxu.pipeline.v2.application.CorePublishHtmlStepContractSuiteTest') — cambiar el selector por el nombre REAL de la clase/método existente; para otro módulo usar su task :modulo:test. El wrapper está en v2/gradlew: los ejemplos antiguos "./gradlew -p v2" en raíz y recetas just que lo copien NO son ejecutables desde esa ubicación; verificar antes de usar. Los --tests de Gradle son filtros de INCLUSIÓN: nunca suponer que --tests '!patrón' excluye tests; verificar IDs seleccionados con XML nuevo y usar mecanismo de exclusión soportado cuando proceda.
+4. **Cierre de una WU localizada:** ejecutar suites directas y closure de consumidores/fitness/UAT realmente afectados, sin omitir requisitos G0..G8/C01..C19 aplicables. Registrar tests obligatorios no ejecutados como NOT_RUN/BLOCKED, nunca PASS. Cambios de modelo de eventos, DSL compartido, coordinator, dependencias/build, política de tests o impacto UNKNOWN => ampliar conservadoramente; el gate completo es obligatorio si no es posible demostrar la cobertura por selección.
+5. **Frontera integral:** en PR/merge a remoto, candidata de release, publicación o gate explícito de ROADMAP/CERTIFICATION_PROTOCOL, ejecutar el perfil completo obligatorio sobre SHA/artefacto correspondiente y comprobar jobs y reportes realmente ejecutados. Un PASS de tests locales y un workflow parcialmente verde NO autorizan certificar. No se reutiliza evidencia de una versión previa como ejecución nueva del candidato.
+6. **Hangs = defecto de harness, no un permiso para saltarse tests:** si un proceso no progresa, identificar último test/PID; drenar stdout/stderr ANTES/DURANTE wait, recoger thread dump y terminar descendientes con límite. No reintentar la suite amplia, ampliar tiempo a ciegas ni añadir @Disabled; corregir helper/aislamiento y conservar cobertura equivalente. Un @Timeout JUnit no garantiza matar procesos hijos. Un test sin resultados XML frescos cuando son obligatorios, con 0 tests o runner cancelado => INCOMPLETE/BLOCKED, no GREEN.
+7. **Economía y reporte:** preferir daemon/caché calientes, no --rerun-tasks mientras se itera ni procesos largos en paralelo que compitan por CPU con UAT temporales. Antes de cada comando > una clase anotar por qué es necesario. Al finalizar: base/current SHA, diff cubierto, selectors y argv reales, nº tests/fail/skipped/not-run, XML fresco, duración, UAT pendiente y siguiente acción. No escribir estado/logs generados en el repositorio para esta política. No arrancar el futuro ITO (ADR-0094 es propuesta) ni reemplazar gates hasta que esté implementado/certificado.
+
+**Regla de oro:** un test directo que detecta la regresión hoy vale más para iterar que un check global opaco que acaba cancelado; el primero NO reemplaza la certificación completa de integración o release.
+
+---
 
 ## V2 DEVELOPMENT PRIME DIRECTIVE
 
@@ -974,16 +989,19 @@ message   == the Step's configured message  (not "Replay aborted")
 
 1. Inner loop: targeted runs only (`--tests 'UatLocal004*'`), warm daemon,
    NO `--rerun-tasks` while iterating.
- 2. Full round gate = `./gradlew -p v2 check` (incremental) runs ONCE per
-    apply/verify round, as the final gate. Never per-iteration. Gradle's
-    content-hash up-to-date checks are the freshness oracle: a no-op
-    `check` returning BUILD SUCCESSFUL with all tasks UP-TO-DATE is a
-    VALID green — it proves nothing changed since the last green
-    (measured 2026-08-30: forced gate 977s vs 1s incremental no-op).
-    Escalate to `check --rerun-tasks` ONLY after (a) a run killed
-    mid-flight, (b) suspected stale green, or (c) hidden-state suspicion;
-    then reconcile ONCE with the rule-4 budget before trusting
-    incremental again (reconciliation measured 948s).
+ 2. Full `check` is a boundary gate, NOT an iteration or automatic
+    end-of-WU obligation: run it for changes whose impact cannot be safely
+    bounded, and at integration/certification/release boundaries whenever
+    the governing profile requires it. From repository root invoke
+    `(cd v2 && ./gradlew check)`. Gradle UP-TO-DATE/FROM-CACHE means
+    **reused evidence**, not a fresh test execution: it may count only
+    when the gate permits reuse, relevant inputs and environment are
+    declared/unchanged, and the prior result is traceable. Fresh installed
+    UAT, process/recovery and artifact-certification checks MUST really
+    execute when the gate requires them. Never report a no-op as freshly
+    executed PASS. Escalate to `check --rerun-tasks` only for a justified
+    stale/corrupt-cache or hidden-state suspicion, and rerun only the
+    mandatory fresh checks when a full forced rerun is unnecessary.
 3. Never `--no-daemon` for repeated runs; the daemon JVM stays warm.
 4. Wrap every Gradle invocation in `timeout` — silent hangs are defects
    of the harness, not the code under test. Two regimes:
@@ -1005,8 +1023,8 @@ Canonical inner loop (TDD red-green, seconds — measured 2s no-op / 22-40s
 with incremental compile):
 
 ```bash
-timeout 600 ./gradlew -p v2 :pipeline-application:test --tests 'UatLocal004*'
-timeout 600 ./gradlew -p v2 :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest'
+(cd v2 && timeout 600 ./gradlew :pipeline-application:test --tests 'UatLocal004*')
+(cd v2 && timeout 600 ./gradlew :pipeline-step-sdk:runtime:test --tests 'DurableShellExecutorAdversarialTest')
 ```
 
 Round gate (once per apply/verify round, not per iteration). Incremental
@@ -1014,8 +1032,8 @@ by default — the escalated budget (rule 4) applies to the escalation form
 only; current escalated baseline 977s → budget 1270:
 
 ```bash
-./gradlew -p v2 check                              # incremental (default)
-timeout 1270 ./gradlew -p v2 check --rerun-tasks   # escalation only
+(cd v2 && ./gradlew check)                         # only at the applicable gate
+(cd v2 && timeout 1270 ./gradlew check --rerun-tasks) # justified escalation only
 ```
 
 Quick interface: `just gate` / `just gate-escalate` / `just t '<pattern>'` /
@@ -1100,20 +1118,26 @@ group).
 21. TDD discipline: RED must fail for the EXPECTED reason (read the
     assertion message, not just the failure). A timeout or compile error
     is NOT a valid RED. GREEN = minimal implementation, validated at L1.
-22. Use `--fail-fast` when running more than one test in iteration.
+22. Use `--fail-fast` for focused development feedback when helpful;
+    do not use it for a release/integration gate that requires collecting
+    and reporting every mandatory test failure.
 
 ### Output capture and result truth
 
 23. NEVER pipe test output through `| tail` under `timeout`: the output is
     lost when the process is killed. Safe pattern (`<budget>` per rule 4:
     600 targeted, derived for the round gate):
-    `timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1; tail -n 30 /tmp/gradle-run.log`
+    `(cd v2; timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1; rc=$?; tail -n 30 /tmp/gradle-run.log; exit "$rc")`
 24. Long builds run backgrounded with polling:
     `nohup timeout <budget> ./gradlew ... > /tmp/gradle-run.log 2>&1 &` then
     poll `tail -n 20 /tmp/gradle-run.log` — keep editing while it runs.
-25. Result truth is the JUnit XML in `build/test-results/test/`, NOT the
-    console or the Gradle exit code. When a run MUST have executed, use
-    the canary: delete `TEST-<Class>.xml` first, run, verify it regenerated.
+25. Result truth is the combination of process/Gradle exit status,
+    fresh JUnit XML (including tests/failures/errors/skipped counts),
+    selected-test identity and relevant side-effect assertions. XML alone
+    misses compilation/runner failures before reports exist; exit 0 alone
+    misses a zero-test or skipped-only run. For a mandatory freshly
+    executed test, verify a newly generated report or an equivalent
+    trustworthy task/test execution record; stale XML is not PASS.
 26. XML `timestamp` is UTC while `ls` shows local time (10:27Z == 12:27
     local). Convert before concluding a result is stale.
 27. After a build killed by timeout, distrust `BUILD SUCCESSFUL` /

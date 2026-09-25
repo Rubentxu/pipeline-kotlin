@@ -18,6 +18,12 @@ Contratos publicados + ADRs aceptados + especificaciones normativas > normas de 
 
 El documento docs/v2/00-governance/DOCUMENT_AUTHORITY.md (2026-09-03) conserva el marco ADR-0064; esta actualización de 2026-09-21 fija la prioridad de producto conforme al cambio LPR de 2026-09-18 y al roadmap activo. No vuelve a abrir M3/ML/EM/EVT ya cerrados.
 
+## Distribución local-first en planificación
+
+- `docs/v2/05-roadmap/MULTICHANNEL_RELEASE_DOGFOOD_PLAN.md` — propuesta D0..D5 integrada como WU-RP-060..065 de RP-6, solo ejecutable tras RP-5.
+- `docs/v2/07-uat/UAT_RELEASE_CHANNELS.md` — criterios previstos de aceptación por canal; NOT_RUN hasta recibir evidencia real del SHA y del instalador.
+- `docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md` — autoridad técnica de artefacto único; su sección multicanal es una ampliación propuesta, no un permiso de publicación.
+
 ## Archivado vs. vigente
 
 docs/historico/INDEX.md contiene el inventario de documentos trasladados. Los paquetes originales docs/pipeline-kotlin-*/ son propuestas empaquetadas y procedencia histórica; NO constituyen una cola adicional. El viejo roadmap cronológico y el primer roadmap LPR siguen accesibles allí. NO modificar recibos de certificación publicados para alterar su significado: emitir un nuevo recibo o una fe de erratas con referencia al SHA original.

@@ -352,21 +352,33 @@ class WURp053rExecutionContextCharacterizationTest {
             "DirEntered.path must be the workspace-absolute anchor",
         )
 
-        // Discriminante 2: DirDeleted, IF emitted, MUST carry the deleted
-        // directory's workspace-relative path. The handler currently does not
-        // have a typed event emission path for the legacy `StepSpec.DeleteDir`
-        // lowering; we record the absence (or presence-with-wrong-shape) as the
-        // C2 finding.
-        val deleted: DirDeleted? = run.events.filterIsInstance<DirDeleted>().firstOrNull()
-        if (deleted == null) {
-            // RED confirmed: no DirDeleted event surfaced (handler path
-            // mismatch). The test ends here without asserting the deleted path
-            // or count — we record the absence as the C2 finding.
-            return
-        }
+        // Discriminante 2: DirDeleted MUST carry a path whose effective anchor
+        // is the canonical stage workspace root (`controlDirRoot/workspace/<stepId>`
+        // resolved against the runtime) AND whose tail reflects the deleted
+        // subdirectory (`sub/`). The handler resolves `input.path` against that
+        // workspace and emits the resolved absolute path. Concretely:
+        //   deleted.path MUST end with "/sub" (the deleted target) and
+        //   MUST contain the canonical control-dir segment "control/workspace/"
+        //   that the WorkspaceResolver emits.
+        val deleted: DirDeleted = run.events.filterIsInstance<DirDeleted>().firstOrNull()
+            ?: error(
+                "Discriminante (C3.1 GREEN pin): NO DirDeleted event emitted for " +
+                    "deleteDir(path='sub'). The typed observable is missing; the fix is incomplete.",
+            )
         assertTrue(
-            deleted.path.endsWith("sub") || deleted.path == "sub",
-            "DirDeleted.path must be the workspace-relative deleted dir, got '${deleted.path}'",
+            deleted.path.endsWith("/sub"),
+            "DirDeleted.path must end with '/sub' (handler resolved the user-supplied " +
+                "path correctly), got '${deleted.path}'",
+        )
+        // Negative control: a regression that defaults `path` to "." (the legacy
+        // encodePayload bug) would resolve to the stage workspace root, whose tail
+        // is `deletedir-red-0` not `/sub`. The previous fix (C3.1) added a
+        // StepSpec.DeleteDir branch to encodePayload so the canonical envelope
+        // preserves user input. This assertion guards that path.
+        assertTrue(
+            !deleted.path.endsWith("deletedir-red-0"),
+            "DirDeleted.path must NOT collapse to the stage workspace root — " +
+                "this is the C2 C3.1 defect signature",
         )
         assertTrue(deleted.deletedCount >= 1, "DirDeleted.deletedCount must reflect at least 1 file")
     }

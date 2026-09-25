@@ -707,6 +707,17 @@ object DslCompiledPipelineCompiler {
                     // (backward-compat with F1 archive fixtures).
                     step.artifactName?.let { put("name", it) }
                 }
+                // WU-RP-053R / C3.1: canonical envelope for core.deleteDir — the
+                // typed input codec (CoreDeleteDirStep.inputCodec) reads
+                // {"kind":"deleteDir","path":"<path>"}. Previously the else-branch
+                // produced {"kind":"deleteDir","declarativeValue":"StepSpec.DeleteDir(path=…)"}
+                // which silently defaulted the `path` field to "." in the handler,
+                // making `deleteDir(path="sub")` a no-op against the stage workspace
+                // root. C2 RED-DELETEDIR discriminated this defect.
+                is StepSpec.DeleteDir -> {
+                    put("kind", "deleteDir")
+                    put("path", step.path)
+                }
                 else -> put("declarativeValue", step.toString())
             }
         }

@@ -718,6 +718,35 @@ object DslCompiledPipelineCompiler {
                     put("kind", "deleteDir")
                     put("path", step.path)
                 }
+                // WU-RP-053R / C3.2: canonical envelope for core.pwd. The
+                // CorePwdStep.inputCodec reads {"kind":"pwd","tmp":<bool>} and
+                // decodes tmp=true as a PWD_TMP_TRUE_DISPOSITION failure
+                // (fail-closed). Previously the else-branch produced the legacy
+                // {"kind":"pwd","declarativeValue":"StepSpec.Pwd(tmp=…)"} form
+                // (plugin step id was correct but envelope did not carry tmp);
+                // the typed decode default-tolerated absent `tmp`, which masked
+                // the canonical envelope shape.
+                is StepSpec.Pwd -> {
+                    put("kind", "pwd")
+                    put("tmp", JsonPrimitive(step.tmp))
+                }
+                // WU-RP-053R / C3.6: canonical envelope for core.cleanWs.
+                // The CoreCleanWsStep.inputCodec reads
+                // {"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}.
+                // Previously the else-branch produced
+                // {"kind":"cleanWs","declarativeValue":"StepSpec.CleanWs(deleteDirs=…, patterns=…)"}
+                // which made the typed decode fall back to defaults (empty
+                // patterns), erasing the user's glob selectors. C2
+                // RED-WS-CLEANED incidentally passed because `patterns=[]` is
+                // its own valid default; the defect was not discriminated but
+                // was structurally identical to the deleteDir / pwd family.
+                // Locking the canonical envelope here closes the structural
+                // class of defect, not just one symptom.
+                is StepSpec.CleanWs -> {
+                    put("kind", "cleanWs")
+                    put("deleteDirs", JsonPrimitive(step.deleteDirs))
+                    put("patterns", JsonArray((step.patterns ?: emptyList()).map { JsonPrimitive(it) }))
+                }
                 else -> put("declarativeValue", step.toString())
             }
         }

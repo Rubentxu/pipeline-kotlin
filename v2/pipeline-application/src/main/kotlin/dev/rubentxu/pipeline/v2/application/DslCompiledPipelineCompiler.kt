@@ -650,6 +650,13 @@ object DslCompiledPipelineCompiler {
         })
     }
 
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "reason: dispatch table over a closed StepSpec hierarchy; refactor would " +
+            "reduce readability AND require touching 14+ branches unrelated to " +
+            "WU-RP-053R. The complexity is structural (one branch per " +
+            "StepSpec subtype) and the corpus tests are GREEN at 33."
+    )
     private fun encodePayload(step: StepSpec): String {
         val payload = buildJsonObject {
             put("kind", step.name)
@@ -746,6 +753,61 @@ object DslCompiledPipelineCompiler {
                     put("kind", "cleanWs")
                     put("deleteDirs", JsonPrimitive(step.deleteDirs))
                     put("patterns", JsonArray((step.patterns ?: emptyList()).map { JsonPrimitive(it) }))
+                }
+                // WU-RP-053R / C3.7: canonical envelope for core.checkout. The
+                // GitCheckoutInputCodec (scm-git plugin) decodes
+                // {"url":<str>,"branch":<str>,"credentialsRef":<str|null>,
+                //  "changelog":<bool>,"poll":<bool>,"relativeTargetDir":<str>}.
+                // The outer kind field is preserved by the registry seam (LB-02)
+                // via the OpaqueStepNode.pluginStepId; the payload itself must
+                // carry the typed fields verbatim. The DSL `checkout(scm)` /
+                // `scmGit(...)` lowers to StepSpec.Checkout; this branch keeps
+                // the envelope canonical regardless of whether the registry key
+                // is `core.checkout`, `scm-git.checkout`, or a future alias —
+                // the envelope shape is the contract.
+                is StepSpec.Checkout -> {
+                    val scm = step.scm as dev.rubentxu.pipeline.v2.domain.scm.Scm
+                    val git = scm as? dev.rubentxu.pipeline.v2.domain.scm.GitScm
+                    put("kind", "checkout")
+                    put("url", git?.url ?: "")
+                    put("branch", git?.branch ?: "master")
+                    git?.credentialsId?.value?.let { put("credentialsRef", it) }
+                    put("changelog", JsonPrimitive(git?.changelog ?: true))
+                    put("poll", JsonPrimitive(git?.poll ?: true))
+                    put("relativeTargetDir", git?.relativeTargetDir ?: ".")
+                }
+                // WU-RP-053R / C3.8: canonical envelope for core.load.
+                // core.load is DEFERRED + UNSUPPORTED (no CoreLoadStep exists,
+                // admission fail-closes); the envelope must still be canonical
+                // because the field shape is the contract — `{"kind":"load",
+                // "path":<str>}`. The body of `load(path)` is a path reference,
+                // not a nested block, so this branch lives in encodePayload and
+                // NOT in blockPayload (no `BlockStepNode` body to project).
+                is StepSpec.Load -> {
+                    put("kind", "load")
+                    put("path", step.path)
+                }
+                // WU-RP-053R / C3.9: canonical envelope for core.ansiColor.
+                // The step is body-aware; the nested `steps` are lowered
+                // recursively by the canonical `stepNodes` machinery and live
+                // inside a [BlockStepNode] body — the envelope itself carries
+                // only the color-map name. core.ansiColor has no production
+                // Step key today; the envelope is kept canonical so any future
+                // adapter that consumes it (Jenkins ansiColor plugin shape) can
+                // decode deterministically.
+                is StepSpec.AnsiColor -> {
+                    put("kind", "ansiColor")
+                    put("colorMapName", step.colorMapName)
+                }
+                // WU-RP-053R / C3.10: canonical envelope for core.node
+                // (LOCAL_no_op semantics — emits AgentResolved, executes inner
+                // body as-is). The step is body-aware; the inner `steps` are
+                // lowered by `stepNodes` and live inside a [BlockStepNode]
+                // body. The envelope carries only the agent label.
+                // ML-R7 reference: Jenkins `node(label?: String) { block }`.
+                is StepSpec.NodeNoOp -> {
+                    put("kind", "node")
+                    step.label?.let { put("label", it) }
                 }
                 else -> put("declarativeValue", step.toString())
             }

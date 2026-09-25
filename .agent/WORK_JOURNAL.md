@@ -2268,3 +2268,35 @@ Próximo corte AUTO (sin pedir permiso): WU-RP-020 caracterización SqliteEventS
 - After B3: NO StepSpec subtype remains on the encodePayload else-branch. Structural class of defect closed end-to-end.
 - Origin/main = acc90387 unchanged throughout.
 - Next: B4 (operator pre-approved candidates — likely `scm-git.checkout` G6-G8 burn-down, queued). B3 closes the `(c) other Jenkins-parity` lane; B4 picks up from `(b) ScmGitCheckoutStepContractSuiteTest`.
+
+## 2026-09-25T17:00Z — B4 ScmGitCheckoutStepContractSuite → CERTIFIED closed
+
+- B4 vertical closed on worktree (HEAD `9ff079b2` → B4 commit TBD-1 → state update TBD-2).
+- Decision (autonomous, operator pre-approved candidate (b)): ScmGitCheckoutStepContractSuite — 17-axis burn-down to CERTIFIED per ADR-0074.
+- Rationale: closes the `scm-git.checkout` Step post-B2 hardening, high-leverage Jenkins-parity, tractable, hermetic (no real git in CI quick-loop).
+- Production diff (1 file, 2 keywords, zero API impact):
+  - `GitCheckoutExecutor.kt`: `class` → `open class`, `fun execute` → `open fun execute`.
+  - Justification: scm-git has zero mocking-library deps; introducing mockito/mockk adds 3+ transitive deps and a non-trivial surface. `open class`+`open fun` is the canonical Kotlin idiom.
+- Test NEW: `CoreScmGitCheckoutStepContractSuiteTest` (694 LOC, 20 tests / 17 axes). Hermetic — no git, no `V2_GIT_AVAILABLE`, no network.
+  - Axes: identity, contract completeness, codec input/output roundtrip, canonical envelope, registry resolution, capability admission (fail-closed), success (typed output), typed-failure matrix (NETWORK/USER/INFRASTRUCTURE × 3), replay determinism, observability, missing-capability boundary, architectural fitness, real DSL surface, typed credentialsRef carrier (present + null × 2), recovery policy, **B2 hardening regression guard**.
+- Test fixture (private): `NullRecordingEventSink`, `StubbedGitCheckoutExecutor` (subclass of now-`open` executor that overrides `execute(req)` to return a fixed `Result`).
+- Step state advance: `IMPLEMENTED_UNCERTIFIED` → `CERTIFIED` per ADR-0074 (G0..G8 all GREEN).
+- Gates:
+  - L1: 20/20 / 0f / 0e / 1.011s. XML canary fresh at 2026-09-25T16:56:33.792Z.
+  - L4 scm-git check: BUILD SUCCESSFUL 5s (detekt 0 errors, koverVerify GREEN).
+  - L3 scm-git regression: all pre-existing tests UP-TO-DATE / 0 failures.
+  - pipeline-application consumer regression (with `V2_GIT_AVAILABLE=true`): 5 test classes / 35 tests / 0 failures / 32s.
+    - F5_1_ScmGitNegativePathsTest: 11/0/0/0
+    - F5_1_ScmGitProviderProvenanceTest: 4/0/0/0
+    - F5_1_ScmGitStepContractTest: 10/0/0/0 (pre-existing partial contract, still GREEN)
+    - ScmGitWorkspaceIsolationTest: 3/0/0/0
+    - GitCheckoutExecutorAdversarialTest: 7/0/0/0 (real-git shell-out, still GREEN — proves `open` keyword doesn't break production).
+- Receipt: `docs/v2/07-uat/WU_RP_053R_B4_SCM_GIT_CHECKOUT_CONTRACT_SUITE_RECEIPT.md` (280 LOC).
+- Lessons captured:
+  - #10: `class` → `open class` is minimum-touch enabler for hermetic contract tests in modules without mocking deps. Trade-off: small static surface increase (permissibility of subclassing) in exchange for avoiding a mocking dependency.
+  - #11: Pre-existing `F5_1_ScmGitStepContractTest` (10 axes in pipeline-application) is INTEGRATION contract; new `CoreScmGitCheckoutStepContractSuiteTest` (17 axes in plugin module) is CONTRACT contract. Both needed; one is not a replacement for the other.
+  - #12: Kotlin backtick test names disallow `;` (name terminator) and `.`-as-word-start (`. uses`); use `and` instead.
+- WU-RP-053R state machine: B1✅, B2✅, B3✅, **B4✅**. Vertical closed end-to-end.
+- Out of scope respected: D-001 NOT touched, WU-RP-058-C NOT touched, new Core Steps NOT touched, RP-6 / markdown NOT touched, control plane NOT touched, core.pwd G3R-G8 NOT touched, D-002 NOT touched.
+- Origin/main = acc90387 unchanged throughout.
+- Next: vertical WU-RP-053R complete; awaiting operator direction for (i) integration to main/PR, (ii) next independent WU, or (iii) D-002 refactor at integration checkpoint.

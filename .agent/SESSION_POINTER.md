@@ -360,6 +360,34 @@
 - **Pendiente:** ninguno bloqueante. D-002 refactor de complejidad (encodePayload table-driven) queda anotado para slot futuro.
 - **Primer comando del siguiente turno:** `cd /var/home/rubentxu/Proyectos/kotlin/wt/wu-rp-053r-red-fixtures && git log --oneline -5 && git status --short && cat docs/v2/07-uat/WU_RP_053R_C3_7_C3_10_ENVELOPE_FIX_RECEIPT.md | head -5`.
 
+## Reconciliación 2026-09-25T17:00Z — WU-RP-053R B4 CERRADO (scm-git.checkout Step Contract Suite → CERTIFIED)
+
+- **HEAD worktree:** `9ff079b2` (B3 HEAD) + 2 nuevos commits B4. origin/main sigue `acc90387` (intacto).
+- **B4 vertical cerrada:** `scm-git.checkout` Step burn-down a CERTIFIED per ADR-0074. Decisión autónoma del operador (modo AUTO): elegí candidato pre-aprobado `(b) ScmGitCheckoutStepContractSuiteTest` (17-axis burn-down) sobre `(a) classifyFailureKind` y libre criterio. Rationale: cierra el Step post-B2 hardening, alto leverage Jenkins-parity, tractable, hermetic (no necesita git real en CI quick-loop).
+- **Producción modificada (1 archivo, 2 keywords, zero API impact):** `v2/pipeline-step-sdk/scm-git/src/main/kotlin/dev/rubentxu/pipeline/v2/sdk/scm/git/GitCheckoutExecutor.kt`: `class` → `open class` y `fun execute` → `open fun execute`. Idiomático Kotlin para habilitar subclassing/overriding sin mocking deps (scm-git no tiene mockito/mockk). Justificación completa en receipt §3.
+- **Test nuevo (1 clase, 20 tests / 17 axes):** `CoreScmGitCheckoutStepContractSuiteTest` (694 LOC). Hermético — sin git real, sin `V2_GIT_AVAILABLE`, sin red. Ejes cubiertos: identity, contract completeness, codec input/output roundtrip, canonical envelope, registry resolution, capability admission, success, typed-failure matrix (3: NETWORK/USER/INFRASTRUCTURE), replay determinism, observability, missing-capability boundary, architectural fitness, real DSL surface, typed credentialsRef carrier (present + null), recovery policy, **B2 hardening regression guard**.
+- **Step state advance:** `IMPLEMENTED_UNCERTIFIED` → `CERTIFIED` per ADR-0074 (G0..G8 all GREEN).
+- **Recibo:** `docs/v2/07-uat/WU_RP_053R_B4_SCM_GIT_CHECKOUT_CONTRACT_SUITE_RECEIPT.md` (280 líneas).
+- **L1 (B4 test class):** 20/20 / 0f / 0e / 1.011s. XML canary fresh at 2026-09-25T16:56:33.792Z.
+- **L4 scm-git check:** `:pipeline-step-sdk:scm-git:check` BUILD SUCCESSFUL 5s (detekt 0 errors, koverVerify GREEN).
+- **L3 scm-git test regression:** all pre-existing tests UP-TO-DATE / 0 failures.
+- **pipeline-application consumer regression** (with `V2_GIT_AVAILABLE=true`): 5 test classes / 35 tests / 0 failures / 32s:
+  - `F5_1_ScmGitNegativePathsTest`: 11/0/0/0
+  - `F5_1_ScmGitProviderProvenanceTest`: 4/0/0/0
+  - `F5_1_ScmGitStepContractTest`: 10/0/0/0 (pre-existing partial contract, still GREEN)
+  - `ScmGitWorkspaceIsolationTest`: 3/0/0/0
+  - `GitCheckoutExecutorAdversarialTest`: 7/0/0/0 (real-git shell-out, still GREEN)
+- **Lessons #10-#12** dispatched in receipt §7.
+  - #10: `class` → `open class` is minimum-touch enabler for hermetic contract tests when no mocking deps.
+  - #11: Pre-existing `F5_1_ScmGitStepContractTest` is INTEGRATION contract (10 axes in pipeline-application); new `CoreScmGitCheckoutStepContractSuiteTest` is CONTRACT contract (17 axes in plugin module); both needed.
+  - #12: Kotlin backtick test names disallow `;` and `.`-as-word-start; use `and` instead.
+- **Commits atómicos (Conventional Commits strict):** TBD-1 = `feat(pipeline-step-sdk:scm-git)` + TBD-2 = `docs(agent,uat)` (TBD numbers in commit log).
+- **Estado del workflow WU-RP-053R:** C0✅, C1✅, C2✅, C3.1✅, C3.2+C3.6✅, B1✅, B2✅, B3✅, **B4✅** — 8 verticales cerradas en la sesión extendida desde `acc90387`.
+- **Material identity preservada:** origin/main = `acc90387` UNTOUCHED (verified before/after both commits). Worktree HEAD post-commits = TBD-2.
+- **Pendiente:** ninguno bloqueante. Vertical WU-RP-053R B1–B4 ahora cerrada. Posibles próximos ciclos del operador: (i) integración de la vertical a main/PR, (ii) siguiente WU independiente, (iii) refactor D-002 (encodePayload table-driven) anotado para integration checkpoint.
+- **Out of scope respetado:** D-001 NOT touched, WU-RP-058-C NOT touched, new Core Steps NOT touched, RP-6 / markdown NOT touched, control plane NOT touched, core.pwd G3R-G8 NOT touched (requiere WU-RP-087 Phase D second half), D-002 NOT touched (anotado).
+- **Primer comando del siguiente turno:** `cd /var/home/rubentxu/Proyectos/kotlin/wt/wu-rp-053r-red-fixtures && git log --oneline -5 && git status --short && cat docs/v2/07-uat/WU_RP_053R_B4_SCM_GIT_CHECKOUT_CONTRACT_SUITE_RECEIPT.md | head -5`.
+
 ## Inicio de la siguiente sesión (solo lectura antes de tocar código)
 
 1. `git status --short && git rev-parse HEAD && git log -1` — no asumir HEAD = 1d38d778.

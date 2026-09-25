@@ -132,7 +132,17 @@ class GitCheckoutExecutor(
         // for verification by the caller AFTER execute() returns.
         var credentialsFilePath: String? = null
         var gitConfigFilePath: String? = null
-        val gitCreds = resolveGitCredentials(req, spec)
+        val gitCreds: GitCredentials? = try {
+            resolveGitCredentials(req, spec)
+        } catch (e: IllegalStateException) {
+            // WU-RP-053R / B2 (fail-closed credentialsRef): the resolver
+            // raises IllegalStateException when a declared credentialsRef
+            // cannot be resolved against any reachable SecretStore. We
+            // surface that as Result.failure so the step contract (typed
+            // PluginStepException / FailureKind) propagates the diagnostic
+            // instead of an uncaught throw that would crash the JVM path.
+            return Result.failure(e)
+        }
         if (gitCreds != null) {
             val stringCred = gitCreds.string
             val userCred = gitCreds.user
@@ -365,10 +375,32 @@ class GitCheckoutExecutor(
         // Production path: resolve from SecretStore using credentialsId
         // INV-L6-CR-001: kind is DECLARED, never inferred from byte content.
         // INV-L6-CR-004: typed Credential hierarchy is the kind system.
-        val credentialsId = spec.credentialsId ?: return null
-        val store = secretStore ?: req.secretStore ?: return null
+        // WU-RP-053R / B2 (fail-closed credentialsRef): if the user declared a
+        // credentialsId in the script, the executor MUST NOT silently proceed
+        // with anonymous git when no SecretStore is reachable. A declared
+        // credential that cannot be resolved is a USER-visible misconfiguration
+        // and must surface as a typed failure BEFORE any subprocess is
+        // launched — silently dropping the declared credentialsRef would let a
+        // user think they authenticated a private repo when in fact the
+        // checkout fell back to anonymous (which then either succeeds with a
+        // public-mirror artifact or fails with a confusing remote auth error).
+        val credentialsId = spec.credentialsId
+        // Compute the effective store ONCE so the fail-closed branch and the
+        // resolution branch share the same view of the seam.
+        val effectiveStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? =
+            secretStore ?: req.secretStore
+        if (credentialsId != null && effectiveStore == null) {
+            throw IllegalStateException(
+                "scm-git.checkout: credentialsRef declared as '${credentialsId.value}' but no " +
+                    "SecretStore was provided to resolve it. Either supply a SecretStore " +
+                    "(LocalSecretStore via PIPELINE_CREDENTIALS_STORE, or wire one into " +
+                    "GitCheckoutExecutor / GitCheckoutRequest) or remove credentialsRef from the " +
+                    "pipeline script. The credentials intent MUST NOT be silently dropped.",
+            )
+        }
+        if (credentialsId == null) return null
         return try {
-            val credential = store.get(credentialsId)
+            val credential = effectiveStore!!.get(credentialsId)
             // Pattern-match on DECLARED kind (INV-L6-CR-001)
             when (credential) {
                 is dev.rubentxu.pipeline.v2.domain.credentials.SecretText -> {

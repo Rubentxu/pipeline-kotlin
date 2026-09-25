@@ -188,17 +188,42 @@ class UatLocal005GitAuthCanaryRoundGateTest {
         val credsDir = tempDir.resolve("creds")
         Files.createDirectories(credsDir)
 
+        // WU-RP-053R / B2: the previous test wired credentialsRef without a
+        // SecretStore and relied on the fail-open silent-anonymous-checkout
+        // behaviour. After B2 closes that gap, the executor refuses to
+        // proceed without a reachable SecretStore. CAN-002 must reflect the
+        // new contract: the test still verifies that after a SUCCESSFUL
+        // authenticated checkout the credential files are wiped, but it
+        // MUST wire a real SecretStore + GitCredentials so the success path
+        // is exercised (and the wipe assertion is meaningful).
         val credsId = CredentialsId("wipe-test-creds")
+        val secretStore = InMemorySecretStore()
+        secretStore.put(credsId, "wipe-fixture-token".toByteArray(Charsets.UTF_8))
+        val gitCreds = GitCredentials(string = SecretHandleRef(credsId))
+
         val spec = CheckoutSpec(GitScm(
             url = bareRepo.toString(),
             branch = "master",
             credentialsId = credsId
         ))
-        val request = createRequest(spec, workspace)
-        val executor = createExecutor(tempDir, credsDir)
+        val request = GitCheckoutRequest(
+            spec = spec,
+            runId = "canary-002",
+            workspaceRoot = workspace,
+            eventSink = RecordingEventSink(),
+            clock = java.time.Clock.systemUTC(),
+            secretStore = secretStore,
+            stepIndex = 0,
+            previousRemoteSha = null,
+        )
+        val executor = createExecutorWithCreds(tempDir, gitCreds, secretStore)
         executor.use { exec ->
             val result = exec.execute(request)
-            assertTrue(result.isSuccess, "Checkout must succeed")
+            val errMsg = result.exceptionOrNull()?.message
+            assertTrue(
+                result.isSuccess,
+                "Checkout must succeed when a SecretStore resolves the declared credentialsRef; got: $errMsg",
+            )
         }
 
         // After executor closes, credsDir should have been wiped

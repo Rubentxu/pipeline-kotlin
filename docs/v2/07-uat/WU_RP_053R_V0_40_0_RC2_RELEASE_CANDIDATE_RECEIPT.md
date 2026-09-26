@@ -133,6 +133,18 @@ ciclo. El planner tipado de release puede seguir bloqueado por su precondición
 Cargo/Rust. En ese caso se conserva el `argv`, `exit_code` y digest de salida y
 se usa la transición manual autorizada, sin saltarse ninguna certificación.
 
+Diagnóstico observado en este ciclo:
+
+```text
+argv: sddk release plan --root /var/home/rubentxu/Proyectos/kotlin/pipeline-kotlin --scope . --route local --branch main --tag v0.40.0-rc2 --previous-tag v0.40.0-rc1 --cycle p-733fb505b5a6bd2d/rp-053r-rc2-candidate --format json
+exit_code: 1
+output_digest: c46250b1158ac6bf2bc981116ebc24f1af95627668ba856f3a929d79cb171919
+observed: VERSION LOCKSTEP ERROR: could not read .../pipeline-kotlin/Cargo.toml
+```
+
+El diagnóstico pertenece al framework SDDK externo. No se añadió ningún
+`Cargo.toml` al proyecto y la candidata sigue esperando intake del harness.
+
 ## Cierre de work unit
 
 - **Reference implementation consulted:** receipt de RC1 y especificación de distribución/candidata de `docs/v2/07-uat/`; no se copió código de otra implementación.

@@ -457,6 +457,25 @@ def main():
             # part of a current-state projection)
             print(f"OK-STRUCTURAL (timestamp-only delta; existing={existing_sha_m.group(1)[:16]} generated={output_sha[:16]})")
             return 0
+        # If the on-disk file is byte-identical to the file at HEAD, treat
+        # the check as stable even if the regenerated body differs: the
+        # committed file represents the state AT the commit, and the
+        # post-commit reality (origin/wu updated, dirty count changed)
+        # is captured by the next regeneration. This breaks the
+        # post-push STALE loop where disco always shows origin/wu
+        # one commit behind. Skip the comparison if the output path is
+        # outside the repo (test fixtures use temp paths).
+        try:
+            committed = run(["git", "show", f"HEAD:{out_path.as_posix()}"])
+        except RuntimeError:
+            committed = None
+        # run() strips trailing whitespace; preserve the trailing newline so
+        # the byte-comparison matches `existing` (which retains it via
+        # read_bytes).
+        if committed is not None and committed + "\n" == existing:
+            print(f"OK-COMMITTED (matches HEAD; existing={existing_sha_m.group(1)[:16]} generated={output_sha[:16]})")
+            return 0
+
         print(f"STALE (existing-struct={existing_struct_sha[:16]} generated-struct={generated_struct_sha[:16]})")
         return 1
 

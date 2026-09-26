@@ -6,11 +6,11 @@ handling special dispositions (E3), regenerating (E4), proving gate
 (E5), and producing final receipt (E6) — without deferring to
 TRAIN-1 and without PRDY-010/promotion/merge to main").
 
-**HEAD at receipt creation:** `b3e7f40fd5754743cf37d796a7292b675e90cccb` (branch
-`wu/rp-053r-red-fixtures`, ahead=86 behind=0 relative to `origin/main`).
+**HEAD at receipt creation:** `e393eb896f246d7f59e8d30673083ffcf1bcb3cd` (branch
+`wu/rp-053r-red-fixtures`, ahead=89 behind=0 relative to `origin/main`).
 
 Note: this receipt is itself a commit, so the live branch tip is one
-commit ahead of `b3e7f40f` after this file lands. The receipt's
+commit ahead of `e393eb89` after this file lands. The receipt's
 narrative describes the state at this commit's creation, not the
 final branch tip; subsequent receipt-only commits are tracked in
 `WORK_JOURNAL.md` and `TECH_DEBT_BACKLOG.md`.
@@ -224,6 +224,9 @@ Total: **94/94 hermetic tests PASS** (no flakiness observed).
 ## 7 — Commits produced in this block
 
 ```
+e393eb89 docs(t0e): mirror UAT-EVIDENCE markers for 002/004/010/013/015 in closure receipt
+88d30758 regen(current-uat-status): final regen at HEAD aee5c433
+aee5c433 docs(t0e): sync HEAD ref + commit list (37 commits)
 b3e7f40f docs(t0e): update closure receipt for R3/R5 message-list fixes
 9dd17494 fix(admission-check): R3 exposes dirty_count + full all_dirty list
 0f70e909 fix(admission-check): R5 exposes failure_count + full all_failures list
@@ -263,7 +266,7 @@ e27a21ad fix(receipt): remove narrative status tokens that triggered CONFLICT
 56467ed2 fix(gen-current-uat-status): T0E-EVID-01 E1 — DAG-maximal commits + per-UAT scoping
 ```
 
-37 commits total. 2 new files / 6 modified files at HEAD (`b3e7f40f`):
+40 commits total. 2 new files / 6 modified files at HEAD (`e393eb89`):
 
 - `scripts/gen-current-uat-status.py` — E1 + E3 certifier architecture.
 - `scripts/test_gen_current_uat_status.py` — 27 tests.

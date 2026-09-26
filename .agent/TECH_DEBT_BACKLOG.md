@@ -672,3 +672,131 @@ D-007 fix surfaces a separate gap: missing evidence for UAT-RP-002 /
 causal recency; per-line status leaks across UATs). Tracked as
 **T0E-EVID-01** (above, same WorkItem). T0E-EVID-01 is OPEN and
 handled inside TRAIN-0 T0.E; it is NOT deferred to TRAIN-1.
+
+## D-011 — Auditoría técnica 2026-09-26 (P3, roadmap post-candidata)
+
+**Detected:** 2026-09-26, auditoría técnica senior del repositorio
+en HEAD `52b13388` (rama `wu/rp-053r-red-fixtures`, 123 commits ahead
+de `origin/main`).
+
+**Severity:** P3 (calidad arquitectónica; sin blocker; sin regresión
+funcional). Todos los hallazgos son trabajo de roadmap post-candidata,
+no defectos bloqueantes.
+
+**Source of truth:** `.agent/AUDIT_REPORT_2026_09_26.md` (200 líneas,
+publicado durante este bloque autónomo).
+
+**Scope:** 14 hallazgos categorizados por prioridad. 3 ALTA, 5 MEDIA,
+6 BAJA. Trazabilidad uno-a-uno al audit report §3 y §4.
+
+**Status:** ABIERTO. No tocado en este bloque. Registrado para
+planificación del siguiente ciclo.
+
+### Hallazgos ALTA (3) — siguiente minor
+
+| ID | Ubicación | Recomendación |
+|---|---|---|
+| H1 | `PipelineDsl.kt` (2525 LOC) | Partir en `PipelineDsl.kt` + `PipelineDslValidation.kt` + `PipelineDslLowering.kt`. ADR-0078. |
+| H2 | `CanonicalDurableRunCoordinator.kt` (1856 LOC) | Partir `CanonicalRuntimeContext` (12 campos) en `RuntimeContext` + `CoordinatorCaps`. ADR-0079. |
+| H3 | `Main.kt` (1148 LOC) + `parseCliArgs` (casero) | Adoptar `com.github.ajalt.clikt:clikt` con `PipelineRootCommand` + subcommands `validate`/`run`. ADR-0077. |
+
+### Hallazgos MEDIA (5) — siguiente minor
+
+| ID | Ubicación | Recomendación |
+|---|---|---|
+| H4 | `interfaces/PipelineUseCase.kt` huérfano | Eliminar o marcar `@Deprecated("unused, kept for ABI")`. |
+| H5 | `parseCliArgs` mutable | Extraer `CliFlags` data class + `parse(args): Either<CliError, CliFlags>`. |
+| H6 | Sin JaCoCo global | Activar `jacoco { toolVersion = "0.8.12" }` con `violation-rules` por módulo. ADR-0080. |
+| H7 | `JsonEventLog.kt` (1667 LOC) | Separar `EventLogCodec` (puro) de `FileEventLogStore` (IO). ADR formal. |
+| H8 | `LocalSecretStore.kt` (1616 LOC) | Dividir en `LocalSecretStore` + `SecretPatternRegistry` + `CredentialScopeLease`. ADR-0081. |
+
+### Hallazgos BAJA (6) — backlog
+
+| ID | Ubicación | Recomendación |
+|---|---|---|
+| H9 | `v2/gradle.properties` | Habilitar `org.gradle.configuration-cache=true`. ADR-0082. |
+| H10 | 219/392 prod files sin test adyacente | Métrica `ContractSuite coverage %` en dashboard. |
+| H11 | Sin badges de calidad | Sección "Status" en README. |
+| H12 | `DurableShellExecutor.kt` (1310 LOC) | `ShellCommandRunner` + `HeartbeatSupervisor` (puertos). ADR-0083. |
+| H13 | `docs/historico/` ruido | Política de archivo documental. ADR-0084. |
+| H14 | Codecs JSON duplicados (96 + 51 patterns) | `PipelineCodecs` con `Json` único + extensiones inline. ADR-0085. |
+
+### Roadmap de continuación (audit report §9)
+
+| # | Acción | Esfuerzo | ADR |
+|---|---|---|---|
+| C1 | H1 + H2 + H3 (partición archivos >1300 LOC) | M | ADR-0077, 0078, 0079 |
+| C2 | H6 (JaCoCo global) + H10 (métricas dashboard) | S | ADR-0080 |
+| C3 | H14 (codec consolidation) | S | ADR-0085 |
+| C4 | Cierre UAT-RP-001 y UAT-RP-016 (REFERENCED) cuando el harness publique recibos | M | — |
+| C5 | `binary-compatibility-validator` activo en todos los `:pipeline-*` | S | — |
+| C6 | Abrir ADR-0076..ADR-0086 — ciclo "Auditoría 2026-Q3" | S | — |
+| C7 | Política de archivo documental (H13) | S | ADR-0084 |
+
+### Decisión de priorización
+
+Tres criterios en conflicto, resueltos por valor/coste:
+
+1. **Valor para el siguiente release**: C1 (H1+H2+H3) — ataca el
+   riesgo R3 del audit (creeping complexity en coordinator y DSL).
+   Sin esto, la próxima minor acumula complejidad que no se amortiza.
+2. **Coste de oportunidad**: C2 (JaCoCo) requiere tocar Gradle build
+   files y excluir tipos generados por KSP; esfuerzo bajo, valor alto
+   para cualificar regresiones.
+3. **Riesgo de ABI**: C5 (`binary-compatibility-validator`) es la
+   garantía de que los refactors C1 no rompen el contrato público.
+
+### Por qué NO se hizo en este bloque
+
+- STOP activo del operador sobre PRDY-010 / merge a main / TRAIN-1.
+- El bloque previo (auditoría) ya emitió el informe; ejecutar
+  cualquiera de C1-C7 sin autorización cruzaría la frontera del
+  auditor (lectura pura) al ejecutor (modificación de código).
+- El siguiente ciclo debe decidir qué WorkItem absorbe C1-C7 y bajo
+  qué WU-RP-### se ejecuta.
+
+### Sin código tocado
+
+Cero cambios de producción. Cero tests añadidos. Cero admisión o
+certificador afectados.
+
+### Riesgos asociados (audit report §8)
+
+| # | Riesgo | Mitigación recomendada |
+|---|---|---|
+| R1 | Bifurcación con `origin/main` crece | PRDY-010 absorbe el delta al mergear |
+| R2 | UATs REFERENCED sin verificación interna | C4 espera recibo del harness |
+| R3 | Creeping complexity coordinator/DSL | C1 antes del próximo salto de versión |
+| R4 | Acoplamiento codec/contrato | C3 |
+| R5 | Falta JaCoCo | C2 |
+| R6 | Plugin signing ausente | Out-of-scope; ADR-0086 cuando proceda |
+| R7 | Compatibilidad ABI rota | C5 |
+
+### Lección operativa (sin código)
+
+Convertir un audit aislado en backlog accionable requiere:
+
+1. Cada hallazgo con `Severidad | Ubicación | Evidencia | Impacto | Recomendación`.
+2. ADR propuesto por hallazgo ALTA/MEDIA (trazabilidad a la decisión).
+3. Roadmap C1-C7 con esfuerzo + ADR + valor.
+4. Decisión documentada de qué se ejecuta primero y por qué.
+5. Cero ejecución en el mismo bloque donde se audita.
+
+Esta entrada implementa esos 5 puntos para los 14 hallazgos del
+audit 2026-09-26.
+
+### Esfuerzo estimado total
+
+C1 ≈ 2-3 WUs de tamaño medio (H1+H2+H3 cada una con su WU dedicada).
+C2-C7 cada una cabe en una WU de 1-2 commits. Total estimado: 6-9 WUs
+para liquidar el backlog D-011.
+
+---
+
+## Notas operativas (actualizadas 2026-09-26)
+
+- D-001..D-010 RESUELTO o marcado OBSOLETO.
+- D-011 (este) registrado, sin resolver.
+- T0E-EVID-01 RESUELTO en `1893e104`.
+- Próxima WU candidata: extraer una o más entradas de D-011 a WU-RP
+  individual bajo autorización del operador.

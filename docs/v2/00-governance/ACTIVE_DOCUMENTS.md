@@ -1,16 +1,34 @@
 # Documentos activos y autoridad de V2
 
-**Actualizado:** 2026-09-21. **Estado:** índice de lectura ACTIVO.
+**Actualizado:** 2026-09-26 (TRAIN-0 cutover). **Estado:** índice de lectura ACTIVO.
+
+## Autoridad operativa
+
+```text
+SDDK + Git + ADRs/contratos publicados + evidencia externa (harness, GitHub)
+       → autoridad efectiva
+ROADMAP / ACTIVE_DOCUMENTS / ADR / specs / UAT
+       → autoridad de producto/documental
+.agent/SESSION_POINTER.md, .agent/WORK_JOURNAL.md, .agent/TECH_DEBT_BACKLOG.md
+       → proyección humana opcional / histórico; NO autoridad
+```
+
+> Cualquier discrepancia entre el contenido de `.agent/*` y el estado real (SDDK + Git + CI) se resuelve a favor del estado real.
 
 ## Empezar siempre aquí
 
-1. docs/v2/05-roadmap/ROADMAP.md — única secuencia de trabajo y exit criteria actuales.
-2. .agent/SESSION_POINTER.md — primera WU operativa, bloqueos, último commit de código conocido y primer comando.
-3. .agent/WORK_JOURNAL.md — diario append-only de decisiones y handoffs; no sustituye a Git ni a CI.
-4. .agent/TESTING-STATE.md — topología/comandos conocidos, reutilizar sólo cuando siguen siendo válidos para el SHA actual.
-5. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
-6. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el puntero antes de ejecutar cualquier WU.
-7. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md, ADR-0070..0093 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar.
+1. Recuperar estado mediante SDDK: `sddk status --cycle <active-cycle>` y `sddk project resolve --root . --scope .`.
+2. docs/v2/05-roadmap/ROADMAP.md — única secuencia de trabajo y exit criteria actuales.
+3. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
+4. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el estado SDDK antes de ejecutar cualquier WU.
+5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md y ADR-0070..0093 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar.
+
+## Proyección humana opcional (no autoridad)
+
+- `.agent/SESSION_POINTER.md` — primera WU operativa, bloqueos, último commit de código conocido y primer comando. Consulta histórica, no autoridad.
+- `.agent/WORK_JOURNAL.md` — diario append-only de decisiones y handoffs; no sustituye a Git ni a CI. Histórico, no autoridad.
+- `.agent/TECH_DEBT_BACKLOG.md` — registro de deuda. Histórico, no autoridad.
+- `.agent/TESTING-STATE.md` — topología/comandos conocidos. Histórico, no autoridad.
 
 ## Precedencia y resolución de conflictos
 

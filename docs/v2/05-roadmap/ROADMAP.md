@@ -4,7 +4,7 @@
 **Baseline de código auditado:** main @ a554fd5544f74f580bbd531c9b394cff1e073621 (2026-09-21).
 **Estado de esta entrega:** SOLO DOCUMENTACIÓN; NO se ha recompilado ni recertificado HEAD.
 **Estado de producto publicado:** v0.39.0, GitHub Release de 2026-09-19; su certificación NO se transmite a commits posteriores.
-**Puntero operativo:** .agent/SESSION_POINTER.md. **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
+**Autoridad operativa (TRAIN-0 cutover 2026-09-26):** SDDK + Git + ADRs + evidencia externa. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico (no autoridad). **Pruebas vinculantes:** ../07-uat/CERTIFICATION_PROTOCOL.md y ../07-uat/PRODUCTION_READY_UAT_MATRIX.md.
 
 ## 0. Autoridad, límites y significado de DONE
 
@@ -144,7 +144,7 @@ Plugins de reportes/testing/artifacts/toolchains/SCM/HTTP y coordinación local 
 ## 12. Mecánica de ejecución y actualización
 
 - Cada WU sigue: caracterización RED real o baseline → especificación/ADR cuando proceda → parche mínimo → pruebas T0 contrato, T1 módulo, T2 fitness/corpus, T3 instalada, T4 durable/fallos, T5 release/soak cuando el impacto lo exige → recibo y commit.
-- Mantener .agent/SESSION_POINTER.md como ÚNICO puntero de reanudación, .agent/WORK_JOURNAL.md append-only y .agent/TESTING-STATE.md para comandos/evidencia reutilizable. Si el puntero contradice Git/CI, se marca STALE y se corrige antes de trabajar.
-- Cada cierre registra fecha UTC, base SHA, HEAD SHA, WU, decisiones, paths, test argv/exit/XML, hashes de artefactos, errores abiertos, evidencia caducada, próximo primer comando y motivo. La validación histórica no se reescribe.
+- La unidad de entrega es el **TRAIN** (un ciclo SDDK con sus WUs internas). El estado operativo se recupera vía SDDK (`sddk status --cycle <active-cycle>`, `sddk project resolve`, `sddk cycle next`). `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md`, `.agent/TESTING-STATE.md` y `.agent/TECH_DEBT_BACKLOG.md` son **proyección humana opcional / histórico** y NO autoridad. Si contradicen SDDK/Git/CI, la resolución es a favor del estado real y se marca el fichero como obsoleto para esa sesión.
+- Cada cierre registra fecha UTC, base SHA, HEAD SHA, TRAIN/WU, decisiones, paths, test argv/exit/XML, hashes de artefactos, errores abiertos, evidencia caducada, próximo primer comando y motivo. La validación histórica no se reescribe.
 - Los porcentajes se publican sólo para cohortes cerradas con denominador verificable (p. ej. WUs 2/6); si una WU está TBD, el avance global es NO_CALCULABLE.
 - La secuencia puede evolucionar por descubrimiento respaldado por un ADR/recibo, preservando trazabilidad y gates. Ni un TODO ni un comentario de código prevalecen sobre una prueba ejecutada.

@@ -2,21 +2,36 @@
 
 ## PROTOCOLO DE RECUPERACIÓN DE SESIÓN Y ROADMAP ACTIVO (2026-09-21, LEER PRIMERO)
 
-**Ámbito:** V2. Este bloque concreta la navegación y el gate de continuidad; NO modifica ADRs aceptados, contratos públicos ni excepciones de autorización de INITIATIVE_LPR_001. El usuario ha pedido preservar históricos y trabajar con una sola secuencia production-ready.
+**Ámbito:** V2. Este bloque concreta la navegación y el gate de continuidad; NO modifica ADRs aceptados, contratos públicos ni excepciones de autorización de INITIATIVE_LPR_001.
 
-**ÚNICA secuencia operativa:** docs/v2/05-roadmap/ROADMAP.md. **ÚNICO puntero de reanudación:** .agent/SESSION_POINTER.md. **DIARIO append-only:** .agent/WORK_JOURNAL.md. **GATES:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md. **Índice normativo/histórico:** docs/v2/00-governance/ACTIVE_DOCUMENTS.md y docs/historico/INDEX.md.
+**Autoridad operativa (TRAIN-0 cutover 2026-09-26):**
+
+```text
+SDDK + Git + ADRs/contratos publicados + evidencia externa (harness, GitHub)
+      → autoridad efectiva
+GitHub Releases / recibos inmutables    → autoridad factual por SHA
+documentos normativos (ROADMAP, ACTIVE_DOCUMENTS, ADR, specs, UAT)
+      → autoridad de producto/documental
+.agent/SESSION_POINTER.md y .agent/WORK_JOURNAL.md
+      → proyección humana opcional / histórico; NO autoridad
+```
+
+**ÚNICA secuencia operativa:** docs/v2/05-roadmap/ROADMAP.md. **GATES:** docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md. **Índice normativo/histórico:** docs/v2/00-governance/ACTIVE_DOCUMENTS.md y docs/historico/INDEX.md.
 
 Al INICIO de CADA sesión, antes de editar código:
-1. Leer este bloque y consultar git status --short, git rev-parse HEAD, git log -1, rama y CI del SHA. Nunca presuponer que HEAD coincide con un handoff antiguo.
-2. Leer SESSION_POINTER, ROADMAP, CERTIFICATION_PROTOCOL, UAT_MATRIX y última entrada de WORK_JOURNAL; leer TESTING-STATE solo para topología/impacto y datos todavía vigentes. Contrastar el puntero con Git/CI y actualizarlo si quedó obsoleto.
-3. Identificar NEXT_WU, base SHA, precondiciones, ADR/contratos, código consumidor, UAT y criterios de salida. No retomar automáticamente la próxima WU de un handoff antiguo ni ejecutar una cola paralela.
-4. Verificar qué evidencia pertenece al SHA exacto. Certificaciones/recibos de v0.39.0 o de commits anteriores NO hacen verde main. Si falta verificación, escribir NOT_RUN/BLOCKED; jamás PASS por mera presencia de tests, tag, log o recibo antiguo.
-5. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan ./gradlew -p v2 desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
-6. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere CI completo, lanzar CI para el NUEVO SHA y registrar jobs realmente ejecutados.
+1. Recuperar estado mediante SDDK (`sddk cycle status --cycle <active-cycle>`, `sddk status`, `sddk project resolve --root . --scope .`).
+2. Contrastar git status --short, git rev-parse HEAD, git log -1, rama y CI del SHA.
+3. Contrastar ADRs/contratos publicados y ROADMAP.md. NO asumir que HEAD coincide con un handoff antiguo, receipt pasado o SESSION_POINTER local.
+4. Identificar la unidad de trabajo activa (TRAIN) y el WorkItem READY dentro del TRAIN. Identificar NEXT_WU, base SHA, precondiciones, ADR/contratos, código consumidor, UAT y criterios de salida. No retomar automáticamente la próxima WU de un handoff antiguo ni ejecutar una cola paralela.
+5. Verificar qué evidencia pertenece al SHA exacto. Certificaciones/recibos de v0.39.0 o de commits anteriores NO hacen verde main. Si falta verificación, escribir NOT_RUN/BLOCKED; jamás PASS por mera presencia de tests, tag, log o recibo antiguo.
+6. Para ejecutar Gradle desde la raíz, el wrapper está en v2/gradlew: usar cd v2 && ./gradlew <tasks> o v2/gradlew -p v2 <tasks>. Las instrucciones antiguas que usan ./gradlew -p v2 desde la raíz son erróneas; NO copiarlas sin corregir la ruta.
+7. No avanzar nuevos Steps mientras RP-0/RP-1 estén abiertos. Seguir la escalera de tests por impacto; cuando el gate requiere CI completo, lanzar CI para el NUEVO SHA y registrar jobs realmente ejecutados.
 
-Al FINAL de cada WU/sesión: actualizar EN EL MISMO CAMBIO SESSION_POINTER (fase, próxima WU, HEAD observado, bloqueos, primer comando), añadir entrada nueva a WORK_JOURNAL (base/head, cambios, resultados reales, tests no ejecutados, evidencia caducada), mantener TESTING-STATE únicamente donde cambie la topología/impacto, y emitir receipt inmutable nuevo por SHA cuando haya pruebas. No cerrar WU hasta satisfacer UAT/gates; una interrupción preserva el estado OPEN. Si Git/CI contradice el puntero, registrar la divergencia y tomar Git/CI como realidad observada.
+Al FINAL de cada bloque sustancial del TRAIN activo: la unidad de cierre es el propio SDDK cycle (TRAIN). Actualizar `sddk cycle transition` o `sddk capability` según el contrato del TRAIN; emitir receipt inmutable nuevo por SHA cuando haya pruebas. Una interrupción preserva el estado OPEN del cycle lease. Si Git/CI contradice SDDK, registrar la divergencia y tomar Git/CI como realidad observada.
 
-**Autoridad:** ADRs aceptados + especificaciones y contratos publicados > seguridad/autorización > ROADMAP (orden/gates) > SESSION_POINTER (estado observado) > receipts históricos (evidencia de su SHA) > paquetes en docs/historico. El auto-run NO rebaja un gate ni autoriza cambios públicos excepcionales. Para un cambio que contradiga una decisión aceptada, requerir ADR/autorización correspondiente.
+**Autoridad:** ADRs aceptados + especificaciones y contratos publicados > seguridad/autorización > ROADMAP (orden/gates) > SDDK cycle state (estado operativo observado) > recibos/fuentes normativas > receipts históricos (evidencia de su SHA) > paquetes en docs/historico. El auto-run NO rebaja un gate ni autoriza cambios públicos excepcionales. Para un cambio que contradiga una decisión aceptada, requerir ADR/autorización correspondiente.
+
+> **Nota TRAIN-0:** `.agent/SESSION_POINTER.md`, `.agent/WORK_JOURNAL.md` y `.agent/TECH_DEBT_BACKLOG.md` pueden consultarse como **evidencia histórica** para resolver discrepancias, pero NO son autoridad operativa. Cualquier discrepancia entre el contenido de `.agent/*` y el estado real (SDDK + Git + CI) se resuelve a favor del estado real, y `.agent/*` se marca como obsoleto para esa sesión.
 
 ---
 

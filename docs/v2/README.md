@@ -1,6 +1,6 @@
 # Pipeline Kotlin V2 — Architecture & Delivery Pack
 
-> **Navegación activa 2026-09-21:** empezar por [roadmap vigente](05-roadmap/ROADMAP.md), [autoridad documental](00-governance/ACTIVE_DOCUMENTS.md), [certificación](07-uat/CERTIFICATION_PROTOCOL.md), [UAT](07-uat/PRODUCTION_READY_UAT_MATRIX.md) y el puntero .agent/SESSION_POINTER.md. Esta introducción de 2026-08 se conserva por contexto, no como la cola de implementación. Las propuestas originales están en docs/historico/INDEX.md.
+> **Navegación activa (TRAIN-0 cutover 2026-09-26):** empezar por [roadmap vigente](05-roadmap/ROADMAP.md), [autoridad documental](00-governance/ACTIVE_DOCUMENTS.md), [certificación](07-uat/CERTIFICATION_PROTOCOL.md) y [UAT](07-uat/PRODUCTION_READY_UAT_MATRIX.md). El estado operativo se recupera vía SDDK (`sddk status --cycle <active-cycle>`); `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico y NO autoridad. Esta introducción de 2026-08 se conserva por contexto, no como la cola de implementación. Las propuestas originales están en docs/historico/INDEX.md.
 
 
 > **Scope notice (2026-09-03):** this delivery pack is retained as historical

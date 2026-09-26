@@ -67,4 +67,4 @@ Un fallo P0, un caso de aislamiento inseguro o una prueba obligatoria ausente im
 
 ## 7. Gobierno de evidencia y caducidad
 
-En toda sesión: leer .agent/SESSION_POINTER.md, comparar su last_observed_code_sha con Git/CI y enumerar surfaces que cambiaron. Declarar qué pruebas y recibos aún aplican y cuáles caducaron; emitir un nuevo recibo consolidado tras un cambio transversal. Certificación antigua: referencia histórica válida para SU artefacto, no resultado de HEAD.
+En toda sesión: recuperar el estado vía SDDK (`sddk status --cycle <active-cycle>`, `sddk project resolve`); comparar el `last_observed_code_sha` recuperado con Git/CI; enumerar surfaces que cambiaron. `.agent/SESSION_POINTER.md` queda como proyección humana opcional / histórico y NO autoridad; si contradice SDDK/Git/CI, se descarta su contenido como obsoleto para esa sesión y se resuelve a favor del estado real. Declarar qué pruebas y recibos aún aplican y cuáles caducaron; emitir un nuevo recibo consolidado tras un cambio transversal. Certificación antigua: referencia histórica válida para SU artefacto, no resultado de HEAD.

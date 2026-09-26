@@ -294,3 +294,43 @@ also already has fresh XMLs in the same directory.
 
 All five COVERED receipts are now backed by a fresh XML at the
 current HEAD, not just by the E2 receipt's self-report.
+
+## E2-VERIFY@85b906c9 — Re-execution at the live branch tip
+
+After receipt-creation follow-on commits, the operator's brief
+asked for the E2 oracles to be executable against the *current*
+candidate. Re-execute all five E2 test classes against the live
+candidate at HEAD `85b906c9` and capture fresh JUnit XML digests:
+
+```text
+$ cd v2 && ./gradlew :pipeline-application:test \
+    :pipeline-domain:test --tests DivergenceDetectorTest \
+    :pipeline-events:test --tests JsonEventLogRoundTripTest \
+    --tests Lpr011SecretRedactionTranscriptUatTest \
+    --tests Lpr011r2SecretRedactionAtRestUatTest
+BUILD SUCCESSFUL
+```
+
+```text
+UAT-RP-004a — DslCompiledPipelineCompilerTest:
+  sha256 = abef8d5390864a306b4b01d6f288bc786273637f8b51b8f4bc6b06a4f70829d3
+  tests="13" failures="0" errors="0" → 13/13 PASS
+UAT-RP-004b — CliCompileErrorExitsOneTest:
+  sha256 = 730df03eb40f33249ddf2cfd750f78e73982ac098fbf700e31542b4bfad6d9b8
+  tests="3"  failures="0" errors="0" → 3/3 PASS
+UAT-RP-010 — JsonEventLogRoundTripTest:
+  sha256 = d898bf41f2aaca3ee86d38b86a4a5cc3798db59d9f4a0fb2399a9c006fc9ec79
+  tests="28" failures="0" errors="0" → 28/28 PASS
+UAT-RP-013 — DivergenceDetectorTest:
+  sha256 = b9a1e212c5ede6e0c10756baf1ad3c5c818ae5ed92d0eb41cbc6976cbc86bb39
+  tests="4"  failures="0" errors="0" → 4/4 PASS
+UAT-RP-015a — Lpr011SecretRedactionTranscriptUatTest:
+  sha256 = 813ad355287ea2d2d28e03486db8533b4e6eef7113157247abd0c0354fa26434
+  tests="6"  failures="0" errors="0" → 6/6 PASS
+UAT-RP-015b — Lpr011r2SecretRedactionAtRestUatTest:
+  sha256 = fc3cec671a48773c50d6abf97981ead5a154cc7d6254d4401196a0cb0c12431e
+  tests="11" failures="0" errors="0" → 11/11 PASS
+```
+
+Total: 65/65 tests across the five E2 classes, all green at the
+live candidate.

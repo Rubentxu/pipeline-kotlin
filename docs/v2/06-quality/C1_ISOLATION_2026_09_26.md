@@ -140,7 +140,7 @@ resto ≈ 1 700 LOC de métodos
 | `dispatchBody` | 1051–1437 | **387** |
 | `invokeBodyChildren` | 1438–1503 | 66 |
 | `executeWaitUntilBodyInline` | 1504–1690 | **187** |
-| `executeCredentialLeasedBody` | 1691–1856 | **166** |
+| `executeCredentialLeasedBody` | 1691–1829 | **139** |
 
 ### El ctor tiene 18 named params + 5 inits
 
@@ -156,15 +156,22 @@ bodyInvokerAdapter
 ```
 
 El audit (D-011 H2) hablaba de "**12 campos**" en `CanonicalRuntimeContext`;
-revisión: son **13 fields**:
+revisión: son **11 fields** (F2 correction a F1 — el isolation doc inicial
+mencionó 13, conteo del primer read incorrecto):
 
 ```text
 opId, runId, stageName, stageIndex, stepIndex, shOptions,
-controlDirRoot, eventSink, bodyInvoker,
-secretPatternRegistry (nullable),
-workspaceBase (nullable)
-                          (11 mandatory + 2 nullable = 13 fields)
+controlDirRoot (nullable),
+eventSink,
+bodyInvoker (nullable default null),
+secretPatternRegistry (nullable default null),
+workspaceBase (nullable default null)
+                          (7 mandatory + 4 nullable-type = 11 fields totales)
 ```
+
+Resumen de nullability: 3 nullable-con-default (`bodyInvoker`,
+`secretPatternRegistry`, `workspaceBase`) + 1 nullable-sin-default
+(`controlDirRoot`) = 4 fields nullable; 7 mandatory.
 
 (`CanonicalRuntimeContext` vive en `CanonicalNodeDispatcher.kt`, no en
 el coordinator file).
@@ -403,7 +410,60 @@ subcommands + el casero `main` de 662 LOC en un framework único**. Es
 una ronda de 6 commits separados. **Fuera de scope de este bloque**:
 el operador lo prioriza como Variante B en próximo minor.
 
-## Próximo paso propuesto
+---
+
+## F2 — Correcciones a F1 (round de revisión post-commit)
+
+**Detected:** 2026-09-26, tras la revisión crítica de F1 contra el código
+real (post-commit del isolation doc, antes del next-step D-013).
+
+### F2.1 — Field count de `CanonicalRuntimeContext` (H2)
+
+El isolation doc inicial decía "13 fields" — conteo del primer read
+incorrecto. Recuento verificado en F2 con `awk '/^data class/,/^\)$/'`
++ `grep -c "^    val "`: **11 fields totales** (no 12 como dijo el
+audit, no 13 como dijo F1).
+
+- 7 mandatory: `opId, runId, stageName, stageIndex, stepIndex, shOptions, eventSink`
+- 4 nullable: `controlDirRoot` (sin default), `bodyInvoker, secretPatternRegistry,
+  workspaceBase` (con default null)
+
+### F2.2 — LOC de `executeCredentialLeasedBody` (H2)
+
+El isolation doc inicial decía 166 LOC. Recuento verificado con el awk
+bracket-aware: **139 LOC** (líneas 1691-1829, no 1691-1856).
+
+`executeCredentialLeasedBody` cierra antes del final del archivo
+(`NoopStepRegistry` ocupa 1838-1856 con 19 LOC). Sin impacto en la
+recomendación; el método sigue siendo >100 LOC y candidato a
+extracción futura.
+
+### F2.3 — Validación cruzada contra el audit D-011
+
+D-011 §3 H2 decía "partición CanonicalRuntimeContext (12 campos) en
+RuntimeContext + CoordinatorCaps". F1 lo recogió y F2 lo corrige:
+
+- `CanonicalRuntimeContext` ya está semi-aislado en su propio archivo
+  conceptual (vive en `CanonicalNodeDispatcher.kt`). La partición
+  lógica es moverlo a `CanonicalRuntimeContext.kt`. Esa partición no
+  es por número de campos sino por **separación de responsabilidades**:
+  canonical node dispatcher ≠ runtime context.
+- `CoordinatorCaps` propuesta del audit es razonable, cubre 22 named
+  ctor params. La migración debe ser compat dual-ctor, no breaking.
+
+### F2.4 — Lo que mejora de F1 → F2
+
+1. **Recuentos exactos** sustituyen aproximaciones: 11 fields, 139 LOC,
+   range cierra en línea 1829.
+2. **Nullability breakdown** explícito (7 mandatory + 4 nullable; 3
+   nullable-con-default).
+3. **Método de verificación** documentado para auditoría externa:
+   `awk + grep -c` es reproducible, y un future agent puede repetirlo.
+4. **Auditor → Ejecutor**: este round confirma el principio
+   "análisis aislado antes de código". F1 tomó 5 reads + 1 lectura de
+   ranges; F2 corrigió conteos antes de tocar producción. Cero código
+   tocado entre F1 y F2.
+
 
 1. Cerrar F1 + este documento.
 2. Proceder a **D-013** (coverage thresholds) como segunda fase del

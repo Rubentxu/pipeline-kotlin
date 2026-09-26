@@ -5,17 +5,18 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.boolOrNull
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredArray
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredObject
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
-import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -30,23 +31,25 @@ import kotlinx.serialization.json.put
  *                       | { "kind": "files", "paths": [<string>, ...] } }
  *   output : { "absolutePath": <string>, "byteSize": <long>,
  *              "sha256Hex": <string>, "entryCount": <int> }
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged.
  */
 object CoreUtilsZipInputCodec : StepCodec<ZipInput> {
 
-    override fun encode(input: ZipInput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(input: ZipInput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("path", input.path)
             put("overwrite", input.overwrite)
             put("sources", sourcesToJson(input.sources))
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): ZipInput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val path = obj.getValue("path").jsonPrimitive.content
-        val overwrite = obj["overwrite"]?.jsonPrimitive?.content?.toBoolean() ?: false
-        val sources = sourcesFromJson(obj.getValue("sources"))
+        val obj = PipelineJson.decode(encoded)
+        val path = obj.requiredString("path")
+        val overwrite = obj.boolOrNull("overwrite") ?: false
+        val sources = sourcesFromJson(obj.requiredObject("sources"))
         return ZipInput(path = path, overwrite = overwrite, sources = sources)
     }
 
@@ -82,7 +85,7 @@ object CoreUtilsZipInputCodec : StepCodec<ZipInput> {
         }
         is ZipSources.FromFiles -> buildJsonObject {
             put("kind", "files")
-            put("paths", kotlinx.serialization.json.buildJsonArray {
+            put("paths", buildJsonArray {
                 s.paths.forEach { add(it) }
             })
         }
@@ -90,11 +93,11 @@ object CoreUtilsZipInputCodec : StepCodec<ZipInput> {
 
     private fun sourcesFromJson(elem: kotlinx.serialization.json.JsonElement): ZipSources {
         val obj = elem.jsonObject
-        return when (val kind = obj.getValue("kind").jsonPrimitive.content) {
-            "glob" -> ZipSources.FromGlob(obj.getValue("glob").jsonPrimitive.content)
-            "directory" -> ZipSources.FromDirectory(obj.getValue("directory").jsonPrimitive.content)
+        return when (val kind = obj.requiredString("kind")) {
+            "glob" -> ZipSources.FromGlob(obj.requiredString("glob"))
+            "directory" -> ZipSources.FromDirectory(obj.requiredString("directory"))
             "files" -> {
-                val arr = obj.getValue("paths").jsonArray
+                val arr = obj.requiredArray("paths")
                 ZipSources.FromFiles(arr.map { it.jsonPrimitive.content })
             }
             else -> throw PluginStepException(
@@ -109,23 +112,22 @@ object CoreUtilsZipInputCodec : StepCodec<ZipInput> {
 
 object CoreUtilsZipOutputCodec : StepCodec<ZipOutput> {
 
-    override fun encode(output: ZipOutput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(output: ZipOutput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("absolutePath", output.absolutePath)
             put("byteSize", output.byteSize)
             put("sha256Hex", output.sha256Hex)
             put("entryCount", output.entryCount)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): ZipOutput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val obj = PipelineJson.decode(encoded)
         return ZipOutput(
-            absolutePath = obj.getValue("absolutePath").jsonPrimitive.content,
-            byteSize = obj.getValue("byteSize").jsonPrimitive.content.toLong(),
-            sha256Hex = obj.getValue("sha256Hex").jsonPrimitive.content,
-            entryCount = obj.getValue("entryCount").jsonPrimitive.content.toInt(),
+            absolutePath = obj.requiredString("absolutePath"),
+            byteSize = obj.requiredString("byteSize").toLong(),
+            sha256Hex = obj.requiredString("sha256Hex"),
+            entryCount = obj.requiredString("entryCount").toInt(),
         )
     }
 

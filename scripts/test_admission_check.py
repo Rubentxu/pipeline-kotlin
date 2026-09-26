@@ -222,6 +222,23 @@ class R0CandidateExistenceTests(unittest.TestCase):
                              f"expected exit 2, got {r.returncode}; stderr={r.stderr}")
             self.assertIn("R0 ERROR", r.stderr)
 
+    def test_r0_driver_rejects_empty_head_arg(self):
+        """`--head ""` must NOT silently fall back to HEAD; that would mask
+        user error and contradict the R0 contract. PRDY-006R2 hardening:
+        explicit empty string is malformed input.
+        """
+        repo = TempGitRepo()
+        with repo:
+            sha = repo.commit("c1")
+            r = subprocess.run(
+                [sys.executable, str(SCRIPT),
+                 "--head", "", "--root", str(repo.repo)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 2,
+                             f"expected exit 2, got {r.returncode}; stderr={r.stderr}")
+            self.assertIn("R0 ERROR", r.stderr)
+
 
 # ---------------------------------------------------------------------------
 # R2 — ancestry

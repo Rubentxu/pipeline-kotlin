@@ -422,7 +422,18 @@ def main() -> int:
         print(f"--root {cwd} is not a directory", file=sys.stderr)
         return 2
 
-    candidate = args.head or git_head(cwd)
+    # Distinguish "no --head arg" from "--head ''". The CLI default for
+    # argparse is None, but a user who types `--head ""` explicitly passes
+    # the empty string. That is malformed input and must NOT silently fall
+    # back to HEAD (which would mask user error and contradict the R0
+    # contract: "candidate must exist and resolve to a commit"). PRDY-006R2.
+    if args.head is None:
+        candidate = git_head(cwd)
+    elif not args.head.strip():
+        print(f"R0 ERROR: --head value is empty", file=sys.stderr)
+        return 2
+    else:
+        candidate = args.head.strip()
 
     # R0: validate the candidate exists. Runs BEFORE R1..R7 so bogus input
     # never degrades any other rule to PASS.

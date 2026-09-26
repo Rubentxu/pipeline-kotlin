@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.40.0-rc3"
+version = "0.40.0-rc4"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -29,9 +29,9 @@ version = "0.40.0-rc3"
 // Snapshot policy (v0.40-train, BLOCK A of 5-block release train):
 //   - v0.40.0-rc1 is FROZEN at SHA-256 324d7045f8d513e4c3ef11bb7f100f9a13b8f262a3d166cedae08cc0cbaf1740
 //     (artifacts preserved under dist/candidates/v0.40.0-rc1/, NOT a published rc).
-//   - dev.2 advances the development line so future builds cannot be confused with the rc1
-//     artifact. Train continues through BLOCK A -> B -> C -> D -> E; rc2 is the next
-//     publication candidate (BLOCK E).
+//   - v0.40.0-rc3 is the published candidate at the preceding release SHA.
+//     Its artifacts remain immutable under dist/candidates/v0.40.0-rc3/.
+//   - rc4 is the next publication candidate and contains the C5 BCV gate wiring.
 //
 // Fail-closed law: the released artifact's `version` subcommand MUST equal the git tag.
 // If they ever diverge the build is broken at the source, not in the artifact.

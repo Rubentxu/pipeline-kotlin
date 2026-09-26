@@ -12,6 +12,13 @@ cyclonedx = "1.8.2"
 # NOTE: bcprov-jdk18on is the correct artifact (NOT bcprov-jdk21on which does not exist)
 bouncycastle = "1.80.2"
 snakeyaml = "2.3"
+# C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator captures the
+# JVM ABI of public Kotlin types. Phased rollout: opt-in modules first (Phase 1,
+# 2026-09-26) — pipeline-domain / pipeline-events / pipeline-step-sdk:api /
+# pipeline-credentials-api. NOT wired into `check` yet — Phase 2 (post-C1 file
+# partition) regenerates baselines and gates the ABI in CI. 0.18.2 supports
+# Kotlin 2.4.x metadata.
+binaryCompatibilityValidator = "0.18.2"
 
 [libraries]
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
@@ -45,3 +52,5 @@ kover = { id = "org.jetbrains.kotlinx.kover", version = "0.9.9" }
 # toolchain); 1.23.x cannot parse class-file major 68 (JDK24) — precedent: pitest 1.15 -> 1.19.
 detekt = { id = "dev.detekt", version = "2.0.0-alpha.6" }
 cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }
+# C5 / D-011: ABI baseline capture. See version note above.
+binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binaryCompatibilityValidator" }

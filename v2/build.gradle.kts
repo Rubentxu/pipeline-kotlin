@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.protobuf) apply false
     alias(libs.plugins.kover) apply true
     alias(libs.plugins.detekt) apply false
+    // C5 / D-011 (audit 2026-09-26): binary-compatibility-validator declared at
+    // root and applied per-module via subprojects { ... } below. See comments in
+    // the application block for the phased rollout scope.
+    alias(libs.plugins.binary.compatibility.validator) apply false
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -211,6 +215,40 @@ subprojects {
     tasks.withType<AbstractArchiveTask>().configureEach {
         isPreserveFileTimestamps = false
         isReproducibleFileOrder = true
+    }
+}
+
+// ── C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator ──────────
+// Phase 1 (2026-09-26, this commit): opt-in to four modules with the most stable
+// public Kotlin surface. The plugin emits one .api file per module under
+// api/<module>.api (default location; explicit below for predictability) and
+// exposes the `apiCheck` task. `apiCheck` is NOT wired into `check` yet —
+// regenerating baselines post-C1 partition (H1+H2+H3) is cheaper than maintaining
+// twice (now and post-refactor).
+//
+// Phase 2 (post-C1, future block): regenerate baselines, wire `apiCheck` into
+// `check` (or its own gate lane), and document the policy in TESTING-STATE.md.
+//
+// The chosen modules have the largest stable JVM ABI surfaces:
+//   - pipeline-domain: 248 top-level types (Step contract, ReplayPolicy, durable).
+//   - pipeline-events: 96 types (event algebra, sink interfaces).
+//   - pipeline-step-sdk:api: SDK contract for external plugin authors.
+//   - pipeline-credentials-api: credentials SDK (SecretPatternRegistry, etc.).
+//
+// Adding a new module to BCV requires two steps: (1) append its name to
+// `bcvModules` below; (2) run `:pipeline-<x>:apiDump` to materialise the
+// baseline, then commit the .api file alongside the build change.
+val bcvModules = setOf(
+    "pipeline-domain",
+    "pipeline-events",
+    "pipeline-step-sdk:api".removePrefix(":"), // resolved below by project.path
+    "pipeline-credentials-api",
+)
+
+subprojects {
+    val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
+    if (isBcvModule) {
+        pluginManager.apply("org.jetbrains.kotlinx.binary-compatibility-validator")
     }
 }
 

@@ -1,0 +1,164 @@
+public final class dev/rubentxu/pipeline/v2/sdk/CompatibilityLevel : java/lang/Enum {
+	public static final field BEHAVIORAL Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+	public static final field MIGRATION Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+	public static final field NAMING Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+	public static final field SURFACE Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getLevel ()I
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+}
+
+public abstract interface annotation class dev/rubentxu/pipeline/v2/sdk/JenkinsSurface : java/lang/annotation/Annotation {
+	public abstract fun compatibility ()Ldev/rubentxu/pipeline/v2/sdk/CompatibilityLevel;
+	public abstract fun plugin ()Ljava/lang/String;
+	public abstract fun step ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/LspLoadDiagnostics {
+	public fun <init> (Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/sdk/LspLoadDiagnostics;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/sdk/LspLoadDiagnostics;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/sdk/LspLoadDiagnostics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDiagnostics ()Ljava/util/List;
+	public final fun getPartialSuccess ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/LspMetadata {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/sdk/LspMetadata$Companion;
+	public static final field SCHEMA_VERSION Ljava/lang/String;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/sdk/LspMetadata;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/sdk/LspMetadata;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/sdk/LspMetadata;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFailureKindBridge ()Ljava/lang/String;
+	public final fun getJenkinsSurface ()Ljava/lang/String;
+	public final fun getLocation ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getParameters ()Ljava/util/List;
+	public final fun getReplayPolicy ()Ljava/lang/String;
+	public final fun getSchema ()Ljava/lang/String;
+	public final fun getStepId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun toJson ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/LspMetadata$Companion {
+	public final fun fromJson (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/sdk/LspMetadata;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/LspMetadataLoader {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/sdk/LspMetadataLoader;
+	public final fun loadAll-IoAF18A (Ljava/lang/ClassLoader;)Ljava/lang/Object;
+	public static synthetic fun loadAll-IoAF18A$default (Ldev/rubentxu/pipeline/v2/sdk/LspMetadataLoader;Ljava/lang/ClassLoader;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/LspParameter {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZI)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Z
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;ZI)Ldev/rubentxu/pipeline/v2/sdk/LspParameter;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/sdk/LspParameter;Ljava/lang/String;Ljava/lang/String;ZIILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/sdk/LspParameter;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndex ()I
+	public final fun getName ()Ljava/lang/String;
+	public final fun getRequired ()Z
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface annotation class dev/rubentxu/pipeline/v2/sdk/Step : java/lang/annotation/Annotation {
+	public abstract fun effects ()[Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
+	public abstract fun execution ()Ldev/rubentxu/pipeline/v2/domain/ExecutionLocation;
+	public abstract fun id ()Ljava/lang/String;
+	public abstract fun name ()Ljava/lang/String;
+	public abstract fun plugin ()Ljava/lang/String;
+	public abstract fun replay ()Ldev/rubentxu/pipeline/v2/domain/durable/ReplayPolicy;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/StepContext {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/sdk/StepContext$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun component3 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/sdk/StepContext;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/sdk/StepContext;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/sdk/StepContext;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEnvironment ()Ljava/util/Map;
+	public final fun getParameters ()Ljava/util/Map;
+	public final fun getRunId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/StepContext$Companion {
+	public final fun getEMPTY ()Ldev/rubentxu/pipeline/v2/sdk/StepContext;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/api/BlockNestingDepthExceededException : java/lang/RuntimeException {
+	public fun <init> (II)V
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getDepth ()I
+	public final fun getMaxDepth ()I
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/api/BlockStepFlattener {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/sdk/api/BlockStepFlattener;
+	public static final field MAX_BLOCK_DEPTH I
+	public final fun depthGuard (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;)V
+	public final fun flatten (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;ILjava/lang/String;)Ljava/util/List;
+	public static synthetic fun flatten$default (Ldev/rubentxu/pipeline/v2/sdk/api/BlockStepFlattener;Ldev/rubentxu/pipeline/v2/dsl/StepSpec;ILjava/lang/String;ILjava/lang/Object;)Ljava/util/List;
+	public final fun index (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;)Ljava/util/List;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/api/FlattenedStep {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;ILjava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;ILjava/lang/String;)Ldev/rubentxu/pipeline/v2/sdk/api/FlattenedStep;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/sdk/api/FlattenedStep;Ldev/rubentxu/pipeline/v2/dsl/StepSpec;ILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/sdk/api/FlattenedStep;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlockPath ()Ljava/lang/String;
+	public final fun getDepth ()I
+	public final fun getSpec ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/api/IndexedStep {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;IILjava/lang/String;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/dsl/StepSpec;IILjava/lang/String;)Ldev/rubentxu/pipeline/v2/sdk/api/IndexedStep;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/sdk/api/IndexedStep;Ldev/rubentxu/pipeline/v2/dsl/StepSpec;IILjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/sdk/api/IndexedStep;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlockPath ()Ljava/lang/String;
+	public final fun getDepth ()I
+	public final fun getSpec ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec;
+	public final fun getStepIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

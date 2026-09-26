@@ -791,6 +791,68 @@ C1 ≈ 2-3 WUs de tamaño medio (H1+H2+H3 cada una con su WU dedicada).
 C2-C7 cada una cabe en una WU de 1-2 commits. Total estimado: 6-9 WUs
 para liquidar el backlog D-011.
 
+### Estado de C5 — binary-compatibility-validator (2026-09-26)
+
+**Phase 1 ejecutada** (este bloque autónomo). Aplicado a 4 módulos
+con la superficie pública JVM más estable:
+
+| Módulo | Tipos top-level | Baseline LOC |
+|---|---|---|
+| `:pipeline-domain` | 248 | 5804 |
+| `:pipeline-events` | 96 | 1859 |
+| `:pipeline-step-sdk:api` | 10 | 164 |
+| `:pipeline-credentials-api` | 19 | 268 |
+| **Total** | **373** | **8095** |
+
+Plugin aplicado en `:pipeline-domain`,
+`:pipeline-events`, `:pipeline-step-sdk:api`,
+`:pipeline-credentials-api` vía el bloque `subprojects` en
+`v2/build.gradle.kts`. `apiCheck` registrado y PASS
+contra los baselines recién generados.
+
+`apiCheck` NO está cableado en `check` todavía. Phase 2 (post-C1)
+cablea `apiCheck` en el gate, después de regenerar baselines con
+la superficie post-partición.
+
+**Métricas de aplicación**:
+
+- Commit `1924c9c7` previo: añade BCV a `libs.versions.toml` +
+  `v2/build.gradle.kts` con `subprojects { ... }` opt-in pattern.
+- Baselines materializados con `:pipeline-<x>:apiDump`.
+- Roundtrip `:pipeline-<x>:apiCheck` PASS para los 4 módulos.
+- Certifier hermético: 29/29 PASS (sin regresión).
+- Admisión: 5/6 PASS pre-commit (R3 falla porque working tree dirty,
+  esperado); 6/6 PASS post-commit.
+
+**Fase 2 — pendiente**:
+
+1. Ejecutar C1 (H1+H2+H3): partir `PipelineDsl.kt` y
+   `CanonicalDurableRunCoordinator.kt`. Esto cambia ABI surface de
+   `pipeline-application`, no de los módulos BCV actuales. Los
+   baselines capturados siguen válidos.
+2. Decidir si ampliar scope BCV a módulos adicionales
+   (`:pipeline-application`, `:pipeline-scripting-api`,
+   `:pipeline-credentials-local`, etc.). Los actuales cubren la
+   mayor superficie pública.
+3. Cablear `apiCheck` en `check` (o su propio lane CI) con la
+   política documentada en `TESTING-STATE.md`.
+
+### Por qué Phase 1 y no full rollout
+
+Capturar baselines ahora (Phase 1) da tres propiedades
+inmediatas:
+
+1. **Reproducibilidad**: el ABI surface público de los 4 módulos
+   núcleo está documentado en un artefacto versionado.
+2. **Visibilidad**: cualquier futuro PR que rompa el ABI aparece
+   como cambio en `<módulo>/api/<módulo>.api` que el revisor ve.
+3. **Migración controlada**: Phase 2 puede decidir ampliar scope
+   o activar el gate en CI sin perder los baselines existentes.
+
+Full rollout (todos los 22 módulos BCV) sería trabajo inútil hoy:
+los 18 módulos no BCV no son published artifacts; solo los 4
+marcados son SDK/API público.
+
 ---
 
 ## Notas operativas (actualizadas 2026-09-26)
@@ -798,5 +860,9 @@ para liquidar el backlog D-011.
 - D-001..D-010 RESUELTO o marcado OBSOLETO.
 - D-011 (este) registrado, sin resolver.
 - T0E-EVID-01 RESUELTO en `1893e104`.
-- Próxima WU candidata: extraer una o más entradas de D-011 a WU-RP
-  individual bajo autorización del operador.
+- **C5 Phase 1 ejecutado 2026-09-26** — BCV aplicado a 4 módulos
+  con baselines de 8095 LOC; `apiCheck` PASS; pendiente cablear
+  en `check` (Phase 2, post-C1).
+- Próxima WU candidata: C1 (H1+H2+H3 — partir `PipelineDsl.kt` y
+  `CanonicalDurableRunCoordinator.kt`). Bajo autorización del
+  operador.

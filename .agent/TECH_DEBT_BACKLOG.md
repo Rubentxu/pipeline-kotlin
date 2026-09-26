@@ -187,10 +187,17 @@ opts for option (2) in T0.E receipt.
 
 ---
 
-## D-008 — UAT-RP-013 evidence receipt missing (P3)
+## T0E-EVID-01 — UAT evidence reconstruction + applicability (TRAIN-0 T0.E long block)
 
-**Detected:** 2026-09-26 (T0.E corrective, post-D-007). Evidence:
-`docs/v2/08-production-readiness/TRAIN_0_T0E_CORRECTIVE_RECEIPT.md`.
+**Note (2026-09-26):** this front was opened as `D-008` in
+`TRAIN_0_T0E_CORRECTIVE_RECEIPT.md` (this session's previous slice).
+Renamed to `T0E-EVID-01` to avoid collision with a historical LFC
+`D-008` (credential provider can be absent / injection skipped).
+Operator brief 2026-09-26T13:22Z: "No reutilices `D-008` para este gap."
+
+**Detected:** 2026-09-26 (T0.E corrective + verification slice,
+post-D-007). Evidence: `docs/v2/08-production-readiness/
+TRAIN_0_T0E_CORRECTIVE_RECEIPT.md`, `.../PRDY_006R2_VERIFICATION_RECEIPT.md`.
 
 **Symptom:**
 
@@ -211,34 +218,56 @@ opts for option (2) in T0.E receipt.
 - D-007 is correct (fail-closed); the gap is a missing receipt, not
   a bug in classification.
 
-**Repair:**
+**Repair (re-scoped by operator brief 2026-09-26T13:22Z):**
 
-- Add `docs/v2/07-uat/UAT_RP_013_EVIDENCE.md` (or similar) with one
-  paragraph that:
-  - cites `StrictFingerprintDivergenceDetector` and the relevant test
-    classes (`StrictFingerprintDivergenceDetectorTest`,
-    `CanonicalDurableRunCoordinatorDivergenceTest` etc.);
-  - includes the explicit status token `COVERED` on a line that
-    also mentions `UAT-RP-013`;
-  - is committed in Git so D-007's `git_last_commit_for` returns a
-    SHA.
-- Re-run admission; expect R4 to clear UAT-RP-013.
-- Belt-and-braces: also write small evidence receipts for UAT-RP-002
-  (workflow), UAT-RP-004 (DSL compile), UAT-RP-010 (event JSON
-  roundtrip) so the integration candidate C passes R4 without
-  exceptions.
+This front is no longer "just write a UAT-RP-013 evidence receipt". It
+covers a full certifier/evidence closure inside TRAIN-0 T0.E:
 
-**Trigger:** first PRDY or WU in TRAIN-1 / RP-5 closure that adds
-ceremony for evidence receipts. Until then the gap is documented and
-does not block TRAIN-0 closure (D-006 already deferred these to RP-6).
+1. **Certifier correctness:** SHA-max is not causal recency; per-line
+   status leaks across UATs in the same Markdown row. Fix
+   `scripts/gen-current-uat-status.py` to use DAG-maximal commits and
+   to scope each status to its UAT. Introduce optional marker
+   `UAT-EVIDENCE | UAT-RP-XXX | STATUS | candidate=<sha>` for
+   machine-readable receipts; keep compatibility with old free-form
+   rows.
+2. **R4 diagnostic:** surface the full blocking list (count + complete
+   list), not just the first 5.
+3. **Evidence reconstruction:** for UAT-RP-002/004/010/013, locate
+   the real test/oracle in the repo, run it against the candidate,
+   capture argv/SHA/test counts/failures/errors, and emit a receipt
+   that proves the status. PARTIAL if partial; NOT_RUN if not
+   executable. Never fabricate COVERED from documentation.
+4. **Disposition of special cases:**
+   - UAT-RP-005: causal supersedence by ADR-0095/0096 (PARTIAL /
+     KNOWN_LIMITATION) should replace older FAIL_PROVEN without
+     artificial exceptions.
+   - UAT-RP-025/026/027: applicability is separate from status.
+     LOCAL profile: 025 only if SDKMAN_READY declared; 026 only
+     REMOTE; 027 only Jenkins adapter. Not-applicable UATs must not
+     block LOCAL.
+5. **Honest regeneration:** regenerate CURRENT_UAT_STATUS without
+   manual row edits; explain each delta vs the prior commit.
+6. **Gate proof:** affected certifier unit tests + UAT tests + admission
+   on candidate + 3 consecutive runs + 2 fresh clones + deterministic
+   output + SDDK recovery without `.agent/*`. NO full Gradle re-run.
 
-**Blocks:** nothing in TRAIN-0 (corrective done in this slice). Blocks
-TRAIN-1 from claiming R4 PASS without exceptions at the integration
-candidate boundary.
+**Status:** FIXED at commit `80d487f5` (T0.E Certifier & Evidence
+Closure long block, WorkItem `501c88ee-…`). Closes inside TRAIN-0;
+not deferred to TRAIN-1.
 
-**Status:** FIXED at commit `09db2d76` (D-007 corrective slice,
-T0.E corrective). Evidence: `docs/v2/08-production-readiness/TRAIN_0_T0E_CORRECTIVE_RECEIPT.md`.
-Architecture as operator-prescribed:
+Evidence: `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` (machine-readable
+UAT-EVIDENCE markers for UAT-RP-002/004/005/010/013/015) +
+`docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` (full receipt).
+6/6 admission rules PASS, 93/93 hermetic tests PASS (27 certifier + 43
+admission + 23 other), 3 consecutive runs + 2 fresh clones identical.
+
+**Blocks:** ~~TRAIN-0 T0.E closure and the TRAIN-0 → main merge.~~
+RESOLVED at `80d487f5`.
+
+**Status (certifier architecture):** FIXED at commit `09db2d76`
+(D-007 corrective slice, T0.E corrective). Evidence: `docs/v2/
+08-production-readiness/TRAIN_0_T0E_CORRECTIVE_RECEIPT.md`. Architecture
+as operator-prescribed:
 - Normative matrix excluded.
 - Explicit statuses only.
 - Git-provenance selection (latest SHA ancestor of candidate).
@@ -248,6 +277,8 @@ Architecture as operator-prescribed:
 - Two fresh clones reproduce byte-equal CURRENT_UAT_STATUS.md and
   identical admission decisions.
 
-D-007 fix surfaces a separate gap: UAT-RP-013 has no evidence
-receipt. Tracked as D-008 (above). The fix is a small evidence
-receipt, not a generator change.
+D-007 fix surfaces a separate gap: missing evidence for UAT-RP-002 /
+004 / 010 / 013 plus residual certifier defects (max-by-SHA is not
+causal recency; per-line status leaks across UATs). Tracked as
+**T0E-EVID-01** (above, same WorkItem). T0E-EVID-01 is OPEN and
+handled inside TRAIN-0 T0.E; it is NOT deferred to TRAIN-1.

@@ -58,6 +58,21 @@ def run(cmd, cwd=None, check=True):
     return r.stdout.strip()
 
 def git_head():
+    """Return HEAD, but skip commits whose only effect is refreshing
+    CURRENT_STATE itself (self-referential commits). Listing the
+    refresh-commit as HEAD produces a 1-commit drift loop (regenerated
+    file -> commit -> next regen shows previous HEAD)."""
+    out = run([
+        "git", "log", "--format=%H %s", "-n", "50",
+        "--", ":!docs/v2/08-production-readiness/CURRENT_STATE.md",
+              ":!scripts/gen-current-state-projection.py",
+    ])
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        sha, _, subj = line.partition(" ")
+        if not subj.startswith("docs(production-readiness): refresh CURRENT_STATE"):
+            return sha
     return run(["git", "rev-parse", "HEAD"])
 
 def git_branch():

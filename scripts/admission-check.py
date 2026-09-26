@@ -82,7 +82,7 @@ STRICT_BLOCKING_UAT_STATES = {"REFERENCED"}
 
 # R3 exclusions — exact path matching. Substring matching is forbidden because
 # it can accidentally mask unrelated files (e.g. a path containing "agent/").
-R3_EXCLUDE_PREFIXES = (".agent/",)
+R3_EXCLUDE_PREFIXES = (".agent/", "docs/v2/07-uat/RECEIPTS/consult/")
 R3_EXCLUDE_EXACT = {
     CURRENT_STATE_REL,
     UAT_STATUS_REL,

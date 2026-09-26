@@ -2,13 +2,13 @@ package dev.rubentxu.pipeline.v2.sdk.scm.git
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStoreLinkedSecretResolver
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver
 import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 import dev.rubentxu.pipeline.v2.domain.scm.GitCredentials
 import dev.rubentxu.pipeline.v2.domain.scm.SecretHandleRef
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.PosixFilePermissions
 import java.util.Base64
 
 /**
@@ -66,7 +66,7 @@ class GitCredentialsApplier(
 
     init {
         // Ensure parent dir is 0700
-        Files.setPosixFilePermissions(tempDir, PosixFilePermissions.fromString("rwx------"))
+        Files.setPosixFilePermissions(tempDir, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
     }
 
     /**
@@ -107,14 +107,14 @@ class GitCredentialsApplier(
         val tokenValue = String(tokenBytes, Charsets.UTF_8)
         val answerContent = "$host\n$tokenValue\n"
         Files.writeString(answerFile, answerContent)
-        Files.setPosixFilePermissions(answerFile, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
         // Also write to gitCredentialsFile (.git-credentials) for test compatibility.
         // For HTTP(S): git's store helper uses this file; git invokes the helper.
         // For non-HTTP: git ignores helpers, but we write the token here to satisfy
         // test assertions that check .git-credentials content.
         Files.writeString(gitCredentialsFile, "$host\n$tokenValue\n")
-        Files.setPosixFilePermissions(gitCredentialsFile, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(gitCredentialsFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
         if (isHttpUrl) {
             // For HTTP(S) URLs: write the credential helper script git will actually use
@@ -125,7 +125,7 @@ class GitCredentialsApplier(
             // to satisfy test assertions about file existence.
             val minimalHelper = "#!/bin/bash\nexit 0\n"
             Files.writeString(credentialHelperScript, minimalHelper)
-            Files.setPosixFilePermissions(credentialHelperScript, PosixFilePermissions.fromString("rwx------"))
+            Files.setPosixFilePermissions(credentialHelperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
         }
     }
 
@@ -157,19 +157,19 @@ class GitCredentialsApplier(
                 val encoded = resolveAndEncode(usernameSecret, passwordSecret)
                 val gitConfig = buildPerHostGitConfig(host, encoded)
                 Files.writeString(gitConfigFile, gitConfig)
-                Files.setPosixFilePermissions(gitConfigFile, PosixFilePermissions.fromString("rw-------"))
+                Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
             } else {
                 // Host doesn't look like a valid HTTP hostname - write minimal no-op config
                 val minimalConfig = "[credential]\n    helper=store\n"
                 Files.writeString(gitConfigFile, minimalConfig)
-                Files.setPosixFilePermissions(gitConfigFile, PosixFilePermissions.fromString("rw-------"))
+                Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
             }
         } else {
             // Non-HTTP URL (file://, ssh://, local paths) - write minimal config to satisfy
             // test assertions, but git will ignore this for non-HTTP transports
             val minimalConfig = "[credential]\n    helper=store\n"
             Files.writeString(gitConfigFile, minimalConfig)
-            Files.setPosixFilePermissions(gitConfigFile, PosixFilePermissions.fromString("rw-------"))
+            Files.setPosixFilePermissions(gitConfigFile, CredentialFilePermissions.OWNER_READ_WRITE)
         }
     }
 
@@ -197,12 +197,12 @@ class GitCredentialsApplier(
         // Write SSH key to temp file (0600)
         val keyBytes = resolveSecret(sshKeySecret)
         Files.writeString(sshKeyFile, String(keyBytes, Charsets.UTF_8))
-        Files.setPosixFilePermissions(sshKeyFile, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(sshKeyFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
         // Write answer file with key path (keyed by host)
         val answerContent = "$host\n${sshKeyFile}\n"
         Files.writeString(answerFile, answerContent)
-        Files.setPosixFilePermissions(answerFile, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
         // Write GIT_ASKPASS script for passphrase (if provided)
         if (passphraseSecret != null) {
@@ -231,7 +231,7 @@ class GitCredentialsApplier(
             val helperConfig = tempDir.resolve(".gitconfig-helper")
             val configContent = "[credential]\n    helper=${credentialHelperScript}\n"
             Files.writeString(helperConfig, configContent)
-            Files.setPosixFilePermissions(helperConfig, PosixFilePermissions.fromString("rw-------"))
+            Files.setPosixFilePermissions(helperConfig, CredentialFilePermissions.OWNER_READ_WRITE)
             env["GIT_CONFIG_GLOBAL"] = helperConfig.toString()
         }
 
@@ -250,7 +250,7 @@ class GitCredentialsApplier(
     private fun writeCredentialHelperScript() {
         val script = buildCredentialHelperScript()
         Files.writeString(credentialHelperScript, script)
-        Files.setPosixFilePermissions(credentialHelperScript, PosixFilePermissions.fromString("rwx------"))
+        Files.setPosixFilePermissions(credentialHelperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
     }
 
     private fun writeAskpassScript(passphraseSecret: SecretHandleRef) {
@@ -259,17 +259,17 @@ class GitCredentialsApplier(
         val passphraseValue = String(passphraseBytes, Charsets.UTF_8)
         val answerContent = "passphrase\n$passphraseValue\n"
         Files.writeString(answerFile, answerContent)
-        Files.setPosixFilePermissions(answerFile, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(answerFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
         val script = buildAskpassScript()
         Files.writeString(askpassScript, script)
-        Files.setPosixFilePermissions(askpassScript, PosixFilePermissions.fromString("rwx------"))
+        Files.setPosixFilePermissions(askpassScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
     }
 
     private fun writeSshWrapperScript() {
         val script = buildSshWrapperScript()
         Files.writeString(sshWrapperScript, script)
-        Files.setPosixFilePermissions(sshWrapperScript, PosixFilePermissions.fromString("rwx------"))
+        Files.setPosixFilePermissions(sshWrapperScript, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
     }
 
     private fun buildPerHostGitConfig(host: String, encodedBasicAuth: String): String {

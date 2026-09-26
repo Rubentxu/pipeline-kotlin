@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
 import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
@@ -17,7 +18,6 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Zip
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.PosixFilePermissions
 import java.util.UUID
 
 /**
@@ -97,12 +97,12 @@ class CredentialMaterializer(
             prefix = "pipeline-secret-dir-",
             suffix = "-${credential.id.value}"
         )
-        Files.setPosixFilePermissions(parentDir, OWNER_READ_WRITE_EXECUTE)
+        Files.setPosixFilePermissions(parentDir, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
         trackedDirs.add(parentDir)
 
         // Create temp file inside the parent dir with 0600 permissions
         val tempFile = Files.createTempFile(parentDir, "pipeline-secret-", ".tmp")
-        Files.setPosixFilePermissions(tempFile, OWNER_READ_WRITE)
+        Files.setPosixFilePermissions(tempFile, CredentialFilePermissions.OWNER_READ_WRITE)
         Files.write(tempFile, credential.bytes)
 
         trackedPaths.add(tempFile)
@@ -117,7 +117,7 @@ class CredentialMaterializer(
             suffix = "-${credential.id.value}"
         )
         Files.write(keyFile, credential.privateKey)
-        Files.setPosixFilePermissions(keyFile, OWNER_READ_WRITE)
+        Files.setPosixFilePermissions(keyFile, CredentialFilePermissions.OWNER_READ_WRITE)
         trackedPaths.add(keyFile)
 
         // Handle passphrase if present
@@ -146,7 +146,7 @@ class CredentialMaterializer(
             suffix = "-${credentialId.value}"
         )
         Files.write(passphraseFile, refCredential.bytes)
-        Files.setPosixFilePermissions(passphraseFile, OWNER_READ_WRITE)
+        Files.setPosixFilePermissions(passphraseFile, CredentialFilePermissions.OWNER_READ_WRITE)
         trackedPaths.add(passphraseFile)
 
         return passphraseFile
@@ -159,7 +159,7 @@ class CredentialMaterializer(
             suffix = "-${credential.alias ?: credential.id.value}"
         )
         Files.write(keystoreFile, credential.keystore)
-        Files.setPosixFilePermissions(keystoreFile, OWNER_READ_WRITE)
+        Files.setPosixFilePermissions(keystoreFile, CredentialFilePermissions.OWNER_READ_WRITE)
         trackedPaths.add(keystoreFile)
 
         // Handle password reference if present
@@ -185,7 +185,7 @@ class CredentialMaterializer(
             suffix = "-${credentialId.value}"
         )
         Files.write(passwordFile, refCredential.bytes)
-        Files.setPosixFilePermissions(passwordFile, OWNER_READ_WRITE)
+        Files.setPosixFilePermissions(passwordFile, CredentialFilePermissions.OWNER_READ_WRITE)
         trackedPaths.add(passwordFile)
 
         return passwordFile
@@ -197,7 +197,7 @@ class CredentialMaterializer(
             prefix = "pipeline-zip-",
             suffix = "-${credential.id.value}"
         )
-        Files.setPosixFilePermissions(tempDir, OWNER_READ_WRITE_EXECUTE)
+        Files.setPosixFilePermissions(tempDir, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
         trackedDirs.add(tempDir)
 
         // Extract entries
@@ -208,10 +208,10 @@ class CredentialMaterializer(
             if (parent != null && Files.notExists(parent)) {
                 Files.createDirectories(parent)
                 // Set 0700 on created parent directories
-                Files.setPosixFilePermissions(parent, OWNER_READ_WRITE_EXECUTE)
+                Files.setPosixFilePermissions(parent, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
             }
             Files.write(entryPath, entryBytes)
-            Files.setPosixFilePermissions(entryPath, OWNER_READ_WRITE)
+            Files.setPosixFilePermissions(entryPath, CredentialFilePermissions.OWNER_READ_WRITE)
             trackedPaths.add(entryPath)
         }
 
@@ -265,10 +265,5 @@ class CredentialMaterializer(
         trackedDirs.clear()
 
         materializationCache.clear()
-    }
-
-    companion object {
-        private val OWNER_READ_WRITE = PosixFilePermissions.fromString("rw-------")
-        private val OWNER_READ_WRITE_EXECUTE = PosixFilePermissions.fromString("rwx------")
     }
 }

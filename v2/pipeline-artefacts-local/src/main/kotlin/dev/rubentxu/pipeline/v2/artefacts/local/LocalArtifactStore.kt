@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.artefacts.local
 
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import dev.rubentxu.pipeline.v2.events.ArtifactEntry
 import java.io.OutputStream
 import java.nio.file.Files
@@ -79,7 +80,7 @@ class LocalArtifactStore(
         val dir = stageDir(runId, stageName)
         assertPosixSupported(controlRoot)
         Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(
-            PosixFilePermissions.fromString("rwx------")))
+            CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE))
 
         // Ensure workspace exists before walking — Jenkins semantics: archive matches
         // files in the current workspace. If workspace was never created (no steps
@@ -124,7 +125,7 @@ class LocalArtifactStore(
             }
         }
 
-        Files.setPosixFilePermissions(archivePath, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(archivePath, CredentialFilePermissions.OWNER_READ_WRITE)
 
         return ArchiveResult(
             archivePath = archivePath,

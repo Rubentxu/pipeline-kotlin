@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
+import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
@@ -13,6 +14,10 @@ import java.nio.file.attribute.PosixFilePermissions
  * - Store directory: 0700 (owner read/write/execute only)
  *
  * These permissions protect the credentials at rest from other users on the same system.
+ *
+ * The permission sets come from [CredentialFilePermissions] (D-001) so
+ * any drift between adapters is caught at compile time, not by
+ * adversarial filesystem testing.
  */
 object CredentialsStorePosix {
 
@@ -21,14 +26,14 @@ object CredentialsStorePosix {
      */
     fun createDirectory(dir: Path) {
         Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(
-            PosixFilePermissions.fromString("rwx------")))
+            CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE))
     }
 
     /**
      * Sets the store file to 0600.
      */
     fun setFilePermissions(file: Path) {
-        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"))
+        Files.setPosixFilePermissions(file, CredentialFilePermissions.OWNER_READ_WRITE)
     }
 
     /**
@@ -55,7 +60,7 @@ object CredentialsStorePosix {
         } else {
             // Create empty file with correct permissions
             Files.createFile(file, PosixFilePermissions.asFileAttribute(
-                PosixFilePermissions.fromString("rw-------")))
+                CredentialFilePermissions.OWNER_READ_WRITE))
         }
     }
 }

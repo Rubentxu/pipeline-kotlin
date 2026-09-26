@@ -1,7 +1,7 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-26 (D-001 RESUELTO)
+**Last updated:** 2026-09-26 (D-001 RESUELTO + D-005 UAT-019/020/021→COVERED)
 **Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
@@ -173,6 +173,61 @@ mismo en la primera ejecución).
   (regla 3 del operador).
 - Mantener este backlog sincronizado con cada WU cerrada para
   evitar re-discovery de la misma deuda en sesiones futuras.
+
+## D-005 — UAT-RP-019/020/021 elevación REFERENCED→COVERED (2026-09-26, follow-on T0.E)
+
+**Detected:** 2026-09-26, en bloque autónomo tras T0.E closure.
+**Severity:** P3 (mejora de precisión del certifier; sin blocker).
+**Scope:** `docs/v2/07-uat/{T0E_CLOSURE_RECEIPT,WU_RP_046_R2_SLICE_RECEIPT}.md`.
+
+### Contexto
+
+WU-RP-046 R1 (`c2de6bca`, 2026-09-23) añadió tests ejecutables opt-in
+para UAT-RP-019 (Gradle real), UAT-RP-020 (Maven real) y UAT-RP-021
+(Node real). Documentados en la tabla del receipt como 'COVERED
+opt-in', pero SIN marcador `UAT-EVIDENCE`. La tabla es narrativa
+multi-UAT por fila → freeform parser los clasificaba como REFERENCED
+(multi_noref). R2 los dejó como REFERENCED por scope recertificación.
+
+### Resolución
+
+Commit `f7f09ab5` (T0E-EVID-01 follow-on):
+1. Re-ejecuta los 3 opt-in tests con `UAT_RP_0NN_RUN=1` en una sola
+   invocación Gradle para preservar los 3 XMLs juntos.
+2. `6/6 PASS` en 49.554s (WURp019 24.379s, WURp020 14.885s,
+   WURp021 10.290s). SHA-256 de los 3 XMLs capturado.
+3. `WU_RP_046_R2_SLICE_RECEIPT.md` gana sección 8b con procedimiento
+   reproducible + digests XML + 3 marcadores `UAT-EVIDENCE` (single-UAT).
+4. `T0E_CLOSURE_RECEIPT.md` gana 3 mirrors adicionales de esos mismos
+   marcadores en su sección 'Machine-readable status mirror'. Esencial
+   porque el closure receipt es el DAG-maximal del árbol de receipts.
+5. Neutraliza la narrativa multi-UAT de la sección E1.2
+   (`UAT-RP-019 COVERED, UAT-RP-020 COVERED, UAT-RP-024 PARTIAL` →
+   `[ST-A], [ST-A], [ST-B]`) para que el parser freeform no siga
+   leakando estados parciales sobre 019/020/024.
+
+### Delta del certifier (commit `f7f09ab5` → commit `1b27ec04`)
+
+| UAT | Antes | Después | Cómo |
+|---|---|---|---|
+| UAT-RP-019 | REFERENCED | **COVERED** | nuevo marker en T0E_CLOSURE_RECEIPT |
+| UAT-RP-020 | REFERENCED | **COVERED** | nuevo marker en T0E_CLOSURE_RECEIPT |
+| UAT-RP-021 | COVERED | COVERED | marker existente en WU_RP_046_R2 + nuevo mirror |
+| UAT-RP-024 | REFERENCED | **KNOWN_LIMITATION** | multi-UAT leak eliminado; el receipt lo declara explícitamente KNOWN_LIMITATION |
+
+Conteo: COVERED=12 (antes 10), KNOWN_LIMITATION=2 (antes 1),
+REFERENCED=10 (antes 13), NOT_APPLICABLE=3 (sin cambio). Total 27.
+
+UAT-RP-024 NO ES REGRESIÓN: el receipt ya decía KNOWN_LIMITATION
+("dogfooding parcial 1-repo. ≥2 repos estructuralmente imposible").
+El multi-UAT leak enmascaraba la clasificación correcta; la
+neutralización lo expuso. KNOWN_LIMITATION sigue siendo non-blocking
+(R4 sigue PASS).
+
+### Sin código de producción tocado
+
+Sólo docs/receipts. Cero tests añadidos (los 6 ya existían desde R1).
+Cero cambios en production.
 
 ## D-007 — `gen-current-uat-status.py` false-COVERED / hyphen-FAIL classifier (P2)
 

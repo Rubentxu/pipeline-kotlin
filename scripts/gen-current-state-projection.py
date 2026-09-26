@@ -337,13 +337,13 @@ def main():
     origin_main = git_origin_main()
     origin_branch = git_origin_branch(branch) if branch else None
     out_path = pathlib.Path(args.out)
-    # The output file IS itself in the dirty listing whenever the generator
-    # writes to a tracked path (e.g. CURRENT_STATE.md under docs/). When
-    # checking, we MUST keep that self-reference in the dirty listing so
-    # the structural SHA matches what --out would write on the same run.
-    # (Earlier attempts to exclude the self-reference caused asymmetric
-    # structural hashes between write and check.)
-    dirty = git_dirty()
+    # Exclude the output file from the dirty listing. This makes the
+    # generator's body invariant regardless of whether the output file
+    # is itself dirty at the moment of generation. Without this, the
+    # first generation after a clean tree reports N dirty files and
+    # becomes STALE on the next --check (which sees N+1 dirty files
+    # because the freshly-written output is now also dirty).
+    dirty = git_dirty(exclude_paths=[out_path])
     ahead, behind = (None, None)
     if origin_branch:
         try:

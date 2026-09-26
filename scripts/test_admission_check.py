@@ -510,6 +510,65 @@ class R4BlockingUatTests(unittest.TestCase):
             for strict in (False, True):
                 self._with_fake_uat_status(fake, "", strict, True, "", repo.repo)
 
+    def test_r4_message_exposes_full_blocker_count_and_list(self):
+        """E1.3 / operator brief: R4 must surface blocking_count and
+        all_blocking_uats, not just the first 5.
+
+        Build a fixture with 7 blocking UATs and assert the message
+        exposes `blocking_count=7` and includes the 6th and 7th UATs
+        in `all_blocking_uats=...`. Otherwise closing the gate would
+        silently hide blockers past index 4.
+        """
+        repo = TempGitRepo()
+        with repo:
+            uids = [f"UAT-RP-{n:03d}" for n in range(91, 98)]  # 7 UATs
+            rows = "\n".join(
+                f"| `{u}` | **FAIL_PROVEN** | `r.md` | x |"
+                for u in uids
+            )
+            fake = rows + "\n| **FAIL_PROVEN:** 7\n"
+            ok, msg = self._run_with_fake_uat_status(fake, "", False)
+            self.assertFalse(ok)
+            self.assertIn("blocking_count=7", msg)
+            self.assertIn("all_blocking_uats=[", msg)
+            # UATs past the first 5 (indices 5 and 6) must appear.
+            self.assertIn("UAT-RP-096", msg)
+            self.assertIn("UAT-RP-097", msg)
+            # All seven UATs must appear in the all_blocking_uats list.
+            for u in uids:
+                self.assertIn(u, msg)
+
+    def _run_with_fake_uat_status(self, fake_md, exceptions, strict):
+        """Helper mirroring `_with_fake_uat_status` but returning the
+        (ok, msg) tuple directly so individual tests can inspect `msg`.
+        """
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as f:
+            f.write(fake_md)
+            tmp_uat = f.name
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as f:
+            f.write(exceptions)
+            tmp_exc = f.name
+        orig_cs_rel = self.mod.CURRENT_STATE_REL
+        orig_us_rel = self.mod.UAT_STATUS_REL
+        orig_ex_rel = self.mod.EXCEPTIONS_FILE_REL
+        tmp_dir = pathlib.Path(tmp_uat).parent
+        self.mod.CURRENT_STATE_REL = pathlib.Path(tmp_uat).name + ".cs"
+        self.mod.UAT_STATUS_REL = pathlib.Path(tmp_uat).name
+        self.mod.EXCEPTIONS_FILE_REL = pathlib.Path(tmp_exc).name
+        try:
+            # Place a placeholder CURRENT_STATE file so _paths() doesn't error.
+            cs_path = tmp_dir / self.mod.CURRENT_STATE_REL
+            cs_path.write_text("# placeholder\n")
+            ok, msg = self.mod.check_r4_no_blocking_uats(strict=strict,
+                                                        cwd=tmp_dir)
+            return ok, msg
+        finally:
+            self.mod.CURRENT_STATE_REL = orig_cs_rel
+            self.mod.UAT_STATUS_REL = orig_us_rel
+            self.mod.EXCEPTIONS_FILE_REL = orig_ex_rel
+            pathlib.Path(tmp_uat).unlink(missing_ok=True)
+            pathlib.Path(tmp_exc).unlink(missing_ok=True)
+
     def test_missing_uat_status_file_blocks(self):
         repo = TempGitRepo()
         with repo:

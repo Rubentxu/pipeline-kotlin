@@ -342,7 +342,19 @@ def check_r4_no_blocking_uats(strict: bool, cwd: pathlib.Path = ROOT
              if status in blocking and uid not in exceptions]
     if found:
         suffix = " (strict mode)" if strict else ""
-        return False, f"R4 blocking UATs without exception{suffix}: {', '.join(found[:5])}"
+        # E1.3 / operator brief: expose full blocker count and the
+        # complete list (not just the first 5), so closing the gate
+        # does not silently hide the 6th, 7th, etc. blockers. The
+        # first 5 remain in the summary for human readability.
+        total = len(found)
+        summary = ", ".join(found[:5])
+        full = ", ".join(found)
+        return False, (
+            f"R4 blocking UATs without exception{suffix}: "
+            f"blocking_count={total} "
+            f"summary={summary} "
+            f"all_blocking_uats=[{full}]"
+        )
     return True, None
 
 

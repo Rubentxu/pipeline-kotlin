@@ -600,12 +600,10 @@ def main():
         if _strip_volatile_header(existing) == _strip_volatile_header(md):
             print(f"OK-IDENTICAL ({md.splitlines()[0]})")
             return 0
-        # If existing is the pre-fix committed version (no <regen> marker),
-        # report as STALE so the operator knows to regen once.
-        if "_strip_volatile_header" not in existing:
-            print(f"STALE-BUT-CONTENT-MATCHES (header version drift; regen to stabilise; out={out})")
-        else:
-            print(f"STALE (existing≠regenerated; out={out})")
+        # The contents differ materially (not just volatile header).
+        # Report STALE so the operator knows the regen produced new content
+        # (e.g., a UAT changed status).
+        print(f"STALE (content differs from existing; out={out})")
         return 1
 
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -303,6 +303,7 @@ UAT-EVIDENCE | UAT-RP-017 | COVERED | candidate=92f7c4a7 | tests=WURp023Observat
 UAT-EVIDENCE | UAT-RP-022 | COVERED | candidate=92f7c4a7 | tests=distZip_byte_identical_double_build | exit=0 | note=recertified per WU_RP_046_R2 §1.1-1.6
 UAT-EVIDENCE | UAT-RP-011 | COVERED | candidate=97a3cdb4 | tests=SqliteEventStoreConcurrencyCharacterisationTest:10 | exit=0 | xml-sha256=b4470ac6666132b357c72b7a99e09716dd5a3089d2a5a7041f92449cda456ee6
 UAT-EVIDENCE | UAT-RP-014 | COVERED | candidate=97a3cdb4 | tests=BodyExecutionPolicyTest:28 | exit=0 | xml-sha256=9b8d4a46932312664370ba0708dbf876f4d975c04d02edef92c275cf7c9c482d (Representability)
+UAT-EVIDENCE | UAT-RP-003 | COVERED | candidate=7904b3c3 | tests=StepRegistryTest:8+StepDefinitionContributorTest:5+RegistryExecutionPreparationTest:5+RegistryDurableSpineTest:5+RegistryExecutionBoundaryTest:6=29 | exit=0 | xml-sha256s=2e55372d0a365bc3145b7248197dccb5a1a0b8662d3d4b90000bdca0f274a565+684bf1b39141cd103ffb511d10081297d5f0b0189b59138725a96948ea918aae+4e360d4b5c6858517848f2555a2876c9256dc4946a91446cbf8d0c389d0d1bde+b6cb93ff1c8af17b69a0b995f7a4fa174ad2f88f0e6c503c02f8956d0b3ca0db+db366cbec73d75b3645234e683566641d974e89c1ef98e049b9bc48e7c20ec77
 ```
 
 These mirror the markers in `T0E_EVID_01_RECEIPT.md`. With the

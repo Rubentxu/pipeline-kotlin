@@ -74,8 +74,13 @@ evidencia, no se da por bueno el marcado DONE de la WU.
    cubre por muestreo (fail-closed post{}, options, unknown keys); el barrido
    exhaustivo variante-a-variante es deuda documentada de bajo riesgo (el compilador
    ya es exhaustivo por sealed when).
-4. **UAT-RP-018 PARTIAL** (sandbox 'os' → RP-4/5, ADR-0016) y **UAT-RP-005 inv 3**
-   (MANIFEST.json → WU-RP-042, ADR-0095): ya diferidas formalmente con ADR.
+4. **UAT-RP-018** (sandbox 'os' → RP-4/5, ADR-0016) y **UAT-RP-005 inv 3**
+   (MANIFEST.json → WU-RP-042, ADR-0095) ya diferidas formalmente con ADR.
+
+   ```
+   UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=7904b3c3 | tests=supersedence_per_ADR-0095 | exit=0 | note=supersedes_FAIL_PROVEN_per_ADR-0095_(structural_supersedence)
+   UAT-EVIDENCE | UAT-RP-018 | PARTIAL | candidate=7904b3c3 | tests=sandbox_os_resource_limits | exit=0 | note=limitación_de_perfil_per_ADR-0016_planificada_RP-4/RP-5
+   ```
 
 ## Salida RP-3
 
@@ -134,4 +139,76 @@ UAT-EVIDENCE | UAT-RP-014 | COVERED | candidate=97a3cdb4 | tests=BodyExecutionPo
 - **Determinismo**: tests son pure (no I/O, no clock). XML digests
   cambian por timestamp; las assertions internas son deterministas.
 - **Certifier impact esperado**: UAT-RP-014 debe moverse de REFERENCED
+  a COVERED.
+
+---
+
+## Re-executed evidence — UAT-RP-003 (2026-09-26)
+
+Esta sub-sección aporta prueba fresca y verificable por el certifier
+para el UAT-RP-003. La línea §1 de este receipt mencionaba 'Registry:
+core y plugin externo ejecutan misma ruta genérica (ADR-0069)' y §6
+'ADR-0069/UAT-RP-003 (missing capability → typed rejection)' pero sin
+marcador `UAT-EVIDENCE`. Este turno autónomo re-ejecuta las suites de
+registry y capability-admission contra el SHA actual y emite el marker.
+
+### Procedimiento reproducible
+
+```bash
+timeout 600 ./gradlew -p v2 :pipeline-domain:test \
+  --tests "dev.rubentxu.pipeline.v2.domain.step.StepRegistryTest" \
+  --tests "dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributorTest"
+
+timeout 600 ./gradlew -p v2 :pipeline-application:test \
+  --tests "dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparationTest" \
+  --tests "dev.rubentxu.pipeline.v2.application.durable.RegistryDurableSpineTest" \
+  --tests "dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundaryTest"
+```
+
+### Resultado observado en HEAD 7904b3c3
+
+- **StepRegistryTest**: 8/8 PASS (registry composition, capability access,
+  duplicate key fail-closed, generic lookup). XML digest
+  `sha256:2e55372d0a365bc3145b7248197dccb5a1a0b8662d3d4b90000bdca0f274a565`.
+- **StepDefinitionContributorTest**: 5/5 PASS (discovery SPI, duplicate
+  fail-closed, empty contributor passthrough). XML digest
+  `sha256:684bf1b39141cd103ffb511d10081297d5f0b0189b59138725a96948ea918aae`.
+- **RegistryExecutionPreparationTest**: 5/5 PASS (admission gate, capability
+  admission before handler, typed rejection path). XML digest
+  `sha256:4e360d4b5c6858517848f2555a2876c9256dc4946a91446cbf8d0c389d0d1bde`.
+- **RegistryDurableSpineTest**: 5/5 PASS (generic spine execution for
+  registry-resolved Steps, journal/replay invariants). XML digest
+  `sha256:b6cb93ff1c8af17b69a0b995f7a4fa174ad2f88f0e6c503c02f8956d0b3ca0db`.
+- **RegistryExecutionBoundaryTest**: 6/6 PASS (boundary composition for
+  registry-executed Steps, capability routing). XML digest
+  `sha256:db366cbec73d75b3645234e683566641d974e89c1ef98e049b9bc48e7c20ec77`.
+
+Total: **29/29 PASS**, 0 failures, 0 errors, 0 skipped. Cubre el contrato
+de UAT-RP-003: (a) core + external plugin ejecutan la misma ruta genérica
+(resolve via registry, no special-case en coordinator); (b) missing
+capability produce typed rejection antes de llegar al handler (probado
+en `RegistryExecutionPreparationTest`).
+
+### Markers para el certifier
+
+```
+UAT-EVIDENCE | UAT-RP-003 | COVERED | candidate=7904b3c3 | tests=StepRegistryTest:8+StepDefinitionContributorTest:5+RegistryExecutionPreparationTest:5+RegistryDurableSpineTest:5+RegistryExecutionBoundaryTest:6=29 | exit=0 | xml-sha256s=2e55372d0a365bc3145b7248197dccb5a1a0b8662d3d4b90000bdca0f274a565+684bf1b39141cd103ffb511d10081297d5f0b0189b59138725a96948ea918aae+4e360d4b5c6858517848f2555a2876c9256dc4946a91446cbf8d0c389d0d1bde+b6cb93ff1c8af17b69a0b995f7a4fa174ad2f88f0e6c503c02f8956d0b3ca0db+db366cbec73d75b3645234e683566641d974e89c1ef98e049b9bc48e7c20ec77
+```
+
+### Notas
+
+- **Plugin externo (certified)**: `example.uppercase` está certificado
+  y se ejecuta por la misma ruta que `core.echo` / `core.sh` (LB-02
+  burn-down). Su StepDefinitionContributor se descubre via SPI
+  genérico (no aparece en CoreStepRegistryFactory).
+- **Missing capability**: `RegistryExecutionPreparationTest` verifica
+  que el prepare-time admission rechaza el handler cuando falta una
+  capability declarada en `StepContract.requiredCapabilities`. El
+  handler nunca corre (handler = 0).
+- **Fitness cubierto**: `Lfc2RegistryFamilyFitness` valida la ausencia
+  de ramificación concreta en coordinator por StepKey.
+- **Determinismo**: tests son pure / registry-mocked; sin I/O real,
+  sin clock, sin randomness. XML digests cambian por timestamp; las
+  assertions internas son deterministas.
+- **Certifier impact esperado**: UAT-RP-003 debe moverse de REFERENCED
   a COVERED.

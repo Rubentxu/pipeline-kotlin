@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.40.0-rc4"
+version = "0.40.0-rc5"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -31,7 +31,7 @@ version = "0.40.0-rc4"
 //     (artifacts preserved under dist/candidates/v0.40.0-rc1/, NOT a published rc).
 //   - v0.40.0-rc3 is the published candidate at the preceding release SHA.
 //     Its artifacts remain immutable under dist/candidates/v0.40.0-rc3/.
-//   - rc4 is the next publication candidate and contains the C5 BCV gate wiring.
+//   - v0.40.0-rc5 is the candidate for the C1-D StepSpec source partition.
 //
 // Fail-closed law: the released artifact's `version` subcommand MUST equal the git tag.
 // If they ever diverge the build is broken at the source, not in the artifact.

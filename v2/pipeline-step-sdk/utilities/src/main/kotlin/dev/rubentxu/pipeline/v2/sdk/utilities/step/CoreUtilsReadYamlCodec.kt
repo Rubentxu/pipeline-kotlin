@@ -2,15 +2,16 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.intOrNull
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredLong
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlSource
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -23,11 +24,14 @@ import kotlinx.serialization.json.put
  * `source.kind` with `path` / `text` per variant. The `file XOR text` invariant
  * is preserved by construction: a `decode` cannot produce a `FromFile` and
  * `FromText` simultaneously.
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged (roundtrip byte-identical to pre-refactor).
  */
 object CoreUtilsReadYamlInputCodec : StepCodec<ReadYamlInput> {
 
-    override fun encode(value: ReadYamlInput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(value: ReadYamlInput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("codePointLimit", value.codePointLimit)
             put("maxAliasesForCollections", value.maxAliasesForCollections)
             val sourceObj = when (val s = value.source) {
@@ -42,24 +46,23 @@ object CoreUtilsReadYamlInputCodec : StepCodec<ReadYamlInput> {
             }
             put("source", sourceObj)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): ReadYamlInput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val sourceObj = obj.getValue("source").jsonObject
-        val kind = sourceObj.getValue("kind").jsonPrimitive.content
+        val obj = PipelineJson.decode(encoded)
+        val sourceJsonObj = obj["source"]!!.jsonObject
+        val kind = sourceJsonObj.requiredString("kind")
         val source: ReadYamlSource = when (kind) {
             "file" -> ReadYamlSource.FromFile(
-                path = sourceObj.getValue("path").jsonPrimitive.content,
+                path = sourceJsonObj.requiredString("path"),
             )
             "text" -> ReadYamlSource.FromText(
-                text = sourceObj.getValue("text").jsonPrimitive.content,
+                text = sourceJsonObj.requiredString("text"),
             )
             else -> error("core-utils.readYaml: unknown source kind '$kind' (expected 'file' or 'text')")
         }
-        val cpl = obj["codePointLimit"]?.jsonPrimitive?.intOrNull
-        val mac = obj["maxAliasesForCollections"]?.jsonPrimitive?.intOrNull
+        val cpl = obj.intOrNull("codePointLimit")
+        val mac = obj.intOrNull("maxAliasesForCollections")
         if (cpl != null && cpl <= 0) {
             error("core-utils.readYaml: codePointLimit must be > 0 (got $cpl)")
         }
@@ -117,11 +120,13 @@ object CoreUtilsReadYamlInputCodec : StepCodec<ReadYamlInput> {
  * The encoding roundtrip is total and lossless — the value returned from a
  * successful Step replayed through the codec reproduces the original ADT
  * shape, which is what makes replay safe.
+ *
+ * D-012: migrated to `PipelineJson` / `JsonAccessors`.
  */
 object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
 
-    override fun encode(value: ReadYamlOutput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(value: ReadYamlOutput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("multipleDocuments", value.multipleDocuments)
             put("byteSize", value.byteSize)
             put("absolutePath", value.absolutePath)
@@ -134,12 +139,11 @@ object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
                 })
             }
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): ReadYamlOutput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val multiple = obj.getValue("multipleDocuments").jsonPrimitive.content.toBoolean()
+        val obj = PipelineJson.decode(encoded)
+        val multiple = obj.requiredString("multipleDocuments").toBoolean()
         val singleEl = obj["single"]
         val docsEl = obj["documents"]
         val single: YamlDocument? = if (singleEl != null) YamlDocumentCodec.decodeDocument(singleEl) else null
@@ -162,8 +166,8 @@ object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
             single = single,
             documents = documents,
             multipleDocuments = multiple,
-            byteSize = obj.getValue("byteSize").jsonPrimitive.content.toLong(),
-            absolutePath = obj["absolutePath"]?.jsonPrimitive?.content,
+            byteSize = obj.requiredLong("byteSize"),
+            absolutePath = obj.stringOrNull("absolutePath"),
         )
     }
 

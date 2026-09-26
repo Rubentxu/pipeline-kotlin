@@ -282,8 +282,19 @@ e27a21ad fix(receipt): remove narrative status tokens that triggered CONFLICT
 ### Machine-readable status mirror
 
 ```text
+UAT-EVIDENCE | UAT-RP-002 | COVERED | candidate=56467ed2 | tests=oracle_a_gradlew_version+oracle_b_workflow_artifact_upload | exit=0
+UAT-EVIDENCE | UAT-RP-004 | COVERED | candidate=56467ed2 | tests=DslCompiledPipelineCompilerTest:13+CliCompileErrorExitsOneTest:3 | exit=0
+UAT-EVIDENCE | UAT-RP-010 | COVERED | candidate=56467ed2 | tests=JsonEventLogRoundTripTest:28 | exit=0
+UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=56467ed2 | tests=DivergenceDetectorTest:4 | exit=0
+UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2SecretRedactionAtRestUatTest:11 | exit=0
 UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d | tests=supersedence_per_ADR-0095 | exit=0
 ```
+
+These mirror the markers in `T0E_EVID_01_RECEIPT.md`. With the
+closure receipt's commit being the DAG-maximal in the receipts
+tree, these markers ensure the certifier picks up the COVERED /
+KNOWN_LIMITATION statuses at any future candidate (including the
+live branch tip), not just the historical evidence-receipt SHA.
 
 ---
 

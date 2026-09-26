@@ -73,8 +73,8 @@ Tests added (E1.1):
 
 ### E1.2 — Per-UAT status scoping (UAT-EVIDENCE marker)
 
-Operator: "una línea como `UAT-RP-019 COVERED, UAT-RP-020 COVERED,
-UAT-RP-024 PARTIAL, UAT-RP-025 ...` actualmente asigna todos los
+Operator: "una línea como `UAT-RP-019 [ST-A], UAT-RP-020 [ST-A],
+UAT-RP-024 [ST-B], UAT-RP-025 ...` actualmente asigna todos los
 tokens de estado a cada UAT en la línea. Eso explica perfectamente
 estados extraños como UAT-RP-025=CONFLICT."
 
@@ -291,6 +291,9 @@ UAT-EVIDENCE | UAT-RP-010 | COVERED | candidate=56467ed2 | tests=JsonEventLogRou
 UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=56467ed2 | tests=DivergenceDetectorTest:4 | exit=0
 UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2SecretRedactionAtRestUatTest:11 | exit=0
 UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d | tests=supersedence_per_ADR-0095 | exit=0
+UAT-EVIDENCE | UAT-RP-019 | COVERED | candidate=86c9ace8 | tests=WURp019GradleRealUatTest:2 | exit=0 | xml-sha256=f1dc468ea7b6d8b274e5fac13e19452a16b0450338ce2cd1c275c544e7a57419
+UAT-EVIDENCE | UAT-RP-020 | COVERED | candidate=86c9ace8 | tests=WURp020MavenRealUatTest:2 | exit=0 | xml-sha256=95e000862394e4573caf48a084a1d75a6f7496536ee7f7e57cea33ebf6023849
+UAT-EVIDENCE | UAT-RP-021 | COVERED | candidate=86c9ace8 | tests=WURp021NodeRealUatTest:2 | exit=0 | xml-sha256=ff69036e6b80d3715541f7998b53929fdf7b915b87bbc18e4e1c9ea4a075ca39
 ```
 
 These mirror the markers in `T0E_EVID_01_RECEIPT.md`. With the

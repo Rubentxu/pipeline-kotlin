@@ -224,6 +224,68 @@ En **todos los casos** el binario retorna exit code correcto. El "defecto" docum
 
 ---
 
+## 8b. Re-executed evidence — UAT-RP-019 / UAT-RP-020 / UAT-RP-021 (2026-09-26)
+
+Esta sub-sección aporta pruebas frescas, ejecutables y verificables por el
+certifier para los tres UAT-RP que el slice R1 ya había dejado escritos
+como COVERED pero sin marcador `UAT-EVIDENCE` (R1 los emitió como
+tabla narrativa con multi-UAT por fila, que el parser free-form
+clasifica como REFERENCED). R2 no añadió markers porque era scope
+recertificación/release; este turno autónomo los añade como
+verificación independiente al SHA actual.
+
+### Procedimiento reproducible
+
+```bash
+# Opt-in por env var (los tests usan @EnabledIfEnvironmentVariable)
+export UAT_RP_019_RUN=1
+export UAT_RP_020_RUN=1
+export UAT_RP_021_RUN=1
+
+# Ejecutar los 3 UAT en una sola invocación Gradle para preservar
+# los XMLs juntos (Gradle limpia los XMLs anteriores a cada run).
+timeout 600 ./gradlew -p v2 :pipeline-application:test \
+  --tests "dev.rubentxu.pipeline.v2.application.cli.WURp019GradleRealUatTest" \
+  --tests "dev.rubentxu.pipeline.v2.application.cli.WURp020MavenRealUatTest" \
+  --tests "dev.rubentxu.pipeline.v2.application.cli.WURp021NodeRealUatTest"
+```
+
+### Resultado observado en HEAD 86c9ace8
+
+- **WURp019GradleRealUatTest:** 2/2 PASS (happy + failure), 24.379s.
+  Digest XML: `sha256:f1dc468ea7b6d8b274e5fac13e19452a16b0450338ce2cd1c275c544e7a57419`
+- **WURp020MavenRealUatTest:** 2/2 PASS (happy + failure), 14.885s.
+  Digest XML: `sha256:95e000862394e4573caf48a084a1d75a6f7496536ee7f7e57cea33ebf6023849`
+- **WURp021NodeRealUatTest:** 2/2 PASS (happy + failure), 10.29s.
+  Digest XML: `sha256:ff69036e6b80d3715541f7998b53929fdf7b915b87bbc18e4e1c9ea4a075ca39`
+
+Total: **6/6 PASS**, 49.554s combined, 0 failures, 0 errors, 0 skipped.
+
+### Markers para el certifier
+
+Las siguientes líneas son la fuente de verdad machine-readable para el
+gen-current-uat-status (DAG-maximal por SHA, scoping por UAT):
+
+```
+UAT-EVIDENCE | UAT-RP-019 | COVERED | candidate=86c9ace8 | tests=WURp019GradleRealUatTest:2 | exit=0 | xml-sha256=f1dc468ea7b6d8b274e5fac13e19452a16b0450338ce2cd1c275c544e7a57419
+UAT-EVIDENCE | UAT-RP-020 | COVERED | candidate=86c9ace8 | tests=WURp020MavenRealUatTest:2 | exit=0 | xml-sha256=95e000862394e4573caf48a084a1d75a6f7496536ee7f7e57cea33ebf6023849
+UAT-EVIDENCE | UAT-RP-021 | COVERED | candidate=86c9ace8 | tests=WURp021NodeRealUatTest:2 | exit=0 | xml-sha256=ff69036e6b80d3715541f7998b53929fdf7b915b87bbc18e4e1c9ea4a075ca39
+```
+
+### Notas
+
+- **Opt-in**: los tests usan `@EnabledIfEnvironmentVariable(named = "UAT_RP_0NN_RUN", matches = "1")`.
+  Por defecto saltan; este turno los habilitó para emitir evidencia.
+- **Sin código de producción tocado**: este bloque es solo evidencia (markers en receipt).
+  Los tests ya existían desde WU-RP-046 R1; no se añadieron tests nuevos.
+- **Tooling**: Gradle 8.14.5, Maven 3.9.9, Node 25.9.0 (asdf) — todos disponibles localmente.
+- **Determinismo**: los digests XML cambian por timestamp del header; las assertions internas
+  son deterministas (exit codes, file existence, hash de artefacto).
+- **Certifier impact esperado**: UAT-RP-019/020/021 deben moverse de REFERENCED a COVERED;
+  COVERED=13, REFERENCED=10 (delta vs HEAD anterior: +3 COVERED, -3 REFERENCED).
+
+---
+
 ## 9. Próxima unidad
 
 - **WU-RP-040 R5** (siguiente ronda, alta prioridad) — cerrar R3.3 (SAST/detekt) + R3.4 (Dependabot) + extender Kover a todos los módulos + triage de mutantes sobrevivientes. Sin esto, **NO_RELEASE**.

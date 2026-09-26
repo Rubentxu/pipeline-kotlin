@@ -6,12 +6,14 @@ handling special dispositions (E3), regenerating (E4), proving gate
 (E5), and producing final receipt (E6) — without deferring to
 TRAIN-1 and without PRDY-010/promotion/merge to main").
 
-**HEAD:** `4d5589e3da1c99a3afe67bfff5e77a6c2b2890c2` (branch
-`wu/rp-053r-red-fixtures`, ahead=71 behind=0 relative to `origin/main`).
+**HEAD:** `8913bac3e47904e19f861ac11a8414427704e612` (branch
+`wu/rp-053r-red-fixtures`, ahead=77 behind=0 relative to `origin/main`).
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 **Admission:** 6/6 PASS (`scripts/admission-check.py`).
-**Hermetic tests:** 27 (certifier) + 43 (admission) + 8 (classify) +
-9 (consult) + 6 (projection) = **93/93 PASS**.
+**Hermetic tests:** 27 (certifier) + 44 (admission) + 8 (classify) +
+9 (consult) + 6 (projection) = **94/94 PASS**.
+**Status:** COVERED=10 / KNOWN_LIMITATION=1 / REFERENCED=13 /
+NOT_APPLICABLE=3 = 27 UATs.
 
 ---
 
@@ -177,19 +179,19 @@ Total: 27 (PRDY-003 contract).
 
 ## 6 — Gate proof (E5)
 
-### Dev repo (3 consecutive runs at HEAD `f168f9c6`)
+### Dev repo (3 consecutive runs at HEAD `8913bac3`)
 
 ```
-Run 1: 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
-Run 2: 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
-Run 3: 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
+Run 1: 6 PASS, 0 FAIL (candidate=8913bac3e479)
+Run 2: 6 PASS, 0 FAIL (candidate=8913bac3e479)
+Run 3: 6 PASS, 0 FAIL (candidate=8913bac3e479)
 ```
 
 ### Fresh clone (with `--no-hardlinks`, byte-independent objects)
 
 ```
-Clone 1 (no-hardlinks): 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
-Clone 2 (hardlinks):    6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
+Clone 1 (no-hardlinks): 6 PASS, 0 FAIL (candidate=8913bac3e479)
+Clone 2 (hardlinks):    6 PASS, 0 FAIL (candidate=8913bac3e479)
 ```
 
 ### Certifier byte-equality (timestamp aside)
@@ -203,19 +205,26 @@ gates, and acceptance criteria are deterministic.
 
 - `test_gen_current_uat_status.py`: 27/27 PASS in dev repo + 27/27 in
   both clones.
-- `test_admission_check.py`: 43/43 PASS in dev repo + 43/43 in both
-  clones.
+- `test_admission_check.py`: 44/44 PASS in dev repo + 44/44 in both
+  clones (43 pre-existing + 1 new R4 blocker-list test at this SHA).
 - `test_classify_open_prs.py`: 8/8 PASS.
 - `test_consult_harness_verdict.py`: 9/9 PASS.
 - `test_gen_current_state_projection.py`: 6/6 PASS.
 
-Total: **93/93 hermetic tests PASS** (no flakiness observed).
+Total: **94/94 hermetic tests PASS** (no flakiness observed).
 
 ---
 
 ## 7 — Commits produced in this block
 
 ```
+8913bac3 regen(current-uat-status): refresh at HEAD 6bb2f169
+6bb2f169 docs(t0e-evidence): add E2-VERIFY — fresh re-execution of E2 oracles
+f0f682e3 fix(admission-check): R4 exposes blocking_count + full all_blocking_uats list
+e429df54 debt(backlog): point T0E-EVID-01 closure at HEAD 1893e104, document post-80d487f5 fixes
+1893e104 regen(current-uat-status): final regen at HEAD ee85715e
+ee85715e docs(t0e): final HEAD pointer update
+4d5589e3 docs(t0e): final sync — HEAD ref + ahead/behind count + commit list
 f168f9c6 regen(current-uat-status): final regen at HEAD f3b09b7c
 f3b09b7c docs(t0e): sync HEAD reference + ahead/behind count in closure receipt
 0726d065 docs(t0e): sync commit list + HEAD reference to final state
@@ -239,15 +248,21 @@ e27a21ad fix(receipt): remove narrative status tokens that triggered CONFLICT
 56467ed2 fix(gen-current-uat-status): T0E-EVID-01 E1 — DAG-maximal commits + per-UAT scoping
 ```
 
-19 commits total. 4 new files / 5 modified files at HEAD (`f168f9c6`):
+27 commits total. 2 new files / 6 modified files at HEAD (`8913bac3`):
 
 - `scripts/gen-current-uat-status.py` — E1 + E3 certifier architecture.
 - `scripts/test_gen_current_uat_status.py` — 27 tests.
-- `scripts/admission-check.py` — R3 excludes CONSULT verdict dir.
+- `scripts/admission-check.py` — R3 excludes CONSULT verdict dir;
+  R4 exposes full blocker count + list (this SHA).
+- `scripts/test_admission_check.py` — 43 + 1 R4 blocker-list test = 44
+  tests.
 - `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` — executable evidence for 5
-  UATs + KNOWN_LIMITATION marker for UAT-RP-005.
+  UATs + KNOWN_LIMITATION marker for UAT-RP-005 + E2-VERIFY section.
+- `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` — this receipt.
 - `docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md` — auto-generated
   status view.
+- `.agent/TECH_DEBT_BACKLOG.md` — T0E-EVID-01 status pointer at
+  final HEAD.
 
 ### Machine-readable status mirror
 
@@ -266,9 +281,15 @@ UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d | tests=supers
 - [x] AC3: Certifier correctness fixed: DAG-maximal commits replace
       max-by-SHA, per-UAT status scoping, machine-readable
       UAT-EVIDENCE marker.
-- [x] AC4: 93/93 hermetic tests PASS in dev repo and both fresh clones.
+- [x] AC3b: R4 diagnostic exposes blocking_count=N and the full
+      all_blocking_uats=[...] list (not just first 5).
+- [x] AC3c: E2 oracles re-executed at this HEAD with fresh JUnit XML
+      digests in T0E_EVID_01_RECEIPT.md (E2-VERIFY section).
+- [x] AC4: 94/94 hermetic tests PASS in dev repo and fresh clones
+      (43+1 R4 admission tests + 27 certifier + 8 classify + 9 consult
+      + 6 projection).
 - [x] AC5: 6/6 admission rules PASS in dev repo (3 consecutive runs)
-      and both fresh clones.
+      and fresh clones.
 - [x] AC6: Certifier output is byte-identical across dev repo and
       fresh clones (timestamp aside).
 - [x] AC7: No PRDY-010 opened. No merge to main. No TRAIN-1 opened.

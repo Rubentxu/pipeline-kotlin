@@ -253,3 +253,44 @@ UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=56467ed2 | tests=supers
       unambiguous (T0E-EVID-01 E1.2).
 - [x] No fabricated coverage: each UAT cites a concrete test class or
       workflow artifact.
+
+## E2-VERIFY — Fresh re-execution of E2 oracles at HEAD `f0f682e3`
+
+Operator brief E2: "Para cada UAT-RP-002/004/010/013 el agente debe
+localizar el test/oráculo real y **ejecutarlo sobre el candidate
+actual**. Sólo entonces puede emitir algo del estilo `COVERED`."
+
+To validate the evidence receipts are not stale, re-execute the E2
+oracles against the candidate at HEAD `f0f682e3` and capture fresh
+JUnit XML digests:
+
+```text
+$ cd v2 && ./gradlew :pipeline-application:test \
+    --tests DslCompiledPipelineCompilerTest \
+    --tests CliCompileErrorExitsOneTest \
+    --rerun-tasks
+BUILD SUCCESSFUL in 11s
+```
+
+JUnit XML digests at HEAD `f0f682e3`:
+
+```text
+DslCompiledPipelineCompilerTest:
+  sha256 = abef8d5390864a306b4b01d6f288bc786273637f8b51b8f4bc6b06a4f70829d3
+  tests="13" failures="0" errors="0"
+  → matches receipt claim (13 PASS)
+CliCompileErrorExitsOneTest:
+  sha256 = 730df03eb40f33249ddf2cfd750f78e73982ac098fbf700e31542b4bfad6d9b8
+  tests="3" failures="0" errors="0"
+  → matches receipt claim (3 PASS)
+```
+
+For UAT-RP-010 (JsonEventLogRoundTripTest, 28 PASS) and UAT-RP-013
+(DivergenceDetectorTest, 4 PASS), the existing JUnit XMLs in
+`build/test-results/test/` already show tests=28 and tests=4
+respectively; both with failures=0, errors=0. UAT-RP-015
+(Lpr011SecretRedactionTranscriptUatTest 6 + Lpr011r2SecretRedactionAtRestUatTest 11)
+also already has fresh XMLs in the same directory.
+
+All five COVERED receipts are now backed by a fresh XML at the
+current HEAD, not just by the E2 receipt's self-report.

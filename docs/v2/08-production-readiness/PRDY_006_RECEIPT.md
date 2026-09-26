@@ -1,7 +1,11 @@
 # PRDY-006 Receipt: Admission Check on Sanified Sources
 
-**Generated at (UTC):** 2026-09-26T10:23Z
-**Source of truth:** `docs/v2/08-production-readiness/CURRENT_STATE.md` + `docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md` + `git rev-parse HEAD`.
+**Status:** SUPERSEDED by `PRDY_006R_RECEIPT.md`. This file is preserved in git history for traceability. The R2 rule it documented was contractually impossible (see PRDY-006R §"Bug contractual que existía"). Do not consult this receipt for current semantics; consult the PRDY-006R receipt instead.
+
+---
+
+**Generated at (UTC):** 2026-09-26T10:23Z (SUPERSEDED 2026-09-26T10:28Z)
+**Source of truth (historical):** `docs/v2/08-production-readiness/CURRENT_STATE.md` + `docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md` + `git rev-parse HEAD`.
 
 ---
 

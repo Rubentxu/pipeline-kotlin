@@ -1915,6 +1915,8 @@ linearized scope:   Context_n + structural transition --> Context_n+1
 
 7. **Continuidad:** mientras el harness examina una candidata, este repositorio continúa con la siguiente WU independiente. Las correcciones siguientes producen candidatas nuevas; la anterior queda bloqueada como evidencia hasta que suelte o se reincorpore.
 
+8. **Planner SDDK agnóstico al stack:** este repositorio es Kotlin/Gradle y su única autoridad de versión es `v2/build.gradle.kts` (`rootProject.version`). No crear `Cargo.toml`, `Cargo.lock` ni otro manifiesto falso para satisfacer el planner genérico de SDDK. Si `sddk release plan` falla con una precondición específica de Cargo/Rust, registrar el `argv`, código de salida y digest de la salida, clasificarlo como limitación del tooling externo y continuar por la ruta manual de gates/transición autorizada para la candidata. Esta excepción no autoriza a saltarse la certificación externa, RP-5, el harness ni la protección de `main`.
+
 ## Frontera de responsabilidad — pipeline-kotlin vs pipelinek-release-harness
 
 La frontera entre desarrollo y certificación es una propiedad arquitectónica, no una decisión coyuntural. Estas reglas son vinculantes para cualquier trabajo en este repositorio:

@@ -282,15 +282,15 @@ subprojects {
 }
 
 // ── C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator ──────────
-// Phase 1 (2026-09-26, this commit): opt-in to four modules with the most stable
+// Phase 1 (2026-09-26, commit `2d83fe3d`): opt-in to four modules with the most stable
 // public Kotlin surface. The plugin emits one .api file per module under
 // api/<module>.api (default location; explicit below for predictability) and
-// exposes the `apiCheck` task. `apiCheck` is NOT wired into `check` yet —
-// regenerating baselines post-C1 partition (H1+H2+H3) is cheaper than maintaining
-// twice (now and post-refactor).
+// exposes the `apiCheck` task. Phase 2 below wires that task into each selected
+// module's normal `check` lifecycle.
 //
-// Phase 2 (post-C1, future block): regenerate baselines, wire `apiCheck` into
-// `check` (or its own gate lane), and document the policy in TESTING-STATE.md.
+// Phase 2 (2026-09-26, C5): the four baselined public modules wire `apiCheck` into
+// their own `check` lifecycle. The aggregate root `check` already depends on
+// every Kotlin subproject check, so ABI drift now fails the normal repository gate.
 //
 // The chosen modules have the largest stable JVM ABI surfaces:
 //   - pipeline-domain: 248 top-level types (Step contract, ReplayPolicy, durable).
@@ -312,6 +312,15 @@ subprojects {
     val isBcvModule = bcvModules.any { project.path == ":$it" || project.path.endsWith(":$it") }
     if (isBcvModule) {
         pluginManager.apply("org.jetbrains.kotlinx.binary-compatibility-validator")
+        // C5 Phase 2: wait until the Kotlin JVM plugin has created the
+        // lifecycle tasks, then fail the module gate on an ABI mismatch instead
+        // of leaving the validator as an opt-in task. The allowlist above remains
+        // the only authority for which published API surfaces are checked.
+        pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+            tasks.named("check") {
+                dependsOn(tasks.named("apiCheck"))
+            }
+        }
     }
 }
 

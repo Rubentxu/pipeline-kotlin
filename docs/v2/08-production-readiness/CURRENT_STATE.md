@@ -7,31 +7,28 @@
 
 | Field | Value |
 |---|---|
-| **Generated at (UTC)** | `2026-09-26T10:21:42Z` |
+| **Generated at (UTC)** | `2026-09-26T10:22:32Z` |
 | **Generator** | `scripts/gen-current-state-projection.py` |
 | **Generator SHA** | `0c5a4c1d1bd3a0a7` |
-| **Output SHA-256 (self)** | `31cfb27fce0cc5865fc8cb9fee8bf1e5d9bbbf989be01beb5c117254c7bfa9a2` |
+| **Output SHA-256 (self)** | `8460ba9249b02f83d5df1b8a83179d155102099b0a6b45a54333dcf21452319f` |
 
 ## Git
 
 | Field | Value |
 |---|---|
-| **HEAD** | `ddaba87dbbba364da1c2c9dfb68c214a1b70a695` |
+| **HEAD** | `e60979aa5bc4133858b81930ea8a7478aa86aeb3` |
 | **Branch** | `wu/rp-053r-red-fixtures` |
 | **origin/main** | `acc903875d70f939713786d71a6331bb6ccf7dc9` |
-| **origin/wu/rp-053r-red-fixtures** | `ddaba87dbbba364da1c2c9dfb68c214a1b70a695` |
+| **origin/wu/rp-053r-red-fixtures** | `e60979aa5bc4133858b81930ea8a7478aa86aeb3` |
 | **HEAD ahead of origin/wu/rp-053r-red-fixtures** | `0` |
 | **HEAD behind origin/wu/rp-053r-red-fixtures** | `0` |
-| **Working tree** | `7 files modified` |
+| **Working tree** | `4 files modified` |
 
 Working-tree modifications (paths):
 - ` M .agent/SESSION_POINTER.md`
 - ` M .agent/TECH_DEBT_BACKLOG.md`
 - ` M .agent/WORK_JOURNAL.md`
-- ` M docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md`
-- `?? docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md`
-- `?? scripts/gen-current-uat-status.py`
-- `?? scripts/test_gen_current_uat_status.py`
+- `?? scripts/admission-check.py`
 
 ## Releases
 
@@ -80,4 +77,4 @@ git HEAD (local) > origin HEAD (remote) > receipts
 ```
 
 Conflicting candidate SHAs fail-loud (see `--strict` flag).
-<!-- output_sha256: 31cfb27fce0cc5865fc8cb9fee8bf1e5d9bbbf989be01beb5c117254c7bfa9a2 -->
+<!-- output_sha256: 8460ba9249b02f83d5df1b8a83179d155102099b0a6b45a54333dcf21452319f -->

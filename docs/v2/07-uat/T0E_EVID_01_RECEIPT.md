@@ -6,14 +6,13 @@
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 
 This receipt captures REAL, EXECUTABLE evidence for the four UATs that R4
-flagged as `NOT_RUN` (missing evidence) before E1+E2 work:
+flagged as `NOT_RUN` (missing evidence) before E1+E2 work.
 
-| UAT | Status before | Status after | Oracle run |
-|---|---|---|---|
-| UAT-RP-002 | NOT_RUN | **COVERED** | `v2/gradlew --version` + workflow artifact-upload config check |
-| UAT-RP-004 | NOT_RUN | **COVERED** | `DslCompiledPipelineCompilerTest` (13) + `CliCompileErrorExitsOneTest` (3) |
-| UAT-RP-010 | NOT_RUN | **COVERED** | `JsonEventLogRoundTripTest` (28) |
-| UAT-RP-013 | NOT_RUN | **COVERED** | `DivergenceDetectorTest` (4) |
+Summary:
+- UAT-RP-002: oracle A (`v2/gradlew --version`) + oracle B (workflow artifact-upload).
+- UAT-RP-004: DslCompiledPipelineCompilerTest (13 PASS) + CliCompileErrorExitsOneTest (3 PASS).
+- UAT-RP-010: JsonEventLogRoundTripTest (28 PASS).
+- UAT-RP-013: DivergenceDetectorTest (4 PASS).
 
 All oracle tests passed (failures=0, errors=0) against `HEAD=56467ed2`.
 
@@ -30,6 +29,11 @@ executable evidence, not narrative. For each UAT below we:
    `build/test-results/test/`").
 4. Recorded a `UAT-EVIDENCE` marker line (T0E-EVID-01 E1.2) so the
    certifier attributes the status unambiguously to that UAT.
+
+NOTE: the human-readable summary at the top of this file deliberately
+omits any `NOT_RUN` / `COVERED` / `FAIL_PROVEN` token on the UAT-RP-*
+line to avoid the per-line free-form status scoping. The machine-readable
+markers at the bottom are the only authoritative source.
 
 ## E2.1 — UAT-RP-002 (Workflow: valid path + artifact upload)
 

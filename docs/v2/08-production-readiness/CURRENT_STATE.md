@@ -7,31 +7,28 @@
 
 | Field | Value |
 |---|---|
-| **Generated at (UTC)** | `2026-09-26T08:46:13Z` |
+| **Generated at (UTC)** | `2026-09-26T09:19:32Z` |
 | **Generator** | `scripts/gen-current-state-projection.py` |
 | **Generator SHA** | `b9a5dc6282a2881f` |
-| **Output SHA-256 (self)** | `dbd3c3020375798a53c5102230aa7c106d58d6d00e4e073e9fad4446fb7dd1f2` |
+| **Output SHA-256 (self)** | `0aca1da4c8523ad1f135af89e43484895e26b7804e48d3d39bd46e6fc83f3512` |
 
 ## Git
 
 | Field | Value |
 |---|---|
-| **HEAD** | `f79da219abd69c293f37cc14f9fcfa8561f942b2` |
+| **HEAD** | `08c3bdea1d3ce39fc5ed316dcf1d40203458a7ad` |
 | **Branch** | `wu/rp-053r-red-fixtures` |
 | **origin/main** | `acc903875d70f939713786d71a6331bb6ccf7dc9` |
-| **origin/wu/rp-053r-red-fixtures** | `f79da219abd69c293f37cc14f9fcfa8561f942b2` |
+| **origin/wu/rp-053r-red-fixtures** | `08c3bdea1d3ce39fc5ed316dcf1d40203458a7ad` |
 | **HEAD ahead of origin/wu/rp-053r-red-fixtures** | `0` |
 | **HEAD behind origin/wu/rp-053r-red-fixtures** | `0` |
-| **Working tree** | `7 files modified` |
+| **Working tree** | `4 files modified` |
 
 Working-tree modifications (paths):
 - ` M .agent/SESSION_POINTER.md`
 - ` M .agent/TECH_DEBT_BACKLOG.md`
 - ` M .agent/WORK_JOURNAL.md`
-- `?? docs/v2/08-production-readiness/CURRENT_STATE.md`
-- `?? scripts/__pycache__/`
-- `?? scripts/gen-current-state-projection.py`
-- `?? scripts/test_gen_current_state_projection.py`
+- ` M docs/v2/08-production-readiness/CURRENT_STATE.md`
 
 ## Releases
 
@@ -58,7 +55,7 @@ Working-tree modifications (paths):
 ## Receipts inventory
 
 - Total receipts in `docs/v2/07-uat/`: **272**
-- Receipts modified in last 7 days: **108**
+- Receipts modified in last 7 days: **107**
 
 ## Tech debt ledger
 
@@ -81,4 +78,4 @@ git HEAD (local) > origin HEAD (remote) > receipts
 
 Conflicting candidate SHAs fail-loud (see `--strict` flag).
 
-<!-- output_sha256: dbd3c3020375798a53c5102230aa7c106d58d6d00e4e073e9fad4446fb7dd1f2 -->
+<!-- output_sha256: 0aca1da4c8523ad1f135af89e43484895e26b7804e48d3d39bd46e6fc83f3512 -->

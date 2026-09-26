@@ -702,6 +702,46 @@ class R5ProvenanceTests(unittest.TestCase):
         self.assertIn("UAT-RP-001", msg)
         self.assertNotIn("UAT-RP-002", msg)  # only the failing UATs appear
 
+    def test_r5_message_exposes_full_failure_count_and_list(self):
+        """E1.3 / operator brief: R5 must surface failure_count and
+        all_failures, not just the first 5. Mirrors the R4 fix.
+
+        Build a fixture with 7 stale receipts (provenance not
+        reachable from candidate) and assert the message exposes
+        `failure_count=7` plus the 6th and 7th UATs in
+        `all_failures=...`.
+        """
+        repo = TempGitRepo()
+        with repo:
+            parent = repo.commit("parent")
+            receipts = {
+                f"docs/v2/07-uat/R{i}.md": f"x{i}"
+                for i in range(91, 98)
+            }
+            for rel, body in receipts.items():
+                repo.commit(f"add {rel}", {rel: body})
+            stale_head = repo.head()
+            # Build a UAT_STATUS fixture referencing all 7 receipts
+            rows = "\n".join(
+                f"| `UAT-RP-{i:03d}` | **COVERED** | `docs/v2/07-uat/R{i}.md` | x |"
+                for i in range(91, 98)
+            )
+            md = rows + "\n| **COVERED:** 7\n"
+            self._with_fake_uat_status(md, repo)
+            # Make candidate a side-branch that can't see the receipts.
+            _run_git(repo.repo, "checkout", "-q", "-b", "side", parent)
+            repo.commit("side-add", {"unrelated.md": "u"})
+            side_head = repo.head()
+            ok, msg = self.mod.check_r5_receipt_provenance(side_head, repo.repo)
+            self.assertFalse(ok, f"stale provenance must FAIL: {msg}")
+            self.assertIn("failure_count=7", msg)
+            self.assertIn("all_failures=[", msg)
+            # UATs past the first 5 (indices 5 and 6) must appear.
+            self.assertIn("UAT-RP-096", msg)
+            self.assertIn("UAT-RP-097", msg)
+            for i in range(91, 98):
+                self.assertIn(f"UAT-RP-{i:03d}", msg)
+
     def test_absence_of_receipt_in_status_blocks(self):
         """UAT row exists but has no `Latest Receipt` column → FAIL.
         Without a receipt we cannot derive provenance."""

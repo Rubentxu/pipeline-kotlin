@@ -393,7 +393,17 @@ def check_r5_receipt_provenance(
                 f"{uid}=provenance:{prov[:8]} not_ancestor_of_candidate:{candidate_sha[:8]}"
             )
     if failures:
-        return False, "R5 receipt provenance failures: " + ", ".join(failures[:5])
+        # E1.3 / operator brief: surface full failure count + complete
+        # list, not just the first 5. Mirrors the R4 fix.
+        total = len(failures)
+        summary = ", ".join(failures[:5])
+        full = ", ".join(failures)
+        return False, (
+            f"R5 receipt provenance failures: "
+            f"failure_count={total} "
+            f"summary={summary} "
+            f"all_failures=[{full}]"
+        )
     return True, None
 
 

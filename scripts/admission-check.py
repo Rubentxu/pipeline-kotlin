@@ -75,7 +75,8 @@ EXCEPTIONS_FILE = ROOT / EXCEPTIONS_FILE_REL
 UAT_RECEIPTS_DIR = ROOT / UAT_RECEIPTS_DIR_REL
 
 # States in CURRENT_UAT_STATUS that block admission without an exception.
-BLOCKING_UAT_STATES = {"FAIL_PROVEN", "NOT_RUN", "REJECTED"}
+# CONFLICT (D-007): two explicit statuses without resolvable precedence.
+BLOCKING_UAT_STATES = {"FAIL_PROVEN", "NOT_RUN", "REJECTED", "CONFLICT"}
 # States that block only under --strict.
 STRICT_BLOCKING_UAT_STATES = {"REFERENCED"}
 
@@ -363,7 +364,8 @@ def check_r5_receipt_provenance(
     rows = parse_uat_status_rows(text)
     failures: list[str] = []
     for uid, status in rows:
-        if status not in ("COVERED", "PARTIAL", "REFERENCED", "FAIL_PROVEN", "REJECTED"):
+        if status not in ("COVERED", "PARTIAL", "REFERENCED", "FAIL_PROVEN",
+                          "REJECTED", "CONFLICT"):
             # NOT_RUN and unsupported states have no receipt to verify.
             continue
         rel_path = parse_uat_receipt_path(text, uid)

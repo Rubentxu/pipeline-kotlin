@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T13:54:11Z
-**Source of truth:** `git log` HEAD `72f1ce8` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-26T14:00:23Z
+**Source of truth:** `git log` HEAD `9a334dd` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -13,7 +13,7 @@
 | `UAT-RP-002` | **REFERENCED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | | 2 | Missing evidence UAT-RP-002 | E2.1: gradlew path + workflow artifact-upload | |
 | `UAT-RP-003` | **REFERENCED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | - Evidencia: certification del plugin + UAT-RP-003 (ADR-0069). |
 | `UAT-RP-004` | **REFERENCED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | | 3 | Missing evidence UAT-RP-004 | E2.2: DslCompiledPipelineCompilerTest + CliCompileErrorExitsOneTest = 16 tests | |
-| `UAT-RP-005` | **REFERENCED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
+| `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
 | `UAT-RP-006` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-006 (HTML injection)**: covered by round 1 (5 rp011 tests). |
 | `UAT-RP-007` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-007 (paths publish)**: covered by round 2 (5 rp011r2 tests). |
 | `UAT-RP-008` | **COVERED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-008** (Stash symlinks): covered by 7 rp012 tests (this WU). |
@@ -43,7 +43,8 @@
 
 - **Total UATs (PRDY-003 contract):** 27
 - **COVERED:** 5
-- **REFERENCED:** 19
+- **KNOWN_LIMITATION:** 1
+- **REFERENCED:** 18
 - **NOT_APPLICABLE:** 3
 
 ---

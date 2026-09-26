@@ -80,6 +80,12 @@ $JAVA_BIN -cp '...' dev.rubentxu.pipeline.v2.application.MainKt run \
 
 **UAT-RP-022 = COVERED en HEAD `2a66317c`.** El release byte-idéntico se cumple para el SHA actual. Recertificación válida; matriz UAT-MATRIX actualizada.
 
+### 1.7 Marker para el certifier (T0E-EVID-01 follow-on)
+
+```
+UAT-EVIDENCE | UAT-RP-022 | COVERED | candidate=92f7c4a7 | tests=distZip_byte_identical_double_build (incremental + --rerun-tasks) | exit=0 | note=recertified_per_WU_RP_046_R2_§1.1-1.6 at base_2a66317c; reproducible build (isPreserveFileTimestamps=false, isReproducibleFileOrder=true); sha256=6c30e6b6e9b538fdae3dd1ee523173f6c5d7a917d2856043fc4409db67fe7ae1
+```
+
 ---
 
 ## 2. WU-RP-040 — RECEIPT consolidado (R1..R4) ✅

@@ -41,3 +41,49 @@ Intentional deviations: run imprime array JSON (no jsonl) — superficie existen
 Security implications reviewed: superficies de lectura no exponen secretos (RedactingEventSink envuelve el store; verificado en redacción RP-015)
 Tests demonstrating the contract: WURp023ObservationModesUatTest (1 E2E HF2, 5 invariantes)
 ```
+
+---
+
+## Re-executed evidence — UAT-RP-017 (2026-09-26)
+
+Esta sub-sección aporta prueba fresca y verificable por el certifier
+para el UAT-RP-017. El receipt original (WU-RP-023) ya documentaba
+1/1 PASS en L1, pero sin marcador `UAT-EVIDENCE`. El certifier freeform
+parser lo clasificaba como REFERENCED (multi-UAT en la línea del
+matrix narrative). Este turno autónomo re-ejecuta el test contra el
+SHA actual y emite el marker.
+
+### Procedimiento reproducible
+
+```bash
+# Sin opt-in: el test corre por defecto.
+timeout 600 ./gradlew -p v2 :pipeline-application:test \
+  --tests "dev.rubentxu.pipeline.v2.application.cli.WURp023ObservationModesUatTest"
+```
+
+### Resultado observado en HEAD 92f7c4a7
+
+- **WURp023ObservationModesUatTest:** 1/1 PASS (5 invariantes E2E HF2
+  sobre binario real installDist: run stdout JSON, `events --db`
+  relectura, cursor reconnect, `events verify` contract, runId
+  desconocido), 8.054s.
+  Digest XML: `sha256:659dc40a232c5b7c44e3f752f0d63b195632862b0260f430b44211c196c8fb38`
+
+Total: **1/1 PASS**, 8.054s, 0 failures, 0 errors, 0 skipped.
+
+### Markers para el certifier
+
+```
+UAT-EVIDENCE | UAT-RP-017 | COVERED | candidate=92f7c4a7 | tests=WURp023ObservationModesUatTest:1 (5 E2E HF2 invariantes: run-JSON, events-replay, cursor-reconnect, events-verify-contract, unknown-runId) | exit=0 | xml-sha256=659dc40a232c5b7c44e3f752f0d63b195632862b0260f430b44211c196c8fb38
+```
+
+### Notas
+
+- **Sin opt-in**: el test corre por defecto (no usa `@EnabledIfEnvironmentVariable`).
+- **Sin código de producción tocado**: este bloque es solo evidencia.
+  El test ya existía desde WU-RP-023.
+- **Determinismo**: las assertions son bit-exact JSON shape + stderr cursor.
+  El XML digest cambia por timestamp; las assertions internas son
+  deterministas.
+- **Certifier impact esperado**: UAT-RP-017 debe moverse de REFERENCED
+  a COVERED.

@@ -6,8 +6,8 @@ handling special dispositions (E3), regenerating (E4), proving gate
 (E5), and producing final receipt (E6) — without deferring to
 TRAIN-1 and without PRDY-010/promotion/merge to main").
 
-**HEAD:** `16b01fe40a5566382ea91fbb922945b95ca785a5` (branch
-`wu/rp-053r-red-fixtures`, ahead=69 behind=0 relative to `origin/main`).
+**HEAD:** `f168f9c6f4cf589dcb31f192b9ed381d32e95e0e` (branch
+`wu/rp-053r-red-fixtures`, ahead=70 behind=0 relative to `origin/main`).
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 **Admission:** 6/6 PASS (`scripts/admission-check.py`).
 **Hermetic tests:** 27 (certifier) + 43 (admission) + 8 (classify) +
@@ -177,19 +177,19 @@ Total: 27 (PRDY-003 contract).
 
 ## 6 — Gate proof (E5)
 
-### Dev repo (3 consecutive runs at HEAD `16b01fe4`)
+### Dev repo (3 consecutive runs at HEAD `f168f9c6`)
 
 ```
-Run 1: 6 PASS, 0 FAIL (candidate=16b01fe40a55)
-Run 2: 6 PASS, 0 FAIL (candidate=16b01fe40a55)
-Run 3: 6 PASS, 0 FAIL (candidate=16b01fe40a55)
+Run 1: 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
+Run 2: 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
+Run 3: 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
 ```
 
 ### Fresh clone (with `--no-hardlinks`, byte-independent objects)
 
 ```
-Clone 1 (no-hardlinks): 6 PASS, 0 FAIL (candidate=16b01fe40a55)
-Clone 2 (hardlinks):    6 PASS, 0 FAIL (candidate=16b01fe40a55)
+Clone 1 (no-hardlinks): 6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
+Clone 2 (hardlinks):    6 PASS, 0 FAIL (candidate=f168f9c6f4cf)
 ```
 
 ### Certifier byte-equality (timestamp aside)
@@ -216,6 +216,10 @@ Total: **93/93 hermetic tests PASS** (no flakiness observed).
 ## 7 — Commits produced in this block
 
 ```
+f168f9c6 regen(current-uat-status): final regen at HEAD f3b09b7c
+f3b09b7c docs(t0e): sync HEAD reference + ahead/behind count in closure receipt
+0726d065 docs(t0e): sync commit list + HEAD reference to final state
+16b01fe4 regen(current-uat-status): final stable regen at HEAD 0726d065
 fb9a3fbb regen(current-uat-status): final clean regen at HEAD 9a334ddf
 9a334ddf fix(gen-current-uat-status): remove KNOWN_LIMITATION from synthetic all_states list
 2c976ab9 docs(t0e): add machine-readable UAT-EVIDENCE mirror for UAT-RP-005
@@ -235,7 +239,7 @@ e27a21ad fix(receipt): remove narrative status tokens that triggered CONFLICT
 56467ed2 fix(gen-current-uat-status): T0E-EVID-01 E1 — DAG-maximal commits + per-UAT scoping
 ```
 
-17 commits total. 4 new files / 5 modified files at HEAD (`fb9a3fbb`):
+19 commits total. 4 new files / 5 modified files at HEAD (`f168f9c6`):
 
 - `scripts/gen-current-uat-status.py` — E1 + E3 certifier architecture.
 - `scripts/test_gen_current_uat_status.py` — 27 tests.

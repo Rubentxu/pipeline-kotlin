@@ -257,6 +257,62 @@ class DeterminismTests(unittest.TestCase):
         finally:
             _stop_patches(patches)
 
+    def test_check_excludes_self_from_dirty(self):
+        """Regression: --check on the output file must NOT mark itself as
+        dirty, otherwise the structural comparison flips STALE every run.
+        This test pins the behaviour introduced 2026-09-26T09:22Z after
+        the SESSION_POINTER PR-002 follow-up detected the false-positive.
+        """
+        patches, mocks = _patches()
+        try:
+            (m_releases, m_prs, m_harness, m_rc, m_debt, m_ahead,
+             m_dirty, m_obranch, m_omain, m_branch, m_head) = mocks
+
+            m_debt.return_value = {"active": [], "closed": [], "reserved": []}
+            m_rc.return_value = (0, 0)
+            m_prs.return_value = []
+            m_releases.return_value = []
+            m_head.return_value = "f79da219"
+            m_branch.return_value = "main"
+            m_omain.return_value = "f79da219"
+            m_obranch.return_value = "f79da219"
+            m_ahead.side_effect = RuntimeError("no remote")
+            # Output file itself is in dirty (as if it was just written).
+            # The check call MUST call git_dirty with exclude_paths so the
+            # self-reference is filtered out.
+            m_dirty.side_effect = lambda exclude_paths=None: [
+                " M docs/v2/08-production-readiness/CURRENT_STATE.md",
+                " M .agent/SESSION_POINTER.md",
+            ]
+
+            # First: write the file
+            rc1, _, _ = _run_with_args(MOD, ["--out", self.out_path])
+            self.assertEqual(rc1, 0, "first generation should succeed")
+
+            # Second: check. Must NOT see its own path in dirty.
+            rc2, out2, _ = _run_with_args(
+                MOD, ["--out", self.out_path, "--check"]
+            )
+            self.assertEqual(rc2, 0, f"check must pass; got rc={rc2} out={out2}")
+            self.assertIn("OK", out2)
+            # Verify the mock was called with exclude_paths including the output
+            for call in m_dirty.call_args_list:
+                kwargs = call.kwargs
+                args = call.args
+                excl = kwargs.get("exclude_paths") or (args[0] if args else None)
+                if excl is not None:
+                    # At least one call should have the output path excluded
+                    excl_strs = [str(p) for p in excl]
+                    self.assertTrue(
+                        any(str(self.out_path) in s or self.out_path.name in s
+                            for s in excl_strs),
+                        f"exclude_paths did not include output path: {excl_strs}"
+                    )
+                    return  # success
+            self.fail("git_dirty was never called with exclude_paths")
+        finally:
+            _stop_patches(patches)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

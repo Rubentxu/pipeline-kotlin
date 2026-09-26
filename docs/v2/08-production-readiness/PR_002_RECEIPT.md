@@ -123,6 +123,14 @@ Range: 2026-09-22T15:35Z → 2026-09-26T00:11Z (historical) + 2026-09-26T08:48Z 
   The 1037-vs-1140 discrepancy at the start of this work was an editing artifact,
   not a content drift.
 
+- **#35** Generator self-reference loop: when the generator's output file lives
+  inside the repo and is written by the generator, `git_dirty()` lists it as
+  modified. Running `--check` then sees a *different* dirty set than the run
+  that wrote the file, so structural-SHA comparison flips STALE on every call.
+  Fix: `git_dirty(exclude_paths=[out_path])` when in check mode, so the
+  self-reference is filtered out of the comparison. Pinned by regression test
+  `test_check_excludes_self_from_dirty` (6/6 tests pass).
+
 ---
 
 ## 9. Decision

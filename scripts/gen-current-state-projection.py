@@ -75,13 +75,40 @@ def git_origin_branch(branch):
     except RuntimeError:
         return None
 
-def git_dirty():
-    """Return list of paths with uncommitted changes (working tree only)."""
+def git_dirty(exclude_paths=None):
+    """Return list of paths with uncommitted changes (working tree only).
+
+    Args:
+        exclude_paths: iterable of pathlib.Path or str to exclude from the listing.
+            Used to drop self-references (e.g. when the generator is checking
+            its own output, the modified output must not appear in dirty).
+    """
     r = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=ROOT, capture_output=True, text=True,
     )
-    return [line for line in r.stdout.splitlines() if line.strip()]
+    lines = [line for line in r.stdout.splitlines() if line.strip()]
+    if not exclude_paths:
+        return lines
+    # Match porcelain format: " XY path" or "XY path" where XY is status.
+    # We compare the path component (after 3 chars of status).
+    excl = {str(p).replace("\\", "/").lstrip("./") for p in exclude_paths}
+    out = []
+    for line in lines:
+        # git status --porcelain: "XY <path>" or "XY <path> -> <newpath>" for renames
+        # Path starts at column 3.
+        if len(line) < 4:
+            out.append(line)
+            continue
+        path_part = line[3:].strip()
+        # Strip rename " -> " suffix
+        if " -> " in path_part:
+            path_part = path_part.split(" -> ", 1)[1]
+        path_norm = path_part.replace("\\", "/").lstrip("./")
+        if path_norm in excl:
+            continue
+        out.append(line)
+    return out
 
 def git_ahead_behind(local_ref, remote_ref):
     """Return (ahead, behind) counts of local vs remote."""
@@ -365,6 +392,11 @@ def main():
     out_path = pathlib.Path(args.out)
 
     if args.check:
+        # When checking, the output file may itself be in the dirty listing
+        # (because checking it does not rewrite it, but it was written by a
+        # prior run). Exclude it from the dirty count so the structural
+        # comparison is stable across runs.
+        dirty = git_dirty(exclude_paths=[out_path])
         if not out_path.exists():
             print("MISSING")
             return 2

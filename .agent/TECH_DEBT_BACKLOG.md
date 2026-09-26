@@ -184,3 +184,70 @@ classification). Evidence: `docs/v2/08-production-readiness/TRAIN_0_T0E_RECEIPT.
 **Blocks TRAIN-0 T0.E close.** Does NOT block product / RP-5 substance
 but blocks certifier state accuracy. Defer to TRAIN-1 if operator
 opts for option (2) in T0.E receipt.
+
+---
+
+## D-008 — UAT-RP-013 evidence receipt missing (P3)
+
+**Detected:** 2026-09-26 (T0.E corrective, post-D-007). Evidence:
+`docs/v2/08-production-readiness/TRAIN_0_T0E_CORRECTIVE_RECEIPT.md`.
+
+**Symptom:**
+
+- D-007's deterministic evidence selection (Git provenance, normative
+  matrix excluded) correctly classifies UAT-RP-013 as `NOT_RUN`
+  because no `docs/v2/07-uat/*.md` (excluding the matrix) carries a
+  receipt for UAT-RP-013.
+- Pre-D-007, UAT-RP-013 was falsely `COVERED` (from the archived
+  "COVERED (RP-1)" narrative in the matrix's evidence cell). D-007
+  closes that false-positive loophole.
+- The implementation referenced by the matrix's evidence cell
+  (`StrictFingerprintDivergenceDetector + coordinator tests`) DOES
+  exist and DOES run, but no receipt in `docs/v2/07-uat/` records that.
+
+**Impact:**
+
+- Admission R4 fails at the new D-007 SHA with `UAT-RP-013=NOT_RUN`.
+- D-007 is correct (fail-closed); the gap is a missing receipt, not
+  a bug in classification.
+
+**Repair:**
+
+- Add `docs/v2/07-uat/UAT_RP_013_EVIDENCE.md` (or similar) with one
+  paragraph that:
+  - cites `StrictFingerprintDivergenceDetector` and the relevant test
+    classes (`StrictFingerprintDivergenceDetectorTest`,
+    `CanonicalDurableRunCoordinatorDivergenceTest` etc.);
+  - includes the explicit status token `COVERED` on a line that
+    also mentions `UAT-RP-013`;
+  - is committed in Git so D-007's `git_last_commit_for` returns a
+    SHA.
+- Re-run admission; expect R4 to clear UAT-RP-013.
+- Belt-and-braces: also write small evidence receipts for UAT-RP-002
+  (workflow), UAT-RP-004 (DSL compile), UAT-RP-010 (event JSON
+  roundtrip) so the integration candidate C passes R4 without
+  exceptions.
+
+**Trigger:** first PRDY or WU in TRAIN-1 / RP-5 closure that adds
+ceremony for evidence receipts. Until then the gap is documented and
+does not block TRAIN-0 closure (D-006 already deferred these to RP-6).
+
+**Blocks:** nothing in TRAIN-0 (corrective done in this slice). Blocks
+TRAIN-1 from claiming R4 PASS without exceptions at the integration
+candidate boundary.
+
+**Status:** FIXED at commit `09db2d76` (D-007 corrective slice,
+T0.E corrective). Evidence: `docs/v2/08-production-readiness/TRAIN_0_T0E_CORRECTIVE_RECEIPT.md`.
+Architecture as operator-prescribed:
+- Normative matrix excluded.
+- Explicit statuses only.
+- Git-provenance selection (latest SHA ancestor of candidate).
+- CONFLICT state added; admission blocks it.
+- 23 unit tests (11 D-007 + 12 regression/characterisation); 88 tests
+  total in `scripts/test_*.py` all PASS.
+- Two fresh clones reproduce byte-equal CURRENT_UAT_STATUS.md and
+  identical admission decisions.
+
+D-007 fix surfaces a separate gap: UAT-RP-013 has no evidence
+receipt. Tracked as D-008 (above). The fix is a small evidence
+receipt, not a generator change.

@@ -1,7 +1,7 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-26 (D-001 RESUELTO + D-005 + D-006 + D-008)
+**Last updated:** 2026-09-26 (D-001 RESUELTO + D-005 + D-006 + D-008 + D-009)
 **Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
@@ -322,6 +322,100 @@ antes de commitear. La regla del L1 ('compilar + test afectado')
 debe extenderse a 'regenerar + admission-check' en estos casos.
 
 ### Sin código de producción tocado
+
+## D-009 — UAT-RP-011/014 elevación REFERENCED→COVERED + DAG-maximal cross-cuts (2026-09-26)
+
+**Detected:** 2026-09-26, en bloque autónomo tras T0.E closure.
+**Severity:** P3 (mejora de precisión del certifier; sin blocker).
+**Scope:** `docs/v2/07-uat/{RP2_GATE_RECEIPT,RP3_EXIT_REVIEW,T0E_CLOSURE_RECEIPT}.md`.
+
+**Status:** RESUELTO en commits `f2e54a67` + `789e6e01` + `3c2b580e` + regen `c3f56f68` + `5a699a06` + `f192ecdb`.
+
+### Contexto
+
+UAT-RP-011 (concurrencia SqliteEventStore) y UAT-RP-014 (body execution
+policy) estaban como REFERENCED a pesar de que sus tests existían y
+pasaban (10/10 y 28/28 respectivamente). Faltaba el marcador
+`UAT-EVIDENCE` en los receipts donde se referenciaban, por lo que el
+certifier los dejaba en REFERENCED (narrativa-only).
+
+### Resolución inicial (commit `f2e54a67`)
+
+1. Re-ejecuta los tests existentes en HEAD `97a3cdb4`:
+   - `SqliteEventStoreConcurrencyCharacterisationTest`: 10/10 PASS en
+     `:pipeline-events:test`. XML SHA-256:
+     `b4470ac6666132b357c72b7a99e09716dd5a3089d2a5a7041f92449cda456ee6`.
+   - `BodyExecutionPolicyTest`: 28/28 PASS en `:pipeline-domain:test`
+     (5 nested classes: Representability, FailClosedResolution,
+     Ownership, RegistryAuthority, SupportAdmission). XML SHA-256
+     (Representability): `9b8d4a46932312664370ba0708dbf876f4d975c04d02edef92c275cf7c9c482d`.
+2. Añade sub-sección 'Re-executed evidence' en
+   `RP2_GATE_RECEIPT.md` (UAT-RP-011) y `RP3_EXIT_REVIEW.md`
+   (UAT-RP-014), con procedimiento reproducible + resultado + digest
+   XML.
+3. Añade markers `UAT-EVIDENCE | UAT-RP-011 | COVERED | candidate=97a3cdb4 | ...`
+   y `UAT-EVIDENCE | UAT-RP-014 | COVERED | candidate=97a3cdb4 | ...`
+   en los receipts correspondientes, más mirrors en `T0E_CLOSURE_RECEIPT.md`.
+
+### Cross-cuts descubiertos (commit `789e6e01` + `3c2b580e`)
+
+Tras el commit `f2e54a67`, RP2_GATE_RECEIPT.md se convirtió en
+DAG-maximal para UAT-RP-005, UAT-RP-017 y UAT-RP-018 (antes lo era
+T0E_CLOSURE_RECEIPT.md). Esto provocó:
+
+- UAT-RP-005: pasó de KNOWN_LIMITATION a FAIL_PROVEN por la línea
+  freeform '3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ...'
+  que se volvió maximal.
+- UAT-RP-017: pasó de COVERED a REFERENCED porque la línea freeform
+  '- UAT-RP-017: ...' no tiene status keyword (single_noref).
+- UAT-RP-018: pasó de COVERED a PARTIAL por la línea freeform
+  '- UAT-RP-018: PARTIAL — ...'.
+
+Resolución en dos pasos:
+1. `789e6e01`: neutraliza 'FAIL_PROVEN' → '[ST-OPEN]' en la narrativa
+   de RP2_GATE_RECEIPT L45.
+2. `3c2b580e`: añade markers explícitos
+   `UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION`,
+   `UAT-EVIDENCE | UAT-RP-017 | COVERED`,
+   `UAT-EVIDENCE | UAT-RP-018 | PARTIAL` en RP2_GATE_RECEIPT para
+   blindar el estado ante futuros commits.
+
+### Delta del certifier (commit `97a3cdb4` → commit `f192ecdb`)
+
+| UAT | Antes | Después | Cómo |
+|---|---|---|---|
+| UAT-RP-011 | REFERENCED | **COVERED** | nuevo marker en RP2_GATE_RECEIPT + T0E mirror |
+| UAT-RP-014 | REFERENCED | **COVERED** | nuevo marker en RP3_EXIT_REVIEW + T0E mirror |
+| UAT-RP-005 | KNOWN_LIMITATION | KNOWN_LIMITATION | latest receipt cambia a RP2_GATE (más reciente) |
+| UAT-RP-017 | COVERED | COVERED | latest receipt cambia a RP2_GATE |
+| UAT-RP-018 | COVERED | **PARTIAL** | latest receipt RP2_GATE dice PARTIAL (más honesto per ADR-0016) |
+
+Conteo: COVERED=18 (antes 17), PARTIAL=1 (antes 0), KNOWN_LIMITATION=2
+(sin cambio), REFERENCED=3 (antes 5), NOT_APPLICABLE=3 (sin cambio).
+Total 27.
+
+### Lección operativa
+
+**Toda vez que un receipt de evidencia se vuelve DAG-maximal por un
+commit, las líneas freeform que mencionan UAT-RP-* pueden filtrar
+status tokens y romper la admisión R4.** La mitigación recomendada
+es:
+
+1. Tras editar un receipt que liste UATs, regenerar
+   `scripts/gen-current-uat-status.py` ANTES de commitear.
+2. Verificar que ningún UAT pase de un estado válido a un estado de
+   fallo (FAIL_PROVEN, BLOCKED, REJECTED, NOT_RUN, CONFLICT).
+3. Si hay regresiones, o se neutraliza el token (FAIL_PROVEN → [ST-X])
+   o se añade un marker `UAT-EVIDENCE` explícito.
+
+Esto formaliza la regla operativa que D-008 dejaba implícita: la
+cadena "edit receipt → commit → regenerar" no es idempotente cuando
+el receipt alterado era dominado y pasa a ser maximal.
+
+### Sin código de producción tocado
+
+Sólo docs/receipts. Cero tests añadidos (los 38 ya existían en
+B10_W1B + LPR-011). Cero cambios en production.
 
 ## D-007 — `gen-current-uat-status.py` false-COVERED / hyphen-FAIL classifier (P2)
 

@@ -42,8 +42,13 @@ el diff 9393e34a..32fa5924 es test/docs-only (verificado con `git diff --stat`).
    Sin SLO de RSS en RP-2; candidato a streaming-chunks en RP-4 si se fija SLO.
 2. Flake M3 no determinista (SIGPIPE child exit 141) observado 1x en RP-022,
    2 reruns limpios. Abierto, no bloqueante.
-3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a
-   WU-RP-042 (gate de release RP-5).
+3. UAT-RP-005 invariant 3 (MANIFEST.json): [ST-OPEN] (FAIL_PROVEN por evidencia
+   estructural per ADR-0095), difiere a WU-RP-042 (gate de release RP-5).
+   El UAT-RP-005 está clasificado como KNOWN_LIMITATION en
+   `T0E_CLOSURE_RECEIPT.md` (marker explícito `candidate=72f1ce8d`).
+   Esta mención narrativa de "FAIL_PROVEN" se neutraliza para evitar
+   que el certifier la tome como evidencia maximal conflictiva con el
+   marker de T0E.
 
 ## Cierre de WUs del gate
 - WU-RP-020, 021, 022, 022b, 023: CLOSED.

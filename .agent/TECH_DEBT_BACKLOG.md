@@ -697,8 +697,8 @@ planificación del siguiente ciclo.
 | ID | Ubicación | Recomendación |
 |---|---|---|
 | H1 | `PipelineDsl.kt` (2525 LOC) | Partir en `PipelineDsl.kt` + `PipelineDslValidation.kt` + `PipelineDslLowering.kt`. ADR-0078. |
-| H2 | `CanonicalDurableRunCoordinator.kt` (1856 LOC) | **C1-A/C1-B ejecutados**: `CanonicalRuntimeContext.kt` aislado y `CoordinatorCaps` con dual-ctor de compatibilidad. Pendientes C1-C (CompositionRoot) y C1-D (DSL). ADR-0079. |
-| H3 | `Main.kt` (1148 LOC) + `parseCliArgs` (casero) | Adoptar `com.github.ajalt.clikt:clikt` con `PipelineRootCommand` + subcommands `validate`/`run`. ADR-0077. |
+| H2 | `CanonicalDurableRunCoordinator.kt` (1856 LOC) | **C1-A/C1-B/C1-C ejecutados**: `CanonicalRuntimeContext.kt`, `CoordinatorCaps` y `CompositionRoot.kt` aislados. Pendiente C1-D (DSL). ADR-0079. |
+| H3 | `Main.kt` (1148 LOC) + `parseCliArgs` (casero) | **C1-C ejecutado**: `runCanonicalPipeline` extraído a `CompositionRoot.kt`; pendientes ADR-0077/clikt y parser. |
 
 ### Hallazgos MEDIA (5) — siguiente minor
 

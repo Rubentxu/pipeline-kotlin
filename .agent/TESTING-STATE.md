@@ -1556,6 +1556,16 @@ Per LPR-001 §2.1 and user directive 2026-09-21T06:23Z (auto-run + diagnose-and-
 - **Unknown impact:** none identified for the additive constructor seam; C1-C and C1-D remain outside this slice.
 - **Next:** commit C1-B atomically, regenerate `CURRENT_UAT_STATUS.md`, run admission check, then close the SDDK cycle.
 
+## Active Change — RP-053R C1-C CompositionRoot (2026-09-26)
+
+- **Changed surfaces:** `Main.kt` and new `CompositionRoot.kt`; C1-C receipt.
+- **Known impact:** same-package internal composition function; two existing Main call sites unchanged; CLI and durable semantics preserved.
+- **Verification executed:** `:pipeline-application:compileKotlin` PASS; `CanonicalInMemoryCliTest` 1/0/0; `R4BProductionWiringFitnessTest` 2/0/0; fresh rerun-tasks evidence captured.
+- **Evidence:** CLI XML SHA-256 `c7874031bfdbeb0f1cb471ac49e7826d2e67c0f8d60f77d3c244aabc7d7dbc22`; fitness XML SHA-256 `a7fe4bfe521b78dd669ade079293bfb5ad1d364b1b3c9fc2444b91928a2a1cd7`.
+- **Not executed:** repository-wide `check`; impact is application composition only and shared contracts/build files were untouched.
+- **Unknown impact:** none identified for the extraction; C1-D remains separate.
+- **Next:** run source diff review, commit C1-C, refresh generated UAT status, and advance SDDK verification gates.
+
 
 ---
 

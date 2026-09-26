@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T19:30:20Z
-**Source of truth:** `git log` HEAD `91867a9` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-26T19:48:28Z
+**Source of truth:** `git log` HEAD `eeb9510` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---

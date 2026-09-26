@@ -79,3 +79,8 @@ artifacts/*
 
 ### Generated UAT reports ###
 uat-report-*.yaml
+
+### Python ###
+__pycache__/
+*.pyc
+*.pyo

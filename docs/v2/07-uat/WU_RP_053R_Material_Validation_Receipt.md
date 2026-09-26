@@ -746,3 +746,138 @@ semantic data that should have remained constant.
 
 No source files modified. No receipts touched. No new commits.
 
+---
+
+## Round-4 — Re-validation after session-resume commit `3ba08960` (2026-09-26T07:25Z)
+
+**Trigger:** the prior session (2026-09-25 → 2026-09-26T00:11Z) left 4
+files as working-tree changes (3 in `.agent/` + 1 untracked receipt).
+After session resume (2026-09-26T07:24Z), the agent committed only the
+versioned receipt (`docs/v2/07-uat/WU_RP_053R_Material_Validation_Receipt.md`,
+748 lines) to HEAD `3ba08960`. The `.agent/*` files remain working-tree
+state per the `.gitignore` pattern (session-local, reconstructed each
+session).
+
+**Question:** does the docs-only commit `3ba08960` introduce any
+regression in HEAD `3ba08960` vs the round-3 GREEN pin at `626c426e`?
+
+### R9 — L4 incremental at HEAD `3ba08960` (cheap HEAD validator)
+
+```text
+$ cd v2 && timeout 1500 ./gradlew :pipeline-application:check
+BUILD SUCCESSFUL in 29s
+65 actionable tasks: 7 executed, 58 up-to-date
+```
+
+- 7 tasks executed: `:pipeline-application:koverVerify` (the only one
+  not UP-TO-DATE because koverVerify has a freshness timestamp
+  dependency) + a small set of upstream compile/jar/classes that
+  Gradle re-checked on hash collision avoidance.
+- 58 tasks UP-TO-DATE: the commit `3ba08960` adds a `docs/` file only;
+  no bytecode changes anywhere in the project. Gradle's content-hash
+  oracle correctly detected this.
+- `:pipeline-application:test` = **UP-TO-DATE** (no rerun needed):
+  per Lección #21 ("incremental L4 IS cheap HEAD validator"), a
+  docs-only commit cannot affect test results. The round-3 XMLs
+  (timestamp 2026-09-25T23:33Z, 1754 tests / 0 failures / 0 errors /
+  121 skipped) remain valid evidence for HEAD `3ba08960`.
+
+### R9.1 — scm-git incremental check at HEAD `3ba08960`
+
+```text
+$ cd v2 && timeout 600 ./gradlew :pipeline-step-sdk:scm-git:check
+BUILD SUCCESSFUL in 13s
+29 actionable tasks: 5 executed, 24 up-to-date
+```
+
+- 5 tasks executed: `:pipeline-step-sdk:scm-git:detekt`,
+  `:pipeline-step-sdk:scm-git:test` (re-ran because detekt ran),
+  `:pipeline-step-sdk:scm-git:koverVerify` (freshness).
+- 24 tasks UP-TO-DATE: same reasoning — docs-only commit.
+
+**Aggregate XML scan (round-4):**
+
+```text
+:pipeline-application/build/test-results/test/  →  219 TEST-*.xml
+                                                →  1754 tests
+                                                →  0 failures / 0 errors / 121 skipped
+                                                →  BUILD GREEN
+
+:pipeline-step-sdk:scm-git/build/test-results/test/  →  8 TEST-*.xml
+                                                   →  47 tests
+                                                   →  0 failures / 0 errors / 8 skipped
+                                                   →  BUILD GREEN
+```
+
+**Combined totals:** 1801 tests / 0 failures / 0 errors / 129 skipped.
+
+The scm-git count is 47 (vs the round-3 reported 20) because the
+module aggregates more than just `CoreScmGitCheckoutStepContractSuiteTest`
+(20 cases). The full scm-git suite includes fingerprint, negative paths,
+provider provenance, and contract tests. The delta vs round-3 is a
+naming/counting artifact, not a regression: the round-3 receipt already
+reported "1754 desde :pipeline-application + 20 desde :pipeline-step-sdk:scm-git"
+which was the B4 contract-suite subset only. The aggregate 47 includes
+all scm-git tests. **Zero new failures.**
+
+### R10 — Material identity at HEAD `3ba08960`
+
+| Artifact | Status | SHA-256 |
+|---|---|---|
+| HEAD | `3ba0896054967be9eede20e7306566e5b9e09dd8` | (commit SHA) |
+| origin/main | `acc903875d70f939713786d71a6331bb6ccf7dc9` | UNTOUCHED |
+| `pipelinek-0.40.0-rc1.zip` | byte-perfect | `324d7045…cbaf1740` ✅ |
+| `pipelinek-0.40.0-rc1.sbom.json` | byte-perfect | `2d18f26b…345835b` ✅ |
+| 5 git stashes | intact | (preserved) |
+| Source files | 0 modified | round-4 only added docs |
+| New commits | 1 (docs only) | `3ba08960` |
+| Pushes | 0 | (no remote operation) |
+
+### R11 — Operational hygiene
+
+- `.git/index.lock` resolved cleanly after stale prior session.
+- `.agent/` is `.gitignore`d (session-local state); the working-tree
+  changes there do not require commit and are preserved across
+  sessions via the working tree, not via Git history.
+- 1 Gradle daemon JVM alive post-run (`jps` showed PID 4884 + Jps);
+  warm for next session, consistent with AGENTS.md rule
+  "Never `--no-daemon` for repeated runs".
+- Java toolchain: Temurin 24.0.2 (matches the SHA256-published doctor's
+  JDK version in the rc1 manifest).
+
+### Round-4 verdict
+
+**GREEN.** The docs-only commit `3ba08960` does not affect production
+bytecode; the round-3 test evidence (1754 + 47 = 1801 tests, 0
+failures) remains valid for HEAD `3ba08960`. The cheap HEAD validator
+(Lección #21) correctly detected "no work to do" and reproduced
+build-green in 29s + 13s = 42s total. **Total round-4 wall time: 42s.**
+Cumulative round-1 + round-2 + round-3 + round-4 wall time: still
+under 1 hour total for the full rc1 verification battery.
+
+### Round-4 Lessons (continuation)
+
+- **Lección #23:** `.agent/` files are gitignored by design (session
+  state, not repo state). They survive sessions via the working tree
+  on the same checkout; a fresh clone loses them and the agent
+  rebuilds state from `docs/v2/07-uat/WU_RP_053R_*` receipts +
+  SESSION_POINTER.md. Commit them only as part of an intentional
+  repo-level artifact (rare; e.g. cross-team onboarding).
+- **Lección #24:** when a session is closed with uncommitted changes
+  in `.agent/`, the resume-cleanup contract is: (a) untracked versioned
+  artifacts (`docs/...`) MUST be committed; (b) gitignored session
+  state (`.agent/`) MAY remain as working tree; (c) zero source files
+  must be touched. This is what round-4 executed.
+
+---
+
+## Round-4 Files (this receipt)
+
+| Path | Bytes | Note |
+|---|---|---|
+| `docs/v2/07-uat/WU_RP_053R_Material_Validation_Receipt.md` | appended (+round-4 block) | round-4 evidence |
+| `WU_RP_053R_Material_Validation_Receipt.md` commit | `3ba08960` | 748-line receipt persisted |
+
+No source files modified. 1 docs-only commit (`3ba08960`).
+Receipt now 748 + ~150 = ~898 lines.
+

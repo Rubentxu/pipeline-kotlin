@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T16:29:01Z
-**Source of truth:** `git log` HEAD `f7f09ab` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-26T16:40:30Z
+**Source of truth:** `git log` HEAD `20559ff` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -14,10 +14,10 @@
 | `UAT-RP-003` | **REFERENCED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | - Evidencia: certification del plugin + UAT-RP-003 (ADR-0069). |
 | `UAT-RP-004` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-004 | COVERED | candidate=56467ed2 | tests=DslCompiledPipelineCompilerTest:13+CliCompileErrorExits |
 | `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
-| `UAT-RP-006` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-006 (HTML injection)**: covered by round 1 (5 rp011 tests). |
-| `UAT-RP-007` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-007 (paths publish)**: covered by round 2 (5 rp011r2 tests). |
-| `UAT-RP-008` | **COVERED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-008** (Stash symlinks): covered by 7 rp012 tests (this WU). |
-| `UAT-RP-009` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | | 6 | `rp012 — stash followed by unstash is bit-exact roundtrip (UAT-RP-009)` | Roundtrip preserves content and sha256;  |
+| `UAT-RP-006` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-006 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-s |
+| `UAT-RP-007` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-007 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-s |
+| `UAT-RP-008` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-008 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e |
+| `UAT-RP-009` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-009 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e |
 | `UAT-RP-010` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-010 | COVERED | candidate=56467ed2 | tests=JsonEventLogRoundTripTest:28 | exit=0 |
 | `UAT-RP-011` | **REFERENCED** | `docs/v2/07-uat/RP2_GATE_RECEIPT.md` | - UAT-RP-011..015: mapeados en PRODUCTION_READY_UAT_MATRIX.md (concurrencia |
 | `UAT-RP-012` | **COVERED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | | WU-RP-031 | extracciones StructuralPreparation→…→StepExecutor con golden journal/replay + kill/resume | CUMPLE — recei |
@@ -42,9 +42,9 @@
 ## Status Summary
 
 - **Total UATs (PRDY-003 contract):** 27
-- **COVERED:** 12
+- **COVERED:** 15
 - **KNOWN_LIMITATION:** 2
-- **REFERENCED:** 10
+- **REFERENCED:** 7
 - **NOT_APPLICABLE:** 3
 
 ---

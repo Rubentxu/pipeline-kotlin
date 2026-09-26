@@ -298,6 +298,7 @@ UAT-EVIDENCE | UAT-RP-006 | COVERED | candidate=70339af3 | tests=PublishHtmlOper
 UAT-EVIDENCE | UAT-RP-007 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-sha256=7937eaed895012fec26472e6a0fc5b23cac29e85ed44346e6eb540fce7538755
 UAT-EVIDENCE | UAT-RP-008 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57
 UAT-EVIDENCE | UAT-RP-009 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57
+UAT-EVIDENCE | UAT-RP-024 | KNOWN_LIMITATION | candidate=20559ff7 | tests=structural_partial_1-repo_dogfooding | exit=0 | note=≥2-repos structurally impossible in autonomous session per WU_RP_046_R2; covers inv1 (1-repo) but not inv2 (≥2 repos)
 ```
 
 These mirror the markers in `T0E_EVID_01_RECEIPT.md`. With the

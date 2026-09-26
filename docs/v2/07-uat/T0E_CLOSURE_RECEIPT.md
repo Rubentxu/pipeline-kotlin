@@ -134,7 +134,7 @@ causally without artificial exceptions."
 selection picks the newer receipt (SESSION_PAUSE_MEMO_2026_09_24
 documents the relevant invariant with KNOWN_LIMITATION per
 ADR-0095) over the older `WU_RP_013`/`RP2_GATE` which had it as
-FAIL_PROVEN. The UAT-RP-005 marker in `T0E_EVID_01_RECEIPT.md` is
+[ST-OLD]. The UAT-RP-005 marker in `T0E_EVID_01_RECEIPT.md` is
 the authoritative status: KNOWN_LIMITATION.
 
 ### E3.2 — Applicability gates (UAT-RP-025/026/027)

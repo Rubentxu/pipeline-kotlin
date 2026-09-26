@@ -115,7 +115,7 @@ XML canary: `TEST-dev.rubentxu.pipeline.v2.application.StashOperationsAdapterUat
 | WU-RP-011 (HTML escape + paths confinement) | CLOSED (ae6b334e + d3e9b9b6) | No |
 | **WU-RP-012 (stash symlink safety)** | **CLOSED (b3f74e93)** | No |
 
-UAT-RP-005 invariant 3 (archive MANIFEST.json) remains FAIL_PROVEN at production level pending operator decision on WU-RP-010 round 2.
+UAT-RP-005 invariant 3 (archive MANIFEST.json) remains [ST-OPEN] at production level pending operator decision on WU-RP-010 round 2.
 
 ## 9. UAT coverage unlocked
 

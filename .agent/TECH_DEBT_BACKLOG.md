@@ -1,16 +1,43 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-23
+**Last updated:** 2026-09-26 (D-001 RESUELTO)
 **Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
 
 **Detected:** 2026-09-23, durante auditoría de calidad pre-WU-RP-051.
-**Severity:** P3 (cosmetic, no funcional)
-**Scope:** 4 archivos, 7+ sitios duplicados.
+**Severity:** P3 (cosmetic, no funcional, con dimensión de seguridad)
+**Scope:** 4 archivos, 29 sitios duplicados.
+**Status:** RESUELTO en commits `da0b39d5` + `3e64e372` (T0.E follow-on).
 
-### Contexto
+### Resolución
+
+1. `da0b39d5` añade `CredentialFilePermissions` en
+   `:pipeline-domain:credentials` con `OWNER_READ_WRITE` (= `rw-------`)
+   y `OWNER_READ_WRITE_EXECUTE` (= `rwx------`). 4 tests de postura en
+   `CredentialFilePermissionsTest` (4/4 PASS).
+2. `3e64e372` reemplaza los 29 inline literals en los cuatro módulos
+   adaptador:
+   - `:pipeline-step-sdk:scm-git` (15 sitios en `GitCredentialsApplier.kt`)
+   - `:pipeline-credentials-local` (3 sitios en `CredentialsStorePosix.kt`)
+   - `:pipeline-credentials-multipart` (9 sitios en `CredentialMaterializer.kt`,
+     más eliminación del companion object que duplicaba las constantes)
+   - `:pipeline-artefacts-local` (2 sitios en `LocalArtifactStore.kt`)
+
+3. Verificado en 5 módulos con sus test suites completas:
+   `pipeline-step-sdk:scm-git` 47/47, `pipeline-credentials-local`
+   56/56, `pipeline-credentials-multipart` 30/30, `pipeline-artefacts-local`
+   32/32, `pipeline-domain` 563/563 = 728/728 PASS, 0 failures, 0 errors.
+
+4. LocalArtifactStoreTest.kt conserva `PosixFilePermissions.fromString("rwx------")`
+   y `fromString("rw-------")` como VALORES ESPERADOS (no como inputs a
+   la fábrica). Es deliberado: el test verifica que el código de
+   producción aplica la forma octal canónica, no que coincida consigo
+   mismo. Mantener la forma literal protege contra un refactor futuro
+   que cambie accidentalmente los bits de la constante.
+
+### Contexto original
 
 `PosixFilePermissions.fromString("rwx------")` (owner-read-write-execute)
 y `fromString("rw-------")` (owner-read-write) están inline en varios
@@ -139,8 +166,9 @@ mismo en la primera ejecución).
 
 ## Notas operativas
 
-- Prioridad para WU futuras: D-002 (P2, flake documentado) > D-001
-  (P3, cosmético) > backlog general.
+- Prioridad para WU futuras: D-002 (P2, flake documentado). D-001
+  (P3) RESUELTO en `da0b39d5`+`3e64e372`.
+- D-003 (P3) RESUELTO en `bd52fa1b`. D-004 (P3) RESUELTO en `63220a5c`.
 - Cada nueva WU debe auditar código duplicado antes de empezar
   (regla 3 del operador).
 - Mantener este backlog sincronizado con cada WU cerrada para

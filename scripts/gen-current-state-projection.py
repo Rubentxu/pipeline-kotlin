@@ -336,6 +336,13 @@ def main():
     branch = git_branch()
     origin_main = git_origin_main()
     origin_branch = git_origin_branch(branch) if branch else None
+    out_path = pathlib.Path(args.out)
+    # The output file IS itself in the dirty listing whenever the generator
+    # writes to a tracked path (e.g. CURRENT_STATE.md under docs/). When
+    # checking, we MUST keep that self-reference in the dirty listing so
+    # the structural SHA matches what --out would write on the same run.
+    # (Earlier attempts to exclude the self-reference caused asymmetric
+    # structural hashes between write and check.)
     dirty = git_dirty()
     ahead, behind = (None, None)
     if origin_branch:
@@ -384,23 +391,27 @@ def main():
                 return 1
 
     state["next_wu"] = derive_next_wu(state)
+    # To compute the output SHA, render with a placeholder for the self-SHA
+    # field of EXACTLY the same width as the final 64-char hex digest, so
+    # the "Output SHA-256 (self)" line has identical length in body_no_hash
+    # and body. After stripping the Output-SHA line + timestamp + trailing
+    # comment, body_no_hash and body are structurally byte-identical.
+    state["output_sha"] = "0" * 64
     body_no_hash = render_markdown(state)
     output_sha = hashlib.sha256(body_no_hash.encode()).hexdigest()
     state["output_sha"] = output_sha
-    body = render_markdown(state) + f"\n<!-- output_sha256: {output_sha} -->\n"
+    # No extra leading newline before the comment: render_markdown already
+    # terminates with newlines, and the structural-strip regex on both
+    # 'body' and the on-disk 'existing' must produce identical bytes.
+    body = render_markdown(state) + f"<!-- output_sha256: {output_sha} -->\n"
 
     out_path = pathlib.Path(args.out)
 
     if args.check:
-        # When checking, the output file may itself be in the dirty listing
-        # (because checking it does not rewrite it, but it was written by a
-        # prior run). Exclude it from the dirty count so the structural
-        # comparison is stable across runs.
-        dirty = git_dirty(exclude_paths=[out_path])
         if not out_path.exists():
             print("MISSING")
             return 2
-        existing = out_path.read_text()
+        existing = out_path.read_bytes().decode("utf-8")
         existing_sha_m = re.search(r"<!-- output_sha256: ([0-9a-f]+) -->", existing)
         if not existing_sha_m:
             print("STALE (no embedded hash)")
@@ -411,9 +422,14 @@ def main():
         existing_structural = re.sub(r"\| \*\*Generated at[^\n]*\n", "", existing)
         existing_structural = re.sub(r"\| \*\*Output SHA-256[^\n]*\n", "", existing_structural)
         existing_structural = re.sub(r"<!-- output_sha256:[^\n]*-->\n?", "", existing_structural)
+        # Receipts modified in last 7 days is non-deterministic between runs
+        # (it depends on which receipts were modified in the rolling window);
+        # strip it from both sides so the structural comparison is stable.
+        existing_structural = re.sub(r"- Receipts modified in last 7 days: \*\*[0-9]+\*\*\n", "", existing_structural)
         generated_structural = re.sub(r"\| \*\*Generated at[^\n]*\n", "", body)
         generated_structural = re.sub(r"\| \*\*Output SHA-256[^\n]*\n", "", generated_structural)
         generated_structural = re.sub(r"<!-- output_sha256:[^\n]*-->\n?", "", generated_structural)
+        generated_structural = re.sub(r"- Receipts modified in last 7 days: \*\*[0-9]+\*\*\n", "", generated_structural)
         existing_struct_sha = hashlib.sha256(existing_structural.encode()).hexdigest()
         generated_struct_sha = hashlib.sha256(generated_structural.encode()).hexdigest()
         if existing_sha_m.group(1) == output_sha:

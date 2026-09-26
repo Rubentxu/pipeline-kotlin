@@ -258,10 +258,13 @@ class DeterminismTests(unittest.TestCase):
             _stop_patches(patches)
 
     def test_check_excludes_self_from_dirty(self):
-        """Regression: --check on the output file must NOT mark itself as
-        dirty, otherwise the structural comparison flips STALE every run.
-        This test pins the behaviour introduced 2026-09-26T09:22Z after
-        the SESSION_POINTER PR-002 follow-up detected the false-positive.
+        """Regression: the structural SHA must be stable across consecutive
+        --check invocations against a tracked file that is itself in the
+        dirty listing (CURRENT_STATE.md under docs/).
+        This test pins the behaviour as of 2026-09-26T09:35Z: the dirty
+        listing is NOT excluded; the asymmetric-write-vs-check bug was
+        fixed instead by ensuring body_no_hash and body have the same
+        Output-SHA line width (64-char placeholder).
         """
         patches, mocks = _patches()
         try:
@@ -278,9 +281,7 @@ class DeterminismTests(unittest.TestCase):
             m_obranch.return_value = "f79da219"
             m_ahead.side_effect = RuntimeError("no remote")
             # Output file itself is in dirty (as if it was just written).
-            # The check call MUST call git_dirty with exclude_paths so the
-            # self-reference is filtered out.
-            m_dirty.side_effect = lambda exclude_paths=None: [
+            m_dirty.return_value = [
                 " M docs/v2/08-production-readiness/CURRENT_STATE.md",
                 " M .agent/SESSION_POINTER.md",
             ]
@@ -295,21 +296,13 @@ class DeterminismTests(unittest.TestCase):
             )
             self.assertEqual(rc2, 0, f"check must pass; got rc={rc2} out={out2}")
             self.assertIn("OK", out2)
-            # Verify the mock was called with exclude_paths including the output
-            for call in m_dirty.call_args_list:
-                kwargs = call.kwargs
-                args = call.args
-                excl = kwargs.get("exclude_paths") or (args[0] if args else None)
-                if excl is not None:
-                    # At least one call should have the output path excluded
-                    excl_strs = [str(p) for p in excl]
-                    self.assertTrue(
-                        any(str(self.out_path) in s or self.out_path.name in s
-                            for s in excl_strs),
-                        f"exclude_paths did not include output path: {excl_strs}"
-                    )
-                    return  # success
-            self.fail("git_dirty was never called with exclude_paths")
+
+            # Third: another check. Still OK (timestamp-only delta OK).
+            rc3, out3, _ = _run_with_args(
+                MOD, ["--out", self.out_path, "--check"]
+            )
+            self.assertEqual(rc3, 0, f"second check must pass; got rc={rc3} out={out3}")
+            self.assertIn("OK", out3)
         finally:
             _stop_patches(patches)
 

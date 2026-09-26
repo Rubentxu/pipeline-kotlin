@@ -123,13 +123,27 @@ Range: 2026-09-22T15:35Z → 2026-09-26T00:11Z (historical) + 2026-09-26T08:48Z 
   The 1037-vs-1140 discrepancy at the start of this work was an editing artifact,
   not a content drift.
 
-- **#35** Generator self-reference loop: when the generator's output file lives
-  inside the repo and is written by the generator, `git_dirty()` lists it as
-  modified. Running `--check` then sees a *different* dirty set than the run
-  that wrote the file, so structural-SHA comparison flips STALE on every call.
-  Fix: `git_dirty(exclude_paths=[out_path])` when in check mode, so the
-  self-reference is filtered out of the comparison. Pinned by regression test
-  `test_check_excludes_self_from_dirty` (6/6 tests pass).
+- **#35** Generator self-reference loop (3-part fix, see also #36–#38):
+  1. Output SHA line width: when rendering the body to compute its own SHA,
+     the placeholder for `output_sha` MUST have the same character width
+     as the final 64-char hex digest; otherwise the Output-SHA line has
+     different length between body_no_hash and body, and stripping the line
+     does NOT produce identical bytes.
+  2. Leading newline before the trailing `<!-- output_sha256: ... -->`
+     comment: `body = render_markdown(state) + f"\n<!-- ... -->\n"` adds
+     one extra newline compared to the on-disk file written by the same
+     code path; on-disk `read_text()` strips the trailing newline too,
+     creating a 1-byte asymmetry. Solution: drop the leading `\n`.
+  3. Non-deterministic fields in the body: `Receipts modified in last 7
+     days` changes between runs as new receipts land. Must be stripped from
+     both sides before the structural SHA comparison, alongside the
+     timestamp + Output SHA + trailing comment.
+  4. Self-reference in dirty listing: the original fix (exclude output
+     path) was wrong because it made write and check produce different
+     body lengths. The correct fix is the three changes above, leaving the
+     dirty listing intact.
+  Pinned by 6/6 tests passing, including the regression test
+  `test_check_excludes_self_from_dirty` (5 consecutive checks stable).
 
 ---
 

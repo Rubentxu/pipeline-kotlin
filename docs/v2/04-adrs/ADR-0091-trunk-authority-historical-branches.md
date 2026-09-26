@@ -2,11 +2,11 @@
 type: adr
 id: ADR-0091
 title: "Main is implementation authority; historical branches contribute evidence, not merge pressure"
-status: proposed
+status: superseded
 date: 2026-09-18
 deciders: "Rubentxu (product owner)"
 supersedes: null
-superseded_by: null
+superseded_by: ADR-0099
 related:
   - ADR-0082
   - AGENTS.md

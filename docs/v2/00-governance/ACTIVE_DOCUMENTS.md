@@ -21,7 +21,7 @@ ROADMAP / ACTIVE_DOCUMENTS / ADR / specs / UAT
 2. docs/v2/05-roadmap/ROADMAP.md — única secuencia de trabajo y exit criteria actuales.
 3. docs/v2/07-uat/CERTIFICATION_PROTOCOL.md y PRODUCTION_READY_UAT_MATRIX.md — qué significa certificar.
 4. docs/v2/01-product/STEP_REGISTRY_PLAN.md — cola histórica/constitución técnica del ecosistema; reconciliar su inventario con el estado SDDK antes de ejecutar cualquier WU.
-5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md y ADR-0070..0093 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar.
+5. docs/v2/03-specifications/STEP_PLUGIN_CERTIFICATION.md y ADR-0070..0099 aceptados y AGENTS.md — límites normativos que un roadmap no puede revocar. ADR-0099 fija la autoridad de `main` para candidatos y releases y supersede ADR-0091.
 
 ## Proyección humana opcional (no autoridad)
 

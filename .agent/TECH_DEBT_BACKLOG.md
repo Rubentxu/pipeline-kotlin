@@ -251,18 +251,27 @@ covers a full certifier/evidence closure inside TRAIN-0 T0.E:
    on candidate + 3 consecutive runs + 2 fresh clones + deterministic
    output + SDDK recovery without `.agent/*`. NO full Gradle re-run.
 
-**Status:** FIXED at commit `80d487f5` (T0.E Certifier & Evidence
-Closure long block, WorkItem `501c88ee-…`). Closes inside TRAIN-0;
-not deferred to TRAIN-1.
+**Status:** FIXED at commit `1893e104` (T0.E Certifier & Evidence
+Closure long block, WorkItem `501c88ee-…`). The front reached its
+first 6/6 admission at `80d487f5`, but additional certifier issues
+surfaced in subsequent receipt iterations: UAT-RP-005 marker
+propagation through the closure receipt, neutralising freeform-parser
+status tokens in narrative tables, removing the duplicate
+KNOWN_LIMITATION entry from the rendered summary, and stabilising
+the receipt's HEAD pointer pattern. All those post-`80d487f5`
+fixes are part of the same T0E-EVID-01 long block; the front is
+fully closed at `1893e104`. Closes inside TRAIN-0; not deferred to
+TRAIN-1.
 
 Evidence: `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` (machine-readable
 UAT-EVIDENCE markers for UAT-RP-002/004/005/010/013/015) +
 `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` (full receipt).
-6/6 admission rules PASS, 93/93 hermetic tests PASS (27 certifier + 43
-admission + 23 other), 3 consecutive runs + 2 fresh clones identical.
+6/6 admission rules PASS, 93/93 hermetic tests PASS (27 certifier +
+43 admission + 23 other), 3 consecutive runs + 2 fresh clones
+identical.
 
 **Blocks:** ~~TRAIN-0 T0.E closure and the TRAIN-0 → main merge.~~
-RESOLVED at `80d487f5`.
+RESOLVED at `1893e104`.
 
 **Status (certifier architecture):** FIXED at commit `09db2d76`
 (D-007 corrective slice, T0.E corrective). Evidence: `docs/v2/

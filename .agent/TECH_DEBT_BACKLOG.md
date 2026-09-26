@@ -697,7 +697,7 @@ planificación del siguiente ciclo.
 | ID | Ubicación | Recomendación |
 |---|---|---|
 | H1 | `PipelineDsl.kt` (2525 LOC) | Partir en `PipelineDsl.kt` + `PipelineDslValidation.kt` + `PipelineDslLowering.kt`. ADR-0078. |
-| H2 | `CanonicalDurableRunCoordinator.kt` (1856 LOC) | Partir `CanonicalRuntimeContext` (12 campos) en `RuntimeContext` + `CoordinatorCaps`. ADR-0079. |
+| H2 | `CanonicalDurableRunCoordinator.kt` (1856 LOC) | **C1-A/C1-B ejecutados**: `CanonicalRuntimeContext.kt` aislado y `CoordinatorCaps` con dual-ctor de compatibilidad. Pendientes C1-C (CompositionRoot) y C1-D (DSL). ADR-0079. |
 | H3 | `Main.kt` (1148 LOC) + `parseCliArgs` (casero) | Adoptar `com.github.ajalt.clikt:clikt` con `PipelineRootCommand` + subcommands `validate`/`run`. ADR-0077. |
 
 ### Hallazgos MEDIA (5) — siguiente minor
@@ -895,8 +895,20 @@ Para módulos con cobertura desconocida, primero medir y luego decidir.
 
 **Esfuerzo**: S por módulo, ~16 módulos. Estimado total: 2-3 horas.
 
-**Status**: REGISTRADO. Sin acción en este bloque (esperando
-autorización del operador antes de tocar umbrales de gate).
+**Status**: **RESUELTO en `aed82670`**. Per-module Kover `bound` rules
+con `minValue` derivado de `*/build/reports/kover/html/index.html` (line %
+"all classes" row, snapshot a 2026-09-26). 10 módulos reciben regla
+anti-regression (pipeline-artefacts-local 85, binding-factory 85,
+domain 75, events 70, event-harness 70, step-sdk/runtime 70,
+step-sdk/utilities 65, step-sdk/scm-git 55, credentials-executor 55,
+scripting-kotlin24 55). 11 módulos reciben `disabled=true` (DSL,
+KSP, fitness, sin datos). El rule `bound` se valida con
+`./gradlew :module:koverVerify`; sigue sin cablear en `check`
+(Phase 2 queda atrás de C1, según AGENTS.md §17). Verificado en 10
+módulos gated, BUILD SUCCESSFUL en todos los casos; force-fail con
+minValue=99 sobre pipeline-credentials-multipart confirmó que la
+regla dispara correctamente (`Rule D-013 violated: lines covered
+percentage is 92.5, but expected minimum is 99`).
 
 ### Estado de C5 — binary-compatibility-validator (2026-09-26)
 

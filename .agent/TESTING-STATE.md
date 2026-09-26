@@ -1546,6 +1546,17 @@ Per LPR-001 §2.1 and user directive 2026-09-21T06:23Z (auto-run + diagnose-and-
 | Tier B closed | 1 (LPR-089) |
 | Planning WUs ready for apply | 1 (LPR-090) |
 
+## Active Change — RP-053R C1-B CoordinatorCaps (2026-09-26)
+
+- **Changed surfaces:** `pipeline-application` durable coordinator, new `CoordinatorCaps` bundle, focused contract test, quality receipt.
+- **Known impact:** additive application constructor overload; legacy 22-parameter constructor untouched.
+- **Verification executed:** application compile + test compile; `CoordinatorCapsTest` 4/0/0; `CanonicalDurableRunCoordinatorTest` 26/0/0. Fresh XML canaries regenerated.
+- **Evidence:** CoordinatorCaps XML SHA-256 `0e4f135a66255ac57d01f56b4c715cb372214d047172ebb6efcf7eb7a3888f88`; coordinator XML SHA-256 `7e0f621c6ada7816d0578e968926e897375ad4586a94d90789cdaca9d2aaefec`.
+- **Not executed:** repository-wide `check`, because no shared build/domain/event contract changed; no generated API baseline affected.
+- **Unknown impact:** none identified for the additive constructor seam; C1-C and C1-D remain outside this slice.
+- **Next:** commit C1-B atomically, regenerate `CURRENT_UAT_STATUS.md`, run admission check, then close the SDDK cycle.
+
+
 ---
 
 ## Active Change — WU-LPR-090 CLOSURE (2026-09-21T09:06Z, base `7a974e15` on `main`)

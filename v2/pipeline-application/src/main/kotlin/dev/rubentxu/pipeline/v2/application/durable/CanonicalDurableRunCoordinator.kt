@@ -180,6 +180,38 @@ class CanonicalDurableRunCoordinator(
     // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
 ) {
+    /**
+     * Compatibility constructor for the consolidated capability bundle.
+     *
+     * The legacy 22-parameter constructor remains intact for existing named and positional
+     * call sites. This overload is the migration seam for new composition roots: all values
+     * are forwarded without reinterpretation, so both construction paths enter the same
+     * coordinator body and preserve durable execution semantics.
+     */
+    constructor(caps: CoordinatorCaps) : this(
+        dispatcher = caps.dispatcher,
+        journal = caps.journal,
+        cursorStore = caps.cursorStore,
+        clock = caps.clock,
+        effectReplayPolicy = caps.effectReplayPolicy,
+        eventSink = caps.eventSink,
+        credentialScopePort = caps.credentialScopePort,
+        controlDirRoot = caps.controlDirRoot,
+        workspaceBase = caps.workspaceBase,
+        shOptions = caps.shOptions,
+        secretPatternRegistry = caps.secretPatternRegistry,
+        divergenceDetector = caps.divergenceDetector,
+        stepMetadataResolver = caps.stepMetadataResolver,
+        invocationExecutor = caps.invocationExecutor,
+        commonExecutionBoundary = caps.commonExecutionBoundary,
+        stepRegistry = caps.stepRegistry,
+        retryControlJournal = caps.retryControlJournal,
+        waitUntilControlJournal = caps.waitUntilControlJournal,
+        milestoneStateStore = caps.milestoneStateStore,
+        artifactIndex = caps.artifactIndex,
+        injectedBodyPolicyResolver = caps.injectedBodyPolicyResolver,
+        bodyInvokerAdapter = caps.bodyInvokerAdapter,
+    )
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
     //   1. the OPEN StepRegistry (same seam that resolves handlers) — a core or external

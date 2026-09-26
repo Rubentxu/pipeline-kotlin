@@ -24,7 +24,12 @@ class Rp022ThroughputProbe {
         "supersecretvalue01".toByteArray().copyInto(big, 1024)
         "supersecretvalue01".toByteArray().copyInto(big, big.size - 2048)
 
-        repeat(1) { redactor.wrap(ByteArrayInputStream(big)).use { it.readBytes().toString(Charsets.UTF_8) } } // warmup
+        // Cold-JIT flake (D-002): a single warmup iteration is not enough
+        // for the streaming redactor on CI without warm daemon. Use 3
+        // warmup iterations to amortise class-loading + JIT compilation
+        // before the measurement runs. Locally this stays well above
+        // 20 MB/s; CI observed drop to 10.96 MB/s with repeat(1).
+        repeat(3) { redactor.wrap(ByteArrayInputStream(big)).use { it.readBytes().toString(Charsets.UTF_8) } } // warmup
         val t0 = System.nanoTime()
         val out = redactor.wrap(ByteArrayInputStream(big)).use { it.readBytes().toString(Charsets.UTF_8) }
         val ms = (System.nanoTime() - t0) / 1_000_000

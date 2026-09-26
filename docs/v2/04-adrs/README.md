@@ -54,3 +54,4 @@
 - [ADR-0091: Trunk authority / historical branches](ADR-0091-trunk-authority-historical-branches.md)
 - [ADR-0092: Plugin identity provider registration (additive)](ADR-0092-plugin-identity-provider-registration-additive.md)
 - [ADR-0093: Structured DSL runtime return — suspend structured DSL](ADR-0093-structured-dsl-runtime-return.md)
+- [ADR-0094: DSL source partition without semantic change](ADR-0094-dsl-source-partition-without-semantic-change.md)

@@ -1084,7 +1084,7 @@ ciclo SDDK `p-733fb505b5a6bd2d/rp-053r-c5-bcv-check-wiring`, cerrado en
 | Área | Estado observado en HEAD actual | Evidencia primaria | Disposición |
 |---|---|---|---|
 | C1-A/C1-B/C1-C | IMPLEMENTADO | `CanonicalRuntimeContext.kt`, `CoordinatorCaps.kt`, `CompositionRoot.kt`; receipts C1-B/C1-C | No reabrir |
-| C1-D / partición completa de `PipelineDsl.kt` | ABIERTO | `PipelineDsl.kt` sigue siendo una unidad grande; C1 receipts declaran C1-D pendiente | Siguiente trabajo arquitectónico, no parte de PR-007 |
+| C1-D / partición residual de `PipelineDsl.kt` | PARCIALMENTE IMPLEMENTADO | `PipelineDslSteps.kt` contiene la jerarquía completa `StepSpec`; receipt `C1_D_STEP_SPEC_PARTITION_RECEIPT_2026_09_26.md`; `PipelineDsl.kt` aún contiene scopes/builders y la validación/lowering no se han separado | No repetir `StepSpec`; continuar sólo con una nueva decisión/ADR para el residuo restante |
 | D-012 / codecs Pattern A | RESUELTO EN EL ALCANCE EJECUTADO | commits `97fcaa88..10eb7ee6`; codecs del SDK usan `PipelineJson`/`JsonAccessors`; los builders JSON restantes son salidas intencionales o superficies fuera del alcance | No iniciar otra migración masiva desde este snapshot |
 | D-013 / umbrales Kover | RESUELTO COMO REGLAS POR MÓDULO | commit `aed82670`; 10 módulos con `bound`, 11 reglas deshabilitadas con justificación | `koverVerify` sigue siendo explícito, no se afirma que `check` lo ejecute |
 | C5 Phase 2 / BCV | RESUELTO | commits `213c4677`, `820d9fcc`, `d3ec7f14`, `119974ce`; `apiCheck` conectado al `check` de los cuatro módulos; RC4 publicado | No reabrir |

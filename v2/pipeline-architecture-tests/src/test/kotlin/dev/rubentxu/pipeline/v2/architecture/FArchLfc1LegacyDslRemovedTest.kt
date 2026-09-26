@@ -10,7 +10,7 @@ import java.nio.file.Path
  * LFC1-007 fitness test: legacy DSL step kinds are deprecated and pre-compiler-rewritten.
  *
  * Verifies the following invariants after the LFC1-007 migration:
- * - StepSpec.{CatchError,WarnError,Unstable} are marked @Deprecated in PipelineDsl.kt
+ * - StepSpec.{CatchError,WarnError,Unstable} are marked @Deprecated in the DSL source set
  * - DslCompiledPipelineCompiler has rewrite rules for all three kinds
  * - PipelineRun.kt executeDurableStepImpl has error-throwing stubs (not live execution branches)
  * - stepClassifications no longer has entries for the three kinds
@@ -18,8 +18,12 @@ import java.nio.file.Path
  */
 class FArchLfc1LegacyDslRemovedTest {
 
-    private val pipelineDslPath = FitnessPaths.v2Root()
-        .resolve("pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt")
+    private val pipelineDslPaths = listOf(
+        FitnessPaths.v2Root()
+            .resolve("pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt"),
+        FitnessPaths.v2Root()
+            .resolve("pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDslSteps.kt"),
+    )
     private val compilerPath = FitnessPaths.v2Root()
         .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt")
     private val pipelineRunPath = FitnessPaths.v2Root()
@@ -27,7 +31,7 @@ class FArchLfc1LegacyDslRemovedTest {
 
     @Test
     fun `StepSpec CatchError WarnError Unstable are marked deprecated`() {
-        val source = Files.readString(pipelineDslPath)
+        val source = pipelineDslPaths.joinToString("\n") { Files.readString(it) }
 
         listOf("CatchError", "WarnError", "Unstable").forEach { kind ->
             assertTrue(

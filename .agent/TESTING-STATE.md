@@ -1616,3 +1616,13 @@ git push origin main --tags
 
 # Next: WU-LPR-091 (core.lock, Tier B #3) — see .agent/LPR-001_CYCLE_STATE.md
 ```
+
+## Active Change — C1-D residual StepSpec partition (2026-09-26, base `9e26cc65`)
+
+- **Changed surfaces:** `PipelineDsl.kt`, new `PipelineDslSteps.kt`, and the source-location fitness in `FArchLfc1LegacyDslRemovedTest`.
+- **Known impact:** physical source partition only. StepSpec package names, nested names, signatures, DSL behavior, compiler input, and host visibility are preserved.
+- **Verification executed:** focused scripting API DSL tests; scripting API test compilation; Kotlin scripting host tests; selected architecture fitness set. All final targeted runs passed.
+- **Evidence:** focused DSL log SHA-256 `1af117b7d52e5eb6b4cff1b7f6f4911e386f3d4d65dde6da15611183796b0798`; compile log `2d41b3b8a90516d7647df60f211e960cebf778d3a581bc547254605c54ed59f0`; host log `39b00f8fd4ab3f21428d435390f2c6bd3ef24d04c64bc3537519abad5b7652d8`; architecture rerun `f19886d930c74983aa10397efb169ff9e1be8e0fd460ddb7bd4b9ead2408a6a9`.
+- **Not executed:** full repository `check`; external release harness; module `apiCheck` because `pipeline-scripting-api` does not expose that task.
+- **Unknown impact:** no additional impact identified within the bounded source partition. The remaining C1-D scope is StageScope/validation/lowering partitioning and stays open.
+- **Next:** commit the C1-D slice, regenerate `CURRENT_UAT_STATUS.md` against the resulting SHA, then complete the SDDK verify/release/archive gates honestly.

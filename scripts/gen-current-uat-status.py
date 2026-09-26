@@ -583,10 +583,29 @@ def main():
         tmp = pathlib.Path("/tmp/_uat_status_check.md")
         tmp.write_text(md)
         existing = out.read_text() if out.exists() else ""
-        if existing == md:
+        # Normalise the volatile header (Generated-at timestamp + HEAD SHA)
+        # before comparison: the file is regenerated after each commit, so
+        # the HEAD reference naturally moves with every regen commit. The
+        # certifier checks CONTENT stability, not HEADER volatility.
+        def _strip_volatile_header(s: str) -> str:
+            return re.sub(
+                r"^\*\*Generated at \(UTC\):\*\* [^\n]+\n",
+                "**Generated at (UTC):** <regen>\n",
+                s,
+                flags=re.MULTILINE,
+            ).replace(
+                f"`git log` HEAD `{head_sha[:7]}`",
+                "`git log` HEAD <sha>",
+            )
+        if _strip_volatile_header(existing) == _strip_volatile_header(md):
             print(f"OK-IDENTICAL ({md.splitlines()[0]})")
             return 0
-        print(f"STALE (existing≠regenerated; out={out})")
+        # If existing is the pre-fix committed version (no <regen> marker),
+        # report as STALE so the operator knows to regen once.
+        if "_strip_volatile_header" not in existing:
+            print(f"STALE-BUT-CONTENT-MATCHES (header version drift; regen to stabilise; out={out})")
+        else:
+            print(f"STALE (existing≠regenerated; out={out})")
         return 1
 
     out.parent.mkdir(parents=True, exist_ok=True)

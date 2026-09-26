@@ -1,7 +1,7 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-26 (D-001 RESUELTO + D-005 UAT-019/020/021→COVERED)
+**Last updated:** 2026-09-26 (D-001 RESUELTO + D-005 + D-006 + D-008)
 **Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
@@ -228,6 +228,100 @@ neutralización lo expuso. KNOWN_LIMITATION sigue siendo non-blocking
 
 Sólo docs/receipts. Cero tests añadidos (los 6 ya existían desde R1).
 Cero cambios en production.
+
+## D-006 — UAT-RP-006/007/008/009 elevación REFERENCED→COVERED (2026-09-26, follow-on T0.E)
+
+**Detected:** 2026-09-26, en bloque autónomo tras T0.E closure.
+**Severity:** P3 (mejora de precisión del certifier; sin blocker).
+**Scope:** `docs/v2/07-uat/{T0E_CLOSURE_RECEIPT,WU_RP_012_RECEIPT}.md`.
+
+### Contexto
+
+WU-RP-011 + WU-RP-012 habían añadido tests ejecutables para
+UAT-RP-006 (HTML injection, rp011 series), UAT-RP-007 (paths publish,
+rp011r2 series), UAT-RP-008 (Stash symlinks, rp012 series),
+UAT-RP-009 (Stash roundtrip, rp012-roundtrip). El receipt
+`WU_RP_012_RECEIPT.md` (§9 'UAT coverage unlocked') los listaba
+narrativamente como 'covered' pero sin marcadores `UAT-EVIDENCE` —
+la sección era lista narrativa multi-UAT → freeform parser
+`multi_noref` → REFERENCED.
+
+### Resolución
+
+Commit `6d3b50f4` (T0E-EVID-01 follow-on #2):
+1. Re-ejecuta los tests con una sola invocación Gradle:
+   `StashOperationsAdapterUatTest` 7/7 PASS (0.669s),
+   `PublishHtmlOperationsAdapterUatTest` 14/14 PASS (0.681s).
+   Total: **21/21 PASS**, 1.35s.
+2. `WU_RP_012_RECEIPT.md` gana sección 12 con procedimiento
+   reproducible + digests XML + 4 marcadores `UAT-EVIDENCE`.
+3. `T0E_CLOSURE_RECEIPT.md` gana 4 mirrors adicionales en su
+   'Machine-readable status mirror'.
+
+### Problema encontrado al comitear (D-007)
+
+Al hacer el commit, la línea narrativa de `WU_RP_012_RECEIPT.md` L118
+(`UAT-RP-005 invariant 3 ... remains FAIL_PROVEN`) quedó en el mismo
+SHA DAG-maximal que el nuevo marker (KNOWN_LIMITATION en §12). El
+certifier los ve como dos triples maximales con status distinto →
+CONFLICT → R4 fail.
+
+Además `T0E_CLOSURE_RECEIPT.md` L137 contenía una narrativa similar
+(`WU_RP_013/RP2_GATE which had it as FAIL_PROVEN`) que también entró
+en conflicto con el marker existente para UAT-RP-005.
+
+### Solución del D-007 (commits `20559ff7` + `80c3e706`)
+
+1. Neutralización quirúrgica de las narrativas (no se borra nada,
+   sólo se sustituye el token de status por un placeholder
+   `[ST-OLD]`/`[ST-OPEN]`). El historial sigue siendo legible para
+   humanos; el parser freeform ya no ve status contradictorios.
+2. Adición del marker explícito para UAT-RP-024
+   (`UAT-EVIDENCE | UAT-RP-024 | KNOWN_LIMITATION | ...`) en el
+   'Machine-readable status mirror' del closure receipt. Sin este
+   marker, UAT-RP-024 caía a REFERENCED (multi_noref) por la
+   neutralización de la narrativa multi-UAT.
+
+### Delta del certifier (HEAD `80c3e706`)
+
+| UAT | Antes | Después |
+|---|---|---|
+| UAT-RP-006 | REFERENCED | **COVERED** |
+| UAT-RP-007 | REFERENCED | **COVERED** |
+| UAT-RP-008 | COVERED | COVERED (con marker explícito) |
+| UAT-RP-009 | REFERENCED | **COVERED** |
+| UAT-RP-024 | REFERENCED | **KNOWN_LIMITATION** |
+
+Conteos: COVERED 12→**15**, KNOWN_LIMITATION 1→**2**, REFERENCED 10→**7**, NOT_APPLICABLE 3→3. Total 27.
+
+KNOWN_LIMITATION sigue siendo non-blocking (R4 sigue PASS).
+
+### Sin código de producción tocado
+
+Sólo docs/receipts. Cero tests añadidos (los 21 ya existían desde
+WU-RP-011/012). Cero cambios en production.
+
+## D-008 — UAT-RP-005 CONFLICT tras neutralización (resuelto en `20559ff7`)
+
+**Detected:** 2026-09-26, al commitear D-006.
+**Severity:** P2 (bloqueaba admission R4 hasta resolución).
+**Scope:** `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` L137 +
+`docs/v2/07-uat/WU_RP_012_RECEIPT.md` L118.
+
+**Status:** RESUELTO en `20559ff7` + `80c3e706`.
+
+Detalle completo en D-006 arriba. La regla operativa que deja este
+incidente es: **el parser freeform extrae tokens de status de
+cualquier línea, incluyendo narrativas**. Una narrativa que mencione
+un status histórico (p.ej. 'had it as FAIL_PROVEN') ahora entra en
+conflicto con un marker que diga lo opuesto (KNOWN_LIMITATION).
+
+**Mitigación recomendada**: tras cualquier commit que toque
+receipts y haga el archivo DAG-maximal, regenerar y verificar R4
+antes de commitear. La regla del L1 ('compilar + test afectado')
+debe extenderse a 'regenerar + admission-check' en estos casos.
+
+### Sin código de producción tocado
 
 ## D-007 — `gen-current-uat-status.py` false-COVERED / hyphen-FAIL classifier (P2)
 

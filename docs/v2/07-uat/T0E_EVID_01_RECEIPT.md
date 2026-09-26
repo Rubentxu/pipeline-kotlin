@@ -5,14 +5,15 @@
 **HEAD:** `56467ed2` (post E1 certifier fix).
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 
-This receipt captures REAL, EXECUTABLE evidence for the four UATs that R4
-flagged as `NOT_RUN` (missing evidence) before E1+E2 work.
+This receipt captures REAL, EXECUTABLE evidence for the UATs that R4
+flagged as `NOT_RUN` (missing evidence) before E1+E2+E3 work.
 
 Summary:
 - UAT-RP-002: oracle A (`v2/gradlew --version`) + oracle B (workflow artifact-upload).
 - UAT-RP-004: DslCompiledPipelineCompilerTest (13 PASS) + CliCompileErrorExitsOneTest (3 PASS).
 - UAT-RP-010: JsonEventLogRoundTripTest (28 PASS).
 - UAT-RP-013: DivergenceDetectorTest (4 PASS).
+- UAT-RP-015: Lpr011SecretRedactionTranscriptUatTest (6 PASS) + Lpr011r2SecretRedactionAtRestUatTest (11 PASS) — chunk-boundary-safe redaction.
 
 All oracle tests passed (failures=0, errors=0) against `HEAD=56467ed2`.
 
@@ -173,10 +174,77 @@ The test class exercises:
 
 UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=56467ed2 | tests=DivergenceDetectorTest:4 | exit=0
 
-## E2 — Acceptance Criteria
+## E3.1 — UAT-RP-015 (Secretos: chunk-boundary-safe redaction)
 
-- [x] R4 pre-fix: UAT-RP-002/004/010/013 were `NOT_RUN`.
-- [x] R4 post-fix: all four carry `COVERED` with real, runnable oracles.
+**Matrix contract:**
+> UAT-RP-015 | Secretos | secreto dividido entre chunks, stdout/stderr,
+> todos los modos, errores, eventos y archivos | bytes secretos
+> ausentes en superficies observables
+
+**Oracle (A) chunk-boundary transcript:** `Lpr011SecretRedactionTranscriptUatTest`
+
+```text
+$ cd v2 && ./gradlew :pipeline-application:test --tests Lpr011SecretRedactionTranscriptUatTest
+BUILD SUCCESSFUL in 18s
+```
+
+JUnit XML:
+```
+tests="6" skipped="0" failures="0" errors="0"
+```
+
+The test class exercises: a secret straddling a chunk boundary is still
+scrubbed before the `EchoOutputCaptured` event leaves the substrate. This
+is exactly the contract: secret divided between chunks survives
+redaction in observable surfaces.
+
+**Oracle (B) secret redaction at rest:** `Lpr011r2SecretRedactionAtRestUatTest`
+
+```text
+$ cd v2 && ./gradlew :pipeline-application:test --tests Lpr011r2SecretRedactionAtRestUatTest
+BUILD SUCCESSFUL in 18s
+```
+
+JUnit XML:
+```
+tests="11" skipped="0" failures="0" errors="0"
+```
+
+Combined: 17/17 PASS. All chunked-secret scenarios preserve the
+contract.
+
+UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2SecretRedactionAtRestUatTest:11 | exit=0
+
+## E3.2 — UAT-RP-005 (KNOWLEDGE_LIMITATION supersedes FAIL_PROVEN)
+
+**Matrix contract:**
+> UAT-RP-005 | Publish HTML | publicar index.html original y otro
+> HTML; abrir informe y recalcular SHA256 de entradas FINALES
+
+**Disposition (T0E-EVID-01 E3.1):** Earlier receipts (RP2_GATE_RECEIPT,
+WU_RP_013_RECEIPT) documented invariant 3 (archive MANIFEST.json) as
+`FAIL_PROVEN`. The SESSION_PAUSE_MEMO_2026_09_24.md documented the
+same invariant as `KNOWN_LIMITATION` per ADR-0095.
+
+The certifier's DAG-maximal commit selection (T0E-EVID-01 E1.1) picks
+the newer SESSION_PAUSE_MEMO commit; the marker-free-form parses the
+line as KNOWN_LIMITATION (now a recognised status, T0E-EVID-01 E3.1).
+Final status: KNOWN_LIMITATION, which causally supersedes the older
+FAIL_PROVEN per ADR-0095.
+
+The UAT is NOT certified as COVERED (it isn't) but it IS no longer
+blocking R4 (KNOWN_LIMITATION is non-blocking).
+
+## E3 — Acceptance Criteria
+
+- [x] R4 pre-fix: UAT-RP-002/004/005/010/013/015 were `NOT_RUN` /
+      `FAIL_PROVEN` / not-blocking.
+- [x] R4 post-fix: UAT-RP-002/004/010/013/015 carry `COVERED` with
+      real, runnable oracles.
+- [x] UAT-RP-005 carries `KNOWN_LIMITATION` (causal supersedence of
+      older `FAIL_PROVEN` per ADR-0095, no artificial exception).
+- [x] UAT-RP-025/026/027 carry `NOT_APPLICABLE` (non-blocking):
+      applicability gates in `scripts/gen-current-uat-status.py`.
 - [x] All evidence captured from fresh JUnit XML on `HEAD=56467ed2`.
 - [x] Marker format `UAT-EVIDENCE | UID | STATUS | candidate=<sha> | ...`
       unambiguous (T0E-EVID-01 E1.2).

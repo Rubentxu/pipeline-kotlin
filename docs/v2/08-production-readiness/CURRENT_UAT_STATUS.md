@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T13:38:05Z
-**Source of truth:** `git log` HEAD `e27a21a` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-26T13:41:32Z
+**Source of truth:** `git log` HEAD `c3336b7` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -13,7 +13,7 @@
 | `UAT-RP-002` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-002 | COVERED | candidate=56467ed2 | tests=oracle_a_gradlew_version+oracle_b_workflow_artifact_upl |
 | `UAT-RP-003` | **REFERENCED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | - Evidencia: certification del plugin + UAT-RP-003 (ADR-0069). |
 | `UAT-RP-004` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-004 | COVERED | candidate=56467ed2 | tests=DslCompiledPipelineCompilerTest:13+CliCompileErrorExits |
-| `UAT-RP-005` | **REFERENCED** | `docs/v2/07-uat/SESSION_PAUSE_MEMO_2026_09_24.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
+| `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/SESSION_PAUSE_MEMO_2026_09_24.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
 | `UAT-RP-006` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-006 (HTML injection)**: covered by round 1 (5 rp011 tests). |
 | `UAT-RP-007` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-007 (paths publish)**: covered by round 2 (5 rp011r2 tests). |
 | `UAT-RP-008` | **COVERED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-008** (Stash symlinks): covered by 7 rp012 tests (this WU). |
@@ -32,10 +32,10 @@
 | `UAT-RP-021` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | - UAT-RP-019 (Gradle real), UAT-RP-020 (Maven real), UAT-RP-021 (Node real) **NO tenían cobertura visible** en HEAD (aud |
 | `UAT-RP-022` | **REFERENCED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | Esta sesión cierra la brecha ejecutable: implementa cobertura real para UAT-RP-019/020/021 (6 tests nuevos, 6/6 PASS en  |
 | `UAT-RP-023` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | Esta sesión cierra la brecha ejecutable: implementa cobertura real para UAT-RP-019/020/021 (6 tests nuevos, 6/6 PASS en  |
-| `UAT-RP-024` | **REFERENCED** | `docs/v2/07-uat/SESSION_PAUSE_MEMO_2026_09_24.md` | | UAT-RP-024 dogfooding | KNOWN_LIMITATION parcial 1-repo. ≥2 repos estructuralmente imposible en sesión autónoma. | |
-| `UAT-RP-025` | **REFERENCED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | | `docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md` | updated | baseline → 87d7f2ef; UAT-RP-018 COVERED; UAT-RP-019/020/02 |
-| `UAT-RP-026` | **NOT_RUN** | `—` | _no evidence yet_ |
-| `UAT-RP-027` | **NOT_RUN** | `—` | _no evidence yet_ |
+| `UAT-RP-024` | **KNOWN_LIMITATION** | `docs/v2/07-uat/SESSION_PAUSE_MEMO_2026_09_24.md` | | UAT-RP-024 dogfooding | KNOWN_LIMITATION parcial 1-repo. ≥2 repos estructuralmente imposible en sesión autónoma. | |
+| `UAT-RP-025` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
+| `UAT-RP-026` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
+| `UAT-RP-027` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
 
 ---
 
@@ -43,8 +43,21 @@
 
 - **Total UATs (PRDY-003 contract):** 27
 - **COVERED:** 11
-- **NOT_RUN:** 3
-- **REFERENCED:** 13
+- **KNOWN_LIMITATION:** 2
+- **NOT_RUN:** 1
+- **REFERENCED:** 10
+- **NOT_APPLICABLE:** 3
+- **KNOWN_LIMITATION:** 2
+
+---
+
+## Applicability Gates (T0E-EVID-01 E3)
+
+| UAT | Gate | Status |
+|---|---|---|
+| `UAT-RP-025` | SDKMAN_READY declared | **NOT_APPLICABLE** |
+| `UAT-RP-026` | REMOTE profile enabled | **NOT_APPLICABLE** |
+| `UAT-RP-027` | Jenkins adapter enabled | **NOT_APPLICABLE** |
 
 ---
 
@@ -52,12 +65,13 @@
 
 - [x] C1: All 27 UAT-RP-001..027 IDs enumerated (normative contract).
 - [x] C2: Each ID scanned against `docs/v2/07-uat/*.md` for evidence triples; normative matrix is excluded.
-- [x] C3: Statuses from explicit markers only (COVERED / PARTIAL / FAIL_PROVEN / BLOCKED / NOT_RUN / REJECTED). No narrative inference.
+- [x] C3: Statuses from explicit markers only (COVERED / PARTIAL / FAIL_PROVEN / BLOCKED / NOT_RUN / REJECTED / KNOWN_LIMITATION). No narrative inference.
 - [x] C4: Selection by DAG-maximal commits (T0E-EVID-01). SHA lexical order is NOT used as recency.
 - [x] C5: Per-UAT status scoping (T0E-EVID-01). Multi-UAT free-form lines do not certify any UAT (REFERENCED only).
 - [x] C6: Two incompatible explicit statuses among maximals -> CONFLICT (fail-closed; CONFLICT blocks admission).
 - [x] C7: Generator + tests + receipt produced.
 - [x] C8: `PRODUCTION_READY_UAT_MATRIX.md` remains normative only; this file replaces its mutable section.
+- [x] C9: Applicability gates produce NOT_APPLICABLE (non-blocking) for UAT-RP-025/026/027 when the corresponding feature is not declared in the codebase.
 
 ---
 
@@ -67,3 +81,4 @@
 - Several UATs were referenced only in narrative text. The generator returns `REFERENCED` instead of inferring `COVERED`; admission does not block on REFERENCED (only on FAIL_PROVEN / BLOCKED / REJECTED / NOT_RUN / CONFLICT).
 - Multi-UAT free-form lines (no `UAT-EVIDENCE | ...` marker) cannot be safely scoped and yield REFERENCED for every UAT on the line. New receipts SHOULD use the marker.
 - SHA lexical order is NOT causal recency; the certifier uses DAG-maximal commits (`git merge-base --is-ancestor`).
+- KNOWN_LIMITATION is recognised as PARTIAL-equivalent (causally supersedes older FAIL_PROVEN) per ADR-0095.

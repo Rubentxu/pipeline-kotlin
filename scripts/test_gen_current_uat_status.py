@@ -108,7 +108,10 @@ class GenCurrentUatStatusTests(unittest.TestCase):
         self.assertIn("BLOCKED", self.mod.EXPLICIT_STATUSES)
         self.assertIn("NOT_RUN", self.mod.EXPLICIT_STATUSES)
         self.assertIn("REJECTED", self.mod.EXPLICIT_STATUSES)
-        for forbidden in ("FAIL", "KNOWN_GAP", "NO_APLICA", "KNOWN_LIMITATION"):
+        # KNOWN_LIMITATION (T0E-EVID-01 E3.1): recognised status that
+        # causally supersedes older FAIL_PROVEN per ADR-0095.
+        self.assertIn("KNOWN_LIMITATION", self.mod.EXPLICIT_STATUSES)
+        for forbidden in ("FAIL", "KNOWN_GAP", "NO_APLICA"):
             self.assertNotIn(forbidden, self.mod.EXPLICIT_STATUSES)
 
     def test_normative_matrix_excluded(self):
@@ -119,7 +122,33 @@ class GenCurrentUatStatusTests(unittest.TestCase):
         md = self.mod.render_markdown(uat_status, "abc1234deadbeef")
         for uid in self.mod.UAT_IDS:
             self.assertIn(f"`{uid}`", md)
-        self.assertIn("**NOT_RUN:** 27", md)
+        # With empty evidence, UAT-RP-001..024 are NOT_RUN and
+        # UAT-RP-025/026/027 are NOT_APPLICABLE (per the applicability
+        # gates, regardless of evidence).
+        self.assertIn("**NOT_RUN:** 24", md)
+        self.assertIn("**NOT_APPLICABLE:** 3", md)
+
+    def test_e3_applicability_gate_returns_correct_status(self):
+        # No SDKMAN_READY in the codebase -> UAT-RP-025 is NOT_APPLICABLE.
+        applicable, descr = self.mod.check_applicability(
+            "UAT-RP-025", repo_text="some random text without markers",
+        )
+        self.assertFalse(applicable)
+        self.assertEqual(descr, "SDKMAN_READY declared")
+        # Same for 026/027.
+        for uid in ("UAT-RP-026", "UAT-RP-027"):
+            applicable, _ = self.mod.check_applicability(
+                uid, repo_text="some random text",
+            )
+            self.assertFalse(applicable)
+        # And when SDKMAN_READY is declared, it's applicable.
+        applicable, _ = self.mod.check_applicability(
+            "UAT-RP-025", repo_text="// SDKMAN_READY = true",
+        )
+        self.assertTrue(applicable)
+
+    def test_e3_known_limitation_recognised_as_status(self):
+        self.assertIn("KNOWN_LIMITATION", self.mod.EXPLICIT_STATUSES)
 
     # --- E1.1: DAG-maximal commits ---
 

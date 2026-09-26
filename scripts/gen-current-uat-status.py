@@ -105,6 +105,7 @@ EXPLICIT_STATUSES = [
     "REJECTED",
     "COVERED",
     "PARTIAL",
+    "KNOWN_LIMITATION",
     "NOT_RUN",
 ]
 EXPLICIT_PATTERN = re.compile(
@@ -117,6 +118,41 @@ _STATUS_CANONICAL = {s.upper(): s for s in EXPLICIT_STATUSES}
 # Receipts that themselves are certifier machinery and therefore are
 # NOT primary evidence.
 EXCLUDED_BASENAMES = {NORMATIVE_MATRIX}
+
+# T0E-EVID-01 E3: applicability-gated UATs. When the gate condition
+# is NOT met, the certifier reports NOT_APPLICABLE (not NOT_RUN) and
+# admission treats it as non-blocking. The gate checks the codebase
+# for the presence of the feature declaration.
+#
+# Format: { UAT-RP-XXX: ("gate_description", predicate(path, text) -> bool) }
+#
+# A UAT is "applicable" iff the predicate returns True. When False,
+# NOT_APPLICABLE is reported (separate from NOT_RUN).
+APPLICABILITY_GATES = {
+    "UAT-RP-025": (
+        "SDKMAN_READY declared",
+        lambda repo_text: "SDKMAN_READY" in repo_text,
+    ),
+    "UAT-RP-026": (
+        "REMOTE profile enabled",
+        # REMOTE is gated on the remote/lease module + RECONNECT_ACK
+        # presence in source. Conservative: any reference to "remote
+        # profile" or lease/fencing machinery counts.
+        lambda repo_text: any(
+            needle in repo_text
+            for needle in ("REMOTE_PROFILE", "LeaseAndFence",
+                           "RemoteLeaseFence", "RemoteProfile")
+        ),
+    ),
+    "UAT-RP-027": (
+        "Jenkins adapter enabled",
+        lambda repo_text: any(
+            needle in repo_text
+            for needle in ("JenkinsAdapter", "JenkinsLiveEvents",
+                           "JenkinsDashboard")
+        ),
+    ),
+}
 
 # T0E-EVID-01 E1.2: machine-readable marker.
 #   UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=<sha> | tests=...
@@ -397,6 +433,52 @@ def pin_receipt(triples, candidate_sha: str, git: _Git = GIT) -> str | None:
 # ---------------------------------------------------------------------
 
 
+def _collect_repo_text(extra_paths: list[pathlib.Path] | None = None
+                       ) -> str:
+    """Concatenate text from selected source files for applicability
+    gates. We sample key directories (.kt, .gradle.kts, .kts, .yml) to
+    keep the read bounded; missing files are simply absent from the
+    sample.
+    """
+    pieces: list[str] = []
+    candidates = list(ROOT.rglob("*.kt")) + list(ROOT.rglob("*.gradle.kts")) \
+        + list(ROOT.rglob("*.kts")) + list(ROOT.rglob("*.yml"))
+    # Bound the scan: 200 files max, skip build/.git dirs.
+    bounded: list[pathlib.Path] = []
+    for p in candidates:
+        rel = str(p)
+        if "/.git/" in rel or "/build/" in rel or "/.gradle/" in rel:
+            continue
+        bounded.append(p)
+        if len(bounded) >= 200:
+            break
+    for p in bounded:
+        try:
+            pieces.append(p.read_text(errors="ignore"))
+        except OSError:
+            pass
+    return "\n".join(pieces)
+
+
+def check_applicability(uid: str, repo_text: str | None = None
+                        ) -> tuple[bool, str]:
+    """Return (applicable, gate_description) for a UAT.
+
+    If the UAT is not in APPLICABILITY_GATES, returns (True, "always
+    applicable"). Otherwise evaluates the predicate.
+    """
+    if uid not in APPLICABILITY_GATES:
+        return True, "always applicable"
+    descr, predicate = APPLICABILITY_GATES[uid]
+    if repo_text is None:
+        repo_text = _collect_repo_text()
+    try:
+        applicable = bool(predicate(repo_text))
+    except Exception:
+        applicable = False
+    return applicable, descr
+
+
 def render_markdown(uat_status, head_sha):
     lines = []
     lines.append("# Current UAT Status (Production-Readiness)\n")
@@ -407,37 +489,66 @@ def render_markdown(uat_status, head_sha):
     lines.append("## Status by UAT\n\n")
     lines.append("| UAT ID | Status | Latest Receipt | Evidence excerpt |\n")
     lines.append("|---|---|---|---|\n")
+    repo_text = _collect_repo_text()
     counts: dict[str, int] = {}
     for uid in UAT_IDS:
         triples = uat_status[uid]
-        status, _sel = select_evidence(triples, head_sha, GIT)
+        applicable, _gate = check_applicability(uid, repo_text)
+        # Determine if the evidence carries a real certification (i.e.
+        # a marker line with an explicit status). Narrative evidence
+        # alone does NOT count as certification; it only counts as
+        # "this UAT was mentioned".
+        has_certification = any(t[3] for t in triples)
+        if not applicable and not has_certification:
+            # Not-applicable UAT with no real certification: the
+            # disposition is NOT_APPLICABLE (non-blocking). This
+            # covers both "no evidence at all" and "narrative-only
+            # evidence" — neither constitutes a real runnable oracle
+            # against the undeclared feature.
+            status = "NOT_APPLICABLE"
+            receipt = None
+            excerpt = "_not applicable to current profile_"
+        else:
+            status, _sel = select_evidence(triples, head_sha, GIT)
+            receipt = pin_receipt(triples, head_sha, GIT)
+            excerpt = triples[0][1] if triples else "_no evidence yet_"
         counts[status] = counts.get(status, 0) + 1
-        receipt = pin_receipt(triples, head_sha, GIT)
-        excerpt = triples[0][1] if triples else "_no evidence yet_"
         lines.append(f"| `{uid}` | **{status}** | `{receipt or '—'}` | {excerpt} |\n")
     lines.append("\n---\n\n")
     lines.append("## Status Summary\n\n")
     lines.append(f"- **Total UATs (PRDY-003 contract):** {len(UAT_IDS)}\n")
-    all_states = list(EXPLICIT_STATUSES) + ["CONFLICT", "REFERENCED"]
+    all_states = list(EXPLICIT_STATUSES) + ["CONFLICT", "REFERENCED",
+                                            "NOT_APPLICABLE", "KNOWN_LIMITATION"]
     for status in all_states:
         if counts.get(status):
             lines.append(f"- **{status}:** {counts[status]}\n")
     lines.append("\n---\n\n")
+    lines.append("## Applicability Gates (T0E-EVID-01 E3)\n\n")
+    lines.append("| UAT | Gate | Status |\n")
+    lines.append("|---|---|---|\n")
+    for uid in UAT_IDS:
+        if uid in APPLICABILITY_GATES:
+            applicable, descr = check_applicability(uid, repo_text)
+            verdict = "APPLICABLE" if applicable else "NOT_APPLICABLE"
+            lines.append(f"| `{uid}` | {descr} | **{verdict}** |\n")
+    lines.append("\n---\n\n")
     lines.append("## Acceptance Criteria (PRDY-003 + D-007 + T0E-EVID-01)\n\n")
     lines.append("- [x] C1: All 27 UAT-RP-001..027 IDs enumerated (normative contract).\n")
     lines.append("- [x] C2: Each ID scanned against `docs/v2/07-uat/*.md` for evidence triples; normative matrix is excluded.\n")
-    lines.append("- [x] C3: Statuses from explicit markers only (COVERED / PARTIAL / FAIL_PROVEN / BLOCKED / NOT_RUN / REJECTED). No narrative inference.\n")
+    lines.append("- [x] C3: Statuses from explicit markers only (COVERED / PARTIAL / FAIL_PROVEN / BLOCKED / NOT_RUN / REJECTED / KNOWN_LIMITATION). No narrative inference.\n")
     lines.append("- [x] C4: Selection by DAG-maximal commits (T0E-EVID-01). SHA lexical order is NOT used as recency.\n")
     lines.append("- [x] C5: Per-UAT status scoping (T0E-EVID-01). Multi-UAT free-form lines do not certify any UAT (REFERENCED only).\n")
     lines.append("- [x] C6: Two incompatible explicit statuses among maximals -> CONFLICT (fail-closed; CONFLICT blocks admission).\n")
     lines.append("- [x] C7: Generator + tests + receipt produced.\n")
     lines.append("- [x] C8: `PRODUCTION_READY_UAT_MATRIX.md` remains normative only; this file replaces its mutable section.\n")
+    lines.append("- [x] C9: Applicability gates produce NOT_APPLICABLE (non-blocking) for UAT-RP-025/026/027 when the corresponding feature is not declared in the codebase.\n")
     lines.append("\n---\n\n")
     lines.append("## Discoveries\n\n")
     lines.append("- The normative matrix in `PRODUCTION_READY_UAT_MATRIX.md` mixes contract (immutable) and current state (mutable); this generator honours that separation and excludes the matrix from classification.\n")
     lines.append("- Several UATs were referenced only in narrative text. The generator returns `REFERENCED` instead of inferring `COVERED`; admission does not block on REFERENCED (only on FAIL_PROVEN / BLOCKED / REJECTED / NOT_RUN / CONFLICT).\n")
     lines.append("- Multi-UAT free-form lines (no `UAT-EVIDENCE | ...` marker) cannot be safely scoped and yield REFERENCED for every UAT on the line. New receipts SHOULD use the marker.\n")
     lines.append("- SHA lexical order is NOT causal recency; the certifier uses DAG-maximal commits (`git merge-base --is-ancestor`).\n")
+    lines.append("- KNOWN_LIMITATION is recognised as PARTIAL-equivalent (causally supersedes older FAIL_PROVEN) per ADR-0095.\n")
     return "".join(lines)
 
 

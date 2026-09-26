@@ -294,6 +294,10 @@ UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d | tests=supers
 UAT-EVIDENCE | UAT-RP-019 | COVERED | candidate=86c9ace8 | tests=WURp019GradleRealUatTest:2 | exit=0 | xml-sha256=f1dc468ea7b6d8b274e5fac13e19452a16b0450338ce2cd1c275c544e7a57419
 UAT-EVIDENCE | UAT-RP-020 | COVERED | candidate=86c9ace8 | tests=WURp020MavenRealUatTest:2 | exit=0 | xml-sha256=95e000862394e4573caf48a084a1d75a6f7496536ee7f7e57cea33ebf6023849
 UAT-EVIDENCE | UAT-RP-021 | COVERED | candidate=86c9ace8 | tests=WURp021NodeRealUatTest:2 | exit=0 | xml-sha256=ff69036e6b80d3715541f7998b53929fdf7b915b87bbc18e4e1c9ea4a075ca39
+UAT-EVIDENCE | UAT-RP-006 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-sha256=7937eaed895012fec26472e6a0fc5b23cac29e85ed44346e6eb540fce7538755
+UAT-EVIDENCE | UAT-RP-007 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-sha256=7937eaed895012fec26472e6a0fc5b23cac29e85ed44346e6eb540fce7538755
+UAT-EVIDENCE | UAT-RP-008 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57
+UAT-EVIDENCE | UAT-RP-009 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57
 ```
 
 These mirror the markers in `T0E_EVID_01_RECEIPT.md`. With the

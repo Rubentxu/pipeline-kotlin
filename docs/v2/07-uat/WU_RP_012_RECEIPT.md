@@ -138,3 +138,67 @@ Per AGENTS.md § "REFERENCE IMPLEMENTATION RESEARCH":
 ---
 
 **Receipt SHA:** `b3f74e93` (commit) / `35705391067` (CI run) / `2026-09-22T08:39Z` (closure timestamp).
+
+---
+
+## 12. Re-executed evidence — UAT-RP-006 / UAT-RP-007 / UAT-RP-009 (2026-09-26)
+
+Esta sub-sección aporta pruebas frescas y verificables por el certifier
+para los tres UAT-RP que la sección 9 ya listaba como 'covered' pero
+sin marcador `UAT-EVIDENCE` (la sección 9 era narrativa, no
+machine-readable). El certifier freeform parser los clasificaba como
+REFERENCED (multi-UAT por fila). Este turno autónomo los ejecuta
+contra el SHA actual y emite los markers.
+
+### Procedimiento reproducible
+
+```bash
+# Sin opt-in: ambos test classes corren por defecto.
+timeout 600 ./gradlew -p v2 :pipeline-application:test \
+  --tests "dev.rubentxu.pipeline.v2.application.StashOperationsAdapterUatTest" \
+  --tests "dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest"
+```
+
+### Resultado observado en HEAD 70339af3
+
+- **StashOperationsAdapterUatTest:** 7/7 PASS (rp012 series, incluye
+  `rp012 — stash followed by unstash is bit-exact roundtrip (UAT-RP-009)`),
+  0.669s.
+  Digest XML: `sha256:e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57`
+- **PublishHtmlOperationsAdapterUatTest:** 14/14 PASS (rp011 + rp011r2 series;
+  cubre UAT-RP-006 HTML injection y UAT-RP-007 paths publish), 0.681s.
+  Digest XML: `sha256:7937eaed895012fec26472e6a0fc5b23cac29e85ed44346e6eb540fce7538755`
+
+Total: **21/21 PASS**, 1.35s combined, 0 failures, 0 errors, 0 skipped.
+
+### Markers para el certifier
+
+Las siguientes líneas son la fuente de verdad machine-readable para el
+gen-current-uat-status (DAG-maximal por SHA, scoping por UAT):
+
+```
+UAT-EVIDENCE | UAT-RP-006 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 (rp011+r011r2 series, HTML-escape + paths-confinement) | exit=0 | xml-sha256=7937eaed895012fec26472e6a0fc5b23cac29e85ed44346e6eb540fce7538755
+UAT-EVIDENCE | UAT-RP-007 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 (rp011+r011r2 series, paths-publish symlink rejection) | exit=0 | xml-sha256=7937eaed895012fec26472e6a0fc5b23cac29e85ed44346e6eb540fce7538755
+UAT-EVIDENCE | UAT-RP-008 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 (rp012 series, symlink-safe stash) | exit=0 | xml-sha256=e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57
+UAT-EVIDENCE | UAT-RP-009 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 (rp012-roundtrip test, bit-exact stash→unstash) | exit=0 | xml-sha256=e681015cfb859936ffd0723e9a2825a018fc93033981bebfd62139a95c01dd57
+```
+
+### Notas
+
+- **Sin opt-in**: ambos test classes corren por defecto (no usan
+  `@EnabledIfEnvironmentVariable`).
+- **Sin código de producción tocado**: este bloque es solo evidencia.
+  Los 21 tests ya existían desde WU-RP-011 (rp011) y WU-RP-012 (rp012).
+- **Determinismo**: las assertions son bit-exact sha256 + path containment.
+  Los XML digests cambian por timestamp; las assertions internas son
+  deterministas.
+- **Certifier impact esperado**: UAT-RP-006/007/009 deben moverse de
+  REFERENCED a COVERED; UAT-RP-008 ya era COVERED pero gana marker
+  explícito para mantener el contrato DAG-maximal:
+  COVERED=15 (era 12), REFERENCED=7 (era 10), KNOWN_LIMITATION=2,
+  NOT_APPLICABLE=3. Total 27.
+- **UAT-RP-005 NO se eleva aquí**: sigue siendo KNOWN_LIMITATION
+  per ADR-0095 (MANIFEST.json invariant 3 diferida a release-notes
+  disclosure). El PublishHtmlOperationsAdapterUatTest cubre los
+  invariants 1, 2 y 4; el 3 permanece abierto por decisión de
+  diseño.

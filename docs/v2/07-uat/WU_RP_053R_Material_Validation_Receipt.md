@@ -881,3 +881,156 @@ under 1 hour total for the full rc1 verification battery.
 No source files modified. 1 docs-only commit (`3ba08960`).
 Receipt now 748 + ~150 = ~898 lines.
 
+---
+
+## Round-5 — Continued session: D-006 detection + cheap HEAD validator (2026-09-26T07:59Z)
+
+**Trigger:** operator resumed at 2026-09-26T07:59Z with directive
+"continua con el roadmap y sddk". Directives still binding:
+
+1. NO auto-promote rc1 to main (irrevocable since 2026-09-24T10:09Z).
+2. NO create new roadmap WUs without explicit GO.
+3. rc1 stays READY_FOR_OPERATOR_REVIEW.
+
+Block executables in scope:
+- (a) Cheap HEAD validator (round-5) — confirm docs-only commits don't
+  regress. Already partially executed (detekt UP-TO-DATE both modules).
+- (b) Code-duplication audit (rule 3 of operator — every WU must audit
+  duplicates BEFORE starting). This is **preparation**, not WU creation.
+
+### R12 — Round-5 detekt UP-TO-DATE both modules
+
+```text
+$ cd v2 && timeout 120 ./gradlew :pipeline-step-sdk:scm-git:detekt
+> Task :pipeline-step-sdk:scm-git:detekt UP-TO-DATE
+BUILD SUCCESSFUL in 1s
+
+$ cd v2 && timeout 120 ./gradlew :pipeline-application:detekt
+> Task :pipeline-application:detekt UP-TO-DATE
+BUILD SUCCESSFUL in 1s
+```
+
+**Verdict:** GREEN. No detekt regressions at HEAD `55e89e9c`. The 2 docs
+commits added in this session (`3ba08960` + `55e89e9c`) do not introduce
+any detekt findings because they only add `docs/` markdown content.
+
+### R13 — Code-duplication audit (rule 3 of operator)
+
+**Scope audited:** 19 `Core*Step.kt` files in
+`v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/`
++ 1 `CoreScmGitCheckout*` in scm-git.
+
+**Pattern identified:** every `Core*Step.kt` defines its `inputCodec` and
+`outputCodec` inline as `object : StepCodec<T>` repeating the same
+boilerplate:
+
+```text
+private val inputCodec = object : StepCodec<T> {
+    override fun encode(value: T): EncodedStepValue =
+        EncodedStepValue(
+            Json.encodeToString(JsonObject.serializer(),
+                buildJsonObject {
+                    put("kind", JsonPrimitive("..."))    // 18+ distinct strings
+                    put(...)                              // payload fields
+                }),
+        )
+    override fun decode(encoded: EncodedStepValue): T {
+        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        require(obj["kind"]?.jsonPrimitive?.content == "...") { "..." }
+        ...
+    }
+}
+```
+
+**Quantification (Python script applied across all 19 files):**
+
+```text
+TOTAL: 4275 lines, ~560 boilerplate (13%)
+```
+
+| File | Lines | Boilerplate | % |
+|---|---|---|---|
+| CoreEchoStep | 98 | 17 | 17% |
+| CoreShellStep | 521 | 51 | 9% |
+| CoreEmitEventStep | 272 | 19 | 6% |
+| CoreErrorStep | 192 | 26 | 13% |
+| CoreIsUnixStep | 183 | 20 | 10% |
+| CoreSleepStep | 128 | 21 | 16% |
+| CoreWriteFileStep | 149 | 23 | 15% |
+| CorePwdStep | 222 | 25 | 11% |
+| CorePwdTmpStep | 210 | 21 | 10% |
+| CoreDeleteDirStep | 206 | 27 | 13% |
+| CoreMilestoneStep | 274 | 28 | 10% |
+| CoreCleanWsStep | 224 | 31 | 13% |
+| CoreWaitUntilStep | 229 | 28 | 12% |
+| CoreFileExistsStep | 150 | 25 | 16% |
+| CoreArchiveArtifactsStep | 273 | 37 | 13% |
+| CoreArtifactQueryStep | 219 | 34 | 15% |
+| CoreReadFileStep | 171 | 27 | 15% |
+| CoreStashStep | 343 | 61 | 17% |
+| CorePublishHtmlStep | 211 | 39 | 18% |
+
+### R14 — D-006 registered as detected (P2)
+
+**Findings** (see `docs/v2/07-uat/...` for full entry in `.agent/TECH_DEBT_BACKLOG.md`):
+
+- 19 instances of the JSON codec encode/decode + kind discriminator
+  pattern, mechanically reproducible.
+- ~30 LOC boilerplate per Step on average.
+- Projected duplication: +150 LOC if the 5 new Tier B Steps
+  (`lock`, `input`, `httpRequest`, `junit.results` full burn-down,
+  `writeFile` formal contract test) are implemented without refactor.
+
+**D-006 status:** DETECTED 2026-09-26 (state: NOT_OPEN_YET). The
+operator must decide whether to:
+- (a) execute D-006 BEFORE Tier B implementation (recommended;
+  prevents ~150 LOC duplication);
+- (b) defer D-006 and accept the duplication cost;
+- (c) reject D-006 as over-engineering.
+
+D-006 is **NOT auto-executed**. Per the operator's directive
+"NO crear nuevas WUs del roadmap sin confirmación del operador",
+this remains in detected state until explicit GO.
+
+### R15 — Material identity at HEAD `55e89e9c` (unchanged from round-4)
+
+| Artifact | Status | SHA-256 |
+|---|---|---|
+| HEAD | `55e89e9c907fb7c62c083beea1ef7f02f6c91da0` | (commit SHA) |
+| origin/main | `acc903875d70f939713786d71a6331bb6ccf7dc9` | UNTOUCHED |
+| `pipelinek-0.40.0-rc1.zip` | byte-perfect | `324d7045…cbaf1740` ✅ |
+| Source files modified this session | 0 (round-5 is audit only) | round-4 added 1 docs file only |
+| New commits this session | 2 (docs only) | `3ba08960`, `55e89e9c` |
+| Pushes | 0 | (no remote operation) |
+
+### Round-5 verdict
+
+**GREEN.** HEAD `55e89e9c` is stable. The audit identified D-006
+(structural duplication in Core Step codec boilerplate) as a real but
+non-blocking concern. No code changes this turn. The candidate
+`v0.40.0-rc1` remains READY_FOR_OPERATOR_REVIEW.
+
+### Round-5 Lessons (continuation)
+
+- **Lección #25:** the `StepCodec.Builder` DSL pattern (single inline
+  helper, byte-identical envelope output) is the natural fix for D-006,
+  but implementing it now is a refactor without a unit-test-driven RED
+  baseline. The right entry point is a **byte-identicality harness**:
+  capture `EncodedStepValue` SHA-256 from each Step BEFORE the refactor,
+  then assert same SHA-256 AFTER. This converts D-006 from
+  "mechanical refactor" to "test-driven mechanical refactor" with
+  cryptographic guarantee of zero behavioural drift. The harness is
+  itself ~50 LOC of test code.
+
+---
+
+## Round-5 Files (this receipt)
+
+| Path | Bytes | Note |
+|---|---|---|
+| `docs/v2/07-uat/WU_RP_053R_Material_Validation_Receipt.md` | appended (+round-5 block) | round-5 evidence + D-006 detection |
+| `.agent/TECH_DEBT_BACKLOG.md` | appended D-005 + D-006 entries | (gitignored session state) |
+
+No source files modified. 0 new commits this turn (round-5 is audit only).
+Receipt now ~898 + ~100 = ~1000 lines.
+

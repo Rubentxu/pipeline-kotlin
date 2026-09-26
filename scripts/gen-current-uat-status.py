@@ -250,14 +250,26 @@ def scan_receipts(uat_dir, *, candidate_sha: str | None = None,
         for line in text.splitlines():
             parsed_marker = _parse_marker(line)
             if parsed_marker is not None:
+                # Markers are unambiguous: they ALWAYS certify their
+                # UAT (when consistent with the receipt's commit),
+                # regardless of whether a freeform line earlier in
+                # the file mentioned the same UAT. The freeform
+                # entry is superseded by the machine-readable marker.
                 uid, status, cand = parsed_marker
-                if cand != candidate_sha:
-                    # Marker requires candidate match; skip mismatches.
-                    pass
-                if uid not in per_uids_in_file:
-                    per_uids_in_file.add(uid)
+                if cand == sha or git.is_ancestor(cand, sha):
+                    # Marker is consistent with this receipt's
+                    # commit. Replace any earlier freeform entry
+                    # with full certification.
+                    found[uid] = [
+                        t for t in found[uid]
+                        if t[0] != rel
+                    ]
                     found[uid].append((rel, line.strip()[:120], sha,
                                        [_STATUS_CANONICAL[status.upper()]]))
+                    per_uids_in_file.add(uid)
+                # else: marker candidate is unrelated to this
+                # receipt — skip (don't add REFERENCED either, to
+                # avoid clobbering an earlier valid freeform).
                 continue
 
             for uid, statuses, _kind in _parse_freeform(line):

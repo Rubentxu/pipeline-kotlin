@@ -380,12 +380,19 @@ def select_evidence(triples, candidate_sha: str, git: _Git = GIT
       - No triples or none reachable from candidate -> NOT_RUN.
       - Compute DAG-maximal SHAs among reachable triples.
       - Take all triples whose SHA is maximal.
-      - Empty statuses (REFERENCED rows only) -> REFERENCED.
+      - Empty statuses (REFERENCED rows only) -> REFERENCED. (Older
+        explicit-status triples, if any, are NOT consulted here: the
+        DAG-maximal set is the only authority. Per ADR-0095, if a
+        UAT previously had an explicit status and is now DAG-causally
+        superseded by a KNOWN_LIMITATION marker, the new marker wins;
+        if it is superseded by a narrative-only commit, the previous
+        explicit status is no longer reachable via DAG-maximal and
+        this function returns REFERENCED. Callers that need to
+        distinguish "still certified" from "superseded by narrative"
+        should inspect the DAG-maximal triple set explicitly.)
       - One explicit status across maximals -> that status.
       - Multiple maximals with the SAME explicit status -> that status.
       - Multiple maximals with DIFFERENT explicit statuses -> CONFLICT.
-      - If maximals are REFERENCED-only and older explicit-status
-        triples exist, those are superseded (DAG-maximals supersede).
     """
     if not triples:
         return "NOT_RUN", []

@@ -6,8 +6,14 @@ handling special dispositions (E3), regenerating (E4), proving gate
 (E5), and producing final receipt (E6) — without deferring to
 TRAIN-1 and without PRDY-010/promotion/merge to main").
 
-**HEAD:** `8913bac3e47904e19f861ac11a8414427704e612` (branch
-`wu/rp-053r-red-fixtures`, ahead=77 behind=0 relative to `origin/main`).
+**HEAD at receipt creation:** `9d05414401bd5950a45a8fe5b3b0d7dc04196ea2` (branch
+`wu/rp-053r-red-fixtures`, ahead=78 behind=0 relative to `origin/main`).
+
+Note: this receipt is itself a commit, so the live branch tip is one
+commit ahead of `9d054144` after this file lands. The receipt's
+narrative describes the state at this commit's creation, not the
+final branch tip; subsequent receipt-only commits are tracked in
+`WORK_JOURNAL.md` and `TECH_DEBT_BACKLOG.md`.
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 **Admission:** 6/6 PASS (`scripts/admission-check.py`).
 **Hermetic tests:** 27 (certifier) + 44 (admission) + 8 (classify) +

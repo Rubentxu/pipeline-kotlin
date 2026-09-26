@@ -5,16 +5,24 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredArray
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredObject
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ExtractedFile
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ExtractedFiles
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.TestReport
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipMode
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipOutput
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -34,25 +42,27 @@ import kotlinx.serialization.json.put
  *
  * Exactly one of the three output fields is set; the codec enforces
  * this invariant on decode.
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged.
  */
 object CoreUtilsUnzipInputCodec : StepCodec<UnzipInput> {
 
-    override fun encode(input: UnzipInput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(input: UnzipInput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("path", input.path)
             input.destination?.let { put("destination", it) }
             input.glob?.let { put("glob", it) }
             put("mode", modeToString(input.mode))
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): UnzipInput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val path = obj.getValue("path").jsonPrimitive.content
-        val destination = obj["destination"]?.jsonPrimitive?.content
-        val glob = obj["glob"]?.jsonPrimitive?.content
-        val mode = modeFromString(obj.getValue("mode").jsonPrimitive.content)
+        val obj = PipelineJson.decode(encoded)
+        val path = obj.requiredString("path")
+        val destination = obj.stringOrNull("destination")
+        val glob = obj.stringOrNull("glob")
+        val mode = modeFromString(obj.requiredString("mode"))
         return UnzipInput(
             path = path,
             destination = destination,
@@ -97,18 +107,18 @@ object CoreUtilsUnzipInputCodec : StepCodec<UnzipInput> {
 
 object CoreUtilsUnzipOutputCodec : StepCodec<UnzipOutput> {
 
-    override fun encode(output: UnzipOutput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(output: UnzipOutput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             output.extracted?.let { extracted ->
                 put("extracted", buildJsonObject {
                     put("destination", extracted.destination)
-                    put("files", kotlinx.serialization.json.buildJsonArray {
+                    put("files", buildJsonArray {
                         extracted.files.forEach { f ->
-                            add(kotlinx.serialization.json.buildJsonObject {
+                            addJsonObject {
                                 put("name", f.name)
                                 put("path", f.path)
                                 put("size", f.size)
-                            })
+                            }
                         }
                     })
                 })
@@ -122,29 +132,28 @@ object CoreUtilsUnzipOutputCodec : StepCodec<UnzipOutput> {
                 put("testReport", buildJsonObject {
                     put("ok", report.ok)
                     put("entryCount", report.entryCount)
-                    put("badEntries", kotlinx.serialization.json.buildJsonArray {
+                    put("badEntries", buildJsonArray {
                         report.badEntries.forEach { add(JsonPrimitive(it)) }
                     })
                 })
             }
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): UnzipOutput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val obj = PipelineJson.decode(encoded)
         val extracted = obj["extracted"]?.let { e ->
             if (e is JsonNull) null
             else {
                 val o = e.jsonObject
                 ExtractedFiles(
-                    destination = o.getValue("destination").jsonPrimitive.content,
-                    files = o.getValue("files").jsonArray.map { entry ->
+                    destination = o.requiredString("destination"),
+                    files = o.requiredArray("files").map { entry ->
                         val f = entry.jsonObject
                         ExtractedFile(
-                            name = f.getValue("name").jsonPrimitive.content,
-                            path = f.getValue("path").jsonPrimitive.content,
-                            size = f.getValue("size").jsonPrimitive.content.toLong(),
+                            name = f.requiredString("name"),
+                            path = f.requiredString("path"),
+                            size = f.requiredString("size").toLong(),
                         )
                     },
                 )
@@ -159,9 +168,9 @@ object CoreUtilsUnzipOutputCodec : StepCodec<UnzipOutput> {
             else {
                 val o = e.jsonObject
                 TestReport(
-                    ok = o.getValue("ok").jsonPrimitive.content.toBoolean(),
-                    entryCount = o.getValue("entryCount").jsonPrimitive.content.toInt(),
-                    badEntries = o.getValue("badEntries").jsonArray.map { it.jsonPrimitive.content },
+                    ok = o.requiredString("ok").toBoolean(),
+                    entryCount = o.requiredString("entryCount").toInt(),
+                    badEntries = o.requiredArray("badEntries").map { it.jsonPrimitive.content },
                 )
             }
         }

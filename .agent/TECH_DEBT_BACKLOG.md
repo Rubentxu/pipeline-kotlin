@@ -145,3 +145,42 @@ mismo en la primera ejecución).
   (regla 3 del operador).
 - Mantener este backlog sincronizado con cada WU cerrada para
   evitar re-discovery de la misma deuda en sesiones futuras.
+
+## D-007 — `gen-current-uat-status.py` false-COVERED / hyphen-FAIL classifier (P2)
+
+**Detected:** 2026-09-26 (T0.E re-verify, corrected from initial False-Green
+classification). Evidence: `docs/v2/08-production-readiness/TRAIN_0_T0E_RECEIPT.md`.
+
+**Symptom:**
+
+- The regex `\bFAIL\b` (case-insensitive) inside `STATUS_PATTERNS` of
+  `scripts/gen-current-uat-status.py` matches hyphen-words such as
+  `fail-closed`, `fail-over`, `fail-fast`. Any UAT description text
+  containing those phrases gets classified as `FAIL_PROVEN`.
+- Conversely, a transient `COVERED (RP-x)` narrative annotation
+  anywhere in the matched corpus flips classification to COVERED for
+  as long as the annotation exists, even without dedicated cert-receipt
+  evidence.
+
+**Concrete impact observed:**
+
+- At C (committed): UAT-RP-013 = COVERED (false positive caused by
+  archived `COVERED (RP-1)` narrative).
+- After regen at I (post-T0.D): UAT-RP-013 = FAIL_PROVEN (true
+  classification, but admission-check R4 interpreted as new blocking
+  state). Same drift for UAT-RP-001..004, UAT-RP-022 etc.
+
+**Repair sketch:**
+
+- Tighten `STATUS_PATTERNS`: `\bFAIL_PROVEN\b` only (no fallback
+  `\bFAIL\b`); require explicit marker.
+- For COVERED: require either a `certified_at_sha` annotation in the
+  matched line OR a dedicated cert-receipt path on disk.
+- Add unit tests in `scripts/test_gen_current_uat_status.py`
+  (hyphen-FAIL, transient-COVERED, clean baseline).
+- After fix: explicit reclassification of UAT-RP-013 via fe-de-erratas
+  in CURRENT_UAT_STATUS.md (operator decision).
+
+**Blocks TRAIN-0 T0.E close.** Does NOT block product / RP-5 substance
+but blocks certifier state accuracy. Defer to TRAIN-1 if operator
+opts for option (2) in T0.E receipt.

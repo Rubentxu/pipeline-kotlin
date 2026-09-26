@@ -1,8 +1,8 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-26 (D-001 RESUELTO + D-002 RESUELTO + D-003 RESUELTO + D-004 RESUELTO + D-005 + D-006 + D-007 OBSOLETO + D-008 + D-009 + D-010 RESUELTO)
-**Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
+**Last updated:** 2026-09-26T22:11Z (reconciliación PR-007 contra HEAD `4b79582c`)
+**Source of truth:** SDDK + Git + código + receipts. Este archivo es una proyección humana y sus snapshots históricos quedan supersedidos por la reconciliación más reciente.
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
 
@@ -1071,3 +1071,38 @@ marcados son SDK/API público.
 - Próxima WU candidata: ejecutar **D-012** (migrar ~40 codecs
   restantes, un commit pequeño por codec). Bajo autorización del
   operador.
+
+---
+
+## Reconciliación PR-007 contra HEAD `4b79582c` (2026-09-26T22:11Z)
+
+Esta sección supersede los snapshots históricos anteriores de D-011, D-012,
+D-013 y C5. La comprobación se hizo contra Git, código actual, receipts y el
+ciclo SDDK `p-733fb505b5a6bd2d/rp-053r-c5-bcv-check-wiring`, cerrado en
+`CLOSED`.
+
+| Área | Estado observado en HEAD actual | Evidencia primaria | Disposición |
+|---|---|---|---|
+| C1-A/C1-B/C1-C | IMPLEMENTADO | `CanonicalRuntimeContext.kt`, `CoordinatorCaps.kt`, `CompositionRoot.kt`; receipts C1-B/C1-C | No reabrir |
+| C1-D / partición completa de `PipelineDsl.kt` | ABIERTO | `PipelineDsl.kt` sigue siendo una unidad grande; C1 receipts declaran C1-D pendiente | Siguiente trabajo arquitectónico, no parte de PR-007 |
+| D-012 / codecs Pattern A | RESUELTO EN EL ALCANCE EJECUTADO | commits `97fcaa88..10eb7ee6`; codecs del SDK usan `PipelineJson`/`JsonAccessors`; los builders JSON restantes son salidas intencionales o superficies fuera del alcance | No iniciar otra migración masiva desde este snapshot |
+| D-013 / umbrales Kover | RESUELTO COMO REGLAS POR MÓDULO | commit `aed82670`; 10 módulos con `bound`, 11 reglas deshabilitadas con justificación | `koverVerify` sigue siendo explícito, no se afirma que `check` lo ejecute |
+| C5 Phase 2 / BCV | RESUELTO | commits `213c4677`, `820d9fcc`, `d3ec7f14`, `119974ce`; `apiCheck` conectado al `check` de los cuatro módulos; RC4 publicado | No reabrir |
+| WU-RP-020/030/031/032/033 y RP-4 | CERRADOS POR RECEIPT | `RP2_GATE_RECEIPT.md`, `RP3_EXIT_REVIEW.md`, receipts RP-4; commits históricos son ancestros de HEAD | No duplicar |
+| Replay mutation survivors categoría C | DEUDA P2 ABIERTA | `WU_RP_040_RECEIPT.md` §R8 y `RP040_R8_MUTATION_SURVIVOR_TRIAGE.md` | Candidato futuro PR-014, no ejecutado en PR-007 |
+
+### Reglas de lectura a partir de esta fecha
+
+1. Los apartados históricos de este archivo no se consideran estado operativo
+   si contradicen esta tabla, Git o un receipt posterior.
+2. `RESUELTO` describe el alcance probado, no una afirmación de que todas las
+   herramientas relacionadas estén conectadas a `check`.
+3. `NOT_RUN` no se convierte en `PASS` por la existencia de una configuración,
+   un tag, un receipt antiguo o una tarea Gradle.
+4. La siguiente deuda técnica ejecutable queda separada de esta reconciliación:
+   PR-014, recertificación selectiva de mutación para replay policies,
+   reconcilers, codecs y failure decisions, una vez congelado un candidate SHA.
+
+**Resultado PR-007:** backlog reconciliado para las áreas que habían quedado
+stale después de RC4. No se reabrió código, no se alteraron contratos y no se
+declaró cerrada la deuda P2 de mutación.

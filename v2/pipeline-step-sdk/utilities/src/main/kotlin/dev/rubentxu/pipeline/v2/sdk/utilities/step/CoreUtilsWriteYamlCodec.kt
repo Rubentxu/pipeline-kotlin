@@ -2,14 +2,21 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.boolOrNull
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.longOrNull
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredArray
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredObject
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlDestination
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.WriteYamlPayload
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -22,23 +29,25 @@ import kotlinx.serialization.json.put
  * hierarchies as discriminated unions. Decode validates the mutual-exclusion
  * invariants the type system already enforces at construction time, so a
  * corrupt journal that violates them fails closed at decode time.
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged (roundtrip byte-identical to pre-refactor).
  */
 object CoreUtilsWriteYamlInputCodec : StepCodec<WriteYamlInput> {
 
-    override fun encode(value: WriteYamlInput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(value: WriteYamlInput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("charset", value.charset)
             put("destination", encodeDestination(value.destination))
             put("payload", encodePayload(value.payload))
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): WriteYamlInput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val charset = obj["charset"]?.jsonPrimitive?.content ?: "UTF-8"
-        val destination = decodeDestination(obj.getValue("destination").jsonObject)
-        val payload = decodePayload(obj.getValue("payload").jsonObject)
+        val obj = PipelineJson.decode(encoded)
+        val charset = obj.stringOrNull("charset") ?: "UTF-8"
+        val destination = decodeDestination(obj.requiredObject("destination"))
+        val payload = decodePayload(obj.requiredObject("payload"))
         return WriteYamlInput(
             destination = destination,
             payload = payload,
@@ -109,11 +118,11 @@ object CoreUtilsWriteYamlInputCodec : StepCodec<WriteYamlInput> {
     }
 
     private fun decodeDestination(obj: JsonObject): WriteYamlDestination {
-        val kind = obj.getValue("kind").jsonPrimitive.content
+        val kind = obj.requiredString("kind")
         return when (kind) {
             "file" -> WriteYamlDestination.ToFile(
-                path = obj.getValue("path").jsonPrimitive.content,
-                overwrite = obj["overwrite"]?.jsonPrimitive?.content?.toBoolean() ?: false,
+                path = obj.requiredString("path"),
+                overwrite = obj.boolOrNull("overwrite") ?: false,
             )
             "text" -> WriteYamlDestination.ToText
             else -> error("core-utils.writeYaml: unknown destination kind '$kind'")
@@ -129,21 +138,18 @@ object CoreUtilsWriteYamlInputCodec : StepCodec<WriteYamlInput> {
         }
         is WriteYamlPayload.Multiple -> buildJsonObject {
             put("kind", "multiple")
-            put("items", kotlinx.serialization.json.JsonArray(p.documents.map { YamlDocumentCodec.encodeDocument(it) }))
+            put("items", JsonArray(p.documents.map { YamlDocumentCodec.encodeDocument(it) }))
         }
     }
 
     private fun decodePayload(obj: JsonObject): WriteYamlPayload {
-        val kind = obj.getValue("kind").jsonPrimitive.content
+        val kind = obj.requiredString("kind")
         return when (kind) {
             "single" -> WriteYamlPayload.Single(
-                value = YamlDocumentCodec.decodeDocument(obj.getValue("value")),
+                value = YamlDocumentCodec.decodeDocument(obj.requiredObject("value")),
             )
             "multiple" -> WriteYamlPayload.Multiple(
-                documents = obj.getValue("items").let { arr ->
-                    @Suppress("UNCHECKED_CAST")
-                    (arr as kotlinx.serialization.json.JsonArray).map { YamlDocumentCodec.decodeDocument(it) }
-                },
+                documents = obj.requiredArray("items").map { YamlDocumentCodec.decodeDocument(it) },
             )
             else -> error("core-utils.writeYaml: unknown payload kind '$kind'")
         }
@@ -151,36 +157,35 @@ object CoreUtilsWriteYamlInputCodec : StepCodec<WriteYamlInput> {
 }
 
 /**
- * JSON codec for [WriteYamlOutput].
+ * JSON codec for [WriteYamlOutput]. D-012 migration.
  */
 object CoreUtilsWriteYamlOutputCodec : StepCodec<WriteYamlOutput> {
 
-    override fun encode(value: WriteYamlOutput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(value: WriteYamlOutput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("wroteToFile", value.wroteToFile)
             put("text", value.text)
             put("absolutePath", value.absolutePath)
             put("byteSize", value.byteSize)
             put("sha256Hex", value.sha256Hex)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): WriteYamlOutput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val wroteToFile = obj.getValue("wroteToFile").jsonPrimitive.content.toBoolean()
+        val obj = PipelineJson.decode(encoded)
+        val wroteToFile = obj.requiredString("wroteToFile").toBoolean()
         // text may be JSON null (encoded explicitly) or absent; both must be
         // treated as "no text". Treat JSON null and missing the same way.
         val text: String? = when (val t = obj["text"]) {
-            null, kotlinx.serialization.json.JsonNull -> null
+            null, JsonNull -> null
             else -> t.jsonPrimitive.content
         }
         val absolutePath: String? = when (val a = obj["absolutePath"]) {
-            null, kotlinx.serialization.json.JsonNull -> null
+            null, JsonNull -> null
             else -> a.jsonPrimitive.content
         }
-        val byteSize = obj["byteSize"]?.jsonPrimitive?.content?.toLongOrNull()
-        val sha256Hex = obj["sha256Hex"]?.jsonPrimitive?.content
+        val byteSize = obj.longOrNull("byteSize")
+        val sha256Hex = obj.stringOrNull("sha256Hex")
 
         // XOR check: a file write must NOT carry text; a text return must
         // NOT carry a path. A corrupt journal that violates these fails closed.
@@ -238,9 +243,9 @@ internal object YamlDocumentCodec {
             is YamlDocument.Integer -> buildJsonObject { put("int", doc.value) }
             is YamlDocument.Real -> buildJsonObject { put("real", doc.value) }
             is YamlDocument.Bool -> buildJsonObject { put("bool", doc.value) }
-            YamlDocument.Null -> buildJsonObject { put("null", kotlinx.serialization.json.JsonNull) }
+            YamlDocument.Null -> buildJsonObject { put("null", JsonNull) }
             is YamlDocument.Seq -> buildJsonObject {
-                put("seq", kotlinx.serialization.json.JsonArray(doc.items.map { encodeDocument(it) }))
+                put("seq", JsonArray(doc.items.map { encodeDocument(it) }))
             }
             is YamlDocument.Map -> buildJsonObject {
                 put("map", buildJsonObject {
@@ -256,17 +261,14 @@ internal object YamlDocumentCodec {
             error("core-utils: YamlDocument envelope has ${keys.size} discriminator fields, expected 1 (keys=$keys)")
         }
         return when (val key = keys.single()) {
-            "str" -> YamlDocument.Str(obj.getValue("str").jsonPrimitive.content)
-            "int" -> YamlDocument.Integer(obj.getValue("int").jsonPrimitive.content.toLong())
-            "real" -> YamlDocument.Real(obj.getValue("real").jsonPrimitive.content.toDouble())
-            "bool" -> YamlDocument.Bool(obj.getValue("bool").jsonPrimitive.content.toBoolean())
+            "str" -> YamlDocument.Str(obj.requiredString("str"))
+            "int" -> YamlDocument.Integer(obj.requiredString("int").toLong())
+            "real" -> YamlDocument.Real(obj.requiredString("real").toDouble())
+            "bool" -> YamlDocument.Bool(obj.requiredString("bool").toBoolean())
             "null" -> YamlDocument.Null
-            "seq" -> YamlDocument.Seq(obj.getValue("seq").let { arr ->
-                @Suppress("UNCHECKED_CAST")
-                (arr as kotlinx.serialization.json.JsonArray).map { decodeDocument(it) }
-            })
+            "seq" -> YamlDocument.Seq(obj.requiredArray("seq").map { decodeDocument(it) })
             "map" -> {
-                val mapObj = obj.getValue("map").jsonObject
+                val mapObj = obj.requiredObject("map")
                 YamlDocument.Map(mapObj.entries.map { (k, v) -> YamlDocument.Map.Entry(k, decodeDocument(v)) })
             }
             else -> error("core-utils: unknown YamlDocument discriminator '$key'")

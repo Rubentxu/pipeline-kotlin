@@ -21,10 +21,12 @@ public final class dev/rubentxu/pipeline/v2/sdk/JsonAccessors {
 	public final fun doubleOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Double;
 	public final fun intOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Integer;
 	public final fun longOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Long;
+	public final fun requiredArray (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Lkotlinx/serialization/json/JsonArray;
 	public final fun requiredBoolean (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Z
 	public final fun requiredDouble (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)D
 	public final fun requiredInt (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)I
 	public final fun requiredLong (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)J
+	public final fun requiredObject (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
 	public final fun requiredString (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/String;
 	public final fun stringOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/String;
 }

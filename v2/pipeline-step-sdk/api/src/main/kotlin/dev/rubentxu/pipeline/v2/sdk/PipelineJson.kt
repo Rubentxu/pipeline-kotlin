@@ -128,4 +128,23 @@ object JsonAccessors {
 
     fun JsonObject.boolOrNull(key: String): Boolean? =
         this[key]?.jsonPrimitive?.booleanOrNull
+
+    /**
+     * Required-object accessor: returns the value at [key] typed as a
+     * [JsonObject]. Throws when the key is missing or the value is not a
+     * JSON object (e.g. an array / primitive / null). The companion
+     * extractors are still typed accessors that operate on scalars; this
+     * one accepts nested objects because Pattern A codecs frequently
+     * encode discriminated unions and nested shape decisions.
+     */
+    fun JsonObject.requiredObject(key: String): JsonObject = getValue(key).jsonObject
+
+    /**
+     * Required-array accessor: returns the value at [key] typed as a
+     * [JsonArray]. Throws when the key is missing or the value is not an
+     * array (e.g. an object / primitive / null). Pattern A codecs use
+     * arrays for repeated-element payloads (e.g. `documents: List<YamlDocument>`
+     * inside `WriteYamlPayload.Multiple.items`).
+     */
+    fun JsonObject.requiredArray(key: String): kotlinx.serialization.json.JsonArray = getValue(key) as kotlinx.serialization.json.JsonArray
 }

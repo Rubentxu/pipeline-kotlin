@@ -7,20 +7,20 @@
 
 | Field | Value |
 |---|---|
-| **Generated at (UTC)** | `2026-09-26T09:19:32Z` |
+| **Generated at (UTC)** | `2026-09-26T09:22:47Z` |
 | **Generator** | `scripts/gen-current-state-projection.py` |
-| **Generator SHA** | `b9a5dc6282a2881f` |
-| **Output SHA-256 (self)** | `0aca1da4c8523ad1f135af89e43484895e26b7804e48d3d39bd46e6fc83f3512` |
+| **Generator SHA** | `56476d54cb041ed4` |
+| **Output SHA-256 (self)** | `ba3237bd39f428c8ec52f93514f6174858a8f61c944fb2d1844e085b78d9203e` |
 
 ## Git
 
 | Field | Value |
 |---|---|
-| **HEAD** | `08c3bdea1d3ce39fc5ed316dcf1d40203458a7ad` |
+| **HEAD** | `1b924e137651185bd0f992e7a7a1c10fe9572351` |
 | **Branch** | `wu/rp-053r-red-fixtures` |
 | **origin/main** | `acc903875d70f939713786d71a6331bb6ccf7dc9` |
-| **origin/wu/rp-053r-red-fixtures** | `08c3bdea1d3ce39fc5ed316dcf1d40203458a7ad` |
-| **HEAD ahead of origin/wu/rp-053r-red-fixtures** | `0` |
+| **origin/wu/rp-053r-red-fixtures** | `172857abe2d3d13dee89927b50f33e489dd57035` |
+| **HEAD ahead of origin/wu/rp-053r-red-fixtures** | `1` |
 | **HEAD behind origin/wu/rp-053r-red-fixtures** | `0` |
 | **Working tree** | `4 files modified` |
 
@@ -78,4 +78,4 @@ git HEAD (local) > origin HEAD (remote) > receipts
 
 Conflicting candidate SHAs fail-loud (see `--strict` flag).
 
-<!-- output_sha256: 0aca1da4c8523ad1f135af89e43484895e26b7804e48d3d39bd46e6fc83f3512 -->
+<!-- output_sha256: ba3237bd39f428c8ec52f93514f6174858a8f61c944fb2d1844e085b78d9203e -->

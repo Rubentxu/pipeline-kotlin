@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T15:10:32Z
-**Source of truth:** `git log` HEAD `5c50ec0` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-26T16:29:01Z
+**Source of truth:** `git log` HEAD `f7f09ab` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -27,12 +27,12 @@
 | `UAT-RP-016` | **REFERENCED** | `docs/v2/07-uat/WU_RP_023_RECEIPT.md` | - UAT-RP-016 (PERF): evidencia formal en `WU_RP_022_RECEIPT.md` (baseline |
 | `UAT-RP-017` | **REFERENCED** | `docs/v2/07-uat/RP2_GATE_RECEIPT.md` | - UAT-RP-017: `WURp023ObservationModesUatTest` (HF2, binario real de este SHA): |
 | `UAT-RP-018` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | - UAT-RP-018: PARTIAL — límites de recursos OS requieren sandbox-profile 'os' |
-| `UAT-RP-019` | **REFERENCED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | Operator: "una línea como `UAT-RP-019 COVERED, UAT-RP-020 COVERED, |
-| `UAT-RP-020` | **REFERENCED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | Operator: "una línea como `UAT-RP-019 COVERED, UAT-RP-020 COVERED, |
-| `UAT-RP-021` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | - UAT-RP-019 (Gradle real), UAT-RP-020 (Maven real), UAT-RP-021 (Node real) **NO tenían cobertura visible** en HEAD (aud |
+| `UAT-RP-019` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-019 | COVERED | candidate=86c9ace8 | tests=WURp019GradleRealUatTest:2 | exit=0 | xml-sha256=f1dc46 |
+| `UAT-RP-020` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-020 | COVERED | candidate=86c9ace8 | tests=WURp020MavenRealUatTest:2 | exit=0 | xml-sha256=95e0008 |
+| `UAT-RP-021` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-021 | COVERED | candidate=86c9ace8 | tests=WURp021NodeRealUatTest:2 | exit=0 | xml-sha256=ff69036e |
 | `UAT-RP-022` | **REFERENCED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | Esta sesión cierra la brecha ejecutable: implementa cobertura real para UAT-RP-019/020/021 (6 tests nuevos, 6/6 PASS en  |
 | `UAT-RP-023` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | Esta sesión cierra la brecha ejecutable: implementa cobertura real para UAT-RP-019/020/021 (6 tests nuevos, 6/6 PASS en  |
-| `UAT-RP-024` | **REFERENCED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | | UAT-RP-024 dogfooding | KNOWN_LIMITATION parcial 1-repo. ≥2 repos estructuralmente imposible en sesión autónoma. | |
+| `UAT-RP-024` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | | UAT-RP-024 dogfooding | KNOWN_LIMITATION parcial 1-repo. ≥2 repos estructuralmente imposible en sesión autónoma. | |
 | `UAT-RP-025` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
 | `UAT-RP-026` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
 | `UAT-RP-027` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
@@ -42,9 +42,9 @@
 ## Status Summary
 
 - **Total UATs (PRDY-003 contract):** 27
-- **COVERED:** 10
-- **KNOWN_LIMITATION:** 1
-- **REFERENCED:** 13
+- **COVERED:** 12
+- **KNOWN_LIMITATION:** 2
+- **REFERENCED:** 10
 - **NOT_APPLICABLE:** 3
 
 ---

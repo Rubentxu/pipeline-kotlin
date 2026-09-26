@@ -17,15 +17,17 @@ TRAIN-1 and without PRDY-010/promotion/merge to main").
 
 ## 1 — Summary
 
-T0.E was Active with R4 admission failing on 5 known blockers:
+T0.E was Active with R4 admission failing on 5 known blockers.
+Dispositions are summarised below; the machine-readable markers are
+authoritative (see T0E_EVID_01_RECEIPT.md).
 
 | # | Blocker | Disposition |
 |---|---|---|
-| 1 | Real defect UAT-RP-005 inv 3 (archive MANIFEST.json) | E3.2: KNOWN_LIMITATION per ADR-0095 (causally supersedes older FAIL_PROVEN) |
-| 2 | Missing evidence UAT-RP-002 | E2.1: gradlew path + workflow artifact-upload (COVERAGE) |
-| 3 | Missing evidence UAT-RP-004 | E2.2: DslCompiledPipelineCompilerTest 13 + CliCompileErrorExitsOneTest 3 = 16/16 (COVERED) |
-| 4 | Missing evidence UAT-RP-010 | E2.3: JsonEventLogRoundTripTest 28/28 (COVERED) |
-| 5 | Missing evidence UAT-RP-013 | E2.4: DivergenceDetectorTest 4/4 (COVERED) |
+| 1 | Real defect UAT-RP-005 inv 3 (archive MANIFEST.json) | E3.2 supersedence per ADR-0095 — marker in evidence receipt |
+| 2 | Missing evidence UAT-RP-002 | E2.1: gradlew path + workflow artifact-upload |
+| 3 | Missing evidence UAT-RP-004 | E2.2: DslCompiledPipelineCompilerTest + CliCompileErrorExitsOneTest = 16 tests |
+| 4 | Missing evidence UAT-RP-010 | E2.3: JsonEventLogRoundTripTest = 28 tests |
+| 5 | Missing evidence UAT-RP-013 | E2.4: DivergenceDetectorTest = 4 tests |
 
 Additionally, R3 was failing on dirty working tree (RECEIPTS/consult
 verdict files written by the external release harness) — fixed via
@@ -122,9 +124,10 @@ causally without artificial exceptions."
 
 `KNOWN_LIMITATION` is now part of `EXPLICIT_STATUSES`. DAG-maximal
 selection picks the newer receipt (SESSION_PAUSE_MEMO_2026_09_24
-documents UAT-RP-005 inv 3 as KNOWN_LIMITATION per ADR-0095) over
-the older `WU_RP_013`/`RP2_GATE` FAIL_PROVEN. The UAT-RP-005 marker
-in `T0E_EVID_01_RECEIPT.md` is the authoritative status: KNOWN_LIMITATION.
+documents the relevant invariant with KNOWN_LIMITATION per
+ADR-0095) over the older `WU_RP_013`/`RP2_GATE` which had it as
+FAIL_PROVEN. The UAT-RP-005 marker in `T0E_EVID_01_RECEIPT.md` is
+the authoritative status: KNOWN_LIMITATION.
 
 ### E3.2 — Applicability gates (UAT-RP-025/026/027)
 

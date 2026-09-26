@@ -791,6 +791,113 @@ C1 ≈ 2-3 WUs de tamaño medio (H1+H2+H3 cada una con su WU dedicada).
 C2-C7 cada una cabe en una WU de 1-2 commits. Total estimado: 6-9 WUs
 para liquidar el backlog D-011.
 
+### Estado de C2 — coverage regression detection (2026-09-26)
+
+**RE-SCOPED + OBSOLETO el original (JaCoCo)**.
+
+**Hallazgo de la investigación**: Kover (`org.jetbrains.kotlinx.kover`)
+ya está activo desde WU-RP-040 R1 en `v2/build.gradle.kts`. El audit
+original (H6) pidió añadir JaCoCo asumiendo que no había cobertura
+cuantificable; **esa premisa es incorrecta**. Kover produce reportes
+HTML + XML + log numérico por módulo y soporta `violation-rules` con
+`bound { minValue = ... }`.
+
+**Estado actual de Kover (2026-09-26)**:
+
+- Plugin aplicado a **todos los módulos Kotlin** vía
+  `pluginManager.apply("org.jetbrains.kotlinx.kover")`.
+- Aggregación root con `kover(project(":mod"))` en 18 módulos.
+- Reglas `verify` configuradas:
+  - Root: `rule("Branch coverage of critical decision modules") { disabled = false }`
+    — **sin `bound` value**, por lo que NUNCA falla el build (es solo
+    informativo). Esta es la grieta que el audit detectó.
+  - `pipeline-domain` y `pipeline-events`: `rule("Critical module branch coverage") { bound { minValue = 55 } }`.
+- Exclusiones aplicadas:
+  - `dev.rubentxu.pipeline.v2.protos` y `.generated` (paquetes).
+  - `StreamingRedactor*` en `pipeline-credentials-api` (D-002 perf).
+
+**Coverage medido (2026-09-26, `koverPrintCoverage`)**:
+
+| Módulo | Line coverage |
+|---|---|
+| `pipeline-domain` | **82.8%** |
+| `pipeline-events` | **77.6%** |
+| `pipeline-credentials-api` | **77.6%** (per fresh query) |
+
+Otros módulos (`pipeline-step-sdk:api`, `pipeline-scripting-api`)
+muestran números bajos en `koverPrintCoverage` por un artefacto de
+Kover con classpath multi-módulo (no es real coverage gap — los
+reportes HTML correspondientes muestran números mayores).
+
+**Limitaciones detectadas**:
+
+1. La regla root sin `bound` significa que cualquier regresión de
+   coverage en módulos sin regla explícita **no falla el build**.
+2. `koverVerify` corre sobre **todos los módulos**, y el D-002 flake
+   (Rp022ThroughputProbe trip bajo instrumentación) hace que el full
+   run falle antes de llegar a la verificación real. Workaround:
+   `koverHtmlReport` por módulo individual funciona.
+3. El reporte aggregate root (`./gradlew koverLog`/`koverHtmlReport`)
+   ejecuta todos los tests con Kover agent — es costoso (timeout 120s
+   observado) y fragil al flake D-002.
+
+**Decisión**: NO migrar a JaCoCo (duplicaría infra) ni arreglar las
+grietas de Kover (invasivo, requiere gate coordination). En su lugar:
+
+1. **Marcar C2 original (JaCoCo) como OBSOLETO** con esta nota
+   preservada en el backlog (precedente: D-007).
+2. **C2-bis — Documentar cómo usar Kover** (este bloque):
+   cómo generar reportes, cómo añadir thresholds a un módulo nuevo,
+   cómo excluir tipos generados por KSP. Cambios solo en
+   `docs/v2/04-adrs/ADR-0080-policy-audit-enforcement-separation.md` no
+   aplica; crear un ADR nuevo dedicado a coverage policy.
+3. **No tocar `v2/build.gradle.kts`** en este bloque — los umbrales
+   existentes se mantienen. Futuras grietas se arreglan en WU dedicada.
+
+### ADR-0099 (propuesto) — coverage policy y kover rules (2026-09-26)
+
+**Estado**: PROPUESTO, no creado en este bloque (C6 lo cubre).
+
+**Contenido planificado**:
+
+- Documentar el por qué de Kover (vs JaCoCo).
+- Tabla de thresholds por módulo y su rationale:
+  - `pipeline-domain` y `pipeline-events`: branch ≥ 55%
+    (configurado). Rationale: lógica de decisión pura, alto riesgo.
+  - Otros módulos: por defecto sin threshold; cualquier adición debe
+    venir con un ADR que justifique el número.
+- Workaround para D-002 flake: ejecutar `koverHtmlReport` por módulo
+  en CI en lugar del aggregate, hasta que D-002 se cierre definitivamente.
+- Política para añadir un módulo nuevo a Kover: ya automático vía
+  `subprojects { pluginManager.withPlugin(...) }` en root build.
+
+### D-013 — Coverage thresholds para módulos sin regla (2026-09-26)
+
+**Detected**: 2026-09-26, durante la investigación de C2.
+**Severity**: P3 (grieta latente; no bloquea release).
+**Scope**: módulos Kotlin sin regla explícita de Kover.
+
+Módulos tracked por Kover pero sin `bound` declarado:
+
+- `pipeline-application` (coordinator composition)
+- `pipeline-scripting-api` (DSL público, superficie amplia)
+- `pipeline-step-sdk:*` (8 sub-módulos)
+- `pipeline-credentials-*` (3 sub-módulos)
+- `pipeline-artefacts-local` (artefact store)
+- `pipeline-binding-factory`, `pipeline-event-harness`,
+  `pipeline-testkit`, `pipeline-architecture-tests`,
+  `pipeline-scripting-kotlin24`
+
+**Recomendación**: añadir `bound` por módulo con rationale. Para
+módulos con cobertura alta confirmada (≥70%), un `minValue = 60`
+protegería contra regresiones silenciosas sin romper el build hoy.
+Para módulos con cobertura desconocida, primero medir y luego decidir.
+
+**Esfuerzo**: S por módulo, ~16 módulos. Estimado total: 2-3 horas.
+
+**Status**: REGISTRADO. Sin acción en este bloque (esperando
+autorización del operador antes de tocar umbrales de gate).
+
 ### Estado de C5 — binary-compatibility-validator (2026-09-26)
 
 **Phase 1 ejecutada** (bloque autónomo anterior, commit `2d83fe3d`).
@@ -936,7 +1043,12 @@ marcados son SDK/API público.
 - D-001..D-010 RESUELTO o marcado OBSOLETO.
 - D-011 (este) registrado, sin resolver.
 - D-012 (este) registrado: ~40 Pattern A codecs pendientes.
+- D-013 (este) registrado: módulos sin `bound` Kover explícito.
 - T0E-EVID-01 RESUELTO en `1893e104`.
+- **C2 OBSOLETO en su forma original** (JaCoCo). Kover ya cubre el
+  R5 del audit; lo que falta es regla root con `bound` (D-013).
+  Decisión: no migrar ni duplicar; documentar y esperar autorización
+  para endurecer umbrales.
 - **C5 Phase 1 ejecutado 2026-09-26** — BCV aplicado a 4 módulos
   con baselines de 8116 LOC; `apiCheck` PASS; pendiente cablear
   en `check` (Phase 2, post-C1).

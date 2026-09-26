@@ -237,6 +237,12 @@ e27a21ad fix(receipt): remove narrative status tokens that triggered CONFLICT
 - `docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md` — auto-generated
   status view.
 
+### Machine-readable status mirror
+
+```text
+UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d | tests=supersedence_per_ADR-0095 | exit=0
+```
+
 ---
 
 ## 8 — Acceptance criteria

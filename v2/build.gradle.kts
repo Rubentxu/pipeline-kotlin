@@ -119,12 +119,75 @@ subprojects {
                     }
                 }
             }
-            kover {
-                reports {
-                    verify {
-                        rule("Critical module branch coverage") {
-                            bound {
-                                minValue = 55
+        }
+        // D-013 (audit 2026-09-26): per-module Kover bound rules with
+        // measured-and-reasoned `minValue` per module. The historical single
+        // 55-bound for pipeline-domain/pipeline-events (named "branch coverage"
+        // but the kover `bound` rule actually checks LINE coverage by default)
+        // was useful, but it left the other 18 tracked modules unmonitored
+        // against silent regressions. The numbers below are derived from the
+        // most recent Kover HTML snapshots in `*/build/reports/kover/html/
+        // index.html` (line %, "all classes" row); the value chosen is current
+        // - 5pp for HIGH modules (≥75 line%) and current - 5pp for MID modules
+        // (50-75 line%), with a generous floor of 30 for modules below 50.
+        // Modules with disabled=true are intentionally not gated: their
+        // coverage is dominated by generated code (KSP/api), DSL builders,
+        // or fitness assertions, where a line-coverage metric is not the
+        // right invariant. They keep being measured for visibility.
+        // Note: the historical rule `minValue = 55` was effectively a
+        // line-coverage gate (kover 0.9.x default metric for `bound` is
+        // LINE). It was passing at 82.8% (domain) and 77.6% (events) so
+        // the new 75/70 thresholds preserve the same intent (anti-regression
+        // guard with slack) while bringing consistency to the rest of the
+        // tracked modules.
+        val koverRuleMinByModule = mapOf(
+            // HIGH coverage (≥75 line)
+            "pipeline-artefacts-local"      to 85,
+            "pipeline-binding-factory"      to 85,
+            "pipeline-domain"               to 75, // historical intent preserved at line-based
+            "pipeline-events"               to 70, // 77.6 - 5 + slack for D-002 instrumentation overhead
+            "pipeline-event-harness"        to 70,
+            "pipeline-step-sdk/runtime"     to 70,
+            "pipeline-step-sdk/utilities"   to 65,
+            // MID coverage (50-75 line)
+            "pipeline-step-sdk/scm-git"     to 55,
+            "pipeline-credentials-executor" to 55,
+            "pipeline-scripting-kotlin24"   to 55,
+        )
+        val koverRuleDisabledByModule = setOf(
+            // generated / DSL / fitness / no-data modules: line metric not the right invariant
+            "pipeline-step-sdk/api",        // 1.5% line: pure codec IR + interfaces
+            "pipeline-step-sdk/processor",  // 9.4% line: KSP code generator
+            "pipeline-step-sdk/junit",      // 15.5% line: dominant case is contract fixtures
+            "pipeline-step-sdk/files",      // no line data: only branch/class visible
+            "pipeline-scripting-api",       // 32.1% line: pure DSL builder methods
+            "pipeline-credentials-api",     // no line data: only branch visible
+            "pipeline-credentials-local",   // no line data: only branch visible
+            "pipeline-credentials-multipart", // no line data: only class/method visible
+            "pipeline-testkit",             // test-only support module
+            "pipeline-architecture-tests",  // fitness assertions only
+            "pipeline-application",         // coordinator composition; coverage from harness UATs
+        )
+        when {
+            project.name in koverRuleMinByModule -> {
+                kover {
+                    reports {
+                        verify {
+                            rule("D-013 branch coverage (anti-regression)") {
+                                bound {
+                                    minValue.set(koverRuleMinByModule.getValue(project.name))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            project.name in koverRuleDisabledByModule -> {
+                kover {
+                    reports {
+                        verify {
+                            rule("D-013 branch coverage (informational)") {
+                                disabled = true
                             }
                         }
                     }

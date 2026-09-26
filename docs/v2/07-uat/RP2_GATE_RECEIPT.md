@@ -49,3 +49,36 @@ el diff 9393e34a..32fa5924 es test/docs-only (verificado con `git diff --stat`).
 - WU-RP-020, 021, 022, 022b, 023: CLOSED.
 - WU-RP-024/025 (mapeo matriz): absorbidos en la actualización de
   PRODUCTION_READY_UAT_MATRIX.md filas UAT-RP-011..018 (commit 32fa5924).
+
+---
+
+## Re-executed evidence — UAT-RP-011 (2026-09-26)
+
+Esta sub-sección aporta prueba fresca y verificable por el certifier
+para el UAT-RP-011. La línea §4 de este receipt lo mapeaba como
+'concurrencia SqliteEventStore 10 tests' pero sin marcador
+`UAT-EVIDENCE`. Este turno autónomo re-ejecuta el test contra el
+SHA actual y emite el marker.
+
+### Procedimiento reproducible
+
+```bash
+# Sin opt-in: el test corre por defecto.
+timeout 600 ./gradlew -p v2 :pipeline-events:test \
+  --tests "dev.rubentxu.pipeline.v2.events.SqliteEventStoreConcurrencyCharacterisationTest"
+```
+
+### Resultado observado en HEAD 97a3cdb4
+
+- **SqliteEventStoreConcurrencyCharacterisationTest:** 10/10 PASS
+  (concurrencia N producers/1 writer con DB-level lock + busy_timeout,
+  sin duplicados ni desorden respecto del contrato aprobado).
+  Digest XML: `sha256:b4470ac6666132b357c72b7a99e09716dd5a3089d2a5a7041f92449cda456ee6`
+
+Total: **10/10 PASS**, 0 failures, 0 errors, 0 skipped.
+
+### Markers para el certifier
+
+```
+UAT-EVIDENCE | UAT-RP-011 | COVERED | candidate=97a3cdb4 | tests=SqliteEventStoreConcurrencyCharacterisationTest:10 (N producers/1 writer, DB-level lock, no dup/no reorder) | exit=0 | xml-sha256=b4470ac6666132b357c72b7a99e09716dd5a3089d2a5a7041f92449cda456ee6
+```

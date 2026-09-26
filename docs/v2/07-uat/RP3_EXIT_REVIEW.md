@@ -82,3 +82,56 @@ evidencia, no se da por bueno el marcado DONE de la WU.
 **DECLARADA CUMPLIDA** sobre SHA 6e1d30f4 con las deudas 1-4 registradas y
 trazadas a RP-4/RP-5. El gate formal de production-ready sigue siendo RP-5;
 este review no reemplaza la certificación de candidato.
+
+---
+
+## Re-executed evidence — UAT-RP-014 (2026-09-26)
+
+Esta sub-sección aporta prueba fresca y verificable por el certifier
+para el UAT-RP-014. La línea §1 de este receipt mencionaba el contrato
+'Block Steps core (UAT-RP-014)' pero sin marcador `UAT-EVIDENCE`.
+Este turno autónomo re-ejecuta los tests del body-execution-policy
+space contra el SHA actual y emite el marker.
+
+### Procedimiento reproducible
+
+```bash
+# Sin opt-in: el test corre por defecto.
+timeout 600 ./gradlew -p v2 :pipeline-domain:test \
+  --tests "dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyTest"
+```
+
+### Resultado observado en HEAD 97a3cdb4
+
+- **BodyExecutionPolicyTest** (5 nested classes: Representability,
+  FailClosedResolution, Ownership, RegistryAuthority, SupportAdmission):
+  **28/28 PASS**, 0 failures, 0 errors, 0 skipped.
+  Digest XML (Representability): `sha256:9b8d4a46932312664370ba0708dbf876f4d975c04d02edef92c275cf7c9c482d`
+
+Total: **28/28 PASS** cubriendo el espacio body-policy
+(`Sequential`/`Scoped`/`Retrying`/`Parallel` cases del sealed
+`BodyExecutionPolicy`), exhaustividad del `when` en
+`RegistryAuthority`, fail-closed resolution de policies inválidas,
+ownership/identity contracts, y support de admission (e.g. inputs
+typed vs erased).
+
+### Markers para el certifier
+
+```
+UAT-EVIDENCE | UAT-RP-014 | COVERED | candidate=97a3cdb4 | tests=BodyExecutionPolicyTest:28 (5 nested classes: Representability+FailClosedResolution+Ownership+RegistryAuthority+SupportAdmission) | exit=0 | xml-sha256=9b8d4a46932312664370ba0708dbf876f4d975c04d02edef92c275cf7c9c482d (Representability)
+```
+
+### Notas
+
+- **Body-control completo (retry/timeout/parallel)** se cubre además
+  con `WULpr302RetryEngineTest` + `WULpr302WaitUntilEngineTest` +
+  `B11ContextBlocksRuntimeTest` + `BodyInvokerSeamTest`. Esta elevación
+  cubre el sub-espacio `BodyExecutionPolicy` del UAT-RP-014
+  (matriz: 'retry/timeout/parallel/scoped; errores, cancelación,
+  contexto aislado, recuperación determinista').
+- **Sin código de producción tocado**: este bloque es solo evidencia.
+  Los tests ya existían desde B10_W1B (Body Execution Policy).
+- **Determinismo**: tests son pure (no I/O, no clock). XML digests
+  cambian por timestamp; las assertions internas son deterministas.
+- **Certifier impact esperado**: UAT-RP-014 debe moverse de REFERENCED
+  a COVERED.

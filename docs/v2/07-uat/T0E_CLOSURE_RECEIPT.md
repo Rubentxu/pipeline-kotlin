@@ -301,6 +301,8 @@ UAT-EVIDENCE | UAT-RP-009 | COVERED | candidate=70339af3 | tests=StashOperations
 UAT-EVIDENCE | UAT-RP-024 | KNOWN_LIMITATION | candidate=20559ff7 | tests=structural_partial_1-repo_dogfooding | exit=0 | note=≥2-repos structurally impossible in autonomous session per WU_RP_046_R2; covers inv1 (1-repo) but not inv2 (≥2 repos)
 UAT-EVIDENCE | UAT-RP-017 | COVERED | candidate=92f7c4a7 | tests=WURp023ObservationModesUatTest:1 | exit=0 | xml-sha256=659dc40a232c5b7c44e3f752f0d63b195632862b0260f430b44211c196c8fb38
 UAT-EVIDENCE | UAT-RP-022 | COVERED | candidate=92f7c4a7 | tests=distZip_byte_identical_double_build | exit=0 | note=recertified per WU_RP_046_R2 §1.1-1.6
+UAT-EVIDENCE | UAT-RP-011 | COVERED | candidate=97a3cdb4 | tests=SqliteEventStoreConcurrencyCharacterisationTest:10 | exit=0 | xml-sha256=b4470ac6666132b357c72b7a99e09716dd5a3089d2a5a7041f92449cda456ee6
+UAT-EVIDENCE | UAT-RP-014 | COVERED | candidate=97a3cdb4 | tests=BodyExecutionPolicyTest:28 | exit=0 | xml-sha256=9b8d4a46932312664370ba0708dbf876f4d975c04d02edef92c275cf7c9c482d (Representability)
 ```
 
 These mirror the markers in `T0E_EVID_01_RECEIPT.md`. With the

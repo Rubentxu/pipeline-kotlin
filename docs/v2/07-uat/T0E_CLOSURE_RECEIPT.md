@@ -6,8 +6,8 @@ handling special dispositions (E3), regenerating (E4), proving gate
 (E5), and producing final receipt (E6) — without deferring to
 TRAIN-1 and without PRDY-010/promotion/merge to main").
 
-**HEAD:** `80d487f5e4b1314852423ca2b7145bcbf5d4a577` (branch
-`wu/rp-053r-red-fixtures`, ahead=52 behind=0 relative to `origin/main`).
+**HEAD:** `8e08ab5d5458654d548644a00db8bc622e89bf57` (branch
+`wu/rp-053r-red-fixtures`, ahead=55 behind=0 relative to `origin/main`).
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 **Admission:** 6/6 PASS (`scripts/admission-check.py`).
 **Hermetic tests:** 27 (certifier) + 43 (admission) + 8 (classify) +

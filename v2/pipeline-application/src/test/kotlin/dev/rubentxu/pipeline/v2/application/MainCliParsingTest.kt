@@ -1,84 +1,109 @@
 package dev.rubentxu.pipeline.v2.application
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Unit tests for CLI argument parsing (C-029).
+ * Unit tests for the pure CLI argument parser (C-029).
  *
- * Verifies:
- * - C-029.1: no durable selection flag → ReusePriorRun
- * - C-029.2: --resume → ResumePriorRun
- * - C-029.3: --rerun → StartFreshRun
+ * Verifies the durable selection contract and fail-closed typed rejection.
  */
 class MainCliParsingTest {
 
+    private fun parsed(args: Array<String>): CliFlags {
+        val result = CliParser.parse(args)
+        assertTrue(result is CliParseResult.Parsed)
+        return (result as CliParseResult.Parsed).flags
+    }
+
     @Test
     fun `C-029-1 durable run defaults to reuse prior run`() {
-        val args = arrayOf("run", "--db", "/tmp/test.db", "/path/to/script.kts")
-        val config = parseCliArgs(args)
+        val config = parsed(arrayOf("run", "--db", "/tmp/test.db", "/path/to/script.kts"))
 
-        assertEquals("run", config?.command)
-        assertEquals("/tmp/test.db", config?.dbPath)
-        assertEquals(DurableRunPolicy.ReusePriorRun, config?.durableRunPolicy)
-        assertEquals("/path/to/script.kts", config?.scriptPath)
+        assertEquals(CliCommand.RUN, config.command)
+        assertEquals("/tmp/test.db", config.dbPath)
+        assertEquals(DurableRunPolicy.ReusePriorRun, config.durableRunPolicy)
+        assertEquals("/path/to/script.kts", config.scriptPath)
     }
 
     @Test
     fun `C-029-2 resume selects prior run`() {
-        val args = arrayOf("run", "--db", "/tmp/test.db", "--resume", "/path/to/script.kts")
-        val config = parseCliArgs(args)
+        val config = parsed(arrayOf("run", "--db", "/tmp/test.db", "--resume", "/path/to/script.kts"))
 
-        assertEquals("run", config?.command)
-        assertEquals("/tmp/test.db", config?.dbPath)
-        assertEquals(DurableRunPolicy.ResumePriorRun, config?.durableRunPolicy)
-        assertEquals("/path/to/script.kts", config?.scriptPath)
+        assertEquals(CliCommand.RUN, config.command)
+        assertEquals("/tmp/test.db", config.dbPath)
+        assertEquals(DurableRunPolicy.ResumePriorRun, config.durableRunPolicy)
+        assertEquals("/path/to/script.kts", config.scriptPath)
     }
 
     @Test
     fun `C-029-3 rerun starts a fresh run`() {
-        val args = arrayOf("run", "--db", "/tmp/test.db", "--rerun", "/path/to/script.kts")
-        val config = parseCliArgs(args)
+        val config = parsed(arrayOf("run", "--db", "/tmp/test.db", "--rerun", "/path/to/script.kts"))
 
-        assertEquals(DurableRunPolicy.StartFreshRun, config?.durableRunPolicy)
+        assertEquals(DurableRunPolicy.StartFreshRun, config.durableRunPolicy)
     }
 
     @Test
-    fun `parseCliArgs returns null for invalid command`() {
-        val args = arrayOf("invalid", "/path/to/script.kts")
-        val config = parseCliArgs(args)
+    fun `invalid command is rejected with a typed error`() {
+        val result = CliParser.parse(arrayOf("invalid", "/path/to/script.kts"))
 
-        assertNull(config, "Invalid command should yield null config")
+        assertEquals(
+            CliParseResult.Rejected(CliError.InvalidCommand("invalid")),
+            result,
+        )
     }
 
     @Test
-    fun `parseCliArgs returns null for missing script path`() {
-        val args = arrayOf("run")
-        val config = parseCliArgs(args)
+    fun `missing script path is rejected with a typed error`() {
+        val result = CliParser.parse(arrayOf("run"))
 
-        assertNull(config, "Missing script path should yield null config")
+        assertEquals(CliParseResult.Rejected(CliError.MissingScriptPath), result)
     }
 
     @Test
-    fun `parseCliArgs handles validate command without --resume`() {
-        val args = arrayOf("validate", "/path/to/script.kts")
-        val config = parseCliArgs(args)
+    fun `validate command defaults to reuse prior run`() {
+        val config = parsed(arrayOf("validate", "/path/to/script.kts"))
 
-        assertEquals("validate", config?.command)
-        assertNull(config?.dbPath)
-        assertEquals(DurableRunPolicy.ReusePriorRun, config?.durableRunPolicy)
-        assertEquals("/path/to/script.kts", config?.scriptPath)
+        assertEquals(CliCommand.VALIDATE, config.command)
+        assertEquals(null, config.dbPath)
+        assertEquals(DurableRunPolicy.ReusePriorRun, config.durableRunPolicy)
+        assertEquals("/path/to/script.kts", config.scriptPath)
     }
 
     @Test
-    fun `parseCliArgs handles validate command with --resume`() {
-        val args = arrayOf("validate", "--resume", "/path/to/script.kts")
-        val config = parseCliArgs(args)
+    fun `validate command accepts resume flag`() {
+        val config = parsed(arrayOf("validate", "--resume", "/path/to/script.kts"))
 
-        assertEquals("validate", config?.command)
-        assertNull(config?.dbPath)
-        assertEquals(DurableRunPolicy.ResumePriorRun, config?.durableRunPolicy)
-        assertEquals("/path/to/script.kts", config?.scriptPath)
+        assertEquals(CliCommand.VALIDATE, config.command)
+        assertEquals(DurableRunPolicy.ResumePriorRun, config.durableRunPolicy)
+    }
+
+    @Test
+    fun `conflicting durable flags are rejected before execution`() {
+        val result = CliParser.parse(arrayOf("run", "--resume", "--rerun", "/path/to/script.kts"))
+
+        assertEquals(CliParseResult.Rejected(CliError.ConflictingDurablePolicies), result)
+    }
+
+    @Test
+    fun `unsupported sandbox profile is rejected as data`() {
+        val result = CliParser.parse(arrayOf("run", "--sandbox-profile", "os", "/path/to/script.kts"))
+
+        assertEquals(CliParseResult.Rejected(CliError.UnsupportedSandboxProfile("os")), result)
+    }
+
+    @Test
+    fun `plugin jars remain ordered and share one flag collection`() {
+        val config = parsed(
+            arrayOf(
+                "run",
+                "--plugin-jar", "first.jar",
+                "--plugin-jar", "second.jar",
+                "/path/to/script.kts",
+            ),
+        )
+
+        assertEquals(listOf("first.jar", "second.jar"), config.pluginJars)
     }
 }

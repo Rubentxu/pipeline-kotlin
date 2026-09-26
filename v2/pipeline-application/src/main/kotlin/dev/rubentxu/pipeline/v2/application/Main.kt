@@ -40,7 +40,6 @@ import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfileUnsupportedException
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
@@ -101,153 +100,6 @@ fun validateControlRoot(path: String): Path {
  * [SqliteEventStore] which journals operations, computes fingerprints, gates
  * step replay, and detects divergence fail-closed.
  */
-/**
- * Parsed CLI arguments for the pipeline runner.
- */
-data class PipelineCliConfig(
-    val command: String,
-    val dbPath: String?,
-    val durableRunPolicy: DurableRunPolicy,
-    val scriptPath: String?,
-    val controlRoot: String? = null,
-    /** WU-LPR-062: project workspace base directory (--workspace). */
-    val workspace: String? = null,
-    val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
-    /** External plugin JARs: same list feeds script-compile classpath and runtime discovery. */
-    val pluginJars: List<String> = emptyList(),
-)
-
-sealed interface DurableRunPolicy {
-    data object ReusePriorRun : DurableRunPolicy
-    data object ResumePriorRun : DurableRunPolicy
-    data object StartFreshRun : DurableRunPolicy
-}
-
-sealed interface DurableRunSelection {
-    val runId: RunId
-
-    data class Reused(override val runId: RunId) : DurableRunSelection
-    data class StartedFresh(override val runId: RunId) : DurableRunSelection
-}
-
-/**
- * Fail-closed rejection message shared by BOTH run paths (in-memory and durable):
- * a non-canonical pipeline must be rejected up front, never partially executed.
- */
-const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
-    "Error: script uses non-canonical plugins; canonical bridge requires " +
-        "core.sh/core.echo/core.sleep/core.file.writeFile/core.emit.event/core.milestone/" +
-        "core.deleteDir/core.cleanWs/core.load/core.pwd/core.waitUntil."
-
-/**
- * Parses CLI arguments for the pipeline runner.
- *
- * @param args The command-line arguments.
- * @return The parsed configuration, or null if parsing failed.
- */
-fun parseCliArgs(args: Array<String>): PipelineCliConfig? {
-    if (args.size < 2) {
-        return null
-    }
-
-    val command = args[0]
-
-    if (command != "validate" && command != "run") {
-        return null
-    }
-
-    // Parse --db, --resume, --rerun, --control-root, and --sandbox-profile flags.
-    var dbPath: String? = null
-    var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun
-    var controlRoot: String? = null
-    var workspace: String? = null
-    var sandboxProfile: SandboxProfile = SandboxProfile.NONE
-    val pluginJars = mutableListOf<String>()
-    var scriptArgIndex = 1
-    var i = 1
-    while (i < args.size && args[i].startsWith("--")) {
-        when (args[i]) {
-            "--db" -> {
-                if (i + 1 >= args.size) {
-                    return null
-                }
-                dbPath = args[i + 1]
-                i += 2
-            }
-            "--resume" -> {
-                if (durableRunPolicy != DurableRunPolicy.ReusePriorRun) return null
-                durableRunPolicy = DurableRunPolicy.ResumePriorRun
-                i++
-            }
-            "--rerun" -> {
-                if (durableRunPolicy != DurableRunPolicy.ReusePriorRun) return null
-                durableRunPolicy = DurableRunPolicy.StartFreshRun
-                i++
-            }
-            "--control-root" -> {
-                if (i + 1 >= args.size) {
-                    return null
-                }
-                controlRoot = args[i + 1]
-                i += 2
-            }
-            "--workspace" -> {
-                if (i + 1 >= args.size) {
-                    return null
-                }
-                workspace = args[i + 1]
-                i += 2
-            }
-            "--sandbox-profile" -> {
-                if (i + 1 >= args.size) {
-                    return null
-                }
-                val profileValue = args[i + 1]
-                sandboxProfile = when (profileValue) {
-                    "none" -> SandboxProfile.NONE
-                    "local" -> SandboxProfile.LOCAL
-                    "os" -> throw SandboxProfileUnsupportedException(
-                        "sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. Accepted: {none, local}. Got: 'os'."
-                    )
-                    else -> throw SandboxProfileUnsupportedException(
-                        "sandbox-profile '$profileValue' invalid. Accepted: {none, local}."
-                    )
-                }
-                i += 2
-            }
-            // LB-02 / EP-6: ONE flag feeds ONE classpath to BOTH the .pipeline.kts
-            // script compiler AND the runtime ServiceLoader discovery — no split
-            // runtimePluginJars/scriptPluginJars configuration exists.
-            "--plugin-jar" -> {
-                if (i + 1 >= args.size) {
-                    return null
-                }
-                pluginJars.add(args[i + 1])
-                i += 2
-            }
-            else -> break
-        }
-    }
-    scriptArgIndex = i
-
-    if (args.size < scriptArgIndex + 1) {
-        return null
-    }
-
-    val scriptPath = args[scriptArgIndex]
-
-    return PipelineCliConfig(
-        command = command,
-        dbPath = dbPath,
-        durableRunPolicy = durableRunPolicy,
-        scriptPath = scriptPath,
-        controlRoot = controlRoot,
-        workspace = workspace,
-        sandboxProfile = sandboxProfile,
-        pluginJars = pluginJars.toList(),
-    )
-}
-
 fun main(args: Array<String>) {
     // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version
     // from the jar manifest (authoritative source = the build artifact) and exits 0.
@@ -318,10 +170,14 @@ fun main(args: Array<String>) {
         return
     }
 
-    val config = parseCliArgs(args) ?: run {
-        System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume|--rerun] [--control-root <path>] <script>")
-        System.exit(1)
-        return
+    val config = when (val parsed = CliParser.parse(args)) {
+        is CliParseResult.Parsed -> parsed.flags
+        is CliParseResult.Rejected -> {
+            System.err.println("Invalid CLI arguments: ${parsed.error}")
+            System.err.println("Usage: pipeline <validate|run> [--db <path>] [--resume|--rerun] [--control-root <path>] <script>")
+            System.exit(1)
+            return
+        }
     }
 
     val command = config.command
@@ -343,9 +199,9 @@ fun main(args: Array<String>) {
     // The canary value __artefact_canary__ is never used in any real artefact.
     secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
 
-    val scriptPath = Paths.get(config.scriptPath!!)
+    val scriptPath = Paths.get(config.scriptPath)
 
-    if (command == "validate") {
+    if (command == CliCommand.VALIDATE) {
         // M2-002: validate NEVER starts processes. It compiles the script
         // and reports diagnostics — nothing else.
         val rawStore = InMemoryEventStore()

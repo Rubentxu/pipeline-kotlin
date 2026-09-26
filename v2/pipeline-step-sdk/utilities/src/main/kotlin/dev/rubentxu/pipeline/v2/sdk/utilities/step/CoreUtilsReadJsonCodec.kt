@@ -2,15 +2,13 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.boolOrNull
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadJsonOutput
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
@@ -21,24 +19,26 @@ import kotlinx.serialization.json.put
  *
  * `encodeDefaults = true` semantics are preserved by explicit `put` for every
  * field, so a codec roundtrip losslessly preserves optional defaults.
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged (roundtrip byte-identical to pre-refactor).
  */
 object CoreUtilsReadJsonInputCodec : StepCodec<ReadJsonInput> {
 
-    override fun encode(value: ReadJsonInput): EncodedStepValue {
-        val obj = kotlinx.serialization.json.buildJsonObject {
+    override fun encode(value: ReadJsonInput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("path", value.path)
             put("prettyPrint", value.prettyPrint)
             put("returnRawText", value.returnRawText)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): ReadJsonInput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val obj = PipelineJson.decode(encoded)
         return ReadJsonInput(
-            path = obj.getValue("path").jsonPrimitive.content,
-            prettyPrint = obj.boolOr("prettyPrint") ?: true,
-            returnRawText = obj.boolOr("returnRawText") ?: false,
+            path = obj.requiredString("path"),
+            prettyPrint = obj.boolOrNull("prettyPrint") ?: true,
+            returnRawText = obj.boolOrNull("returnRawText") ?: false,
         )
     }
 
@@ -55,9 +55,6 @@ object CoreUtilsReadJsonInputCodec : StepCodec<ReadJsonInput> {
           }
         }
     """.trimIndent()
-
-    private fun JsonObject.boolOr(key: String): Boolean? =
-        this[key]?.jsonPrimitive?.booleanOrNull
 }
 
 /**
@@ -68,11 +65,14 @@ object CoreUtilsReadJsonInputCodec : StepCodec<ReadJsonInput> {
  * The output codec encodes BOTH the raw text and the parsed element. The
  * raw text is preserved for diagnostics; the parsed element is the canonical
  * shape used by downstream Steps.
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged.
  */
 object CoreUtilsReadJsonOutputCodec : StepCodec<ReadJsonOutput> {
 
-    override fun encode(value: ReadJsonOutput): EncodedStepValue {
-        val obj = kotlinx.serialization.json.buildJsonObject {
+    override fun encode(value: ReadJsonOutput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("rawText", value.rawText)
             // `JsonElement` is itself a kotlinx.serialization element; we serialize it
             // as the encoded JsonObject/array/primitive literal.
@@ -82,17 +82,16 @@ object CoreUtilsReadJsonOutputCodec : StepCodec<ReadJsonOutput> {
             put("byteSize", value.byteSize)
             put("absolutePath", value.absolutePath)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): ReadJsonOutput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val obj = PipelineJson.decode(encoded)
         val parsed: JsonElement? = obj["parsed"]
         return ReadJsonOutput(
-            rawText = obj.getValue("rawText").jsonPrimitive.content,
+            rawText = obj.requiredString("rawText"),
             parsed = parsed,
-            byteSize = obj.getValue("byteSize").jsonPrimitive.content.toLong(),
-            absolutePath = obj.getValue("absolutePath").jsonPrimitive.content,
+            byteSize = obj.requiredString("byteSize").toLong(),
+            absolutePath = obj.requiredString("absolutePath"),
         )
     }
 

@@ -1,7 +1,7 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-26 (D-001 RESUELTO + D-002 RESUELTO + D-003 RESUELTO + D-004 RESUELTO + D-005 + D-006 + D-007 OBSOLETO + D-008 + D-009)
+**Last updated:** 2026-09-26 (D-001 RESUELTO + D-002 RESUELTO + D-003 RESUELTO + D-004 RESUELTO + D-005 + D-006 + D-007 OBSOLETO + D-008 + D-009 + D-010 RESUELTO)
 **Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
@@ -425,6 +425,88 @@ el receipt alterado era dominado y pasa a ser maximal.
 
 Sólo docs/receipts. Cero tests añadidos (los 38 ya existían en
 B10_W1B + LPR-011). Cero cambios en production.
+
+## D-010 — UAT-RP-003 elevación + certifier `--check` regenerator-bootstrap (2026-09-26)
+
+**Detected:** 2026-09-26, en bloque autónomo (D-002 fix + UAT elevation +
+certifier hardening).
+**Severity:** P3 (mejora de productividad del certifier; sin blocker).
+**Scope:** `docs/v2/07-uat/{RP3_EXIT_REVIEW,T0E_CLOSURE_RECEIPT}.md`,
+`scripts/{gen-current-uat-status,test_gen_current_uat_status}.py`,
+`v2/pipeline-credentials-api/src/test/.../Rp022ThroughputProbe.kt`.
+
+**Status:** RESUELTO en commits `7904b3c3` + `56a3dcbc` + `930b39d3` + `06528804`.
+
+### Contexto y trabajos realizados
+
+Este turno autónomo cerró tres frentes:
+
+**1. D-002 RESUELTO (commit `7904b3c3`):**
+El test `Rp022ThroughputProbe` medía 50 MiB procesados en
+streaming-redactor contra un floor de 20 MB/s. En CI cold-JIT (sin
+daemon warm) caía a 10.96 MB/s y disparaba flake. Fix:
+`repeat(1)` → `repeat(3)` para amortiguar class-loading + JIT
+compilation antes de la medición. Verificación local: 22.3 MB/s,
+test 9.7s (was 5.1s). 53/53 módulo tests PASS.
+
+**2. D-007 cerrado como OBSOLETO:**
+La regresión descrita en D-007 (regex `\bFAIL\b` que matcheaba
+`fail-closed`, `fail-fast`) ya estaba corregida en commits previos
+al cierre de T0.E. El regex actual es
+`\b(?:FAIL_PROVEN|BLOCKED|REJECTED|COVERED|PARTIAL|KNOWN_LIMITATION|NOT_RUN)\b`
+(sin fallback `\bFAIL\b`); los tests L483-487 verifican
+explicitamente que hyphen-FAIL NO se clasifica como `FAIL_PROVEN`.
+27→29 tests PASS.
+
+**3. UAT-RP-003 elevación (commit `56a3dcbc`):**
+UAT-RP-003 (Registry: core + external plugin ejecutan misma ruta
+genérica; missing capability no llega al handler) estaba como
+REFERENCED. Re-ejecutadas las suites de registry + capability
+admission: 29/29 PASS
+(StepRegistryTest:8 + StepDefinitionContributorTest:5 +
+RegistryExecutionPreparationTest:5 + RegistryDurableSpineTest:5 +
+RegistryExecutionBoundaryTest:6). Marker `UAT-EVIDENCE | UAT-RP-003 |
+COVERED | candidate=7904b3c3` emitido en RP3_EXIT_REVIEW.md +
+mirror en T0E_CLOSURE_RECEIPT.md.
+
+Pre-commit check (D-009 lesson aplicada): verifiqué que mi nuevo
+commit no desplazara evidencia DAG-maximal para 005/018 (pre-emptive
+markers añadidos en RP3_EXIT_REVIEW.md L77-83).
+
+**4. Certifier `--check` regenerator-bootstrap fix (commits `930b39d3` + `06528804`):**
+El modo `--check` siempre reportaba STALE tras un regen commit
+porque: (a) el timestamp 'Generated at (UTC)' avanza en cada
+invocación; (b) la línea 'git log HEAD <sha>' cambia con cada commit
+de regen. El bytewise comparison es inherentemente no-idempotente.
+
+Fix: normalizar las dos líneas volátiles del header antes de la
+comparación. Después del fix, `--check` reporta `OK-IDENTICAL`
+cuando el contenido material no ha cambiado. Tests añadidos:
+- `test_check_mode_strips_volatile_header`: compara strings idénticos
+  con timestamps/HEAD SHAs diferentes.
+- `test_check_mode_endtoend_fresh_clone`: roundtrip subprocess.
+
+Hermetic certifier tests: 27 → 29 PASS.
+
+### Delta del certifier (commit `e2e40b10` → commit `eef121d2`)
+
+| UAT | Antes | Después | Cómo |
+|---|---|---|---|
+| UAT-RP-003 | REFERENCED | **COVERED** | nuevo marker en RP3_EXIT_REVIEW + T0E mirror |
+| UAT-RP-005 | KNOWN_LIMITATION | KNOWN_LIMITATION | stable; ahora latest receipt es RP3_EXIT_REVIEW |
+| UAT-RP-018 | PARTIAL | PARTIAL | stable; ahora latest receipt es RP3_EXIT_REVIEW |
+
+Conteo: COVERED=19 (antes 18), PARTIAL=1, KNOWN_LIMITATION=2,
+REFERENCED=2 (antes 3), NOT_APPLICABLE=3. Total 27.
+
+`--check` mode: STALE (always) → OK-IDENTICAL (when content stable).
+Hermetic tests: 27 → 29.
+
+### Sin código de producción tocado (excepto el test de probe)
+
+Único cambio de código no-certifier: `Rp022ThroughputProbe.kt` (test
+only, no runtime). Resto: docs + scripts/. Sin cambios en
+production logic.
 
 ## D-007 — `gen-current-uat-status.py` false-COVERED / hyphen-FAIL classifier (P2)
 

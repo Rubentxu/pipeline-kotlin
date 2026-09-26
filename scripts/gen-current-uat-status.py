@@ -518,7 +518,7 @@ def render_markdown(uat_status, head_sha):
     lines.append("## Status Summary\n\n")
     lines.append(f"- **Total UATs (PRDY-003 contract):** {len(UAT_IDS)}\n")
     all_states = list(EXPLICIT_STATUSES) + ["CONFLICT", "REFERENCED",
-                                            "NOT_APPLICABLE", "KNOWN_LIMITATION"]
+                                            "NOT_APPLICABLE"]
     for status in all_states:
         if counts.get(status):
             lines.append(f"- **{status}:** {counts[status]}\n")

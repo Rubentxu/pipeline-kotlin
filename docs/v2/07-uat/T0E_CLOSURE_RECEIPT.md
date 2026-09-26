@@ -216,6 +216,14 @@ Total: **93/93 hermetic tests PASS** (no flakiness observed).
 ## 7 — Commits produced in this block
 
 ```
+fb9a3fbb regen(current-uat-status): final clean regen at HEAD 9a334ddf
+9a334ddf fix(gen-current-uat-status): remove KNOWN_LIMITATION from synthetic all_states list
+2c976ab9 docs(t0e): add machine-readable UAT-EVIDENCE mirror for UAT-RP-005
+be1a6411 regen(current-uat-status): final regen at HEAD 72f1ce8d
+72f1ce8d docs(t0e): neutralise status tokens in summary table to avoid freeform parser conflict
+f9778540 docs(t0e): update closure receipt with final HEAD (8e08ab5d)
+8e08ab5d chore(status): final regen for E6 (HEAD=0155c05b)
+0155c05b docs(t0e): T0E-EVID-01 closure receipt + debt ledger update
 80d487f5 chore(status): regen CURRENT_UAT_STATUS for E4 (HEAD=7e7d78f)
 7e7d78f3 fix(admission-check): exclude CONSULT verdict directory from R3
 f733d24a fix(gen-current-uat-status): KNOWN_LIMITATION valid in marker regex
@@ -227,7 +235,7 @@ e27a21ad fix(receipt): remove narrative status tokens that triggered CONFLICT
 56467ed2 fix(gen-current-uat-status): T0E-EVID-01 E1 — DAG-maximal commits + per-UAT scoping
 ```
 
-9 commits total. 5 new files / 3 modified files at HEAD (`80d487f5`):
+17 commits total. 4 new files / 5 modified files at HEAD (`fb9a3fbb`):
 
 - `scripts/gen-current-uat-status.py` — E1 + E3 certifier architecture.
 - `scripts/test_gen_current_uat_status.py` — 27 tests.

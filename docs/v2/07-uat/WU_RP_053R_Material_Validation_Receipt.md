@@ -1034,3 +1034,120 @@ non-blocking concern. No code changes this turn. The candidate
 No source files modified. 0 new commits this turn (round-5 is audit only).
 Receipt now ~898 + ~100 = ~1000 lines.
 
+---
+
+## Round-6 — Continued session: preflight renames + new production-readiness plan incorporation (2026-09-26T08:34Z)
+
+**Trigger:** operator resumed at 2026-09-26T08:25Z with directive
+"tengo pensado adoptar otro roadmap que sustituye el actual, hay algo
+que tengamos que cerrar antes de este reenfoque?". Agent preflight
+analysis returned 4 items; operator selected minimum (commits 1-4 of
+the recommendation, skip rc1 decision for later).
+
+### R16 — Preflight commit 1: 17 renames to docs/historico/
+
+```text
+$ git -c user.email=sddk@local -c user.name=sddk commit -m "docs(historico): archive 17 superseded roadmap documents"
+[wu/rp-053r-red-fixtures bd6cc2f9] docs(historico): archive 17 superseded roadmap documents
+ 16 files changed, 0 insertions(+), 0 deletions(-)
+ rename docs/{ => historico}/ARCHITECTURE.md (100%)
+ rename docs/{ => historico}/PRD.md (100%)
+ rename docs/{ => historico}/plan.md (100%)
+ rename docs/{ => historico}/STEP_SYSTEM_MIGRATION_GUIDE.md (100%)
+ ... (12 more renames, all 100%)
+```
+
+- 16 renames detected by git (the K2 Plugins file with non-ASCII escapes
+  counts as 1 unique rename; 17 source files total).
+- 0 changes (pure renames, byte-identical content).
+- Python script verified SHA-256(content of HEAD blob) ==
+  SHA-256(historico/ copy) for all 17 paths BEFORE commit.
+
+### R17 — Preflight commit 2: production-readiness plan incorporation
+
+```text
+$ git -c user.email=sddk@local -c user.name=sddk commit -m "docs(production-readiness): add audit-driven RP-5 closure action plan"
+[wu/rp-053r-red-fixtures 05ddaf0a] docs(production-readiness): add audit-driven RP-5 closure action plan
+ 17 files changed, 1210 insertions(+)
+ create mode 100644 docs/v2/08-production-readiness/ACTION_CATALOG.md
+ create mode 100644 docs/v2/08-production-readiness/EXECUTION_PLAN.md
+ create mode 100644 docs/v2/08-production-readiness/EXECUTIVE_SUMMARY.md
+ create mode 100644 docs/v2/08-production-readiness/INSTALL.md
+ create mode 100644 docs/v2/08-production-readiness/MANIFEST.md
+ create mode 100644 docs/v2/08-production-readiness/OPEN_INFORMATION_GAPS.md
+ create mode 100644 docs/v2/08-production-readiness/PRIORITIZATION_MATRIX.md
+ create mode 100644 docs/v2/08-production-readiness/PRODUCTION_READY_GATE.md
+ create mode 100644 docs/v2/08-production-readiness/README.md
+ create mode 100644 docs/v2/08-production-readiness/RISK_REGISTER.md
+ create mode 100644 docs/v2/08-production-readiness/SUCCESS_METRICS.md
+ create mode 100644 docs/v2/08-production-readiness/TIMELINE.md
+ create mode 100644 docs/v2/08-production-readiness/adr-proposals/PR-ADR-001-current-state-projection.md
+ create mode 100644 docs/v2/08-production-readiness/adr-proposals/PR-ADR-002-admission-authority.md
+ create mode 100644 docs/v2/08-production-readiness/adr-proposals/PR-ADR-003-deep-runtime-boundaries.md
+ create mode 100644 docs/v2/08-production-readiness/backlog/IMPLEMENTATION_BACKLOG.md
+ create mode 100644 docs/v2/08-production-readiness/uat/PR_ACTION_UAT_MATRIX.md
+```
+
+- Source: `docs/pipeline-kotlin-production-ready-action-plan/` (staging format).
+- Destination: `docs/v2/08-production-readiness/` (canonical, per INSTALL.md).
+- Python script verified 15/15 SHA-256 == MANIFEST.md declared hashes.
+- +1210 LOC across 17 files.
+
+### R18 — Round-6 detekt UP-TO-DATE both modules
+
+```text
+$ cd v2 && timeout 120 ./gradlew :pipeline-application:detekt :pipeline-step-sdk:scm-git:detekt
+> Task :pipeline-application:detekt UP-TO-DATE
+> Task :pipeline-step-sdk:scm-git:detekt UP-TO-DATE
+BUILD SUCCESSFUL in 1s
+2 actionable tasks: 2 up-to-date
+```
+
+**Verdict:** GREEN. Docs-only commits (16 renames + 17 file additions
+across 2 commits) do not introduce any detekt findings.
+
+### R19 — Material identity at HEAD `05ddaf0a` (post-preflight)
+
+| Artifact | Status | SHA-256 |
+|---|---|---|
+| HEAD | `05ddaf0ab6b48df02aeba0af4339766429ebc1a3` | (commit SHA) |
+| origin/main | `acc903875d70f939713786d71a6331bb6ccf7dc9` | UNTOUCHED |
+| `pipelinek-0.40.0-rc1.zip` | byte-perfect | `324d7045…cbaf1740` ✅ |
+| `pipelinek-0.40.0-rc1.sbom.json` | byte-perfect | `2d18f26b…345835b` ✅ |
+| New commits in this session | 2 (docs only) | `bd6cc2f9`, `05ddaf0a` |
+| Pushes | 0 | (pending operator GO for push) |
+
+### Round-6 verdict
+
+**GREEN.** Preflight commits 1 and 2 are byte-perfect, byte-verified
+mechanical moves. No source code touched. No ADRs modified. No
+contracts changed. The candidate `v0.40.0-rc1` remains byte-perfect
+and READY_FOR_OPERATOR_REVIEW.
+
+### Round-6 Lessons (continuation)
+
+- **Lección #26:** the staging-format trick (`docs/<pkg-name>/docs/...`)
+  is fine for delivery, but the repository's canonical path is
+  `docs/v2/<topic>/`. Always read the package's own INSTALL.md to
+  find the canonical path before staging. Skipping this check costs one
+  extra commit ("move to canonical").
+- **Lección #27:** byte-identicality verification via Python+git
+  (SHA-256 of HEAD blob content vs SHA-256 of moved file) is the
+  correct pre-commit gate for renames. The git rename detection
+  (100% similarity) is necessary but not sufficient — content may have
+  been mutated between the original location and the moved location.
+
+---
+
+## Round-6 Files (this receipt)
+
+| Path | Bytes | Note |
+|---|---|---|
+| `docs/v2/07-uat/WU_RP_053R_Material_Validation_Receipt.md` | appended (+round-6 block) | round-6 evidence |
+| `.agent/SESSION_POINTER.md` | appended round-6 reconciliation entry | (gitignored session state) |
+| `.agent/WORK_JOURNAL.md` | appended round-6 entry | (gitignored session state) |
+| `.agent/TECH_DEBT_BACKLOG.md` | appended D-006 entry + banner update | (gitignored session state) |
+
+Repository commits: 2 (`bd6cc2f9`, `05ddaf0a`). Both docs-only.
+Receipt now ~1000 + ~120 = ~1120 lines.
+

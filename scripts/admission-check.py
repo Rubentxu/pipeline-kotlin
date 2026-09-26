@@ -321,7 +321,17 @@ def check_r2_state_head_is_ancestor(
 def check_r3_working_tree_clean(cwd: pathlib.Path = ROOT) -> tuple[bool, Optional[str]]:
     dirty = git_working_tree_dirty_paths(cwd)
     if dirty:
-        return False, f"R3 working tree has dirty source files: {', '.join(dirty[:5])}"
+        # E1.3 / operator brief: surface full dirty count + complete
+        # list, not just the first 5. Mirrors the R4 / R5 fixes.
+        total = len(dirty)
+        summary = ", ".join(dirty[:5])
+        full = ", ".join(dirty)
+        return False, (
+            f"R3 working tree has dirty source files: "
+            f"dirty_count={total} "
+            f"summary={summary} "
+            f"all_dirty=[{full}]"
+        )
     return True, None
 
 

@@ -324,6 +324,29 @@ class R3ExactPathExclusionTests(unittest.TestCase):
             self.assertEqual(
                 self.mod.git_working_tree_dirty_paths(repo.repo), [])
 
+    def test_r3_message_exposes_full_dirty_count_and_list(self):
+        """E1.3 / operator brief: R3 must surface dirty_count and
+        all_dirty, not just the first 5. Mirrors the R4 / R5 fixes.
+
+        Build a fixture with 7 dirty source files and assert the
+        message exposes `dirty_count=7` plus the 6th and 7th
+        paths in `all_dirty=...`.
+        """
+        repo = TempGitRepo()
+        with repo:
+            repo.commit("c")
+            paths = [f"docs/dirty_{i}.md" for i in range(7)]
+            self._make_dirty(repo, paths)
+            ok, msg = self.mod.check_r3_working_tree_clean(cwd=repo.repo)
+            self.assertFalse(ok, f"dirty repo must FAIL: {msg}")
+            self.assertIn("dirty_count=7", msg)
+            self.assertIn("all_dirty=[", msg)
+            # Paths past the first 5 (indices 5 and 6) must appear.
+            self.assertIn("dirty_5.md", msg)
+            self.assertIn("dirty_6.md", msg)
+            for p in paths:
+                self.assertIn(p, msg)
+
     def test_excludes_dot_agent_prefix(self):
         repo = TempGitRepo()
         with repo:

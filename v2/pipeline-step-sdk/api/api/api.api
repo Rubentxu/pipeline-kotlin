@@ -15,6 +15,20 @@ public abstract interface annotation class dev/rubentxu/pipeline/v2/sdk/JenkinsS
 	public abstract fun step ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/sdk/JsonAccessors {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/sdk/JsonAccessors;
+	public final fun boolOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Boolean;
+	public final fun doubleOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Double;
+	public final fun intOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Integer;
+	public final fun longOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/Long;
+	public final fun requiredBoolean (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Z
+	public final fun requiredDouble (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)D
+	public final fun requiredInt (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)I
+	public final fun requiredLong (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)J
+	public final fun requiredString (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/String;
+	public final fun stringOrNull (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/sdk/LspLoadDiagnostics {
 	public fun <init> (Ljava/util/List;Ljava/util/List;)V
 	public final fun component1 ()Ljava/util/List;
@@ -81,6 +95,13 @@ public final class dev/rubentxu/pipeline/v2/sdk/LspParameter {
 	public final fun getType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/sdk/PipelineJson {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/sdk/PipelineJson;
+	public final fun decode-j8uo1iw (Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+	public final fun encode-9TXO0do (Lkotlinx/serialization/json/JsonObject;)Ljava/lang/String;
+	public final fun getJson ()Lkotlinx/serialization/json/Json;
 }
 
 public abstract interface annotation class dev/rubentxu/pipeline/v2/sdk/Step : java/lang/annotation/Annotation {

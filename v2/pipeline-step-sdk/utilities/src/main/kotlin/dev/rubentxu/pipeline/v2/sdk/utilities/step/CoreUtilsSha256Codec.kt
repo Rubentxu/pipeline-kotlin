@@ -2,13 +2,14 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.longOrNull
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredLong
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Input
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.Sha256Output
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
@@ -18,22 +19,25 @@ import kotlinx.serialization.json.put
  * the handler refuses anything other than `SHA-256` (default) or `SHA-1`,
  * producing a typed USER-class failure rather than silently substituting
  * another algorithm. This is part of the explicit-tolerance contract.
+ *
+ * C3 / D-011 (audit 2026-09-26, H14): migrated to `PipelineJson` /
+ * `JsonAccessors`. Wire format unchanged (roundtrip byte-identical to the
+ * pre-refactor `Json.encodeToString(JsonObject.serializer(), obj)` shape).
  */
 object CoreUtilsSha256InputCodec : StepCodec<Sha256Input> {
 
-    override fun encode(value: Sha256Input): EncodedStepValue {
-        val obj = kotlinx.serialization.json.buildJsonObject {
+    override fun encode(value: Sha256Input): EncodedStepValue = PipelineJson.encode(
+        kotlinx.serialization.json.buildJsonObject {
             put("path", value.path)
             put("algorithm", value.algorithm)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): Sha256Input {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val obj = PipelineJson.decode(encoded)
         return Sha256Input(
-            path = obj.getValue("path").jsonPrimitive.content,
-            algorithm = obj["algorithm"]?.jsonPrimitive?.contentOrNull ?: "SHA-256",
+            path = obj.requiredString("path"),
+            algorithm = obj.stringOrNull("algorithm") ?: "SHA-256",
         )
     }
 
@@ -52,25 +56,24 @@ object CoreUtilsSha256InputCodec : StepCodec<Sha256Input> {
 }
 
 /**
- * JSON codec for [Sha256Output].
+ * JSON codec for [Sha256Output]. Migrated to `PipelineJson` (C3 / D-011).
  */
 object CoreUtilsSha256OutputCodec : StepCodec<Sha256Output> {
 
-    override fun encode(value: Sha256Output): EncodedStepValue {
-        val obj = kotlinx.serialization.json.buildJsonObject {
+    override fun encode(value: Sha256Output): EncodedStepValue = PipelineJson.encode(
+        kotlinx.serialization.json.buildJsonObject {
             put("hexDigest", value.hexDigest)
             put("byteSize", value.byteSize)
             put("algorithm", value.algorithm)
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): Sha256Output {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
+        val obj = PipelineJson.decode(encoded)
         return Sha256Output(
-            hexDigest = obj.getValue("hexDigest").jsonPrimitive.content,
-            byteSize = obj.getValue("byteSize").jsonPrimitive.content.toLong(),
-            algorithm = obj.getValue("algorithm").jsonPrimitive.content,
+            hexDigest = obj.requiredString("hexDigest"),
+            byteSize = obj.requiredLong("byteSize"),
+            algorithm = obj.requiredString("algorithm"),
         )
     }
 

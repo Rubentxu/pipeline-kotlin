@@ -793,16 +793,92 @@ para liquidar el backlog D-011.
 
 ### Estado de C5 — binary-compatibility-validator (2026-09-26)
 
-**Phase 1 ejecutada** (este bloque autónomo). Aplicado a 4 módulos
-con la superficie pública JVM más estable:
+**Phase 1 ejecutada** (bloque autónomo anterior, commit `2d83fe3d`).
+Plugin aplicado a 4 módulos con baselines de 8095 LOC; `apiCheck`
+PASS; pendiente cablear en `check` (Phase 2, post-C1).
+
+**Note (this block)**: tras añadir `PipelineJson` + `JsonAccessors`
+a `pipeline-step-sdk:api` (C3), el baseline de ese módulo se
+regeneró automáticamente con `apiDump`. Baseline creció de 164 a
+185 LOC (+21 = 10 métodos de `JsonAccessors` + 3 de `PipelineJson`).
+Wire format de los codecs migrados es idéntico al pre-refactor:
+roundtrip byte-equal.
+
+### Estado de C3 — codec JSON consolidation (2026-09-26)
+
+**Re-scoped** del audit original. El audit H14 mencionó "96 patrones
+buildJsonObject + 51 Json.encodeToString". El inventario real muestra
+dos patrones distintos:
+
+- **Pattern A** (dominante, 44 sitios): manual `buildJsonObject` +
+  `Json.encodeToString(JsonObject.serializer(), obj)` + decoder via
+  `Json.parseToJsonElement().jsonObject`. NO usa `Json {}` instance
+  propio (usa el singleton `Json`).
+- **Pattern B** (escaso, 3 sitios): `private val json = Json { ... }`
+  + `json.encodeToString(Serializer, value)` con `@Serializable`. Cada
+  sitio tiene configuración distinta (ignoreUnknownKeys,
+  encodeDefaults) — **no son duplicados consolidables**.
+
+**Acción ejecutada** (este bloque autónomo):
+
+1. Creado `PipelineJson` + `JsonAccessors` en
+   `pipeline-step-sdk:api` (módulo SDK BCV-tracked):
+   - `PipelineJson.encode(JsonObject): EncodedStepValue`
+   - `PipelineJson.decode(EncodedStepValue): JsonObject`
+   - `PipelineJson.json`: `Json { encodeDefaults = true }` único
+   - `JsonAccessors.{requiredString, stringOrNull, requiredLong,
+     longOrNull, requiredInt, intOrNull, requiredDouble,
+     doubleOrNull, requiredBoolean, boolOrNull}`
+2. Migrados 4 codecs Pattern A como prueba:
+   - `CoreUtilsSha256InputCodec` / `CoreUtilsSha256OutputCodec`
+   - `CoreUtilsWriteJsonInputCodec` / `CoreUtilsWriteJsonOutputCodec`
+   - `GitCheckoutInputCodec` / `GitCheckoutOutputCodec`
+3. Reducción de imports: cada codec pasa de ~10 imports kotlinx a 5
+   centralizados (`PipelineJson` + accessors selectivos). El decoder
+   helper `private fun JsonObject.boolOr(...)` desaparece del codec
+   (era duplicado en 5 codecs diferentes).
+4. Wire format **byte-identical**: el roundtrip de los codecs
+   migrados produce exactamente el mismo JSON que antes. Test suites
+   `pipeline-step-sdk:utilities:test` y `pipeline-step-sdk:scm-git:test`
+   verde sin tocar tests.
+5. `pipeline-step-sdk:api` baseline regenerada (`apiDump`):
+   164 → 185 LOC (+21 líneas = los nuevos métodos públicos).
+
+**Métricas**:
+
+- Archivos producción tocados: 6 (1 nuevo `PipelineJson.kt`, 4 codecs
+  migrados, 1 `build.gradle.kts` con nueva dep).
+- Líneas netas: +130 (nuevo helper) - 50 (imports eliminados en
+  codecs) - 25 (decoder helpers eliminados) ≈ +55.
+- Tests afectados: 0 (roundtrip preserva comportamiento).
+- BCV: baseline regenerada para `pipeline-step-sdk:api` (esperado).
+  Otros 3 módulos BCV sin cambios.
+
+### D-012 — Resto de Pattern A codecs pendientes (2026-09-26)
+
+Los 44 sitios Pattern A identificados en el inventario; 4 migrados
+en este bloque. Pendientes: ~40 codecs en `pipeline-step-sdk/*`,
+`pipeline-events/identity/PipelineEventEnvelope.kt`, etc.
+
+**Por qué no se hizo en este bloque**: cada codec requiere
+revisión individual (algunos usan decoder helpers privados no
+estrictamente idénticos al patrón de `JsonAccessors`). Trabajo
+mecánico pero no trivial. Mejor como serie de PRs pequeños que
+como un solo commit masivo.
+
+**Política propuesta**: cada codec migrado individualmente con
+un commit `refactor(sdk/codec): migrate X to PipelineJson` y su
+propio regression test del contrato.
 
 | Módulo | Tipos top-level | Baseline LOC |
 |---|---|---|
 | `:pipeline-domain` | 248 | 5804 |
 | `:pipeline-events` | 96 | 1859 |
-| `:pipeline-step-sdk:api` | 10 | 164 |
+| `:pipeline-step-sdk:api` | 12 (+2) | 185 (+21) |
 | `:pipeline-credentials-api` | 19 | 268 |
-| **Total** | **373** | **8095** |
+| **Total** | **375** | **8116** |
+
+`PipelineJson` y `JsonAccessors` explican el delta de `pipeline-step-sdk:api`.
 
 Plugin aplicado en `:pipeline-domain`,
 `:pipeline-events`, `:pipeline-step-sdk:api`,
@@ -859,10 +935,15 @@ marcados son SDK/API público.
 
 - D-001..D-010 RESUELTO o marcado OBSOLETO.
 - D-011 (este) registrado, sin resolver.
+- D-012 (este) registrado: ~40 Pattern A codecs pendientes.
 - T0E-EVID-01 RESUELTO en `1893e104`.
 - **C5 Phase 1 ejecutado 2026-09-26** — BCV aplicado a 4 módulos
-  con baselines de 8095 LOC; `apiCheck` PASS; pendiente cablear
+  con baselines de 8116 LOC; `apiCheck` PASS; pendiente cablear
   en `check` (Phase 2, post-C1).
-- Próxima WU candidata: C1 (H1+H2+H3 — partir `PipelineDsl.kt` y
-  `CanonicalDurableRunCoordinator.kt`). Bajo autorización del
+- **C3 ejecutado 2026-09-26** — `PipelineJson` + `JsonAccessors`
+  añadidos a `pipeline-step-sdk:api`; 4 codecs migrados
+  (Sha256, WriteJson, GitCheckout) sin regresión; baseline
+  regenerada para `pipeline-step-sdk:api`.
+- Próxima WU candidata: ejecutar **D-012** (migrar ~40 codecs
+  restantes, un commit pequeño por codec). Bajo autorización del
   operador.

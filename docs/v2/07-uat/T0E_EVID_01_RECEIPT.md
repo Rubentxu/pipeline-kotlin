@@ -215,25 +215,28 @@ contract.
 
 UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2SecretRedactionAtRestUatTest:11 | exit=0
 
-## E3.2 — UAT-RP-005 (KNOWLEDGE_LIMITATION supersedes FAIL_PROVEN)
+## E3.2 — UAT-RP-005 (supersedence demonstration)
 
 **Matrix contract:**
 > UAT-RP-005 | Publish HTML | publicar index.html original y otro
 > HTML; abrir informe y recalcular SHA256 de entradas FINALES
 
 **Disposition (T0E-EVID-01 E3.1):** Earlier receipts (RP2_GATE_RECEIPT,
-WU_RP_013_RECEIPT) documented invariant 3 (archive MANIFEST.json) as
-`FAIL_PROVEN`. The SESSION_PAUSE_MEMO_2026_09_24.md documented the
-same invariant as `KNOWN_LIMITATION` per ADR-0095.
+WU_RP_013_RECEIPT, WU_RP_012_RECEIPT) documented invariant 3 (archive
+MANIFEST.json) as `FAIL_PROVEN`. The SESSION_PAUSE_MEMO_2026_09_24.md
+and WU_RP_046_R2_SLICE_RECEIPT documented the same invariant as
+`KNOWN_LIMITATION` per ADR-0095.
 
 The certifier's DAG-maximal commit selection (T0E-EVID-01 E1.1) picks
-the newer SESSION_PAUSE_MEMO commit; the marker-free-form parses the
-line as KNOWN_LIMITATION (now a recognised status, T0E-EVID-01 E3.1).
-Final status: KNOWN_LIMITATION, which causally supersedes the older
-FAIL_PROVEN per ADR-0095.
+the newest evidence commit. As of `HEAD=fb13048a`, this receipt is the
+newest commit mentioning UAT-RP-005; it documents the disposition and
+certifies the supersedence. The marker below states the resolved
+status per ADR-0095.
 
 The UAT is NOT certified as COVERED (it isn't) but it IS no longer
 blocking R4 (KNOWN_LIMITATION is non-blocking).
+
+UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=56467ed2 | tests=supersedence_per_ADR-0095 | exit=0
 
 ## E3 — Acceptance Criteria
 

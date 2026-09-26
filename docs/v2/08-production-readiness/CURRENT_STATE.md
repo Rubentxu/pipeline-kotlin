@@ -7,28 +7,31 @@
 
 | Field | Value |
 |---|---|
-| **Generated at (UTC)** | `2026-09-26T09:46:00Z` |
+| **Generated at (UTC)** | `2026-09-26T10:21:42Z` |
 | **Generator** | `scripts/gen-current-state-projection.py` |
 | **Generator SHA** | `0c5a4c1d1bd3a0a7` |
-| **Output SHA-256 (self)** | `b7e724e70655ec6a37fc743d1c22faa063ca135b7dfc381bef706c4a53d54239` |
+| **Output SHA-256 (self)** | `31cfb27fce0cc5865fc8cb9fee8bf1e5d9bbbf989be01beb5c117254c7bfa9a2` |
 
 ## Git
 
 | Field | Value |
 |---|---|
-| **HEAD** | `c3c13c18d1b97aa0bc2f884ac9f67338203f163d` |
+| **HEAD** | `ddaba87dbbba364da1c2c9dfb68c214a1b70a695` |
 | **Branch** | `wu/rp-053r-red-fixtures` |
 | **origin/main** | `acc903875d70f939713786d71a6331bb6ccf7dc9` |
-| **origin/wu/rp-053r-red-fixtures** | `5a00b33d52c0640cd8f4fa65d68ab5ee4b13dd76` |
+| **origin/wu/rp-053r-red-fixtures** | `ddaba87dbbba364da1c2c9dfb68c214a1b70a695` |
 | **HEAD ahead of origin/wu/rp-053r-red-fixtures** | `0` |
 | **HEAD behind origin/wu/rp-053r-red-fixtures** | `0` |
-| **Working tree** | `4 files modified` |
+| **Working tree** | `7 files modified` |
 
 Working-tree modifications (paths):
 - ` M .agent/SESSION_POINTER.md`
 - ` M .agent/TECH_DEBT_BACKLOG.md`
 - ` M .agent/WORK_JOURNAL.md`
-- ` M scripts/gen-current-state-projection.py`
+- ` M docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md`
+- `?? docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md`
+- `?? scripts/gen-current-uat-status.py`
+- `?? scripts/test_gen_current_uat_status.py`
 
 ## Releases
 
@@ -55,7 +58,7 @@ Working-tree modifications (paths):
 ## Receipts inventory
 
 - Total receipts in `docs/v2/07-uat/`: **272**
-- Receipts modified in last 7 days: **105**
+- Receipts modified in last 7 days: **104**
 
 ## Tech debt ledger
 
@@ -77,4 +80,4 @@ git HEAD (local) > origin HEAD (remote) > receipts
 ```
 
 Conflicting candidate SHAs fail-loud (see `--strict` flag).
-<!-- output_sha256: b7e724e70655ec6a37fc743d1c22faa063ca135b7dfc381bef706c4a53d54239 -->
+<!-- output_sha256: 31cfb27fce0cc5865fc8cb9fee8bf1e5d9bbbf989be01beb5c117254c7bfa9a2 -->

@@ -1,7 +1,7 @@
 # Technical Debt Backlog — Active Items
 
 **Owner:** orchestrator-direct (pattern preautorizado)
-**Last updated:** 2026-09-26 (D-001 RESUELTO + D-005 + D-006 + D-008 + D-009)
+**Last updated:** 2026-09-26 (D-001 RESUELTO + D-002 RESUELTO + D-003 RESUELTO + D-004 RESUELTO + D-005 + D-006 + D-007 OBSOLETO + D-008 + D-009)
 **Source of truth:** este archivo + tickets en GitHub Issues (cuando aplique)
 
 ## D-001 — PosixFilePermissions constants duplication (P3)
@@ -114,6 +114,8 @@ orden del roadmap):
 **Severity:** P2 (CI-infra flake, ya documentado)
 **Scope:** `:pipeline-credentials-api:test --tests Rp022ThroughputProbe`
 
+**Status:** RESUELTO en `7904b3c3` (2026-09-26, bloque autónomo).
+
 ### Contexto
 
 Test de throughput mide 50 MiB procesados en streaming-redactor contra
@@ -127,10 +129,17 @@ iteration no es suficiente y el segundo run puede caer bajo el floor.
 - Diagnosticado en WU-RP-046 R2 (commit 1d6b3c2f historia).
 - Re-dispatch de CI suele resolverlo (JIT warming between runs).
 
-### Acción sugerida
+### Resolución
 
-Aumentar `repeat(1)` warmup a `repeat(3)` con un setUp explícito del
-registry + measurement aislado. Cambio de 1 línea. Riesgo: bajo.
+Commit `7904b3c3`: aumenta `repeat(1)` → `repeat(3)` para amortiguar
+class-loading + JIT compilation antes de la medición. Comentario
+inline explica la motivación y cita D-002.
+
+Verificación local tras el fix:
+- `repeat(3)` warmup → medición 2245ms = 22.3 MB/s (PASS, antes 2194ms = 22.8 MB/s).
+- Test completo en 9.701s (antes 5.107s); el +4.5s es el coste de los
+  2 warmups extra, asumido por el fix.
+- Módulo `:pipeline-credentials-api:test` 53/53 PASS.
 
 ### Por qué NO se hizo en WU-RP-051
 
@@ -422,7 +431,10 @@ B10_W1B + LPR-011). Cero cambios en production.
 **Detected:** 2026-09-26 (T0.E re-verify, corrected from initial False-Green
 classification). Evidence: `docs/v2/08-production-readiness/TRAIN_0_T0E_RECEIPT.md`.
 
-**Symptom:**
+**Status:** **OBSOLETO** — la regresión descrita ya estaba corregida en commits
+anteriores al cierre de T0.E; verificado el 2026-09-26.
+
+### Symptom original (descrito en T0.E)
 
 - The regex `\bFAIL\b` (case-insensitive) inside `STATUS_PATTERNS` of
   `scripts/gen-current-uat-status.py` matches hyphen-words such as
@@ -433,28 +445,44 @@ classification). Evidence: `docs/v2/08-production-readiness/TRAIN_0_T0E_RECEIPT.
   as long as the annotation exists, even without dedicated cert-receipt
   evidence.
 
-**Concrete impact observed:**
+### Verificación del estado actual (2026-09-26)
 
-- At C (committed): UAT-RP-013 = COVERED (false positive caused by
-  archived `COVERED (RP-1)` narrative).
-- After regen at I (post-T0.D): UAT-RP-013 = FAIL_PROVEN (true
-  classification, but admission-check R4 interpreted as new blocking
-  state). Same drift for UAT-RP-001..004, UAT-RP-022 etc.
+El regex actual en `scripts/gen-current-uat-status.py` L111-113 es:
 
-**Repair sketch:**
+```python
+EXPLICIT_PATTERN = re.compile(
+    r"\b(?:" + "|".join(EXPLICIT_STATUSES) + r")\b", re.I
+)
+```
 
-- Tighten `STATUS_PATTERNS`: `\bFAIL_PROVEN\b` only (no fallback
-  `\bFAIL\b`); require explicit marker.
-- For COVERED: require either a `certified_at_sha` annotation in the
-  matched line OR a dedicated cert-receipt path on disk.
-- Add unit tests in `scripts/test_gen_current_uat_status.py`
-  (hyphen-FAIL, transient-COVERED, clean baseline).
-- After fix: explicit reclassification of UAT-RP-013 via fe-de-erratas
-  in CURRENT_UAT_STATUS.md (operator decision).
+donde `EXPLICIT_STATUSES = ["FAIL_PROVEN", "BLOCKED", "REJECTED",
+"COVERED", "PARTIAL", "KNOWN_LIMITATION", "NOT_RUN"]`. **No hay un
+fallback `\bFAIL\b`**. Las pruebas de hyphen-FAIL en
+`scripts/test_gen_current_uat_status.py` (L483-487) verifican
+explicitamente que `fail-closed` y `fail-fast` NO se clasifican como
+`FAIL_PROVEN`:
 
-**Blocks TRAIN-0 T0.E close.** Does NOT block product / RP-5 substance
-but blocks certifier state accuracy. Defer to TRAIN-1 if operator
-opts for option (2) in T0.E receipt.
+```python
+m = self.mod.EXPLICIT_PATTERN.findall("rechazo fail-closed antes de nuevos efectos")
+# → []  (assertNotIn FAIL_PROVEN)
+m = self.mod.EXPLICIT_PATTERN.findall("the orchestrator uses fail-fast semantics")
+# → []  (assertNotIn FAIL_PROVEN)
+```
+
+Resultado: 27/27 tests del certifier PASAN en este SHA
+(`7904b3c3`).
+
+### Conclusión
+
+D-007 describía un bug que ya fue corregido antes del cierre de
+T0.E (probablemente durante el propio T0.E corrective slice). El
+estado correcto del certifier actual se alinea con la
+"Repair sketch" propuesta en D-007. No requiere acción.
+
+### Accion tomada
+
+Marcar como OBSOLETO. Eliminar la entrada del backlog de trabajo
+activo pero preservar la nota historica para auditoria.
 
 ---
 

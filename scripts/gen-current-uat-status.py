@@ -160,7 +160,7 @@ APPLICABILITY_GATES = {
 _MARKER_PATTERN = re.compile(
     r"^\s*UAT-EVIDENCE\s*\|"                # marker header
     r"\s*`?(UAT-RP-\d{3})`?\s*\|"            # UAT id (column 2)
-    r"\s*(FAIL_PROVEN|BLOCKED|REJECTED|COVERED|PARTIAL|NOT_RUN)\s*\|"
+    r"\s*(FAIL_PROVEN|BLOCKED|REJECTED|COVERED|PARTIAL|KNOWN_LIMITATION|NOT_RUN)\s*\|"
     r"\s*candidate\s*=\s*`?([0-9a-f]{4,64})`?"
     r"(?:\s*\|\s*([^\n]*))?",                # optional trailing cols
     re.IGNORECASE | re.MULTILINE,

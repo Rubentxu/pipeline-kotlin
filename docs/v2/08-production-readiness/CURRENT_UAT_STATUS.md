@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T13:41:32Z
-**Source of truth:** `git log` HEAD `c3336b7` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-26T13:47:03Z
+**Source of truth:** `git log` HEAD `9c0c271` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -13,7 +13,7 @@
 | `UAT-RP-002` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-002 | COVERED | candidate=56467ed2 | tests=oracle_a_gradlew_version+oracle_b_workflow_artifact_upl |
 | `UAT-RP-003` | **REFERENCED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | - Evidencia: certification del plugin + UAT-RP-003 (ADR-0069). |
 | `UAT-RP-004` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-004 | COVERED | candidate=56467ed2 | tests=DslCompiledPipelineCompilerTest:13+CliCompileErrorExits |
-| `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/SESSION_PAUSE_MEMO_2026_09_24.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
+| `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | 3. UAT-RP-005 invariant 3 (MANIFEST.json): FAIL_PROVEN, ADR-0095, difiere a |
 | `UAT-RP-006` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-006 (HTML injection)**: covered by round 1 (5 rp011 tests). |
 | `UAT-RP-007` | **REFERENCED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-007 (paths publish)**: covered by round 2 (5 rp011r2 tests). |
 | `UAT-RP-008` | **COVERED** | `docs/v2/07-uat/WU_RP_012_RECEIPT.md` | - **UAT-RP-008** (Stash symlinks): covered by 7 rp012 tests (this WU). |
@@ -23,7 +23,7 @@
 | `UAT-RP-012` | **COVERED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | | WU-RP-031 | extracciones StructuralPreparation→…→StepExecutor con golden journal/replay + kill/resume | CUMPLE — recei |
 | `UAT-RP-013` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=56467ed2 | tests=DivergenceDetectorTest:4 | exit=0 |
 | `UAT-RP-014` | **REFERENCED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | (UAT-RP-014). Prioridad alta dentro de RP-4 (aislamiento runner, WU-RP-041). |
-| `UAT-RP-015` | **NOT_RUN** | `—` | _no evidence yet_ |
+| `UAT-RP-015` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2Secret |
 | `UAT-RP-016` | **REFERENCED** | `docs/v2/07-uat/WU_RP_023_RECEIPT.md` | - UAT-RP-016 (PERF): evidencia formal en `WU_RP_022_RECEIPT.md` (baseline |
 | `UAT-RP-017` | **REFERENCED** | `docs/v2/07-uat/RP2_GATE_RECEIPT.md` | - UAT-RP-017: `WURp023ObservationModesUatTest` (HF2, binario real de este SHA): |
 | `UAT-RP-018` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | - UAT-RP-018: PARTIAL — límites de recursos OS requieren sandbox-profile 'os' |
@@ -42,9 +42,8 @@
 ## Status Summary
 
 - **Total UATs (PRDY-003 contract):** 27
-- **COVERED:** 11
+- **COVERED:** 12
 - **KNOWN_LIMITATION:** 2
-- **NOT_RUN:** 1
 - **REFERENCED:** 10
 - **NOT_APPLICABLE:** 3
 - **KNOWN_LIMITATION:** 2

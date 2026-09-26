@@ -5,13 +5,18 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredArray
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredObject
+import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
+import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FileEntry
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesOutput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.FindFilesPattern
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -28,21 +33,23 @@ import kotlinx.serialization.json.put
  *   output : { "basePath": <string>, "patternEcho": <pattern>,
  *              "files": [{ "name": ..., "path": ..., "directory": ...,
  *                          "length": ..., "lastModified": ... }, ...] }
+ *
+ * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * format unchanged.
  */
 object CoreUtilsFindFilesInputCodec : StepCodec<FindFilesInput> {
 
-    override fun encode(input: FindFilesInput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(input: FindFilesInput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("base", input.base)
             put("pattern", patternToJson(input.pattern))
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): FindFilesInput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val base = obj.getValue("base").jsonPrimitive.content
-        val pattern = parsePattern(obj.getValue("pattern"))
+        val obj = PipelineJson.decode(encoded)
+        val base = obj.requiredString("base")
+        val pattern = parsePattern(obj.requiredObject("pattern"))
         return FindFilesInput(base = base, pattern = pattern)
     }
 
@@ -76,10 +83,10 @@ object CoreUtilsFindFilesInputCodec : StepCodec<FindFilesInput> {
      */
     fun parsePattern(elem: kotlinx.serialization.json.JsonElement): FindFilesPattern {
         val obj = elem.jsonObject
-        return when (val kind = obj.getValue("kind").jsonPrimitive.content) {
+        return when (val kind = obj.requiredString("kind")) {
             "none" -> FindFilesPattern.None
             "glob" -> {
-                val g = obj.getValue("glob").jsonPrimitive.content
+                val g = obj.requiredString("glob")
                 val ex = when (val e = obj["excludes"]) {
                     null, JsonNull -> null
                     else -> e.jsonPrimitive.content
@@ -87,8 +94,8 @@ object CoreUtilsFindFilesInputCodec : StepCodec<FindFilesInput> {
                 FindFilesPattern.Glob(g, ex)
             }
             else -> throw PluginStepException(
-                failure = dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.USER,
+                failure = PipelineFailure(
+                    kind = FailureKind.USER,
                     message = "core-utils.findFiles: unknown pattern kind '$kind' (corrupt journal?)",
                 ),
             )
@@ -107,11 +114,11 @@ object CoreUtilsFindFilesInputCodec : StepCodec<FindFilesInput> {
 
 object CoreUtilsFindFilesOutputCodec : StepCodec<FindFilesOutput> {
 
-    override fun encode(output: FindFilesOutput): EncodedStepValue {
-        val obj = buildJsonObject {
+    override fun encode(output: FindFilesOutput): EncodedStepValue = PipelineJson.encode(
+        buildJsonObject {
             put("basePath", output.basePath)
             put("patternEcho", patternToJson(output.patternEcho))
-            put("files", kotlinx.serialization.json.buildJsonArray {
+            put("files", JsonArray(buildJsonArray {
                 output.files.forEach { e ->
                     add(buildJsonObject {
                         put("name", e.name)
@@ -121,24 +128,23 @@ object CoreUtilsFindFilesOutputCodec : StepCodec<FindFilesOutput> {
                         put("lastModified", e.lastModified)
                     })
                 }
-            })
+            }))
         }
-        return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-    }
+    )
 
     override fun decode(encoded: EncodedStepValue): FindFilesOutput {
-        val obj = Json.parseToJsonElement(encoded.value).jsonObject
-        val basePath = obj.getValue("basePath").jsonPrimitive.content
-        val patternEcho = CoreUtilsFindFilesInputCodec.parsePattern(obj.getValue("patternEcho"))
-        val arr = obj.getValue("files").let { (it as kotlinx.serialization.json.JsonArray) }
+        val obj = PipelineJson.decode(encoded)
+        val basePath = obj.requiredString("basePath")
+        val patternEcho = CoreUtilsFindFilesInputCodec.parsePattern(obj.requiredObject("patternEcho"))
+        val arr = obj.requiredArray("files")
         val files = arr.map { fe ->
             val e = fe.jsonObject
             FileEntry(
-                name = e.getValue("name").jsonPrimitive.content,
-                path = e.getValue("path").jsonPrimitive.content,
-                directory = e.getValue("directory").jsonPrimitive.content.toBoolean(),
-                length = e.getValue("length").jsonPrimitive.content.toLong(),
-                lastModified = e.getValue("lastModified").jsonPrimitive.content.toLong(),
+                name = e.requiredString("name"),
+                path = e.requiredString("path"),
+                directory = e.requiredString("directory").toBoolean(),
+                length = e.requiredString("length").toLong(),
+                lastModified = e.requiredString("lastModified").toLong(),
             )
         }
         return FindFilesOutput(basePath = basePath, patternEcho = patternEcho, files = files)

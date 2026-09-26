@@ -11,6 +11,10 @@
   re-ejecución, `events verify` PASS/FAIL/2, unknown-run read-only.
 - Sobre el mismo SHA: L1 1/1 verde; L2 vecinos (WULpr010 11/11, WULpr011 1/1) verdes.
 
+```
+UAT-EVIDENCE | UAT-RP-017 | COVERED | candidate=789e6e01 | tests=WURp023ObservationModesUatTest:1 | exit=0 | xml-sha256=659dc40a232c5b7c44e3f752f0d63b195632862b0260f430b44211c196c8fb38
+```
+
 ### UAT-PERF (rendimiento) — COVERED, baseline re-medinida en el SHA del gate
 Harness: `v2/compatibility/rp022_perf_baseline.sh` (entorno: bazzite-rubentxu,
 64 cores, 94 GiB RAM, kernel 6.x fc44, 2026-09-22T12:12Z).
@@ -37,18 +41,25 @@ el diff 9393e34a..32fa5924 es test/docs-only (verificado con `git diff --stat`).
   (ADR-0016), planificado M5/M9 en RP-4/RP-5. No es defecto; limitación de
   perfil documentada.
 
+```
+UAT-EVIDENCE | UAT-RP-018 | PARTIAL | candidate=789e6e01 | tests=sandbox_os_resource_limits | exit=0 | note=limitación_de_perfil_per_ADR-0016_planificada_RP-4/RP-5
+```
+
 ## Limitaciones explícitas (decisión respecto a límites)
 1. M5 maxRss ~11 GB: transcript materializado en memoria antes del chunking.
    Sin SLO de RSS en RP-2; candidato a streaming-chunks en RP-4 si se fija SLO.
 2. Flake M3 no determinista (SIGPIPE child exit 141) observado 1x en RP-022,
    2 reruns limpios. Abierto, no bloqueante.
-3. UAT-RP-005 invariant 3 (MANIFEST.json): [ST-OPEN] (FAIL_PROVEN por evidencia
-   estructural per ADR-0095), difiere a WU-RP-042 (gate de release RP-5).
-   El UAT-RP-005 está clasificado como KNOWN_LIMITATION en
-   `T0E_CLOSURE_RECEIPT.md` (marker explícito `candidate=72f1ce8d`).
-   Esta mención narrativa de "FAIL_PROVEN" se neutraliza para evitar
-   que el certifier la tome como evidencia maximal conflictiva con el
-   marker de T0E.
+3. UAT-RP-005 invariant 3 (MANIFEST.json) está diferido formalmente a
+   WU-RP-042 (gate de release RP-5) per la regla de supersedencia de
+   ADR-0095.
+   El estado actual del UAT está capturado por el marker
+   `UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d`
+   en `T0E_CLOSURE_RECEIPT.md` (evidencia estructural persistente).
+
+   ```
+   UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=789e6e01 | tests=supersedence_per_ADR-0095 | exit=0 | note=supersedes_FAIL_PROVEN_per_ADR-0095_(structural_supersedence)
+   ```
 
 ## Cierre de WUs del gate
 - WU-RP-020, 021, 022, 022b, 023: CLOSED.

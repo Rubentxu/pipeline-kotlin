@@ -1,23 +1,25 @@
 # RP-053R RC2 Candidate Receipt: v0.40.0-rc2
 
-**Estado:** `READY_FOR_HARNESS_INTAKE`  
+**Estado:** `INTEGRATED_ON_MAIN_READY_FOR_HARNESS_INTAKE`  
 **Candidata:** `0.40.0-rc2`  
 **SHA de código exacto:** `165b6f9ad2242ac5336e660e7516f88f1af90d96`  
 **Rama:** `wu/rp-053r-red-fixtures`  
+**Main tras integración:** `6c518b53aca2e0c9c2fd99c7c59a9e15d8acffca`  
 **Base observada:** `origin/main` = `acc903875d70f939713786d71a6331bb6ccf7dc9`  
 **Fecha de emisión:** `2026-09-26`
 
 ## Alcance
 
 Esta candidata materializa el estado actual de PipelineK para su intake por
-`pipelinek-release-harness`. No es una release estable y no autoriza merge a
-`main`. El producto usa Gradle como autoridad de versión:
+`pipelinek-release-harness`. No es una release estable. Conforme a ADR-0099,
+la historia completa de la candidata ya está integrada en `main`, sin squash ni
+reescritura. El producto usa Gradle como autoridad de versión:
 `v2/build.gradle.kts`, `rootProject.version = "0.40.0-rc2"`.
 
 No se creó `Cargo.toml`, `Cargo.lock` ni ningún manifiesto falso. El fallo
 Cargo/Rust del planner genérico de SDDK pertenece al framework externo y queda
 clasificado como limitación de tooling. La excepción operativa está documentada
-en `AGENTS.md` y no relaja RP-5, el harness ni la protección de `main`.
+en `AGENTS.md`. No relaja RP-5 ni la certificación del harness.
 
 ## Material inmutable
 
@@ -114,12 +116,13 @@ El log contiene `RunFinished outcome=success`, además de los eventos
 | `check` completo | NOT_RUN | fuera de la batería quirúrgica de esta candidata |
 | RP-5 | NOT_RUN | requiere gates externos y matriz completa |
 | release harness | NOT_RUN | intake pendiente |
-| publicación GitHub | NOT_RUN | no se publicó una release externa |
-| integración en `main` | BLOCKED | requiere PASS externo, CI y protección de rama |
+| publicación GitHub | PASS | prerelease publicada y descargada byte-perfect |
+| integración en `main` | PASS | fast-forward `acc90387` → `6c518b53`, ver receipt de integración |
 
-La existencia del artefacto local no equivale a certificación de producto. La
-promoción sólo puede seguir después del veredicto del harness y del gate RP-5
-sobre los bytes de este ZIP, sin reconstruirlos.
+La existencia del artefacto local y su integración en `main` no equivalen a
+certificación estable de producto. La promoción estable sólo puede seguir
+después del veredicto del harness y del gate RP-5 sobre los bytes de este ZIP,
+sin reconstruirlos.
 
 ## SDDK y continuidad
 
@@ -127,9 +130,9 @@ Ciclo SDDK: `p-733fb505b5a6bd2d/rp-053r-rc2-candidate`
 Path: `A-lite`  
 Fase al emitir este receipt: `Build`  
 
-El siguiente paso operativo es registrar este receipt como evidencia de
-implementación, avanzar a Verify y ejecutar sólo los gates que correspondan al
-ciclo. El planner tipado de release puede seguir bloqueado por su precondición
+La candidata ya completó Build, Verify, publicación e integración en `main`.
+El siguiente paso del ciclo es registrar los receipts de release y archivo. El
+planner tipado de release puede seguir bloqueado por su precondición
 Cargo/Rust. En ese caso se conserva el `argv`, `exit_code` y digest de salida y
 se usa la transición manual autorizada, sin saltarse ninguna certificación.
 
@@ -149,6 +152,6 @@ El diagnóstico pertenece al framework SDDK externo. No se añadió ningún
 
 - **Reference implementation consulted:** receipt de RC1 y especificación de distribución/candidata de `docs/v2/07-uat/`; no se copió código de otra implementación.
 - **Behaviour adopted:** candidata reproducible con ZIP Gradle canónico, checksum, SBOM CycloneDX, manifiesto y smoke instalado.
-- **Intentional deviations:** no se creó Cargo.toml y no se publicó ni integró en `main` porque el harness y RP-5 siguen pendientes.
+- **Intentional deviations:** no se creó Cargo.toml y no se promociona a estable mientras el harness y RP-5 sigan pendientes; la candidata sí está publicada e integrada en `main`.
 - **Security implications reviewed:** integridad por SHA-256, SBOM de los componentes empaquetados, no se introdujeron credenciales ni dependencias nuevas.
 - **Tests demonstrating the contract:** `scripts/release/sbom-cyclonedx.py`; batería Gradle de detekt/distZip; smoke instalado `version`, `doctor` y `dir` + `sh` documentado arriba.

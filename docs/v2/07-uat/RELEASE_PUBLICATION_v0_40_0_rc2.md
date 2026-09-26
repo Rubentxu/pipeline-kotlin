@@ -1,24 +1,28 @@
 # Release Publication Receipt: v0.40.0-rc2
 
-**Status:** `PUBLISHED_PRERELEASE_FOR_HARNESS_INTAKE`  
+**Status:** `PUBLISHED_PRERELEASE_AND_INTEGRATED_ON_MAIN`  
 **Release URL:** <https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.40.0-rc2>  
 **Tag:** `v0.40.0-rc2`  
 **Tag target commit:** `165b6f9ad2242ac5336e660e7516f88f1af90d96`  
 **Published at:** `2026-09-26T20:28:44Z`  
 **Branch uploaded:** `wu/rp-053r-red-fixtures`  
+**Main integration commit:** `6c518b53aca2e0c9c2fd99c7c59a9e15d8acffca`  
 **Stable release:** no  
 **Harness verdict:** pending external intake
 
 ## Publication scope
 
 The RC2 candidate was published as a GitHub prerelease. The four assets are the
-same bytes produced and verified locally. This publication does not merge the
-working branch into `main` and does not claim RP-5 or harness certification.
+same bytes produced and verified locally. Following ADR-0099, the complete
+candidate history was then fast-forwarded into `main` at
+`6c518b53aca2d4d7f25c5a2b2b45de8ec3c890a3`, without squash or history rewrite.
+This publication does not claim RP-5 or harness certification.
 
 The GitHub release metadata reports `targetCommitish=main`, which is platform
 metadata for the release record. The immutable tag resolves to the candidate
 source commit above. `origin/main` remained
-`acc903875d70f939713786d71a6331bb6ccf7dc9`.
+`acc903875d70f939713786d71a6331bb6ccf7dc9` before integration and
+`6c518b53aca2e0c9c2fd99c7c59a9e15d8acffca` after integration.
 
 ## Assets
 
@@ -48,13 +52,13 @@ candidate with `cmp`. The release is not draft and is marked prerelease.
 - External harness intake and certification: `NOT_RUN` here by repository boundary.
 - RP-5 product gate: `NOT_RUN`.
 - Stable promotion: `BLOCKED_PENDING_HARNESS`.
-- Merge to `main`: `NOT_PERFORMED`.
+- Merge to `main`: `PASS` via fast-forward, preserved in `RC2_MAIN_INTEGRATION_RECEIPT_2026_09_26.md`.
 - SDDK cycle archive: pending release approval and required release/merge receipts.
 
 ## Closure record
 
 - **Reference implementation consulted:** RC1 publication receipt and the repository distribution roadmap.
 - **Behaviour adopted:** publish one immutable ZIP and its matching SBOM, manifest and checksum file as a prerelease.
-- **Intentional deviations:** no stable release and no main merge before external certification.
+- **Intentional deviations:** no stable release before external certification; the candidate is integrated on `main` before stable promotion as required by ADR-0099.
 - **Security implications reviewed:** assets were hash-verified after download; no credentials or mutable source references are part of the candidate material.
 - **Tests demonstrating the contract:** local RC2 candidate receipt plus the byte-perfect GitHub download verification above.

@@ -16,8 +16,8 @@ final branch tip; subsequent receipt-only commits are tracked in
 `WORK_JOURNAL.md` and `TECH_DEBT_BACKLOG.md`.
 **Certifier:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01).
 **Admission:** 6/6 PASS (`scripts/admission-check.py`).
-**Hermetic tests:** 27 (certifier) + 44 (admission) + 8 (classify) +
-9 (consult) + 6 (projection) = **94/94 PASS**.
+**Hermetic tests:** 27 (certifier) + 46 (admission) + 8 (classify) +
+9 (consult) + 6 (projection) = **96/96 PASS**.
 **Status:** COVERED=10 / KNOWN_LIMITATION=1 / REFERENCED=13 /
 NOT_APPLICABLE=3 = 27 UATs.
 
@@ -289,11 +289,15 @@ UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=72f1ce8d | tests=supers
       UAT-EVIDENCE marker.
 - [x] AC3b: R4 diagnostic exposes blocking_count=N and the full
       all_blocking_uats=[...] list (not just first 5).
-- [x] AC3c: E2 oracles re-executed at this HEAD with fresh JUnit XML
+- [x] AC3c: R3 diagnostic exposes dirty_count=N and the full
+      all_dirty=[...] list (mirrors the R4 fix).
+- [x] AC3d: R5 diagnostic exposes failure_count=N and the full
+      all_failures=[...] list (mirrors the R4 fix).
+- [x] AC3e: E2 oracles re-executed at this HEAD with fresh JUnit XML
       digests in T0E_EVID_01_RECEIPT.md (E2-VERIFY section).
-- [x] AC4: 94/94 hermetic tests PASS in dev repo and fresh clones
-      (43+1 R4 admission tests + 27 certifier + 8 classify + 9 consult
-      + 6 projection).
+- [x] AC4: 96/96 hermetic tests PASS in dev repo and fresh clones
+      (46 admission tests [43 pre-existing + R3/R4/R5 message tests]
+      + 27 certifier + 8 classify + 9 consult + 6 projection).
 - [x] AC5: 6/6 admission rules PASS in dev repo (3 consecutive runs)
       and fresh clones.
 - [x] AC6: Certifier output is byte-identical across dev repo and

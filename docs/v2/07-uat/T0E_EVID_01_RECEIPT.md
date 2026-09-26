@@ -334,3 +334,16 @@ UAT-RP-015b — Lpr011r2SecretRedactionAtRestUatTest:
 
 Total: 65/65 tests across the five E2 classes, all green at the
 live candidate.
+
+Note on digest stability: JUnit XML SHA-256 digests are not
+portable across re-runs because Gradle writes a fresh
+`<testsuite ...>` wrapper per invocation (timestamp + hostname +
+random id). The digests above were captured at the live branch
+tip **at the moment of verification**, not at HEAD `85b906c9`
+specifically. They serve as a witness that the E2 oracles ran
+and produced the claimed counts.
+
+A re-run at any later commit produces **different digests with
+identical test counts** (13/3/28/4/6/11 = 65/65 PASS). The
+stable invariant is the count + failures=0 + errors=0, not the
+specific SHA-256.

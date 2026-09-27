@@ -94,6 +94,20 @@ class MainCliParsingTest {
     }
 
     @Test
+    fun `unsupported sandbox profile message cites ADR-0016, M5, M9, and the rejected value`() {
+        // D-012 fix: CliError.UnsupportedSandboxProfile.toString() must include
+        // the cross-references the operator expects to see at the fail-closed
+        // boundary (ADR-0016 sandbox policy, M5 OS-level isolation, M9 multi-tenant
+        // gate) plus the rejected value verbatim for log correlation.
+        val error = CliError.UnsupportedSandboxProfile("os")
+        val msg = error.toString()
+        assertTrue(msg.contains("ADR-0016"), "must cite ADR-0016: $msg")
+        assertTrue(msg.contains("M5"), "must cite M5: $msg")
+        assertTrue(msg.contains("M9"), "must cite M9: $msg")
+        assertTrue(msg.contains("os"), "must echo the rejected value 'os': $msg")
+    }
+
+    @Test
     fun `plugin jars remain ordered and share one flag collection`() {
         val config = parsed(
             arrayOf(

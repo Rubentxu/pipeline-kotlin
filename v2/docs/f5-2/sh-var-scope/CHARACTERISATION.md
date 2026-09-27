@@ -445,7 +445,7 @@ the runtime (just byte-level pass-through to disk).
 ## 6. S2 — three-phase byte-level probe (2026-09-19)
 
 Per the user's instruction in
-[`docs/v2/07-uat/E-EM-11.md` step 6](../uat/E-EM-11.md): "reproduce
+[`docs/v2/07-uat/E_EM_11_CLOSURE_RECEIPT.md`](../../../../docs/v2/07-uat/E_EM_11_CLOSURE_RECEIPT.md) step 6: "reproduce
 the three authoring forms with byte-level precision, isolate the
 escaper, locate the first divergence point."
 

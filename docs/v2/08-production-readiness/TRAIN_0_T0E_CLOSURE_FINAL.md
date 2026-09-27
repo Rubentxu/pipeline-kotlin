@@ -57,8 +57,8 @@ T0.E Certifier & Evidence Closure work shipped across the EVID-01 cycle
   for SDKMAN / REMOTE / Jenkins profile).
 - **E4 Honest regeneration:** `CURRENT_UAT_STATUS.md` regenerated, no
   manual row edits, every delta explained.
-- **E5 Gate proof:** 6/6 admission PASS; 27 certifier tests + 46 admission
-  tests + 8 classify + 9 consult + 6 projection = **96/96 hermetic
+- **E5 Gate proof:** 6/6 admission PASS; 29 certifier tests + 46 admission
+  tests + 8 classify + 9 consult + 6 projection = **98/98 hermetic
   tests PASS**, replicated across dev repo + 2 fresh clones.
 - **E6 Final receipt:** T0E_CLOSURE_RECEIPT (HEAD `e393eb89`) +
   T0E_EVID_01_E2_VERIFY_AT_9D0607D7 (HEAD `9d0607d7`, this commit's
@@ -147,8 +147,10 @@ oracle set, the full `:pipeline-application:test --tests 'Pipeline*'
 --tests '*StepContract*' --tests '*UatLocal*'` set was executed:
 
 ```text
-Result: 14/14 PASS for UatLocal007SandboxProfileTest (1 failure, 13 pass)
-        → UAT-L7-TC-003 FAILED: 1/14
+Result: BUILD FAILED in 6m 51s
+  Failures: 1
+  - UatLocal007SandboxProfileTest > UAT-L7-TC-003 FAILED
+    (UatLocal007SandboxProfileTest.kt:816 — assertion `output.contains("ADR-0016")` failed)
 ```
 
 **Pre-existing failure (NOT_REGRESSION from R5.1):**
@@ -238,9 +240,14 @@ machine-readable marker block carries that explicit marker.
 ## 3 — Provenance sample
 
 ```text
-Receipts under docs/v2/07-uat/ : 285 (at I = 9d0607d7)
+UAT receipts under docs/v2/07-uat/ (tracked): 306 at I = 9d0607d7
+                                       307 at HEAD = 14cc4368 (this commit adds one)
 Receipts cited in T0E_CLOSURE_RECEIPT markers: 17
-Receipts added in this session: 1 (T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md)
+Files added by this session's T0.E closure commit (14cc4368):
+  - docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md (UAT evidence + E2-VERIFY)
+  - docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md (this file)
+  - docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md (regen at I)
+  - .agent/TECH_DEBT_BACKLOG.md (D-008 entry)
 All cited receipts: last-commit ancestor of I (verified via git log).
 ```
 
@@ -265,7 +272,7 @@ independent T0-side fix.
 - [x] T0.E Evidence reconstructed (E2 — 5 UATs, 65 tests, all PASS).
 - [x] T0.E Special dispositions applied (E3 — UAT-RP-005/025/026/027).
 - [x] T0.E CURRENT_UAT_STATUS regenerated (E4).
-- [x] T0.E Gate proven (E5 — admission 6/6, hermetic 96/96, fresh
+- [x] T0.E Gate proven (E5 — admission 6/6, hermetic 98/98, fresh
       clones).
 - [x] T0.E Integration candidate formed (E2.1 above).
 - [x] T0.E Admission at I (E2.2 above — 6/6 PASS).

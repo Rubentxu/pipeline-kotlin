@@ -1173,3 +1173,28 @@ is CliParseResult.Rejected -> {
   one-commit fix in TRAIN-0.
 - Receipt: `docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md`
   §2.4 (pre-existing failure isolation).
+
+### Resolved (2026-09-27T09:30Z, commit `76aca21c`)
+
+Closed in the TRAIN-0 closure thread by autonomous WI
+`b0ff1a11-8db0-4707-8600-0576ed0c5819`. Single-commit fix on
+`wu/rp-053r-red-fixtures`:
+
+- Override `toString()` on `CliError.UnsupportedSandboxProfile` so the
+  typed error message cites ADR-0016 / M5 / M9 and the rejected value.
+- Scope: `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CliParser.kt:38`
+  (one line expanded to a typed-error toString override + 5-line comment).
+- No contract change beyond toString. Data class equals is value-based,
+  so `MainCliParsingTest.kt:93` `assertEquals` is unaffected (verified).
+
+**Verification (rule 3 CIERRE REAL):**
+
+| Level | Result | Source |
+|---|---|---|
+| L0 compile | BUILD SUCCESSFUL in 3s | `gradlew :pipeline-application:compileKotlin` |
+| L1 single | 1/1 PASS (UAT-L7-TC-003) | `gradlew :pipeline-application:test --tests 'UatLocal007SandboxProfileTest.UAT-L7-TC-003*'` |
+| L2 class | 14/14 PASS, 0 failures, 0 errors | XML canary `TEST-dev.rubentxu.pipeline.v2.application.UatLocal007SandboxProfileTest.xml` timestamp=2026-09-27T09:28:18.474Z |
+| Cross | MainCliParsingTest PASS | `assertEquals` value-based unaffected |
+
+**Audit:** evidence `df2680d8-59ec-4dcb-a769-a41b15bba829` attached to WI
+b0ff1a11; SDDK closeout at commit `76aca21c929be8206cbcbe5a06763bbdbdaae990`.

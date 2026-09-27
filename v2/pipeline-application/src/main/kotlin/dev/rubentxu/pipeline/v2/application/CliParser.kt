@@ -35,7 +35,17 @@ sealed interface CliError {
     data class MissingOptionValue(val option: String) : CliError
     data object ConflictingDurablePolicies : CliError
     data class InvalidSandboxProfile(val value: String) : CliError
-    data class UnsupportedSandboxProfile(val value: String) : CliError
+    data class UnsupportedSandboxProfile(val value: String) : CliError {
+        // D-012: enrich the typed error message with cross-references so the
+        // fail-closed CLI surface cites the contract documents the operator
+        // expects to see at the boundary (ADR-0016 sandbox policy, M5 OS-level
+        // isolation, M9 multi-tenant gate). The value token echoes the rejected
+        // input verbatim so log scrapers can correlate.
+        override fun toString(): String =
+            "UnsupportedSandboxProfile(value=$value, ref=ADR-0016/M5/M9: " +
+                "'os' requires OS-level isolation which is out of scope for L3; " +
+                "use 'none' or 'local' instead.)"
+    }
     data class UnknownOption(val value: String) : CliError
     data object MissingScriptPath : CliError
 }

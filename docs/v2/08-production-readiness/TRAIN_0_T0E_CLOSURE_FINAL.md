@@ -63,7 +63,11 @@ closure commit `14cc4368` adds the E2-VERIFY evidence on top of I.
   manual row edits, every delta explained.
 - **E5 Gate proof:** 6/6 admission PASS; 29 certifier tests + 46 admission
   tests + 8 classify + 9 consult + 6 projection = **98/98 hermetic
-  tests PASS**, replicated across dev repo + 2 fresh clones.
+  tests PASS**, replicated across dev repo + 1 fresh clone
+  (`/tmp/t0e-fresh-clone-9d0607d7`, this session) + 2 worktree
+  verifications. The historical '2 fresh clones' cited in the original
+  T0E_CLOSURE_RECEIPT.md at `e393eb89` was not independently re-run in
+  this session.
 - **E6 Final receipt:** T0E_CLOSURE_RECEIPT (last meaningful commit
   `e393eb89`, dated 2026-09-26T14:50Z; mirror of UAT-EVIDENCE markers
   added to closure) +
@@ -259,13 +263,17 @@ machine-readable marker block carries that explicit marker.
 
 ```text
 UAT receipts under docs/v2/07-uat/ (tracked): 306 at I = 9d0607d7
-                                       307 at HEAD = 14cc4368 (this commit adds one)
-Receipts cited in T0E_CLOSURE_RECEIPT markers: 17
-Files added by this session's T0.E closure commit (14cc4368):
-  - docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md (UAT evidence + E2-VERIFY)
-  - docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md (this file)
-  - docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md (regen at I)
-  - .agent/TECH_DEBT_BACKLOG.md (D-012 entry, originally D-008, renumbered)
+                                       307 at HEAD = c27013a6 (T0.E closure added one)
+Receipts cited in T0E_CLOSURE_RECEIPT markers: 25 (UAT-EVIDENCE lines
+in T0E_CLOSURE_RECEIPT.md at HEAD c27013a6; was 17 at the receipt's
+earlier evolution; verify via `grep -c UAT-EVIDENCE docs/v2/07-uat/
+T0E_CLOSURE_RECEIPT.md`)
+Files added by this session's T0.E closure commits (14cc4368 +
+6da84dd6 + c27013a6):
+  - docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md (UAT evidence + E2-VERIFY; in 14cc4368)
+  - docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md (this file; in 14cc4368, then amended in 6da84dd6 and c27013a6)
+  - docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md (regen at I; in 14cc4368, then re-regen at HEAD in 6da84dd6)
+  - .agent/TECH_DEBT_BACKLOG.md (D-012 entry, originally D-008, renumbered; in 14cc4368, renumbered to D-012 in c27013a6)
 All cited receipts: last-commit ancestor of I (verified via git log).
 ```
 

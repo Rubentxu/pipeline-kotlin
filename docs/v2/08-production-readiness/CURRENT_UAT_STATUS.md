@@ -1,6 +1,6 @@
 # Current UAT Status (Production-Readiness)
-**Generated at (UTC):** 2026-09-26T23:55:06Z
-**Source of truth:** `git log` HEAD `9e67aa5` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
+**Generated at (UTC):** 2026-09-27T08:09:52Z
+**Source of truth:** `git log` HEAD `69368bc` + evidence scan in `docs/v2/07-uat/` (normative matrix excluded).
 **Generator:** `scripts/gen-current-uat-status.py` (D-007 + T0E-EVID-01 architecture)
 
 ---
@@ -9,30 +9,30 @@
 
 | UAT ID | Status | Latest Receipt | Evidence excerpt |
 |---|---|---|---|
-| `UAT-RP-001` | **REFERENCED** | `docs/v2/07-uat/WU_RP_045_SLICE_RECEIPT.md` | 1737 tests, 0 failures, 115 skipped (0 obligatory UAT-RP-001..024 |
-| `UAT-RP-002` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-002 | COVERED | candidate=56467ed2 | tests=oracle_a_gradlew_version+oracle_b_workflow_artifact_upl |
+| `UAT-RP-001` | **REFERENCED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | - **REFERENCED:** 2 (UAT-RP-001 perf baseline narrative, UAT-RP-016 PERF) |
+| `UAT-RP-002` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-002 | COVERED | candidate=56467ed2 | tests=oracle_a_gradlew_version+oracle_b_workflow_artifact_upl |
 | `UAT-RP-003` | **COVERED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | UAT-EVIDENCE | UAT-RP-003 | COVERED | candidate=7904b3c3 | tests=StepRegistryTest:8+StepDefinitionContributorTest:5+Regi |
-| `UAT-RP-004` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-004 | COVERED | candidate=56467ed2 | tests=DslCompiledPipelineCompilerTest:13+CliCompileErrorExits |
-| `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=789e6e01 | tests=supersedence_per_ADR-0095 | exit=0 | note=supe |
+| `UAT-RP-004` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-004 | COVERED | candidate=56467ed2 | tests=DslCompiledPipelineCompilerTest:13+CliCompileErrorExits |
+| `UAT-RP-005` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-005 | KNOWN_LIMITATION | candidate=789e6e01 | tests=supersedence_per_ADR-0095 | exit=0 | note=supe |
 | `UAT-RP-006` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-006 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-s |
 | `UAT-RP-007` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-007 | COVERED | candidate=70339af3 | tests=PublishHtmlOperationsAdapterUatTest:14 | exit=0 | xml-s |
 | `UAT-RP-008` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-008 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e |
 | `UAT-RP-009` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-009 | COVERED | candidate=70339af3 | tests=StashOperationsAdapterUatTest:7 | exit=0 | xml-sha256=e |
-| `UAT-RP-010` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-010 | COVERED | candidate=56467ed2 | tests=JsonEventLogRoundTripTest:28 | exit=0 |
+| `UAT-RP-010` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-010 | COVERED | candidate=56467ed2 | tests=JsonEventLogRoundTripTest:28 | exit=0 |
 | `UAT-RP-011` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-011 | COVERED | candidate=97a3cdb4 | tests=SqliteEventStoreConcurrencyCharacterisationTest:10 (N p |
 | `UAT-RP-012` | **COVERED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | | WU-RP-031 | extracciones StructuralPreparation→…→StepExecutor con golden journal/replay + kill/resume | CUMPLE — recei |
-| `UAT-RP-013` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=56467ed2 | tests=DivergenceDetectorTest:4 | exit=0 |
+| `UAT-RP-013` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-013 | COVERED | candidate=56467ed2 | tests=DivergenceDetectorTest:4 | exit=0 |
 | `UAT-RP-014` | **COVERED** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | UAT-EVIDENCE | UAT-RP-014 | COVERED | candidate=97a3cdb4 | tests=BodyExecutionPolicyTest:28 (5 nested classes: Represent |
-| `UAT-RP-015` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2Secret |
-| `UAT-RP-016` | **REFERENCED** | `docs/v2/07-uat/WU_RP_023_RECEIPT.md` | - UAT-RP-016 (PERF): evidencia formal en `WU_RP_022_RECEIPT.md` (baseline |
+| `UAT-RP-015` | **COVERED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-015 | COVERED | candidate=56467ed2 | tests=Lpr011SecretRedactionTranscriptUatTest:6+Lpr011r2Secret |
+| `UAT-RP-016` | **REFERENCED** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | - **REFERENCED:** 2 (UAT-RP-001 perf baseline narrative, UAT-RP-016 PERF) |
 | `UAT-RP-017` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-017 | COVERED | candidate=789e6e01 | tests=WURp023ObservationModesUatTest:1 | exit=0 | xml-sha256= |
-| `UAT-RP-018` | **PARTIAL** | `docs/v2/07-uat/RP3_EXIT_REVIEW.md` | UAT-EVIDENCE | UAT-RP-018 | PARTIAL | candidate=789e6e01 | tests=sandbox_os_resource_limits | exit=0 | note=limitación_d |
+| `UAT-RP-018` | **PARTIAL** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | UAT-EVIDENCE | UAT-RP-018 | PARTIAL | candidate=789e6e01 | tests=sandbox_os_resource_limits | exit=0 | note=limitación_d |
 | `UAT-RP-019` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-019 | COVERED | candidate=86c9ace8 | tests=WURp019GradleRealUatTest:2 | exit=0 | xml-sha256=f1dc46 |
 | `UAT-RP-020` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-020 | COVERED | candidate=86c9ace8 | tests=WURp020MavenRealUatTest:2 | exit=0 | xml-sha256=95e0008 |
 | `UAT-RP-021` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-021 | COVERED | candidate=86c9ace8 | tests=WURp021NodeRealUatTest:2 | exit=0 | xml-sha256=ff69036e |
 | `UAT-RP-022` | **COVERED** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | UAT-EVIDENCE | UAT-RP-022 | COVERED | candidate=92f7c4a7 | tests=distZip_byte_identical_double_build | exit=0 | note=rec |
 | `UAT-RP-023` | **COVERED** | `docs/v2/07-uat/WU_RP_046_R2_SLICE_RECEIPT.md` | Esta sesión cierra la brecha ejecutable: implementa cobertura real para UAT-RP-019/020/021 (6 tests nuevos, 6/6 PASS en  |
-| `UAT-RP-024` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_CLOSURE_RECEIPT.md` | | UAT-RP-024 dogfooding | KNOWN_LIMITATION parcial 1-repo. ≥2 repos estructuralmente imposible en sesión autónoma. | |
+| `UAT-RP-024` | **KNOWN_LIMITATION** | `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` | | UAT-RP-024 dogfooding | KNOWN_LIMITATION parcial 1-repo. ≥2 repos estructuralmente imposible en sesión autónoma. | |
 | `UAT-RP-025` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
 | `UAT-RP-026` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |
 | `UAT-RP-027` | **NOT_APPLICABLE** | `—` | _not applicable to current profile_ |

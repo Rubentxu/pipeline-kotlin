@@ -1106,3 +1106,70 @@ ciclo SDDK `p-733fb505b5a6bd2d/rp-053r-c5-bcv-check-wiring`, cerrado en
 **Resultado PR-007:** backlog reconciliado para las áreas que habían quedado
 stale después de RC4. No se reabrió código, no se alteraron contratos y no se
 declaró cerrada la deuda P2 de mutación.
+
+---
+
+## D-008 — `UatLocal007SandboxProfileTest.UAT-L7-TC-003` message enrichment
+
+**Detected:** 2026-09-27T08:00Z (T0.E integration candidate re-verify).
+**Severity:** P2 (cosmetic/documentation cross-reference; not blocking).
+**Scope:** `v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CliParser.kt:165` (single line).
+
+### Symptoms
+
+`UatLocal007SandboxProfileTest.UAT-L7-TC-003` (`v2/pipeline-application/src/test/kotlin/.../UatLocal007SandboxProfileTest.kt:781`) asserts that `pipeline run --sandbox-profile os` fails closed with an error message that cites `ADR-0016`, `M5`, `M9`, and `os`. Current CLI emits `UnsupportedSandboxProfile(value=os)` (typed data class toString), which is informative but does not contain those tokens. Assertion fails:
+
+```
+AssertionFailedError: Fail-closed message must cite ADR-0016:
+  Invalid CLI arguments: UnsupportedSandboxProfile(value=os)
+==> expected: <true> but was: <false>
+```
+
+### Verified pre-existing (NOT_REGRESSION from R5.1)
+
+```bash
+$ git checkout ab5bec80  # HEAD pre-R5.1
+$ cd v2 && ./gradlew :pipeline-application:test --tests 'UatLocal007SandboxProfileTest.UAT-L7-TC-003*'
+BUILD FAILED in 6s
+UatLocal007SandboxProfileTest > UAT-L7-TC-003 ... FAILED
+```
+
+The same `UnsupportedSandboxProfile` message is emitted pre- and
+post-R5.1's `CliParser` refactor (commit `4207748e`). The CliError
+data class definition (`CliParser.kt:38`) is unchanged.
+
+### Repair sketch
+
+Enrich `CliError.UnsupportedSandboxProfile.toString()` (or the
+`Main.kt:176` rendering site) to include the cross-references:
+
+```kotlin
+data class UnsupportedSandboxProfile(val value: String) : CliError {
+    override fun toString() = "UnsupportedSandboxProfile(value=$value, " +
+        "ref=ADR-0016/M5/M9: 'os' profile requires container/OS isolation " +
+        "which is out of scope for L3; use 'none' or 'local' instead.)"
+}
+```
+
+Or render explicitly in `Main.kt:175-180`:
+
+```kotlin
+is CliParseResult.Rejected -> {
+    val detail = when (val e = parsed.error) {
+        is CliError.UnsupportedSandboxProfile ->
+            "Unsupported sandbox profile '${e.value}' " +
+            "(ADR-0016: 'os' requires M5/M9 OS-level isolation; not available in L3)"
+        else -> parsed.error.toString()
+    }
+    System.err.println("Invalid CLI arguments: $detail")
+    ...
+}
+```
+
+### Disposition
+
+- Out of scope for T0.E closure.
+- Candidate for a TRAIN-1 RP-5 closure slice or an independent
+  one-commit fix in TRAIN-0.
+- Receipt: `docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md`
+  §2.4 (pre-existing failure isolation).

@@ -107,4 +107,45 @@ class WorkspaceResolverTest {
         resolver.retainOnFailure(path)
         assertTrue(Files.exists(path))
     }
+
+    // --- C8: `--workspace .` silently disabled every containment guard ---
+
+    @Test
+    fun `C8 dot workspace is resolved to an absolute path`() {
+        val resolver = WorkspaceResolver(tempDir, Path.of("."))
+        assertTrue(resolver.resolve("Build", 0).isAbsolute, "override must be absolute")
+    }
+
+    @Test
+    fun `C8 relative file inside dot workspace satisfies the containment guard`() {
+        val workspace = WorkspaceResolver(tempDir, Path.of(".")).resolve("Build", 0)
+        val target = workspace.resolve("out.txt").normalize()
+        assertTrue(
+            target.startsWith(workspace),
+            "'out.txt' must be contained in [$workspace], got [$target]",
+        )
+    }
+
+    @Test
+    fun `C8 nested relative file inside dot workspace satisfies the containment guard`() {
+        val workspace = WorkspaceResolver(tempDir, Path.of(".")).resolve("Build", 0)
+        val target = workspace.resolve("reports/lpr090/index.html").normalize()
+        assertTrue(target.startsWith(workspace), "nested path must be contained, got [$target]")
+    }
+
+    @Test
+    fun `C8 traversal out of dot workspace is still rejected`() {
+        val workspace = WorkspaceResolver(tempDir, Path.of(".")).resolve("Build", 0)
+        assertFalse(
+            workspace.resolve("../escaped.txt").normalize().startsWith(workspace),
+            "traversal must stay rejected after normalisation",
+        )
+    }
+
+    @Test
+    fun `C8 override with redundant segments is normalised`() {
+        val messy = tempDir.resolve("sub").resolve("..").resolve("proj")
+        val resolver = WorkspaceResolver(tempDir, messy)
+        assertEquals(tempDir.toAbsolutePath().normalize().resolve("proj"), resolver.resolve("Build", 0))
+    }
 }

@@ -28,8 +28,19 @@ class WorkspaceResolver(
      * WU-LPR-062: optional project-workspace override (--workspace <dir>).
      * When set, [resolve] returns paths under [workspaceBase]; the journal,
      * artefacts and locks stay under [controlDirRoot].
+     *
+     * C8: the override is normalised to an absolute, lexically-normal path on
+     * construction. The Step containment guards compare with
+     * [Path.startsWith], which is component-wise and only meaningful when both
+     * sides have the same form. A bare `--workspace .` yields
+     * `Paths.get(".")`, whose [Path.normalize] is the EMPTY path, so
+     * `out.txt` does not start with `""` and every file Step fails closed with
+     * "escapes workspace" even though the path is trivially inside. That also
+     * silently disabled the deleteDir root guard, since the same comparison
+     * rejected the root. Both sides being absolute keeps the guards honest.
      */
-    private val workspaceBase: Path? = null,
+    workspaceBaseArg: Path? = null,
+    private val workspaceBase: Path? = workspaceBaseArg?.toAbsolutePath()?.normalize(),
 ) {
 
     /**

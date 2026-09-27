@@ -1,5 +1,9 @@
 # PipelineK
 
+[![Latest release (incl. prereleases)](https://img.shields.io/github/v/release/Rubentxu/pipeline-kotlin?include_prereleases&sort=semver)](https://github.com/Rubentxu/pipeline-kotlin/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/Rubentxu/pipeline-kotlin/v2-baseline.yml?branch=main)](https://github.com/Rubentxu/pipeline-kotlin/actions/workflows/v2-baseline.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A local-first CI/CD engine with a Jenkins-familiar Kotlin DSL.
 PipelineK runs pipelines locally with durable execution, real typed
 events, and structured failures — without a controller, agent, or

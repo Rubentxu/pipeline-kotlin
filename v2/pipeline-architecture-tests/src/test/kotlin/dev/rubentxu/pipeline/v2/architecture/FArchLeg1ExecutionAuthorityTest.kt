@@ -43,6 +43,7 @@ class FArchLeg1ExecutionAuthorityTest {
         "DslCompiledPipelineCompiler.kt",
         "BlockStepFlattener.kt",
         "PipelineDsl.kt",
+        "StageScope.kt",
         "CredentialProjection.kt",
         "CredentialBindingsPayload.kt",
     )

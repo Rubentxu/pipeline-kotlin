@@ -337,3 +337,26 @@ Next action belongs to the operator:
 
 TRAIN-0 boundary holds at this receipt: nothing in T0.E opened,
 nothing in T0.E merged, integration candidate ready for review.
+
+## 8 — Post-R0 doc-fix commits (R1..R4)
+
+After R0 (commit `14cc4368`), four documentation-only fix commits were
+added to keep the closure receipt aligned with the actual repo state:
+
+```text
+14cc4368  docs(t0e): T0.B+C+D+E consolidated closure on top of I=9d0607d7
+6da84dd6  docs(t0e): receipt corrections (98/98, accurate L4 result, correct receipt count)
+c27013a6  docs(t0e): receipt + backlog correctness (D-008→D-012, file existence, remote URL)
+da0d992b  docs(t0e): receipt correctness R5 (fresh-clone count, HEAD ref, markers count)
+```
+
+None of these commits introduce code, contract, or test changes. They
+correct numerical claims, file-existence statements, debt-item numbering,
+remote URL casing and the fresh-clone worktree count. All four were
+validated as part of the closure thread and remain part of the candidate.
+
+At the HEAD bound to the last R4 commit (`da0d992b`), the candidate is
+15 / 0 ahead of `origin/main ab5bec80` (11 commits from main to I plus
+4 post-R0 doc fixes). The §1 R0 snapshot table above shows `12 / 0` which
+was correct at the moment of R0; the R1..R4 chain updates the live state
+without rewriting historical receipts.

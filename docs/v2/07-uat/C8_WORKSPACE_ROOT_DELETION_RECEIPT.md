@@ -253,3 +253,32 @@ So the destructive-default surface is now closed for the Steps that exist
 today. A new Step with a defaulted destructive parameter would need the same
 treatment; that is a convention, not something the code enforces.
 
+## Was the project's own CI ever at risk?
+
+Checked, because C8 raises the question directly. **No.**
+
+`.github/workflows/lpr0-ci.yml` does not run the compatibility corpus. The
+baseline deliberately omits it, and says why in a comment at line 165:
+
+> a nightly compatibility-corpus job is intentionally omitted from this LPR-0
+> baseline. Compatibility tests run only when explicitly invoked (manual
+> `workflow_dispatch` extension or from a local just gate).
+
+The only corpus file CI executes is `01-basic.pipeline.kts` (line 241), in the
+dogfood success path. `11-workflow-control` — the pipeline with the bare
+`deleteDir()` — is never run by CI.
+
+So CI was not relying on the accident C8 removed, and the interlock will not
+turn a CI job red. Had the corpus been wired into the baseline, that job would
+have been running a self-deleting pipeline against the checkout, and it would
+now fail loudly instead. That is the correct direction, but it is a change in
+behaviour for anyone invoking the corpus manually with `--workspace .` against
+a real project: they will get the refusal rather than a wiped tree.
+
+Worth flagging for whoever wires the corpus into CI later: the corpus is
+**not safe to run against a real checkout**, by design of two of its files
+(`11-workflow-control` calls `deleteDir()`, `31-stash-unstash` calls
+`sh("rm -rf src docs")`). It needs a throwaway workspace, which is how the
+evidence in this receipt was produced.
+
+

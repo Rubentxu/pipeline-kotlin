@@ -53,6 +53,20 @@ class DeleteDirOperationsAdapter(
     private val workspaceBase: java.nio.file.Path? = null,
 ) : DeleteDirOperations {
 
+    /**
+     * C12: true when [base] looks like a source-control checkout rather than a
+     * disposable scratch directory. Checked at the workspace root and one level
+     * up, so a workspace nested inside a repo (e.g. `repo/build/agent-ws`) is
+     * still recognised.
+     */
+    private fun isProjectCheckout(base: java.nio.file.Path): Boolean =
+        listOf(base, base.parent).any { candidate ->
+            candidate != null &&
+                listOf(".git", ".hg", ".svn").any { marker ->
+                    java.nio.file.Files.exists(candidate.resolve(marker))
+                }
+        }
+
     override fun delete(input: DeleteDirInput): DeleteDirResult {
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
@@ -60,9 +74,23 @@ class DeleteDirOperationsAdapter(
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
-            // C8: a --workspace root is the user's own project. Its contents
-            // must never be deletable, not even by the Step's own default path.
-            protectWorkspaceRoot = workspaceBase != null,
+            // C8: when --workspace points at the user's own project checkout,
+            // its contents must never be deletable, not even by the Step's own
+            // default path.
+            //
+            // C12 (regression fix): the original condition was simply
+            // `workspaceBase != null`, which assumed any --workspace is a user
+            // checkout. That is false: the compatibility corpus runs
+            // `pipelinek run --workspace <@TempDir>` with a DISPOSABLE temp dir,
+            // and fixture 11-workflow-control calls deleteDir() there. The
+            // over-broad interlock refused that legitimate wipe and turned a
+            // green corpus fixture into `exit 1`.
+            //
+            // Correct discriminator: a project checkout is recognisable by a
+            // VCS marker. A scratch workspace has none, so it keeps the
+            // WCL-S-001/S-002 wipe contract. This is a property of the target
+            // directory, not of how the CLI was invoked.
+            protectWorkspaceRoot = workspaceBase != null && isProjectCheckout(workspaceBase),
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

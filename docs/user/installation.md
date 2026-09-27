@@ -32,7 +32,7 @@ pipelinek doctor      # → jdk / os / workdir / writable
 
 > SDKMAN registration of the `pipelinek` candidate is currently
 > **WAITING_EXTERNAL** — see
-> [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md).
+> [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md).
 > Until SDKMAN confirms the candidate, install via GitHub Releases below.
 
 ## Install from GitHub Releases (fallback)

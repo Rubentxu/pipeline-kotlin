@@ -249,7 +249,7 @@ steps de ecosistema — sin controller externo.
 - L5: `checkout`/git step. ✅ **CLOSED (ML-R5, 2026-08-27)**
 - L6: steps Jenkins más usados (writeFile/readFile, archiveArtifacts mínimo,
   wrappers maven/gradle). Selección y firmas según
-  [`../01-product/JENKINS_FAMILIARITY_CATALOG.md`](../01-product/JENKINS_FAMILIARITY_CATALOG.md)
+  [`../01-product/JENKINS_FAMILIARITY_CATALOG.md`](../../../v2/01-product/JENKINS_FAMILIARITY_CATALOG.md)
   (top-25 verificado; ver ADR-0005 amendment).
 - L7: smoke E2E sobre repos reales famosos (build con Gradle/Maven wrapper).
 - L9: Jenkins catalog steps — workflow-control (dir/deleteDir/cleanWs/timeout/retry-block), error-handling (catchError/warnError/unstable), milestone, utility (pwd/isUnix/load/waitUntil), decorators (timestamps/ansiColor), node no-op + 3-state outcome model. **Cerrado: UAT-LOCAL-011 + UAT-LOCAL-012 + UAT-LOCAL-013.** (ML-R9 — v0.23.0)

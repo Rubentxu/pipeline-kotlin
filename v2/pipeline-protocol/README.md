@@ -28,7 +28,7 @@ All protocol messages are governed by `ProtocolGovernance`:
 
 ## Architecture Rules
 
-See [ADR-0043: Proto-Governance for Worker Protocol Module](../../04-adrs/ADR-0043-proto-governance.md)
+See [ADR-0043: Proto-Governance for Worker Protocol Module](../../docs/v2/04-adrs/ADR-0043-proto-governance.md)
 
 ## Build
 

@@ -149,5 +149,5 @@ The following are explicitly excluded from this implementation:
 
 ## References
 
-- [WORKER_PROTOCOL.md](../../03-specifications/WORKER_PROTOCOL.md)
-- [ADR-0036: V2 Package Namespace Convention](../ADR-0036-v2-package-namespace-convention.md)
+- [WORKER_PROTOCOL.md](../03-specifications/WORKER_PROTOCOL.md)
+- [ADR-0036: V2 Package Namespace Convention](ADR-0036-v2-package-namespace-convention.md)

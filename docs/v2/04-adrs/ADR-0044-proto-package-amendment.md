@@ -63,4 +63,4 @@ shared package. The **form** (per-topic vs shared) is adjusted to match E5-01 sc
 ## References
 
 - [ADR-0043: Proto-Governance](ADR-0043-proto-governance.md)
-- [WORKER_PROTOCOL.md](../../03-specifications/WORKER_PROTOCOL.md)
+- [WORKER_PROTOCOL.md](../03-specifications/WORKER_PROTOCOL.md)

@@ -9,7 +9,7 @@
 This package is the historical proposal that was absorbed into the V2 execution
 model line. It is retained for provenance and review traceability only. The
 current authoritative EM line is `docs/v2/`, as recorded in
-[`docs/v2/00-context/EXECUTION_MODEL_PROPOSAL_DISPOSITION.md`](../v2/00-context/EXECUTION_MODEL_PROPOSAL_DISPOSITION.md)
+[`docs/v2/00-context/EXECUTION_MODEL_PROPOSAL_DISPOSITION.md`](../../../../v2/00-context/EXECUTION_MODEL_PROPOSAL_DISPOSITION.md)
 and governed by `docs/v2/00-governance/DOCUMENT_AUTHORITY.md`.
 
 Its original intent was to correct the V2 execution model before continuing to

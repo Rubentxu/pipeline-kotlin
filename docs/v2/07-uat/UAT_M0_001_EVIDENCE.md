@@ -42,6 +42,6 @@ UatM0001HelloPipelineTest > UAT-M0-001 — rebuild is deterministic PASSED
 
 ## Cross-links
 
-- [ROADMAP (M0 row)](../../05-roadmap/ROADMAP.md) — M0 exit criteria and UAT baseline
+- [ROADMAP (M0 row)](../05-roadmap/ROADMAP.md) — M0 exit criteria and UAT baseline
 - [UAT_SCENARIOS.md (UAT-M0-001)](./UAT_SCENARIOS.md) — scenario definitions for UAT-M0-001
 - [UAT_MASTER_PLAN.md (M0)](./UAT_MASTER_PLAN.md) — UAT master plan and progression

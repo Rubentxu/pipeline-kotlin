@@ -61,7 +61,7 @@ class WULpr402RuntimeHonestDslFitnessTest {
     private val v2Root = ScannerSupport.v2Root()
 
     private val dslSource = v2Root.resolve(
-        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt",
+        "pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDslStageScope.kt",
     )
 
     private val scriptingApiSource = v2Root.resolve(

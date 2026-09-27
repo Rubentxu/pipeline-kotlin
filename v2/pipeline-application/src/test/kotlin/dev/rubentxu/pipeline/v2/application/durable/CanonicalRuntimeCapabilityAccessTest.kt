@@ -2,6 +2,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.EVENT_SINK_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
+import dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.nio.file.Files
 
 /**
  * CDE.3-d1: freezes the small, explicit capability bridge from a [CanonicalRuntimeContext] to a
@@ -59,6 +62,22 @@ class CanonicalRuntimeCapabilityAccessTest {
         )
         val access = CanonicalRuntimeCapabilityAccess(runtime(InMemoryEventStore()))
         assertEquals(expected, access.available())
+    }
+
+    @Test
+    fun `workspace identity follows nested working directory`() {
+        val workspaceRoot = Files.createTempDirectory("cap-bridge-root")
+        val nested = Files.createDirectory(workspaceRoot.resolve("hello-world"))
+        val context = runtime(InMemoryEventStore()).copy(
+            shOptions = ShOptions.EMPTY.copy(
+                workspaceRoot = workspaceRoot,
+                workingDirectory = nested,
+            ),
+        )
+
+        val identity = CanonicalRuntimeCapabilityAccess(context)
+            .get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
+        assertEquals(nested, identity.workspaceRoot)
     }
 
     @Test

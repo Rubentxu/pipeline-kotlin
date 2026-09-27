@@ -127,19 +127,22 @@ open class CanonicalRuntimeCapabilityAccess(
         builder[PLATFORM_IDENTITY_CAPABILITY] = PlatformIdentity(
             osName = System.getProperty("os.name", ""),
         )
-        // S2-A6 / G1: canonical stage workspace observation for workspace-projection
-        // handlers (core.pwd). The handler sees ONLY the resolved workspace path;
-        // it does NOT reach for controlDirRoot, user.dir, or the raw context. The
-        // bridge derives workspaceRoot from context.shOptions.workspaceRoot — the
-        // SAME source the legacy `pwdContext()` consumed (PATH_B byte-equivalence).
+        // S2-A6 / G1: canonical workspace observation for workspace-projection
+        // handlers (core.pwd and official plugins). A nested `dir` scope carries
+        // its current working directory in ShOptions.workingDirectory, so the
+        // typed identity must follow that immutable scope projection rather than
+        // reverting to the pipeline root. This keeps relative plugin inputs such
+        // as `junitResults("build/test-results/test.xml", ".")` inside the
+        // active `dir` body.
         //
         // NOTE: `WorkspaceIdentity` is a low-level observation capability. The
         // `core.pwd.tmp` Step does NOT use it directly — it goes through the
         // dedicated `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` port below, which
-        // composes workspaceRoot + canonical OpId into the deterministic
+        // composes the effective workspace + canonical OpId into the deterministic
         // `tmp-pwd-<sha256(opId)>` resource path (D5–D12, S2-A6 / G3T).
+        val effectiveWorkspaceRoot = context.shOptions.workingDirectory ?: context.shOptions.workspaceRoot
         builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
-            workspaceRoot = context.shOptions.workspaceRoot,
+            workspaceRoot = effectiveWorkspaceRoot,
         )
         // S2-A6 / G3T (post-correction): the ONLY capability consumed by
         // CorePwdTmpStep.handler. The adapter binds the runtime's
@@ -151,7 +154,7 @@ open class CanonicalRuntimeCapabilityAccess(
         val tmpOps: TemporaryWorkspaceOperations = TemporaryWorkspaceOperationsAdapter(
             runIdString = context.runId,
             opId = context.opId,
-            workspaceRoot = context.shOptions.workspaceRoot,
+            workspaceRoot = effectiveWorkspaceRoot,
             eventSink = context.eventSink,
         )
         builder[TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY] = tmpOps

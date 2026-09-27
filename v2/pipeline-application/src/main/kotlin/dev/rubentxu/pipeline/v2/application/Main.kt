@@ -707,31 +707,6 @@ fun main(args: Array<String>) {
     if (exitFailure) System.exit(1)
 }
 
-
-private fun selectDurableRun(
-    policy: DurableRunPolicy,
-    runIdDirectory: RunIdDirectory,
-    definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
-    runIdGenerator: RunIdGenerator,
-): DurableRunSelection = when (policy) {
-    DurableRunPolicy.ReusePriorRun -> when (val stored = runIdDirectory.findLastRunId(definitionId)) {
-        is StoredRunId.Found -> DurableRunSelection.Reused(stored.runId)
-        StoredRunId.Missing -> startFreshRun(runIdDirectory, definitionId, runIdGenerator)
-    }
-    DurableRunPolicy.ResumePriorRun -> DurableRunSelection.Reused(runIdDirectory.lastRunId(definitionId))
-    DurableRunPolicy.StartFreshRun -> startFreshRun(runIdDirectory, definitionId, runIdGenerator)
-}
-
-private fun startFreshRun(
-    runIdDirectory: RunIdDirectory,
-    definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
-    runIdGenerator: RunIdGenerator,
-): DurableRunSelection.StartedFresh {
-    val runId = runIdGenerator.next()
-    runIdDirectory.record(definitionId, runId)
-    return DurableRunSelection.StartedFresh(runId)
-}
-
 /**
  * Single classloader for the plugin JAR list (LB-02 / EP-6): parented on the
  * application classloader so the plugin sees the SDK contracts; installed as

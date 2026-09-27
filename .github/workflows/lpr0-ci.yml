@@ -1,6 +1,15 @@
 name: LPR-0 CI
 
 on:
+  # WU-RP-HARNESS-COORDINATION 2026-09-24T10:09Z: GitHub Actions NO es autoridad de
+  # certificación para este repo. La autoridad vive en:
+  #   1) round gate local `./gradlew -p v2 check` (este repo)
+  #   2) pipelinek-release-harness externo (manifiestos verificables, ZIP+SHA-256+SBOM)
+  # Por tanto, eliminamos el trigger automático `pull_request` para evitar
+  # trabajo y gasto de runners sin valor de certificación. Mantenemos:
+  #   - `push: branches: [main]` como gate obligatorio en merges a main (defensa
+  #     en profundidad contra regresiones triviales; no es autoridad de WU).
+  #   - `workflow_dispatch:` para ejecución manual cuando el operador lo requiera.
   push:
     branches: [main]
   workflow_dispatch:

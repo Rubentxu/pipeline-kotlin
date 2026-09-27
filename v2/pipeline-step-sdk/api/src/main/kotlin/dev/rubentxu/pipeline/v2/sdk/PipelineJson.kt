@@ -96,7 +96,19 @@ object PipelineJson {
  * codec surveyed needed at least the `string` and `longOrNull` accessors.
  * The other variants are provided for completeness and to absorb future
  * migrations without further API churn.
+ *
+ * The detekt rule `TooManyFunctions` operates per file. Splitting this object
+ * into `JsonScalarAccessors` + `JsonAggregateAccessors` would just produce
+ * two objects each under the threshold but force every codec consumer to
+ * update its imports. To keep the API surface stable for the six codec
+ * consumers (Pattern A codecs), the threshold suppression is documented
+ * here rather than widened globally.
+ * @Suppress justification: six paired requiredX / XOrNull extension
+ * functions (one pair per primitive type), plus requiredObject and
+ * requiredArray, total twelve functions in a single closed dispatch over
+ * JsonElement primitives.
  */
+@Suppress("TooManyFunctions")
 object JsonAccessors {
 
     fun JsonObject.requiredString(key: String): String =

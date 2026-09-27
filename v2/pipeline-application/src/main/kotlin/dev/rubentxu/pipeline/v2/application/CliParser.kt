@@ -59,6 +59,24 @@ sealed interface DurableRunSelection {
     data class StartedFresh(override val runId: RunId) : DurableRunSelection
 }
 
+/** Outcome of processing one CLI option within [CliParser.applyOption]. */
+private sealed interface ApplyOutcome {
+    /** The option consumed [nextIndex] positions of [args]. */
+    data class Applied(val nextIndex: Int) : ApplyOutcome
+    /** The parser must reject with [error] and stop. */
+    data class Rejected(val error: CliError) : ApplyOutcome
+}
+
+/** Mutable accumulator threaded through [CliParser.applyOption]. */
+private class ParseState(
+    var dbPath: String? = null,
+    var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun,
+    var controlRoot: String? = null,
+    var workspace: String? = null,
+    var sandboxProfile: SandboxProfile = SandboxProfile.NONE,
+    val pluginJars: MutableList<String> = mutableListOf(),
+)
+
 /** Pure parser for the application CLI. */
 object CliParser {
     fun parse(args: Array<String>): CliParseResult {
@@ -70,59 +88,13 @@ object CliParser {
             else -> return CliParseResult.Rejected(CliError.InvalidCommand(args[0]))
         }
 
-        var dbPath: String? = null
-        var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun
-        var controlRoot: String? = null
-        var workspace: String? = null
-        var sandboxProfile = SandboxProfile.NONE
-        val pluginJars = mutableListOf<String>()
+        val state = ParseState()
         var index = 1
 
         while (index < args.size && args[index].startsWith("--")) {
-            when (val option = args[index]) {
-                "--db" -> {
-                    val value = args.getOrNull(index + 1)
-                        ?: return CliParseResult.Rejected(CliError.MissingOptionValue(option))
-                    dbPath = value
-                    index += 2
-                }
-                "--resume" -> {
-                    if (durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
-                        return CliParseResult.Rejected(CliError.ConflictingDurablePolicies)
-                    }
-                    durableRunPolicy = DurableRunPolicy.ResumePriorRun
-                    index++
-                }
-                "--rerun" -> {
-                    if (durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
-                        return CliParseResult.Rejected(CliError.ConflictingDurablePolicies)
-                    }
-                    durableRunPolicy = DurableRunPolicy.StartFreshRun
-                    index++
-                }
-                "--control-root", "--workspace", "--plugin-jar" -> {
-                    val value = args.getOrNull(index + 1)
-                        ?: return CliParseResult.Rejected(CliError.MissingOptionValue(option))
-                    when (option) {
-                        "--control-root" -> controlRoot = value
-                        "--workspace" -> workspace = value
-                        "--plugin-jar" -> pluginJars += value
-                        else -> error("unreachable option: $option")
-                    }
-                    index += 2
-                }
-                "--sandbox-profile" -> {
-                    val value = args.getOrNull(index + 1)
-                        ?: return CliParseResult.Rejected(CliError.MissingOptionValue(option))
-                    sandboxProfile = when (value) {
-                        "none" -> SandboxProfile.NONE
-                        "local" -> SandboxProfile.LOCAL
-                        "os" -> return CliParseResult.Rejected(CliError.UnsupportedSandboxProfile(value))
-                        else -> return CliParseResult.Rejected(CliError.InvalidSandboxProfile(value))
-                    }
-                    index += 2
-                }
-                else -> return CliParseResult.Rejected(CliError.UnknownOption(option))
+            when (val outcome = applyOption(args[index], args, index, state)) {
+                is ApplyOutcome.Applied -> index = outcome.nextIndex
+                is ApplyOutcome.Rejected -> return CliParseResult.Rejected(outcome.error)
             }
         }
 
@@ -132,14 +104,70 @@ object CliParser {
         return CliParseResult.Parsed(
             CliFlags(
                 command = command,
-                dbPath = dbPath,
-                durableRunPolicy = durableRunPolicy,
+                dbPath = state.dbPath,
+                durableRunPolicy = state.durableRunPolicy,
                 scriptPath = scriptPath,
-                controlRoot = controlRoot,
-                workspace = workspace,
-                sandboxProfile = sandboxProfile,
-                pluginJars = pluginJars.toList(),
+                controlRoot = state.controlRoot,
+                workspace = state.workspace,
+                sandboxProfile = state.sandboxProfile,
+                pluginJars = state.pluginJars.toList(),
             ),
         )
+    }
+
+    /**
+     * Process one CLI option at [index] of [args], mutating [state] and
+     * returning the next index or a typed rejection. Extracted from
+     * [parse] to keep the loop driver's complexity below the detekt
+     * `CyclomaticComplexMethod` threshold.
+     */
+    private fun applyOption(
+        option: String,
+        args: Array<String>,
+        index: Int,
+        state: ParseState,
+    ): ApplyOutcome {
+        val value = args.getOrNull(index + 1)
+            ?: return ApplyOutcome.Rejected(CliError.MissingOptionValue(option))
+        return when (option) {
+            "--db" -> {
+                state.dbPath = value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--resume" -> if (state.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
+                ApplyOutcome.Rejected(CliError.ConflictingDurablePolicies)
+            } else {
+                state.durableRunPolicy = DurableRunPolicy.ResumePriorRun
+                ApplyOutcome.Applied(index + 1)
+            }
+            "--rerun" -> if (state.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
+                ApplyOutcome.Rejected(CliError.ConflictingDurablePolicies)
+            } else {
+                state.durableRunPolicy = DurableRunPolicy.StartFreshRun
+                ApplyOutcome.Applied(index + 1)
+            }
+            "--control-root" -> {
+                state.controlRoot = value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--workspace" -> {
+                state.workspace = value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--plugin-jar" -> {
+                state.pluginJars += value
+                ApplyOutcome.Applied(index + 2)
+            }
+            "--sandbox-profile" -> {
+                state.sandboxProfile = when (value) {
+                    "none" -> SandboxProfile.NONE
+                    "local" -> SandboxProfile.LOCAL
+                    "os" -> return ApplyOutcome.Rejected(CliError.UnsupportedSandboxProfile(value))
+                    else -> return ApplyOutcome.Rejected(CliError.InvalidSandboxProfile(value))
+                }
+                ApplyOutcome.Applied(index + 2)
+            }
+            else -> ApplyOutcome.Rejected(CliError.UnknownOption(option))
+        }
     }
 }

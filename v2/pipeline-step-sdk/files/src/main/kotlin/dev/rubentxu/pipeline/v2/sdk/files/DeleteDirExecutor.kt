@@ -32,15 +32,23 @@ data class DeleteDirResult(
  *
  * - Enforces workspace-root guard: resolved path MUST start with workspace root
  * - Throws [IllegalArgumentException] if path escapes workspace
+ * - Throws [IllegalArgumentException] if the target IS the workspace root while
+ *   [protectWorkspaceRoot] is set (C8). With `--workspace <dir>` the workspace
+ *   root is the user's own project, and the default `deleteDir()` (path ".")
+ *   resolves to exactly that root, so the Step's own default would erase the
+ *   checkout. The default per-stage workspace is disposable scratch space, so
+ *   wiping it stays allowed and WCL-S-001/S-002 keep their contract.
  *
  * ## Idempotency
  *
  * - Re-execution with same marker sha = no-op (deletedCount=0)
  *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
+ * @param protectWorkspaceRoot When true, refuse to delete the workspace root itself.
  */
 class DeleteDirExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
+    private val protectWorkspaceRoot: Boolean = false,
 ) {
 
     /**
@@ -60,6 +68,15 @@ class DeleteDirExecutor(
         // Workspace-root safety guard
         require(targetPath.startsWith(workspace)) {
             "deleteDir path '${spec.path}' escapes workspace root"
+        }
+
+        // C8 interlock: a shared user workspace (--workspace) is the user's own
+        // project, so the root's contents are never deletable. `deleteDir()`
+        // with no argument resolves here, which would otherwise erase the
+        // checkout. Scratch workspaces are unaffected and stay wipeable.
+        require(!protectWorkspaceRoot || targetPath != workspace) {
+            "deleteDir refuses to delete the workspace root itself ('$workspace'); " +
+                "pass a sub-path such as deleteDir(\"build\") to remove generated content"
         }
 
         val markerFile = targetPath.resolve(".deleted")

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.files
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -244,5 +245,103 @@ class WorkspaceCleanupTest {
         assertEquals(2, constructor.parameters.size, "CleanWs must have exactly 2 parameters")
         assertEquals("deleteDirs", constructor.parameters[0].name, "First parameter must be 'deleteDirs'")
         assertEquals("patterns", constructor.parameters[1].name, "Second parameter must be 'patterns'")
+    }
+
+    // =============================================================================
+    // C8: a shared user workspace (--workspace) must never be wipeable
+    // =============================================================================
+
+    @Test
+    fun `C8 deleteDir refuses the workspace root when the root is a user project`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("README.md"), "important")
+        Files.createDirectories(workspace.resolve("src"))
+        Files.writeString(workspace.resolve("src/main.kt"), "code")
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "."))
+        }
+        assertTrue(
+            error.message!!.contains("refuses to delete the workspace root"),
+            "error must name the refusal, got: ${error.message}",
+        )
+        assertTrue(Files.exists(workspace.resolve("README.md")), "README.md must survive")
+        assertTrue(Files.exists(workspace.resolve("src/main.kt")), "src/main.kt must survive")
+        assertTrue(!Files.exists(workspace.resolve(".deleted")), "no marker may be written on refusal")
+    }
+
+    @Test
+    fun `C8 deleteDir still removes a sub-path inside a protected workspace`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace.resolve("build/classes"))
+        Files.writeString(workspace.resolve("build/classes/out.jar"), "x")
+        Files.writeString(workspace.resolve("keep.txt"), "keep")
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        val result = executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "build"))
+
+        assertTrue(result.deletedCount >= 1, "sub-path contents must be deleted")
+        assertTrue(!Files.exists(workspace.resolve("build/classes/out.jar")), "out.jar must be deleted")
+        assertTrue(Files.exists(workspace.resolve("keep.txt")), "sibling file must survive")
+    }
+
+    @Test
+    fun `C8 deleteDir rejects traversal outside a protected workspace`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace)
+        val outside = tempDir.resolve("elsewhere")
+        Files.createDirectories(outside)
+        Files.writeString(outside.resolve("precious.txt"), "do not touch")
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "../elsewhere"))
+        }
+        assertTrue(Files.exists(outside.resolve("precious.txt")), "outside file must survive")
+    }
+
+    @Test
+    fun `C8 dot path is rejected even when spelled as the workspace root`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("file.txt"), "data")
+
+        val executor = DeleteDirExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        // "./" normalises to the root as well; both spellings must be refused.
+        assertThrows(IllegalArgumentException::class.java) {
+            executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "./"))
+        }
+        assertTrue(Files.exists(workspace.resolve("file.txt")), "file.txt must survive")
+    }
+
+    @Test
+    fun `C8 scratch workspace keeps its wipe contract`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("workspace/build-0")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("a.txt"), "scratch")
+
+        val executor = DeleteDirExecutor(workspaceResolver = { _, _ -> workspace })
+        val result = executor.execute("Test", 0, 0, StepSpec.DeleteDir(path = "."))
+
+        assertTrue(result.deletedCount >= 1, "scratch workspace must still be wipeable")
+        assertTrue(!Files.exists(workspace.resolve("a.txt")), "a.txt must be deleted in scratch mode")
     }
 }

@@ -60,6 +60,9 @@ class DeleteDirOperationsAdapter(
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            // C8: a --workspace root is the user's own project. Its contents
+            // must never be deletable, not even by the Step's own default path.
+            protectWorkspaceRoot = workspaceBase != null,
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

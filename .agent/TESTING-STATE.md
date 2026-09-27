@@ -1,3 +1,69 @@
+# TESTING-STATE — Active change (2026-09-27, HEAD `78092a60`)
+
+**Status: STALE — This file's body describes LPR-001 / WU-LPR-090 (2026-09-21); it is NOT authoritative for the current TRAIN-0 cycle. See "Active context" below; the rest of the file is preserved as historical record and MUST NOT be acted on as if it were current.**
+
+## Active context (2026-09-27, HEAD `78092a60` on `wu/rp-053r-red-fixtures`)
+
+- **Cycle (SDDK operative):** `p-733fb505b5a6bd2d/train-0-baseline-consolidation`
+  status `OPEN`, phase `explore`, path `A-lite`, lease `agent:cli` (active during session).
+- **WorkItems:** 12 total / 12 done (T0.A `8e466221`, T0.A retry `63a99c6e`,
+  T0.B `bdda9bc5`, T0.C `174699ae`, T0.D `59e54b91`, T0.E candidate
+  `c338edee`, T0.E evidence `501c88ee`, D-006 PRDY-006R2 `53c7b004`,
+  D-007 `79654fed`, WI huérfana `4ad74754` closed-by-redundancy with
+  evidence, D-012 fix `b0ff1a11`, D-012 ledger `e10c11f1`, T0.E §8 addendum
+  `ea1003fc`, TESTING-STATE refresh `3979606a`).
+- **Candidate:** I=`9d0607d7` (R5.1 archive manifest); chain on top:
+  `14cc4368`, `6da84dd6`, `c27013a6`, `da0d992b`, `475046ce` (D-012 fix),
+  `78092a60` (§8 addendum). HEAD `78092a60` is **16 / 0 ahead** of
+  `origin/main ab5bec80` (11 base R5.1 + 4 R0 doc-fix + 1 fix).
+- **Gate state at HEAD:** admission 6/6 PASS; E2 oracles 65/65 PASS;
+  hermetic `:pipeline-application:test` 98/98 PASS at I; UAT-L7-TC-003
+  now PASS after D-012 fix (full class 14/14 PASS, XML canary 09:28:18Z).
+- **Roadmap:** 13/13 terminal, 0 executable; spine complete after
+  D-012 closure and orphan-WI cleanup.
+- **STOP binding:** "STOP at merge to main" superseded by operator
+  authorization at 2026-09-27T09:27Z ("acepto subidas y merges");
+  push/merge now operator-authorized within guard rails.
+- **Debt:** D-012 RESOLVED at `475046ce` (one-commit fix, full
+  evidence in TECH_DEBT_BACKLOG.md). No other P0/P2/P3 items open
+  for TRAIN-0.
+- **Outstanding finding:** none at code/doc level. SDDK cycle
+  `train-0-baseline-consolidation` still OPEN/explore (operator-only
+  transition); TRAIN-1 cycle start is operator-only.
+
+## Anchors (read first)
+
+1. `docs/v2/05-roadmap/ROADMAP.md` — RP-0..RP-9 sequencing (current
+   authority for V2 product).
+2. `docs/v2/07-uat/CERTIFICATION_PROTOCOL.md` and
+   `docs/v2/07-uat/PRODUCTION_READY_UAT_MATRIX.md` — binding proof.
+3. `docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md` —
+   current cycle closure receipt.
+4. `docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md` — E2 oracles
+   at I.
+5. `.agent/TECH_DEBT_BACKLOG.md` — current debt ledger (D-001..D-012).
+6. `docs/v2/07-uat/CURRENT_UAT_STATUS.md` — regenerated counts.
+
+## Resume (binding for the current cycle)
+
+```bash
+# 1. Verify state before any action
+sddk cycle status --cycle p-733fb505b5a6bd2d/train-0-baseline-consolidation
+sddk plan work-item list --cycle-id p-733fb505b5a6bd2d/train-0-baseline-consolidation
+git -C $(pwd) rev-parse HEAD && git -C $(pwd) branch --show-current
+git -C $(pwd) status --short
+# Expect: HEAD=da0d992b, branch=wu/rp-053r-red-fixtures,
+# 1 unstaged doc edit, 2 untracked harness consult dirs (excluded by R3).
+
+# 2. Do NOT begin work on WI 4ad74754 (orphan).
+# 3. Wait for operator decision: merge to main, fold §8 addendum, or discard.
+```
+
+---
+
+# (Below: HISTORICAL context preserved from 2026-09-21 LPR-001 cycle.
+# It is NOT operative. Do not resume from the LPR-090 auto-run block.)
+
 # TESTING-STATE — Active change (2026-09-21, base `73dac3dc`, `main`)
 
 **Status: ACTIVE — INITIATIVE LPR-001 declared. Auto-run mode. Future human_gates pre-approved (see exceptions in §2.4 of INITIATIVE).**

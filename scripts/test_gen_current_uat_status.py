@@ -620,10 +620,11 @@ class GenCurrentUatStatusTests(unittest.TestCase):
         """
         import re as _re
         head_sha = "abcdef1234567"
+        previous_head_sha = "1234567890abc"
         a = (
             "# Current UAT Status\n"
             "**Generated at (UTC):** 2026-09-26T17:00:00Z\n"
-            f"**Source of truth:** `git log` HEAD `{head_sha[:7]}` + scan.\n"
+            f"**Source of truth:** `git log` HEAD `{previous_head_sha[:7]}` + scan.\n"
             "\n"
             "| UAT-RP-001 | COVERED | receipt.md | content |\n"
         )
@@ -642,13 +643,15 @@ class GenCurrentUatStatusTests(unittest.TestCase):
             "| UAT-RP-001 | REFERENCED | receipt.md | content |\n"  # material diff
         )
         def strip(s):
-            return _re.sub(
+            normalised = _re.sub(
                 r"^\*\*Generated at \(UTC\):\*\* [^\n]+\n",
                 "**Generated at (UTC):** <regen>\n",
                 s, flags=_re.MULTILINE,
-            ).replace(
-                f"`git log` HEAD `{head_sha[:7]}`",
+            )
+            return _re.sub(
+                r"`git log` HEAD `[0-9a-f]{7,64}`",
                 "`git log` HEAD <sha>",
+                normalised,
             )
         self.assertEqual(strip(a), strip(b),
                          "two regenerated files with identical content but "

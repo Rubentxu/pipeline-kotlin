@@ -22,7 +22,7 @@ class FArchLfc1LegacyDslRemovedTest {
         FitnessPaths.v2Root()
             .resolve("pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDsl.kt"),
         FitnessPaths.v2Root()
-            .resolve("pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/PipelineDslSteps.kt"),
+            .resolve("pipeline-scripting-api/src/main/kotlin/dev/rubentxu/pipeline/v2/dsl/StepSpec.kt"),
     )
     private val compilerPath = FitnessPaths.v2Root()
         .resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/DslCompiledPipelineCompiler.kt")

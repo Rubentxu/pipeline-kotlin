@@ -46,11 +46,16 @@ data class CleanWsResult(
  *
  * - Operates only within workspace root
  * - Never touches `.v2/artifacts/` per F-ARCH-L6-003 invariant
+ * - C9: refuses the pattern-less form when [protectWorkspaceRoot] is set.
+ *   `cleanWs(patterns = null)` means "delete every non-.v2 file", so against a
+ *   `--workspace` root that is the user's whole project. See [CleanWsExecutor].
  *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
+ * @param protectWorkspaceRoot When true, refuse the pattern-less form.
  */
 class CleanWsExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
+    private val protectWorkspaceRoot: Boolean = false,
 ) {
 
     /**
@@ -65,6 +70,17 @@ class CleanWsExecutor(
     fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.CleanWs): CleanWsResult {
         val workspace = workspaceResolver(stageName, stageIndex)
         val v2ArtifactsRoot = workspace.resolve(".v2").resolve("artifacts")
+
+        // C9 interlock: `cleanWs()` with no patterns means "delete every
+        // non-.v2 file in the workspace". In a scratch workspace that is fine,
+        // but with --workspace the root is the user's own project, and this
+        // form would delete every file in it. Unlike deleteDir, this is not
+        // recoverable at all: there is no pattern to narrow it by accident.
+        require(!protectWorkspaceRoot || !spec.patterns.isNullOrEmpty()) {
+            "cleanWs refuses to run without patterns on workspace '$workspace'; " +
+                "pass patterns such as cleanWs(patterns = listOf(\"build/**\")) " +
+                "so only generated content is removed"
+        }
 
         val markerFile = workspace.resolve(".cleaned")
         val effectivePatterns = spec.patterns ?: emptyList()

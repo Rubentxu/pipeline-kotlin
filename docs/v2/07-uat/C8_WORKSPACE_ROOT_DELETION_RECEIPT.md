@@ -158,6 +158,98 @@ re-litigates it as a second finding.
 
 ## Follow-ups
 
-- Audit the other Steps for the same "default resolves to the workspace root"
-  shape: `cleanWs`, `stash`, `publishHtml`, `artifactQuery`.
-- Consider `cleanWs` — its default patterns may sweep the workspace root too.
+- ~~Audit the other Steps for the same "default resolves to the workspace root"
+  shape~~ — **done, and it found C9 below.**
+- ~~Consider `cleanWs` — its default patterns may sweep the workspace root too.~~
+  — **confirmed, see C9.**
+
+---
+
+# C9 — `cleanWs()` deletes every file in the project
+
+**Severity:** critical (data loss, no undo)
+**Found:** 2026-09-27, while auditing C8's blast radius
+**Base:** `162260e8` (the C8 work)
+
+## Root cause
+
+`StepSpec.CleanWs` declares `patterns: List<String>? = null`, and the null
+branch of `CleanWsExecutor.execute` is:
+
+```kotlin
+Files.walk(workspace)
+    .filter { it != workspace }                      // skip the root dir itself
+    .filter { !it.startsWith(v2ArtifactsRoot) }      // keep .v2/artifacts
+    .filter { Files.isRegularFile(it) }
+    .forEach { filesToDelete.add(it) }
+// ...then Files.deleteIfExists on every one
+```
+
+That is **every regular file in the workspace except `.v2/artifacts`**. With
+`--workspace <dir>` the root is the user's project, so `cleanWs()` — with no
+arguments, the Step's own default — deletes the whole checkout file by file.
+
+This is worse than C8 in one respect: `deleteDir` is a single call the user
+could plausibly have narrowed, whereas the null-pattern form has no partial
+form at all. It is also completely uncovered — `18-cleanWs.pipeline.kts` always
+passes `patterns = listOf("test/**")`, so no corpus case and no test ever
+exercised the dangerous branch.
+
+## The fix
+
+Mirrors C8 exactly, so the two read as one mechanism:
+
+```kotlin
+require(!protectWorkspaceRoot || !spec.patterns.isNullOrEmpty()) {
+    "cleanWs refuses to run without patterns on workspace '$workspace'; " +
+        "pass patterns such as cleanWs(patterns = listOf(\"build/**\")) " +
+        "so only generated content is removed"
+}
+```
+
+`CleanWsOperationsAdapter` sets `protectWorkspaceRoot = workspaceBase != null`.
+
+The guard refuses **both** `null` and `emptyList()`, because
+`spec.patterns ?: emptyList()` funnels both into the same branch — an empty
+list is not a safe no-op here, it is a full wipe. That case has its own test.
+
+## Evidence
+
+**Unit.** `WorkspaceCleanupTest: tests=20 failures=0 errors=0` — 8 pre-existing
+`WCL-S-*`, 5 C8, 4 C9. The C9 cases: pattern-less refused with files intact
+and no `.cleaned` marker written; empty list refused too; patterned
+`cleanWs(patterns = listOf("build/**"))` still deletes `build/out.txt` and
+keeps `README.md`; scratch workspace still wipes.
+
+**Falsification.** Replacing the guard with `require(true)` gives
+`20 tests completed, 2 failed` — the two refusal cases. The other 18 stayed
+green.
+
+**End-to-end.** A purpose-built pipeline calling `cleanWs()` against a canary
+project (`cleanWs()` had no corpus coverage, so one was written):
+
+```
+exit=1   (non-zero is EXPECTED: the guard must refuse)
+"stepType":"cleanWs"  "failureKind":"ENGINE"
+"message":"registry step 'core.cleanWs' handler failed: cleanWs refuses to
+           run without patterns on workspace '/home/rubentxu/.jcode/...'"
+CANARY.md SURVIVED   keep.txt SURVIVED   src/main.kt SURVIVED
+AFTER=3 files
+C9 PROOF: PASS
+```
+
+## Remaining audit surface
+
+`stash`, `publishHtml` and `artifactQuery` are **not destructive by default**:
+`StepSpec.DeleteDir(path = ".")` and `StepSpec.CleanWs(patterns = null)` are
+the only two Steps in `StepSpec.kt` with a defaulted destructive parameter, and
+`WriteFile`/`ReadFile`/`FileExists` all require an explicit path. `stash`
+creates and `unstash` restores; neither deletes user files at the workspace
+root. `publishHtml` has its own containment guard
+(`reportDir '${input.reportDir}' escapes workspace`) and was already covered
+by the corpus run in the C8 section.
+
+So the destructive-default surface is now closed for the Steps that exist
+today. A new Step with a defaulted destructive parameter would need the same
+treatment; that is a convention, not something the code enforces.
+

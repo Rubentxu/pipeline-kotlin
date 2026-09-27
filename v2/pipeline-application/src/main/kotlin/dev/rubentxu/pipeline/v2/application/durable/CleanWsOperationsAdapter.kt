@@ -60,6 +60,9 @@ class CleanWsOperationsAdapter(
 
         val executor = CleanWsExecutor(
             workspaceResolver = { name, idx -> resolver.resolve(name, idx) },
+            // C9: a --workspace root is the user's own project, so the
+            // pattern-less form would delete every file in it.
+            protectWorkspaceRoot = workspaceBase != null,
         )
 
         val execResult = executor.execute(

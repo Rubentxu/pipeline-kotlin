@@ -344,4 +344,83 @@ class WorkspaceCleanupTest {
         assertTrue(result.deletedCount >= 1, "scratch workspace must still be wipeable")
         assertTrue(!Files.exists(workspace.resolve("a.txt")), "a.txt must be deleted in scratch mode")
     }
+
+    // =============================================================================
+    // C9: cleanWs with no patterns deletes EVERY file in a shared user workspace
+    // =============================================================================
+
+    @Test
+    fun `C9 cleanWs refuses the pattern-less form on a user project`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("README.md"), "important")
+        Files.writeString(workspace.resolve("main.kt"), "code")
+
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            executor.execute("Test", 0, 0, StepSpec.CleanWs(patterns = null))
+        }
+        assertTrue(
+            error.message!!.contains("refuses to run without patterns"),
+            "error must name the refusal, got: ${error.message}",
+        )
+        assertTrue(Files.exists(workspace.resolve("README.md")), "README.md must survive")
+        assertTrue(Files.exists(workspace.resolve("main.kt")), "main.kt must survive")
+        assertTrue(!Files.exists(workspace.resolve(".cleaned")), "no marker may be written on refusal")
+    }
+
+    @Test
+    fun `C9 cleanWs refuses an empty pattern list too`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("keep.txt"), "keep")
+
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        // An empty list is semantically the same as null: both take the
+        // "delete all non-.v2 files" branch. It must be refused too.
+        assertThrows(IllegalArgumentException::class.java) {
+            executor.execute("Test", 0, 0, StepSpec.CleanWs(patterns = emptyList()))
+        }
+        assertTrue(Files.exists(workspace.resolve("keep.txt")), "keep.txt must survive")
+    }
+
+    @Test
+    fun `C9 cleanWs with patterns still cleans a user project`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("my-project")
+        Files.createDirectories(workspace.resolve("build"))
+        Files.writeString(workspace.resolve("build/out.txt"), "generated")
+        Files.writeString(workspace.resolve("README.md"), "keep")
+
+        val executor = CleanWsExecutor(
+            workspaceResolver = { _, _ -> workspace },
+            protectWorkspaceRoot = true,
+        )
+
+        val result = executor.execute("Test", 0, 0, StepSpec.CleanWs(patterns = listOf("build/**")))
+
+        assertTrue(result.deletedFiles >= 1, "matched file must be deleted")
+        assertTrue(!Files.exists(workspace.resolve("build/out.txt")), "out.txt must be deleted")
+        assertTrue(Files.exists(workspace.resolve("README.md")), "README.md must survive")
+    }
+
+    @Test
+    fun `C9 cleanWs keeps its wipe contract in a scratch workspace`(@TempDir tempDir: Path) {
+        val workspace = tempDir.resolve("workspace/build-0")
+        Files.createDirectories(workspace)
+        Files.writeString(workspace.resolve("a.txt"), "scratch")
+
+        val executor = CleanWsExecutor(workspaceResolver = { _, _ -> workspace })
+        val result = executor.execute("Test", 0, 0, StepSpec.CleanWs(patterns = null))
+
+        assertTrue(result.deletedFiles >= 1, "scratch wipe must still work")
+        assertTrue(!Files.exists(workspace.resolve("a.txt")), "a.txt must be deleted in scratch mode")
+    }
 }

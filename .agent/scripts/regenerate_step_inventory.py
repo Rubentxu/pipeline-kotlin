@@ -60,6 +60,17 @@ CERTIFIED_RECEIPTS = {
     "core.unstash": "WU_LPR_089_CORE_STASH_UNSTASH_TIER_B1.md",
     "core.publishHTML": "WU_LPR_090_CORE_PUBLISH_HTML_TIER_B2.md",
     "core.artifact.query": None,  # E1.1 bridge; G6/G8 pending
+    # TRAIN-040-FINAL F2 exact-candidate official plugin certification.
+    "scm-git.checkout": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "junit.results": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.findFiles": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.readJson": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.writeJson": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.readYaml": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.writeYaml": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.zip": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.unzip": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
+    "core-utils.sha256": "TRAIN_040_F2_OFFICIAL_PLUGIN_CERTIFICATION_RECEIPT.md",
     "example.uppercase": "LB02_EP_EXAMPLE_UPPERCASE_CERTIFICATION.md",
 }
 

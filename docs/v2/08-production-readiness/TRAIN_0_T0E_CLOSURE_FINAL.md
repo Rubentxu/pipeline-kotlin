@@ -36,8 +36,12 @@ T0.E closure on top.
 
 ## 1 — T0.E Certifier & Evidence Closure (501c88ee)
 
-T0.E Certifier & Evidence Closure work shipped across the EVID-01 cycle
-(commits `56467ed2` → `9d0607d7`). Summary:
+T0.E Certifier & Evidence Closure work shipped across the EVID-01
+cycle, which started at commit `56467ed2` (T0E-EVID-01 E1 certifier
+correctness) and was anchored at `789e6e01` (last receipt-only
+commit before R5.1 rebase). The R5.1 cycle then overlaid new commits
+including `9d0607d7` (archive manifest), and the present T0.E
+closure commit `14cc4368` adds the E2-VERIFY evidence on top of I.
 
 - **E1 Certifier correctness (final):**
   - E1.1 SHA lexical order != recency. Replaced `max(SHA)` with
@@ -60,9 +64,11 @@ T0.E Certifier & Evidence Closure work shipped across the EVID-01 cycle
 - **E5 Gate proof:** 6/6 admission PASS; 29 certifier tests + 46 admission
   tests + 8 classify + 9 consult + 6 projection = **98/98 hermetic
   tests PASS**, replicated across dev repo + 2 fresh clones.
-- **E6 Final receipt:** T0E_CLOSURE_RECEIPT (HEAD `e393eb89`) +
-  T0E_EVID_01_E2_VERIFY_AT_9D0607D7 (HEAD `9d0607d7`, this commit's
-  parent).
+- **E6 Final receipt:** T0E_CLOSURE_RECEIPT (last meaningful commit
+  `e393eb89`, dated 2026-09-26T14:50Z; mirror of UAT-EVIDENCE markers
+  added to closure) +
+  T0E_EVID_01_E2_VERIFY_AT_9D0607D7 (added by THIS T0.E closure
+  commit `14cc4368`, not pre-existing at I=9d0607d7).
 
 ## 2 — T0.E Integration Candidate (c338edee)
 
@@ -175,7 +181,9 @@ was emitted pre-refactor.
 
 **Disposition:** out-of-scope for T0.E; requires its own WI to enrich
 the `CliError.UnsupportedSandboxProfile` message with ADR-0016 / M5 /
-M9 cross-reference. Tracked as D-008 in `.agent/TECH_DEBT_BACKLOG.md`.
+M9 cross-reference. Tracked as **D-012** in `.agent/TECH_DEBT_BACKLOG.md`
+(renumbered from initial D-008 to avoid collision with the existing
+D-008 entry on UAT-RP-005 CONFLICT).
 
 ### 2.5 — Fresh clone verification
 
@@ -194,14 +202,24 @@ T0E_CLOSURE_RECEIPT at `8913bac3`, plus 11 R5.1 commits).
 
 ```bash
 $ mv .agent .agent.hiding
+$ git remote set-url origin https://github.com/Rubentxu/pipeline-kotlin
 $ sddk project resolve --root /tmp/t0e-fresh-clone-9d0607d7 --scope .
 project_id: p-1f3622e11c093341
 workspace_id: w-6ed75674eb9acb0fd62214e8
 identity_source: remote
-remote_url: https://github.com/rubentxu/pipeline-kotlin
+remote_url: https://github.com/Rubentxu/pipeline-kotlin
 scope: .
 $ mv .agent.hiding .agent
 ```
+
+**Important caveat:** the remote URL case differs from the parent
+(`Rubentxu` vs `rubentxu`) and produces a different `project_id`
+(`p-1f3622e11c093341` vs the real `p-733fb505b5a6bd2d`). The recovery
+demonstrates the no-muleta invariant (SDDK can rebuild `project_id`
+and `workspace_id` from any valid remote), NOT a faithful
+reproduction of the parent project's identity. The admission check
+that depends only on filesystem content is hermetic regardless of
+the remote URL.
 
 No-muleta invariant confirmed: SDDK can rebuild `project_id` and
 `workspace_id` from the remote alone; `.agent/` is not load-bearing.
@@ -247,7 +265,7 @@ Files added by this session's T0.E closure commit (14cc4368):
   - docs/v2/07-uat/T0E_EVID_01_E2_VERIFY_AT_9D0607D7.md (UAT evidence + E2-VERIFY)
   - docs/v2/08-production-readiness/TRAIN_0_T0E_CLOSURE_FINAL.md (this file)
   - docs/v2/08-production-readiness/CURRENT_UAT_STATUS.md (regen at I)
-  - .agent/TECH_DEBT_BACKLOG.md (D-008 entry)
+  - .agent/TECH_DEBT_BACKLOG.md (D-012 entry, originally D-008, renumbered)
 All cited receipts: last-commit ancestor of I (verified via git log).
 ```
 
@@ -257,13 +275,16 @@ All cited receipts: last-commit ancestor of I (verified via git log).
 |---|---|---|---|
 | D-001..D-006 | Legacy | various | preserved (T0.A-T0.D closure) |
 | D-007 | `gen-current-uat-status.py` regex false-COVERED / hyphen-FAIL | P2 | **FIXED** (T0E-EVID-01 E1.2) |
-| D-008 | `UatLocal007SandboxProfileTest.UAT-L7-TC-003` — `UnsupportedSandboxProfile` message lacks ADR-0016/M5/M9 cross-reference | P2 | **OPEN** (pre-existing, not R5.1) |
+| D-008 | UAT-RP-005 CONFLICT tras neutralización (historical, RESUELTO) | P2 | RESUELTO |
+| D-012 | `UatLocal007SandboxProfileTest.UAT-L7-TC-003` — `UnsupportedSandboxProfile` message lacks ADR-0016/M5/M9 cross-reference | P2 | **OPEN** (pre-existing, not R5.1) |
 | T0E-EVID-01 | Certifier + evidence + applicability + KNOWN_LIMITATION | P0 | **FIXED** |
 
-D-008 is the only NEW debt item opened by this work; it is
+D-012 is the only NEW debt item opened by this work; it is
 pre-existing (reproducible on `ab5bec80`) and out of scope for T0.E
 closure. Operator can decide to handle it in TRAIN-1 or as an
-independent T0-side fix.
+independent T0-side fix. The initial D-008 number was a collision
+with the historical D-008 entry (UAT-RP-005 CONFLICT, RESUELTO);
+renumbered to D-012 to avoid duplicate IDs.
 
 ## 5 — Acceptance criteria (T0.B+C+D+E consolidated)
 
@@ -277,7 +298,7 @@ independent T0-side fix.
 - [x] T0.E Integration candidate formed (E2.1 above).
 - [x] T0.E Admission at I (E2.2 above — 6/6 PASS).
 - [x] T0.E E2 oracles re-executed at I (E2.3 — 65/65 PASS).
-- [x] T0.E Full integration suite at I (E2.4 — pre-existing D-008
+- [x] T0.E Full integration suite at I (E2.4 — pre-existing D-012
       isolated, NOT a regression).
 - [x] T0.E Fresh clone at I (E2.5 — 6/6 admission PASS).
 - [x] T0.E SDDK recovery without `.agent/*` (E2.6 — passes).
@@ -300,7 +321,7 @@ Next action belongs to the operator:
 
 1. **Review** the 11 R5.1 commits (detekt burn-down + refactor; no
    contract change).
-2. **Decide** on D-008 (UAT-L7-TC-003 message enrichment) — fix in
+2. **Decide** on D-012 (UAT-L7-TC-003 message enrichment) — fix in
    TRAIN-0 or defer to TRAIN-1.
 3. **Decide** on pre-existing D-001..D-006 disposition.
 4. **Decide** on merge to `main` (operator-only gate).

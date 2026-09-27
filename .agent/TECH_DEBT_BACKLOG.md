@@ -1109,7 +1109,7 @@ declaró cerrada la deuda P2 de mutación.
 
 ---
 
-## D-008 — `UatLocal007SandboxProfileTest.UAT-L7-TC-003` message enrichment
+## D-012 — `UatLocal007SandboxProfileTest.UAT-L7-TC-003` message enrichment
 
 **Detected:** 2026-09-27T08:00Z (T0.E integration candidate re-verify).
 **Severity:** P2 (cosmetic/documentation cross-reference; not blocking).

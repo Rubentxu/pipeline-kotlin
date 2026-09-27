@@ -1,9 +1,38 @@
 # PipelineK — Upgrading
 
-**Release verified against**: `pipelinek 0.39.0`. The upgrade story is
-SDKMAN-first; manual install upgrades are documented as a fallback.
+**Release verified against**: `pipelinek 0.39.0`. The upgrade path today
+is the GitHub Releases ZIP; SDKMAN is **WAITING_EXTERNAL** (track
+[WU-LPR-080](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md)).
 
-## Upgrade via SDKMAN
+## Upgrade from GitHub Releases
+
+If you installed from GitHub Releases:
+
+```bash
+VERSION=<new-version>
+URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
+curl -fsSL -o "pipelinek-${VERSION}.zip" "${URL}"
+curl -fsSL "${URL}.sha256" | sha256sum -c -
+unzip -q "pipelinek-${VERSION}.zip" -d /opt/pipelinek
+
+# Swap the symlink
+sudo ln -sf /opt/pipelinek/pipelinek-${VERSION}/bin/pipelinek \
+              /usr/local/bin/pipelinek
+
+pipelinek version
+```
+
+To roll back, repoint the symlink to the older version directory and
+remove the newer directory.
+
+## Upgrade via SDKMAN (waiting external)
+
+> SDKMAN registration of the `pipelinek` candidate is currently
+> **WAITING_EXTERNAL** — vendor onboarding in progress. See
+> [WU-LPR-080](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md).
+> Until SDKMAN confirms the candidate, upgrade via GitHub Releases above.
+
+If and when SDKMAN is available, the upgrade will be:
 
 ```bash
 # See what's available
@@ -24,38 +53,19 @@ new version and re-run `sdk env` to activate it.
 
 ## Roll back
 
-If the new version misbehaves, switch back via SDKMAN:
+If the new version misbehaves, repoint the symlink to the previous
+version directory and remove the newer one:
 
 ```bash
-sdk default pipelinek <previous-version>
+sudo ln -sf /opt/pipelinek/pipelinek-<previous-version>/bin/pipelinek \
+              /usr/local/bin/pipelinek
 ```
 
 If the new version broke your project's `--db` (e.g. an incompatible
 schema change), keep the old version as your default and only use the
-new version in a fresh `--db` path. The `--db` schema is **not** part
-of the stable contract; do not assume forward or backward
-compatibility across major versions.
-
-## Upgrade via direct download (no SDKMAN)
-
-If you installed from GitHub Releases:
-
-```bash
-VERSION=<new-version>
-URL="https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
-curl -fsSL -o "pipelinek-${VERSION}.zip" "${URL}"
-curl -fsSL "${URL}.sha256" | sha256sum -c -
-unzip -q "pipelinek-${VERSION}.zip" -d /opt/pipelinek
-
-# Swap the symlink
-sudo ln -sf /opt/pipelinek/pipelinek-${VERSION}/bin/pipelinek \
-              /usr/local/bin/pipelinek
-
-pipelinek version
-```
-
-To roll back, repoint the symlink to the older version directory and
-remove the newer directory.
+new version in a fresh `--db` path. The `--db` schema is **not** part of
+the stable contract; do not assume forward or backward compatibility
+across major versions.
 
 ## What you can expect across upgrades
 

@@ -7,35 +7,14 @@
 
 - **Java 21 or newer** (the certified binary is built and tested with
   Temurin 21.0.8 / 24.0.2). The ZIP does **not** include a JDK.
-- **Bash or any POSIX shell** for SDKMAN.
+- **Bash or any POSIX shell**.
 - **~200 MB free disk** for the distribution plus workspace data.
 - **Operating system**: Linux, macOS, or Windows via WSL. The distribution
-  is `UNIVERSAL` per SDKMAN; it ships both `bin/pipelinek` (UNIX) and
-  `bin/pipelinek.bat` (Windows).
+  ships both `bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows).
 
-## Install with SDKMAN (recommended)
+## Install from GitHub Releases
 
-SDKMAN is the version manager PipelineK is published through.
-
-```bash
-# 1. Install SDKMAN if you don't have it (one-time)
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# 2. Install PipelineK
-sdk install pipelinek 0.39.0
-
-# 3. Verify
-pipelinek version     # → pipeline 0.39.0
-pipelinek doctor      # → jdk / os / workdir / writable
-```
-
-> SDKMAN registration of the `pipelinek` candidate is currently
-> **WAITING_EXTERNAL** — see
-> [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md).
-> Until SDKMAN confirms the candidate, install via GitHub Releases below.
-
-## Install from GitHub Releases (fallback)
+This is the only officially supported install path today.
 
 ```bash
 # Download the canonical ZIP for the version you want
@@ -53,29 +32,49 @@ sudo ln -sf /opt/pipelinek/pipelinek-${VERSION}/bin/pipelinek /usr/local/bin/pip
 
 # Verify
 pipelinek version
-pipelinek doctor
+pipelinek doctor     # jdk / os / workdir / writable
 ```
 
 > The ZIP does not install itself; you decide where it lives. If you don't
 > want to use `/usr/local/bin`, just add `<unpack>/pipelinek-${VERSION}/bin`
 > to your `PATH`.
 
+## Install via SDKMAN (waiting external)
+
+> SDKMAN registration of the `pipelinek` candidate is currently
+> **WAITING_EXTERNAL** — vendor onboarding in progress. See
+> [`docs/v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md`](../v2/07-uat/WU_LPR_080_SDKMAN_PUBLICATION_RECEIPT.md).
+> Until SDKMAN confirms the candidate, install via GitHub Releases above.
+
+If and when the SDKMAN candidate becomes available, the install will be:
+
+```bash
+# 1. Install SDKMAN if you don't have it (one-time)
+curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+# 2. Install PipelineK
+sdk install pipelinek 0.39.0
+
+# 3. Verify
+pipelinek version
+pipelinek doctor
+```
+
 ## Windows (WSL)
 
-SDKMAN does not run natively on Windows. Use WSL:
+Use WSL (Ubuntu recommended). Once inside WSL, follow the GitHub Releases
+install above. SDKMAN does not run natively on Windows.
 
 ```powershell
 wsl --install          # one-time
-# Then inside WSL (Ubuntu):
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
-sdk install pipelinek 0.39.0
+# Then inside WSL (Ubuntu): follow the GitHub Releases block.
 ```
 
 ## Pinning a version per project (`.sdkmanrc`)
 
-SDKMAN supports per-directory version selection via `.sdkmanrc`. Drop
-this in your project root to lock the version for anyone using SDKMAN:
+When SDKMAN becomes available, you can pin a per-directory version via
+`.sdkmanrc`:
 
 ```ini
 # .sdkmanrc
@@ -85,7 +84,9 @@ pipelinek=0.39.0
 ```
 
 Then `cd` into the project and run `sdk env` to activate the pinned
-version in the current shell.
+version in the current shell. Until SDKMAN is confirmed available, pin
+versions via your shell manager (mise, asdf) or by shipping the ZIP
+URL + SHA-256 in your repo.
 
 ## Verify the install is the canonical bytes
 

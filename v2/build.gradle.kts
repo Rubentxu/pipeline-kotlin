@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.42.0"
+version = "0.42.0-rc1"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -26,12 +26,17 @@ version = "0.42.0"
 // the policy explicit and refuse per-subproject overrides. Any future subproject MUST NOT
 // declare its own `version = "..."` — that is a release-time defect.
 //
-// Snapshot policy (v0.42-train):
-//   - v0.40.0 and v0.41.0-rc1 are released and remain immutable.
-//   - v0.42.0 is the current line: MAJOR because the v0.41.0-rc1..HEAD range
-//     carries a BREAKING CHANGE (StageScope.retry conditions now fail closed),
-//     with no feat in the range. The version is derived from the history, not
-//     chosen by hand.
+// Snapshot policy (v0.42-train, first release-candidate line):
+//   - v0.40.0 and v0.41.0-rc1 are released candidates and remain immutable.
+//   - v0.42.0-rc1 is the candidate produced from this main commit. Its train is
+//     a MAJOR because the v0.41.0-rc1..HEAD range carries a BREAKING CHANGE
+//     (StageScope.retry conditions now fail closed) with no feat in the range.
+//     The train is derived from the history, not chosen by hand.
+//
+// This repo ships release CANDIDATES, not stable releases (AGENTS.md, "Release
+// candidates"). A candidate is an immutable ZIP plus SBOM, SHA256SUMS and a
+// manifest, delivered to the external pipelinek-release-harness, which owns
+// certification and stable promotion. Nothing here promotes to stable.
 //
 // Fail-closed law: the released artifact's `version` subcommand MUST equal the git tag.
 // If they ever diverge the build is broken at the source, not in the artifact.

@@ -53,20 +53,6 @@ class CleanWsOperationsAdapter(
     private val workspaceBase: java.nio.file.Path? = null,
 ) : CleanWsOperations {
 
-    /**
-     * C12: true when [base] looks like a source-control checkout rather than a
-     * disposable scratch directory. Mirrors the identical helper in
-     * [DeleteDirOperationsAdapter] so both cleanup Steps agree on what
-     * "the user's project" means.
-     */
-    private fun isProjectCheckout(base: java.nio.file.Path): Boolean =
-        listOf(base, base.parent).any { candidate ->
-            candidate != null &&
-                listOf(".git", ".hg", ".svn").any { marker ->
-                    java.nio.file.Files.exists(candidate.resolve(marker))
-                }
-        }
-
     override fun clean(input: CleanWsInput): CleanWsResult {
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspace = resolver.resolve(stageIdentity.name, stageIdentity.index)
@@ -82,7 +68,8 @@ class CleanWsOperationsAdapter(
             // --workspace, so disposable scratch workspaces keep their wipe
             // contract. The corpus invokes the CLI with --workspace over a
             // @TempDir, and the over-broad condition broke it there too.
-            protectWorkspaceRoot = workspaceBase != null && isProjectCheckout(workspaceBase),
+            protectWorkspaceRoot = workspaceBase != null &&
+                ProjectCheckoutDetector.isProjectCheckout(workspaceBase),
         )
 
         val execResult = executor.execute(

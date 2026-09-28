@@ -292,7 +292,11 @@ internal object EnvVarNameExtractor {
             if (!inString) {
                 when (c) {
                     '(' -> { depth++; i++; }
-                    ')' -> { if (depth == 0) return Pair(envVars, i + 1); depth--; i++; }
+                    ')' -> {
+                        if (depth == 0) return Pair(envVars, i + 1)
+                        depth--
+                        i++
+                    }
                     '"' -> {
                         val strEnd = skipString(text, i, before)
                         val content = text.substring(i + 1, strEnd - 1)

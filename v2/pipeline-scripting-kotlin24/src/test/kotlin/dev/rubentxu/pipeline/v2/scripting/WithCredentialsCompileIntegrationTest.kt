@@ -60,7 +60,10 @@ class WithCredentialsCompileIntegrationTest {
     @Test
     fun `IT-001 simple usernameColonPassword binding compiles and returns success`() {
         val sb = StringBuilder()
-        sb.append("{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(\"test-creds\", \"USER_PASS\")) { sh(\"echo credentials_username_colon_password=")
+        sb.append(
+            "{ withCredentials(StepSpec.CredentialsBinding.usernameColonPassword(" +
+                "\"test-creds\", \"USER_PASS\")) { sh(\"echo credentials_username_colon_password=",
+        )
         appendDollarVar(sb, "USER_PASS")
         sb.append("\") } }")
         val scriptText = wrapInPipeline(sb.toString())

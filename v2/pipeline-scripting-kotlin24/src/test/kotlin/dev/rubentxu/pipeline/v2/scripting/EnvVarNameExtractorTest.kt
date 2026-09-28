@@ -70,7 +70,12 @@ class EnvVarNameExtractorTest {
 
     @Test
     fun `multiple factories in single withCredentials block are all extracted`() {
-        val s = makeScript("""withCredentials(StepSpec.CredentialsBinding.usernamePassword("c1", "U1", "P1"), StepSpec.CredentialsBinding.usernameColonPassword("c2", "UP2"), StepSpec.CredentialsBinding.file("c3", "FP3")) { sh("echo inside") }""")
+        val s = makeScript(
+            """withCredentials(""" +
+                """StepSpec.CredentialsBinding.usernamePassword("c1", "U1", "P1"), """ +
+                """StepSpec.CredentialsBinding.usernameColonPassword("c2", "UP2"), """ +
+                """StepSpec.CredentialsBinding.file("c3", "FP3")) { sh("echo inside") }""",
+        )
         assertEquals(setOf("U1", "P1", "UP2", "FP3"), EnvVarNameExtractor.extract(s))
     }
 
@@ -87,7 +92,11 @@ class EnvVarNameExtractorTest {
 
     @Test
     fun `duplicated env var names are deduplicated`() {
-        val s = makeScript("""withCredentials(StepSpec.CredentialsBinding.usernamePassword("c1", "USR", "PWD"), StepSpec.CredentialsBinding.usernameColonPassword("c2", "USR")) { sh("echo inside") }""")
+        val s = makeScript(
+            """withCredentials(""" +
+                """StepSpec.CredentialsBinding.usernamePassword("c1", "USR", "PWD"), """ +
+                """StepSpec.CredentialsBinding.usernameColonPassword("c2", "USR")) { sh("echo inside") }""",
+        )
         assertEquals(setOf("USR", "PWD"), EnvVarNameExtractor.extract(s))
     }
 }

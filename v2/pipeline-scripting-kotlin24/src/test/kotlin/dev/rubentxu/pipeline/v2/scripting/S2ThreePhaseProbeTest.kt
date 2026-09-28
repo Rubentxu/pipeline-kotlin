@@ -22,7 +22,7 @@ class S2ThreePhaseProbeTest {
     private val dslJar: String? = ScriptDefinition.dslApiJar()
     private val host = Kotlin24ScriptingHost()
 
-    private fun build(name: String, source: String): ScriptDefinition {
+    private fun build(source: String): ScriptDefinition {
         val cp = buildList {
             add(domainJar)
             if (dslJar != null) add(dslJar)
@@ -42,7 +42,7 @@ class S2ThreePhaseProbeTest {
 
         // Phase 3: compile with the project's Kotlin24ScriptingHost.
         val res = try {
-            host.compile(build(name, source))
+            host.compile(build(source))
         } catch (e: Throwable) {
             println("PHASE_3_COMPILE=EXCEPTION ${e.javaClass.simpleName}: ${e.message}")
             return
@@ -89,7 +89,8 @@ class S2ThreePhaseProbeTest {
 
         // Form E: unbraced $USER with withCredentials binding.
         // Kotlin source:  withCredentials(StepSpec.CredentialsBinding.string("id","USER")) { sh("echo user=$USER") }
-        val fE = "pipeline { stages { stage(\"s\") { withCredentials(StepSpec.CredentialsBinding.string(\"id\", \"USER\")) { sh(\"echo user=" + dollar() + "USER\") } } } }"
+        val fE = "pipeline { stages { stage(\"s\") { withCredentials(StepSpec.CredentialsBinding.string(\"id\", \"USER\")) " +
+            "{ sh(\"echo user=" + dollar() + "USER\") } } } }"
         phase1_3("E_withCreds", fE)
     }
 
@@ -126,7 +127,8 @@ class S2ThreePhaseProbeTest {
         //     still not a Kotlin escape in raw triples — actually the
         //     Kotlin reference 1.9+ does handle \\$ inside raw strings
         //     as a non-template escape). Phase 3 measures the truth.
-        val fF1 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + bsl() + dollar() + lc() + "USER" + rc() + dq() + dq() + dq() + ") } } }"
+        val fF1 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + bsl() + dollar() +
+            lc() + "USER" + rc() + dq() + dq() + dq() + ") } } }"
         phase1_3("F1_kotlin_escape_in_raw", fF1)
 
         // Form F2: the safe form ${'$'}USER inside raw triple.
@@ -135,7 +137,8 @@ class S2ThreePhaseProbeTest {
         //   - Compiled string contains the 5 bytes: $USER.
         //   - bash sees `$USER` and expands from env (or treated as literal
         //     if USER is not in env).
-        val fF2 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + dollar() + lc() + "'" + dollar() + "'" + rc() + "USER" + dq() + dq() + dq() + ") } } }"
+        val fF2 = "pipeline { stages { stage(\"s\") { sh(" + dq() + dq() + dq() + "echo user=" + dollar() +
+            lc() + "'" + dollar() + "'" + rc() + "USER" + dq() + dq() + dq() + ") } } }"
         phase1_3("F2_safe_form_in_raw", fF2)
 
         // Form F3: Kotlin-style \$ escape inside raw triple.

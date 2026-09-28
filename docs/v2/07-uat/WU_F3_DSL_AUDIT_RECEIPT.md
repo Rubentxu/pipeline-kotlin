@@ -28,7 +28,7 @@ does, separating:
 | `isUnix()` | `fun isUnix(): Boolean` | **SUPPORTED** (S2-A5 G8 CERTIFIED) | emits `UnixDetected`, returns `ISUNIX_PLACEHOLDER = true` sentinel to in-memory hosts. Real classification comes from `core.isUnix`. | `S2_A5_CORE_ISUNIX_G8_FINAL_CERTIFICATION_RECEIPT.md` |
 | `waitUntil { }` | `fun waitUntil(initialRecurrencePeriod: Long, quiet: Boolean, body: StageScope.() -> Unit)` | **SUPPORTED** (S2-A8 G3R CERTIFIED) | emits `WaitUntilPolled` + `WaitUntilCompleted`; body runs at runtime via `BodyInvoker`, NOT eagerly at construction. Probe with `echo("waitUntil-body")` emitted one `EchoOutputCaptured` and one `WaitUntilCompleted{outcome:"completed"}`. | `S2_A8_CORE_WAITUNTIL_*` (G2..G8) |
 | `post { }` | `fun post(block: PostScope.() -> Unit)` | **SUPPORTED (DSL construction-time capture)** — body captured into `PostScope.build()`; runtime semantics: not exercised by current probe (not in scope of F3 audit). | KDoc + `PostStepsScope` markers via `WU_LPR_401`. | `WU_LPR_401_RECEIPT.md` |
-| `whenCondition(...) { }` | `fun whenCondition(expression: String, block: StageScope.() -> Unit)` | **UNSUPPORTED, fail-closed at compile** | Probe emitted `Error: script uses non-canonical plugins; canonical bridge requires core.sh/core.echo/.../core.waitUntil` (no `core.whenCondition` in the list). Exit 2, before any run. | `CliNonCanonicalInMemoryExitsTwoTest` |
+| `whenCondition(...) { }` | `fun whenCondition(expression: String, block: StageScope.() -> Unit)` | **UNSUPPORTED, rejected at construction with `IllegalArgumentException`** | **CORRECTED 2026-09-28 — the earlier "fail-closed at compile, exit 2" entry in this table was false.** The old row cited `CliNonCanonicalInMemoryExitsTwoTest` as proof, but that test exercises `ansiColor`, not `whenCondition`. `whenCondition` built a `WhenCondition` value, bound it to a discarded local, and appended the body to the stage: no `StepSpec` was emitted, so the canonical bridge had nothing to reject. The `non-canonical plugins` gate never saw it. OBSERVED on the installed `v0.42.0-rc1` distribution: `whenCondition("env.BRANCH == 'main'") { echo("only on main") }` ran the body and exited 0 with an undefined `env.BRANCH`; a control probe with `whenCondition("1 == 2")` also ran its body (`EchoOutputCaptured{content:"SHOULD-NOT-RUN\n"}`, `RunFinished{outcome:"success"}`), proving the predicate was discarded rather than evaluated. Now rejected at construction. | `WhenConditionFailClosedTest` (5 tests; the `1 == 2` control probe is recorded in its KDoc) |
 | `node(label) { }` | `fun node(label: String? = null, block: StageScope.() -> Unit)` | **UNSUPPORTED, fail-closed at compile** | Same bridge rejection message. The `NodeNoOp` StepSpec is built at construction but the canonical bridge rejects it. | (no dedicated test; covered by the generic `non-canonical plugins` gate) |
 | `script { }` | `fun script(block: ScriptScope.() -> Unit)` | **UNSUPPORTED, fail-closed at compile** | Same bridge rejection message. The `Shell(isScriptBlock=true)` StepSpec is built at construction but the canonical bridge rejects it. | (covered by the generic gate) |
 | `load(path)` | `fun load(path: String)` | **UNSUPPORTED, fail-closed at compile** | Same bridge rejection. `core.load` IS a registered `StepDefinition` candidate (per `WU_LPR_060` ledger) but the canonical bridge whitelist excludes it. Exit 2. | `CliNonCanonicalInMemoryExitsTwoTest`, `UatLocal011WorkflowControlTest` |
@@ -45,7 +45,7 @@ them:
 | Historical claim (2026-09-08) | What the binary actually does (2026-09-19, HEAD `a5e0359f`) |
 |---|---|
 | "waitUntil honest semantics vs throw RuntimeException: 🔲 placeholder poll + throw" | **GREEN**: `WaitUntilPolled` + `WaitUntilCompleted` events emitted with `totalAttempts`, `totalDurationMs`, `outcome:"completed"`. No `RuntimeException` thrown at probe time. |
-| "`post`/`whenCondition` execution on canonical path: 🔲 toStageBuilder omits post; whenCondition discards expression and appends body unconditionally" | **Nuanced**: `post` is in the bridge whitelist path (not in `non-canonical` rejection); `whenCondition` is REJECTED at compile with `non-canonical plugins` message — fail-closed, NOT silently unconditional. |
+| "`post`/`whenCondition` execution on canonical path: 🔲 toStageBuilder omits post; whenCondition discards expression and appends body unconditionally" | **CORRECTED — the old answer here was wrong twice.** `post` is in the bridge whitelist path (not in `non-canonical` rejection). `whenCondition` was NOT rejected: it was exactly the historical failure described in the left column, and this audit mis-reported it as fixed. An implementation that compiles away to a bare `echo` is invisible to the `non-canonical` gate, so a green bridge gate proved nothing about it. It is now rejected at construction with `IllegalArgumentException` (`WhenConditionFailClosedTest`). |
 | "`node` no-op with only AgentResolved: 🟡 documented no-op; fake-return risk on label/workspace" | **Nuanced**: `node` is REJECTED at compile with the same `non-canonical` message. The documented no-op risk is now a hard compile-time gate. |
 | "`git`/`scmGit` duplicate constructors: 🔲" | **Out of F3 scope**: SCM is a different family (orchestration-level plugin). The ledger has `LEGACY_IMPLEMENTED_UNCERTIFIED` for SCM-related keys; not a DSL honesty gap. |
 
@@ -78,9 +78,25 @@ surfaces against HEAD `a5e0359f`. Specifically:
   are documented as such.
 - `waitUntil { ... }` runs the body at runtime via `BodyInvoker`, not
   at construction.
-- `whenCondition`, `node`, `script`, `load` all fail **closed** at
-  compile with an explicit `non-canonical plugins` error, exit 2,
-  before any effects are launched.
+- `node`, `script`, `load` all fail **closed** at compile with an
+  explicit `non-canonical plugins` error, exit 2, before any effects
+  are launched. (Re-verified as still true; see the note below.)
+- `whenCondition` is **not** in that list. It is rejected at
+  construction with `IllegalArgumentException`, because it never
+  reached the bridge: it emitted no `StepSpec` of its own, so the
+  `non-canonical` gate had nothing to inspect.
+
+> **Method correction (2026-09-28).** This receipt originally listed
+> `whenCondition` alongside `node`/`script`/`load` as failing closed at
+> compile, citing `CliNonCanonicalInMemoryExitsTwoTest`. That citation
+> was invalid: the test uses `ansiColor`, and `whenCondition` flattens
+> to a canonical `echo`. The lesson generalises past this one row —
+> **a green `non-canonical plugins` gate proves only that the
+> unrecognised surface emits a `StepSpec`.** Any DSL function that
+> compiles away to canonical steps is invisible to that gate, so
+> "it was rejected" must be demonstrated with a fixture that actually
+> contains the surface under audit. A later probe with the installed
+> distribution showed the body running unconditionally, exit 0.
 
 This is a **better** posture than the historical list suggested: the
 DSL surfaces are honest about what is and is not supported by the

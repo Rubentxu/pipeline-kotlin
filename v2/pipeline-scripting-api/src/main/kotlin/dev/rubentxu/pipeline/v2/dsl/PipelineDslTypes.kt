@@ -78,6 +78,12 @@ data class PostConditionSpec(
 
 /**
  * Conditional execution using a when clause.
+ *
+ * DEAD TYPE. Nothing constructs or consumes this any more:
+ * [StageScope.whenCondition] now rejects its input with `IllegalArgumentException`
+ * because the IR has nowhere to carry [expression]. Kept only as a marker of the
+ * intended-but-unimplemented design. Deleting it, or wiring it properly, is
+ * tracked as debt — do not treat its presence as evidence that `when` blocks work.
  */
 data class WhenCondition(
     val expression: String,

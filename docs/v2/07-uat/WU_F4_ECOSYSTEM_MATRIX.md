@@ -81,7 +81,7 @@ admission gate observed in `WU-F3` empirical audit (HEAD `d89c0f9f`).
 | `dir` | `DirBlock` | DEFERRED (workspace-context block; B11) |
 | `timestamps` | `TimestampsDecorator` | DEFERRED (output-decorator block; not certified) |
 | `waitUntil` | `WaitUntilBlock` | SUPPORTED (S2-A8 G3R CERTIFIED; runtime predicate via BodyInvoker) |
-| `whenCondition` | `WhenConditionBlock` | UNSUPPORTED, fail-closed at compile (canonical bridge rejects; see WU-F3) |
+| `whenCondition` | `WhenConditionBlock` | UNSUPPORTED, rejected at construction with `IllegalArgumentException` (**CORRECTED 2026-09-28** — this row previously read "UNSUPPORTED, fail-closed at compile (canonical bridge rejects; see WU-F3)" and was wrong; it inherited the invalid claim from WU-F3's `whenCondition` row. The body ran unconditionally with exit 0. See `WhenConditionFailClosedTest` and the corrected WU-F3 receipt.) |
 | `script` | `ScriptBlock` | UNSUPPORTED, fail-closed at compile (canonical bridge rejects; see WU-F3) |
 | `node` | `NodeNoOp` | UNSUPPORTED, fail-closed at compile (canonical bridge rejects; see WU-F3) |
 | `load` | `LoadStep` | UNSUPPORTED, fail-closed at compile (canonical bridge rejects; see WU-F3) |

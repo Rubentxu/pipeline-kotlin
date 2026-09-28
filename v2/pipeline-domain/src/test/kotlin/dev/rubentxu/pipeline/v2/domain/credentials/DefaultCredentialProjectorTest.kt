@@ -250,7 +250,7 @@ class DefaultCredentialProjectorTest {
     }
 
     @Test
-    fun `ZIP binding injects the extracted directory path as masked handle`(@TempDir tempDir: Path) {
+    fun `ZIP binding injects the extracted directory path as masked handle`() {
         val zip = Zip(
             id = CredentialsId("k"),
             entries = mapOf("config.json" to """{"a":1}""".toByteArray()),
@@ -268,7 +268,7 @@ class DefaultCredentialProjectorTest {
     // ─── EM-7 materialization retention tests ─────────────────────────────────
 
     @Test
-    fun `SSH FILE CERT ZIP bindings retain their materialized paths`(@TempDir tempDir: Path) {
+    fun `SSH FILE CERT ZIP bindings retain their materialized paths`() {
         val capturing = CapturingMaterialization()
         val projector = DefaultCredentialProjector(capturing)
 
@@ -319,7 +319,7 @@ class DefaultCredentialProjectorTest {
     }
 
     @Test
-    fun `STRING USERNAME_PASSWORD USERNAME_COLON_PASSWORD bindings retain no materializations`(@TempDir tempDir: Path) {
+    fun `STRING USERNAME_PASSWORD USERNAME_COLON_PASSWORD bindings retain no materializations`() {
         val projector = DefaultCredentialProjector(CapturingMaterialization())
 
         val stringResult = projector.project(
@@ -345,7 +345,7 @@ class DefaultCredentialProjectorTest {
     }
 
     @Test
-    fun `ProjectionResult close wipes paths in reverse-LIFO order`(@TempDir tempDir: Path) {
+    fun `ProjectionResult close wipes paths in reverse-LIFO order`() {
         val capturing = CapturingMaterialization()
         val projector = DefaultCredentialProjector(capturing)
 
@@ -388,7 +388,7 @@ class DefaultCredentialProjectorTest {
     }
 
     @Test
-    fun `ProjectionResult close is idempotent`(@TempDir tempDir: Path) {
+    fun `ProjectionResult close is idempotent`() {
         val capturing = CapturingMaterialization()
         val projector = DefaultCredentialProjector(capturing)
 
@@ -419,7 +419,7 @@ class DefaultCredentialProjectorTest {
         Files.writeString(failingPath, "secret")
         val failingMaterialization = object : MaterializedCredentialDomain(failingPath, null) {
             override fun close() {
-                throw RuntimeException("Simulated wipe failure")
+                error("Simulated wipe failure")
             }
         }
 

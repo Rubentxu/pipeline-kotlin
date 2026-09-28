@@ -23,13 +23,12 @@ object CompiledPipelineValidator {
     fun validate(pipeline: CompiledPipeline) {
         require(pipeline.stages.isNotEmpty()) { "CompiledPipeline must contain at least one stage" }
         val stageIds = mutableSetOf<StageId>()
-        val rootStepIds = mutableSetOf<StepId>()
 
         fun visitStage(stage: StageNode) {
             require(stageIds.add(stage.id)) { "Duplicate stage id '${stage.id.value}'" }
             when (val body = stage.body) {
                 is StageBody.Steps -> body.steps.forEach { step ->
-                    visitStep(step, "stage '${stage.name}'", rootStepIds, depth = 0)
+                    visitStep(step, "stage '${stage.name}'", depth = 0)
                 }
                 is StageBody.NestedStages -> body.stages.forEach(::visitStage)
                 is StageBody.Parallel -> {
@@ -43,7 +42,7 @@ object CompiledPipelineValidator {
                 }
             }
             stage.post?.conditions?.values?.flatten()?.forEach { step ->
-                visitStep(step, "post-condition of stage '${stage.name}'", rootStepIds, depth = 0)
+                visitStep(step, "post-condition of stage '${stage.name}'", depth = 0)
             }
         }
 
@@ -55,13 +54,11 @@ object CompiledPipelineValidator {
      *
      * @param step The step to validate
      * @param parentPath Human-readable path for error messages
-     * @param intraBlockIds StepId set for uniqueness within current block scope (reset at block boundaries)
      * @param depth Current block nesting depth (incremented on BlockStepNode)
      */
     private fun visitStep(
         step: StepNode,
         parentPath: String,
-        intraBlockIds: MutableSet<StepId>,
         depth: Int,
     ) {
         when (step) {
@@ -93,7 +90,7 @@ object CompiledPipelineValidator {
                     require(childBlockIds.add(child.id)) {
                         "Duplicate step id '${child.id.value}' within block '${step.id.value}': ${parentPath}"
                     }
-                    visitStep(child, "${parentPath}/${step.id.value}", childBlockIds, depth = depth + 1)
+                    visitStep(child, "${parentPath}/${step.id.value}", depth = depth + 1)
                 }
             }
         }

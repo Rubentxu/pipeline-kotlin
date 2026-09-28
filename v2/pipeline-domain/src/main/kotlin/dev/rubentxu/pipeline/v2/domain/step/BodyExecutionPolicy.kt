@@ -422,7 +422,7 @@ fun resolveBodyExecutionPolicy(
         ?: return BodyPolicyResolution.Rejected(key, BodyPolicyRejection.NotABodyStep(key))
     val declared = declaredBody.execution.policy
 
-    incoherenceOf(key, declaredBody, declared)?.let { detail ->
+    incoherenceOf(declaredBody, declared)?.let { detail ->
         return BodyPolicyResolution.Rejected(
             key,
             BodyPolicyRejection.IncoherentMetadata(key, declared, detail),
@@ -500,7 +500,6 @@ class RegistryBodyPolicyResolver(
  * declared context kind does not determine the execution shape.
  */
 private fun incoherenceOf(
-    key: PluginStepId,
     body: StepBody.Declared,
     declared: BodyExecutionPolicy,
 ): String? {

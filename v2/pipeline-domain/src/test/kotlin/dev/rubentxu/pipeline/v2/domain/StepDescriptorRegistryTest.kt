@@ -157,7 +157,9 @@ class StepDescriptorRegistryTest {
         assertEquals(
             7,
             bodyRows.count { (it.second.body as StepBody.Declared).execution.owner == BodyExecutionOwner.CANONICAL_ENGINE },
-            "Seven core rows are executed by the canonical body engine (core.dir, core.timestamps, core.withEnv, core.timeout, core.withCredentials, core.retry, core.waitUntil)",
+            "Seven core rows are executed by the canonical body engine " +
+                "(core.dir, core.timestamps, core.withEnv, core.timeout, " +
+                "core.withCredentials, core.retry, core.waitUntil)",
         )
         assertEquals(
             2,

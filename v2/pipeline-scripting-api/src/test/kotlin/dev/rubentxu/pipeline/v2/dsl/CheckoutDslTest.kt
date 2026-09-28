@@ -53,15 +53,28 @@ class CheckoutDslTest {
         val scm: Scm = GitScm("https://github.com/example/repo.git")
         scope.checkout(scm)
 
-        // If this compiles, checkout(scm: Scm) works
-        // The step was added to the internal list
+        assertEquals(
+            1,
+            scope.steps().size,
+            "checkout(scm) must emit exactly one step, got ${scope.steps()}",
+        )
     }
 
+    /**
+     * Was named "desugars" but asserted only that the call compiled, which is how
+     * `scmGit`'s duplicate `steps.add` survived. The emission contract itself
+     * lives in [ScmGitEmissionContractTest]; this case exists so a future reader
+     * of CheckoutDslTest sees that the assertion is on `steps()`.
+     */
     @Test
-    fun `git shorthand desugars to checkout with scmGit`() {
+    fun `git shorthand desugars to exactly one checkout`() {
         val scope = StageScope("Test")
-        // git(...) calls checkout(scmGit(...))
-        // Just verify it compiles
         scope.git("https://github.com/example/repo.git", "main", null, true, true)
+
+        assertEquals(
+            1,
+            scope.steps().size,
+            "git(..) is PURE_DESUGAR to one checkout, got ${scope.steps()}",
+        )
     }
 }

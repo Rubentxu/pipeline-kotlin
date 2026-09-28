@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 /**
  * Pins the step-level retry capability contract declared by [StepSpec].
@@ -137,20 +138,32 @@ class StepSpecRetryCapabilityTest {
         StepSpec.RetryBlock(1, null, emptyList()),
     )
 
+    /**
+     * Inverted under the Semantic Conservation Law (TRAIN-DSL-HONESTY). This
+     * case used to assert the opposite — that `writeFile` is "left untouched by
+     * retry" — which certified a dropped policy as correct behaviour. The
+     * declared intent now fails closed; see [RetryRetrofitFailClosedTest] for
+     * the diagnostic contract. The capability assertion below is kept because it
+     * is a true statement about the sealed hierarchy, independent of what
+     * `retry(..)` does with it.
+     */
     @Test
-    fun `a non-retryable step is left untouched by retry`() {
+    fun `a non-retryable step makes retry fail closed rather than silently dropping the policy`() {
         val scope = StageScope("build")
         scope.writeFile("out.txt", "content")
-        scope.retry(count = 3)
-
-        val step = scope.steps().single()
         assertFalse(
-            step.supportsStepLevelRetry,
+            scope.steps().single().supportsStepLevelRetry,
             "WriteFile must not claim step-level retry support",
         )
+
+        val ex = assertThrows<IllegalArgumentException> { scope.retry(count = 3) }
         assertNull(
-            step.retry,
-            "a non-retryable step must keep retry unset rather than accept a dropped policy",
+            scope.steps().single().retry,
+            "the refused policy must not be attached anyway, got ${scope.steps().single().retry}",
+        )
+        assertTrue(
+            (ex.message ?: "").contains("retry("),
+            "diagnostic must point at the block form, got: ${ex.message}",
         )
     }
 
@@ -169,10 +182,15 @@ class StepSpecRetryCapabilityTest {
         assertEquals(1000L, policy.jitterMs, "jitter is 50% of the base delay")
     }
 
+    /**
+     * Inverted for the same reason as the case above. Declaring `retry(3)` with
+     * nothing before it is a user error, not a statement that retries are
+     * unnecessary, so it fails closed instead of adding nothing.
+     */
     @Test
-    fun `retry before any step is a no-op`() {
+    fun `retry before any step is rejected rather than treated as a no-op`() {
         val scope = StageScope("build")
-        scope.retry(count = 3)
+        assertThrows<IllegalArgumentException> { scope.retry(count = 3) }
         assertTrue(scope.steps().isEmpty(), "retry must not add a step of its own")
     }
 

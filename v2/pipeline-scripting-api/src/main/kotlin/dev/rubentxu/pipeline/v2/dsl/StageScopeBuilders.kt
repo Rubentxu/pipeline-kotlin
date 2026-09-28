@@ -45,6 +45,19 @@ open class StageScopeCore(
         steps.add(StepSpec.Checkout(scm))
     }
 
+    /**
+     * PURE_CONSTRUCTOR (Semantic Conservation Law): builds the [CheckoutSpec] and
+     * emits nothing.
+     *
+     * It used to `steps.add(StepSpec.Checkout(spec.scm))` as well, which made
+     * `git(..)` — defined as `checkout(scmGit(..).scm)` — emit TWO `Checkout`
+     * steps for one checkout. OBSERVED before the fix: a single `git(..)` call
+     * produced two identical `Checkout` rows, and three calls produced six.
+     *
+     * A side effect here is invisible to the `non-canonical plugins` bridge gate
+     * because every emitted step is canonical, which is how the duplicate
+     * survived an audit that recorded the surface as gated.
+     */
     fun scmGit(
         url: String,
         branch: String = "master",
@@ -54,9 +67,7 @@ open class StageScopeCore(
         relativeTargetDir: String = ".",
     ): CheckoutSpec {
         require(url.isNotBlank()) { "Missing required parameter: url" }
-        val spec = CheckoutSpec(GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir))
-        steps.add(StepSpec.Checkout(spec.scm))
-        return spec
+        return CheckoutSpec(GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir))
     }
 
     fun git(
@@ -137,19 +148,49 @@ open class StageScopeCore(
         withCredentials(listOf(StepSpec.CredentialsBinding.string(credentialsId, variable)), block)
     }
 
+    /**
+     * Attaches a retry policy to the step that was just declared.
+     *
+     * FAIL-CLOSED for the two cases that used to be silent (Semantic
+     * Conservation Law, TRAIN-DSL-HONESTY). This overload was
+     * `MUTATE_IF_POSSIBLE_ELSE_IGNORE`:
+     *
+     * ```kotlin
+     * val currentStep = steps.lastOrNull() ?: return   // nothing declared -> nothing happened
+     * steps[index] = if (currentStep.supportsStepLevelRetry) currentStep.withRetry(policy)
+     *                else currentStep                  // policy silently dropped
+     * ```
+     *
+     * Both paths left a valid-looking [StageScope] and a green build, so
+     * `StepSpecRetryCapabilityTest` ended up *certifying* the silence with cases
+     * named "retry before any step is a no-op" and "a non-retryable step is left
+     * untouched by retry". Those two cases now assert the rejection instead.
+     *
+     * Prefer the block form for anything that cannot carry a policy:
+     * `retry(n) { sh("./flaky") }`.
+     *
+     * @throws IllegalArgumentException when there is no preceding step, or when
+     *   that step cannot carry a step-level retry policy.
+     */
     fun retry(count: Int, delaySeconds: Long? = null) {
-        val currentStep = steps.lastOrNull() ?: return
+        val currentStep = steps.lastOrNull()
+        require(currentStep != null) {
+            "retry(count = $count) retrofits the step declared immediately before it, but no step " +
+                "has been declared yet. Use the block form retry($count) { ... } to wrap the steps " +
+                "that should be retried."
+        }
+        require(count > 0) { "retry(count) requires count > 0, got $count" }
+        require(currentStep.supportsStepLevelRetry) {
+            "${currentStep::class.simpleName} does not support step-level retry, so retry(count = $count) " +
+                "cannot be applied to it. Use the block form retry($count) { ... } around the step instead."
+        }
         val retryPolicy = RuntimeRetryPolicy(
             maxAttempts = count,
             baseMs = (delaySeconds ?: 0L) * 1000L,
             jitterMs = (delaySeconds ?: 0L) * 500L,
         )
         val index = steps.indexOf(currentStep)
-        steps[index] = if (currentStep.supportsStepLevelRetry) {
-            currentStep.withRetry(retryPolicy)
-        } else {
-            currentStep
-        }
+        steps[index] = currentStep.withRetry(retryPolicy)
     }
 
     /**

@@ -1,3 +1,8 @@
+import java.nio.channels.FileChannel
+import java.nio.channels.OverlappingFileLockException
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
+
 pluginManagement {
     repositories {
         mavenCentral()
@@ -45,3 +50,37 @@ include(
     ":pipeline-binding-factory",
     ":pipeline-artefacts-local",
 )
+
+// A Gradle invocation mutates the shared v2/*/build tree. Two invocations on
+// this checkout can otherwise race while writing compiler caches and produce
+// failures that disappear when the task is rerun in isolation. Keep the
+// protection at settings evaluation so every `./gradlew -p v2 ...` entry point
+// gets the same fail-fast contract.
+val buildLockPath = rootDir.resolve(".gradle/pipelinek-build.lock").toPath()
+Files.createDirectories(buildLockPath.parent)
+val buildLockChannel = FileChannel.open(
+    buildLockPath,
+    StandardOpenOption.CREATE,
+    StandardOpenOption.WRITE,
+)
+val buildLock = try {
+    buildLockChannel.tryLock()
+} catch (_: OverlappingFileLockException) {
+    null
+}
+
+if (buildLock == null) {
+    buildLockChannel.close()
+    throw GradleException(
+        "Another Gradle invocation is already using this v2 checkout. " +
+            "Run concurrent builds from separate worktrees.",
+    )
+}
+
+val acquiredBuildLock = requireNotNull(buildLock)
+gradle.buildFinished {
+    if (acquiredBuildLock.isValid) {
+        acquiredBuildLock.release()
+    }
+    buildLockChannel.close()
+}

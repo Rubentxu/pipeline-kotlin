@@ -44,4 +44,11 @@ Or from inside the `v2/` directory:
 cd v2 && ./gradlew check
 ```
 
+### Concurrent local builds
+
+Every `v2` Gradle invocation takes a fail-fast lock while it uses the shared
+`v2/*/build` tree. A second invocation from the same checkout stops before it
+can corrupt compiler caches or create misleading test failures. Run parallel
+work from separate Git worktrees instead of bypassing the lock.
+
 All four modules must pass for the included build to be considered healthy.

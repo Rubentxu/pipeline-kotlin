@@ -184,7 +184,7 @@ class GitCheckoutExecutorAdversarialTest {
      * ADV-004: Branch name with newlines must not cause argv injection.
      */
     @Test
-    fun `ADV-004 branch with newlines handled safely`(@TempDir tempDir: Path) {
+    fun `ADV-004 branch with newlines handled safely`() {
         val exception = runCatching {
             GitCheckoutExecutor.guardProcessBuilderArgs(
                 listOf("git", "ls-remote", "file:///tmp/repo", "feature\nrm -rf /")

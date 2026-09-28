@@ -50,7 +50,7 @@ class UatLocal005CorpusUntouchedTest {
      * Files 07-14 are new ML-R7/R9/R10 additions and are excluded.
      */
     @Test
-    fun `CP-001 original 4 corpus files byte-identical to base commit`(@TempDir tempDir: Path) {
+    fun `CP-001 original 4 corpus files byte-identical to base commit`() {
         val projectRoot = TestProjectRoot.dir.toPath()
         val baseCommit = findBaseCommit()
 
@@ -108,7 +108,7 @@ class UatLocal005CorpusUntouchedTest {
      * (`ls v2/compatibility/` then filtering entries that end with `.pipeline.kts | wc -l`).
      */
     @Test
-    fun `CP-002 corpus has exactly 31 valid fixture files after WU-LPR-090 (WU-LPR-089 added 31-stash-unstash, WU-LPR-090 added 32-publish-html)`(@TempDir tempDir: Path) {
+    fun `CP-002 corpus has exactly 31 valid fixture files after WU-LPR-090 (WU-LPR-089 added 31-stash-unstash, WU-LPR-090 added 32-publish-html)`() {
         val projectRoot = TestProjectRoot.dir.toPath()
         val compatibilityDir = projectRoot.resolve("v2/compatibility")
 

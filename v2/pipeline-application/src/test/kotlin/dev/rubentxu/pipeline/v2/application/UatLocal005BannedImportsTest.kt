@@ -50,7 +50,7 @@ class UatLocal005BannedImportsTest {
      * violate the CLI-git design decision (D1 in ADR-0050).
      */
     @Test
-    fun `IMP-001 no jgit imports in v2 main source`(@TempDir tempDir: Path) {
+    fun `IMP-001 no jgit imports in v2 main source`() {
         val projectRoot = TestProjectRoot.dir.toPath()
         val results = mutableListOf<String>()
 
@@ -83,7 +83,7 @@ class UatLocal005BannedImportsTest {
      * not hardcode paths like "/usr/bin/git".
      */
     @Test
-    fun `IMP-002 no hardcoded git binary paths in v2 main source`(@TempDir tempDir: Path) {
+    fun `IMP-002 no hardcoded git binary paths in v2 main source`() {
         val projectRoot = TestProjectRoot.dir.toPath()
         val results = mutableListOf<String>()
 

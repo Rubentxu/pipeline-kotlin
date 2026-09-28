@@ -156,25 +156,15 @@
     <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$stageIndex: Int</ID>
     <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
     <ID>UnusedParameter:CoreArtifactQueryStepContractTest.kt:CoreArtifactQueryStepContractTest$missing: StepCapability</ID>
-    <ID>UnusedParameter:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$runId: String</ID>
-    <ID>UnusedParameter:CoreDeleteDirStepUnitTest.kt:CoreDeleteDirStepUnitTest$workspace: Path</ID>
-    <ID>UnusedParameter:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$runId: String</ID>
-    <ID>UnusedParameter:CorePwdStepUnitTest.kt:CorePwdStepUnitTest$workspace: Path</ID>
     <ID>UnusedParameter:CtxPConcurrencyOwnershipTest.kt:CtxPConcurrencyOwnershipTest$branchIndex: Int</ID>
     <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$effects: Set&lt;Effect&gt;</ID>
     <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$replayPolicy: ReplayPolicy</ID>
     <ID>UnusedParameter:FamilyRouter.kt:FamilyRouter$dispatcher: CanonicalNodeDispatcher</ID>
     <ID>UnusedParameter:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$currentFingerprint: Fingerprint</ID>
-    <ID>UnusedParameter:GitCheckoutExecutorAdversarialTest.kt:GitCheckoutExecutorAdversarialTest$@TempDir tempDir: Path</ID>
     <ID>UnusedParameter:RetryAcceptanceMatrixTest.kt:RetryAcceptanceMatrixTest$controlOpId: String</ID>
     <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStatus: ReturnStatus</ID>
     <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStdout: ReturnStdout</ID>
     <ID>UnusedParameter:ShExecution.kt:ShExecution$stageIndex: Int</ID>
-    <ID>UnusedParameter:UatLocal005BannedImportsTest.kt:UatLocal005BannedImportsTest$@TempDir tempDir: Path</ID>
-    <ID>UnusedParameter:UatLocal005ClassTimeoutAndTeardownTest.kt:UatLocal005ClassTimeoutAndTeardownTest$@TempDir tempDir: Path</ID>
-    <ID>UnusedParameter:UatLocal005CorpusUntouchedTest.kt:UatLocal005CorpusUntouchedTest$@TempDir tempDir: Path</ID>
-    <ID>UnusedParameter:UatLocal005GitAuthCanaryRoundGateTest.kt:UatLocal005GitAuthCanaryRoundGateTest$tempDir: Path</ID>
-    <ID>UnusedParameter:UatLocal007SandboxProfileTest.kt:UatLocal007SandboxProfileTest$@TempDir tempDir: Path</ID>
     <ID>UnusedParameter:WULpr302RetryEngineTest.kt:WULpr302RetryEngineTest$bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef</ID>
     <ID>UnusedParameter:WULpr302WaitUntilEngineTest.kt:WULpr302WaitUntilEngineTest$bodyRef: BodyRef</ID>
     <ID>UnusedParameter:WorkspaceResolver.kt:WorkspaceResolver$path: Path</ID>

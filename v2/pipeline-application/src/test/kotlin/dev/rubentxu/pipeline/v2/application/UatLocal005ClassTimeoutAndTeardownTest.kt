@@ -166,7 +166,7 @@ class UatLocal005ClassTimeoutAndTeardownTest {
      * verify timing semantics that degrade under CPU contention.
      */
     @Test
-    fun `TC-009 no maxParallelForks in any UatLocal005 test class`(@TempDir tempDir: Path) {
+    fun `TC-009 no maxParallelForks in any UatLocal005 test class`() {
         val projectRoot = TestProjectRoot.dir.toPath()
         val testFiles = listOf(
             "v2/pipeline-application/src/test/kotlin/dev/rubentxu/pipeline/v2/application/UatLocal005CheckoutGitTest.kt",

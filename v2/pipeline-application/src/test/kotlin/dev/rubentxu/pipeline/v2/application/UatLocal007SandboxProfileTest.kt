@@ -748,7 +748,7 @@ pipeline {
      * Simulates a stuck child (sleep 30) and asserts it is killed after test teardown.
      */
     @Test
-    fun `UAT-L7-TC-002 AfterEach kills surviving children`(@TempDir tempDir: Path) {
+    fun `UAT-L7-TC-002 AfterEach kills surviving children`() {
         assumeLinux()
 
         // Spawn a background process that outlives this test

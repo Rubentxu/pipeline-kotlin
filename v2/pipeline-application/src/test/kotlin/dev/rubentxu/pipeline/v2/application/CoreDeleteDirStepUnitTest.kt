@@ -333,7 +333,7 @@ class CoreDeleteDirStepUnitTest {
     fun `real seam - full capabilities execute through preparation and boundary with typed output and exactly one event`() = runBlocking {
         val runId = "g3fix-deletedir-real-seam"
         val workspace = Files.createTempDirectory("g3fix-deletedir-real-seam-").toAbsolutePath()
-        val prepared = prepareReal(runId, workspace)
+        val prepared = prepareReal()
         val ctx = context(runId, workspace, sharedEventStore)
         val result = RegistryExecutionBoundary.coexecute(prepared, ctx)
         assertEquals(StepOutcome.Success, result.outcome)
@@ -354,7 +354,7 @@ class CoreDeleteDirStepUnitTest {
     // Helpers
     // ------------------------------------------------------------------
 
-    private fun prepareReal(runId: String, workspace: Path): PreparedRegistryExecution {
+    private fun prepareReal(): PreparedRegistryExecution {
         val preparation = RegistryExecutionPreparation.prepare(
             registry = CoreStepRegistryFactory.registry(),
             key = CoreDeleteDirStep.KEY,

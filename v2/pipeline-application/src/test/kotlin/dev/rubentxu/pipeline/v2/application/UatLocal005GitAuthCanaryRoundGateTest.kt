@@ -244,13 +244,6 @@ class UatLocal005GitAuthCanaryRoundGateTest {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private fun createExecutor(tempDir: Path, credsDir: Path): GitCheckoutExecutor {
-        val poll = GitPollExecutor()
-        val changelog = GitChangelogWriter()
-        val applier = GitCredentialsApplier(credsDir, GitCredentials())
-        return GitCheckoutExecutor(poll, changelog, applier)
-    }
-
     private fun createExecutorWithCreds(tempDir: Path, gitCreds: GitCredentials, secretStore: SecretStore): GitCheckoutExecutor {
         val poll = GitPollExecutor()
         val changelog = GitChangelogWriter()

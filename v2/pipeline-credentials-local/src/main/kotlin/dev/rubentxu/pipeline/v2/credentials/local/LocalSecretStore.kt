@@ -116,6 +116,15 @@ class LocalSecretStore(
         private const val KIND_USERNAME_COLON_PASSWORD: Short = 7
 
         /**
+         * Payload marker of a part that links to another credential. The
+         * referenced id follows the marker, without a length prefix of its own.
+         */
+        private const val LINKED_REF_MARKER: Int = -1
+
+        /** Payload marker of a part that is declared but has no value. */
+        private const val ABSENT_MARKER: Int = 0
+
+        /**
          * Maps a Credential simple name to a kind ID.
          */
         fun kindIdFor(credential: Credential): Short = when (credential) {
@@ -505,6 +514,71 @@ class LocalSecretStore(
     }
 
     /**
+     * Reads a part header and returns its payload length, leaving the buffer
+     * positioned at the first payload byte.
+     *
+     * Header layout: [nameLen:1][name:nameLen][len:4 BE]
+     */
+    private fun readPartHeader(buf: ByteBuffer): Int {
+        val nameLen = buf.get().toInt() and 0xFF
+        if (nameLen > buf.remaining()) {
+            throw SecretStoreTamperException(
+                "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
+        }
+        buf.position(buf.position() + nameLen)
+        return buf.int // big-endian; position now at value bytes
+    }
+
+    /** Reads the payload of a part whose header is already at the buffer. */
+    private fun readPartValue(buf: ByteBuffer): ByteArray {
+        val valueLen = readPartHeader(buf)
+        val valueBytes = ByteArray(valueLen)
+        buf.get(valueBytes)
+        return valueBytes
+    }
+
+    /**
+     * Skips a whole part, header and payload, and returns its payload length.
+     */
+    private fun skipPart(buf: ByteBuffer): Int {
+        val valueLen = readPartHeader(buf)
+        buf.position(buf.position() + valueLen)
+        return valueLen
+    }
+
+    /**
+     * Reads the referenced id of a linked-ref part whose header is at the
+     * buffer, or returns null when the part is marked absent.
+     *
+     * A linked-ref part carries a 4-byte marker followed by the referenced id.
+     * It has no payload length prefix, so the marker is read at a fixed offset
+     * after the part name.
+     */
+    private fun readLinkedRefPart(buf: ByteBuffer, credentialLabel: String): CredentialsId? {
+        val nameLen = buf.get().toInt() and 0xFF
+        buf.position(buf.position() + nameLen)
+        return when (val marker = buf.int) {
+            LINKED_REF_MARKER -> {
+                val refIdLen = buf.int
+                val refIdBytes = ByteArray(refIdLen)
+                buf.get(refIdBytes)
+                CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
+            }
+            ABSENT_MARKER -> throw SecretStoreTamperException("Credential has no $credentialLabel part")
+            else -> throw SecretStoreTamperException("$credentialLabel must be linked-ref or absent")
+        }
+    }
+
+    /**
+     * Reads an inline part, after skipping [skipBefore] preceding parts of the
+     * same kind.
+     */
+    private fun readInlinePart(buf: ByteBuffer, skipBefore: Int): SecretHandle {
+        repeat(skipBefore) { skipPart(buf) }
+        return SecretHandle.secret(readPartValue(buf))
+    }
+
+    /**
      * Extracts a named part from deserialized credential bytes using the canonical part format.
      * Format per part: [nameLen:1][name][len:4 BE][bytes]
      * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
@@ -518,150 +592,50 @@ class LocalSecretStore(
         visited: MutableSet<CredentialsId> = mutableSetOf(id)
     ): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
-
-        // ── helpers ────────────────────────────────────────────────────────────
-        // Read nameLen(1) + name(nameLen) + 4-byte length field, return value length,
-        // advance to start of value bytes.
-        fun readValueLen(buf: ByteBuffer): Int {
-            val nameLen = buf.get().toInt() and 0xFF
-            if (nameLen > buf.remaining()) {
-                throw SecretStoreTamperException(
-                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            }
-            buf.position(buf.position() + nameLen)
-            return buf.int // big-endian, unsigned-safe; position now at value bytes
-        }
-
-        // Skip nameLen(1) + name(nameLen) + 4-byte length + valueLen bytes.
-        // Returns the value length for the caller's use.
-        fun skipPart(buf: ByteBuffer): Int {
-            val nameLen = buf.get().toInt() and 0xFF
-            if (nameLen > buf.remaining()) {
-                throw SecretStoreTamperException(
-                    "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-            }
-            buf.position(buf.position() + nameLen)
-            val valueLen = buf.int
-            buf.position(buf.position() + valueLen)
-            return valueLen
-        }
-
         return when (kindId) {
             KIND_SECRET_TEXT -> {
-                if (partName != "value") {
-                    throw SecretStoreTamperException("Part '$partName' not found in SecretText credential")
-                }
+                requirePart(partName == "value", partName, "SecretText")
                 buf.get().toInt() // partCount
-                val valueLen = readValueLen(buf)
-                val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                SecretHandle.secret(valueBytes)
+                readInlinePart(buf, 0)
             }
             KIND_USERNAME_PASSWORD -> {
                 buf.get().toInt() // partCount
-                when (partName) {
-                    "username" -> {
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    "password" -> {
-                        skipPart(buf) // skip username part
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    else -> throw SecretStoreTamperException("Part '$partName' not found in UsernamePassword credential")
-                }
+                partOffset(partName, "UsernamePassword", "username" to 0, "password" to 1)
+                    .let { readInlinePart(buf, it) }
             }
             KIND_SSH_PRIVATE_KEY -> {
                 buf.get().toInt() // partCount
                 when (partName) {
-                    "username" -> {
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    "privateKey" -> {
-                        skipPart(buf) // skip username part
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
+                    "username", "privateKey" ->
+                        readInlinePart(buf, if (partName == "username") 0 else 1)
                     "passphrase" -> {
                         skipPart(buf) // skip username part
                         skipPart(buf) // skip privateKey part
-                        // Now at passphrase header: nameLen(1) + name + 4-byte marker
-                        val passphraseNameLen = buf.get().toInt() and 0xFF
-                        buf.position(buf.position() + passphraseNameLen)
-                        val marker = buf.int
-                        when (marker) {
-                            0xFFFFFFFF.toInt() -> {
-                                val refIdLen = buf.int
-                                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                                val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                                return resolveLinkedSecretRef(refId, id, visited)
-                            }
-                            0x00000000.toInt() -> {
-                                throw SecretStoreTamperException("Credential has no passphrase part")
-                            }
-                            else -> throw SecretStoreTamperException("SshPrivateKey passphrase must be linked-ref or absent")
-                        }
+                        val refId = readLinkedRefPart(buf, "passphrase")
+                        requireLinkedRef(refId, "Credential has no passphrase part")
+                        return resolveLinkedSecretRef(refId!!, id, visited)
                     }
-                    else -> throw SecretStoreTamperException("Part '$partName' not found in SshPrivateKey credential")
+                    else -> throw notFound(partName, "SshPrivateKey")
                 }
             }
             KIND_SECRET_FILE -> {
                 buf.get().toInt() // partCount
-                when (partName) {
-                    "originalName" -> {
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    "content" -> {
-                        skipPart(buf) // skip originalName part
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    else -> throw SecretStoreTamperException("Part '$partName' not found in SecretFile credential")
-                }
+                partOffset(partName, "SecretFile", "originalName" to 0, "content" to 1)
+                    .let { readInlinePart(buf, it) }
             }
             KIND_CERTIFICATE -> {
                 buf.get().toInt() // partCount
                 when (partName) {
-                    "keystore" -> {
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    "alias" -> {
-                        skipPart(buf) // skip keystore part
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
+                    "keystore", "alias" ->
+                        readInlinePart(buf, if (partName == "keystore") 0 else 1)
                     "password" -> {
                         skipPart(buf) // skip keystore part
                         skipPart(buf) // skip alias part
-                        // Now at password header: nameLen(1) + name + 4-byte marker
-                        val pwNameLen = buf.get().toInt() and 0xFF
-                        buf.position(buf.position() + pwNameLen)
-                        val pwMarker = buf.int
-                        when (pwMarker) {
-                            0xFFFFFFFF.toInt() -> {
-                                val refIdLen = buf.int
-                                val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
-                                val refId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                                return resolveLinkedSecretRef(refId, id, visited)
-                            }
-                            0x00000000.toInt() -> {
-                                throw SecretStoreTamperException("Credential has no password part")
-                            }
-                            else -> throw SecretStoreTamperException("Certificate password must be linked-ref or absent")
-                        }
+                        val refId = readLinkedRefPart(buf, "password")
+                        requireLinkedRef(refId, "Credential has no password part")
+                        return resolveLinkedSecretRef(refId!!, id, visited)
                     }
-                    else -> throw SecretStoreTamperException("Part '$partName' not found in Certificate credential")
+                    else -> throw notFound(partName, "Certificate")
                 }
             }
             KIND_ZIP -> {
@@ -684,41 +658,58 @@ class LocalSecretStore(
                         return SecretHandle.secret(entryBytes)
                     }
                 }
-                throw SecretStoreTamperException("Part '$partName' not found in Zip credential")
+                throw notFound(partName, "Zip")
             }
             KIND_USERNAME_COLON_PASSWORD -> {
                 buf.get().toInt() // partCount
                 when (partName) {
-                    "username" -> {
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
-                    "password" -> {
-                        skipPart(buf) // skip username part
-                        val valueLen = readValueLen(buf)
-                        val valueBytes = ByteArray(valueLen); buf.get(valueBytes)
-                        SecretHandle.secret(valueBytes)
-                    }
+                    "username", "password" ->
+                        readInlinePart(buf, if (partName == "username") 0 else 1)
                     "value" -> {
-                        // Read username part: readValueLen positions at username value bytes
-                        val usernameLen = readValueLen(buf)
-                        val usernameBytes = ByteArray(usernameLen); buf.get(usernameBytes)
+                        // Read username part: readPartValue positions at username value bytes
+                        val usernameBytes = readPartValue(buf)
                         // Read password length from header (pass name follows username value)
-                        val passNameLen = buf.get().toInt() and 0xFF
-                        buf.position(buf.position() + passNameLen) // skip "password" name
-                        val passLen = buf.int
+                        val passLen = readPartHeader(buf)
                         // Read password value bytes (do NOT skip — we're at the value already)
                         val passwordBytes = ByteArray(passLen); buf.get(passwordBytes)
                         // Join with ASCII colon (0x3A)
-                        val joinedBytes = usernameBytes + byteArrayOf(0x3A) + passwordBytes
-                        SecretHandle.secret(joinedBytes)
+                        SecretHandle.secret(usernameBytes + byteArrayOf(0x3A) + passwordBytes)
                     }
-                    else -> throw SecretStoreTamperException("Part '$partName' not found in UsernameColonPassword credential")
+                    else -> throw notFound(partName, "UsernameColonPassword")
                 }
             }
             else -> throw SecretStoreTamperException("Unknown credential kind: $kindId")
         }
+    }
+
+    /**
+     * Resolves the position of a named inline part within a credential whose
+     * parts are stored in a fixed order.
+     */
+    private fun partOffset(
+        partName: String,
+        credential: String,
+        vararg orderedParts: Pair<String, Int>,
+    ): Int {
+        val offset = orderedParts.firstOrNull { (name, _) -> name == partName }?.second
+            ?: throw notFound(partName, credential)
+        return offset
+    }
+
+    private fun notFound(partName: String, credential: String) =
+        SecretStoreTamperException("Part '$partName' not found in $credential credential")
+
+    private fun requirePart(matches: Boolean, partName: String, credential: String) {
+        if (!matches) throw notFound(partName, credential)
+    }
+
+    /**
+     * A linked-ref part must carry a reference. [readLinkedRefPart] already
+     * raises for the absent marker, so this is the null-safety net that lets the
+     * caller pass the result straight to [resolveLinkedSecretRef].
+     */
+    private fun requireLinkedRef(refId: CredentialsId?, absentMessage: String) {
+        if (refId == null) throw SecretStoreTamperException(absentMessage)
     }
 
     /**

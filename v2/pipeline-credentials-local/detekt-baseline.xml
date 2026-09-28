@@ -4,8 +4,6 @@
   <CurrentIssues>
     <ID>FunctionOnlyReturningConstant:MainCredentialsCli.kt:MainCredentialsCli.CredentialKind.Companion$fun allKinds: String</ID>
     <ID>TooManyFunctions:MainCredentialsCli.kt:MainCredentialsCli</ID>
-    <ID>UnusedParameter:LocalSecretStore.kt:LocalSecretStore$dek: ByteArray</ID>
-    <ID>UnusedParameter:LocalSecretStore.kt:LocalSecretStore$originalId: CredentialsId</ID>
     <ID>UnusedParameter:MainCredentialsCli.kt:MainCredentialsCli$args: List&lt;String&gt;</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -540,7 +540,7 @@ class LocalSecretStore(
         }
 
         // Deserialize and extract the requested part; use visited set for cycle detection
-        return extractPart(plaintext, v2Entry.kindId, id, partName, dek, mutableSetOf(id))
+        return extractPart(plaintext, v2Entry.kindId, id, partName, mutableSetOf(id))
     }
 
     /**
@@ -553,10 +553,9 @@ class LocalSecretStore(
         kindId: Short,
         id: CredentialsId,
         partName: String,
-        dek: ByteArray,
         visited: MutableSet<CredentialsId> = mutableSetOf(id)
     ): SecretHandle = try {
-        readPart(plaintext, kindId, partName, id, visited)
+        readPart(plaintext, kindId, partName, visited)
     } catch (e: CredentialPartReader.MalformedEnvelopeException) {
         // The reader reports a malformed envelope; callers of the store catch
         // SecretStoreTamperException, which stays the public type.
@@ -575,7 +574,6 @@ class LocalSecretStore(
         plaintext: ByteArray,
         kindId: Short,
         partName: String,
-        id: CredentialsId,
         visited: MutableSet<CredentialsId>,
     ): SecretHandle {
         val buf = CredentialPartReader.bufferOver(plaintext)
@@ -599,7 +597,7 @@ class LocalSecretStore(
                         CredentialPartReader.skipPart(buf) // skip privateKey part
                         val refId = CredentialPartReader.readLinkedRefPart(buf, "passphrase")
                         requireLinkedRef(refId, "Credential has no passphrase part")
-                        return resolveLinkedSecretRef(refId!!, id, visited)
+                        return resolveLinkedSecretRef(refId!!, visited)
                     }
                     else -> throw envelope { CredentialPartReader.notFound(partName, "SshPrivateKey") }
                 }
@@ -618,7 +616,7 @@ class LocalSecretStore(
                         CredentialPartReader.skipPart(buf) // skip alias part
                         val refId = CredentialPartReader.readLinkedRefPart(buf, "password")
                         requireLinkedRef(refId, "Credential has no password part")
-                        return resolveLinkedSecretRef(refId!!, id, visited)
+                        return resolveLinkedSecretRef(refId!!, visited)
                     }
                     else -> throw envelope { CredentialPartReader.notFound(partName, "Certificate") }
                 }
@@ -665,7 +663,7 @@ class LocalSecretStore(
      * For SshPrivateKey/Certificate passphrase/password LinkedSecretRefs, this method
      * traverses through intermediate credentials following the ref chain until SecretText is found.
      */
-    private fun resolveLinkedSecretRef(refId: CredentialsId, originalId: CredentialsId, visited: MutableSet<CredentialsId> = mutableSetOf()): SecretHandle {
+    private fun resolveLinkedSecretRef(refId: CredentialsId, visited: MutableSet<CredentialsId> = mutableSetOf()): SecretHandle {
         // Cycle detection: if refId is already in visited set, we have a circular reference
         if (refId in visited) {
             throw SecretStoreTamperException("Circular linked secret reference detected: ${visited.joinToString(" → ") { it.value }} → ${refId.value}")
@@ -730,7 +728,7 @@ class LocalSecretStore(
             } catch (e: javax.crypto.AEADBadTagException) {
                 throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
             }
-            return extractLinkedRefFromSshPrivateKey(refId, plaintext, visited)
+            return extractLinkedRefFromSshPrivateKey(plaintext, visited)
         }
 
         // For Certificate: follow the password LinkedSecretRef chain
@@ -741,7 +739,7 @@ class LocalSecretStore(
             } catch (e: javax.crypto.AEADBadTagException) {
                 throw SecretStoreTamperException("Tamper detected for referenced credential: ${refId.value}", e)
             }
-            return extractLinkedRefFromCertificate(refId, plaintext, visited)
+            return extractLinkedRefFromCertificate(plaintext, visited)
         }
 
         // Other credential types cannot be the target of a LinkedSecretRef for passphrase/password
@@ -751,7 +749,7 @@ class LocalSecretStore(
     /**
      * Extracts the passphrase LinkedSecretRef from a SshPrivateKey and resolves it.
      */
-    private fun extractLinkedRefFromSshPrivateKey(refId: CredentialsId, plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
+    private fun extractLinkedRefFromSshPrivateKey(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
         val partCount = buf.get().toInt()
         // Skip username part
@@ -780,7 +778,7 @@ class LocalSecretStore(
                 val refIdLen = buf.int
                 val refIdBytes = ByteArray(refIdLen); buf.get(refIdBytes)
                 val nextRefId = CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-                return resolveLinkedSecretRef(nextRefId, refId, visited)
+                return resolveLinkedSecretRef(nextRefId, visited)
             }
             0x00000000.toInt() -> {
                 throw SecretStoreTamperException("Credential has no passphrase part")
@@ -792,7 +790,7 @@ class LocalSecretStore(
     /**
      * Extracts the password LinkedSecretRef from a Certificate and resolves it.
      */
-    private fun extractLinkedRefFromCertificate(refId: CredentialsId, plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
+    private fun extractLinkedRefFromCertificate(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
         val partCount = buf.get().toInt()
         // Skip keystore part
@@ -821,7 +819,7 @@ class LocalSecretStore(
                 val pwRefIdLen = buf.int
                 val pwRefIdBytes = ByteArray(pwRefIdLen); buf.get(pwRefIdBytes)
                 val nextRefId = CredentialsId.from(String(pwRefIdBytes, Charsets.UTF_8))
-                return resolveLinkedSecretRef(nextRefId, refId, visited)
+                return resolveLinkedSecretRef(nextRefId, visited)
             }
             0x00000000.toInt() -> {
                 throw SecretStoreTamperException("Credential has no password part")

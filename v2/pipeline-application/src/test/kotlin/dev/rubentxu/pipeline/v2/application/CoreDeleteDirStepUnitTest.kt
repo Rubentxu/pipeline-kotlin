@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -53,6 +54,28 @@ import java.nio.file.Path
  */
 @Timeout(20)
 class CoreDeleteDirStepUnitTest {
+    /**
+     * Temporary directories created by this test, removed after each test.
+     *
+     * `Files.createTempDirectory` has no automatic cleanup, so without this
+     * every run leaks a directory into the system temp folder. The path is
+     * still created the same way as before; only its removal is added.
+     */
+    private val tempDirs = mutableListOf<Path>()
+
+    @AfterEach
+    fun removeTempDirs() {
+        tempDirs.forEach { dir ->
+            Files.walk(dir).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+        }
+        tempDirs.clear()
+    }
+
+    private fun tempDir(prefix: String): Path =
+        Files.createTempDirectory(prefix).toAbsolutePath().also { created -> tempDirs.add(created) }
+
 
     // ------------------------------------------------------------------
     // Identity
@@ -173,7 +196,7 @@ class CoreDeleteDirStepUnitTest {
     fun `handler emits exactly one DirDeleted with path, deletedCount, sha256`() = runBlocking {
         val sink = InMemoryEventStore()
         val runId = "core-deletedir-handler"
-        val workspace = Files.createTempDirectory("core-deletedir-handler-").toAbsolutePath()
+        val workspace = tempDir("core-deletedir-handler-")
         val ctx = stepHandlerContext(runId, workspace, sink)
         val output = CoreDeleteDirStep.definition.handler.execute(DeleteDirInput(path = "."), ctx)
         // The handler resolves the workspace path as workspace/test-0 (stageName=test, stageIndex=0)
@@ -332,7 +355,7 @@ class CoreDeleteDirStepUnitTest {
     @Test
     fun `real seam - full capabilities execute through preparation and boundary with typed output and exactly one event`() = runBlocking {
         val runId = "g3fix-deletedir-real-seam"
-        val workspace = Files.createTempDirectory("g3fix-deletedir-real-seam-").toAbsolutePath()
+        val workspace = tempDir("g3fix-deletedir-real-seam-")
         val prepared = prepareReal()
         val ctx = context(runId, workspace, sharedEventStore)
         val result = RegistryExecutionBoundary.coexecute(prepared, ctx)

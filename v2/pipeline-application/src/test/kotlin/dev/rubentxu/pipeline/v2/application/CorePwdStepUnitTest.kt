@@ -18,6 +18,7 @@ import dev.rubentxu.pipeline.v2.events.PwdResolved
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -50,6 +51,28 @@ import java.util.concurrent.TimeUnit
  */
 @Timeout(20)
 class CorePwdStepUnitTest {
+    /**
+     * Temporary directories created by this test, removed after each test.
+     *
+     * `Files.createTempDirectory` has no automatic cleanup, so without this
+     * every run leaks a directory into the system temp folder. The path is
+     * still created the same way as before; only its removal is added.
+     */
+    private val tempDirs = mutableListOf<Path>()
+
+    @AfterEach
+    fun removeTempDirs() {
+        tempDirs.forEach { dir ->
+            Files.walk(dir).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+        }
+        tempDirs.clear()
+    }
+
+    private fun tempDir(prefix: String): Path =
+        Files.createTempDirectory(prefix).toAbsolutePath().also { created -> tempDirs.add(created) }
+
 
     // ------------------------------------------------------------------
     // Identity
@@ -198,7 +221,7 @@ class CorePwdStepUnitTest {
     fun `handler emits exactly one PwdResolved with absolute path, workspaceRoot echoed and sha256 of path`() = runBlocking {
         val sink = InMemoryEventStore()
         val runId = "core-pwd-handler"
-        val workspace = Files.createTempDirectory("core-pwd-handler-").toAbsolutePath()
+        val workspace = tempDir("core-pwd-handler-")
         val ctx = stepHandlerContext(runId, workspace, sink)
         val output = CorePwdStep.definition.handler.execute(PwdInput(tmp = false), ctx)
         assertEquals(PwdOutput(path = workspace.toString()), output)
@@ -218,7 +241,7 @@ class CorePwdStepUnitTest {
         // emit the canonical absolute form).
         val sink = InMemoryEventStore()
         val runId = "core-pwd-relative"
-        val cwd = Files.createTempDirectory("core-pwd-rel-base-")
+        val cwd = tempDir("core-pwd-rel-base-")
         val relative = cwd.relativize(cwd.resolve("nested"))
         // The handler is invoked with a relative path through a synthetic context — we
         // validate that output.path is the absolute form.
@@ -358,7 +381,7 @@ class CorePwdStepUnitTest {
     @Test
     fun `real seam - full capabilities execute through preparation and boundary with typed output and exactly one event`() = runBlocking {
         val runId = "g1-pwd-real-seam"
-        val workspace = Files.createTempDirectory("g1-pwd-real-seam-").toAbsolutePath()
+        val workspace = tempDir("g1-pwd-real-seam-")
         val prepared = prepareReal()
         val ctx = context(runId, workspace, sharedEventStore)
         val result = RegistryExecutionBoundary.coexecute(prepared, ctx)
@@ -439,7 +462,7 @@ class CorePwdStepUnitTest {
             stageIndex = 0,
             stepIndex = 0,
             shOptions = ShOptions.EMPTY.copy(workspaceRoot = workspace),
-            controlDirRoot = Files.createTempDirectory("$runId-ctrl-"),
+            controlDirRoot = tempDir("$runId-ctrl-"),
             eventSink = sink,
         )
 

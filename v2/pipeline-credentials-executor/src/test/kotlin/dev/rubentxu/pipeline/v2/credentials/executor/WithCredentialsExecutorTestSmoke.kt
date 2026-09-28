@@ -73,7 +73,7 @@ private object NullCredentialProvider : CredentialProvider {
             )
         }
     }
-    override fun close() {}
+    override fun close() = Unit
 }
 
 private object NullCredentialMaterialization : CredentialMaterialization {
@@ -87,7 +87,7 @@ private object NullCredentialMaterialization : CredentialMaterialization {
             SecretHandle.plain("null")
         )
     }
-    override fun close() {}
+    override fun close() = Unit
 }
 
 private object NullClock : Clock {

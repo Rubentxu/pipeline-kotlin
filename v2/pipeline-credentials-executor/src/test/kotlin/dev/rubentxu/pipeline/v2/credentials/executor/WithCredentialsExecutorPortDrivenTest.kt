@@ -154,11 +154,11 @@ private class MockCredentialProvider : CredentialProvider {
     override val providerId: String = "mock"
 
     override fun resolve(id: CredentialsId): SecretHandle {
-        return secrets[id] ?: throw Exception("Credential not found: ${id.value}")
+        return secrets[id] ?: error("Credential not found: ${id.value}")
     }
 
     override fun resolveToCredential(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
-        val handle = secrets[id] ?: throw Exception("Credential not found: ${id.value}")
+        val handle = secrets[id] ?: error("Credential not found: ${id.value}")
         // LF-0402: use bytesView() to read the payload WITHOUT wiping the handle.
         // The mock reuses the same handle across calls; use{} would zero it on first read.
         val bytes = handle.bytesView()
@@ -169,7 +169,7 @@ private class MockCredentialProvider : CredentialProvider {
         )
     }
 
-    override fun close() {}
+    override fun close() = Unit
 }
 
 private class MockCredentialMaterialization : CredentialMaterialization {
@@ -185,7 +185,7 @@ private class MockCredentialMaterialization : CredentialMaterialization {
         )
     }
 
-    override fun close() {}
+    override fun close() = Unit
 }
 
 private class MockClock : Clock {

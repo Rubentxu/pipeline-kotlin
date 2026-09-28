@@ -164,12 +164,35 @@ class Kotlin24ScriptingHost(
         val result = if (rwd is ResultWithDiagnostics.Success) {
             @Suppress("UNCHECKED_CAST")
             val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
-            ScriptCompilationResult.Success(
-                output = mapEvaluationOutput(evalResult.returnValue),
-                scriptInstance = evalResult.returnValue.scriptInstance,
-                diagnostics = diagnostics,
-                cacheKey = cacheKey,
-            )
+
+            // TRAIN-DSL-HONESTY: a script body that throws during DSL
+            // construction (any `require(false)` in a stage body, or a
+            // fail-closed DSL guard such as `whenCondition`) surfaces here as a
+            // ResultValue.Error while `rwd` still reports Success. Mapping that
+            // to Success with a spec-less instance was the DEFAULT_SUCCESS that
+            // produced an NPE at Main.kt runCanonicalPipeline(compiledPipeline!!)
+            // with exit 0, and made `validate` report VALIDATION SUCCESSFUL for
+            // a script that cannot build its IR.
+            val evalError = evalResult.returnValue as? kotlin.script.experimental.api.ResultValue.Error
+            if (evalError != null) {
+                ScriptCompilationResult.Failure(
+                    diagnostics = diagnostics + ScriptingDiagnostic(
+                        severity = ScriptDiagnosticSeverity.ERROR,
+                        message = evalError.error.message ?: evalError.error.toString(),
+                        line = 0,
+                        column = 0,
+                        path = definition.sourcePath?.toString() ?: "<inline>",
+                    ),
+                    cacheKey = cacheKey,
+                )
+            } else {
+                ScriptCompilationResult.Success(
+                    output = mapEvaluationOutput(evalResult.returnValue),
+                    scriptInstance = evalResult.returnValue.scriptInstance,
+                    diagnostics = diagnostics,
+                    cacheKey = cacheKey,
+                )
+            }
         } else {
             ScriptCompilationResult.Failure(
                 diagnostics = diagnostics,

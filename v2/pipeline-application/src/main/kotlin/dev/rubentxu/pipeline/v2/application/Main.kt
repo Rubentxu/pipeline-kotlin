@@ -176,11 +176,21 @@ fun main(args: Array<String>) {
         }
         val events = store.eventsFor(validateRunId).toList()
         println(JsonEventLog.encode(events))
-        if (!compileResult.isSuccess) {
+        // TRAIN-DSL-HONESTY: a script that compiles but throws while building
+        // its IR reaches here with isSuccess == true and no usable spec.
+        // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
+        // turned into an NPE.
+        val evalFailure = compileResult.diagnostics.lastOrNull {
+            it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR
+        }?.message?.takeIf { it.isNotBlank() }
+        val noSpec = compileResult.isSuccess &&
+            compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get\$\$result" } != true
+        if (!compileResult.isSuccess || evalFailure != null || noSpec) {
             // WU-LPR-011 F3: compile failure is an invocation/admission error,
             // not a pipeline execution failure. Exit 2 per the canonical
             // contract (0 success / 1 pipeline fail / 2 invocation+compile).
-            System.err.println("VALIDATION FAILED")
+            if (evalFailure != null) System.err.println("VALIDATION FAILED: $evalFailure")
+            else System.err.println("VALIDATION FAILED")
             System.exit(2)
         } else {
             System.err.println("VALIDATION SUCCESSFUL")
@@ -241,10 +251,20 @@ fun main(args: Array<String>) {
         } else null
 
         val compileOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
+            // TRAIN-DSL-HONESTY: evaluation failures (any exception thrown while
+            // the DSL body constructs its IR, including the fail-closed
+            // rejections of whenCondition/retry) arrive here as a Failure. The
+            // user's own diagnostic message must survive instead of becoming an
+            // anonymous NPE.
+            val reason = result.diagnostics
+                .lastOrNull { it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR }
+                ?.message
+                ?.takeIf { it.isNotBlank() }
+                ?: "Kotlin compilation failed"
             dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure(
                 dev.rubentxu.pipeline.v2.domain.PipelineFailure(
                     kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    message = "Kotlin compilation failed"
+                    message = reason
                 )
             )
         } else null
@@ -293,6 +313,16 @@ fun main(args: Array<String>) {
             // corpus-closure) but the compile-failure branch was left inside `else -> compileOutcome`
             // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
             compileOutcome != null -> compileOutcome
+            // TRAIN-DSL-HONESTY: compile "succeeded" but produced no PipelineSpec. Before this
+            // branch this reached runCanonicalPipeline(compiledPipeline!!) and died as an NPE
+            // with exit 0. A script that cannot produce its IR is an admission failure.
+            compiledPipeline == null -> dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    message = "the script compiled but did not produce a PipelineSpec; " +
+                        "its body failed during construction and no pipeline can run"
+                )
+            )
             nonCanonicalSteps.isEmpty() -> runCanonicalPipeline(
                 pipeline = compiledPipeline!!,
                 runId = RunId(runId),
@@ -329,6 +359,16 @@ fun main(args: Array<String>) {
                 }
                 is dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> {
                     System.err.println("Pipeline finished with UNSTABLE"); false
+                }
+                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> {
+                    // TRAIN-DSL-HONESTY: an admission failure (compile or DSL
+                    // construction) must carry its diagnostic. "FAILURE" alone
+                    // sent users hunting with zero context.
+                    runOutcome.failure.message
+                        ?.takeIf { it.isNotBlank() && it != "Kotlin compilation failed" }
+                        ?.let { System.err.println("Pipeline finished with FAILURE: $it") }
+                        ?: System.err.println("Pipeline finished with FAILURE")
+                    true
                 }
                 else -> {
                     System.err.println("Pipeline finished with FAILURE"); true

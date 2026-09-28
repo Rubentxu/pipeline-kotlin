@@ -514,71 +514,6 @@ class LocalSecretStore(
     }
 
     /**
-     * Reads a part header and returns its payload length, leaving the buffer
-     * positioned at the first payload byte.
-     *
-     * Header layout: [nameLen:1][name:nameLen][len:4 BE]
-     */
-    private fun readPartHeader(buf: ByteBuffer): Int {
-        val nameLen = buf.get().toInt() and 0xFF
-        if (nameLen > buf.remaining()) {
-            throw SecretStoreTamperException(
-                "Malformed envelope: nameLen($nameLen) exceeds remaining bytes(${buf.remaining()})")
-        }
-        buf.position(buf.position() + nameLen)
-        return buf.int // big-endian; position now at value bytes
-    }
-
-    /** Reads the payload of a part whose header is already at the buffer. */
-    private fun readPartValue(buf: ByteBuffer): ByteArray {
-        val valueLen = readPartHeader(buf)
-        val valueBytes = ByteArray(valueLen)
-        buf.get(valueBytes)
-        return valueBytes
-    }
-
-    /**
-     * Skips a whole part, header and payload, and returns its payload length.
-     */
-    private fun skipPart(buf: ByteBuffer): Int {
-        val valueLen = readPartHeader(buf)
-        buf.position(buf.position() + valueLen)
-        return valueLen
-    }
-
-    /**
-     * Reads the referenced id of a linked-ref part whose header is at the
-     * buffer, or returns null when the part is marked absent.
-     *
-     * A linked-ref part carries a 4-byte marker followed by the referenced id.
-     * It has no payload length prefix, so the marker is read at a fixed offset
-     * after the part name.
-     */
-    private fun readLinkedRefPart(buf: ByteBuffer, credentialLabel: String): CredentialsId? {
-        val nameLen = buf.get().toInt() and 0xFF
-        buf.position(buf.position() + nameLen)
-        return when (val marker = buf.int) {
-            LINKED_REF_MARKER -> {
-                val refIdLen = buf.int
-                val refIdBytes = ByteArray(refIdLen)
-                buf.get(refIdBytes)
-                CredentialsId.from(String(refIdBytes, Charsets.UTF_8))
-            }
-            ABSENT_MARKER -> throw SecretStoreTamperException("Credential has no $credentialLabel part")
-            else -> throw SecretStoreTamperException("$credentialLabel must be linked-ref or absent")
-        }
-    }
-
-    /**
-     * Reads an inline part, after skipping [skipBefore] preceding parts of the
-     * same kind.
-     */
-    private fun readInlinePart(buf: ByteBuffer, skipBefore: Int): SecretHandle {
-        repeat(skipBefore) { skipPart(buf) }
-        return SecretHandle.secret(readPartValue(buf))
-    }
-
-    /**
      * Extracts a named part from deserialized credential bytes using the canonical part format.
      * Format per part: [nameLen:1][name][len:4 BE][bytes]
      * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
@@ -590,28 +525,41 @@ class LocalSecretStore(
         partName: String,
         dek: ByteArray,
         visited: MutableSet<CredentialsId> = mutableSetOf(id)
+    ): SecretHandle = try {
+        readPart(plaintext, kindId, partName, id, visited)
+    } catch (e: CredentialPartReader.MalformedEnvelopeException) {
+        // The reader reports a malformed envelope; callers of the store catch
+        // SecretStoreTamperException, which stays the public type.
+        throw SecretStoreTamperException(e.message ?: "Malformed envelope", e)
+    }
+
+    private fun readPart(
+        plaintext: ByteArray,
+        kindId: Short,
+        partName: String,
+        id: CredentialsId,
+        visited: MutableSet<CredentialsId>,
     ): SecretHandle {
-        val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
+        val buf = CredentialPartReader.bufferOver(plaintext)
         return when (kindId) {
             KIND_SECRET_TEXT -> {
                 requirePart(partName == "value", partName, "SecretText")
                 buf.get().toInt() // partCount
-                readInlinePart(buf, 0)
+                SecretHandle.secret(CredentialPartReader.readInlinePart(buf, 0))
             }
             KIND_USERNAME_PASSWORD -> {
                 buf.get().toInt() // partCount
-                partOffset(partName, "UsernamePassword", "username" to 0, "password" to 1)
-                    .let { readInlinePart(buf, it) }
+                SecretHandle.secret(readPositionalPart(buf, partName, "UsernamePassword", "username" to 0, "password" to 1))
             }
             KIND_SSH_PRIVATE_KEY -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "username", "privateKey" ->
-                        readInlinePart(buf, if (partName == "username") 0 else 1)
+                        SecretHandle.secret(readPositionalPart(buf, partName, "SshPrivateKey", "username" to 0, "privateKey" to 1))
                     "passphrase" -> {
-                        skipPart(buf) // skip username part
-                        skipPart(buf) // skip privateKey part
-                        val refId = readLinkedRefPart(buf, "passphrase")
+                        CredentialPartReader.skipPart(buf) // skip username part
+                        CredentialPartReader.skipPart(buf) // skip privateKey part
+                        val refId = CredentialPartReader.readLinkedRefPart(buf, "passphrase")
                         requireLinkedRef(refId, "Credential has no passphrase part")
                         return resolveLinkedSecretRef(refId!!, id, visited)
                     }
@@ -620,56 +568,34 @@ class LocalSecretStore(
             }
             KIND_SECRET_FILE -> {
                 buf.get().toInt() // partCount
-                partOffset(partName, "SecretFile", "originalName" to 0, "content" to 1)
-                    .let { readInlinePart(buf, it) }
+                SecretHandle.secret(readPositionalPart(buf, partName, "SecretFile", "originalName" to 0, "content" to 1))
             }
             KIND_CERTIFICATE -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "keystore", "alias" ->
-                        readInlinePart(buf, if (partName == "keystore") 0 else 1)
+                        SecretHandle.secret(readPositionalPart(buf, partName, "Certificate", "keystore" to 0, "alias" to 1))
                     "password" -> {
-                        skipPart(buf) // skip keystore part
-                        skipPart(buf) // skip alias part
-                        val refId = readLinkedRefPart(buf, "password")
+                        CredentialPartReader.skipPart(buf) // skip keystore part
+                        CredentialPartReader.skipPart(buf) // skip alias part
+                        val refId = CredentialPartReader.readLinkedRefPart(buf, "password")
                         requireLinkedRef(refId, "Credential has no password part")
                         return resolveLinkedSecretRef(refId!!, id, visited)
                     }
                     else -> throw notFound(partName, "Certificate")
                 }
             }
-            KIND_ZIP -> {
-                val partCount = buf.get().toInt()
-                // metadata: _entryCount (normal)
-                val metaNameLen = buf.get().toInt()
-                buf.position(buf.position() + metaNameLen)
-                buf.int // skip count value
-                buf.get() // consume metadata content byte (1)
-
-                // Find the requested entry
-                repeat(partCount - 1) {
-                    val entryNameLen = buf.get().toInt()
-                    val entryNameBytes = ByteArray(entryNameLen); buf.get(entryNameBytes)
-                    val entryName = String(entryNameBytes, Charsets.UTF_8)
-                    val entryLen = buf.int
-                    val entryBytes = ByteArray(entryLen); buf.get(entryBytes)
-
-                    if (entryName == partName) {
-                        return SecretHandle.secret(entryBytes)
-                    }
-                }
-                throw notFound(partName, "Zip")
-            }
+            KIND_ZIP -> readZipPart(buf, partName)
             KIND_USERNAME_COLON_PASSWORD -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "username", "password" ->
-                        readInlinePart(buf, if (partName == "username") 0 else 1)
+                        SecretHandle.secret(readPositionalPart(buf, partName, "UsernameColonPassword", "username" to 0, "password" to 1))
                     "value" -> {
-                        // Read username part: readPartValue positions at username value bytes
-                        val usernameBytes = readPartValue(buf)
+                        // Read username part: readInlinePart returns the username value bytes
+                        val usernameBytes = CredentialPartReader.readPartValue(buf)
                         // Read password length from header (pass name follows username value)
-                        val passLen = readPartHeader(buf)
+                        val passLen = CredentialPartReader.readPartHeader(buf)
                         // Read password value bytes (do NOT skip — we're at the value already)
                         val passwordBytes = ByteArray(passLen); buf.get(passwordBytes)
                         // Join with ASCII colon (0x3A)
@@ -683,17 +609,44 @@ class LocalSecretStore(
     }
 
     /**
-     * Resolves the position of a named inline part within a credential whose
-     * parts are stored in a fixed order.
+     * Reads a part whose position within its credential is fixed, as opposed to
+     * the Zip case where the name is searched for.
      */
-    private fun partOffset(
+    private fun readPositionalPart(
+        buf: ByteBuffer,
         partName: String,
         credential: String,
         vararg orderedParts: Pair<String, Int>,
-    ): Int {
-        val offset = orderedParts.firstOrNull { (name, _) -> name == partName }?.second
+    ): ByteArray {
+        val offset = CredentialPartReader.partOffset(partName, *orderedParts)
             ?: throw notFound(partName, credential)
-        return offset
+        return CredentialPartReader.readInlinePart(buf, offset)
+    }
+
+    /**
+     * Finds a named entry in a Zip credential. Entries are keyed by name
+     * rather than by a fixed position, so the reader walks them.
+     */
+    private fun readZipPart(buf: ByteBuffer, partName: String): SecretHandle {
+        val partCount = buf.get().toInt()
+        // metadata: _entryCount (normal)
+        val metaNameLen = buf.get().toInt()
+        buf.position(buf.position() + metaNameLen)
+        buf.int // skip count value
+        buf.get() // consume metadata content byte (1)
+
+        repeat(partCount - 1) {
+            val entryNameLen = buf.get().toInt()
+            val entryNameBytes = ByteArray(entryNameLen); buf.get(entryNameBytes)
+            val entryName = String(entryNameBytes, Charsets.UTF_8)
+            val entryLen = buf.int
+            val entryBytes = ByteArray(entryLen); buf.get(entryBytes)
+
+            if (entryName == partName) {
+                return SecretHandle.secret(entryBytes)
+            }
+        }
+        throw notFound(partName, "Zip")
     }
 
     private fun notFound(partName: String, credential: String) =

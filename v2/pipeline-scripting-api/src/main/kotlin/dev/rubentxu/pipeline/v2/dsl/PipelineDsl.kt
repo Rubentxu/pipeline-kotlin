@@ -335,16 +335,15 @@ class ScriptScope {
 }
 
 /**
- * Builder for a stage, capturing its name, steps, options, agent, and environment.
+ * Builder for a stage, capturing its name, steps, options, and environment.
  */
 class StageBuilder(
     private val name: String,
     private val steps: List<StepSpec>,
     private val options: OptionsSpec? = null,
-    private val agent: AgentSpec? = null,
     private val environment: Map<String, String>? = null,
 ) {
-    fun build(): StageSpec = StageSpec(name, steps, options, agent, environment)
+    fun build(): StageSpec = StageSpec(name, steps, options, environment)
 }
 
 /**

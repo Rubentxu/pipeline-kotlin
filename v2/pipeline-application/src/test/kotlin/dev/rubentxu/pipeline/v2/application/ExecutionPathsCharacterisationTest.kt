@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.dsl.pipeline
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 /**
  * WU-RP-021 — Execution paths characterisation (RP-2, test-side only).
@@ -285,11 +286,10 @@ class ExecutionPathsCharacterisationTest {
     // P8 — stage-level metadata projection
     // ------------------------------------------------------------------
     @Test
-    fun `P8 stage agent environment and options project to StageNode metadata`() {
+    fun `P8 stage environment and options project to StageNode metadata while agent fails closed`() {
         val spec = pipeline {
             stages {
                 stage("Build") {
-                    agent("linux")
                     environment { env("CI", "true") }
                     options { timeout(30) }
                     echo("hello")
@@ -299,7 +299,17 @@ class ExecutionPathsCharacterisationTest {
         val compiled = compile(spec)
         val stage = compiled.stages.single()
 
-        assertEquals("linux", stage.agent?.label)
+        val agentRejected = assertThrows<IllegalArgumentException> {
+            pipeline {
+                stages {
+                    stage("Build") {
+                        agent("linux")
+                        echo("hello")
+                    }
+                }
+            }
+        }
+        assertTrue(agentRejected.message!!.contains("agent"))
         assertEquals(mapOf("CI" to "true"), stage.environment.values)
         assertEquals(listOf("timeout=30"), stage.options.map { "${it.name}=${it.value}" })
         assertTrue(compiled.supportsCanonicalDurableExecution())

@@ -7,7 +7,6 @@ import kotlinx.serialization.Serializable
 data class CompiledPipeline(
     val id: DefinitionId,
     val source: SourceDescriptor,
-    val agent: AgentSpec? = null,
     val environment: EnvironmentSpec = EnvironmentSpec.empty(),
     val options: List<OptionSpec> = emptyList(),
     val parameters: List<ParameterSpec> = emptyList(),
@@ -32,11 +31,6 @@ data class SourceDescriptor(val path: String, val digest: Digest) {
 @Serializable
 value class Digest(val value: String) {
     init { require(value.isNotBlank()) { "Digest value must not be blank" } }
-}
-
-@Serializable
-data class AgentSpec(val label: String, val remoteUri: String? = null) {
-    init { require(label.isNotBlank()) { "AgentSpec.label must not be blank" } }
 }
 
 @Serializable
@@ -95,7 +89,6 @@ data class MatrixSpec(val axes: Map<String, List<String>>) {
 data class StageNode(
     val id: StageId,
     val name: String,
-    val agent: AgentSpec? = null,
     val environment: EnvironmentSpec = EnvironmentSpec.empty(),
     val options: List<OptionSpec> = emptyList(),
     val whenCondition: ConditionSpec? = null,

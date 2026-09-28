@@ -14,20 +14,11 @@ data class StageSpec(
     val name: String,
     val steps: List<StepSpec>,
     val options: OptionsSpec? = null,
-    val agent: AgentSpec? = null,
     /**
      * Environment variables for this stage.
      * Injected via ProcessBuilder.environment() into each step.
      */
     val environment: Map<String, String>? = null,
-)
-
-/**
- * Agent specification for a stage.
- */
-data class AgentSpec(
-    val label: String,
-    val remoteUri: String? = null,
 )
 
 /**

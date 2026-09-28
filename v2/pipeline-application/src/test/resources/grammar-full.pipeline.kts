@@ -1,5 +1,6 @@
 // Full DSL grammar fixture exercising the canonical M2-R1 grammar:
-// agent, environment (withEnv), options, post, steps, parallel, retry, timeout
+// environment (withEnv), options, steps, parallel, retry, timeout
+// (agent at stage level was removed: no runtime interpreter, S0 honesty gate)
 // plus error/sleep step types (via catchError).
 //
 // G2 contract: a stage body is EITHER linear OR parallel — never both.
@@ -13,8 +14,6 @@ pipeline {
                 echo("Environment configured")
             }
 
-            agent("linux-agent", "grpc://agent.example.com:9090")
-
             echo("Starting build")
             sh("echo compile done")
             sleep(2)
@@ -24,8 +23,6 @@ pipeline {
         }
 
         stage("Test") {
-            agent("linux-agent")
-
             // NOTE (E-EM-11 inventory): stage-level options { retry(...) } is ambient DSL
             // metadata with no runtime materialization today (no OptionSpec("retry")
             // consumer; stage timeout projects to ShOptions only, without a
@@ -40,8 +37,6 @@ pipeline {
         }
 
         stage("Deploy") {
-            agent("linux-agent")
-
             parallel {
                 branch("db-migration") {
                     echo("Running database migrations")

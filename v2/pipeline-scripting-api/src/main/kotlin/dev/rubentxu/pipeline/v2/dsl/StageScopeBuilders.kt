@@ -80,12 +80,6 @@ open class StageScopeCore(
         checkout(scmGit(url, branch, credentialsId, changelog, poll, ".").scm)
     }
 
-    fun agent(label: String, remoteUri: String? = null) {
-        stageAgent = AgentSpec(label, remoteUri)
-    }
-
-    protected var stageAgent: AgentSpec? = null
-
     fun environment(block: EnvironmentScope.() -> Unit) {
         val scope = EnvironmentScope()
         scope.block()
@@ -149,49 +143,28 @@ open class StageScopeCore(
     }
 
     /**
-     * Attaches a retry policy to the step that was just declared.
+     * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
      *
-     * FAIL-CLOSED for the two cases that used to be silent (Semantic
-     * Conservation Law, TRAIN-DSL-HONESTY). This overload was
-     * `MUTATE_IF_POSSIBLE_ELSE_IGNORE`:
+     * The step-retrofit overload projected a full
+     * [dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy] (maxAttempts +
+     * baseMs + jitterMs) onto the preceding step, but NO runtime consumer ever
+     * read that policy: the canonical coordinator projects only `maxAttempts`
+     * from the `core.retry` block-step payload, and baseMs/jitterMs were never
+     * executed by any code path. Declaring a delay was a silent lie, and a
+     * policy nobody reads is metadata-without-an-interpreter.
      *
-     * ```kotlin
-     * val currentStep = steps.lastOrNull() ?: return   // nothing declared -> nothing happened
-     * steps[index] = if (currentStep.supportsStepLevelRetry) currentStep.withRetry(policy)
-     *                else currentStep                  // policy silently dropped
-     * ```
+     * The supported surface is the block form `retry(n) { ... }`, which lowers
+     * to a `core.retry` Block Step and is honoured by the coordinator.
      *
-     * Both paths left a valid-looking [StageScope] and a green build, so
-     * `StepSpecRetryCapabilityTest` ended up *certifying* the silence with cases
-     * named "retry before any step is a no-op" and "a non-retryable step is left
-     * untouched by retry". Those two cases now assert the rejection instead.
-     *
-     * Prefer the block form for anything that cannot carry a policy:
-     * `retry(n) { sh("./flaky") }`.
-     *
-     * @throws IllegalArgumentException when there is no preceding step, or when
-     *   that step cannot carry a step-level retry policy.
+     * @throws IllegalArgumentException always.
      */
-    fun retry(count: Int, delaySeconds: Long? = null) {
-        val currentStep = steps.lastOrNull()
-        require(currentStep != null) {
-            "retry(count = $count) retrofits the step declared immediately before it, but no step " +
-                "has been declared yet. Use the block form retry($count) { ... } to wrap the steps " +
-                "that should be retried."
-        }
-        require(count > 0) { "retry(count) requires count > 0, got $count" }
-        require(currentStep.supportsStepLevelRetry) {
-            "${currentStep::class.simpleName} does not support step-level retry, so retry(count = $count) " +
-                "cannot be applied to it. Use the block form retry($count) { ... } around the step instead."
-        }
-        val retryPolicy = RuntimeRetryPolicy(
-            maxAttempts = count,
-            baseMs = (delaySeconds ?: 0L) * 1000L,
-            jitterMs = (delaySeconds ?: 0L) * 500L,
-        )
-        val index = steps.indexOf(currentStep)
-        steps[index] = currentStep.withRetry(retryPolicy)
-    }
+    @Suppress("UnusedParameter") // parameters retained so a rejected call fails
+    // with THIS diagnostic instead of a bare Kotlin signature error.
+    fun retry(count: Int, delaySeconds: Long? = null): Nothing = throw IllegalArgumentException(
+        "retry(count = $count) at step level was removed: the projected retry policy had no " +
+            "runtime consumer (the compiled path reads only the maxAttempts of the core.retry " +
+            "block step; delaySeconds was never executed). Use the block form retry($count) { ... }.",
+    )
 
     /**
      * Conditional execution, Jenkins `when { }` style.
@@ -218,6 +191,26 @@ open class StageScopeCore(
                 "remove the whenCondition wrapper instead.",
         )
     }
+
+    /**
+     * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
+     *
+     * `agent(label)` used to project an [AgentSpec] into `CompiledPipeline.agent` and
+     * `StageNode.agent`, but NO runtime component ever read it: there is no agent
+     * distributor or scheduler, and the label never reached any event. Metadata
+     * without an interpreter is a silent lie, so the DSL refuses the call instead of
+     * storing it. Reinstate only together with a real interpreter that consumes the
+     * label end-to-end.
+     *
+     * @throws IllegalArgumentException always.
+     */
+    @Suppress("UnusedParameter") // parameters retained so a rejected call fails
+    // with THIS diagnostic instead of a bare Kotlin signature error.
+    fun agent(label: String, remoteUri: String? = null): Nothing = throw IllegalArgumentException(
+        "agent(\"$label\") is not supported: the compiled definition used to store the label but " +
+            "no runtime component ever read it (no distributor, no scheduler; it never reached an " +
+            "event). Metadata without an interpreter is a silent lie; remove the agent() call.",
+    )
 
     fun script(block: ScriptScope.() -> Unit) {
         val scope = ScriptScope()
@@ -334,5 +327,3 @@ open class StageScopeTopSteps(
         return sb.toString()
     }
 }
-
-private typealias RuntimeRetryPolicy = dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy

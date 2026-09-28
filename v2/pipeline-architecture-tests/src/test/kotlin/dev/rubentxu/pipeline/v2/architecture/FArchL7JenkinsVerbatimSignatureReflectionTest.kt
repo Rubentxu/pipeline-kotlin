@@ -172,15 +172,16 @@ class FArchL7JenkinsVerbatimSignatureReflectionTest {
             fieldNames = setOf("ordinal", "label")
         ),
 
-        // ML-R9 timeout/retry blocks (TO-RT-S-009)
+        // ML-R9 timeout/retry blocks (TO-RT-S-009).
+        // S0 Semantic Honesty Gate: `activity` was removed from TimeoutBlock - the
+        // catalog listed it but no runtime surface ever exposed or consumed it.
         "TimeoutBlock" to StepShape(
             paramTypeDescriptors = listOf(
                 "J",                 // time (Long -> J)
                 "Ljava/lang/String;",  // unit
-                "Ljava/lang/String;",  // activity (nullable)
                 "Ljava/util/List;"      // steps
             ),
-            fieldNames = setOf("time", "unit", "activity", "steps")
+            fieldNames = setOf("time", "unit", "steps")
         ),
         "RetryBlock" to StepShape(
             paramTypeDescriptors = listOf(

@@ -6,9 +6,9 @@ import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.dsl.pipeline
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 class DslCompiledPipelineCompilerTest {
 
@@ -16,7 +16,6 @@ class DslCompiledPipelineCompilerTest {
         pipeline {
             stages {
                 stage("Build") {
-                    agent("linux")
                     environment { env("CI", "true") }
                     options { timeout(30) }
                     echo("hello")
@@ -29,7 +28,6 @@ class DslCompiledPipelineCompilerTest {
     private fun fixture() = pipeline {
         stages {
             stage("Build") {
-                agent("linux")
                 environment { env("CI", "true") }
                 options { timeout(30) }
                 echo("hello")
@@ -48,7 +46,6 @@ class DslCompiledPipelineCompilerTest {
         )
 
         assertEquals("build.pipeline.kts", compiled.source.path)
-        assertEquals("linux", compiled.stages.single().agent?.label)
         assertEquals(mapOf("CI" to "true"), compiled.stages.single().environment.values)
         assertEquals(listOf("timeout=30"), compiled.stages.single().options.map { "${it.name}=${it.value}" })
 
@@ -58,6 +55,29 @@ class DslCompiledPipelineCompilerTest {
         assertTrue(body.steps.all { it.payload.schemaVersion == "dsl-v1" })
         assertTrue(body.steps.first().payload.encoded.contains("hello"))
         assertTrue(body.steps[1].payload.encoded.contains("./gradlew test"))
+    }
+
+    @Test
+    fun `stage-level agent is rejected instead of compiling to unread metadata`() {
+        // S0 Semantic Honesty Gate: agent(label) at stage level used to compile
+        // into StageNode.agent while NO runtime component ever read it (no
+        // distributor, no scheduler; the agent label never reached any event).
+        // Metadata without an interpreter is a silent lie, so the DSL now
+        // refuses the call instead of storing it.
+        val ex = assertThrows<IllegalArgumentException> {
+            pipeline {
+                stages {
+                    stage("Build") {
+                        agent("linux")
+                        echo("hello")
+                    }
+                }
+            }
+        }
+        assertTrue(
+            (ex.message ?: "").contains("agent"),
+            "diagnostic must name the unsupported construct, got: ${ex.message}",
+        )
     }
 
     @Test
@@ -362,7 +382,7 @@ class DslCompiledPipelineCompilerTest {
                 }
             }
         }
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = org.junit.jupiter.api.assertThrows<IllegalStateException> {
             DslCompiledPipelineCompiler.compile(
                 spec,
                 "loud-fallback.pipeline.kts",

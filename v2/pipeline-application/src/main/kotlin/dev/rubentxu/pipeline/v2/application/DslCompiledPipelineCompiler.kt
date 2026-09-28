@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
-import dev.rubentxu.pipeline.v2.domain.AgentSpec
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
@@ -112,7 +111,6 @@ object DslCompiledPipelineCompiler {
         return StageNode(
             id = stageId,
             name = stage.name,
-            agent = stage.agent?.let { AgentSpec(it.label, it.remoteUri) },
             environment = stage.environment?.let(::EnvironmentSpec) ?: EnvironmentSpec.empty(),
             options = stage.options.toOptions(),
             body = body,
@@ -312,9 +310,9 @@ object DslCompiledPipelineCompiler {
         )
         // B13/E-EM-11: core.retry projects its contract (attempt count) into the
         // payload so the durable coordinator can loop body attempts without
-        // interpreting StepSpec. Deterministic backoff: base/jitter derived from
-        // the DSL retry() delaySeconds (0 when absent) — jitter is NOT part of
-        // any fingerprint (it is applied at dispatch time only).
+        // interpreting StepSpec. Only maxAttempts is consumed (A3 audit: the
+        // retrofit retry policy's baseMs/jitterMs had no runtime consumer and
+        // the surface was removed; the block form projects count only).
         // B13/E-EM-11: core.timeout projects its deadline into the payload so the
         // durable coordinator can budget child dispatches without interpreting
         // StepSpec. Unit: DSL produces SECONDS/MINUTES/HOURS (Jenkins time/unit).

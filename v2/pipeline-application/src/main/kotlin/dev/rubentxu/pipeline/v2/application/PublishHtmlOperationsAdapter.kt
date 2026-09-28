@@ -53,6 +53,16 @@ class PublishHtmlOperationsAdapter(
 ) : PublishHtmlOperations {
 
     override fun publish(input: PublishHtmlInput): PublishHtmlResult {
+        // S0 Semantic Honesty Gate: keepAll has NO v1 interpreter (the adapter
+        // always overwrites the run archive; spec.md §R4 kept the flag as a
+        // "hint" nobody consumed). A declared-but-dropped policy is a silent
+        // lie, so a request that sets it is rejected instead of honoured-and-ignored.
+        if (input.keepAll) {
+            val reason = "publishHTML keepAll=true is not supported by the v1 runtime " +
+                "(the archive is overwritten per run; the flag had no interpreter)"
+            eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
+            return PublishHtmlFailed(FailureKind.SCRIPT, reason)
+        }
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         val workspaceRoot = resolver.ensureCreated(
             resolver.resolve(stageIdentity.name, stageIdentity.index),

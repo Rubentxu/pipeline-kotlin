@@ -85,7 +85,7 @@ class FArchL7BlockStepNestingInvariantTest {
 
         // TimeoutBlock
         val timeoutBlock = StepSpec.TimeoutBlock(
-            30L, "SECONDS", null,
+            30L, "SECONDS",
             listOf(StepSpec.Shell("make build"))
         )
         val timeoutBlockFlat = BlockStepFlattener.flatten(timeoutBlock)
@@ -93,7 +93,8 @@ class FArchL7BlockStepNestingInvariantTest {
 
         // RetryBlock
         val retryBlock = StepSpec.RetryBlock(
-            3, null,
+            3,
+            null,
             listOf(StepSpec.Shell("make test"))
         )
         val retryBlockFlat = BlockStepFlattener.flatten(retryBlock)
@@ -123,7 +124,6 @@ class FArchL7BlockStepNestingInvariantTest {
                         StepSpec.TimeoutBlock(
                             time = 5L,
                             unit = "SECONDS",
-                            activity = null,
                             steps = listOf(
                                 StepSpec.Shell("echo hi")
                             )
@@ -435,7 +435,7 @@ class FArchL7BlockStepNestingInvariantTest {
             StepSpec.Timestamps(listOf(StepSpec.Echo("e"))),
             StepSpec.AnsiColor("x", listOf(StepSpec.Echo("e"))),
             StepSpec.NodeNoOp(null, listOf(StepSpec.Echo("e"))),
-            StepSpec.TimeoutBlock(30L, "S", null, listOf(StepSpec.Echo("e"))),
+            StepSpec.TimeoutBlock(30L, "S", listOf(StepSpec.Echo("e"))),
             StepSpec.RetryBlock(3, null, listOf(StepSpec.Echo("e")))
         )
 

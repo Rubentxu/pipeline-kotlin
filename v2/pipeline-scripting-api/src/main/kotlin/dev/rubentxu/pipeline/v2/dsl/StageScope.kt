@@ -497,7 +497,7 @@ class StageScope(
     fun unstash(name: String, into: String? = null) {
         val sb = StringBuilder()
         sb.append("{\"kind\":\"unstash\",\"name\":\"").append(escapeJsonString(name)).append("\"")
-        if (!into.isNullOrBlank()) {
+        if (into != null) {
             sb.append(",\"into\":\"").append(escapeJsonString(into)).append("\"")
         }
         sb.append("}")
@@ -533,8 +533,9 @@ class StageScope(
      *             subdirectory; sanitised by [dev.rubentxu.pipeline.v2.application.PublishHtmlSanitiser]).
      * @param reportDir Workspace-relative directory containing the report files.
      * @param reportFiles Ant-style glob (default `**` recursive match).
-     * @param keepAll Whether to keep historical reports across runs (Pipeline-K
-     *                 treats this as a typed hint; v1 always overwrites).
+     * @param keepAll Whether to keep historical reports across runs (v1 runtime
+     *   REJECTS keepAll=true: the archive is overwritten per run and the flag
+     *   has no interpreter, so it fails closed instead of being dropped).
      * @param allowMissing When true, do not fail the Step if the directory or
      *                     glob is empty (emit `HtmlReportSkipped` instead).
      * @param escapeUnderscores When true, escape `_` in the sanitised name (Jenkins-canonical).
@@ -552,7 +553,7 @@ class StageScope(
         sb.append("{\"kind\":\"publishHTML\",\"name\":\"").append(escapeJsonString(name)).append("\",")
         sb.append("\"reportDir\":\"").append(escapeJsonString(reportDir)).append("\",")
         sb.append("\"reportFiles\":\"").append(escapeJsonString(reportFiles)).append("\"")
-        if (keepAll) sb.append(",\"keepAll\":true")
+        if (keepAll) sb.append(",\"keepAll\":true") // handler fails closed (no v1 interpreter)
         if (allowMissing) sb.append(",\"allowMissing\":true")
         if (escapeUnderscores) sb.append(",\"escapeUnderscores\":true")
         sb.append("}")
@@ -579,39 +580,24 @@ class StageScope(
      * @param activity Optional activity description
      * @param block Nested steps to execute with timeout
      */
-    fun timeout(time: Long, unit: String, activity: String? = null, block: StageScope.() -> Unit) {
+    fun timeout(time: Long, unit: String, block: StageScope.() -> Unit) {
         val inner = StageScope(stageName, runtimeConfig)
         inner.block()
-        steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, activity = activity, steps = inner.steps()))
+        steps.add(StepSpec.TimeoutBlock(time = time, unit = unit, steps = inner.steps()))
     }
 
     /**
      * Executes the inner block with retry on failure.
      *
-     * Jenkins verbatim: `retry(count: Int, conditions: List<String>? = null) { block }`
+     * Jenkins verbatim: `retry(count: Int) { block }`
      *
      * @param count Maximum retry attempts
-     * @param conditions Failure conditions to retry on. NOT SUPPORTED: the compiled
-     *   path projects only `maxAttempts` into the IR, so a declared narrowing would
-     *   be silently dropped and the step would retry on every failure instead.
-     *   Declared-but-unimplemented is a lie (same law as `post { }` in
-     *   [toStageBuilder]), so it is rejected here instead of ignored.
      * @param block Nested steps to execute with retry
-     * @throws IllegalArgumentException if [conditions] is supplied, including an
-     *   empty list, which narrows nothing yet reads as a declared policy
      */
-    fun retry(count: Int, conditions: List<String>? = null, block: StageScope.() -> Unit) {
-        if (conditions != null) {
-            throw IllegalArgumentException(
-                "retry(count=$count, conditions=${conditions.joinToString()}) is not supported: " +
-                    "the compiled execution path applies a plain maxAttempts retry and ignores " +
-                    "the failure conditions, so the declared narrowing would be dropped and every " +
-                    "failure would be retried. Write retry(count) { } without conditions.",
-            )
-        }
+    fun retry(count: Int, block: StageScope.() -> Unit) {
         val inner = StageScope(stageName, runtimeConfig)
         inner.block()
-        steps.add(StepSpec.RetryBlock(count = count, conditions = conditions, steps = inner.steps()))
+        steps.add(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))
     }
 
     fun toStageBuilder(): StageBuilder {
@@ -625,65 +611,6 @@ class StageScope(
                     "catchError/warnError semantics; refusing to silently ignore post.",
             )
         }
-        return StageBuilder(stageName, steps.toList(), stageOptions, stageAgent, stageEnvironment?.values)
+        return StageBuilder(stageName, steps.toList(), stageOptions, stageEnvironment?.values)
     }
-}
-
-/**
- * Returns a copy of this step carrying [policy] as its step-level retry.
- *
- * Exhaustive on purpose. Only the subtypes that declare
- * [StepSpec.supportsStepLevelRetry] are accepted, and adding a new subtype
- * makes this fail to compile until the step is given a case here. That is the
- * opposite of the previous arrangement, where a missing branch compiled fine
- * and silently left `retry` unset.
- *
- * The complexity lives here, once, instead of in `StageScope.retry` on every
- * call path. It is a type-to-type mapping over a sealed hierarchy, which is
- * what detekt's complexity metric is counting, and the alternative was to keep
- * a mutable list of supported steps somewhere that no compiler checks.
- */
-internal fun StepSpec.withRetry(
-    policy: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy,
-): StepSpec = when (this) {
-    is StepSpec.Echo -> copy(retry = policy)
-    is StepSpec.Shell -> copy(retry = policy)
-    is StepSpec.RegistryStepSpec -> copy(retry = policy)
-    is StepSpec.RegistryBlockSpec -> copy(retry = policy)
-    is StepSpec.Error -> copy(retry = policy)
-    is StepSpec.Sleep -> copy(retry = policy)
-    is StepSpec.Parallel -> copy(retry = policy)
-    is StepSpec.WithCredentialsBlock -> copy(retry = policy)
-    is StepSpec.Checkout -> copy(retry = policy)
-    // Every remaining subtype is a non-retryable step. It is listed as an
-    // error rather than an identity branch, so that a subtype added in the
-    // future without a deliberate decision fails the build here.
-    is StepSpec.WriteFile,
-    is StepSpec.ReadFile,
-    is StepSpec.FileExists,
-    is StepSpec.WithEnv,
-    is StepSpec.Dir,
-    is StepSpec.ArchiveArtifacts,
-    is StepSpec.ArtifactQuery,
-    is StepSpec.DeleteDir,
-    is StepSpec.CleanWs,
-    is StepSpec.CatchError,
-    is StepSpec.WarnError,
-    is StepSpec.Unstable,
-    is StepSpec.Pwd,
-    is StepSpec.IsUnix,
-    is StepSpec.Load,
-    is StepSpec.WaitUntilBlock,
-    is StepSpec.Timestamps,
-    is StepSpec.AnsiColor,
-    is StepSpec.NodeNoOp,
-    is StepSpec.Milestone,
-    is StepSpec.TimeoutBlock,
-    is StepSpec.RetryBlock,
-    -> error(
-        "${this::class.simpleName} does not support step-level retry. Either it is a " +
-            "non-retryable Jenkins step (in which case supportsStepLevelRetry should " +
-            "stay false and this branch should list it as unsupported) or it is a new " +
-            "step that has not declared its retry capability yet.",
-    )
 }

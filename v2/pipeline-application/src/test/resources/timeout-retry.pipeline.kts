@@ -3,8 +3,6 @@
 pipeline {
     stages {
         stage("RetryTest") {
-            agent("linux-agent")
-
             // E-EM-11: stage-level options { retry(...) } is ambient DSL metadata with
             // no runtime materialization; the canonical retry block step is the
             // certified producer of RetryAttemptStarted/Finished.
@@ -15,8 +13,6 @@ pipeline {
         }
 
         stage("TimeoutTest") {
-            agent("linux-agent")
-
             // E-EM-11: the canonical timeout block step is the certified producer
             // of TimeoutScheduled at admission.
             timeout(30, "SECONDS") {
@@ -26,8 +22,6 @@ pipeline {
         }
 
         stage("ErrorHandling") {
-            agent("linux-agent")
-
             echo("Testing error recording")
             catchError {
                 error("Recorded error condition", "SCRIPT")

@@ -29,8 +29,9 @@ import dev.rubentxu.pipeline.v2.application.support.AppBinSupport
 
 /**
  * UAT-DSL-001: Jenkins Familiarity — full grammar DSL exercising
- * agent, environment, options, post, steps, parallel, retry, timeout,
- * whenCondition, script + error/sleep step types.
+ * environment, options, steps, parallel, retry, timeout, script +
+ * error/sleep step types. (agent/post/whenCondition are fail-closed:
+ * removed or rejected because the compiled path had no interpreter.)
  *
  * This test validates that the full DSL grammar produces a parseable
  * event stream with all M2-R1 event kinds.

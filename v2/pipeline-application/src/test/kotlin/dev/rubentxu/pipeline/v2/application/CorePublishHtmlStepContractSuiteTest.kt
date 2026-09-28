@@ -145,6 +145,10 @@ class CorePublishHtmlStepContractSuiteTest {
 
     @Test
     fun `3b — input codec round-trip with all flags enabled`() {
+        // keepAll stays representable in the typed contract (it travels in the
+        // payload) but the ADAPTER rejects it: no v1 interpreter. The codec
+        // round-trip must stay lossless; the fail-closed guard is pinned by
+        // `keepAll=true fails closed at the adapter`.
         val input = PublishHtmlInput(
             name = "html-report",
             reportDir = "build/reports",
@@ -156,6 +160,34 @@ class CorePublishHtmlStepContractSuiteTest {
         val encoded: EncodedStepValue = CorePublishHtmlStep.definition.contract.inputCodec.encode(input)
         val decoded: PublishHtmlInput = CorePublishHtmlStep.definition.contract.inputCodec.decode(encoded)
         assertEquals(input, decoded, "publishHTML input codec MUST preserve all flags when enabled")
+    }
+
+    @Test
+    fun `keepAll=true fails closed at the adapter`() {
+        // S0 Semantic Honesty Gate: keepAll was a typed hint NOBODY consumed
+        // (v1 always overwrites the archive). A declared-but-dropped policy is
+        // a silent lie, so the adapter rejects the request instead.
+        val controlDirRoot = java.nio.file.Files.createTempDirectory("s0-keepall-ctrl-")
+        val workspaceBase = java.nio.file.Files.createTempDirectory("s0-keepall-ws-")
+        val adapter = PublishHtmlOperationsAdapter(
+            runIdString = "s0-keepall",
+            stageIdentity = StageIdentity(name = "s0-stage", index = 0),
+            controlDirRoot = controlDirRoot,
+            eventSink = InMemoryEventStore(),
+            workspaceBase = workspaceBase,
+        )
+        val input = PublishHtmlInput(
+            name = "html-report",
+            reportDir = "build/reports",
+            reportFiles = "**/*.html",
+            keepAll = true,
+        )
+        val result = adapter.publish(input)
+        assertTrue(result is PublishHtmlFailed, "keepAll=true must fail closed, got $result")
+        assertTrue(
+            (result as PublishHtmlFailed).message.contains("keepAll"),
+            "diagnostic must name keepAll, got: ${result.message}",
+        )
     }
 
     @Test

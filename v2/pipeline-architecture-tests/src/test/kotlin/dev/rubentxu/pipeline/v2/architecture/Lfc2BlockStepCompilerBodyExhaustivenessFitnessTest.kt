@@ -164,7 +164,7 @@ class Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest {
      */
     private val factoryByVariant: Map<String, (List<StepSpec>) -> StepSpec> = mapOf(
         "TimeoutBlock" to { body ->
-            StepSpec.TimeoutBlock(time = 60, unit = "SECONDS", activity = null, steps = body)
+            StepSpec.TimeoutBlock(time = 60, unit = "SECONDS", steps = body)
         },
         "RetryBlock" to { body ->
             StepSpec.RetryBlock(count = 3, conditions = null, steps = body)

@@ -35,7 +35,6 @@ pipeline {
     stages {
 
         stage("Validate") {
-            agent("linux")
             options {
                 timeout(1800)
             }

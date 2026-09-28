@@ -15,41 +15,12 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
 sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     override val name: String
     override val type: String
-    val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? get() = null
-    val timeoutMillis: Long? get() = null
-
-    /**
-     * Whether `retry { }` at step level may attach a [retry] policy to this step.
-     *
-     * This is declared by the step type itself instead of being inferred from
-     * whether the subtype overrides [retry]. The distinction is load-bearing:
-     * `retry` defaults to `null` for every step, so a type that supports the
-     * policy but was never configured still reads `null`. Reading the field
-     * would therefore conflate "not retryable" with "retryable, not set".
-     *
-     * The executor honours a [retry] policy for the steps listed here only.
-     * Every other step keeps `retry` at `null` permanently, because the
-     * Jenkins catalog has no per-step retry for them: they use stage-level
-     * `options { retry(count) }` or a `retry { }` block instead.
-     *
-     * The closed set is pinned by
-     * `StepSpecRetryCapabilityTest`, which fails when a new subtype is added
-     * without stating which side of this contract it belongs to. That test
-     * exists because this decision previously lived as a hand-maintained
-     * `when` in `StageScope.retry`, where adding a step meant editing a list
-     * in a different file and forgetting it produced a silent no-op rather
-     * than a compile error.
-     */
-    val supportsStepLevelRetry: Boolean get() = false
 
     data class RegistryStepSpec(
         val stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         val schemaVersion: String = "dsl-v1",
         val encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "registryStep"
         override val type: String get() = "registry"
     }
@@ -59,20 +30,14 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val schemaVersion: String = "dsl-v1",
         val encodedInput: dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue,
         val body: List<StepSpec>,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "registryBlock"
         override val type: String get() = "registry"
     }
 
     data class Echo(
         val text: String,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "echo"
         override val type: String get() = "echo"
     }
@@ -80,11 +45,8 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     data class Shell(
         val command: String,
         val isScriptBlock: Boolean = false,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
         val returnStdout: Boolean = false,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "sh"
         override val type: String get() = "sh"
     }
@@ -92,30 +54,21 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     data class Error(
         val message: String,
         val failureKind: String = "UNKNOWN",
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "error"
         override val type: String get() = "error"
     }
 
     data class Sleep(
         val seconds: Long,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "sleep"
         override val type: String get() = "sleep"
     }
 
     data class Parallel(
         val branches: List<BranchSpec>,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "parallel"
         override val type: String get() = "parallel"
     }
@@ -211,20 +164,14 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         val purpose: String,
         val bindings: List<CredentialsBinding>,
         val steps: List<StepSpec>,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "withCredentials"
         override val type: String get() = "withCredentials"
     }
 
     data class Checkout(
         val scm: Scm,
-        override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
-        override val timeoutMillis: Long? = null,
     ) : StepSpec {
-        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "checkout"
         override val type: String get() = "checkout"
     }
@@ -303,10 +250,9 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     @Deprecated(
-        message = "LFC1-007: catchError is pre-compiler-rewritten to core.emit.event + core.sh. " +
-            "The canonical IR models this as a linear sequence of marker events + shell script. " +
-            "DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.",
-        replaceWith = ReplaceWith("StepSpec.CatchError"),
+        message = "LFC1-007: catchError is rewritten at compile time by rewriteWorkflowControl " +
+            "into core.emit.event + core.sh (the rewrite IS implemented and runs). This spec type " +
+            "remains as the rewrite's input shape; do not introduce new direct uses.",
     )
     data class CatchError(
         val buildResult: String? = null,
@@ -319,10 +265,9 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     @Deprecated(
-        message = "LFC1-007: warnError is pre-compiler-rewritten to core.emit.event + core.sh. " +
-            "The canonical IR models this as a linear sequence of marker events + shell script. " +
-            "DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.",
-        replaceWith = ReplaceWith("StepSpec.WarnError"),
+        message = "LFC1-007: warnError is rewritten at compile time by rewriteWorkflowControl " +
+            "into core.emit.event + core.sh (the rewrite IS implemented and runs). This spec type " +
+            "remains as the rewrite's input shape; do not introduce new direct uses.",
     )
     data class WarnError(
         val message: String,
@@ -334,9 +279,10 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     @Deprecated(
-        message = "LFC1-007: unstable is pre-compiler-rewritten to core.emit.event(StageMarkedUnstable) + core.sh(exit 0). " +
-            "The canonical IR models this as two nodes. DSL use is deprecated; this class is retained for deserialization of legacy fixtures only.",
-        replaceWith = ReplaceWith("StepSpec.Unstable"),
+        message = "LFC1-007: unstable is rewritten at compile time by rewriteWorkflowControl into " +
+            "core.emit.event(StageMarkedUnstable) + core.sh(exit 0) (the rewrite IS implemented " +
+            "and runs). This spec type remains as the rewrite's input shape; do not introduce " +
+            "new direct uses.",
     )
     data class Unstable(
         val message: String,
@@ -407,7 +353,6 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     data class TimeoutBlock(
         val time: Long,
         val unit: String,
-        val activity: String? = null,
         val steps: List<StepSpec>,
     ) : StepSpec {
         override val name: String get() = "timeout"

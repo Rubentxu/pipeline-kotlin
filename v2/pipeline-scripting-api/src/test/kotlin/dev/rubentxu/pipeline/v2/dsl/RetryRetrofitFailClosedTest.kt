@@ -28,48 +28,29 @@ import org.junit.jupiter.api.assertThrows
  * failures look identical from the outside, because a dropped policy and an
  * applied policy both leave a valid-looking `StageScope` behind.
  *
- * Fail-closed is the honest outcome. The block form `retry(n) { ... }` remains
- * the supported way to express retry for steps that cannot carry a policy, and
- * the diagnostics say so.
- *
- * The happy path is unchanged and stays covered by `StepSpecRetryCapabilityTest`:
- * `echo(..)` is retryable and receives the exact policy.
+ * The S0 audit (A3) went one step further: even the "applied" branch was a
+ * lie, because NO runtime consumer ever read the projected RetryPolicy. The
+ * canonical coordinator consumes only `maxAttempts` from the `core.retry`
+ * block payload; `baseMs`/`jitterMs` were never executed by any code path.
+ * The overload was therefore REMOVED and now fails closed unconditionally.
+ * The block form `retry(n) { ... }` remains the supported surface.
  */
 class RetryRetrofitFailClosedTest {
 
     @Test
-    fun `retry with no preceding step is rejected instead of silently doing nothing`() {
-        val ex = assertThrows<IllegalArgumentException> {
-            StageScope("build").retry(count = 3)
-        }
-        val msg = ex.message ?: ""
-        assertTrue(
-            msg.contains("retry") && msg.contains("step"),
-            "diagnostic must explain that the retrofit form needs a preceding step, got: $msg",
-        )
-    }
-
-    @Test
-    fun `retry over a non-retryable step is rejected and suggests the block form`() {
+    fun `the retrofit overload is removed and fails closed unconditionally`() {
         val scope = StageScope("build")
-        scope.writeFile("out.txt", "content")
-
+        scope.echo("hello")
         val ex = assertThrows<IllegalArgumentException> {
             scope.retry(count = 3)
         }
         val msg = ex.message ?: ""
-        assertTrue(
-            msg.contains("WriteFile") || msg.contains("not support"),
-            "diagnostic must name the offending step or the missing capability, got: $msg",
-        )
-        assertTrue(
-            msg.contains("retry(") && msg.contains("{"),
-            "diagnostic must point at the block form retry(n) { ... }, got: $msg",
-        )
+        assertTrue(msg.contains("removed"), "diagnostic must state removal, got: $msg")
+        assertTrue(msg.contains("retry(") && msg.contains("{"), "must point at the block form, got: $msg")
     }
 
     @Test
-    fun `a rejected retry leaves the preceding step untouched`() {
+    fun `a rejected retrofit leaves the stage steps untouched`() {
         val scope = StageScope("build")
         scope.writeFile("out.txt", "content")
         val before = scope.steps()
@@ -79,23 +60,6 @@ class RetryRetrofitFailClosedTest {
         assertTrue(
             scope.steps() == before,
             "a rejected retry must not mutate the step it refused to configure, got ${scope.steps()}",
-        )
-        assertTrue(
-            scope.steps().single().retry == null,
-            "the dropped policy must not leak into the step, got ${scope.steps().single().retry}",
-        )
-    }
-
-    @Test
-    fun `a rejected retry names the step kind that cannot carry a policy`() {
-        // Pins the diagnostic quality: "retry failed" is not actionable, the
-        // caller needs to know which step refused the policy.
-        val scope = StageScope("build")
-        scope.writeFile("out.txt", "content")
-        val ex = assertThrows<IllegalArgumentException> { scope.retry(count = 3) }
-        assertTrue(
-            (ex.message ?: "").contains("WriteFile"),
-            "diagnostic must name the offending step kind, got: ${ex.message}",
         )
     }
 }

@@ -3,8 +3,6 @@
 pipeline {
     stages {
         stage("ParallelTest") {
-            agent("linux-agent")
-
             parallel {
                 branch("branch-a") {
                     echo("Branch A step 1")

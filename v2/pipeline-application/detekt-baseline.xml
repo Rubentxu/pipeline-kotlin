@@ -151,11 +151,6 @@
     <ID>MaxLineLength:UatLocal011WorkflowControlTest.kt:UatLocal011WorkflowControlTest$@org.junit.jupiter.api.Disabled("INC-024: load step produces child steps; coordinator does not yet inject loaded pipeline into execution flow. Pre-existing on c88d5c88 (v0.32.2). See comment block above.")</ID>
     <ID>MaxLineLength:WURp020MavenRealUatTest.kt:WURp020MavenRealUatTest$Files.writeString(badPom, "&lt;?xml version=\"1.0\"?&gt;&lt;project xmlns=\"http://maven.apache.org/POM/4.0.0\"&gt;&lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;&lt;groupId&gt;x&lt;/groupId&gt;&lt;artifactId&gt;y&lt;/artifactId&gt;&lt;version&gt;1&lt;/version&gt;&lt;packaging&gt;not-a-real-packaging&lt;/packaging&gt;&lt;/project&gt;")</ID>
     <ID>MayBeConstant:DurableInvocationResolver.kt:DurableInvocationResolver.Companion$// Preserved from CanonicalDurableRunCoordinator companion (behavior-equivalence law). private val REATTACH_TIMEOUT_MS = 60_000L</ID>
-    <ID>NewLineAtEndOfFile:CanonicalCoordinatorScopeStackTest.kt:dev.rubentxu.pipeline.v2.application.durable.CanonicalCoordinatorScopeStackTest.kt</ID>
-    <ID>NewLineAtEndOfFile:DurableProtocolInvocationCharacterizationTest.kt:dev.rubentxu.pipeline.v2.application.durable.DurableProtocolInvocationCharacterizationTest.kt</ID>
-    <ID>NewLineAtEndOfFile:ExecutionBoundaryFactoryTest.kt:dev.rubentxu.pipeline.v2.application.durable.ExecutionBoundaryFactoryTest.kt</ID>
-    <ID>NewLineAtEndOfFile:Lpr011r2SecretRedactionAtRestUatTest.kt:dev.rubentxu.pipeline.v2.application.Lpr011r2SecretRedactionAtRestUatTest.kt</ID>
-    <ID>NewLineAtEndOfFile:PublishHtmlOperationsAdapterUatTest.kt:dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapterUatTest.kt</ID>
     <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
     <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$id: ParallelAggregateId</ID>
     <ID>UnusedParameter:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$stageIndex: Int</ID>

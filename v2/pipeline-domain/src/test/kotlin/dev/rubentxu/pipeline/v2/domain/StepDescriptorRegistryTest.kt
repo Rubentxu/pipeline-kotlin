@@ -121,6 +121,36 @@ class StepDescriptorRegistryTest {
             .forEach { assertTerminal(it) }
     }
 
+    /**
+     * Order is a declared property, not an accident of how the builder happens to be written.
+     *
+     * `keys()` exposes declaration order and policy tooling enumerates declarations from it, so
+     * a refactor of the registry construction must not reorder rows. This pins the sequence as
+     * observed on the base SHA: nine body rows in declaration order, then the five terminal rows.
+     */
+    @Test
+    fun `keys exposes declaration order with body rows before terminal rows`() {
+        assertEquals(
+            listOf(
+                "core.catchError",
+                "core.warnError",
+                "core.withEnv",
+                "core.dir",
+                "core.withCredentials",
+                "core.timeout",
+                "core.timestamps",
+                "core.retry",
+                "core.waitUntil",
+                "core.emit.event",
+                "core.sh",
+                "core.echo",
+                "core.sleep",
+                "core.file.writeFile",
+            ),
+            registry.keys().map { it.value },
+        )
+    }
+
     @Test
     fun `unknown step returns null`() {
         assertNull(registry.get(PluginStepId("core.unknown")))

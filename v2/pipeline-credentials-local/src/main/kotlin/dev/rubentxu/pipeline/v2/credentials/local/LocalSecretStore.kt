@@ -1313,117 +1313,93 @@ class LocalSecretStore(
         out.write(marker.array())
     }
 
+    /**
+     * Writes one length-prefixed part: a name, then a payload, each prefixed by
+     * its length.
+     *
+     * Layout, pinned by `CredentialPartLayoutTest`:
+     * ```
+     * 1 byte   name length
+     * n bytes  name, UTF-8
+     * 4 bytes  payload length, big-endian
+     * m bytes  payload
+     * ```
+     *
+     * This is the on-disk format of the store (magic "PKCR", versions V1 and
+     * V2), so the byte sequence is a persistence contract. The name length is
+     * `String.length`, which counts UTF-16 code units rather than UTF-8 bytes.
+     * Every part name in the current vocabulary is ASCII, where the two agree;
+     * a non-ASCII name would desynchronise a reader. That is recorded as a
+     * pinned property rather than silently corrected, because changing the
+     * prefix would change bytes that already exist on disk.
+     */
+    private fun writePart(out: ByteArrayOutputStream, name: String, payload: ByteArray) {
+        out.write(name.length)
+        out.write(name.toByteArray(Charsets.UTF_8))
+        out.write(ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(payload.size).array())
+        out.write(payload, 0, payload.size)
+    }
+
+    /**
+     * Writes a part whose payload is a link to another credential rather than
+     * inline bytes.
+     *
+     * The part name is still written, because the reader always consumes it
+     * before reading the marker. The payload is a marker followed by either
+     * the referenced id or nothing at all, so it deliberately has no length
+     * prefix: [writePart] does not apply here.
+     */
+    private fun writeRefPart(
+        out: ByteArrayOutputStream,
+        name: String,
+        ref: dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef?,
+    ) {
+        out.write(name.length)
+        out.write(name.toByteArray(Charsets.UTF_8))
+        if (ref != null) {
+            writeLinkedRefMarker(out)
+            val refIdBytes = ref.credentialsId.value.toByteArray(Charsets.UTF_8)
+            out.write(ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(refIdBytes.size).array())
+            out.write(refIdBytes, 0, refIdBytes.size)
+        } else {
+            writeAbsentMarker(out)
+        }
+    }
+
     private fun serializeCredential(credential: Credential): ByteArray {
         val out = ByteArrayOutputStream()
         when (credential) {
             is SecretText -> {
                 out.write(1) // part count
-                val partName = "value"
-                out.write(partName.length)
-                out.write(partName.toByteArray(Charsets.UTF_8))
-                val partBytesLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.bytes.size)
-                out.write(partBytesLenBuf.array())
-                out.write(credential.bytes, 0, credential.bytes.size)
+                writePart(out, "value", credential.bytes)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword -> {
                 out.write(2) // 2 parts
-                // username part: normal
-                val userPartName = "username"
-                out.write(userPartName.length)
-                out.write(userPartName.toByteArray(Charsets.UTF_8))
-                val userBytes = credential.username.toByteArray(Charsets.UTF_8)
-                val userLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(userBytes.size)
-                out.write(userLenBuf.array())
-                out.write(userBytes, 0, userBytes.size)
-                // password part: normal
-                val passPartName = "password"
-                out.write(passPartName.length)
-                out.write(passPartName.toByteArray(Charsets.UTF_8))
-                val passLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.password.size)
-                out.write(passLenBuf.array())
-                out.write(credential.password, 0, credential.password.size)
+                writePart(out, "username", credential.username.toByteArray(Charsets.UTF_8))
+                writePart(out, "password", credential.password)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey -> {
                 out.write(3) // 3 parts: username, privateKey, passphrase
-                // username: normal
-                val usernamePartName = "username"
-                out.write(usernamePartName.length)
-                out.write(usernamePartName.toByteArray(Charsets.UTF_8))
-                val usernameBytes = credential.username.toByteArray(Charsets.UTF_8)
-                val usernameLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(usernameBytes.size)
-                out.write(usernameLenBuf.array())
-                out.write(usernameBytes, 0, usernameBytes.size)
-                // privateKey: normal
-                val keyPartName = "privateKey"
-                out.write(keyPartName.length)
-                out.write(keyPartName.toByteArray(Charsets.UTF_8))
-                val keyLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.privateKey.size)
-                out.write(keyLenBuf.array())
-                out.write(credential.privateKey, 0, credential.privateKey.size)
+                writePart(out, "username", credential.username.toByteArray(Charsets.UTF_8))
+                writePart(out, "privateKey", credential.privateKey)
                 // passphrase: linked-ref or absent
-                val passphrasePartName = "passphrase"
-                out.write(passphrasePartName.length)
-                out.write(passphrasePartName.toByteArray(Charsets.UTF_8))
-                val passphraseRef = credential.passphraseRef
-                if (passphraseRef != null) {
-                    writeLinkedRefMarker(out)
-                    val refIdBytes = passphraseRef.credentialsId.value.toByteArray(Charsets.UTF_8)
-                    val refIdLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(refIdBytes.size)
-                    out.write(refIdLenBuf.array())
-                    out.write(refIdBytes, 0, refIdBytes.size)
-                } else {
-                    writeAbsentMarker(out)
-                }
+                writeRefPart(out, "passphrase", credential.passphraseRef)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.SecretFile -> {
                 out.write(2) // 2 parts: originalName, content
-                // originalName: normal
-                val namePartName = "originalName"
-                out.write(namePartName.length)
-                out.write(namePartName.toByteArray(Charsets.UTF_8))
-                val nameBytes = (credential.originalName ?: "").toByteArray(Charsets.UTF_8)
-                val nameLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(nameBytes.size)
-                out.write(nameLenBuf.array())
-                out.write(nameBytes, 0, nameBytes.size)
-                // content: normal
-                val contentPartName = "content"
-                out.write(contentPartName.length)
-                out.write(contentPartName.toByteArray(Charsets.UTF_8))
-                val contentLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.bytes.size)
-                out.write(contentLenBuf.array())
-                out.write(credential.bytes, 0, credential.bytes.size)
+                writePart(
+                    out,
+                    "originalName",
+                    (credential.originalName ?: "").toByteArray(Charsets.UTF_8),
+                )
+                writePart(out, "content", credential.bytes)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.Certificate -> {
                 out.write(3) // 3 parts: keystore, alias, password
-                // keystore: normal
-                val keystorePartName = "keystore"
-                out.write(keystorePartName.length)
-                out.write(keystorePartName.toByteArray(Charsets.UTF_8))
-                val keystoreLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.keystore.size)
-                out.write(keystoreLenBuf.array())
-                out.write(credential.keystore, 0, credential.keystore.size)
-                // alias: normal
-                val aliasPartName = "alias"
-                out.write(aliasPartName.length)
-                out.write(aliasPartName.toByteArray(Charsets.UTF_8))
-                val aliasBytes = (credential.alias ?: "").toByteArray(Charsets.UTF_8)
-                val aliasLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(aliasBytes.size)
-                out.write(aliasLenBuf.array())
-                out.write(aliasBytes, 0, aliasBytes.size)
+                writePart(out, "keystore", credential.keystore)
+                writePart(out, "alias", (credential.alias ?: "").toByteArray(Charsets.UTF_8))
                 // password: linked-ref or absent
-                val passwordPartName = "password"
-                out.write(passwordPartName.length)
-                out.write(passwordPartName.toByteArray(Charsets.UTF_8))
-                val passwordRef = credential.passwordRef
-                if (passwordRef != null) {
-                    writeLinkedRefMarker(out)
-                    val refIdBytes = passwordRef.credentialsId.value.toByteArray(Charsets.UTF_8)
-                    val refIdLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(refIdBytes.size)
-                    out.write(refIdLenBuf.array())
-                    out.write(refIdBytes, 0, refIdBytes.size)
-                } else {
-                    writeAbsentMarker(out)
-                }
+                writeRefPart(out, "password", credential.passwordRef)
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.Zip -> {
                 out.write(1 + credential.entries.size) // 1 + n parts
@@ -1452,21 +1428,8 @@ class LocalSecretStore(
             }
             is dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword -> {
                 out.write(2) // 2 parts
-                // username: normal
-                val userPartName = "username"
-                out.write(userPartName.length)
-                out.write(userPartName.toByteArray(Charsets.UTF_8))
-                val userBytes = credential.user.toByteArray(Charsets.UTF_8)
-                val userLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(userBytes.size)
-                out.write(userLenBuf.array())
-                out.write(userBytes, 0, userBytes.size)
-                // password: normal
-                val passPartName = "password"
-                out.write(passPartName.length)
-                out.write(passPartName.toByteArray(Charsets.UTF_8))
-                val passLenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(credential.pass.size)
-                out.write(passLenBuf.array())
-                out.write(credential.pass, 0, credential.pass.size)
+                writePart(out, "username", credential.user.toByteArray(Charsets.UTF_8))
+                writePart(out, "password", credential.pass)
             }
         }
         return out.toByteArray()

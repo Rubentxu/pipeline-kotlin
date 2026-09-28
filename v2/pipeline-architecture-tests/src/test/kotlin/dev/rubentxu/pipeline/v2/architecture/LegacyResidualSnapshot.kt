@@ -59,11 +59,11 @@ object LegacyResidualSnapshot {
             pluginIds.size == metadataRows.size && metadataRows.size == dispatcherFiles.size
     }
 
-    private val decoderPath =
+    private const val decoderPath =
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt"
-    private val metadataPath =
+    private const val metadataPath =
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepMetadata.kt"
-    private val durableDir =
+    private const val durableDir =
         "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable"
 
     /**

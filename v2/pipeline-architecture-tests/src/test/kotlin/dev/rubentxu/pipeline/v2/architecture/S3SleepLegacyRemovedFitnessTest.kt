@@ -16,7 +16,10 @@ class S3SleepLegacyRemovedFitnessTest {
     private val decoder = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt")
     private val metadata = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepMetadata.kt")
     private val dispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalNodeDispatcher.kt")
-    private val sleepDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalSleepNodeDispatcher.kt")
+    private val sleepDispatcher = root.resolve(
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/" +
+            "CanonicalSleepNodeDispatcher.kt",
+    )
     private val registry = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt")
     private val sleepStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreSleepStep.kt")
 

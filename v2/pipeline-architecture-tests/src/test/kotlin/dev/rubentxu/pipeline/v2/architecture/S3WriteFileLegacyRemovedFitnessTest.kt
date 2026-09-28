@@ -16,7 +16,10 @@ class S3WriteFileLegacyRemovedFitnessTest {
     private val decoder = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt")
     private val metadata = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepMetadata.kt")
     private val dispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalNodeDispatcher.kt")
-    private val writeFileDispatcher = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/CanonicalWriteFileNodeDispatcher.kt")
+    private val writeFileDispatcher = root.resolve(
+        "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/" +
+            "CanonicalWriteFileNodeDispatcher.kt",
+    )
     private val registry = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreStepRegistryFactory.kt")
     private val writeFileStep = root.resolve("pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CoreWriteFileStep.kt")
 

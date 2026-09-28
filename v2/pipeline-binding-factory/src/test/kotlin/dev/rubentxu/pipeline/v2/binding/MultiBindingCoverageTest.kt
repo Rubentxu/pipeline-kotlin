@@ -51,7 +51,7 @@ class MultiBindingCoverageTest {
             when (id.value) {
                 "creds-1" -> makeHandle("secret-value")
                 "creds-2" -> SecretHandle.secret(("admin\u0000s3cr3t").toByteArray())
-                else -> throw RuntimeException("Unknown id: ${id.value}")
+                else -> error("Unknown id: ${id.value}")
             }
         }
 
@@ -80,7 +80,7 @@ class MultiBindingCoverageTest {
             when (id.value) {
                 "creds-1" -> makeHandle("value1")
                 "creds-2" -> makeHandle("value2")
-                else -> throw RuntimeException("Unknown: ${id.value}")
+                else -> error("Unknown: ${id.value}")
             }
         }
 
@@ -109,8 +109,8 @@ class MultiBindingCoverageTest {
                     goodCalled.set(true)
                     makeHandle("good-value")
                 }
-                "nonexistent" -> throw RuntimeException("Credential not found")
-                else -> throw RuntimeException("Unknown: ${id.value}")
+                "nonexistent" -> error("Credential not found")
+                else -> error("Unknown: ${id.value}")
             }
         }
 
@@ -137,8 +137,8 @@ class MultiBindingCoverageTest {
         val resolver: (CredentialsId) -> SecretHandle = { id ->
             when (id.value) {
                 "creds-1" -> makeHandle("value1")
-                "nonexistent" -> throw RuntimeException("Credential not found")
-                else -> throw RuntimeException("Unknown: ${id.value}")
+                "nonexistent" -> error("Credential not found")
+                else -> error("Unknown: ${id.value}")
             }
         }
 
@@ -156,7 +156,7 @@ class MultiBindingCoverageTest {
     fun `multi_binding_empty_bindings_returns_empty_map`() {
         // CR-BP-010 variant: empty list returns empty map (not an error)
         val multiBinding = MultiBindingWithCredentials()
-        val result = multiBinding.resolveAll(emptyList()) { throw RuntimeException("Should not be called") }
+        val result = multiBinding.resolveAll(emptyList()) { error("Should not be called") }
         assertTrue(result.isEmpty())
     }
 
@@ -228,7 +228,7 @@ class MultiBindingCoverageTest {
                     when (id.value) {
                         "creds-2" -> makeHandle("b-value")
                         "creds-3" -> SecretHandle.secret(("b-user\u0000b-pass").toByteArray())
-                        else -> throw RuntimeException("Unknown: ${id.value}")
+                        else -> error("Unknown: ${id.value}")
                     }
                 }
                 threadBResult.addAll(result.keys)

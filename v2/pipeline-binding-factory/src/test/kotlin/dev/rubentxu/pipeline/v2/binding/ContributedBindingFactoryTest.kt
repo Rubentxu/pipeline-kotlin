@@ -158,7 +158,7 @@ class ContributedBindingFactoryTest {
             when (id.value) {
                 "test-creds" -> SecretHandle.secret("value1".toByteArray())
                 "creds2" -> SecretHandle.secret("value2".toByteArray())
-                else -> throw RuntimeException("Unknown id: ${id.value}")
+                else -> error("Unknown id: ${id.value}")
             }
         }
 
@@ -180,8 +180,8 @@ class ContributedBindingFactoryTest {
             callCount++
             when (id.value) {
                 "test-creds" -> SecretHandle.secret("value1".toByteArray())
-                "nonexistent" -> throw RuntimeException("Credential not found")
-                else -> throw RuntimeException("Unknown id: ${id.value}")
+                "nonexistent" -> error("Credential not found")
+                else -> error("Unknown id: ${id.value}")
             }
         }
 
@@ -193,7 +193,7 @@ class ContributedBindingFactoryTest {
     @Test
     fun `MultiBindingWithCredentials empty bindings returns empty map`() {
         val multiBinding = MultiBindingWithCredentials()
-        val resolver: (CredentialsId) -> SecretHandle = { throw RuntimeException("Should not be called") }
+        val resolver: (CredentialsId) -> SecretHandle = { error("Should not be called") }
 
         val result = multiBinding.resolveAll(emptyList(), resolver)
 

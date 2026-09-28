@@ -84,7 +84,7 @@ object MainCredentialsCli {
                 else -> null
             }
 
-            fun allKinds(): String = "secret-text, username-password, ssh-private-key, secret-file, certificate, zip, username-colon-password"
+            const val ALL_KINDS = "secret-text, username-password, ssh-private-key, secret-file, certificate, zip, username-colon-password"
         }
     }
 
@@ -92,13 +92,13 @@ object MainCredentialsCli {
     fun main(args: Array<String>): Int {
         return when (args.firstOrNull()) {
             "add" -> add(args.drop(1))
-            "list" -> list(args.drop(1))
+            "list" -> list()
             "remove" -> remove(args.drop(1))
             "rotate" -> rotate(args.drop(1))
             else -> {
                 println("Usage: pipeline credentials {add|list|remove|rotate} [args]")
                 println("Add:    pipeline credentials add [--kind <kind>] <id>")
-                println("        --kind values: ${CredentialKind.allKinds()}")
+                println("        --kind values: ${CredentialKind.ALL_KINDS}")
                 println("List:   pipeline credentials list")
                 println("Remove: pipeline credentials remove <id>")
                 println("Rotate: pipeline credentials rotate [--kind <kind>] <id>")
@@ -120,7 +120,7 @@ object MainCredentialsCli {
                     val kindStr = it.next()
                     kind = CredentialKind.fromString(kindStr)
                     if (kind == null) {
-                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.allKinds()}")
+                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
                         return 1
                     }
                 }
@@ -138,13 +138,13 @@ object MainCredentialsCli {
             val store = LocalSecretStore(STORE_FILE, passphrase)
 
             val credential = when (kind ?: CredentialKind.SECRET_TEXT) {
-                CredentialKind.SECRET_TEXT -> readSecretText()
-                CredentialKind.USERNAME_PASSWORD -> readUsernamePassword()
-                CredentialKind.SSH_PRIVATE_KEY -> readSshPrivateKey()
-                CredentialKind.SECRET_FILE -> readSecretFile()
-                CredentialKind.CERTIFICATE -> readCertificate()
-                CredentialKind.ZIP -> readZip()
-                CredentialKind.USERNAME_COLON_PASSWORD -> readUsernameColonPassword()
+                CredentialKind.SECRET_TEXT -> CredentialPrompts.readSecretText()
+                CredentialKind.USERNAME_PASSWORD -> CredentialPrompts.readUsernamePassword()
+                CredentialKind.SSH_PRIVATE_KEY -> CredentialPrompts.readSshPrivateKey()
+                CredentialKind.SECRET_FILE -> CredentialPrompts.readSecretFile()
+                CredentialKind.CERTIFICATE -> CredentialPrompts.readCertificate()
+                CredentialKind.ZIP -> CredentialPrompts.readZip()
+                CredentialKind.USERNAME_COLON_PASSWORD -> CredentialPrompts.readUsernameColonPassword()
             }
 
             store.add(CredentialsId.from(id), credential)
@@ -165,155 +165,7 @@ object MainCredentialsCli {
         }
     }
 
-    private fun readSecretText(): SecretText {
-        print("Enter secret value: ")
-        val secret = System.console()?.readPassword() ?: error("no TTY available")
-        if (secret.isEmpty()) error("empty secret not allowed")
-        return SecretText(
-            // WU-RP-042: the store entry key is the CLI-supplied id passed to
-            // SecretStore.add(id, credential); the embedded credential.id is not
-            // the entry key and MUST NOT be constructed blank (CredentialsId has a
-            // non-blank invariant). The placeholder CredentialsId("") threw on
-            // every `credentials add` invocation (regression found by the
-            // installed-distribution UAT). Use a typed non-blank placeholder that
-            // add() never persists as the entry key.
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            bytes = String(secret).toByteArray()
-        )
-    }
-
-    private fun readUsernamePassword(): UsernamePassword {
-        print("Enter username: ")
-        val username = readLine() ?: error("no TTY available")
-        if (username.isEmpty()) error("username cannot be empty")
-        print("Enter password: ")
-        val password = System.console()?.readPassword() ?: error("no TTY available")
-        if (password.isEmpty()) error("password cannot be empty")
-        return UsernamePassword(
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            username = username,
-            password = String(password).toByteArray()
-        )
-    }
-
-    private fun readSshPrivateKey(): SshPrivateKey {
-        print("Enter SSH username: ")
-        val username = readLine() ?: error("no TTY available")
-        if (username.isEmpty()) error("username cannot be empty")
-        println("Enter SSH private key (paste PEM content, end with a line containing '.':")
-        val privateKeyLines = mutableListOf<String>()
-        var ended = false
-        while (!ended) {
-            val line = readLine() ?: error("no TTY available")
-            if (line.trim() == ".") ended = true
-            else privateKeyLines.add(line)
-        }
-        val privateKey = privateKeyLines.joinToString("\n")
-        if (privateKey.isEmpty()) error("private key cannot be empty")
-        // Validate PEM format
-        if (!privateKey.contains("-----BEGIN") || !privateKey.contains("-----END")) {
-            error("invalid SSH private key: missing PEM header/footer")
-        }
-        print("Enter passphrase (leave empty for no passphrase): ")
-        val passphraseChars = System.console()?.readPassword() ?: CharArray(0)
-        return SshPrivateKey(
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            username = username,
-            privateKey = privateKey.toByteArray(),
-            passphraseRef = null // passphrase not stored as separate credential in simple CLI
-        )
-    }
-
-    private fun readSecretFile(): SecretFile {
-        print("Enter file path: ")
-        val path = readLine() ?: error("no TTY available")
-        if (path.isEmpty()) error("file path cannot be empty")
-        val file = Paths.get(path)
-        if (!Files.exists(file)) error("file does not exist: $path")
-        val bytes = Files.readAllBytes(file)
-        if (bytes.isEmpty()) error("file is empty")
-        return SecretFile(
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            bytes = bytes,
-            originalName = file.fileName.toString()
-        )
-    }
-
-    private fun readCertificate(): Certificate {
-        print("Enter keystore file path (PKCS#12): ")
-        val path = readLine() ?: error("no TTY available")
-        if (path.isEmpty()) error("keystore path cannot be empty")
-        val file = Paths.get(path)
-        if (!Files.exists(file)) error("keystore file does not exist: $path")
-        val keystoreBytes = Files.readAllBytes(file)
-        // Validate PKCS#12 by trying to load it
-        try {
-            val ks = java.security.KeyStore.getInstance("PKCS12")
-            ks.load(keystoreBytes.inputStream(), null)
-        } catch (e: Exception) {
-            error("invalid PKCS#12 keystore: ${e.message}")
-        }
-        print("Enter keystore password (leave empty for no password): ")
-        val passwordChars = System.console()?.readPassword() ?: CharArray(0)
-        print("Enter key alias (leave empty for default): ")
-        val alias = readLine() ?: ""
-        return Certificate(
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            keystore = keystoreBytes,
-            passwordRef = null,
-            alias = alias.ifEmpty { null }
-        )
-    }
-
-    private fun readZip(): Zip {
-        print("Enter ZIP file path: ")
-        val path = readLine() ?: error("no TTY available")
-        if (path.isEmpty()) error("ZIP path cannot be empty")
-        val file = Paths.get(path)
-        if (!Files.exists(file)) error("ZIP file does not exist: $path")
-        val bytes = Files.readAllBytes(file)
-        // Validate ZIP by checking entries
-        val entries = mutableMapOf<String, ByteArray>()
-        try {
-            ZipInputStream(bytes.inputStream()).use { zis ->
-                var entry = zis.nextEntry
-                while (entry != null) {
-                    entries[entry.name] = zis.readBytes()
-                    entry = zis.nextEntry
-                }
-            }
-        } catch (e: Exception) {
-            error("invalid ZIP archive: ${e.message}")
-        }
-        if (entries.isEmpty()) error("ZIP archive is empty")
-        return Zip(
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            entries = entries
-        )
-    }
-
-    private fun readUsernameColonPassword(): UsernameColonPassword {
-        print("Enter username: ")
-        val username = readLine() ?: error("no TTY available")
-        if (username.isEmpty()) error("username cannot be empty")
-        print("Enter password: ")
-        val password = System.console()?.readPassword() ?: error("no TTY available")
-        if (password.isEmpty()) error("password cannot be empty")
-        return UsernameColonPassword(
-            id = CredentialsId("<pending-store-id>"),
-            scope = CredentialScope.GLOBAL,
-            user = username,
-            pass = String(password).toByteArray()
-        )
-    }
-
-    private fun list(args: List<String>): Int {
+    private fun list(): Int {
         return try {
             val passphrase = PassphraseResolver.resolve()
             val store = LocalSecretStore(STORE_FILE, passphrase)
@@ -381,7 +233,7 @@ object MainCredentialsCli {
                     val kindStr = it.next()
                     kind = CredentialKind.fromString(kindStr)
                     if (kind == null) {
-                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.allKinds()}")
+                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
                         return 1
                     }
                 }
@@ -399,13 +251,13 @@ object MainCredentialsCli {
             val store = LocalSecretStore(STORE_FILE, passphrase)
 
             val credential = when (kind ?: CredentialKind.SECRET_TEXT) {
-                CredentialKind.SECRET_TEXT -> readSecretText()
-                CredentialKind.USERNAME_PASSWORD -> readUsernamePassword()
-                CredentialKind.SSH_PRIVATE_KEY -> readSshPrivateKey()
-                CredentialKind.SECRET_FILE -> readSecretFile()
-                CredentialKind.CERTIFICATE -> readCertificate()
-                CredentialKind.ZIP -> readZip()
-                CredentialKind.USERNAME_COLON_PASSWORD -> readUsernameColonPassword()
+                CredentialKind.SECRET_TEXT -> CredentialPrompts.readSecretText()
+                CredentialKind.USERNAME_PASSWORD -> CredentialPrompts.readUsernamePassword()
+                CredentialKind.SSH_PRIVATE_KEY -> CredentialPrompts.readSshPrivateKey()
+                CredentialKind.SECRET_FILE -> CredentialPrompts.readSecretFile()
+                CredentialKind.CERTIFICATE -> CredentialPrompts.readCertificate()
+                CredentialKind.ZIP -> CredentialPrompts.readZip()
+                CredentialKind.USERNAME_COLON_PASSWORD -> CredentialPrompts.readUsernameColonPassword()
             }
 
             store.rotate(CredentialsId.from(id), credential)

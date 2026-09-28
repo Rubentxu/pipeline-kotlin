@@ -591,10 +591,24 @@ class StageScope(
      * Jenkins verbatim: `retry(count: Int, conditions: List<String>? = null) { block }`
      *
      * @param count Maximum retry attempts
-     * @param conditions Failure conditions to retry on (null = retry all)
+     * @param conditions Failure conditions to retry on. NOT SUPPORTED: the compiled
+     *   path projects only `maxAttempts` into the IR, so a declared narrowing would
+     *   be silently dropped and the step would retry on every failure instead.
+     *   Declared-but-unimplemented is a lie (same law as `post { }` in
+     *   [toStageBuilder]), so it is rejected here instead of ignored.
      * @param block Nested steps to execute with retry
+     * @throws IllegalArgumentException if [conditions] is supplied, including an
+     *   empty list, which narrows nothing yet reads as a declared policy
      */
     fun retry(count: Int, conditions: List<String>? = null, block: StageScope.() -> Unit) {
+        if (conditions != null) {
+            throw IllegalArgumentException(
+                "retry(count=$count, conditions=${conditions.joinToString()}) is not supported: " +
+                    "the compiled execution path applies a plain maxAttempts retry and ignores " +
+                    "the failure conditions, so the declared narrowing would be dropped and every " +
+                    "failure would be retried. Write retry(count) { } without conditions.",
+            )
+        }
         val inner = StageScope(stageName, runtimeConfig)
         inner.block()
         steps.add(StepSpec.RetryBlock(count = count, conditions = conditions, steps = inner.steps()))

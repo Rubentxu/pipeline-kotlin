@@ -17,9 +17,6 @@
     <ID>MaxLineLength:InMemoryOperationJournalContractTest.kt:InMemoryOperationJournalContractTest$journal.beginOperation("op-b", 1, fingerprint = "b".repeat(64), inputJson = "{\"stepId\":\"sh\",\"params\":{},\"runId\":\"run-1\",\"attempt\":1}", deadlineMs = null)</ID>
     <ID>MaxLineLength:JsonEventLogRoundTripTest.kt:JsonEventLogRoundTripTest$val encoded = """[{"eventId":"e1","runId":"r1","sequence":1,"kind":"CredentialBound","occurredAt":"2026-08-27T10:00:00Z","credentialsId":"github","purpose":"ENV"},{"eventId":"e2","runId":"r1","sequence":2,"kind":"FutureEventKind","occurredAt":"2026-08-27T10:00:00Z","extra":"data"}]"""</ID>
     <ID>MaxLineLength:OperationJournalContractTest.kt:OperationJournalContractTest$return SqliteOperationJournalImpl(eventStore.underlyingConnectionFactory(), clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, eventStore.databasePath())</ID>
-    <ID>MayBeConstant:EventHistoryContractTest.kt:EventHistoryContractTest.Companion$private val runId = "01987654-3210-fedc-ba98-76543210fedc"</ID>
-    <ID>NewLineAtEndOfFile:Lpr000EventAppendBaselineTest.kt:dev.rubentxu.pipeline.v2.events.Lpr000EventAppendBaselineTest.kt</ID>
-    <ID>NewLineAtEndOfFile:Lpr000SqliteSequenceDurabilityTest.kt:dev.rubentxu.pipeline.v2.events.Lpr000SqliteSequenceDurabilityTest.kt</ID>
     <ID>TooManyFunctions:JsonEventLog.kt:JsonEventLog</ID>
   </CurrentIssues>
 </SmellBaseline>

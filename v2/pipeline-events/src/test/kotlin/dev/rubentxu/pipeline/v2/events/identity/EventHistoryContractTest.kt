@@ -30,7 +30,7 @@ class EventHistoryContractTest {
 
     companion object {
         private val at: Instant = Instant.parse("2026-01-01T00:00:00Z")
-        private val runId = "01987654-3210-fedc-ba98-76543210fedc"
+        private const val runId = "01987654-3210-fedc-ba98-76543210fedc"
 
         @JvmStatic
         fun sinks(): List<Named<SearchableSink>> = listOf(

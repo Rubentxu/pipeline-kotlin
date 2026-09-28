@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.40.0-rc8"
+version = "0.41.0-rc1"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -26,15 +26,9 @@ version = "0.40.0-rc8"
 // the policy explicit and refuse per-subproject overrides. Any future subproject MUST NOT
 // declare its own `version = "..."` — that is a release-time defect.
 //
-// Snapshot policy (v0.40-train, BLOCK A of 5-block release train):
-//   - v0.40.0-rc1 is FROZEN at SHA-256 324d7045f8d513e4c3ef11bb7f100f9a13b8f262a3d166cedae08cc0cbaf1740
-//     (artifacts preserved under dist/candidates/v0.40.0-rc1/, NOT a published rc).
-//   - v0.40.0-rc3 is the published candidate at the preceding release SHA.
-//     Its artifacts remain immutable under dist/candidates/v0.40.0-rc3/.
-//   - v0.40.0-rc5 is the candidate for the C1-D StepSpec source partition.
-//   - v0.40.0-rc8 is the candidate after the D-014..D-022 fitness push
-//     (38 commits since rc5: docs + tests + arch fitness, no public
-//     semantic change). Artifacts under dist/candidates/v0.40.0-rc8/.
+// Snapshot policy (v0.41-train, first release-candidate line):
+//   - v0.40.0 is the last stable release and remains immutable.
+//   - v0.41.0-rc1 is the candidate produced from this main commit.
 //
 // Fail-closed law: the released artifact's `version` subcommand MUST equal the git tag.
 // If they ever diverge the build is broken at the source, not in the artifact.

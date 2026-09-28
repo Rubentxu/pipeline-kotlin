@@ -6,15 +6,19 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
 import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
-import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
+import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.Zip
-import org.junit.jupiter.api.Assertions.*
+import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 
 /**
  * LocalSecretStore multipart envelope tests — CR-ST-015..028.

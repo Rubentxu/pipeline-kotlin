@@ -1,13 +1,14 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
+import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
-import dev.rubentxu.pipeline.v2.dsl.StepSpec
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * Tests for FileWriteExecutor.

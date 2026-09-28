@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.dsl
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.DisplayName
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 
 /**
  * Tests for the withCredentials DSL and WithCredentialsBlock.

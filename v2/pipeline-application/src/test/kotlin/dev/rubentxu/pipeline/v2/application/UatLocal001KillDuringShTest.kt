@@ -1,13 +1,14 @@
 package dev.rubentxu.pipeline.v2.application
 
-import org.junit.jupiter.api.Assertions.*
+import java.nio.file.Files
+import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
-import java.nio.file.Files
-import java.nio.file.Path
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * UAT-LOCAL-001: External JVM kill mid-sh, resume from result.txt.

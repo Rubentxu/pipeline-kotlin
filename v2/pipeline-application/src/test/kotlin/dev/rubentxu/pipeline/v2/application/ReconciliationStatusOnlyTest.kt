@@ -10,12 +10,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import java.nio.file.Path
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 
 /**
  * Contract tests for reconciliation status-only behavior (C-027.1).

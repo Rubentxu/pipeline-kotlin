@@ -2,14 +2,15 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Assumptions.assumeTrue
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * UAT-LOCAL-005: Env special chars — WS-S-005/008/009/010 behavioral coverage

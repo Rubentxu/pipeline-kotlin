@@ -1,14 +1,18 @@
 package dev.rubentxu.pipeline.v2.credentials.api
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import org.junit.jupiter.api.Assertions.*
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.util.concurrent.TimeUnit
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotSame
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
-import java.io.ByteArrayInputStream
-import java.io.InputStream
-import java.util.concurrent.TimeUnit
 
 /**
  * Tests for [StreamingRedactor] — REDACT-CAN-001..004.

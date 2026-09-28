@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.events
 
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 /**

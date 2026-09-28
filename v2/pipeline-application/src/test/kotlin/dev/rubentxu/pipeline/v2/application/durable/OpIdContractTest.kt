@@ -1,13 +1,17 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
-import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import java.nio.file.Path
 import kotlinx.serialization.json.Json
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * Contract tests for [OpId] data class (C-031).

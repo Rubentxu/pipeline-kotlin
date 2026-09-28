@@ -6,7 +6,16 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.harness.codec.YamlEventContractCodec
-import dev.rubentxu.pipeline.v2.harness.model.*
+import dev.rubentxu.pipeline.v2.harness.model.AcceptanceOutcome
+import dev.rubentxu.pipeline.v2.harness.model.EventConstraint
+import dev.rubentxu.pipeline.v2.harness.model.EventContract
+import dev.rubentxu.pipeline.v2.harness.model.EventSelector
+import dev.rubentxu.pipeline.v2.harness.model.ExpectedRunOutcome
+import dev.rubentxu.pipeline.v2.harness.model.FieldMatch
+import dev.rubentxu.pipeline.v2.harness.model.PipelineOutcome
+import dev.rubentxu.pipeline.v2.harness.model.RelationScope
+import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
+import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 import dev.rubentxu.pipeline.v2.harness.verify.EventHarness
 import dev.rubentxu.pipeline.v2.harness.verify.TypedEvent
 import org.junit.jupiter.api.Test

@@ -3,10 +3,11 @@ package dev.rubentxu.pipeline.v2.credentials.local
 import dev.rubentxu.pipeline.v2.credentials.api.CredentialScope
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import org.junit.jupiter.api.Assertions.*
+import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 
 /**
  * RED tests for T5: SecretStore interface + CredentialScope wiring.

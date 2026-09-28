@@ -3,12 +3,15 @@ package dev.rubentxu.pipeline.v2.credentials.local
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
-import org.junit.jupiter.api.Assertions.*
+import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 
 /**
  * Regression tests for the `pipeline credentials add` CLI defect found by the

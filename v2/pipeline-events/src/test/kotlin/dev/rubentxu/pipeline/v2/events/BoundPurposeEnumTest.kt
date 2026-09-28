@@ -1,7 +1,8 @@
 package dev.rubentxu.pipeline.v2.events
 
 import dev.rubentxu.pipeline.v2.domain.BoundPurpose
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**

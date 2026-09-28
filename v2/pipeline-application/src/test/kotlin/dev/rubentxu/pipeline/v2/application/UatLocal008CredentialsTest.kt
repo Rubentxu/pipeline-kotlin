@@ -18,19 +18,22 @@ import dev.rubentxu.pipeline.v2.events.CredentialUsed
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Assumptions.assumeTrue
-import org.junit.jupiter.api.Disabled
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Tag
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Disabled
+import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * UAT-LOCAL-008: Credentials + Secret Redaction — integration + infrastructure tests.

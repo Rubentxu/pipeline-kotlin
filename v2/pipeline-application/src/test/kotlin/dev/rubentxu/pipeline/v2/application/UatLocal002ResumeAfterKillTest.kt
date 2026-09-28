@@ -1,11 +1,13 @@
 package dev.rubentxu.pipeline.v2.application
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * UAT-LOCAL-002: Journal-level resume — no re-execution

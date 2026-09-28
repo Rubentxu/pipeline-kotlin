@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * Contract tests for [DbLock] (C-033).

@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.credentials.multipart
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceNotFoundException
 import dev.rubentxu.pipeline.v2.credentials.api.LinkedSecretReferenceTypeMismatchException
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
@@ -15,16 +16,19 @@ import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
 import dev.rubentxu.pipeline.v2.domain.credentials.Zip
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * CredentialMaterializer tests — CR-MZ-001..012.

@@ -11,17 +11,5 @@
     <ID>UnusedParameter:BodyExecutionPolicy.kt:key: PluginStepId</ID>
     <ID>UnusedParameter:CompiledPipelineValidator.kt:CompiledPipelineValidator$intraBlockIds: MutableSet&lt;StepId&gt;</ID>
     <ID>UnusedParameter:DefaultCredentialProjectorTest.kt:DefaultCredentialProjectorTest$@TempDir tempDir: Path</ID>
-    <ID>WildcardImport:BoundPurposeTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:CredentialsIdTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:CredentialsRefTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:DivergenceDetectorContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:DivergenceDetectorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:DurableOperationTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:EnvValueTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:FingerprintTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:MismatchedSecretExceptionTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:OperationInputCredentialsIdAllowlistTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:OperationStatusTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:SecretHandleContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

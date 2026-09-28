@@ -6,16 +6,20 @@ import dev.rubentxu.pipeline.v2.events.FileWritten
 import dev.rubentxu.pipeline.v2.events.JsonEventLog
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Assumptions.assumeTrue
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
+import org.junit.jupiter.api.Assumptions.assumeTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * UAT-LOCAL-009: Top Steps — writeFile/readFile/fileExists/withEnv/archiveArtifacts.

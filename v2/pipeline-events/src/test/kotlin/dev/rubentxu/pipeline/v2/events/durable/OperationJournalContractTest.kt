@@ -1,18 +1,22 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
-import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import kotlinx.serialization.json.Json
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
-import kotlinx.serialization.json.JsonPrimitive
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.io.TempDir
+import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import java.nio.file.Path
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.fail
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * Contract tests for [OperationJournal] interface.

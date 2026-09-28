@@ -1,13 +1,15 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
-import org.junit.jupiter.api.Assertions.*
+import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
-import java.nio.file.Path
-import dev.rubentxu.pipeline.v2.domain.CredentialsId
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * Golden test for LocalCredentialProvider — verifies byte-for-byte equivalence

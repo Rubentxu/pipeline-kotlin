@@ -25,6 +25,5 @@
     <ID>MayBeConstant:LegacyResidualSnapshot.kt:LegacyResidualSnapshot$private val decoderPath = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepDecoder.kt"</ID>
     <ID>MayBeConstant:LegacyResidualSnapshot.kt:LegacyResidualSnapshot$private val durableDir = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable"</ID>
     <ID>MayBeConstant:LegacyResidualSnapshot.kt:LegacyResidualSnapshot$private val metadataPath = "pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/CanonicalCoreStepMetadata.kt"</ID>
-    <ID>WildcardImport:FArchM4EnvironmentComposerTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

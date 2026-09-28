@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.architecture
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 /**
  * M4 fitness pin — environment composer (LF-0406) + streaming redactor (LF-0405).

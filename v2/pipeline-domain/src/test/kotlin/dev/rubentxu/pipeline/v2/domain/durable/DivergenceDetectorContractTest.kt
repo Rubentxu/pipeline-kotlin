@@ -1,8 +1,9 @@
 package dev.rubentxu.pipeline.v2.domain.durable
 
 import kotlinx.serialization.json.JsonPrimitive
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
 
 /**
  * Contract tests for [DivergenceDetector] interface.

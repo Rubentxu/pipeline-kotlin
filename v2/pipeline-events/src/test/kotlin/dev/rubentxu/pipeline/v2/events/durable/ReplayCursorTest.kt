@@ -1,11 +1,14 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
-import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.io.TempDir
+import dev.rubentxu.pipeline.v2.events.SqliteEventStore
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 class ReplayCursorTest {
 

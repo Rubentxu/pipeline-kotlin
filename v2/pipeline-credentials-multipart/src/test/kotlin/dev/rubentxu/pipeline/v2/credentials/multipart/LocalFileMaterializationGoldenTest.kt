@@ -1,23 +1,25 @@
 package dev.rubentxu.pipeline.v2.credentials.multipart
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
+import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
-import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.api.Timeout
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * Golden test for LocalFileMaterialization — verifies byte-for-byte equivalence

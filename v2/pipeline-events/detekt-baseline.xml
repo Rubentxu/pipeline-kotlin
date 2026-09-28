@@ -21,13 +21,5 @@
     <ID>NewLineAtEndOfFile:Lpr000EventAppendBaselineTest.kt:dev.rubentxu.pipeline.v2.events.Lpr000EventAppendBaselineTest.kt</ID>
     <ID>NewLineAtEndOfFile:Lpr000SqliteSequenceDurabilityTest.kt:dev.rubentxu.pipeline.v2.events.Lpr000SqliteSequenceDurabilityTest.kt</ID>
     <ID>TooManyFunctions:JsonEventLog.kt:JsonEventLog</ID>
-    <ID>WildcardImport:BoundPurposeEnumTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:DbLockContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:EventSchemaNoMapStringStringTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:OperationJournalContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:OperationJournalRunIdContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:OperationJournalTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:ReplayCursorStoreContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:ReplayCursorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -1,10 +1,11 @@
 package dev.rubentxu.pipeline.v2.credentials.api
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 /**
  * Tests for SecretPatternRegistry — CR-RD-001..007, CR-RD-013, CR-RD-015, CR-RD-016

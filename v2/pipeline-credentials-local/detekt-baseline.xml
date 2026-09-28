@@ -10,14 +10,5 @@
     <ID>UnusedParameter:LocalSecretStore.kt:LocalSecretStore$dek: ByteArray</ID>
     <ID>UnusedParameter:LocalSecretStore.kt:LocalSecretStore$originalId: CredentialsId</ID>
     <ID>UnusedParameter:MainCredentialsCli.kt:MainCredentialsCli$args: List&lt;String&gt;</ID>
-    <ID>WildcardImport:CredentialsCliAddPlaceholderRegressionTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:CredentialsCliRotateTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:CredentialsStoreListAtomicTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:CredentialsStorePassphraseTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:CredentialsStoreTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:LocalCredentialProviderGoldenTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:LocalSecretStoreColonJoinTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:LocalSecretStoreMultipartTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:SecretStoreInterfaceTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -1,16 +1,40 @@
 package dev.rubentxu.pipeline.v2.harness
 
-import dev.rubentxu.pipeline.v2.events.*
+import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
+import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
+import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
+import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
+import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.RunStarted
+import dev.rubentxu.pipeline.v2.events.StageFinished
+import dev.rubentxu.pipeline.v2.events.StageStarted
+import dev.rubentxu.pipeline.v2.events.StepFailed
+import dev.rubentxu.pipeline.v2.events.StepFinished
+import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjector
 import dev.rubentxu.pipeline.v2.harness.codec.YamlEventContractCodec
-import dev.rubentxu.pipeline.v2.harness.model.*
+import dev.rubentxu.pipeline.v2.harness.model.AcceptanceOutcome
+import dev.rubentxu.pipeline.v2.harness.model.EventConstraint
+import dev.rubentxu.pipeline.v2.harness.model.EventContract
+import dev.rubentxu.pipeline.v2.harness.model.EventSelector
+import dev.rubentxu.pipeline.v2.harness.model.ExpectedRunOutcome
+import dev.rubentxu.pipeline.v2.harness.model.FieldMatch
+import dev.rubentxu.pipeline.v2.harness.model.KeyKind
+import dev.rubentxu.pipeline.v2.harness.model.PipelineOutcome
+import dev.rubentxu.pipeline.v2.harness.model.RelationScope
+import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
+import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 import dev.rubentxu.pipeline.v2.harness.verify.EventHarness
 import dev.rubentxu.pipeline.v2.harness.verify.TypedEvent
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 
 /**
  * HF0 pure-contract tests: ADT laws, selector matching, partial order,

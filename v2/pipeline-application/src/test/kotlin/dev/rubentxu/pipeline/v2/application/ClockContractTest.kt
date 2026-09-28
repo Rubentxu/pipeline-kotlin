@@ -1,9 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
 import java.time.Instant
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 /**
  * Contract tests for [Clock] interface (C-020).

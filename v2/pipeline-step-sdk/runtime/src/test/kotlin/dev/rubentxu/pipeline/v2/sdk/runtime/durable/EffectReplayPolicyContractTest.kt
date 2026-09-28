@@ -1,10 +1,10 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Assertions.*
 
 /**
  * Contract tests for [EffectReplayPolicy] interface.

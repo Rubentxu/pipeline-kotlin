@@ -1,8 +1,8 @@
 package dev.rubentxu.pipeline.v2.credentials.api
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 /**
  * CR-RD-015: Aho-Corasick performance test.

@@ -7,10 +7,5 @@
     <ID>MaxLineLength:YamlEventContractCodec.kt:YamlEventContractCodec$else -&gt; throw ContractDecodeException("constraint#$index: unknown where field '$key' (valid: buildResult, retryOutcome, outcome, attempt, branch, messageContains, stage, step)")</ID>
     <ID>TooManyFunctions:EventHarness.kt:EventHarness</ID>
     <ID>UnusedParameter:EventHarnessContractTest.kt:EventHarnessContractTest$o: String = "success"</ID>
-    <ID>WildcardImport:EventHarness.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
-    <ID>WildcardImport:EventHarnessContractTest.kt:import dev.rubentxu.pipeline.v2.events.*</ID>
-    <ID>WildcardImport:EventHarnessContractTest.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
-    <ID>WildcardImport:RealHistoryParityTest.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
-    <ID>WildcardImport:YamlEventContractCodec.kt:import dev.rubentxu.pipeline.v2.harness.model.*</ID>
   </CurrentIssues>
 </SmellBaseline>

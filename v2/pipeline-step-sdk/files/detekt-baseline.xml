@@ -7,8 +7,5 @@
     <ID>UnusedParameter:FileExistsExecutor.kt:FileExistsExecutor$stepIndex: Int</ID>
     <ID>UnusedParameter:FileReadExecutor.kt:FileReadExecutor$stepIndex: Int</ID>
     <ID>UnusedParameter:FileWriteExecutor.kt:FileWriteExecutor$stepIndex: Int</ID>
-    <ID>WildcardImport:FileExistsExecutorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:FileReadExecutorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:FileWriteExecutorTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

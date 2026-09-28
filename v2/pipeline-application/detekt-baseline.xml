@@ -192,20 +192,5 @@
     <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val NEEDS_KEY = PluginStepId("test.needs-unavailable")</ID>
     <ID>VariableNaming:RegistryDurableSpineTest.kt:RegistryDurableSpineTest$private val UNAVAILABLE = StepCapability("not.supplied.by.runtime")</ID>
     <ID>VariableNaming:ScriptedPwdRuntimeTest.kt:ScriptedPwdRuntimeTest$@Suppress("UNUSED_VARIABLE") val _doc = expected</ID>
-    <ID>WildcardImport:ClockContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:OpIdContractTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:ReconciliationStatusOnlyTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:Spike016DurableScriptedReplayTest.kt:import java.io.*</ID>
-    <ID>WildcardImport:Spike016DurableScriptedReplayTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal001KillDuringShTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal002ResumeAfterKillTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal003ReturnStdoutTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal004TimeoutTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal005EnvSpecialCharsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal006LostHeartbeatTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal007SandboxProfileTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal008CredentialsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:UatLocal009TopStepsTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
-    <ID>WildcardImport:WorkspaceResolverTest.kt:import org.junit.jupiter.api.Assertions.*</ID>
   </CurrentIssues>
 </SmellBaseline>

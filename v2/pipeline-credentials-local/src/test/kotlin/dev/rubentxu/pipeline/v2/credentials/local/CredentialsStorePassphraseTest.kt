@@ -1,8 +1,10 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
-import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 
 /**
  * Tests for PassphraseResolver.

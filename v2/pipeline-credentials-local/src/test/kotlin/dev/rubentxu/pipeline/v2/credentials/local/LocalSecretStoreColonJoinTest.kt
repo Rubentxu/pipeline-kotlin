@@ -4,13 +4,16 @@ import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore.SecretStoreTa
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
-import org.junit.jupiter.api.Assertions.*
+import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Timeout
-import java.nio.file.Path
+import org.junit.jupiter.api.io.TempDir
 
 /**
  * LocalSecretStore colon-join tests — CR-BD-022-A..D.

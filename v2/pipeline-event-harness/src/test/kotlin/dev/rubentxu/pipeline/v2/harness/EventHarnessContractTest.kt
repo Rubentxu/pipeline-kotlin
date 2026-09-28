@@ -46,8 +46,6 @@ class EventHarnessContractTest {
     private var seq = 0L
     private fun next() = ++seq
     private fun ts() = Instant.parse("2026-01-01T00:00:00Z")
-    private fun runId() = "r1"
-
     private fun ev(e: DomainEvent): TypedEvent = TypedEvent(EnvelopeProjector.project(e), e)
     private fun List<TypedEvent>.sorted() = sortedBy { it.sequence }
     /** Pure mutation: re-stamp envelope sequence to simulate reordered reality. */
@@ -58,29 +56,29 @@ class EventHarnessContractTest {
 
     // -- minimal builders ----------------------------------------------------
 
-    private fun runStarted() = RunStarted("e${next()}", runId(), next(), ts(), "p.kts")
-    private fun runFinished(o: String) = RunFinished("e${next()}", runId(), next(), ts(), o, emptyList())
-    private fun stageStarted(i: Int) = StageStarted("e${next()}", runId(), next(), ts(), i, "s$i")
-    private fun stageFinished(i: Int, o: String = "success") = StageFinished("e${next()}", runId(), next(), ts(), i, "s$i", o)
+    private fun runStarted() = RunStarted("e${next()}", "r1", next(), ts(), "p.kts")
+    private fun runFinished(o: String) = RunFinished("e${next()}", "r1", next(), ts(), o, emptyList())
+    private fun stageStarted(i: Int) = StageStarted("e${next()}", "r1", next(), ts(), i, "s$i")
+    private fun stageFinished(i: Int, o: String = "success") = StageFinished("e${next()}", "r1", next(), ts(), i, "s$i", o)
     private fun branchStarted(stage: Int, b: Int, name: String = "b$b") =
-        ParallelBranchStarted("e${next()}", runId(), next(), ts(), b, name, stage)
+        ParallelBranchStarted("e${next()}", "r1", next(), ts(), b, name, stage)
     private fun branchFinished(stage: Int, b: Int, o: String = "success") =
-        ParallelBranchFinished("e${next()}", runId(), next(), ts(), b, name(b), stage, o)
+        ParallelBranchFinished("e${next()}", "r1", next(), ts(), b, name(b), stage, o)
     private fun name(b: Int) = "b$b"
-    private fun stepStarted(stage: Int, step: Int) = StepStarted("e${next()}", runId(), next(), ts(), stage, step, "s", "sh")
-    private fun stepFinished(stage: Int, step: Int, o: String = "success") =
-        StepFinished("e${next()}", runId(), next(), ts(), stage, step, "s", "sh")
+    private fun stepStarted(stage: Int, step: Int) = StepStarted("e${next()}", "r1", next(), ts(), stage, step, "s", "sh")
+    private fun stepFinished(stage: Int, step: Int) =
+        StepFinished("e${next()}", "r1", next(), ts(), stage, step, "s", "sh")
     private fun retryStarted(a: Int, stage: Int, step: Int) =
-        RetryAttemptStarted("e${next()}", runId(), next(), ts(), a, 3, "s", "sh", stage, step)
+        RetryAttemptStarted("e${next()}", "r1", next(), ts(), a, 3, "s", "sh", stage, step)
     private fun retryFinished(a: Int, o: String, stage: Int, step: Int) =
-        RetryAttemptFinished("e${next()}", runId(), next(), ts(), a, 3, "s", "sh", stage, step, o)
+        RetryAttemptFinished("e${next()}", "r1", next(), ts(), a, 3, "s", "sh", stage, step, o)
     private fun stepFailed(step: Int, msg: String) =
-        StepFailed("e${next()}", runId(), next(), ts(), step, "s", "sh", dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT, msg)
+        StepFailed("e${next()}", "r1", next(), ts(), step, "s", "sh", dev.rubentxu.pipeline.v2.domain.FailureKind.SCRIPT, msg)
     private fun catchError(result: String) =
-        CatchErrorTriggered("e${next()}", runId(), next(), ts(), "stage", result, "FAILURE", null)
-    private fun echo(content: String) = EchoOutputCaptured("e${next()}", runId(), next(), ts(), 0, content)
+        CatchErrorTriggered("e${next()}", "r1", next(), ts(), "stage", result, "FAILURE", null)
+    private fun echo(content: String) = EchoOutputCaptured("e${next()}", "r1", next(), ts(), 0, content)
     private fun timeoutScheduled(stage: Int = 0, step: Int = 0) =
-        TimeoutScheduled("e${next()}", runId(), next(), ts(), 1, "FAILURE", "s", "sh", stage, step)
+        TimeoutScheduled("e${next()}", "r1", next(), ts(), 1, "FAILURE", "s", "sh", stage, step)
 
     // -- selector matching ---------------------------------------------------
 
@@ -199,7 +197,14 @@ class EventHarnessContractTest {
             YamlEventContractCodec.decode(yaml.replace("version: 1", "version: 2"))
         }
         assertThrows<YamlEventContractCodec.ContractDecodeException> {
-            YamlEventContractCodec.decode(yaml.replace("- exactly:", "- magic:").replace("{ event: CatchErrorTriggered, where: { buildResult: FAILURE }, count: 1 }", "{ event: X }"))
+            YamlEventContractCodec.decode(
+                yaml
+                    .replace("- exactly:", "- magic:")
+                    .replace(
+                        "{ event: CatchErrorTriggered, where: { buildResult: FAILURE }, count: 1 }",
+                        "{ event: X }",
+                    ),
+            )
         }
         assertThrows<YamlEventContractCodec.ContractDecodeException> {
             YamlEventContractCodec.decode(yaml.replace("buildResult: FAILURE", "hacker: 1"))

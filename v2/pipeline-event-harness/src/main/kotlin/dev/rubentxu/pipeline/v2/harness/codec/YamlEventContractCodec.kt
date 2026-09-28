@@ -125,7 +125,11 @@ object YamlEventContractCodec {
         "messageContains" -> FieldMatch.MessageContains(value as? String ?: err(index, key))
         "stage" -> FieldMatch.StageIndex((value as? Number)?.toInt() ?: err(index, key))
         "step" -> FieldMatch.StepIndex((value as? Number)?.toInt() ?: err(index, key))
-        else -> throw ContractDecodeException("constraint#$index: unknown where field '$key' (valid: buildResult, retryOutcome, outcome, attempt, branch, messageContains, stage, step)")
+        else -> throw ContractDecodeException(
+            "constraint#$index: unknown where field '$key' " +
+                "(valid: buildResult, retryOutcome, outcome, attempt, branch, " +
+                "messageContains, stage, step)",
+        )
     }
 
     private fun err(index: Int, key: String): Nothing =

@@ -563,6 +563,14 @@ class LocalSecretStore(
         throw SecretStoreTamperException(e.message ?: "Malformed envelope", e)
     }
 
+    /** Runs a reader operation and re-raises its envelope failure as a tamper. */
+    private inline fun <T> envelope(block: () -> T): T =
+        try {
+            block()
+        } catch (e: CredentialPartReader.MalformedEnvelopeException) {
+            throw SecretStoreTamperException(e.message ?: "Malformed envelope", e)
+        }
+
     private fun readPart(
         plaintext: ByteArray,
         kindId: Short,
@@ -579,13 +587,13 @@ class LocalSecretStore(
             }
             KIND_USERNAME_PASSWORD -> {
                 buf.get().toInt() // partCount
-                SecretHandle.secret(readPositionalPart(buf, partName, "UsernamePassword", "username" to 0, "password" to 1))
+                SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernamePassword", "username" to 0, "password" to 1))
             }
             KIND_SSH_PRIVATE_KEY -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "username", "privateKey" ->
-                        SecretHandle.secret(readPositionalPart(buf, partName, "SshPrivateKey", "username" to 0, "privateKey" to 1))
+                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SshPrivateKey", "username" to 0, "privateKey" to 1))
                     "passphrase" -> {
                         CredentialPartReader.skipPart(buf) // skip username part
                         CredentialPartReader.skipPart(buf) // skip privateKey part
@@ -593,18 +601,18 @@ class LocalSecretStore(
                         requireLinkedRef(refId, "Credential has no passphrase part")
                         return resolveLinkedSecretRef(refId!!, id, visited)
                     }
-                    else -> throw notFound(partName, "SshPrivateKey")
+                    else -> throw envelope { CredentialPartReader.notFound(partName, "SshPrivateKey") }
                 }
             }
             KIND_SECRET_FILE -> {
                 buf.get().toInt() // partCount
-                SecretHandle.secret(readPositionalPart(buf, partName, "SecretFile", "originalName" to 0, "content" to 1))
+                SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "SecretFile", "originalName" to 0, "content" to 1))
             }
             KIND_CERTIFICATE -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "keystore", "alias" ->
-                        SecretHandle.secret(readPositionalPart(buf, partName, "Certificate", "keystore" to 0, "alias" to 1))
+                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "Certificate", "keystore" to 0, "alias" to 1))
                     "password" -> {
                         CredentialPartReader.skipPart(buf) // skip keystore part
                         CredentialPartReader.skipPart(buf) // skip alias part
@@ -612,15 +620,15 @@ class LocalSecretStore(
                         requireLinkedRef(refId, "Credential has no password part")
                         return resolveLinkedSecretRef(refId!!, id, visited)
                     }
-                    else -> throw notFound(partName, "Certificate")
+                    else -> throw envelope { CredentialPartReader.notFound(partName, "Certificate") }
                 }
             }
-            KIND_ZIP -> readZipPart(buf, partName)
+            KIND_ZIP -> SecretHandle.secret(envelope { CredentialPartReader.readZipPart(buf, partName) })
             KIND_USERNAME_COLON_PASSWORD -> {
                 buf.get().toInt() // partCount
                 when (partName) {
                     "username", "password" ->
-                        SecretHandle.secret(readPositionalPart(buf, partName, "UsernameColonPassword", "username" to 0, "password" to 1))
+                        SecretHandle.secret(CredentialPartReader.readPositionalPart(buf, partName, "UsernameColonPassword", "username" to 0, "password" to 1))
                     "value" -> {
                         // Read username part: readInlinePart returns the username value bytes
                         val usernameBytes = CredentialPartReader.readPartValue(buf)
@@ -631,59 +639,15 @@ class LocalSecretStore(
                         // Join with ASCII colon (0x3A)
                         SecretHandle.secret(usernameBytes + byteArrayOf(0x3A) + passwordBytes)
                     }
-                    else -> throw notFound(partName, "UsernameColonPassword")
+                    else -> throw envelope { CredentialPartReader.notFound(partName, "UsernameColonPassword") }
                 }
             }
             else -> throw SecretStoreTamperException("Unknown credential kind: $kindId")
         }
     }
 
-    /**
-     * Reads a part whose position within its credential is fixed, as opposed to
-     * the Zip case where the name is searched for.
-     */
-    private fun readPositionalPart(
-        buf: ByteBuffer,
-        partName: String,
-        credential: String,
-        vararg orderedParts: Pair<String, Int>,
-    ): ByteArray {
-        val offset = CredentialPartReader.partOffset(partName, *orderedParts)
-            ?: throw notFound(partName, credential)
-        return CredentialPartReader.readInlinePart(buf, offset)
-    }
-
-    /**
-     * Finds a named entry in a Zip credential. Entries are keyed by name
-     * rather than by a fixed position, so the reader walks them.
-     */
-    private fun readZipPart(buf: ByteBuffer, partName: String): SecretHandle {
-        val partCount = buf.get().toInt()
-        // metadata: _entryCount (normal)
-        val metaNameLen = buf.get().toInt()
-        buf.position(buf.position() + metaNameLen)
-        buf.int // skip count value
-        buf.get() // consume metadata content byte (1)
-
-        repeat(partCount - 1) {
-            val entryNameLen = buf.get().toInt()
-            val entryNameBytes = ByteArray(entryNameLen); buf.get(entryNameBytes)
-            val entryName = String(entryNameBytes, Charsets.UTF_8)
-            val entryLen = buf.int
-            val entryBytes = ByteArray(entryLen); buf.get(entryBytes)
-
-            if (entryName == partName) {
-                return SecretHandle.secret(entryBytes)
-            }
-        }
-        throw notFound(partName, "Zip")
-    }
-
-    private fun notFound(partName: String, credential: String) =
-        SecretStoreTamperException("Part '$partName' not found in $credential credential")
-
     private fun requirePart(matches: Boolean, partName: String, credential: String) {
-        if (!matches) throw notFound(partName, credential)
+        if (!matches) throw envelope { CredentialPartReader.notFound(partName, credential) }
     }
 
     /**

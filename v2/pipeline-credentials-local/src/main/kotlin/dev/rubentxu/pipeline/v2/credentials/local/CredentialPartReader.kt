@@ -109,4 +109,49 @@ internal object CredentialPartReader {
      * means. The store owns the type its callers catch.
      */
     class MalformedEnvelopeException(message: String) : RuntimeException(message)
+
+    /**
+     * Reads a part whose position within its credential is fixed, as opposed to
+     * the Zip case where the name is searched for.
+     */
+    fun readPositionalPart(
+        buf: ByteBuffer,
+        partName: String,
+        credential: String,
+        vararg orderedParts: Pair<String, Int>,
+    ): ByteArray {
+        val offset = partOffset(partName, *orderedParts)
+            ?: throw notFound(partName, credential)
+        return readInlinePart(buf, offset)
+    }
+
+    /**
+     * Finds a named entry in a Zip credential. Entries are keyed by name
+     * rather than by a fixed position, so the reader walks them.
+     */
+    fun readZipPart(buf: ByteBuffer, partName: String): ByteArray {
+        val partCount = buf.get().toInt()
+        // metadata: _entryCount (normal)
+        val metaNameLen = buf.get().toInt()
+        buf.position(buf.position() + metaNameLen)
+        buf.int // skip count value
+        buf.get() // consume metadata content byte (1)
+
+        repeat(partCount - 1) {
+            val entryNameLen = buf.get().toInt()
+            val entryNameBytes = ByteArray(entryNameLen); buf.get(entryNameBytes)
+            val entryName = String(entryNameBytes, Charsets.UTF_8)
+            val entryLen = buf.int
+            val entryBytes = ByteArray(entryLen); buf.get(entryBytes)
+
+            if (entryName == partName) {
+                return entryBytes
+            }
+        }
+        throw notFound(partName, "Zip")
+    }
+
+    /** The envelope is well formed but the requested part is not in it. */
+    fun notFound(partName: String, credential: String): MalformedEnvelopeException =
+        MalformedEnvelopeException("Part '$partName' not found in $credential credential")
 }

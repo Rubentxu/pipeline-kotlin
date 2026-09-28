@@ -3,7 +3,6 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>FunctionOnlyReturningConstant:MainCredentialsCli.kt:MainCredentialsCli.CredentialKind.Companion$fun allKinds: String</ID>
-    <ID>TooManyFunctions:LocalSecretStore.kt:LocalSecretStore : SecretStore</ID>
     <ID>TooManyFunctions:MainCredentialsCli.kt:MainCredentialsCli</ID>
     <ID>UnusedParameter:LocalSecretStore.kt:LocalSecretStore$dek: ByteArray</ID>
     <ID>UnusedParameter:LocalSecretStore.kt:LocalSecretStore$originalId: CredentialsId</ID>

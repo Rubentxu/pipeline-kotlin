@@ -19,7 +19,7 @@ object JsonEventLog {
         val sb = StringBuilder("[")
         events.forEachIndexed { index, event ->
             if (index > 0) sb.append(",")
-            sb.append(encodeEvent(event))
+            sb.append(EventJsonWriter.encodeEvent(event))
         }
         sb.append("]")
         return sb.toString()
@@ -35,517 +35,10 @@ object JsonEventLog {
         var index = 0
         for (event in events) {
             if (index > 0) out.append(',')
-            out.append(encodeEvent(event))
+            out.append(EventJsonWriter.encodeEvent(event))
             index++
         }
         out.append(']')
-    }
-
-    private fun encodeEvent(event: DomainEvent): String {
-        val sb = StringBuilder()
-        sb.append("{")
-        sb.append("\"eventId\":")
-        sb.append(jsonString(event.eventId))
-        sb.append(",\"runId\":")
-        sb.append(jsonString(event.runId))
-        sb.append(",\"sequence\":")
-        sb.append(event.sequence)
-        sb.append(",\"kind\":")
-        sb.append(jsonString(event.kind))
-        sb.append(",\"occurredAt\":")
-        sb.append(jsonString(event.occurredAt.toString()))
-        when (event) {
-            is RunStarted -> {
-                sb.append(",\"scriptPath\":")
-                sb.append(jsonString(event.scriptPath))
-            }
-            is CompilationStarted -> {
-                // no extra fields
-            }
-            is CompilationFinished -> {
-                sb.append(",\"cacheKey\":")
-                sb.append(encodeCacheKey(event.cacheKey))
-                sb.append(",\"diagnostics\":")
-                sb.append(encodeDiagnostics(event.diagnostics))
-            }
-            is RunFinished -> {
-                sb.append(",\"outcome\":")
-                sb.append(jsonString(event.outcome))
-                sb.append(",\"diagnostics\":")
-                sb.append(encodeDiagnostics(event.diagnostics))
-            }
-            is StageStarted -> {
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-            }
-            is StageFinished -> {
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"outcome\":")
-                sb.append(jsonString(event.outcome))
-            }
-            is StepStarted -> {
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-                sb.append(",\"stepName\":")
-                sb.append(jsonString(event.stepName))
-                sb.append(",\"stepType\":")
-                sb.append(jsonString(event.stepType))
-            }
-            is StepFinished -> {
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-                sb.append(",\"stepName\":")
-                sb.append(jsonString(event.stepName))
-                sb.append(",\"stepType\":")
-                sb.append(jsonString(event.stepType))
-            }
-            is AgentResolved -> {
-                sb.append(",\"agentLabel\":")
-                sb.append(jsonString(event.agentLabel))
-                sb.append(",\"remoteUri\":")
-                sb.append(jsonString(event.remoteUri ?: ""))
-            }
-            is ParallelBranchStarted -> {
-                sb.append(",\"branchIndex\":")
-                sb.append(event.branchIndex)
-                sb.append(",\"branchName\":")
-                sb.append(jsonString(event.branchName))
-                sb.append(",\"parentStageIndex\":")
-                sb.append(event.parentStageIndex)
-            }
-            is ParallelBranchFinished -> {
-                sb.append(",\"branchIndex\":")
-                sb.append(event.branchIndex)
-                sb.append(",\"branchName\":")
-                sb.append(jsonString(event.branchName))
-                sb.append(",\"parentStageIndex\":")
-                sb.append(event.parentStageIndex)
-                sb.append(",\"outcome\":")
-                sb.append(jsonString(event.outcome))
-            }
-            is RetryAttemptStarted -> {
-                sb.append(",\"attemptNumber\":")
-                sb.append(event.attemptNumber)
-                sb.append(",\"maxAttempts\":")
-                sb.append(event.maxAttempts)
-                sb.append(",\"stepName\":")
-                sb.append(jsonString(event.stepName))
-                sb.append(",\"stepType\":")
-                sb.append(jsonString(event.stepType))
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-            }
-            is RetryAttemptFinished -> {
-                sb.append(",\"attemptNumber\":")
-                sb.append(event.attemptNumber)
-                sb.append(",\"maxAttempts\":")
-                sb.append(event.maxAttempts)
-                sb.append(",\"stepName\":")
-                sb.append(jsonString(event.stepName))
-                sb.append(",\"stepType\":")
-                sb.append(jsonString(event.stepType))
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-                sb.append(",\"outcome\":")
-                sb.append(jsonString(event.outcome))
-            }
-            is TimeoutScheduled -> {
-                sb.append(",\"timeoutSeconds\":")
-                sb.append(event.timeoutSeconds)
-                sb.append(",\"timeoutAction\":")
-                sb.append(jsonString(event.timeoutAction))
-                sb.append(",\"stepName\":")
-                sb.append(jsonString(event.stepName ?: ""))
-                sb.append(",\"stepType\":")
-                sb.append(jsonString(event.stepType ?: ""))
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex ?: -1)
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex ?: -1)
-            }
-            is StepFailed -> {
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-                sb.append(",\"stepName\":")
-                sb.append(jsonString(event.stepName))
-                sb.append(",\"stepType\":")
-                sb.append(jsonString(event.stepType))
-                sb.append(",\"failureKind\":")
-                sb.append(jsonString(event.failureKind.name))
-                sb.append(",\"message\":")
-                sb.append(jsonString(event.message))
-            }
-            is EchoOutputCaptured -> {
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-                sb.append(",\"content\":")
-                sb.append(jsonString(event.content))
-            }
-            is CredentialBound -> {
-                sb.append(",\"credentialsId\":")
-                sb.append(jsonString(event.credentialsId.value))
-                sb.append(",\"purpose\":")
-                sb.append(jsonString(event.purpose.name))
-            }
-            is CredentialUsed -> {
-                sb.append(",\"credentialsId\":")
-                sb.append(jsonString(event.credentialsId.value))
-                sb.append(",\"purpose\":")
-                sb.append(jsonString(event.purpose.name))
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-            }
-            is CredentialUnbound -> {
-                sb.append(",\"credentialsId\":")
-                sb.append(jsonString(event.credentialsId.value))
-            }
-            // L5 SCM Events
-            is GitCheckoutStarted -> {
-                sb.append(",\"url\":")
-                sb.append(jsonString(event.url))
-                sb.append(",\"branch\":")
-                sb.append(jsonString(event.branch))
-                if (event.credentialsRef != null) {
-                    sb.append(",\"credentialsRef\":")
-                    sb.append(jsonString(event.credentialsRef.id.value))
-                }
-            }
-            is GitCheckoutCompleted -> {
-                sb.append(",\"url\":")
-                sb.append(jsonString(event.url))
-                sb.append(",\"branch\":")
-                sb.append(jsonString(event.branch))
-                sb.append(",\"sha\":")
-                sb.append(jsonString(event.sha))
-                sb.append(",\"changelogPath\":")
-                sb.append(jsonString(event.changelogPath))
-                sb.append(",\"durationMs\":")
-                sb.append(event.durationMs)
-            }
-            is GitCheckoutFailed -> {
-                sb.append(",\"url\":")
-                sb.append(jsonString(event.url))
-                sb.append(",\"branch\":")
-                sb.append(jsonString(event.branch))
-                sb.append(",\"reason\":")
-                sb.append(jsonString(event.reason))
-                sb.append(",\"exitCode\":")
-                sb.append(event.exitCode)
-            }
-            is GitPollChanged -> {
-                sb.append(",\"url\":")
-                sb.append(jsonString(event.url))
-                sb.append(",\"branch\":")
-                sb.append(jsonString(event.branch))
-                if (event.previousSha != null) {
-                    sb.append(",\"previousSha\":")
-                    sb.append(jsonString(event.previousSha))
-                }
-                sb.append(",\"newSha\":")
-                sb.append(jsonString(event.newSha))
-            }
-            // L7 Jenkins File + Artefact Events (ML-R7)
-            is FileWritten -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path.toString()))
-                sb.append(",\"sha256\":")
-                sb.append(jsonString(event.sha256))
-                sb.append(",\"size\":")
-                sb.append(event.size)
-                sb.append(",\"atomicallyMoved\":")
-                sb.append(event.atomicallyMoved.toString())
-            }
-            is FileRead -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path.toString()))
-                if (event.sha256 != null) {
-                    sb.append(",\"sha256\":")
-                    sb.append(jsonString(event.sha256))
-                }
-                if (event.size != null) {
-                    sb.append(",\"size\":")
-                    sb.append(event.size)
-                }
-            }
-            is FileExistsChecked -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path.toString()))
-                sb.append(",\"exists\":")
-                sb.append(event.exists)
-            }
-            is ArtifactArchived -> {
-                sb.append(",\"files\":[")
-                event.files.forEachIndexed { idx, entry ->
-                    if (idx > 0) sb.append(",")
-                    sb.append("{")
-                    sb.append("\"runId\":")
-                    sb.append(jsonString(entry.runId))
-                    sb.append(",\"stageName\":")
-                    sb.append(jsonString(entry.stageName))
-                    sb.append(",\"relPath\":")
-                    sb.append(jsonString(entry.relPath))
-                    sb.append(",\"sha256\":")
-                    sb.append(jsonString(entry.sha256))
-                    sb.append(",\"size\":")
-                    sb.append(entry.size)
-                    sb.append(",\"archivedAt\":")
-                    sb.append(jsonString(entry.archivedAt.toString()))
-                    sb.append("}")
-                }
-                sb.append("]")
-            }
-            is ArtifactArchiveFailed -> {
-                sb.append(",\"reason\":")
-                sb.append(jsonString(event.reason))
-            }
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
-            is StashCreated -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"name\":")
-                sb.append(jsonString(event.name))
-                sb.append(",\"files\":")
-                sb.append(serializeStashedEntries(event.files))
-            }
-            is StashRestored -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"name\":")
-                sb.append(jsonString(event.name))
-                sb.append(",\"entries\":")
-                sb.append(serializeRestoredEntries(event.entries))
-            }
-            is StashFailed -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"name\":")
-                sb.append(jsonString(event.name))
-                sb.append(",\"operation\":")
-                sb.append(jsonString(event.operation))
-                sb.append(",\"reason\":")
-                sb.append(jsonString(event.reason))
-            }
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
-            is HtmlReportPublished -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"reportName\":")
-                sb.append(jsonString(event.reportName))
-                sb.append(",\"reportDir\":")
-                sb.append(jsonString(event.reportDir))
-                sb.append(",\"entries\":")
-                sb.append(serializeHtmlReportEntries(event.entries))
-                sb.append(",\"targetPath\":")
-                sb.append(jsonString(event.targetPath))
-            }
-            is HtmlReportSkipped -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"reportName\":")
-                sb.append(jsonString(event.reportName))
-                sb.append(",\"reportDir\":")
-                sb.append(jsonString(event.reportDir))
-                sb.append(",\"reason\":")
-                sb.append(jsonString(event.reason))
-            }
-            is HtmlReportFailed -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"reportName\":")
-                sb.append(jsonString(event.reportName))
-                sb.append(",\"reportDir\":")
-                sb.append(jsonString(event.reportDir))
-                sb.append(",\"failureKind\":")
-                sb.append(jsonString(event.failureKind.name))
-                sb.append(",\"reason\":")
-                sb.append(jsonString(event.reason))
-            }
-            is DirEntered -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path))
-                sb.append(",\"previousPath\":")
-                sb.append(jsonString(event.previousPath))
-            }
-            is DirExited -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path))
-                sb.append(",\"restoredTo\":")
-                sb.append(jsonString(event.restoredTo))
-            }
-            is DirDeleted -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path))
-                sb.append(",\"deletedCount\":")
-                sb.append(event.deletedCount)
-                sb.append(",\"sha256\":")
-                sb.append(jsonString(event.sha256))
-            }
-            is WsCleaned -> {
-                sb.append(",\"deletedFiles\":")
-                sb.append(event.deletedFiles)
-                sb.append(",\"deletedDirs\":")
-                sb.append(event.deletedDirs)
-                sb.append(",\"patterns\":[")
-                event.patterns.forEachIndexed { idx, pattern ->
-                    if (idx > 0) sb.append(",")
-                    sb.append(jsonString(pattern))
-                }
-                sb.append("]")
-                sb.append(",\"sha256\":")
-                sb.append(jsonString(event.sha256))
-            }
-            is CatchErrorTriggered -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"buildResult\":")
-                sb.append(jsonString(event.buildResult ?: ""))
-                sb.append(",\"stageResult\":")
-                sb.append(jsonString(event.stageResult))
-                sb.append(",\"message\":")
-                sb.append(jsonString(event.message ?: ""))
-            }
-            is StageMarkedUnstable -> {
-                sb.append(",\"stageName\":")
-                sb.append(jsonString(event.stageName))
-                sb.append(",\"message\":")
-                sb.append(jsonString(event.message))
-            }
-            is WorkflowLoaded -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path))
-                sb.append(",\"stepCount\":")
-                sb.append(event.stepCount)
-                sb.append(",\"sha256\":")
-                sb.append(jsonString(event.sha256))
-            }
-            is WaitUntilPolled -> {
-                sb.append(",\"attempt\":")
-                sb.append(event.attempt)
-                sb.append(",\"durationMs\":")
-                sb.append(event.durationMs)
-                sb.append(",\"conditionResult\":")
-                sb.append(event.conditionResult)
-            }
-            is WaitUntilCompleted -> {
-                sb.append(",\"totalAttempts\":")
-                sb.append(event.totalAttempts)
-                sb.append(",\"totalDurationMs\":")
-                sb.append(event.totalDurationMs)
-                sb.append(",\"outcome\":")
-                sb.append(jsonString(event.outcome))
-            }
-            is PwdResolved -> {
-                sb.append(",\"path\":")
-                sb.append(jsonString(event.path))
-                sb.append(",\"workspaceRoot\":")
-                sb.append(jsonString(event.workspaceRoot))
-                sb.append(",\"sha256\":")
-                sb.append(jsonString(event.sha256))
-            }
-            is UnixDetected -> {
-                sb.append(",\"isUnix\":")
-                sb.append(event.isUnix)
-                sb.append(",\"osName\":")
-                sb.append(jsonString(event.osName))
-                sb.append(",\"sha256\":")
-                sb.append(jsonString(event.sha256))
-            }
-            is MilestoneReached -> {
-                sb.append(",\"ordinal\":")
-                sb.append(event.ordinal)
-                sb.append(",\"label\":")
-                sb.append(jsonString(event.label ?: ""))
-            }
-            is MilestoneAborted -> {
-                sb.append(",\"ordinal\":")
-                sb.append(event.ordinal)
-                sb.append(",\"reason\":")
-                sb.append(jsonString(event.reason))
-            }
-            is TimeoutTriggered -> {
-                sb.append(",\"stageOrStep\":")
-                sb.append(jsonString(event.stageOrStep))
-                sb.append(",\"action\":")
-                sb.append(jsonString(event.action))
-                sb.append(",\"durationMs\":")
-                sb.append(event.durationMs)
-            }
-            // ML-R9 T-08 timestamps decorator events
-            is TimestampsEntered -> {
-                // no extra fields
-            }
-            is TimestampsExited -> {
-                // no extra fields
-            }
-            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
-            is StepAdmissionObserved -> {
-                sb.append(",\"stageIndex\":")
-                sb.append(event.stageIndex)
-                sb.append(",\"stepIndex\":")
-                sb.append(event.stepIndex)
-                sb.append(",\"stepKey\":")
-                sb.append(jsonString(event.stepKey))
-                sb.append(",\"law\":")
-                sb.append(jsonString(event.law))
-                sb.append(",\"executorCalls\":")
-                sb.append(event.executorCalls)
-            }
-        }
-        sb.append("}")
-        return sb.toString()
-    }
-
-    private fun encodeCacheKey(ck: CacheKey): String {
-        return "{\"value\":\"" + ck.value + "\",\"version\":\"" + ck.version + "\"}"
-    }
-
-    private fun encodeDiagnostics(diagnostics: List<ScriptingDiagnostic>): String {
-        val sb = StringBuilder("[")
-        diagnostics.forEachIndexed { index, diag ->
-            if (index > 0) sb.append(",")
-            sb.append("{")
-            sb.append("\"severity\":")
-            sb.append(jsonString(diag.severity.name))
-            sb.append(",\"message\":")
-            sb.append(jsonString(diag.message))
-            sb.append(",\"line\":")
-            sb.append(diag.line)
-            sb.append(",\"column\":")
-            sb.append(diag.column)
-            sb.append(",\"path\":")
-            sb.append(jsonString(diag.path))
-            sb.append("}")
-        }
-        sb.append("]")
-        return sb.toString()
-    }
-
-    private fun jsonString(s: String): String {
-        val sb = StringBuilder()
-        for (ch in s) {
-            when (ch) {
-                '\\' -> sb.append("\\\\")
-                '"' -> sb.append("\\\"")
-                '\n' -> sb.append("\\n")
-                '\r' -> sb.append("\\r")
-                '\t' -> sb.append("\\t")
-                else -> sb.append(ch)
-            }
-        }
-        return "\"${sb}\""
     }
 
     fun decode(payload: String): List<DomainEvent> {
@@ -600,11 +93,11 @@ object JsonEventLog {
     }
 
     private fun decodeEvent(s: String): DomainEvent? {
-        val eventId = stringField(s, "eventId") ?: return null
-        val runId = stringField(s, "runId") ?: return null
-        val sequence = longField(s, "sequence") ?: return null
-        val kind = stringField(s, "kind") ?: return null
-        val occurredAtStr = stringField(s, "occurredAt") ?: return null
+        val eventId = EventJsonFields.stringField(s, "eventId") ?: return null
+        val runId = EventJsonFields.stringField(s, "runId") ?: return null
+        val sequence = EventJsonFields.longField(s, "sequence") ?: return null
+        val kind = EventJsonFields.stringField(s, "kind") ?: return null
+        val occurredAtStr = EventJsonFields.stringField(s, "occurredAt") ?: return null
         val occurredAt = try { Instant.parse(occurredAtStr) } catch (_: Exception) { Instant.now() }
 
         return when (kind) {
@@ -613,7 +106,7 @@ object JsonEventLog {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                scriptPath = stringField(s, "scriptPath") ?: "",
+                scriptPath = EventJsonFields.stringField(s, "scriptPath") ?: "",
             )
             "CompilationStarted" -> CompilationStarted(
                 eventId = eventId,
@@ -622,8 +115,8 @@ object JsonEventLog {
                 occurredAt = occurredAt,
             )
             "CompilationFinished" -> {
-                val cacheKey = parseCacheKey(s) ?: return null
-                val diagnostics = decodeDiagnostics(s)
+                val cacheKey = EventJsonFields.parseCacheKey(s) ?: return null
+                val diagnostics = EventJsonDecoder.decodeDiagnostics(s)
                 CompilationFinished(
                     eventId = eventId,
                     runId = runId,
@@ -634,8 +127,8 @@ object JsonEventLog {
                 )
             }
             "RunFinished" -> {
-                val outcome = stringField(s, "outcome") ?: "unknown"
-                val diagnostics = decodeDiagnostics(s)
+                val outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown"
+                val diagnostics = EventJsonDecoder.decodeDiagnostics(s)
                 RunFinished(
                     eventId = eventId,
                     runId = runId,
@@ -650,104 +143,104 @@ object JsonEventLog {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                stageIndex = intField(s, "stageIndex") ?: 0,
-                stageName = stringField(s, "stageName") ?: "",
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stageName = EventJsonFields.stringField(s, "stageName") ?: "",
             )
             "StageFinished" -> StageFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                stageIndex = intField(s, "stageIndex") ?: 0,
-                stageName = stringField(s, "stageName") ?: "",
-                outcome = stringField(s, "outcome") ?: "unknown",
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stageName = EventJsonFields.stringField(s, "stageName") ?: "",
+                outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown",
             )
             "StepStarted" -> StepStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                stageIndex = intField(s, "stageIndex") ?: 0,
-                stepIndex = intField(s, "stepIndex") ?: 0,
-                stepName = stringField(s, "stepName") ?: "",
-                stepType = stringField(s, "stepType") ?: "",
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
+                stepName = EventJsonFields.stringField(s, "stepName") ?: "",
+                stepType = EventJsonFields.stringField(s, "stepType") ?: "",
             )
             "StepFinished" -> StepFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                stageIndex = intField(s, "stageIndex") ?: 0,
-                stepIndex = intField(s, "stepIndex") ?: 0,
-                stepName = stringField(s, "stepName") ?: "",
-                stepType = stringField(s, "stepType") ?: "",
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
+                stepName = EventJsonFields.stringField(s, "stepName") ?: "",
+                stepType = EventJsonFields.stringField(s, "stepType") ?: "",
             )
             "AgentResolved" -> AgentResolved(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                agentLabel = stringField(s, "agentLabel") ?: "",
-                remoteUri = stringField(s, "remoteUri")?.takeIf { it.isNotEmpty() },
+                agentLabel = EventJsonFields.stringField(s, "agentLabel") ?: "",
+                remoteUri = EventJsonFields.stringField(s, "remoteUri")?.takeIf { it.isNotEmpty() },
             )
             "ParallelBranchStarted" -> ParallelBranchStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                branchIndex = intField(s, "branchIndex") ?: 0,
-                branchName = stringField(s, "branchName") ?: "",
-                parentStageIndex = intField(s, "parentStageIndex") ?: 0,
+                branchIndex = EventJsonFields.intField(s, "branchIndex") ?: 0,
+                branchName = EventJsonFields.stringField(s, "branchName") ?: "",
+                parentStageIndex = EventJsonFields.intField(s, "parentStageIndex") ?: 0,
             )
             "ParallelBranchFinished" -> ParallelBranchFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                branchIndex = intField(s, "branchIndex") ?: 0,
-                branchName = stringField(s, "branchName") ?: "",
-                parentStageIndex = intField(s, "parentStageIndex") ?: 0,
-                outcome = stringField(s, "outcome") ?: "unknown",
+                branchIndex = EventJsonFields.intField(s, "branchIndex") ?: 0,
+                branchName = EventJsonFields.stringField(s, "branchName") ?: "",
+                parentStageIndex = EventJsonFields.intField(s, "parentStageIndex") ?: 0,
+                outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown",
             )
             "RetryAttemptStarted" -> RetryAttemptStarted(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                attemptNumber = intField(s, "attemptNumber") ?: 1,
-                maxAttempts = intField(s, "maxAttempts") ?: 1,
-                stepName = stringField(s, "stepName") ?: "",
-                stepType = stringField(s, "stepType") ?: "",
-                stageIndex = intField(s, "stageIndex") ?: 0,
-                stepIndex = intField(s, "stepIndex") ?: 0,
+                attemptNumber = EventJsonFields.intField(s, "attemptNumber") ?: 1,
+                maxAttempts = EventJsonFields.intField(s, "maxAttempts") ?: 1,
+                stepName = EventJsonFields.stringField(s, "stepName") ?: "",
+                stepType = EventJsonFields.stringField(s, "stepType") ?: "",
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
             )
             "RetryAttemptFinished" -> RetryAttemptFinished(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                attemptNumber = intField(s, "attemptNumber") ?: 1,
-                maxAttempts = intField(s, "maxAttempts") ?: 1,
-                stepName = stringField(s, "stepName") ?: "",
-                stepType = stringField(s, "stepType") ?: "",
-                stageIndex = intField(s, "stageIndex") ?: 0,
-                stepIndex = intField(s, "stepIndex") ?: 0,
-                outcome = stringField(s, "outcome") ?: "unknown",
+                attemptNumber = EventJsonFields.intField(s, "attemptNumber") ?: 1,
+                maxAttempts = EventJsonFields.intField(s, "maxAttempts") ?: 1,
+                stepName = EventJsonFields.stringField(s, "stepName") ?: "",
+                stepType = EventJsonFields.stringField(s, "stepType") ?: "",
+                stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0,
+                stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
+                outcome = EventJsonFields.stringField(s, "outcome") ?: "unknown",
             )
             "TimeoutScheduled" -> TimeoutScheduled(
                 eventId = eventId,
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                timeoutSeconds = longField(s, "timeoutSeconds") ?: 0L,
-                timeoutAction = stringField(s, "timeoutAction") ?: "FAIL",
-                stepName = stringField(s, "stepName")?.takeIf { it.isNotEmpty() },
-                stepType = stringField(s, "stepType")?.takeIf { it.isNotEmpty() },
-                stageIndex = intField(s, "stageIndex")?.takeIf { it != -1 },
-                stepIndex = intField(s, "stepIndex")?.takeIf { it != -1 },
+                timeoutSeconds = EventJsonFields.longField(s, "timeoutSeconds") ?: 0L,
+                timeoutAction = EventJsonFields.stringField(s, "timeoutAction") ?: "FAIL",
+                stepName = EventJsonFields.stringField(s, "stepName")?.takeIf { it.isNotEmpty() },
+                stepType = EventJsonFields.stringField(s, "stepType")?.takeIf { it.isNotEmpty() },
+                stageIndex = EventJsonFields.intField(s, "stageIndex")?.takeIf { it != -1 },
+                stepIndex = EventJsonFields.intField(s, "stepIndex")?.takeIf { it != -1 },
             )
             "StepFailed" -> {
-                val failureKindStr = stringField(s, "failureKind") ?: "UNKNOWN"
+                val failureKindStr = EventJsonFields.stringField(s, "failureKind") ?: "UNKNOWN"
                 val failureKind = try {
                     FailureKind.valueOf(failureKindStr)
                 } catch (_: Exception) {
@@ -758,11 +251,11 @@ object JsonEventLog {
                     runId = runId,
                     sequence = sequence,
                     occurredAt = occurredAt,
-                    stepIndex = intField(s, "stepIndex") ?: 0,
-                    stepName = stringField(s, "stepName") ?: "",
-                    stepType = stringField(s, "stepType") ?: "",
+                    stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
+                    stepName = EventJsonFields.stringField(s, "stepName") ?: "",
+                    stepType = EventJsonFields.stringField(s, "stepType") ?: "",
                     failureKind = failureKind,
-                    message = stringField(s, "message") ?: "",
+                    message = EventJsonFields.stringField(s, "message") ?: "",
                 )
             }
             "EchoOutputCaptured" -> EchoOutputCaptured(
@@ -770,13 +263,13 @@ object JsonEventLog {
                 runId = runId,
                 sequence = sequence,
                 occurredAt = occurredAt,
-                stepIndex = intField(s, "stepIndex") ?: 0,
-                content = stringField(s, "content") ?: "",
+                stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
+                content = EventJsonFields.stringField(s, "content") ?: "",
             )
             "CredentialBound" -> {
-                val purposeStr = stringField(s, "purpose") ?: "API_KEY"
+                val purposeStr = EventJsonFields.stringField(s, "purpose") ?: "API_KEY"
                 val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
-                val credIdStr = stringField(s, "credentialsId") ?: ""
+                val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialBound(
                     eventId = eventId,
                     runId = runId,
@@ -787,9 +280,9 @@ object JsonEventLog {
                 )
             }
             "CredentialUsed" -> {
-                val purposeStr = stringField(s, "purpose") ?: "API_KEY"
+                val purposeStr = EventJsonFields.stringField(s, "purpose") ?: "API_KEY"
                 val purpose = try { BoundPurpose.valueOf(purposeStr) } catch (_: Exception) { BoundPurpose.API_KEY }
-                val credIdStr = stringField(s, "credentialsId") ?: ""
+                val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialUsed(
                     eventId = eventId,
                     runId = runId,
@@ -797,11 +290,11 @@ object JsonEventLog {
                     occurredAt = occurredAt,
                     credentialsId = CredentialsId(credIdStr),
                     purpose = purpose,
-                    stepIndex = intField(s, "stepIndex") ?: 0,
+                    stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
                 )
             }
             "CredentialUnbound" -> {
-                val credIdStr = stringField(s, "credentialsId") ?: ""
+                val credIdStr = EventJsonFields.stringField(s, "credentialsId") ?: ""
                 CredentialUnbound(
                     eventId = eventId,
                     runId = runId,
@@ -812,9 +305,9 @@ object JsonEventLog {
             }
             // L5 SCM Events
             "GitCheckoutStarted" -> {
-                val url = stringField(s, "url") ?: ""
-                val branch = stringField(s, "branch") ?: ""
-                val credIdStr = stringField(s, "credentialsRef")
+                val url = EventJsonFields.stringField(s, "url") ?: ""
+                val branch = EventJsonFields.stringField(s, "branch") ?: ""
+                val credIdStr = EventJsonFields.stringField(s, "credentialsRef")
                 GitCheckoutStarted(
                     eventId = eventId,
                     runId = runId,
@@ -826,11 +319,11 @@ object JsonEventLog {
                 )
             }
             "GitCheckoutCompleted" -> {
-                val url = stringField(s, "url") ?: ""
-                val branch = stringField(s, "branch") ?: ""
-                val sha = stringField(s, "sha") ?: ""
-                val changelogPath = stringField(s, "changelogPath") ?: ""
-                val durationMs = longField(s, "durationMs") ?: 0L
+                val url = EventJsonFields.stringField(s, "url") ?: ""
+                val branch = EventJsonFields.stringField(s, "branch") ?: ""
+                val sha = EventJsonFields.stringField(s, "sha") ?: ""
+                val changelogPath = EventJsonFields.stringField(s, "changelogPath") ?: ""
+                val durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L
                 GitCheckoutCompleted(
                     eventId = eventId,
                     runId = runId,
@@ -844,10 +337,10 @@ object JsonEventLog {
                 )
             }
             "GitCheckoutFailed" -> {
-                val url = stringField(s, "url") ?: ""
-                val branch = stringField(s, "branch") ?: ""
-                val reason = stringField(s, "reason") ?: ""
-                val exitCode = intField(s, "exitCode") ?: 0
+                val url = EventJsonFields.stringField(s, "url") ?: ""
+                val branch = EventJsonFields.stringField(s, "branch") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
+                val exitCode = EventJsonFields.intField(s, "exitCode") ?: 0
                 GitCheckoutFailed(
                     eventId = eventId,
                     runId = runId,
@@ -860,10 +353,10 @@ object JsonEventLog {
                 )
             }
             "GitPollChanged" -> {
-                val url = stringField(s, "url") ?: ""
-                val branch = stringField(s, "branch") ?: ""
-                val previousSha = stringField(s, "previousSha")
-                val newSha = stringField(s, "newSha") ?: ""
+                val url = EventJsonFields.stringField(s, "url") ?: ""
+                val branch = EventJsonFields.stringField(s, "branch") ?: ""
+                val previousSha = EventJsonFields.stringField(s, "previousSha")
+                val newSha = EventJsonFields.stringField(s, "newSha") ?: ""
                 GitPollChanged(
                     eventId = eventId,
                     runId = runId,
@@ -877,11 +370,11 @@ object JsonEventLog {
             }
             // L7 Jenkins File + Artefact Events (ML-R7)
             "FileWritten" -> {
-                val pathStr = stringField(s, "path") ?: ""
+                val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
-                val sha256 = stringField(s, "sha256") ?: ""
-                val size = longField(s, "size") ?: 0L
-                val atomicallyMoved = boolField(s, "atomicallyMoved")
+                val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
+                val size = EventJsonFields.longField(s, "size") ?: 0L
+                val atomicallyMoved = EventJsonFields.boolField(s, "atomicallyMoved")
                 FileWritten(
                     eventId = eventId,
                     runId = runId,
@@ -894,10 +387,10 @@ object JsonEventLog {
                 )
             }
             "FileRead" -> {
-                val pathStr = stringField(s, "path") ?: ""
+                val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
-                val sha256 = stringField(s, "sha256")
-                val size = longField(s, "size")
+                val sha256 = EventJsonFields.stringField(s, "sha256")
+                val size = EventJsonFields.longField(s, "size")
                 FileRead(
                     eventId = eventId,
                     runId = runId,
@@ -909,9 +402,9 @@ object JsonEventLog {
                 )
             }
             "FileExistsChecked" -> {
-                val pathStr = stringField(s, "path") ?: ""
+                val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
-                val exists = boolField(s, "exists") ?: false
+                val exists = EventJsonFields.boolField(s, "exists") ?: false
                 FileExistsChecked(
                     eventId = eventId,
                     runId = runId,
@@ -922,7 +415,7 @@ object JsonEventLog {
                 )
             }
             "ArtifactArchived" -> {
-                val files = decodeArtifactEntries(s)
+                val files = EventJsonDecoder.decodeArtifactEntries(s)
                 ArtifactArchived(
                     eventId = eventId,
                     runId = runId,
@@ -932,7 +425,7 @@ object JsonEventLog {
                 )
             }
             "ArtifactArchiveFailed" -> {
-                val reason = stringField(s, "reason") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 ArtifactArchiveFailed(
                     eventId = eventId,
                     runId = runId,
@@ -943,9 +436,9 @@ object JsonEventLog {
             }
             // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
             "StashCreated" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val name = stringField(s, "name") ?: ""
-                val files = decodeStashedEntries(s)
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val name = EventJsonFields.stringField(s, "name") ?: ""
+                val files = EventJsonDecoder.decodeStashedEntries(s)
                 StashCreated(
                     eventId = eventId,
                     runId = runId,
@@ -957,9 +450,9 @@ object JsonEventLog {
                 )
             }
             "StashRestored" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val name = stringField(s, "name") ?: ""
-                val entries = decodeRestoredEntries(s)
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val name = EventJsonFields.stringField(s, "name") ?: ""
+                val entries = EventJsonDecoder.decodeRestoredEntries(s)
                 StashRestored(
                     eventId = eventId,
                     runId = runId,
@@ -971,10 +464,10 @@ object JsonEventLog {
                 )
             }
             "StashFailed" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val name = stringField(s, "name") ?: ""
-                val operation = stringField(s, "operation") ?: ""
-                val reason = stringField(s, "reason") ?: ""
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val name = EventJsonFields.stringField(s, "name") ?: ""
+                val operation = EventJsonFields.stringField(s, "operation") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 StashFailed(
                     eventId = eventId,
                     runId = runId,
@@ -988,11 +481,11 @@ object JsonEventLog {
             }
             // WU-LPR-090 — core.publishHTML durable HTML report publishing
             "HtmlReportPublished" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val reportName = stringField(s, "reportName") ?: ""
-                val reportDir = stringField(s, "reportDir") ?: ""
-                val entries = decodeHtmlReportEntries(s)
-                val targetPath = stringField(s, "targetPath") ?: ""
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
+                val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
+                val entries = EventJsonDecoder.decodeHtmlReportEntries(s)
+                val targetPath = EventJsonFields.stringField(s, "targetPath") ?: ""
                 HtmlReportPublished(
                     eventId = eventId,
                     runId = runId,
@@ -1006,10 +499,10 @@ object JsonEventLog {
                 )
             }
             "HtmlReportSkipped" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val reportName = stringField(s, "reportName") ?: ""
-                val reportDir = stringField(s, "reportDir") ?: ""
-                val reason = stringField(s, "reason") ?: ""
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
+                val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 HtmlReportSkipped(
                     eventId = eventId,
                     runId = runId,
@@ -1022,16 +515,16 @@ object JsonEventLog {
                 )
             }
             "HtmlReportFailed" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val reportName = stringField(s, "reportName") ?: ""
-                val reportDir = stringField(s, "reportDir") ?: ""
-                val failureKindStr = stringField(s, "failureKind") ?: "UNKNOWN"
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
+                val reportDir = EventJsonFields.stringField(s, "reportDir") ?: ""
+                val failureKindStr = EventJsonFields.stringField(s, "failureKind") ?: "UNKNOWN"
                 val failureKind = try {
                     FailureKind.valueOf(failureKindStr)
                 } catch (_: IllegalArgumentException) {
                     FailureKind.UNKNOWN
                 }
-                val reason = stringField(s, "reason") ?: ""
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 HtmlReportFailed(
                     eventId = eventId,
                     runId = runId,
@@ -1045,8 +538,8 @@ object JsonEventLog {
                 )
             }
             "DirEntered" -> {
-                val path = stringField(s, "path") ?: ""
-                val previousPath = stringField(s, "previousPath") ?: ""
+                val path = EventJsonFields.stringField(s, "path") ?: ""
+                val previousPath = EventJsonFields.stringField(s, "previousPath") ?: ""
                 DirEntered(
                     eventId = eventId,
                     runId = runId,
@@ -1057,8 +550,8 @@ object JsonEventLog {
                 )
             }
             "DirExited" -> {
-                val path = stringField(s, "path") ?: ""
-                val restoredTo = stringField(s, "restoredTo") ?: ""
+                val path = EventJsonFields.stringField(s, "path") ?: ""
+                val restoredTo = EventJsonFields.stringField(s, "restoredTo") ?: ""
                 DirExited(
                     eventId = eventId,
                     runId = runId,
@@ -1069,9 +562,9 @@ object JsonEventLog {
                 )
             }
             "DirDeleted" -> {
-                val path = stringField(s, "path") ?: ""
-                val deletedCount = intField(s, "deletedCount") ?: 0
-                val sha256 = stringField(s, "sha256") ?: ""
+                val path = EventJsonFields.stringField(s, "path") ?: ""
+                val deletedCount = EventJsonFields.intField(s, "deletedCount") ?: 0
+                val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
                 DirDeleted(
                     eventId = eventId,
                     runId = runId,
@@ -1083,10 +576,10 @@ object JsonEventLog {
                 )
             }
             "WsCleaned" -> {
-                val deletedFiles = intField(s, "deletedFiles") ?: 0
-                val deletedDirs = intField(s, "deletedDirs") ?: 0
-                val patterns = decodeStringList(s, "patterns")
-                val sha256 = stringField(s, "sha256") ?: ""
+                val deletedFiles = EventJsonFields.intField(s, "deletedFiles") ?: 0
+                val deletedDirs = EventJsonFields.intField(s, "deletedDirs") ?: 0
+                val patterns = EventJsonDecoder.decodeStringList(s, "patterns")
+                val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
                 WsCleaned(
                     eventId = eventId,
                     runId = runId,
@@ -1099,10 +592,10 @@ object JsonEventLog {
                 )
             }
             "CatchErrorTriggered" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val buildResult = stringField(s, "buildResult")?.takeIf { it.isNotEmpty() }
-                val stageResult = stringField(s, "stageResult") ?: "UNSTABLE"
-                val message = stringField(s, "message")?.takeIf { it.isNotEmpty() }
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val buildResult = EventJsonFields.stringField(s, "buildResult")?.takeIf { it.isNotEmpty() }
+                val stageResult = EventJsonFields.stringField(s, "stageResult") ?: "UNSTABLE"
+                val message = EventJsonFields.stringField(s, "message")?.takeIf { it.isNotEmpty() }
                 CatchErrorTriggered(
                     eventId = eventId,
                     runId = runId,
@@ -1115,8 +608,8 @@ object JsonEventLog {
                 )
             }
             "StageMarkedUnstable" -> {
-                val stageName = stringField(s, "stageName") ?: ""
-                val message = stringField(s, "message") ?: ""
+                val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
+                val message = EventJsonFields.stringField(s, "message") ?: ""
                 StageMarkedUnstable(
                     eventId = eventId,
                     runId = runId,
@@ -1127,9 +620,9 @@ object JsonEventLog {
                 )
             }
             "WorkflowLoaded" -> {
-                val path = stringField(s, "path") ?: ""
-                val stepCount = intField(s, "stepCount") ?: 0
-                val sha256 = stringField(s, "sha256") ?: ""
+                val path = EventJsonFields.stringField(s, "path") ?: ""
+                val stepCount = EventJsonFields.intField(s, "stepCount") ?: 0
+                val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
                 WorkflowLoaded(
                     eventId = eventId,
                     runId = runId,
@@ -1141,9 +634,9 @@ object JsonEventLog {
                 )
             }
             "WaitUntilPolled" -> {
-                val attempt = intField(s, "attempt") ?: 1
-                val durationMs = longField(s, "durationMs") ?: 0L
-                val conditionResult = boolField(s, "conditionResult") ?: false
+                val attempt = EventJsonFields.intField(s, "attempt") ?: 1
+                val durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L
+                val conditionResult = EventJsonFields.boolField(s, "conditionResult") ?: false
                 WaitUntilPolled(
                     eventId = eventId,
                     runId = runId,
@@ -1155,9 +648,9 @@ object JsonEventLog {
                 )
             }
             "WaitUntilCompleted" -> {
-                val totalAttempts = intField(s, "totalAttempts") ?: 0
-                val totalDurationMs = longField(s, "totalDurationMs") ?: 0L
-                val outcome = stringField(s, "outcome") ?: "completed"
+                val totalAttempts = EventJsonFields.intField(s, "totalAttempts") ?: 0
+                val totalDurationMs = EventJsonFields.longField(s, "totalDurationMs") ?: 0L
+                val outcome = EventJsonFields.stringField(s, "outcome") ?: "completed"
                 WaitUntilCompleted(
                     eventId = eventId,
                     runId = runId,
@@ -1169,9 +662,9 @@ object JsonEventLog {
                 )
             }
             "PwdResolved" -> {
-                val path = stringField(s, "path") ?: ""
-                val workspaceRoot = stringField(s, "workspaceRoot") ?: ""
-                val sha256 = stringField(s, "sha256") ?: ""
+                val path = EventJsonFields.stringField(s, "path") ?: ""
+                val workspaceRoot = EventJsonFields.stringField(s, "workspaceRoot") ?: ""
+                val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
                 PwdResolved(
                     eventId = eventId,
                     runId = runId,
@@ -1183,9 +676,9 @@ object JsonEventLog {
                 )
             }
             "UnixDetected" -> {
-                val isUnix = boolField(s, "isUnix") ?: false
-                val osName = stringField(s, "osName") ?: ""
-                val sha256 = stringField(s, "sha256") ?: ""
+                val isUnix = EventJsonFields.boolField(s, "isUnix") ?: false
+                val osName = EventJsonFields.stringField(s, "osName") ?: ""
+                val sha256 = EventJsonFields.stringField(s, "sha256") ?: ""
                 UnixDetected(
                     eventId = eventId,
                     runId = runId,
@@ -1197,8 +690,8 @@ object JsonEventLog {
                 )
             }
             "MilestoneReached" -> {
-                val ordinal = intField(s, "ordinal") ?: 0
-                val label = stringField(s, "label")?.takeIf { it.isNotEmpty() }
+                val ordinal = EventJsonFields.intField(s, "ordinal") ?: 0
+                val label = EventJsonFields.stringField(s, "label")?.takeIf { it.isNotEmpty() }
                 MilestoneReached(
                     eventId = eventId,
                     runId = runId,
@@ -1209,8 +702,8 @@ object JsonEventLog {
                 )
             }
             "MilestoneAborted" -> {
-                val ordinal = intField(s, "ordinal") ?: 0
-                val reason = stringField(s, "reason") ?: ""
+                val ordinal = EventJsonFields.intField(s, "ordinal") ?: 0
+                val reason = EventJsonFields.stringField(s, "reason") ?: ""
                 MilestoneAborted(
                     eventId = eventId,
                     runId = runId,
@@ -1221,9 +714,9 @@ object JsonEventLog {
                 )
             }
             "TimeoutTriggered" -> {
-                val stageOrStep = stringField(s, "stageOrStep") ?: ""
-                val action = stringField(s, "action") ?: "interrupt"
-                val durationMs = longField(s, "durationMs") ?: 0L
+                val stageOrStep = EventJsonFields.stringField(s, "stageOrStep") ?: ""
+                val action = EventJsonFields.stringField(s, "action") ?: "interrupt"
+                val durationMs = EventJsonFields.longField(s, "durationMs") ?: 0L
                 TimeoutTriggered(
                     eventId = eventId,
                     runId = runId,
@@ -1251,11 +744,11 @@ object JsonEventLog {
                 occurredAt = occurredAt,
             )
             "StepAdmissionObserved" -> {
-                val stageIndex = intField(s, "stageIndex") ?: 0
-                val stepIndex = intField(s, "stepIndex") ?: 0
-                val stepKey = stringField(s, "stepKey") ?: ""
-                val law = stringField(s, "law") ?: ""
-                val executorCalls = intField(s, "executorCalls") ?: 0
+                val stageIndex = EventJsonFields.intField(s, "stageIndex") ?: 0
+                val stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0
+                val stepKey = EventJsonFields.stringField(s, "stepKey") ?: ""
+                val law = EventJsonFields.stringField(s, "law") ?: ""
+                val executorCalls = EventJsonFields.intField(s, "executorCalls") ?: 0
                 StepAdmissionObserved(
                     eventId = eventId,
                     runId = runId,
@@ -1270,398 +763,5 @@ object JsonEventLog {
             }
             else -> null
         }
-    }
-
-    /**
-     * Extracts a string field value from JSON by finding the field name
-     * and reading until the closing quote (handling escapes).
-     */
-    private fun stringField(json: String, name: String): String? {
-        val nameStart = json.indexOf("\"$name\"")
-        if (nameStart == -1) return null
-        val colonPos = json.indexOf(':', nameStart)
-        if (colonPos == -1) return null
-        var i = colonPos + 1
-        while (i < json.length && json[i].isWhitespace()) i++
-        if (i >= json.length || json[i] != '"') return null
-        var stringEnd = i + 1
-        var inString = true
-        var escape = false
-        while (stringEnd < json.length && inString) {
-            when {
-                escape -> { escape = false; stringEnd++ }
-                json[stringEnd] == '\\' && inString -> { escape = true; stringEnd++ }
-                json[stringEnd] == '"' -> { inString = false }
-                else -> stringEnd++
-            }
-        }
-        return if (stringEnd > i + 1) json.substring(i + 1, stringEnd) else ""
-    }
-
-    /**
-     * Extracts the cacheKey object value from the event JSON.
-     * Returns a CacheKey or null if parsing fails.
-     */
-    private fun parseCacheKey(json: String): CacheKey? {
-        val keyStart = json.indexOf("\"cacheKey\"")
-        if (keyStart == -1) return null
-        val bracePos = json.indexOf('{', keyStart)
-        if (bracePos == -1) return null
-        var depth = 0
-        var i = bracePos
-        while (i < json.length) {
-            when (json[i]) {
-                '{' -> { depth++; i++ }
-                '}' -> { depth--; if (depth == 0) break; i++ }
-                '"' -> {
-                    i++
-                    while (i < json.length) {
-                        when {
-                            json[i] == '\\' -> i += 2
-                            json[i] == '"' -> { i++; break }
-                            else -> i++
-                        }
-                    }
-                }
-                else -> i++
-            }
-        }
-        if (depth != 0) return null
-        val cacheKeyJson = json.substring(bracePos, i + 1)
-        val value = stringField(cacheKeyJson, "value") ?: ""
-        val version = stringField(cacheKeyJson, "version") ?: ""
-        return CacheKey(value, version)
-    }
-
-    private fun longField(json: String, name: String): Long? {
-        val nameStart = json.indexOf("\"$name\"")
-        if (nameStart == -1) return null
-        val colonPos = json.indexOf(':', nameStart)
-        if (colonPos == -1) return null
-        var i = colonPos + 1
-        while (i < json.length && json[i].isWhitespace()) i++
-        var numEnd = i
-        while (numEnd < json.length && (json[numEnd].isDigit() || json[numEnd] == '-')) numEnd++
-        return if (numEnd > i) json.substring(i, numEnd).toLongOrNull() else null
-    }
-
-    private fun intField(json: String, name: String): Int? {
-        return longField(json, name)?.toInt()
-    }
-
-    private fun boolField(json: String, name: String): Boolean {
-        val nameStart = json.indexOf("\"$name\"")
-        if (nameStart == -1) return false
-        val colonPos = json.indexOf(':', nameStart)
-        if (colonPos == -1) return false
-        var i = colonPos + 1
-        while (i < json.length && json[i].isWhitespace()) i++
-        val start = i
-        while (i < json.length && json[i].isLetter()) i++
-        val value = json.substring(start, i)
-        return value == "true"
-    }
-
-    private fun decodeStringList(json: String, fieldName: String): List<String> {
-        val arrStart = json.indexOf("\"$fieldName\"")
-        if (arrStart == -1) return emptyList()
-        val bracketPos = json.indexOf('[', arrStart)
-        if (bracketPos == -1) return emptyList()
-        var i = bracketPos + 1
-        while (i < json.length && json[i].isWhitespace()) i++
-        if (i >= json.length || json[i] == ']') return emptyList()
-
-        val results = mutableListOf<String>()
-        while (i < json.length) {
-            val ch = json[i]
-            when {
-                ch == '"' -> {
-                    i++
-                    val start = i
-                    while (i < json.length && json[i] != '"') {
-                        if (json[i] == '\\') i++
-                        i++
-                    }
-                    results.add(json.substring(start, i))
-                    i++ // skip closing "
-                }
-                ch == ']' -> break
-                ch == ',' -> i++
-                else -> i++
-            }
-        }
-        return results
-    }
-
-    private fun decodeArtifactEntries(json: String): List<ArtifactEntry> {
-        val arrStart = json.indexOf("\"files\"")
-        if (arrStart == -1) return emptyList()
-        val bracketPos = json.indexOf('[', arrStart)
-        if (bracketPos == -1) return emptyList()
-        var i = bracketPos + 1
-        while (i < json.length && json[i].isWhitespace()) i++
-        if (i >= json.length || json[i] == ']') return emptyList()
-
-        val results = mutableListOf<ArtifactEntry>()
-        var depth = 0
-        var inString = false
-        var escape = false
-        val current = StringBuilder()
-        i = bracketPos + 1
-
-        while (i < json.length) {
-            val ch = json[i]
-            when {
-                escape -> { current.append(ch); escape = false; i++ }
-                ch == '\\' && inString -> { current.append(ch); escape = true; i++ }
-                ch == '"' -> { current.append(ch); inString = !inString; i++ }
-                ch == '{' && !inString -> { depth++; current.append(ch); i++ }
-                ch == '}' && !inString -> {
-                    depth--
-                    current.append(ch)
-                    if (depth == 0) {
-                        val entryStr = current.toString().trim()
-                        if (entryStr.isNotEmpty()) {
-                            parseArtifactEntry(entryStr)?.let { results.add(it) }
-                        }
-                        current.clear()
-                    }
-                    i++
-                }
-                ch == ',' && depth == 0 && !inString -> {
-                    i++
-                }
-                else -> { if (depth > 0) current.append(ch); i++ }
-            }
-        }
-        return results
-    }
-
-    private fun parseArtifactEntry(s: String): ArtifactEntry? {
-        val runId = stringField(s, "runId") ?: return null
-        val stageName = stringField(s, "stageName") ?: return null
-        val relPath = stringField(s, "relPath") ?: return null
-        val sha256 = stringField(s, "sha256") ?: return null
-        val size = longField(s, "size") ?: return null
-        val archivedAtStr = stringField(s, "archivedAt") ?: return null
-        val archivedAt = try { Instant.parse(archivedAtStr) } catch (_: Exception) { Instant.now() }
-        return ArtifactEntry(runId, stageName, relPath, sha256, size, archivedAt)
-    }
-
-    private fun decodeDiagnostics(json: String): List<ScriptingDiagnostic> {
-        val arrStart = json.indexOf("\"diagnostics\"")
-        if (arrStart == -1) return emptyList()
-        val bracketPos = json.indexOf('[', arrStart)
-        if (bracketPos == -1) return emptyList()
-        var i = bracketPos + 1
-        while (i < json.length && json[i].isWhitespace()) i++
-        if (i >= json.length || json[i] == ']') return emptyList()
-
-        val results = mutableListOf<ScriptingDiagnostic>()
-        var depth = 0
-        var inString = false
-        var escape = false
-        val current = StringBuilder()
-        i = bracketPos + 1
-
-        while (i < json.length) {
-            val ch = json[i]
-            when {
-                escape -> { current.append(ch); escape = false; i++ }
-                ch == '\\' && inString -> { current.append(ch); escape = true; i++ }
-                ch == '"' -> { current.append(ch); inString = !inString; i++ }
-                ch == '{' && !inString -> { depth++; current.append(ch); i++ }
-                ch == '}' && !inString -> {
-                    depth--
-                    current.append(ch)
-                    if (depth == 0) {
-                        val diagStr = current.toString().trim()
-                        if (diagStr.isNotEmpty()) {
-                            parseDiagnostic(diagStr)?.let { results.add(it) }
-                        }
-                        current.clear()
-                    }
-                    i++
-                }
-                ch == ',' && depth == 0 && !inString -> {
-                    i++
-                }
-                else -> { if (depth > 0) current.append(ch); i++ }
-            }
-        }
-        return results
-    }
-
-    private fun parseDiagnostic(s: String): ScriptingDiagnostic? {
-        val severityStr = stringField(s, "severity")
-        val message = stringField(s, "message") ?: ""
-        val line = stringField(s, "line")?.toIntOrNull() ?: 0
-        val column = stringField(s, "column")?.toIntOrNull() ?: 0
-        val path = stringField(s, "path") ?: ""
-        val severity = severityStr?.let {
-            try { ScriptDiagnosticSeverity.valueOf(it) } catch (_: Exception) { ScriptDiagnosticSeverity.INFO }
-        } ?: ScriptDiagnosticSeverity.INFO
-        return ScriptingDiagnostic(severity, message, line, column, path)
-    }
-
-    // WU-LPR-089 — Stash helpers (compact JSON arrays).
-    private fun serializeStashedEntries(entries: List<StashedEntry>): String {
-        val sb = StringBuilder("[")
-        entries.forEachIndexed { idx, e ->
-            if (idx > 0) sb.append(",")
-            sb.append("{")
-            sb.append("\"relPath\":").append(jsonString(e.relPath))
-            sb.append(",\"sha256\":").append(jsonString(e.sha256))
-            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
-            sb.append("}")
-        }
-        sb.append("]")
-        return sb.toString()
-    }
-
-    private fun serializeRestoredEntries(entries: List<RestoredEntry>): String {
-        val sb = StringBuilder("[")
-        entries.forEachIndexed { idx, e ->
-            if (idx > 0) sb.append(",")
-            sb.append("{")
-            sb.append("\"relPath\":").append(jsonString(e.relPath))
-            sb.append(",\"sha256\":").append(jsonString(e.sha256))
-            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
-            sb.append("}")
-        }
-        sb.append("]")
-        return sb.toString()
-    }
-
-    // WU-LPR-089 — Stash decoders (inverse of the serializers above).
-    // The `files`/`entries` array is a compact JSON list of objects; we
-    // delegate to the existing stringField/longField helpers plus
-    // parseJsonArrayObjects (which the ArtifactArchiveFailed-family already uses).
-    private fun decodeStashedEntries(s: String): List<StashedEntry> {
-        val arr = extractJsonArray(s, "files") ?: return emptyList()
-        return arr.mapNotNull { obj ->
-            val relPath = stringField(obj, "relPath") ?: return@mapNotNull null
-            val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
-            val sizeBytes = longField(obj, "sizeBytes") ?: 0L
-            StashedEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
-        }
-    }
-
-    private fun decodeRestoredEntries(s: String): List<RestoredEntry> {
-        val arr = extractJsonArray(s, "entries") ?: return emptyList()
-        return arr.mapNotNull { obj ->
-            val relPath = stringField(obj, "relPath") ?: return@mapNotNull null
-            val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
-            val sizeBytes = longField(obj, "sizeBytes") ?: 0L
-            RestoredEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
-        }
-    }
-
-    // WU-LPR-090 — HtmlReport helpers (compact JSON arrays, same shape as Stash).
-    private fun serializeHtmlReportEntries(entries: List<HtmlReportEntry>): String {
-        val sb = StringBuilder("[")
-        entries.forEachIndexed { idx, e ->
-            if (idx > 0) sb.append(",")
-            sb.append("{")
-            sb.append("\"relPath\":").append(jsonString(e.relPath))
-            sb.append(",\"sha256\":").append(jsonString(e.sha256))
-            sb.append(",\"sizeBytes\":").append(e.sizeBytes)
-            sb.append("}")
-        }
-        sb.append("]")
-        return sb.toString()
-    }
-
-    private fun decodeHtmlReportEntries(s: String): List<HtmlReportEntry> {
-        val arr = extractJsonArray(s, "entries") ?: return emptyList()
-        return arr.mapNotNull { obj ->
-            val relPath = stringField(obj, "relPath") ?: return@mapNotNull null
-            val sha256 = stringField(obj, "sha256") ?: return@mapNotNull null
-            val sizeBytes = longField(obj, "sizeBytes") ?: 0L
-            HtmlReportEntry(relPath = relPath, sha256 = sha256, sizeBytes = sizeBytes)
-        }
-    }
-
-    /**
-     * Extracts the JSON array of objects for the named field from a single
-     * event payload. Returns one string per object in the array, or null if
-     * the field is missing or not an array.
-     */
-    private fun extractJsonArray(payload: String, fieldName: String): List<String>? {
-        // Find the field marker (e.g. `"files":[`)
-        val marker = "\"$fieldName\":["
-        val start = payload.indexOf(marker)
-        if (start < 0) return null
-        val arrayStart = start + marker.length
-        // Walk forward, tracking BOTH bracket depth (`[`/`]`) AND brace depth (`{`/`}`)
-        // because the payload we receive here is a single event object (already extracted
-        // from the outer JSON array), and the array-of-objects inside it must be balanced
-        // through brace depth (the opening `[` is consumed by the marker itself).
-        // WU-LPR-090 fix: prior implementation only tracked `[`/`]`, which caused arrays
-        // of objects (StashCreated/StashRestored entries, HtmlReportPublished entries) to
-        // decode as empty lists — the outer `]` at end-of-array decremented past 0 and
-        // never matched `depth == 0`.
-        // `bracketDepth` starts at 1 because the opening `[` of the array is consumed by the
-        // marker itself; we only see the matching `]` once on the closing side.
-        var bracketDepth = 1
-        var braceDepth = 0
-        var i = arrayStart
-        var inString = false
-        var escape = false
-        while (i < payload.length) {
-            val c = payload[i]
-            if (escape) { escape = false; i++; continue }
-            if (c == '\\') { escape = true; i++; continue }
-            if (c == '"') { inString = !inString; i++; continue }
-            if (inString) { i++; continue }
-            when (c) {
-                '[' -> bracketDepth++
-                ']' -> {
-                    bracketDepth--
-                    if (bracketDepth == 0 && braceDepth == 0) {
-                        val arrayText = payload.substring(arrayStart, i)
-                        // Split top-level objects by tracking brace depth.
-                        return splitTopLevelObjects(arrayText)
-                    }
-                }
-                '{' -> braceDepth++
-                '}' -> braceDepth--
-            }
-            i++
-        }
-        return null
-    }
-
-    /** Splits a JSON array body like `{...},{...},{...}` into one string per top-level object. */
-    private fun splitTopLevelObjects(arrayText: String): List<String> {
-        val results = mutableListOf<String>()
-        var depth = 0
-        var start = -1
-        var inString = false
-        var escape = false
-        var i = 0
-        while (i < arrayText.length) {
-            val c = arrayText[i]
-            if (escape) { escape = false; i++; continue }
-            if (c == '\\') { escape = true; i++; continue }
-            if (c == '"') { inString = !inString; i++; continue }
-            if (inString) { i++; continue }
-            when (c) {
-                '{' -> {
-                    if (depth == 0) start = i
-                    depth++
-                }
-                '}' -> {
-                    depth--
-                    if (depth == 0 && start >= 0) {
-                        results.add(arrayText.substring(start, i + 1))
-                        start = -1
-                    }
-                }
-                ',' -> if (depth == 0) { /* skip separators between objects */ }
-            }
-            i++
-        }
-        return results
     }
 }

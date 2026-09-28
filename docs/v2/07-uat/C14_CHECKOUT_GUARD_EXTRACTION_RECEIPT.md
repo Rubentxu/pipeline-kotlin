@@ -438,7 +438,35 @@ SQLite directly.
   the SDDK 2.0.1 source or an upstream fix, neither of which is available in
   this workspace.
 - The dependency edge `1a681dea ─[blocks]─> 514bf06a`, written unintentionally
-  during the rehearsal described above, should be removed on correctness
-  grounds: it is a false block on the correct WorkItem. The sandbox probes show
-  it does **not** affect `roadmap next` in either direction, so this is purely
-  ledger hygiene, not a commit fix.
+  during the rehearsal described above, was **removed** after this receipt was
+  written. `work_item_dependencies_v1` is back to empty, as declared at the
+  C10-C13 closure. It never affected the gate outcome either way.
+
+## Addendum — the baseline debt is larger than item 3 states
+
+Measured after C14, not estimated:
+
+| Rule | Findings |
+|---|---|
+| MaxLineLength | 132 |
+| WildcardImport | 62 |
+| UnusedParameter | 39 |
+| CyclomaticComplexMethod | 32 |
+| FunctionOnlyReturningConstant | 20 |
+| LongMethod | 13 |
+| TooGenericExceptionThrown | 12 |
+| ClassNaming | 12 |
+| VariableNaming | 9 |
+| EmptyElseBlock | 9 |
+| TooManyFunctions | 7 |
+| NewLineAtEndOfFile | 7 |
+| **total** | **367** |
+
+Outstanding item 3 cites "53 methods (max 25) and retry complexity 35". Both
+figures are real but partial: 53 is the `TooManyFunctions` count for
+`StageScope` alone, and 35 was the cyclomatic complexity of one method. The
+project-wide total was never stated and is **367**, roughly seven times the
+impression the item gives.
+
+Captured as backlog item `bl-bl-01M3KGHJRH0003877121TQ9BM0` against cycle
+`train-040-gate-recovery`.

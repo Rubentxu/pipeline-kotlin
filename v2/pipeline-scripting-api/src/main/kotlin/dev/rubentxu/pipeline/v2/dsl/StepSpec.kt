@@ -18,6 +18,30 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? get() = null
     val timeoutMillis: Long? get() = null
 
+    /**
+     * Whether `retry { }` at step level may attach a [retry] policy to this step.
+     *
+     * This is declared by the step type itself instead of being inferred from
+     * whether the subtype overrides [retry]. The distinction is load-bearing:
+     * `retry` defaults to `null` for every step, so a type that supports the
+     * policy but was never configured still reads `null`. Reading the field
+     * would therefore conflate "not retryable" with "retryable, not set".
+     *
+     * The executor honours a [retry] policy for the steps listed here only.
+     * Every other step keeps `retry` at `null` permanently, because the
+     * Jenkins catalog has no per-step retry for them: they use stage-level
+     * `options { retry(count) }` or a `retry { }` block instead.
+     *
+     * The closed set is pinned by
+     * `StepSpecRetryCapabilityTest`, which fails when a new subtype is added
+     * without stating which side of this contract it belongs to. That test
+     * exists because this decision previously lived as a hand-maintained
+     * `when` in `StageScope.retry`, where adding a step meant editing a list
+     * in a different file and forgetting it produced a silent no-op rather
+     * than a compile error.
+     */
+    val supportsStepLevelRetry: Boolean get() = false
+
     data class RegistryStepSpec(
         val stepKey: dev.rubentxu.pipeline.v2.domain.PluginStepId,
         val schemaVersion: String = "dsl-v1",
@@ -25,6 +49,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "registryStep"
         override val type: String get() = "registry"
     }
@@ -37,6 +62,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "registryBlock"
         override val type: String get() = "registry"
     }
@@ -46,6 +72,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "echo"
         override val type: String get() = "echo"
     }
@@ -57,6 +84,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val timeoutMillis: Long? = null,
         val returnStdout: Boolean = false,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "sh"
         override val type: String get() = "sh"
     }
@@ -67,6 +95,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "error"
         override val type: String get() = "error"
     }
@@ -76,6 +105,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "sleep"
         override val type: String get() = "sleep"
     }
@@ -85,6 +115,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "parallel"
         override val type: String get() = "parallel"
     }
@@ -183,6 +214,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "withCredentials"
         override val type: String get() = "withCredentials"
     }
@@ -192,6 +224,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val retry: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy? = null,
         override val timeoutMillis: Long? = null,
     ) : StepSpec {
+        override val supportsStepLevelRetry: Boolean get() = true
         override val name: String get() = "checkout"
         override val type: String get() = "checkout"
     }

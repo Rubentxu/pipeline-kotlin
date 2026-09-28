@@ -252,49 +252,22 @@ class StageScope(
             jitterMs = (delaySeconds ?: 0L) * 500L, // 50% jitter
         )
         val index = steps.indexOf(currentStep)
-        // Use copy() to set retry on the last step
-        steps[index] = when (currentStep) {
-            is StepSpec.Echo -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.Shell -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.RegistryStepSpec -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.RegistryBlockSpec -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.Error -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.Sleep -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.Parallel -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.WithCredentialsBlock -> currentStep.copy(retry = retryPolicy)
-            is StepSpec.Checkout -> currentStep.copy(retry = retryPolicy)
-            // L7 Jenkins top-steps (ML-R7): retry/timeout not supported per Jenkins catalog
-            // These steps use stage-level retry via options { retry(count) }
-            is StepSpec.WriteFile -> currentStep
-            is StepSpec.ReadFile -> currentStep
-            is StepSpec.FileExists -> currentStep
-            is StepSpec.WithEnv -> currentStep
-            is StepSpec.ArchiveArtifacts -> currentStep
-            // ML-R9 workflow-control: step-level retry not supported
-            is StepSpec.Dir -> currentStep
-            // ML-R9 workspace-cleanup: not retryable at step level
-            is StepSpec.DeleteDir -> currentStep
-            is StepSpec.CleanWs -> currentStep
-            // ML-R9 error-handling: not retryable at step level
-            is StepSpec.CatchError -> currentStep
-            is StepSpec.WarnError -> currentStep
-            is StepSpec.Unstable -> currentStep
-            // ML-R9 workflow-utility: not retryable at step level
-            is StepSpec.Pwd -> currentStep
-            is StepSpec.IsUnix -> currentStep
-            is StepSpec.Load -> currentStep
-            is StepSpec.WaitUntilBlock -> currentStep
-            // ML-R9 T-08 output-decorators: not retryable at step level
-            is StepSpec.Timestamps -> currentStep
-            is StepSpec.AnsiColor -> currentStep
-            is StepSpec.NodeNoOp -> currentStep
-            // ML-R9 T-09 milestone: not retryable at step level
-            is StepSpec.Milestone -> currentStep
-            // ML-R9 T-10 timeout/retry blocks: not retryable at step level
-            is StepSpec.TimeoutBlock -> currentStep
-            is StepSpec.RetryBlock -> currentStep
-            // E1.1 / T7: artifactQuery is read-only — not retryable at step level
-            is StepSpec.ArtifactQuery -> currentStep
+        // Use copy() to set retry on the last step.
+        //
+        // Whether a step accepts a step-level policy is declared by the step
+        // type (StepSpec.supportsStepLevelRetry) rather than by a `when` over
+        // every subtype. That `when` listed 29 branches against a 32-subtype
+        // hierarchy and drove this method to cyclomatic complexity 35 against
+        // a budget of 25. Its failure mode was silent: adding a step and
+        // forgetting this list left `retry` as a no-op with no compile error
+        // and no test failing.
+        steps[index] = if (currentStep.supportsStepLevelRetry) {
+            currentStep.withRetry(retryPolicy)
+        } else {
+            // Not retryable at step level. The Jenkins catalog has no per-step
+            // retry for these; they use stage-level `options { retry(count) }`
+            // or a `retry { }` block instead. The step is left untouched.
+            currentStep
         }
     }
 
@@ -1193,4 +1166,63 @@ class StageScope(
         }
         return StageBuilder(stageName, steps.toList(), options, agent, environment?.values)
     }
+}
+
+/**
+ * Returns a copy of this step carrying [policy] as its step-level retry.
+ *
+ * Exhaustive on purpose. Only the subtypes that declare
+ * [StepSpec.supportsStepLevelRetry] are accepted, and adding a new subtype
+ * makes this fail to compile until the step is given a case here. That is the
+ * opposite of the previous arrangement, where a missing branch compiled fine
+ * and silently left `retry` unset.
+ *
+ * The complexity lives here, once, instead of in `StageScope.retry` on every
+ * call path. It is a type-to-type mapping over a sealed hierarchy, which is
+ * what detekt's complexity metric is counting, and the alternative was to keep
+ * a mutable list of supported steps somewhere that no compiler checks.
+ */
+internal fun StepSpec.withRetry(
+    policy: dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy,
+): StepSpec = when (this) {
+    is StepSpec.Echo -> copy(retry = policy)
+    is StepSpec.Shell -> copy(retry = policy)
+    is StepSpec.RegistryStepSpec -> copy(retry = policy)
+    is StepSpec.RegistryBlockSpec -> copy(retry = policy)
+    is StepSpec.Error -> copy(retry = policy)
+    is StepSpec.Sleep -> copy(retry = policy)
+    is StepSpec.Parallel -> copy(retry = policy)
+    is StepSpec.WithCredentialsBlock -> copy(retry = policy)
+    is StepSpec.Checkout -> copy(retry = policy)
+    // Every remaining subtype is a non-retryable step. It is listed as an
+    // error rather than an identity branch, so that a subtype added in the
+    // future without a deliberate decision fails the build here.
+    is StepSpec.WriteFile,
+    is StepSpec.ReadFile,
+    is StepSpec.FileExists,
+    is StepSpec.WithEnv,
+    is StepSpec.Dir,
+    is StepSpec.ArchiveArtifacts,
+    is StepSpec.ArtifactQuery,
+    is StepSpec.DeleteDir,
+    is StepSpec.CleanWs,
+    is StepSpec.CatchError,
+    is StepSpec.WarnError,
+    is StepSpec.Unstable,
+    is StepSpec.Pwd,
+    is StepSpec.IsUnix,
+    is StepSpec.Load,
+    is StepSpec.WaitUntilBlock,
+    is StepSpec.Timestamps,
+    is StepSpec.AnsiColor,
+    is StepSpec.NodeNoOp,
+    is StepSpec.Milestone,
+    is StepSpec.TimeoutBlock,
+    is StepSpec.RetryBlock,
+    -> error(
+        "${this::class.simpleName} does not support step-level retry. Either it is a " +
+            "non-retryable Jenkins step (in which case supportsStepLevelRetry should " +
+            "stay false and this branch should list it as unsupported) or it is a new " +
+            "step that has not declared its retry capability yet.",
+    )
 }

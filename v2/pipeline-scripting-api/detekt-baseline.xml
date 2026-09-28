@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:StageScope.kt:StageScope$fun retry</ID>
     <ID>TooManyFunctions:StageScope.kt:StageScope</ID>
     <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$hostVersion: String</ID>
     <ID>UnusedParameter:CacheKey.kt:CacheKey.Companion.v2$kotlinVersion: String</ID>

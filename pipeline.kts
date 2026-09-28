@@ -12,8 +12,12 @@
 // previous tag. The bootstrap path is retired once self-hosting is stable.
 //
 // Capabilities used (verified against PipelineDsl.kt): pipeline, stages, stage,
-// echo, sh, dir, whenCondition, archiveArtifacts, cleanWs, agent, options,
-// post, always, ansiColor, timestamps.
+// echo, sh, dir, archiveArtifacts, cleanWs, agent, options, post, always,
+// ansiColor, timestamps.
+//
+// `whenCondition` was previously listed here and used in the Publish stage. It
+// has no carrier in the compiled IR and is now rejected at construction, so it
+// is neither used nor claimed here. See TRAIN-DSL-HONESTY.
 //
 // GitHub Actions contract: the GA workflow is ONLY a thin shell that triggers
 // this script. It MUST NOT duplicate test selection, certification, artifact
@@ -135,20 +139,23 @@ pipeline {
             )
         }
 
-        stage("Publish") {
-            // Opt-in: only when LPR_PUBLISH=true is set in the environment.
-            whenCondition("env.LPR_PUBLISH == 'true'") {
-                echo("pipelinek CI/CD root — Publish (opt-in via LPR_PUBLISH=true)")
-                archiveArtifacts("v2/pipeline-application/build/distributions/pipelinek-*.zip")
-                archiveArtifacts("v2/pipeline-application/build/distributions/pipelinek-*.zip.sha256")
-            }
-        }
-
-        stage("Post-publish Smoke") {
-            whenCondition("env.LPR_PUBLISH == 'true'") {
-                echo("pipelinek CI/CD root — Post-publish smoke (placeholder; real smoke is the GitHub-Release asset download step in WU-LPR-071)")
-            }
-        }
+        // Publication is deliberately NOT a stage of this script.
+        //
+        // It used to be:
+        //
+        //     stage("Publish") {
+        //         whenCondition("env.LPR_PUBLISH == 'true'") { archiveArtifacts(...) }
+        //     }
+        //
+        // `whenCondition` has no carrier in the IR: it appended its body to the
+        // stage unconditionally, so this script published on EVERY run while
+        // reading as an opt-in gate. With the fail-closed fix in place
+        // (TRAIN-DSL-HONESTY) it no longer compiles at all.
+        //
+        // Neither behaviour is acceptable. Deciding to publish is a release-train
+        // decision taken by the operator, not a runtime predicate the DSL cannot
+        // evaluate. This script now ends at `package` + `verify`; publication is
+        // an explicit external action against the immutable RC bytes.
 
     }
 }

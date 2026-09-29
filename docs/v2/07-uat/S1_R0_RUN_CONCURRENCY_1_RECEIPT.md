@@ -121,6 +121,26 @@ caracterización que la ley exigía, sin abrir interpretación.
 | Run L5 (WU-A, este mismo ciclo) | `v2/gradlew -p v2 check --rerun-tasks` → BUILD SUCCESSFUL 20m13s; log sha256 `394d81e61fffe72c47d59fd6af8dec046e45f49ee37d6ec4abcfaac48b656ca8` |
 | Cobertura L5 | 559 XML de test frescos en 22 módulos; `failures=0 errors=0` en los 4 módulos citados por el P1 (application 1827, sdk/runtime 201, scripting-kotlin24 56, domain 588) |
 
+### 5.1 Round gate final del ciclo (cierre de WU-A + WU-B) — GREEN
+
+El gate que cierra el ciclo corrió **después** de la resolución del §7, sobre el árbol ya
+corregido:
+
+| Evidencia | Detalle |
+|---|---|
+| Run | `v2/gradlew -p v2 check --rerun-tasks` |
+| Resultado | **BUILD SUCCESSFUL in 21m 10s** — `266 actionable tasks: 266 executed` |
+| Log | sha256 `529e4a9cc7189d0e8379aa473814e4ce498ee576dce4ad3db68b39ca7a92a98c` |
+| Cobertura | 561 XML de test frescos; **0** ficheros con `failures>0` o `errors>0` |
+| Canary CLI | `CliMissingScriptRejectionTest` `timestamp=2026-09-29T20:52:04Z` `tests=3 skipped=0 failures=0 errors=0` |
+| Canary caracterización | `WULpr010CliCharacterizationTest` `timestamp=2026-09-29T21:02:12Z` `tests=11 skipped=1 failures=0 errors=0` (el skip es pre-existente) |
+| Correspondencia SHA↔gate | el gate corrió sobre el árbol de `3155d280`; el único diff posterior hasta `65a25cbd` es este propio recibo (docs). Sin código de producción ni de test alterado tras el gate. |
+
+> Nota de disciplina: durante la espera del gate, dos bucles de espera propios se auto-detectaron
+> vía `pgrep` y retornaron antes de tiempo (regla 31: el patrón coincide con la propia línea de
+> comando). El veredicto se leyó del **log** (`BUILD SUCCESSFUL in 21m 10s` como última línea) y
+> no de la salida del watcher.
+
 ## 6. WU-A — P1 `bl-bl-01M3HYC2FB0003873WVH8V2AG0` (JUnit XML write-failure): NO REPRODUCIBLE
 
 El P1 ("Could not write XML test results" para 10 clases en 4 módulos bajo `check --rerun-tasks`)

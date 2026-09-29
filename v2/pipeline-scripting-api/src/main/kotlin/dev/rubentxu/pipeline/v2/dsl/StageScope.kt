@@ -633,7 +633,9 @@ class StageScope(
     // S1-B directive DSL (declarative carrier only)
     // =============================================================================
 
-    protected var stageDirectives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList()
+    // detekt ProtectedMemberInFinalClass: StageScope is final (no subclasses),
+    // so protected here exposes nothing — private is the honest modifier.
+    private var stageDirectives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList()
 
     /**
      * Declares stage directives (S1 directive kernel).

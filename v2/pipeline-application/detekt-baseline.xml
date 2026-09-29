@@ -2,6 +2,9 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
+    <ID>ClassNaming:S1B_StageDirectiveAdmissionTest.kt:S1B_StageDirectiveAdmissionTest</ID>
+    <ID>ClassNaming:S1C_DirectiveEventObservabilityTest.kt:S1C_DirectiveEventObservabilityTest</ID>
+    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
     <ID>ClassNaming:A4_1DescriptorRecoveryCharacterizationTest.kt:A4_1DescriptorRecoveryCharacterizationTest</ID>
     <ID>ClassNaming:A4_2ShellOperationsCapabilityTest.kt:A4_2ShellOperationsCapabilityTest</ID>
     <ID>ClassNaming:A4_3TypedShellOutputIntegrationTest.kt:A4_3TypedShellOutputIntegrationTest</ID>

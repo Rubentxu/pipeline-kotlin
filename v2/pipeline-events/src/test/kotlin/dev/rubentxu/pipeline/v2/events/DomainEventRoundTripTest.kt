@@ -331,7 +331,9 @@ class DomainEventRoundTripTest {
         assertEquals(
             53,
             count,
-            "DomainEvent sealed hierarchy must have exactly 53 variants (51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam). Found: ${sealedSubclasses.map { it.simpleName }}"
+            "DomainEvent sealed hierarchy must have exactly 53 variants " +
+                "(51 + DirectiveAdmitted/DirectiveDenied added in S1-C directive seam). " +
+                "Found: ${sealedSubclasses.map { it.simpleName }}",
         )
     }
 }

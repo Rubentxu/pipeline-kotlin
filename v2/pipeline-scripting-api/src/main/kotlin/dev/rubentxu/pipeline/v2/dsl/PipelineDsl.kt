@@ -342,15 +342,17 @@ class ScriptScope {
 }
 
 /**
- * Builder for a stage, capturing its name, steps, options, and environment.
+ * Builder for a stage, capturing its name, steps, options, environment, and
+ * declared directives (S1-B).
  */
 class StageBuilder(
     private val name: String,
     private val steps: List<StepSpec>,
     private val options: OptionsSpec? = null,
     private val environment: Map<String, String>? = null,
+    private val directives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList(),
 ) {
-    fun build(): StageSpec = StageSpec(name, steps, options, environment)
+    fun build(): StageSpec = StageSpec(name, steps, options, environment, directives)
 }
 
 /**

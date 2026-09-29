@@ -114,6 +114,7 @@ object DslCompiledPipelineCompiler {
             environment = stage.environment?.let(::EnvironmentSpec) ?: EnvironmentSpec.empty(),
             options = stage.options.toOptions(),
             body = body,
+            directives = stage.directives,
         )
     }
 

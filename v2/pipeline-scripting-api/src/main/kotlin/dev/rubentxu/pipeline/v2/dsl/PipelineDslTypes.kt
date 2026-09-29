@@ -19,6 +19,9 @@ data class StageSpec(
      * Injected via ProcessBuilder.environment() into each step.
      */
     val environment: Map<String, String>? = null,
+
+    /** S1-B: directives declared on this stage (declarative carrier only). */
+    val directives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList(),
 )
 
 /**

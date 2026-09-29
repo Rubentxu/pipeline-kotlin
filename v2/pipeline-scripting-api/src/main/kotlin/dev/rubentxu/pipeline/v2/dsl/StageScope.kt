@@ -3,6 +3,35 @@ package dev.rubentxu.pipeline.v2.dsl
 import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
 
 /**
+ * Receiver scope for the `directives { }` block inside a stage (S1-B).
+ *
+ * Pure data construction: each entry records a directive key plus its opaque
+ * encoded arguments. No registry, no decoding, no effects — the canonical
+ * coordinator performs admission against the DirectiveRegistry before the
+ * stage starts, and an unresolved key fails the run closed.
+ */
+@StepDslMarker
+class DirectivesScope {
+    private val declared = mutableListOf<dev.rubentxu.pipeline.v2.domain.StageDirective>()
+
+    /**
+     * Declares one directive by its open-world key.
+     *
+     * @param key Namespaced directive key (e.g. `"acme.lock"`). Must be a
+     *   literal or a locally computed name; the key is ROUTED BY VALUE, so the
+     *   engine never learns concrete keys. Blank keys are rejected here, at
+     *   construction, exactly like every other carrier.
+     * @param encodedArguments Opaque payload in the directive's own codec
+     *   shape; decoded only by the definition that owns the key.
+     */
+    fun directive(key: String, encodedArguments: String = "{}") {
+        declared += dev.rubentxu.pipeline.v2.domain.StageDirective(key, encodedArguments)
+    }
+
+    fun build(): List<dev.rubentxu.pipeline.v2.domain.StageDirective> = declared.toList()
+}
+
+/**
  * Receiver scope for the step block inside `stage("name") { }`.
  */
 @StepDslMarker
@@ -600,6 +629,42 @@ class StageScope(
         steps.add(StepSpec.RetryBlock(count = count, conditions = null, steps = inner.steps()))
     }
 
+    // =============================================================================
+    // S1-B directive DSL (declarative carrier only)
+    // =============================================================================
+
+    protected var stageDirectives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList()
+
+    /**
+     * Declares stage directives (S1 directive kernel).
+     *
+     * DECLARATIVE ONLY: the block runs once at IR-construction time on a fresh
+     * [DirectivesScope], and each declared entry lowers to a
+     * [dev.rubentxu.pipeline.v2.domain.StageDirective] (key + opaque encoded
+     * arguments). This builder MUST NOT resolve a registry, MUST NOT decode
+     * arguments, and MUST NOT touch runtime state — admission happens later,
+     * on the canonical coordinator, before the stage starts (fail-closed).
+     *
+     * A script that declares directives and runs against an engine whose
+     * composition registers none of them will fail the run with a typed USER
+     * failure naming the unresolved key — never a silent skip.
+     *
+     * Example:
+     * ```
+     * stage("deploy") {
+     *     directives {
+     *         directive("acme.lock", """{"resource":"prod"}""")
+     *     }
+     *     sh("./deploy.sh")
+     * }
+     * ```
+     */
+    fun directives(block: DirectivesScope.() -> Unit) {
+        val scope = DirectivesScope()
+        scope.block()
+        stageDirectives = scope.build()
+    }
+
     fun toStageBuilder(): StageBuilder {
         // WU-RP-032 / DSL-008: post conditions are accepted DSL surface whose execution
         // semantics are NOT implemented in the compiled path. A declared post block that
@@ -611,6 +676,6 @@ class StageScope(
                     "catchError/warnError semantics; refusing to silently ignore post.",
             )
         }
-        return StageBuilder(stageName, steps.toList(), stageOptions, stageEnvironment?.values)
+        return StageBuilder(stageName, steps.toList(), stageOptions, stageEnvironment?.values, stageDirectives)
     }
 }

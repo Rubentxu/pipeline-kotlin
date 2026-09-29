@@ -156,6 +156,19 @@ fun main(args: Array<String>) {
 
     val scriptPath = Paths.get(config.scriptPath)
 
+    // DEBT-CLI-SCRIPT-NOT-FOUND: a missing/unreadable script used to reach
+    // `scriptPath.toFile().readText()` deep in each mode and surface as a raw
+    // `NoSuchFileException` stacktrace. Reject it here — at the CLI boundary, before
+    // any store, journal or process is created — with a typed, actionable message.
+    // Exit code 2 matches the other input/usage rejections (e.g. --control-root).
+    if (!Files.isRegularFile(scriptPath) || !Files.isReadable(scriptPath)) {
+        System.err.println(
+            "Error: pipeline script not found or not readable: ${scriptPath.toAbsolutePath()}",
+        )
+        System.exit(2)
+        return
+    }
+
     if (command == CliCommand.VALIDATE) {
         // M2-002: validate NEVER starts processes. It compiles the script
         // and reports diagnostics — nothing else.

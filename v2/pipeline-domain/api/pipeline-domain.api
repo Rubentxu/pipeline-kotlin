@@ -1,33 +1,3 @@
-public final class dev/rubentxu/pipeline/v2/domain/AgentSpec {
-	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/AgentSpec$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun component2 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getLabel ()Ljava/lang/String;
-	public final fun getRemoteUri ()Ljava/lang/String;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final synthetic class dev/rubentxu/pipeline/v2/domain/AgentSpec$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
-	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/AgentSpec$$serializer;
-	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
-	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
-	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
-	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
-	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;)V
-	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
-	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
-}
-
-public final class dev/rubentxu/pipeline/v2/domain/AgentSpec$Companion {
-	public final fun serializer ()Lkotlinx/serialization/KSerializer;
-}
-
 public final class dev/rubentxu/pipeline/v2/domain/AttemptId {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/AttemptId$Companion;
 	public static final synthetic fun box-impl (I)Ldev/rubentxu/pipeline/v2/domain/AttemptId;
@@ -269,22 +239,20 @@ public final class dev/rubentxu/pipeline/v2/domain/CompiledExecutionUnit$Single 
 
 public final class dev/rubentxu/pipeline/v2/domain/CompiledPipeline {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-GV7yv6Y ()Ljava/lang/String;
-	public final fun component10-mHb7fao ()Ljava/lang/String;
 	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;
-	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
-	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;
+	public final fun component4 ()Ljava/util/List;
 	public final fun component5 ()Ljava/util/List;
 	public final fun component6 ()Ljava/util/List;
 	public final fun component7 ()Ljava/util/List;
-	public final fun component8 ()Ljava/util/List;
-	public final fun component9 ()Ldev/rubentxu/pipeline/v2/domain/PostSpec;
-	public final fun copy-oT5mdEA (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;
-	public static synthetic fun copy-oT5mdEA$default (Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;
+	public final fun component8 ()Ldev/rubentxu/pipeline/v2/domain/PostSpec;
+	public final fun component9-mHb7fao ()Ljava/lang/String;
+	public final fun copy-_tr2vc0 (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;
+	public static synthetic fun copy-_tr2vc0$default (Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/SourceDescriptor;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/CompiledPipeline;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getAgent ()Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
 	public final fun getEnvironment ()Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;
 	public final fun getId-GV7yv6Y ()Ljava/lang/String;
 	public final fun getOptions ()Ljava/util/List;
@@ -1805,21 +1773,19 @@ public final class dev/rubentxu/pipeline/v2/domain/StageId$Companion {
 
 public final class dev/rubentxu/pipeline/v2/domain/StageNode {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/StageNode$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-sK-huWg ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
-	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
-	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;
-	public final fun component5 ()Ljava/util/List;
-	public final fun component6 ()Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;
-	public final fun component7 ()Ldev/rubentxu/pipeline/v2/domain/InputSpec;
-	public final fun component8 ()Ldev/rubentxu/pipeline/v2/domain/StageBody;
-	public final fun component9 ()Ldev/rubentxu/pipeline/v2/domain/PostSpec;
-	public final fun copy-l0MmBKM (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;)Ldev/rubentxu/pipeline/v2/domain/StageNode;
-	public static synthetic fun copy-l0MmBKM$default (Ldev/rubentxu/pipeline/v2/domain/StageNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/AgentSpec;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StageNode;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/domain/InputSpec;
+	public final fun component7 ()Ldev/rubentxu/pipeline/v2/domain/StageBody;
+	public final fun component8 ()Ldev/rubentxu/pipeline/v2/domain/PostSpec;
+	public final fun copy-GrKW1oY (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;)Ldev/rubentxu/pipeline/v2/domain/StageNode;
+	public static synthetic fun copy-GrKW1oY$default (Ldev/rubentxu/pipeline/v2/domain/StageNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/ConditionSpec;Ldev/rubentxu/pipeline/v2/domain/InputSpec;Ldev/rubentxu/pipeline/v2/domain/StageBody;Ldev/rubentxu/pipeline/v2/domain/PostSpec;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StageNode;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getAgent ()Ldev/rubentxu/pipeline/v2/domain/AgentSpec;
 	public final fun getBody ()Ldev/rubentxu/pipeline/v2/domain/StageBody;
 	public final fun getEnvironment ()Ldev/rubentxu/pipeline/v2/domain/EnvironmentSpec;
 	public final fun getId-sK-huWg ()Ljava/lang/String;

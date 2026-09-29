@@ -11,24 +11,35 @@
 // `pipelinek 0.36.0` (or newer) downloaded from the GitHub Release of the
 // previous tag. The bootstrap path is retired once self-hosting is stable.
 //
-// Capabilities used (verified against PipelineDsl.kt): pipeline, stages, stage,
-// echo, sh, dir, archiveArtifacts, cleanWs, agent, options, post, always,
-// ansiColor, timestamps.
+// Capabilities actually used by this script (verified against the script body, not
+// aspirational): pipeline, stages, stage, echo, sh, dir, options, retry, ansiColor,
+// timestamps.
 //
-// `whenCondition` was previously listed here and used in the Publish stage. It
-// has no carrier in the compiled IR and is now rejected at construction, so it
-// is neither used nor claimed here. See TRAIN-DSL-HONESTY.
+// S0-B CORRECTION: the previous header also listed `agent`, `post`, `always`,
+// `archiveArtifacts` and `cleanWs`. None of them appears anywhere in the script
+// body — they were aspirational claims, exactly the class of semantic overclaim
+// the Semantic Honesty Gate exists to remove. `agent`, `post` and `always` are
+// additionally UNSUPPORTED_FAIL_CLOSED in the DSL surface manifest, so naming
+// them here would have been a false claim twice over.
 //
 // GitHub Actions contract: the GA workflow is ONLY a thin shell that triggers
 // this script. It MUST NOT duplicate test selection, certification, artifact
 // selection, release sequencing, or version rules. The pipeline.kts is the
 // single source of truth for those decisions.
 
-// WU-LPR-071: projectVersion is the single authority for the release under
-// construction. The Gradle root build (v2/build.gradle.kts) carries the same
-// value; both MUST be updated together at release time. Keeping it top-level
-// so any sh() can interpolate it.
-val PKG_VERSION = "0.39.0"
+// WU-LPR-071: v2/build.gradle.kts `version` is the SOLE authority for the
+// project version (the single-version provider propagates it to every
+// subproject and to the jar manifest). S0-B: this script used to hardcode
+// PKG_VERSION = "0.39.0" and drifted from the real 0.42.0-rc1, which broke the
+// Dist stage's `test -f $DIST` guard — the release pipeline could never pass.
+// It is now DERIVED from the authority, so the two cannot drift again.
+val PKG_VERSION: String = java.io.File("v2/build.gradle.kts")
+    .readLines()
+    .first { it.trimStart().startsWith("version = ") }
+    .substringAfter("version = ")
+    .trim()
+    .trim('"')
+
 val DIST = "v2/pipeline-application/build/distributions/pipelinek-${'$'}PKG_VERSION.zip"
 
 pipeline {
@@ -38,17 +49,23 @@ pipeline {
             options {
                 timeout(1800)
             }
-            ansiColor("xterm") {
-                timestamps {
-                    echo("pipelinek CI/CD root — Validate")
-                    // WU-RP-042 S2 (R1): retry lives in the retry Block Step
-                    // (ADR-0075, WU-RP-032 removed it from options). The
-                    // previous options { retry(2) } here did not compile.
-                    retry(2) {
-                        sh("./v2/gradlew -p v2 :pipeline-application:installDist --quiet")
-                        sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek version")
-                        sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek doctor")
-                    }
+            // S0-B: the `ansiColor("xterm") { ... }` wrapper was removed here.
+            // `ansiColor` is UNSUPPORTED_FAIL_CLOSED in the DSL surface manifest
+            // (it lowers to core.ansiColor, which has no descriptor row), so the
+            // canonical bridge rejected the whole script with exit 2 before any
+            // stage ran — this CI script could not execute at all. It was a
+            // purely cosmetic console decorator; `timestamps`, its supported
+            // sibling, still wraps the same body below. See
+            // docs/v2/surface/DSL_SURFACE_MANIFEST.md and the S0-B receipt.
+            timestamps {
+                echo("pipelinek CI/CD root — Validate")
+                // WU-RP-042 S2 (R1): retry lives in the retry Block Step
+                // (ADR-0075, WU-RP-032 removed it from options). The
+                // previous options { retry(2) } here did not compile.
+                retry(2) {
+                    sh("./v2/gradlew -p v2 :pipeline-application:installDist --quiet")
+                    sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek version")
+                    sh("v2/pipeline-application/build/install/pipelinek/bin/pipelinek doctor")
                 }
             }
         }

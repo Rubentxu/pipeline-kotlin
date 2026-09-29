@@ -48,7 +48,7 @@ The machine-check enforces, against live code (not this file alone):
 | stages | `stages { }` | PURE_BUILDER | STABLE | List<StageSpec> |
 | stage | `stage(name) { }` | PURE_BUILDER | STABLE | StageSpec -> StageNode |
 | environment | `environment { env(k,v) }` (pipeline+stage) | DECLARATIVE_DIRECTIVE | STABLE | EnvironmentSpec; propagation WITNESSED at shell env (S0-B) |
-| options | `options { timeout(seconds) }` | DECLARATIVE_DIRECTIVE | STABLE | OptionSpec("timeout"); StageTimeoutProjection; shell timeoutMs |
+| options | `options { timeout(seconds) }` | DECLARATIVE_DIRECTIVE | STABLE | OptionSpec("timeout"); StageTimeoutProjection; shell timeoutMs. S0-B: distinct from the `timeout()` BLOCK. `options.timeout` is a stage-wide SHELL DEADLINE only — it produces NO `TimeoutScheduled`/`TimeoutTriggered`; the breach surfaces as the governed step's own `StepFailed(failureKind=TIMEOUT)`. |
 | post | `post { always/success/failure { } }` | UNSUPPORTED_FAIL_CLOSED | UNSUPPORTED_FAIL_CLOSED | IllegalStateException at scope close (toStageBuilder) |
 
 ## 2. Step builders (StageScope surface)
@@ -64,9 +64,9 @@ The machine-check enforces, against live code (not this file alone):
 | fileExists | `fileExists(file)` | ATOMIC_STEP | STABLE | StepSpec.FileExists -> core.fileExists -> CoreFileExistsStep |
 | deleteDir | `deleteDir(path)` | ATOMIC_STEP | STABLE | StepSpec.DeleteDir -> core.deleteDir -> CoreDeleteDirStep |
 | cleanWs | `cleanWs(deleteDirs, patterns)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.cleanWs -> CoreCleanWsStep |
-| checkout | `checkout(scm)` | ATOMIC_STEP | STABLE | StepSpec.Checkout -> scm-git.checkout -> GitCheckoutStep (plugin) |
+| checkout | `checkout(scm)` | ATOMIC_STEP | PARTIAL | StepSpec.Checkout -> OpaqueStepNode(pluginStepId=`core.checkout`); the scm-git plugin registers `scm-git.checkout`, NOT `core.checkout` (S0-B) |
 | scmGit | `scmGit(url, branch, ...)` | PURE_BUILDER | STABLE | Returns CheckoutSpec (0 effects); consumed by checkout |
-| git | `git(url, branch, ...)` | ATOMIC_STEP | STABLE | = checkout(scmGit(...)) -> exactly 1 scm-git.checkout (S0-B witness) |
+| git | `git(url, branch, ...)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | S0-B: rejects fail-closed with exit 2 ("non-canonical plugins" naming `core.checkout`). Zero checkouts occur. |
 | archiveArtifacts | `archiveArtifacts(artifacts, ...)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.archiveArtifacts -> CoreArchiveArtifactsStep |
 | artifactQuery | `artifactQuery(name)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.artifact.query -> CoreArtifactQueryStep |
 | milestone | `milestone(ordinal, label?)` | ATOMIC_STEP | STABLE | RegistryStepSpec core.milestone -> CoreMilestoneStep |
@@ -85,11 +85,11 @@ The machine-check enforces, against live code (not this file alone):
 | withEnv | `withEnv(overrides) { }` | BLOCK_STEP | STABLE | StepSpec.WithEnv -> core.withEnv -> canonical body engine (Scoped env) |
 | withCredentials | `withCredentials(binding(s)) { }` | BLOCK_STEP | STABLE | StepSpec.WithCredentialsBlock -> core.withCredentials -> canonical body engine |
 | timestamps | `timestamps { }` | BLOCK_STEP | STABLE | StepSpec.Timestamps -> core.timestamps -> canonical body engine (output decorator) |
-| timeout | `timeout(time, unit) { }` | BLOCK_STEP | STABLE | StepSpec.TimeoutBlock -> core.timeout -> coordinator TIMEOUT projection (TimeoutScheduled/TimeoutFired) |
-| retry | `retry(count) { }` | BLOCK_STEP | STABLE | StepSpec.RetryBlock -> core.retry -> coordinator retry (maxAttempts ONLY; RetryAttempted events) |
+| timeout | `timeout(time, unit) { }` | BLOCK_STEP | STABLE | StepSpec.TimeoutBlock -> core.timeout -> coordinator TIMEOUT projection. Block authority = `TimeoutScheduled` at admission + `TimeoutTriggered` at breach; the deadline is enforced by the child shell watchdog, so the child also emits `StepFailed(failureKind=TIMEOUT)`. S0-B corrected the row: `TimeoutFired` never existed. |
+| retry | `retry(count) { }` | BLOCK_STEP | STABLE | StepSpec.RetryBlock -> core.retry -> coordinator retry (maxAttempts ONLY; `RetryAttemptStarted` / `RetryAttemptFinished`). S0-B corrected the row: `RetryAttempted` never existed. |
 | waitUntil | `waitUntil(period, quiet) { }` | BLOCK_STEP | STABLE | StepSpec.WaitUntilBlock -> core.waitUntil -> Retrying(waitUntil) poll loop |
 | parallel | `parallel { branch(a){} branch(b){} }` | DECLARATIVE_DIRECTIVE | STABLE | StepSpec.Parallel; canonical stage form = single Parallel root; sibling-mixed body is NON-CANONICAL by design and rejected by the durable gate |
-| catchError | `catchError(buildResult?, stageResult?, message?) { }` | DECLARATIVE_DIRECTIVE | STABLE | legacy workflow-control rewrite (CatchErrorEntered/Triggered + folded outcome) |
+| catchError | `catchError(buildResult?, stageResult?, message?) { }` | DECLARATIVE_DIRECTIVE | STABLE | legacy workflow-control rewrite. Authority event: `CatchErrorTriggered` only. S0-B corrected the row: `CatchErrorEntered` never existed. Contained failure does NOT fail the run: CLI exit 0, `RunFinished.outcome=unstable` (ADR-0054 projection), and steps after the block still run. |
 | warnError | `warnError(message) { }` | DECLARATIVE_DIRECTIVE | STABLE | catchError(buildResult=UNSTABLE, stageResult=UNSTABLE) + StageMarkedUnstable |
 | unstable | `unstable(message)` | DECLARATIVE_DIRECTIVE | STABLE | lifted marker consumed by enclosing catchError/warnError rewrite |
 | node | `node(label?) { }` | BLOCK_STEP | UNSUPPORTED_FAIL_CLOSED | lowers to core.node; NO descriptor row; compile/validate fails closed (CompiledPipelineValidator) |
@@ -127,6 +127,34 @@ The machine-check enforces, against live code (not this file alone):
 - Core step handlers registered (20): see CoreStepRegistryFactory.
 - External plugin steps: scm-git.checkout, junit.results, core-utils.{readJson,
   writeJson, sha256, readYaml, writeYaml, findFiles, zip, unzip}.
+
+## 8. S0-B witness findings (2026-09-29)
+
+Every STABLE surface witnessed through the INSTALLED distribution binary, not an in-process
+harness: `S0SemanticWitnessMatrixTest` (17 witnesses, all green). Three categories of finding:
+
+**F1 — manifest named events that never existed.** The machine-check validates the
+constructor/category/state columns but not the prose of the interpreter column, so these
+three lies survived S0-A2:
+- `timeout` claimed `TimeoutFired` → no such event. Real pair: `TimeoutScheduled` + `TimeoutTriggered`.
+- `retry` claimed `RetryAttempted` → no such event. Real pair: `RetryAttemptStarted` + `RetryAttemptFinished`.
+- `catchError` claimed `CatchErrorEntered` → no such event. Real: `CatchErrorTriggered` only.
+
+**F2 — a real production gap closed.** `TimeoutTriggered` was declared in the vocabulary,
+the JSON codec, the SQLite store, the sequence assigner and the identity projector, but had
+NO producer anywhere: a `timeout()` block that fired left only the child's
+`StepFailed(TIMEOUT)`, indistinguishable from an ordinary script timeout. The block authority
+seam now emits `TimeoutTriggered`, keyed on the TYPED body outcome (never on a StepKey).
+
+**F3 — surface state corrected against observed behaviour.**
+- `git` is not STABLE: it lowers to `OpaqueStepNode(pluginStepId=core.checkout)`, but the
+  scm-git plugin registers `scm-git.checkout`. The canonical bridge rejects it fail-closed
+  (exit 2, "non-canonical plugins"). Jenkins-familiar `git(url)` performs ZERO checkouts.
+  Reclassified `UNSUPPORTED_FAIL_CLOSED`; `checkout` downgraded to `PARTIAL`.
+- `catchError` does not fail the build: CLI exit 0 with `RunFinished.outcome=unstable`.
+- `options.timeout` and the `timeout()` block are different surfaces with different authority
+  events; the directive has none of its own.
+
 
 ## 7. Conservation invariants (restated for the checker)
 

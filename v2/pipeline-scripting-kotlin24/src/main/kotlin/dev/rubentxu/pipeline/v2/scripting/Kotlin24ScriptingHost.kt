@@ -189,39 +189,7 @@ class Kotlin24ScriptingHost(
             {},
         )
         } catch (t: Throwable) {
-            eventSink.append(
-                CompilationFinished(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = effectiveRunId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    cacheKey = CacheKey(CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion), CacheKey.V1),
-                    diagnostics = listOf(
-                        ScriptingDiagnostic(
-                            severity = ScriptDiagnosticSeverity.ERROR,
-                            message = t.message ?: t.toString(),
-                            line = 0,
-                            column = 0,
-                            path = definition.sourcePath?.toString() ?: "<inline>",
-                        ),
-                    ),
-                )
-            )
-            return ScriptCompilationResult.Failure(
-                diagnostics = listOf(
-                    ScriptingDiagnostic(
-                        severity = ScriptDiagnosticSeverity.ERROR,
-                        message = t.message ?: t.toString(),
-                        line = 0,
-                        column = 0,
-                        path = definition.sourcePath?.toString() ?: "<inline>",
-                    ),
-                ),
-                cacheKey = CacheKey(
-                    CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion),
-                    CacheKey.V1,
-                ),
-            )
+            return compilationFailure(t, effectiveRunId, scriptText, sortedClasspath, definition)
         }
 
         val compilationFinishedAt = Instant.now()
@@ -296,6 +264,41 @@ class Kotlin24ScriptingHost(
         }
         is ResultValue.Unit -> ScriptEvaluationOutput.Unit
         else -> ScriptEvaluationOutput.NoValue
+    }
+
+    /**
+     * S0-C1: reports a body-build throwable as an honest compilation failure:
+     * emits the CompilationFinished diagnostic and returns Failure with the
+     * author's message verbatim. See the catch-site comment in [compile].
+     */
+    private fun compilationFailure(
+        t: Throwable,
+        effectiveRunId: String,
+        scriptText: String,
+        sortedClasspath: String,
+        definition: ScriptDefinition,
+    ): ScriptCompilationResult.Failure {
+        val diag = ScriptingDiagnostic(
+            severity = ScriptDiagnosticSeverity.ERROR,
+            message = t.message ?: t.toString(),
+            line = 0,
+            column = 0,
+            path = definition.sourcePath?.toString() ?: "<inline>",
+        )
+        eventSink.append(
+            CompilationFinished(
+                eventId = UUID.randomUUID().toString(),
+                runId = effectiveRunId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                cacheKey = CacheKey(CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion), CacheKey.V1),
+                diagnostics = listOf(diag),
+            )
+        )
+        return ScriptCompilationResult.Failure(
+            diagnostics = listOf(diag),
+            cacheKey = CacheKey(CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion), CacheKey.V1),
+        )
     }
 
     private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {

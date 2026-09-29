@@ -265,30 +265,6 @@ open class StageScopeCore(
     }
 
     /**
-     * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
-     *
-     * The step-retrofit overload projected a full
-     * [dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy] (maxAttempts +
-     * baseMs + jitterMs) onto the preceding step, but NO runtime consumer ever
-     * read that policy: the canonical coordinator projects only `maxAttempts`
-     * from the `core.retry` block-step payload, and baseMs/jitterMs were never
-     * executed by any code path. Declaring a delay was a silent lie, and a
-     * policy nobody reads is metadata-without-an-interpreter.
-     *
-     * The supported surface is the block form `retry(n) { ... }`, which lowers
-     * to a `core.retry` Block Step and is honoured by the coordinator.
-     *
-     * @throws IllegalArgumentException always.
-     */
-    @Suppress("UnusedParameter") // parameters retained so a rejected call fails
-    // with THIS diagnostic instead of a bare Kotlin signature error.
-    fun retry(count: Int, delaySeconds: Long? = null): Nothing = throw IllegalArgumentException(
-        "retry(count = $count) at step level was removed: the projected retry policy had no " +
-            "runtime consumer (the compiled path reads only the maxAttempts of the core.retry " +
-            "block step; delaySeconds was never executed). Use the block form retry($count) { ... }.",
-    )
-
-    /**
      * Conditional execution, Jenkins `when { }` style.
      *
      * NOT SUPPORTED. The IR has no conditional step and no field to carry the
@@ -352,6 +328,31 @@ open class StageScopeTopSteps(
     stageName: String,
     runtimeConfig: RuntimeConfig,
 ) : StageScopeCore(stageName, runtimeConfig) {
+
+    /**
+     * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
+     *
+     * The step-retrofit overload projected a full
+     * [dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy] (maxAttempts +
+     * baseMs + jitterMs) onto the preceding step, but NO runtime consumer ever
+     * read that policy: the canonical coordinator projects only `maxAttempts`
+     * from the `core.retry` block-step payload, and baseMs/jitterMs were never
+     * executed by any code path. Declaring a delay was a silent lie, and a
+     * policy nobody reads is metadata-without-an-interpreter.
+     *
+     * The supported surface is the block form `retry(n) { ... }`, which lowers
+     * to a `core.retry` Block Step and is honoured by the coordinator.
+     *
+     * @throws IllegalArgumentException always.
+     */
+    @Suppress("UnusedParameter") // parameters retained so a rejected call fails
+    // with THIS diagnostic instead of a bare Kotlin signature error.
+    fun retry(count: Int, delaySeconds: Long? = null): Nothing = throw IllegalArgumentException(
+        "retry(count = $count) at step level was removed: the projected retry policy had no " +
+            "runtime consumer (the compiled path reads only the maxAttempts of the core.retry " +
+            "block step; delaySeconds was never executed). Use the block form retry($count) { ... }.",
+    )
+
     fun writeFile(file: String, text: String, encoding: String = "UTF-8") {
         steps.add(StepSpec.WriteFile(file = file, text = text, encoding = encoding))
     }

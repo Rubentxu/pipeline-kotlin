@@ -110,6 +110,7 @@ pipeline {
             dir("integration/gradle-demo") {
                 sh(
                     "../../v2/pipeline-application/build/install/pipelinek/bin/pipelinek run " +
+                        "--workspace . " +
                         "--db /tmp/lpr-ci-gradle.sqlite " +
                         "--control-root /tmp/lpr-ci-gradle-ctl " +
                         "pipeline.kts"
@@ -119,9 +120,19 @@ pipeline {
 
         stage("Real Project Maven") {
             echo("pipelinek CI/CD root — Real Maven project smoke")
+            // S0-B: this smoke needed a WORKSPACE. Without one the runner executes
+            // in a temp directory, where `mvn` (an asdf shim) cannot resolve its
+            // version: it failed with exit 126 and "No version is set for command
+            // mvn". With --workspace . the shim reads the repo's .tool-versions and
+            // the smoke completes with MAVEN-DEMO-OK.
+            //
+            // Same root cause as the Gradle and Node smokes: a nested `run` without
+            // --workspace executes in a throwaway directory, so any repo-relative
+            // path or version-manager shim cannot resolve.
             dir("integration/maven-demo") {
                 sh(
                     "../../v2/pipeline-application/build/install/pipelinek/bin/pipelinek run " +
+                        "--workspace . " +
                         "--db /tmp/lpr-ci-maven.sqlite " +
                         "--control-root /tmp/lpr-ci-maven-ctl " +
                         "pipeline.kts"

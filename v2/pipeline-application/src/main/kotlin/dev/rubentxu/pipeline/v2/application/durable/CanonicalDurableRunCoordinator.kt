@@ -1448,6 +1448,34 @@ class CanonicalDurableRunCoordinator(
                     ),
                 )
             }
+            // B13/E-EM-11 block authority closure: `TimeoutScheduled` is projected when the
+            // block deadline is admitted (above), but the deadline is ENFORCED by the child
+            // shell watchdog, which surfaces only the child's own StepFailed(TIMEOUT). Without
+            // this event the block's `timeout()` has an admission record but no breach record,
+            // and a block deadline that fires is indistinguishable from a plain script timeout.
+            // `TimeoutTriggered` already exists in the vocabulary, JSON codec, Sqlite store,
+            // sequence assigner and identity projector; it had NO producer, so the event was
+            // unreachable from any observable timeline. Emit it here, at the block authority
+            // seam, keyed on the TYPED body outcome — never on a concrete StepKey — so a
+            // deadline breach is observable from a separate process observing the event log.
+            if (scope is BlockShellScope.Timeout) {
+                val deadlineBreached = (outcome as? StepOutcome.Failure)
+                    ?.failure
+                    ?.kind == dev.rubentxu.pipeline.v2.domain.FailureKind.TIMEOUT
+                if (deadlineBreached) {
+                    eventSink.append(
+                        dev.rubentxu.pipeline.v2.events.TimeoutTriggered(
+                            eventId = UUID.randomUUID().toString(),
+                            runId = runId.value,
+                            sequence = 0L,
+                            occurredAt = Instant.now(),
+                            stageOrStep = block.id.value,
+                            action = "abort",
+                            durationMs = scope.budgetMs,
+                        ),
+                    )
+                }
+            }
         }
 
         return outcome

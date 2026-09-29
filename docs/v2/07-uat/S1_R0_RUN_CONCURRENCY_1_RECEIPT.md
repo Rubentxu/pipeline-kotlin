@@ -149,7 +149,34 @@ descarta): el conjunto de razones de `sddk backlog discard` es cerrado
 esas razones sería una falsificación del ledger. Queda como item triado sin acción, con esta
 evidencia como referencia.
 
-## 7. Cierre de trabajo (checklist AGENTS.md)
+## 7. Hallazgo del gate L5: conflicto de contrato real (y su resolución)
+
+El round gate L5 del ciclo (`check --rerun-tasks` sobre `0fa47f74`, 21m04s) **falló**, y el
+fallo era legítimo: `WULpr010CliCharacterizationTest > EXISTS — validate with missing script
+exits 1 (invocation error)` pasó a rojo con el fix P4.
+
+La investigación (no una suposición) mostró que el `exit 1` fijado allí **nunca fue una
+decisión de diseño**: era el código de salida accidental del `NoSuchFileException` crudo al
+escapar de `main`. El contrato canónico del CLI está documentado **en este mismo repositorio**,
+en la rama de fallo de compilación de `Main.kt` (WU-LPR-011 F3):
+
+```text
+0 = éxito
+1 = fallo de ejecución del pipeline
+2 = errores de invocación y de compilación
+```
+
+Un script inexistente es un error de **invocación**, luego `2` es el valor correcto según el
+contrato. Resolución: **re-pinear la caracterización al contrato** (`3155d280`), reforzando la
+fila para que verifique también el diagnóstico tipado y la ausencia de stacktrace, no sólo el
+código de salida. No se dobló el fix para acomodar un accidente registrado.
+
+Lección del ciclo: un characterisation test es un espejo del comportamiento *observado*; cuando
+el comportamiento observado es un accidente, hay que corregir el espejo y dejar constancia de
+por qué. Es exactamente el trabajo que la ley operator-bound pedía para el test de concurrencia,
+aplicado al mismo criterio en el otro test.
+
+## 8. Cierre de trabajo (checklist AGENTS.md)
 
 ```text
 Reference implementation consulted: n/a — internal durability characterisation;
@@ -163,7 +190,7 @@ Security implications:    n/a for this WU — no trust boundary changed; the fin
 Tests demonstrating:      UatRunConcurrencyCharacterisationTest (1/1, XML canary above)
 ```
 
-## 8. Estado y siguiente paso
+## 9. Estado y siguiente paso
 
 - S1-R0 (RUN-CONCURRENCY-1) **caracterizado y ejecutado**; deja de ser un bloqueo sin
   evidencia y pasa a ser deuda con veredicto (P1 `…97Q000387ET2D4MFKR0`).

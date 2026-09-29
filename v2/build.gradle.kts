@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.43.0-rc1"
+version = "0.44.0-rc1"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -31,13 +31,21 @@ version = "0.43.0-rc1"
 //   - v0.42.0-rc1 is the released candidate of the previous train; immutable.
 //     Its receipt was corrected to retract the scmGit finding (e18ef439); the
 //     finding is now fixed properly by the S0-C1 consumption gate.
-//   - v0.43.0-rc1 is the candidate for this train. MINOR because the
-//     v0.42.0-rc1..HEAD range carries feats (S0-C1: MUST_CONSUME surface
-//     declaration + admission-time carrier gate + construction-failure
-//     honesty) with no breaking change: discarded-construction behaviour was
-//     already undefined-pathological (silent success), now it fails closed,
-//     which is a defect fix, not an API break. Train derived from the history,
-//     not chosen by hand.
+//   - v0.43.0-rc1 was the candidate of the previous train; immutable. Its
+//     installed-distribution UAT (docs/v2/07-uat/S1_EF_INSTALLED_DIRECTIVE_UAT_RECEIPT.md)
+//     certified the bytes built at 1910083e.
+//   - v0.44.0-rc1 is the candidate for this train. MINOR because the
+//     v0.43.0..HEAD range carries six feats (S1-A directive kernel, S1-B DSL block
+//     plus admission planner, S1-C typed directive observability events, S1-D
+//     external directive plugin, plus the directive kernel fitness and the
+//     RUN-CONCURRENCY-1 characterisation) and one fix (CLI: typed rejection for a
+//     missing pipeline script) with no breaking change and no `!` footer.
+//     Train derived from the history, not chosen by hand.
+//
+// RP-042 consequence: the S1-E/F UAT certified the 0.43.0-rc1 bytes, and commit
+// 0fa47f74 changed production code (Main.kt). Because the bytes changed, that
+// certification does not transfer to this candidate: the installed-distribution
+// smoke MUST be re-run against the bytes built at this version before the tag.
 //
 // This repo ships release CANDIDATES, not stable releases (AGENTS.md, "Release
 // candidates"). A candidate is an immutable ZIP plus SBOM, SHA256SUMS and a

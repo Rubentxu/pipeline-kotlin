@@ -19,8 +19,22 @@ import java.util.concurrent.TimeUnit
  * Closes E2-06 + M2 exit criterion.
  *
  * Each fixture exercises the public compatibility DSL and produces events.
+ *
+ * S0-C: the class-level budget was `@Timeout(120)`, which is what governs the
+ * per-fixture sweep below. 7719b273 raised two individual methods from 180s to
+ * 600s but left the class default at 120s, so the sweep still inherited the
+ * small budget and timed out under full-suite contention.
+ *
+ * Evidence this is a budget problem and not a defect: the same class run in
+ * isolation is 2/2 green in 5m39s (5:39 > 2:00), while under `check` it aborted
+ * with TimeoutException and no assertion failure. The sweep forks a pipelinek
+ * process per corpus fixture, so its wall time scales with fixture count and
+ * with whatever else the suite is doing concurrently.
+ *
+ * 600 matches the per-method budget 7719b273 already established for these
+ * sweeps, so the class default now agrees with the methods it governs.
  */
-@Timeout(120)
+@Timeout(value = 600, unit = TimeUnit.SECONDS)
 @Tag("release-scale")
 class UatCompat001CorpusSmokeRunTest {
 

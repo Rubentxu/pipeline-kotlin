@@ -337,6 +337,7 @@ fun main(args: Array<String>) {
                 stepRegistry = composedStepRegistry,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
+                pluginClassLoader = pluginClassLoader,
             )
             else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
@@ -687,6 +688,7 @@ fun main(args: Array<String>) {
             withCredentialsExecutor = withCredentialsExecutor,
             stepRegistry = composedStepRegistry,
             secretPatternRegistry = secretPatternRegistry,
+            pluginClassLoader = pluginClassLoader,
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge

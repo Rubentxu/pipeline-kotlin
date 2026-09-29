@@ -50,6 +50,11 @@ internal fun runCanonicalPipeline(
     // gate, so contributed keys participate in the gate (eligibility is registry-derived).
     stepRegistry: InMemoryStepRegistry = CoreStepRegistryFactory.registry(),
     secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+    // S1-D: plugin classloader hosting external plugin JARs. When present, directive
+    // contributions are discovered under this loader's TCCL and folded into the
+    // registry handed to the coordinator. Absent/null => no directive registry
+    // (legacy behaviour: a stage with directives denies; no directives runs as before).
+    pluginClassLoader: ClassLoader? = null,
 ): RunOutcome = runBlocking {
     CanonicalDurableRunCoordinator(
         dispatcher = CanonicalNodeDispatcher(),
@@ -92,5 +97,21 @@ internal fun runCanonicalPipeline(
         // instance is shared between the producer (archive with name=...) and
         // the consumer (artifactQuery) within the run.
         artifactIndex = dev.rubentxu.pipeline.v2.application.durable.ArtifactIndexAdapter.build(),
+        // S1-D: fold external directive contributions discovered under the plugin
+        // classloader's TCCL. Null loader => null registry => legacy behaviour.
+        directiveRegistry = pluginClassLoader?.let { loader ->
+            val previousTccl = Thread.currentThread().contextClassLoader
+            Thread.currentThread().contextClassLoader = loader
+            try {
+                val builder = dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder()
+                val contributed = ExternalDirectivePluginDiscovery.registerInto(builder)
+                if (contributed.isNotEmpty()) {
+                    System.err.println("Discovered external directive plugins: " + contributed.joinToString(", "))
+                }
+                builder.build()
+            } finally {
+                Thread.currentThread().contextClassLoader = previousTccl
+            }
+        },
     ).run(pipeline, runId)
 }

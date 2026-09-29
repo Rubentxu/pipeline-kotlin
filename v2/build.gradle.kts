@@ -384,3 +384,27 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
         "jar",
     )
 }
+
+// S1-D: the directive analogue of buildExamplePlugin. The external directive
+// plugin proves the directive kernel is open by key from outside the build.
+val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds the independent external directive plugin against this revision's SDK."
+    dependsOn(publishSdkForExternalPlugin)
+
+    val pluginDir = file("../examples/example-directive-plugin")
+    inputs.dir(pluginDir.resolve("src"))
+    inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
+    inputs.files(":pipeline-domain:jar")
+    outputs.file(pluginDir.resolve("build/libs/example-directive-plugin-0.1.0.jar"))
+
+    workingDir = rootDir
+    commandLine(
+        rootDir.resolve("gradlew").absolutePath,
+        "-p", pluginDir.absolutePath,
+        "--console=plain",
+        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkVersion=" + rootProject.version.toString(),
+        "jar",
+    )
+}

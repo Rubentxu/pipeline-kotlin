@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.io.File
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -96,6 +97,56 @@ class FArchS1DirectiveKernelFitnessTest {
         )
     }
 
+    // --- 4. the example plugin never leaks into production (S1-D) -----------
+
+    /**
+     * S1-D law: `example.lock` is an EXTERNAL plugin under certification. Its
+     * key, contributor, or JAR appearing inside v2 production sources or build
+     * files would re-close the open world by hardcoding one plugin — the exact
+     * defect the registry exists to prevent. The only sanctioned v2 references
+     * are in test code (the contract suite) wired via testImplementation.
+     */
+    @Test
+    fun `the example directive plugin leaks nowhere into production`() {
+        // walkKotlinFiles includes *.gradle.kts (Kotlin scripts), so classify:
+        //  - anything under src/test            -> sanctioned (contract suite)
+        //  - pipeline-application/build.gradle.kts -> sanctioned (test-scope wiring)
+        //  - v2/build.gradle.kts                -> sanctioned ONLY as the
+        //     :buildExternalDirectivePlugin producer task (no consumption);
+        //     a dependency declaration there would be a leak
+        //  - anything else                       -> production leak, violation
+        val sanctioned = { path: Path ->
+            path.toString().contains("src${File.separatorChar}test") ||
+                path.endsWith("pipeline-application${File.separatorChar}build.gradle.kts") ||
+                path.endsWith("v2${File.separatorChar}build.gradle.kts")
+        }
+        val offenders = ScannerSupport.walkKotlinFiles(ScannerSupport.v2Root())
+            .filter { it.toFile().isFile }
+            .filter { path ->
+                val text = path.toFile().readText()
+                text.contains("example.lock") ||
+                    text.contains("LockContributor") ||
+                    text.contains("example-directive-plugin")
+            }
+            .filterNot(sanctioned)
+            .map { it.toString() }
+
+        // The wiring in the sanctioned build files must stay consumption-free:
+        // v2/build.gradle.kts may only DEFINE the producer task; a dependency
+        // scope (implementation/api) on the example JAR anywhere is a leak.
+        val dependencyScopeLeak = Regex("""(implementation|api)\([^\n]*(example-directive-plugin|example\.lock)""")
+        val wiringViolations = ScannerSupport.walkBuildFiles(ScannerSupport.v2Root())
+            .filter { it.toFile().readText().contains("example-directive-plugin") }
+            .filter { it.toFile().readText().let { t -> dependencyScopeLeak.containsMatchIn(t) } }
+
+        assertTrue(
+            offenders.isEmpty() && wiringViolations.isEmpty(),
+            "example-directive-plugin (acme.lock) is an external plugin: it must never " +
+                "appear in v2 production sources or as a production dependency scope. " +
+                "Sources: $offenders; build files: $wiringViolations",
+        )
+    }
+
     // --- 3. no unlawful erasure --------------------------------------------
 
     @Test
@@ -163,6 +214,35 @@ class FArchS1DirectiveKernelFitnessTest {
             assertTrue(
                 findings.isNotEmpty(),
                 "The fitness must catch an outward import from the kernel",
+            )
+        }
+
+        @Test
+        fun `a production reference to the example plugin is detected`() {
+            val leak = write(
+                "BadProductionLeak.kt",
+                """
+                package dev.rubentxu.pipeline.v2.application
+                import example.lock.LockDirectiveDefinition
+                fun hardcoded(): String = LockDirectiveDefinition.KEY.value
+                """.trimIndent(),
+            )
+
+            val offenders = ScannerSupport.walkKotlinFiles(tempDir)
+                .filter { it.toFile().isFile }
+                .filter { path ->
+                    val text = path.toFile().readText()
+                    text.contains("example.lock") || text.contains("LockContributor")
+                }
+                .filterNot { path -> path.toString().contains("src${File.separatorChar}test") }
+
+            assertTrue(
+                offenders.isNotEmpty(),
+                "The fitness must catch a hardcoded reference to the example directive plugin",
+            )
+            assertTrue(
+                offenders.single().endsWith("BadProductionLeak.kt"),
+                "The scan must point at the offending file, got: $offenders",
             )
         }
 

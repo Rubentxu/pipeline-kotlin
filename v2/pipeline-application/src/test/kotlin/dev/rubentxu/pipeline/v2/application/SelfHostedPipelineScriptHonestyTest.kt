@@ -207,6 +207,40 @@ class SelfHostedPipelineScriptHonestyTest {
     }
 
     /**
+     * A Kotlin `val` in a `.kts` script MUST actually interpolate. A path built as
+     * "...-${'$'}PKG_VERSION.zip" yields the LITERAL `pipelinek-$PKG_VERSION.zip`
+     * because the `${'$'}` escape is a shell idiom, not a Kotlin one. Such a
+     * constant compiles, looks correct, and can never resolve at runtime.
+     *
+     * This is the exact defect that made the Release Verification stage fail with
+     * "DIST: variable sin asignar": the guard was testing a path that never existed.
+     * Any top-level `val` holding a path must reference a sibling identifier
+     * through real interpolation, never through a literal dollar sign.
+     */
+    @Test
+    fun `no top-level constant carries an uninterpolated dollar sign`() {
+        val code = selfHostedScriptCode()
+
+        // The defect is the SHELL escape idiom `${'$'}` appearing inside a Kotlin
+        // string: it compiles, yields a literal '$', and can never resolve. A naive
+        // "has a dollar but no ${" check is wrong, because `${'$'}` itself contains
+        // a `${` and would pass — that mistake shipped a false green, so the
+        // witness now looks for the escape directly.
+        val shellEscape = Regex("""\$\{['"]?\$['"]?}""")
+
+        val offenders = code.lineSequence()
+            .filter { it.trimStart().startsWith("val ") }
+            .filter { shellEscape.containsMatchIn(it) || it.contains("\$PKG_VERSION") }
+            .toList()
+
+        assertTrue(
+            offenders.isEmpty(),
+            "top-level constants must interpolate via \${identifier}; a shell-style " +
+                "\$ escape yields a literal that can never resolve: $offenders",
+        )
+    }
+
+    /**
      * The header documents the surface the script ACTUALLY uses. Documentation
      * that advertises builders absent from the body is a semantic overclaim,
      * and it misleads every future reader about what the CI exercises.

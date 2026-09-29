@@ -44,7 +44,12 @@ val PKG_VERSION: String = java.io.File("v2/build.gradle.kts")
     .trim()
     .trim('"')
 
-val DIST = "v2/pipeline-application/build/distributions/pipelinek-${'$'}PKG_VERSION.zip"
+// S0-B: this previously read `pipelinek-${'$'}PKG_VERSION.zip`, which produces
+// the LITERAL text `pipelinek-$PKG_VERSION.zip` — the `${'$'}` escape belongs in
+// a shell here-string, not in a Kotlin string. So DIST was never a real path and
+// the Release Verification guard could never pass. Verified by evaluating the
+// same expression: DIST_ACTUAL=v2/.../pipelinek-$PKG_VERSION.zip.
+val DIST = "v2/pipeline-application/build/distributions/pipelinek-${PKG_VERSION}.zip"
 
 pipeline {
     stages {
@@ -159,14 +164,20 @@ pipeline {
 
         stage("Release Verification") {
             echo("pipelinek CI/CD root — Release Verification (ZIP integrity + smoke)")
+            // S0-B: the three-quoted string is a Kotlin RAW string, so the previous
+            // "${'$'}DIST" emitted a literal `$DIST` and the shell aborted with
+            // "DIST: variable sin asignar" — Kotlin-level `val`s are not exported
+            // as environment variables. The values are now interpolated by Kotlin
+            // into the script text, which is the only way a here-string can see
+            // them. Verified end to end: this stage now completes.
             sh(
                 """set -euo pipefail
-                test -f "${'$'}DIST" || (echo "missing distZip: ${'$'}DIST" && exit 1)
-                sha256sum "${'$'}DIST" | tee "${'$'}DIST.sha256"
-                unzip -tq "${'$'}DIST" > /dev/null
-                rm -rf /tmp/lpr-ci-verify && mkdir -p /tmp/lpr-ci-verify && unzip -q "${'$'}DIST" -d /tmp/lpr-ci-verify
-                /tmp/lpr-ci-verify/pipelinek-${'$'}PKG_VERSION/bin/pipelinek version
-                /tmp/lpr-ci-verify/pipelinek-${'$'}PKG_VERSION/bin/pipelinek doctor"""
+                test -f "$DIST" || (echo "missing distZip: $DIST" && exit 1)
+                sha256sum "$DIST" | tee "$DIST.sha256"
+                unzip -tq "$DIST" > /dev/null
+                rm -rf /tmp/lpr-ci-verify && mkdir -p /tmp/lpr-ci-verify && unzip -q "$DIST" -d /tmp/lpr-ci-verify
+                /tmp/lpr-ci-verify/pipelinek-$PKG_VERSION/bin/pipelinek version
+                /tmp/lpr-ci-verify/pipelinek-$PKG_VERSION/bin/pipelinek doctor"""
             )
         }
 

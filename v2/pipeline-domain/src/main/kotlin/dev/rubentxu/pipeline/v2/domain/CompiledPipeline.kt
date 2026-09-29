@@ -95,8 +95,36 @@ data class StageNode(
     val input: InputSpec? = null,
     val body: StageBody,
     val post: PostSpec? = null,
+
+    /**
+     * S1-B: directives declared on this stage, in declaration order.
+     *
+     * Declarative data only: a key plus its already-encoded arguments. The
+     * canonical coordinator admits every entry against the [DirectiveRegistry]
+     * BEFORE the stage starts (fail-closed); interpretation per phase is read
+     * from the closed [DirectiveExecutionPolicy], never from the key.
+     */
+    val directives: List<StageDirective> = emptyList(),
 ) {
     init { require(name.isNotBlank()) { "StageNode.name must not be blank" } }
+}
+
+/**
+ * A directive invocation as declared on a stage (S1-B carrier).
+ *
+ * The key is an open-world string so a stage can name any contributed
+ * directive; the arguments are an opaque encoded payload owned by the
+ * definition's codec. Deliberately serializable plain data: the IR must
+ * round-trip without knowing any concrete directive.
+ */
+@Serializable
+data class StageDirective(
+    val key: String,
+    val encodedArguments: String = "{}",
+) {
+    init {
+        require(key.isNotBlank()) { "StageDirective.key must not be blank" }
+    }
 }
 
 @Serializable

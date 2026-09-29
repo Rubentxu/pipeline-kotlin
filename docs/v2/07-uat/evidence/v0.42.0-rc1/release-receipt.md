@@ -1,15 +1,17 @@
 # PipelineK v0.42.0-rc1 — release-candidate receipt
 
-**Estado:** `GATES_GREEN_AWAITING_OPERATOR_PUSH`
+**Estado:** `PUBLISHED_PRERELEASE` — publicada y verificada por descarga
 
 **Candidata:** `0.42.0-rc1`
-**Tag:** `v0.42.0-rc1` — **NO CREADO**. Verificado: `git tag -l v0.42.0-rc1` vacío.
+**Tag:** `v0.42.0-rc1` (anotado, publicado). Peel = `cfa83f19` = `origin/main` = HEAD.
+**Release:** prerelease en GitHub con el ZIP adjunto. Asset re-descargado y
+verificado: sha256 y bytes idénticos a los medidos antes de publicar.
 **Commit de build:** `46eea758` (11 commits detrás del `origin/main` anterior; sin integrar)
 **Rama:** `main`
 **Candidata anterior:** `v0.41.0-rc1`
-**Integración en `main`:** PENDIENTE. `origin/main` = `2111c10d`; el tag no puede
-apuntar a un commit fuera de `main` (AGENTS.md, regla 9). Push a destino
-compartido: decisión del operador.
+**Integración en `main`:** HECHA. `main` publicado `2111c10d..cfa83f19` (fast-forward,
+sin reescritura de historia). El tag se creó después, sobre el commit ya integrado,
+como exige la regla 9 de AGENTS.md.
 
 Esta es una **release candidate**, no una release estable. El repositorio
 entrega el material para `pipelinek-release-harness`. La certificación externa y
@@ -141,6 +143,39 @@ exit 127. El diagnóstico por aislamiento mostró que la causa era la invocació
 La consecuencia real fue un hueco de cobertura: los witnesses existentes
 preguntaban si el script *afirma* la verdad, nunca si existe lo que el script
 *consume*. Ese hueco quedó cerrado en `46eea758`.
+
+## Corrección de un hallazgo propio (post-publicación)
+
+Este receipt y las release notes anunciaban inicialmente que `scmGit` reportaba
+`StageFinished outcome=success` con cero eventos de paso, y lo clasificaban como
+superficie sin instrumentar. **Era falso, y el error estaba en la sonda.**
+
+`scmGit` es un `PURE_CONSTRUCTOR` documentado (`StageScopeBuilders.kt:48-71`)
+bajo la Semantic Conservation Law: devuelve un `CheckoutSpec` y no emite a
+propósito, porque antes añadía `StepSpec.Checkout` y hacía que un único
+`git(..)` emitiera dos `Checkout` (tres llamadas, seis). El único constructor
+que emite es `git(..) -> checkout(scmGit(..).scm)`, y `checkout` no es un Step
+canónico: el bridge lo rechaza.
+
+Comportamiento verificado ejecutando el binario de esta candidata:
+
+| Guion | Resultado |
+|---|---|
+| `git("u")` | exit 2, `script uses non-canonical plugins` |
+| `checkout(scmGit("u").scm)` | exit 2, mismo diagnóstico |
+| `scmGit("u")` aislado | exit 0, compila limpio, no emite (constructor puro) |
+
+Control: `echo` en la misma sonda emitió 2 eventos de paso, luego la sonda sí
+era capaz de observar pasos cuando existían.
+
+Conclusión: no hay superficie sin instrumentar ni éxito silencioso. El item de
+backlog `bl-bl-01M3PGX3C4000387D1T1YV0Q40` (P1) quedó `Discarded`/`wontfix`, y
+las release notes se corrigieron para no publicar una limitación inexistente.
+Ningún cambio de código fue necesario.
+
+**Lección de método.** Un hallazgo de ejecución delimita el comportamiento, pero
+el contrato del código es lo que lo explica. Sin leer `StageScopeBuilders`, un
+resultado correcto se habría clasificado como defecto.
 
 ## Gates locales
 

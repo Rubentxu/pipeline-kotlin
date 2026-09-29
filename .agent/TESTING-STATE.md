@@ -1692,3 +1692,60 @@ git push origin main --tags
 - **Not executed:** full repository `check`; external release harness; module `apiCheck` because `pipeline-scripting-api` does not expose that task.
 - **Unknown impact:** no additional impact identified within the bounded source partition. The remaining C1-D scope is StageScope/validation/lowering partitioning and stays open.
 - **Next:** commit the C1-D slice, regenerate `CURRENT_UAT_STATUS.md` against the resulting SHA, then complete the SDDK verify/release/archive gates honestly.
+
+## Active Change — TRAIN S0 Semantic Honesty Gate, release closure (2026-09-29, base `2111c10d`, head `cfa83f19`)
+
+- **Changed surfaces:** `UatCompat001CorpusSmokeRunTest` (class timeout budget),
+  `SelfHostedPipelineScriptHonestyTest` (new 7th witness), the `v0.42.0-rc1`
+  release receipt. No production code changed in this session.
+
+- **S0 exit criteria — all five verified with first-hand evidence:**
+  S0.1 identity, S0.2 surface manifest, S0.3 semantic drops, S0.4 witness suite,
+  S0.5 full suite + installed distribution + fresh clone.
+
+- **Verification executed:**
+  Round gate with deleted-XML canary → `BUILD SUCCESSFUL in 18m 28s`, 550 XML,
+  **3276 tests, 0 failures, 0 errors**, 121 skipped (pre-existing
+  `@Disabled(migrated-pending)`). Budget 1700s (1245s baseline x 1.3).
+  Fresh clone at `46eea758` with the definitive ZIP → 11/11 `StageFinished`
+  all `success`, `RunFinished outcome=success`, 0 `StepFailed`.
+  Determinism: two independent `distZip` runs → identical sha256.
+
+- **Evidence reused:** none from this session's earlier state. The previous
+  "DOGFOOD_EXIT=0" claim was DISCARDED (see below) and is not reusable.
+
+- **Deliberately not executed:** external release-harness matrix (belongs to
+  `pipelinek-release-harness`), stable promotion (belongs to the harness).
+
+- **Unknown impact:** none identified within the S0 boundary.
+
+- **Next:** operator pushes `main` + tags `v0.42.0-rc1`; then hand the ZIP to
+  the external harness. S1 stays `Draft` until a certified stable exists.
+
+### Negative knowledge recorded this session (do not re-derive)
+
+1. **The root `pipeline.kts` had never actually been executed end to end.**
+   The green dogfood cited in earlier receipts came from
+   `v2/compatibility/01-basic.pipeline.kts` (what CI job N2 runs), not from the
+   root CI authority. Running the root script revealed the first `sh` dying
+   with exit 127.
+
+2. **`sh` working directory.** Without `--workspace`, `workspaceRoot` is a
+   fresh temp dir (`CompositionRoot.kt:72`), so `./v2/gradlew` cannot resolve and
+   `pwd` shows `/tmp/pipelinek-inmem-run*/workspace/<step>`. With
+   `--workspace .` the cwd is the project root. `--workspace` must appear
+   BEFORE the script path; after it, the parser ignores it. Canonical form is
+   in `.github/workflows/lpr0-ci.yml` job N2.
+
+3. **This is not a product defect and not a nesting defect.** A flat `sh` fails
+   identically, which is how `timestamps`/`retry` nesting was ruled out.
+
+4. **UP-TO-DATE can hide a RED.** The first RED attempt for the new witness
+   returned `UP-TO-DATE` with an XML timestamp older than the script edit, and
+   read as 7/7 green. Always delete the XML first and confirm it regenerates.
+
+5. **Gradle run from repo root:** the wrapper is at `v2/gradlew`, so use
+   `v2/gradlew -p v2 <tasks>` or `cd v2 && ./gradlew <tasks>`.
+
+6. **`--rerun-tasks` is NOT mandatory for every gate.** An incremental run
+   behind a deleted-XML canary is the stronger proof of real execution.

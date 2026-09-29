@@ -211,9 +211,25 @@ class WULpr010CliCharacterizationTest {
     // ---- missing-script handling ------------------------------------------------
 
     @Test
-    fun `EXISTS — validate with missing script exits 1 (invocation error)`() {
+    fun `EXISTS — validate with missing script exits 2 (invocation error)`() {
+        // DEBT-CLI-SCRIPT-NOT-FOUND (0fa47f74): this row previously pinned exit 1,
+        // which was NOT a design decision — a raw `NoSuchFileException` escaping
+        // `main` happened to exit 1 through the JVM's uncaught-exception handler.
+        // The canonical CLI contract (WU-LPR-011 F3, documented at the compile-failure
+        // branch in Main.kt) is: 0 success / 1 pipeline execution failure /
+        // 2 invocation + compile errors. A missing script is an invocation error,
+        // so exit 2 is the contract-correct value and the stacktrace is now gone.
+        // The characterisation is re-pinned to the corrected, intentional behaviour.
         val r = run("validate", "/tmp/lpr010-no-such-${System.nanoTime()}.pipeline.kts")
-        assertEquals(1, r.exitCode, "missing script must exit 1; output:\n${r.output.takeLast(500)}")
+        assertEquals(2, r.exitCode, "missing script must exit 2 (invocation error); output:\n${r.output.takeLast(500)}")
+        assertTrue(
+            "not found or not readable" in r.output,
+            "missing script must produce a typed diagnostic; output:\n${r.output.takeLast(500)}",
+        )
+        assertTrue(
+            "FileNotFoundException" !in r.output,
+            "no raw stacktrace may reach the user; output:\n${r.output.takeLast(500)}",
+        )
     }
 
     // ---- unknown subcommand -----------------------------------------------------

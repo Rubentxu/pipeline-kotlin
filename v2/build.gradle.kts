@@ -18,7 +18,7 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-version = "0.42.0-rc1"
+version = "0.43.0-rc1"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
@@ -26,12 +26,18 @@ version = "0.42.0-rc1"
 // the policy explicit and refuse per-subproject overrides. Any future subproject MUST NOT
 // declare its own `version = "..."` — that is a release-time defect.
 //
-// Snapshot policy (v0.42-train, first release-candidate line):
+// Snapshot policy (v0.43-train):
 //   - v0.40.0 and v0.41.0-rc1 are released candidates and remain immutable.
-//   - v0.42.0-rc1 is the candidate produced from this main commit. Its train is
-//     a MAJOR because the v0.41.0-rc1..HEAD range carries a BREAKING CHANGE
-//     (StageScope.retry conditions now fail closed) with no feat in the range.
-//     The train is derived from the history, not chosen by hand.
+//   - v0.42.0-rc1 is the released candidate of the previous train; immutable.
+//     Its receipt was corrected to retract the scmGit finding (e18ef439); the
+//     finding is now fixed properly by the S0-C1 consumption gate.
+//   - v0.43.0-rc1 is the candidate for this train. MINOR because the
+//     v0.42.0-rc1..HEAD range carries feats (S0-C1: MUST_CONSUME surface
+//     declaration + admission-time carrier gate + construction-failure
+//     honesty) with no breaking change: discarded-construction behaviour was
+//     already undefined-pathological (silent success), now it fails closed,
+//     which is a defect fix, not an API break. Train derived from the history,
+//     not chosen by hand.
 //
 // This repo ships release CANDIDATES, not stable releases (AGENTS.md, "Release
 // candidates"). A candidate is an immutable ZIP plus SBOM, SHA256SUMS and a

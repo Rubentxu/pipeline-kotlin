@@ -397,6 +397,7 @@ class FArchS0SurfaceManifestTest {
         val declared = loadRows().filter { it.consumption == "MUST_CONSUME" }.map { it.construct }.toSet()
         val annotated = liveBuilderFunctions()
             .filter { fn -> isMustUseReturnValues(fn) && returnsAConsumableCarrier(fn) }
+            .filter { fn -> !isStepEmittingBuilder(fn.name) }
             .map { it.name }
             .toSet()
         check(annotated.isNotEmpty()) {
@@ -426,6 +427,26 @@ class FArchS0SurfaceManifestTest {
         if (Nothing::class.java == jvm) return false
         val kotlinNothing = Nothing::class.java.name
         return jvm.name != kotlinNothing
+    }
+
+    /**
+     * A builder that EMITS A STEP on every call cannot silently lose intent by
+     * discarding its return value: the call already happened.
+     *
+     * S0-C1: this is the distinction that keeps the gate honest instead of
+     * over-broad. `scmGit(..)` is a PURE_BUILDER — it emits nothing, so a
+     * discarded `CheckoutSpec` loses the author's whole intent. `pwd(..)` and
+     * `isUnix()` are SCRIPTED_RUNTIME_CALL — they append a `core.pwd` /
+     * `core.isUnix` step, so their value is a convenience read, not the effect.
+     * Gating those would force authors to write `val _ = pwd()` for no semantic
+     * gain, which is exactly the sort of ceremony this gate must not introduce.
+     *
+     * The authority for the classification is the manifest's own `Construct`
+     * column, so this reads the declared category instead of re-deriving it.
+     */
+    private fun isStepEmittingBuilder(name: String): Boolean {
+        val row = loadRows().firstOrNull { it.construct == name } ?: return false
+        return row.category == "SCRIPTED_RUNTIME_CALL" || row.category == "ATOMIC_STEP"
     }
 
     /**

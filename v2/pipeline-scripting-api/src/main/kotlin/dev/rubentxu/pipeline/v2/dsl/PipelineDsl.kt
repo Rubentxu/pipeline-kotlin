@@ -143,6 +143,13 @@ class StagesScope(
     fun stage(name: String, block: StageScope.() -> Unit) {
         val scope = StageScope(name, runtimeConfig)
         scope.block()
+        // S0-C1 (Pure Builder Consumption Gate): fail closed HERE, while the
+        // pipeline is still being built, so an unconsumed MUST_CONSUME carrier
+        // can never reach step admission, event emission or a process. This is
+        // the earliest point at which the whole block is known and therefore
+        // the last point at which a discard is still recoverable without
+        // partial effect.
+        scope.rejectUnconsumedCarriers()
         stageBuilders.add(scope.toStageBuilder())
     }
 

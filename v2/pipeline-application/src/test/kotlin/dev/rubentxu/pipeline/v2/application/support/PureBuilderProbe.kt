@@ -22,6 +22,19 @@ object PureBuilderProbe {
         val rejected: Boolean,
         val stepCount: Int,
         val summary: String,
+        /**
+         * Steps that actually EXECUTED, excluding the one that carries the
+         * rejection itself.
+         *
+         * S0-C1: a build-time rejection is reported as a FAILED run, and the
+         * engine records the rejection as a step outcome so the failure is
+         * observable. That bookkeeping step is not an EFFECT of the author's
+         * script — the discarded builder must still have produced no checkout,
+         * no process and no side effect. Counting every `StepStarted` would
+         * therefore conflate "the failure was recorded" with "the pipeline did
+         * work", which is exactly the dishonesty this gate exists to prevent.
+         */
+        val executedStepCount: Int = 0,
     ) {
         val admitted: Boolean get() = !rejected
     }
@@ -52,6 +65,12 @@ object PureBuilderProbe {
         }
 
         val stepCount = events.count { it::class.simpleName == "StepStarted" }
+        // A step whose outcome is the rejection itself did not execute author
+        // intent. A step that SUCCEEDED did: that is the real effect signal.
+        val executedStepCount = events.count { e ->
+            val n = e::class.simpleName
+            n == "StepSucceeded" || n == "StepFinished" && e.toString().contains("\"outcome\":\"success\"")
+        }
         val summary = buildString {
             append("exit=").append(exitCode)
             append(" steps=").append(stepCount)
@@ -74,6 +93,6 @@ object PureBuilderProbe {
                 runFinished.outcome != "success")
         }
 
-        return Outcome(exitCode, rejected, stepCount, summary)
+        return Outcome(exitCode, rejected, stepCount, summary, executedStepCount)
     }
 }

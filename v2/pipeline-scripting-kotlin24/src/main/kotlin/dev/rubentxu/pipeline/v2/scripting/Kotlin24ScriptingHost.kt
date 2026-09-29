@@ -128,8 +128,22 @@ class Kotlin24ScriptingHost(
         // imports, the per-call classpath and the gate flag are all declared in
         // the same builder — so there is still a single source of truth for how
         // a `.pipeline.kts` is compiled.
-        val rwd: ResultWithDiagnostics<*> = host.evalWithTemplate<Any>(
-            source,
+        // S0-C1 / TRAIN-DSL-HONESTY: a fail-closed DSL guard that throws while
+        // the script BODY is being built (e.g. the Pure Builder Consumption
+        // gate rejecting an unconsumed MUST_CONSUME carrier) escapes the entry
+        // point as a plain exception, BEFORE the evaluator can wrap it in
+        // ResultValue.Error.
+        //
+        // Without this, the throwable left `compile()` entirely, the exception
+        // surfaced inside the durable run, and a BUILD-TIME rejection was
+        // misreported to the author as a StepFailed — a construction error
+        // dressed up as a runtime step failure, with a StepStarted emitted for
+        // a step that never legitimately existed. Mapping it to a compilation
+        // Failure restores the honest category: the pipeline could not be
+        // BUILT, and nothing was admitted.
+        val rwd: ResultWithDiagnostics<*> = try {
+            host.evalWithTemplate<Any>(
+                source,
             {
                 // Pure Builder Consumption Gate: an unconsumed return value from
                 // a MUST_CONSUME PURE_BUILDER is a compile error in a
@@ -174,6 +188,41 @@ class Kotlin24ScriptingHost(
             },
             {},
         )
+        } catch (t: Throwable) {
+            eventSink.append(
+                CompilationFinished(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = effectiveRunId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(),
+                    cacheKey = CacheKey(CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion), CacheKey.V1),
+                    diagnostics = listOf(
+                        ScriptingDiagnostic(
+                            severity = ScriptDiagnosticSeverity.ERROR,
+                            message = t.message ?: t.toString(),
+                            line = 0,
+                            column = 0,
+                            path = definition.sourcePath?.toString() ?: "<inline>",
+                        ),
+                    ),
+                )
+            )
+            return ScriptCompilationResult.Failure(
+                diagnostics = listOf(
+                    ScriptingDiagnostic(
+                        severity = ScriptDiagnosticSeverity.ERROR,
+                        message = t.message ?: t.toString(),
+                        line = 0,
+                        column = 0,
+                        path = definition.sourcePath?.toString() ?: "<inline>",
+                    ),
+                ),
+                cacheKey = CacheKey(
+                    CacheKey.sha256Hex(scriptText, sortedClasspath, kotlinVersion, hostVersion),
+                    CacheKey.V1,
+                ),
+            )
+        }
 
         val compilationFinishedAt = Instant.now()
 

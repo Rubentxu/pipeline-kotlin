@@ -57,7 +57,7 @@ class FArchS0CPureBuilderConsumptionTest {
         )
         assertEquals(
             0,
-            outcome.stepCount,
+            outcome.executedStepCount,
             "no effect may be observed when the result is discarded (fail-closed before effects): ${outcome.summary}",
         )
         assertTrue(

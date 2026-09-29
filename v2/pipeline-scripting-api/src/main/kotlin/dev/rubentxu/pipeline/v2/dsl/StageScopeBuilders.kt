@@ -21,11 +21,22 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
  * top-step scope, whose functions are a different concern.
  *
  * The annotation constrains the FATE OF A RETURNED CARRIER, not effects: the
- * `PURE_BUILDER`s here still emit no step and no event. It only makes a discarded
- * carrier a compile error inside `.pipeline.kts`, where the scripting host
- * enables `-Xreturn-value-checker=check`. Functions returning `Unit` are
- * unaffected, as are fail-closed stubs returning `Nothing` (a `Nothing` result
- * is never discarded — it never returns).
+ * `PURE_BUILDER`s here still emit no step and no event. Functions returning
+ * `Unit` are unaffected, as are fail-closed stubs returning `Nothing` (a
+ * `Nothing` result is never discarded — it never returns).
+ *
+ * SCOPE HONESTY: this annotation is inherited by the whole scope hierarchy
+ * (`StageScope` -> `StageScopeTopSteps` -> this), which also covers
+ * `SCRIPTED_RUNTIME_CALL` builders such as `pwd(..)` and `isUnix()` declared in
+ * `StageScope`. Those are NOT MUST_CONSUME: each call already emits a step, so
+ * discarding the returned value loses nothing. The manifest records them as
+ * MAY_DISCARD, and the compile-time checker cannot be scoped per-builder — it is
+ * all-or-nothing per compilation, so it stays silent for them.
+ *
+ * The real, enforced gate is the admission-time carrier registry below, which
+ * classifies each carrier individually and therefore CANNOT be over-applied.
+ * The annotation is retained as a free first line of defence that starts
+ * biting the day the scripting host honours `-Xreturn-value-checker=check`.
  */
 @MustUseReturnValues
 open class StageScopeCore(
@@ -33,6 +44,65 @@ open class StageScopeCore(
     protected val runtimeConfig: RuntimeConfig,
 ) {
     protected val steps = mutableListOf<StepSpec>()
+
+    // ------------------------------------------------------------------
+    // S0-C1 (Pure Builder Consumption Gate) — admission-time enforcement
+    // ------------------------------------------------------------------
+    //
+    // WHY THIS EXISTS NEXT TO `@MustUseReturnValues`
+    // ================================================
+    // The annotation is the FIRST line of defence and it is not sufficient
+    // on its own. OBSERVED: `compilerOptions`/`-Xreturn-value-checker=check`
+    // is referenced by exactly one class in the Kotlin 2.4.10 distribution,
+    // `org.jetbrains.kotlin.scripting.definitions.ScriptDefinition` in
+    // `kotlin-scripting-compiler-impl-embeddable`, and by nothing in
+    // `kotlin-scripting-jvm` or `kotlin-scripting-jvm-host`. The scripting
+    // host in use therefore never applies the flag: a discarded
+    // `@MustUseReturnValues` result still compiles and the run still
+    // succeeds with an empty stage. The annotation is kept because it
+    // costs nothing and starts working the day the host does; this
+    // registry is what makes the gate REAL today.
+    //
+    // The rule is expressed as DATA, not as a per-builder name check:
+    // a PURE_BUILDER registers the carrier it hands out, and a consumer
+    // marks that exact carrier as consumed. Anything registered and never
+    // marked is rejected. Adding a new MUST_CONSUME builder requires no
+    // change here, and no builder is named in this file.
+    private val unconsumedCarriers = LinkedHashMap<Any, String>()
+
+    /**
+     * Records that [carrier] was produced by a pure builder and must be
+     * consumed by the end of the stage.
+     */
+    protected fun <T : Any> registerMustConsume(carrier: T, builderName: String): T {
+        unconsumedCarriers[carrier] = builderName
+        return carrier
+    }
+
+    /**
+     * Marks [carrier] as consumed. A carrier is marked by IDENTITY, not by
+     * "some builder was called": `checkout(scmGit(..).scm)` reads a
+     * PROPERTY of the carrier, so the carrier object itself is what has to
+     * be marked, not the `scm` value inside it.
+     */
+    protected fun markCarrierConsumed(carrier: Any) {
+        unconsumedCarriers.remove(carrier)
+    }
+
+    /**
+     * Fails closed when a MUST_CONSUME carrier was produced and discarded.
+     * Called at stage construction, which is before any step, event or
+     * process is admitted — so the gate cannot produce a partial effect.
+     */
+    internal fun rejectUnconsumedCarriers() {
+        if (unconsumedCarriers.isEmpty()) return
+        val detail = unconsumedCarriers.entries.joinToString(", ") { (carrier, name) ->
+            "$name returned a value that was never used (discarded); its return value must be used, " +
+                "e.g. by passing it to a consuming builder, or the builder must be called in statement position " +
+                "for a builder that declares MAY_DISCARD"
+        }
+        error("Pure builder consumption gate: $detail")
+    }
 
     protected fun nestedScope(): StageScope = StageScope(stageName, runtimeConfig)
 
@@ -67,6 +137,19 @@ open class StageScopeCore(
     }
 
     /**
+     * S0-C1 consuming overload: takes the whole [CheckoutSpec] so the carrier
+     * itself can be marked consumed, not just the `scm` inside it.
+     *
+     * The existing `checkout(scm: Scm)` stays because it is part of the public
+     * surface and a caller may legitimately own a bare [Scm] with no carrier to
+     * track. Keeping both is why the gate needs no migration of existing
+     * scripts.
+     */
+    fun checkout(spec: CheckoutSpec) {
+        markCarrierConsumed(spec)
+        checkout(spec.scm)
+    }
+    /**
      * PURE_CONSTRUCTOR (Semantic Conservation Law): builds the [CheckoutSpec] and
      * emits nothing.
      *
@@ -97,7 +180,13 @@ open class StageScopeCore(
         relativeTargetDir: String = ".",
     ): CheckoutSpec {
         require(url.isNotBlank()) { "Missing required parameter: url" }
-        return CheckoutSpec(GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir))
+        // S0-C1: the carrier is registered as MUST_CONSUME. `checkout(..)` marks
+        // it consumed. Nothing else in this file names a builder, so a future
+        // PURE_BUILDER inherits the gate by calling this one method.
+        return registerMustConsume(
+            CheckoutSpec(GitScm(url, branch, credentialsId, changelog, poll, relativeTargetDir)),
+            "scmGit",
+        )
     }
 
     fun git(
@@ -107,7 +196,10 @@ open class StageScopeCore(
         changelog: Boolean = true,
         poll: Boolean = true,
     ) {
-        checkout(scmGit(url, branch, credentialsId, changelog, poll, ".").scm)
+        // `git(..)` is the consuming shape: it builds the carrier AND routes it
+        // to `checkout`, so the carrier is marked consumed here. Reading
+        // `..scm` is the consumption, not a separate statement.
+        checkout(scmGit(url, branch, credentialsId, changelog, poll, "."))
     }
 
     fun environment(block: EnvironmentScope.() -> Unit) {

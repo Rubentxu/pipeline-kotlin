@@ -65,7 +65,7 @@ The machine-check enforces, against live code (not this file alone):
 | deleteDir | `deleteDir(path)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | StepSpec.DeleteDir -> core.deleteDir -> CoreDeleteDirStep |
 | cleanWs | `cleanWs(deleteDirs, patterns)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.cleanWs -> CoreCleanWsStep |
 | checkout | `checkout(scm)` | ATOMIC_STEP | PARTIAL | NOT_APPLICABLE | StepSpec.Checkout -> OpaqueStepNode(pluginStepId=`core.checkout`); the scm-git plugin registers `scm-git.checkout`, NOT `core.checkout` (S0-B) |
-| scmGit | `scmGit(url, branch, ...)` | PURE_BUILDER | STABLE | MUST_CONSUME | Returns CheckoutSpec (0 effects); consumed by checkout |
+| scmGit | `scmGit(url, branch, ...)` | PURE_BUILDER | STABLE | MUST_CONSUME | Returns CheckoutSpec (0 effects); consumed by checkout. MUST_CONSUME applies to a PURE_BUILDER that hands out a config carrier which NOTHING consumes on its own: discarding it loses the author's intent entirely. It does NOT apply to SCRIPTED_RUNTIME_CALL builders, whose call already emits a step, nor to builders returning Unit or Nothing |
 | git | `git(url, branch, ...)` | ATOMIC_STEP | UNSUPPORTED_FAIL_CLOSED | NOT_APPLICABLE | S0-B: rejects fail-closed with exit 2 ("non-canonical plugins" naming `core.checkout`). Zero checkouts occur. |
 | archiveArtifacts | `archiveArtifacts(artifacts, ...)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.archiveArtifacts -> CoreArchiveArtifactsStep |
 | artifactQuery | `artifactQuery(name)` | ATOMIC_STEP | STABLE | NOT_APPLICABLE | RegistryStepSpec core.artifact.query -> CoreArtifactQueryStep |
@@ -100,8 +100,8 @@ The machine-check enforces, against live code (not this file alone):
 
 | Construct | Signature | Category | State | ResultConsumption | Lowers to / Interpreter |
 |---|---|---|---|---|---|
-| pwd | `pwd(tmp=false): String` | SCRIPTED_RUNTIME_CALL | STABLE | MUST_CONSUME | registry core.pwd / core.pwd.tmp; returns RUNTIME_VALUE_PLACEHOLDER in DSL form; real value via CorePwdStep/CorePwdTmpStep in runtime context |
-| isUnix | `isUnix(): Boolean` | SCRIPTED_RUNTIME_CALL | STABLE | MUST_CONSUME | registry core.isUnix; placeholder in DSL form; CoreIsUnixStep in runtime context (LFC-2R matrix) |
+| pwd | `pwd(tmp=false): String` | SCRIPTED_RUNTIME_CALL | STABLE | MAY_DISCARD | registry core.pwd / core.pwd.tmp; returns RUNTIME_VALUE_PLACEHOLDER in DSL form; real value via CorePwdStep/CorePwdTmpStep in runtime context. Discarding is a legitimate call: the step is emitted, so nothing is lost |
+| isUnix | `isUnix(): Boolean` | SCRIPTED_RUNTIME_CALL | STABLE | MAY_DISCARD | registry core.isUnix; placeholder in DSL form; CoreIsUnixStep in runtime context (LFC-2R matrix). Discarding is a legitimate call: the step is emitted, so nothing is lost |
 
 ## 5. Fail-closed stubs (removed constructs that still answer)
 

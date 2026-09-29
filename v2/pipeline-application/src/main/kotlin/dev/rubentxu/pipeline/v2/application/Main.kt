@@ -465,8 +465,18 @@ fun main(args: Array<String>) {
                 val resultMethod = inst.javaClass.getMethod("get\$\$result")
                 @Suppress("UNCHECKED_CAST")
                 resultMethod.invoke(inst) as? PipelineSpec
-            } catch (_: Exception) {
-                null
+            } catch (invocationError: java.lang.reflect.InvocationTargetException) {
+                // S0-C1 / TRAIN-DSL-HONESTY: `get$$result` runs the script BODY,
+                // so this is where a fail-closed DSL guard fires (e.g. the Pure
+                // Builder Consumption gate rejecting an unconsumed MUST_CONSUME
+                // carrier). Swallowing it into `null` turned a construction
+                // rejection into "no pipeline", which the runner then reported
+                // downstream as a runtime step failure — the author's discarded
+                // value disappeared and a StepFailed appeared instead.
+                //
+                // Unwrap the reflective wrapper so the real, actionable message
+                // reaches the author verbatim.
+                throw (invocationError.targetException ?: invocationError)
             }
         }
     } else null

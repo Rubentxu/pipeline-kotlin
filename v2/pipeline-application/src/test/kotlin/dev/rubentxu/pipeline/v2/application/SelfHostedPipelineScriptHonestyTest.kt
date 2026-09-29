@@ -241,6 +241,71 @@ class SelfHostedPipelineScriptHonestyTest {
     }
 
     /**
+     * CONSUMER EXISTENCE: every repository-relative path the script's `sh` steps
+     * invoke MUST exist in a clean checkout.
+     *
+     * This witness exists because S0-C's fresh-clone gate proved the root script
+     * could not run, and NO prior guard could have caught it. Every other witness
+     * in this class asks "does the script CLAIM the truth?"; none asked "do the
+     * things the script DEPENDS ON actually exist?".
+     *
+     * The failure mode is specific and silent: `sh` executes with its working
+     * directory at the workspace root (`--workspace <repo>`), and a step whose
+     * command names a path that is not in the checkout dies with shell exit 127
+     * ("No such file or directory"). That is not a compile error, not a DSL
+     * diagnostic, and not a surface-manifest violation — the script compiles
+     * perfectly and the claims in its header are all accurate. Only a real
+     * checkout-shaped existence check can see it.
+     *
+     * The path is asserted against the repository root rather than by executing
+     * the whole pipeline, so this is a pure, fast, hermetic assertion: it is the
+     * cheap guard that would have failed loudly at `check` time instead of at
+     * release time.
+     */
+    @Test
+    fun `every repository-relative path the script shells out to exists in a clean checkout`() {
+        val root = Path.of(System.getProperty("pipeline.repoRoot") ?: ".").toAbsolutePath()
+        val code = selfHostedScriptCode()
+
+        // Only literal, repository-relative paths can be checked without running
+        // the pipeline. Dynamic paths (the derived DIST, Gradle/command
+        // substitutions) are covered by the PKG_VERSION/DIST witnesses above,
+        // which assert the derivation rather than the existence.
+        val relativePath = Regex("""(?:^|[\s"'=(])((?:\./)?(?:v2|integration|ci|scripts|examples)/[A-Za-z0-9_./-]+)""")
+
+        // Build OUTPUTS do not exist in a clean checkout by design: the script
+        // creates them (installDist, distZip) before consuming them. Asserting
+        // their presence would be wrong, so only SOURCE inputs are checked.
+        val buildOutputs = Regex("""(^|/)(build|out|target|node_modules)/""")
+
+        val referenced = code.lineSequence()
+            .flatMap { relativePath.findAll(it).map { m -> m.groupValues[1] } }
+            .map { it.removePrefix("./") }
+            .filter { !it.contains("$") }           // shell expansion, not a literal path
+            .filter { !buildOutputs.containsMatchIn(it) }
+            .filter { !it.endsWith("/") }           // a directory prefix, not a file
+            .distinct()
+            .toList()
+
+        // A self-hosted CI authority that shells out to nothing is not a defect,
+        // but it would make this witness vacuous — fail loudly instead of green.
+        assertTrue(
+            referenced.isNotEmpty(),
+            "expected the script to shell out to at least one repository-relative path; " +
+                "the path-extraction regex is probably stale and would pass vacuously",
+        )
+
+        val missing = referenced.filter { !Files.exists(root.resolve(it)) }
+
+        assertTrue(
+            missing.isEmpty(),
+            "the self-hosted script shells out to paths absent from a clean checkout " +
+                "(shell exit 127 at run time). `sh` runs with its working directory at the " +
+                "workspace root, so these must be present there: $missing",
+        )
+    }
+
+    /**
      * The header documents the surface the script ACTUALLY uses. Documentation
      * that advertises builders absent from the body is a semantic overclaim,
      * and it misleads every future reader about what the CI exercises.

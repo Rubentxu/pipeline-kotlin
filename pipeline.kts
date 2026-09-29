@@ -12,8 +12,7 @@
 // previous tag. The bootstrap path is retired once self-hosting is stable.
 //
 // Capabilities actually used by this script (verified against the script body, not
-// aspirational): pipeline, stages, stage, echo, sh, dir, options, retry, ansiColor,
-// timestamps.
+// aspirational): pipeline, stages, stage, echo, sh, dir, options, retry, timestamps.
 //
 // S0-B CORRECTION: the previous header also listed `agent`, `post`, `always`,
 // `archiveArtifacts` and `cleanWs`. None of them appears anywhere in the script
@@ -21,6 +20,11 @@
 // the Semantic Honesty Gate exists to remove. `agent`, `post` and `always` are
 // additionally UNSUPPORTED_FAIL_CLOSED in the DSL surface manifest, so naming
 // them here would have been a false claim twice over.
+//
+// S0-B CORRECTION: `ansiColor` was also listed here after its call was removed
+// below. The list above is now verified against the body by
+// SelfHostedPipelineScriptHonestyTest, which fails if this line claims a builder
+// the body never calls.
 //
 // GitHub Actions contract: the GA workflow is ONLY a thin shell that triggers
 // this script. It MUST NOT duplicate test selection, certification, artifact
